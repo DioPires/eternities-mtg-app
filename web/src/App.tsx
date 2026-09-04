@@ -68,7 +68,9 @@ export function App(): ReactElement {
   useKeyboardMap()
   usePanelAutoOpen()
   useResetActivePrintingOnFocus()
-  // Publishes the dimming mask Phase 2a's shader reads, and the exact count PRD 6.3.2 shows.
+  // Publishes the dimming mask Phase 2a's shader reads, and the exact count PRD 6.3.2 shows. This
+  // is the only call site — `FilterChips` and `Drawer` read the result from the store, so the
+  // record is scanned once per filter change and the mask buffer is reused.
   useFilterEvaluation()
 
   return (

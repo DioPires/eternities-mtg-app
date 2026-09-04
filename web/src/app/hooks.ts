@@ -75,6 +75,10 @@ export function useFilters(): FilterActions {
  * pass over the star array and no allocation. The result lands in the store because Phase 2a's
  * shader reads the mask as its `filterMask` attribute (PRD 8.5.1) — it is not UI state, it is the
  * one artefact both halves of the filter requirement share.
+ *
+ * **Call this exactly once, from `App`.** The buffer lives in a ref, so a second caller is a
+ * second buffer and a second full pass per toggle — the one-pass guarantee above is a property of
+ * there being one producer, not of the function. Everything else reads `state.filterEvaluation`.
  */
 export function useFilterEvaluation(): FilterEvaluation | null {
   const { filters } = useRoute()

@@ -3,15 +3,20 @@
  * individually removable, with a clear-all control and a live count of matching cards computed
  * from the same data the filters use (6.6.5), so the count is exact wherever the filter is."
  *
- * "The same data the filters use" is why the count comes out of `useFilterEvaluation` — the pass
+ * "The same data the filters use" is why the count comes out of the filter evaluation — the pass
  * that produces the shader's dimming mask also produces this number, so the two cannot disagree.
  * Before `sets.bin` lands a selected set chip is not yet applied (PRD 6.6.5) and the row says so
  * rather than showing a count that is quietly missing a facet.
+ *
+ * It *reads* that evaluation from the store rather than calling `useFilterEvaluation` itself.
+ * Hooks are per-instance: a second call would mean a second mask buffer and a second pass over the
+ * star record on every chip toggle, which is the opposite of the one-pass design the paragraph
+ * above claims. `App` is the single producer; every other surface subscribes.
  */
 
 import type { ReactElement } from 'react'
 
-import { useFilterEvaluation, useFilters } from '../app/hooks'
+import { useFilters } from '../app/hooks'
 import {
   COLOUR_LABEL,
   RARITY_LABEL,
@@ -45,7 +50,7 @@ const NUMBER = new Intl.NumberFormat('en-GB')
 
 export function FilterChips(): ReactElement | null {
   const { filters, toggleColour, toggleType, toggleRarity, toggleSet, clearAll } = useFilters()
-  const evaluation = useFilterEvaluation()
+  const evaluation = useStore((state) => state.filterEvaluation)
   const setByCode = useStore((state) => state.setByCode)
   const setOverlay = useStore((state) => state.setOverlay)
   const active = isFilterActive(filters)

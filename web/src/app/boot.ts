@@ -19,6 +19,7 @@
 
 import type { Flight, Focus, NavigationApi, PlaneSlug } from '../navigation'
 import type { PlaneRecord } from '../data'
+import type { RouteWarning } from '../router/route'
 import type { Router } from '../router/router'
 import { createRouterBinding } from '../router/binding'
 import { useStore } from '../store/store'
@@ -44,8 +45,13 @@ export function planeOfStarIndex(
   return null
 }
 
-function describeWarnings(router: Router): string | null {
-  const { warnings } = router.snapshot()
+/**
+ * Takes the warnings rather than the router on purpose. Every `RouteWarning` kind implies a URL
+ * rewrite by construction, so the canonicalising `replace` below destroys the evidence: it clears
+ * the router's cache (`router.ts:105`) and the next snapshot re-parses a route that no longer has
+ * anything wrong with it. The warnings have to be read from the route we parsed on arrival.
+ */
+function describeWarnings(warnings: readonly RouteWarning[]): string | null {
   for (const warning of warnings) {
     if (warning.kind === 'bad-oracle-id') return 'That card link is malformed. Showing its plane.'
     if (warning.kind === 'bad-slug') return 'That plane link is malformed. Showing the multiverse.'
@@ -65,7 +71,7 @@ export function boot(nav: NavigationApi, router: Router): () => void {
   // Canonicalise. `parseRoute` may have dropped an unknown filter value or fallen back from an
   // unparseable path; `replace` is a no-op when the URL already agrees.
   router.replace(initial.focus, initial.filters)
-  const warning = describeWarnings(router)
+  const warning = describeWarnings(initial.warnings)
   if (warning !== null) store.pushToast(warning, 'error')
 
   let introFlight: Flight | null = null

@@ -3,8 +3,14 @@
  * focus and closes on Esc to multiverse."
  *
  * The drawer is the container; `PlanePanel` and `CardPanel` are the two contents. It stays mounted
- * and collapses with a transform so nothing reflows the page when it opens (PRD 7.3.3), and it is
- * `aria-hidden` while collapsed so a screen reader does not read a panel that is off-screen.
+ * and collapses with a transform so nothing reflows the page when it opens (PRD 7.3.3).
+ *
+ * While collapsed, the *contents* are `inert` and the container is not. The distinction is
+ * load-bearing: `.drawer-toggle` is the only way to reopen the panel and it rides the same
+ * transform, so hiding the whole `<aside>` would strand keyboard and screen-reader users with no
+ * way back in (PRD 7.5.2, "fully keyboard-operable"). `inert` also does what `aria-hidden` alone
+ * did not — it takes the off-screen printing rows, set rows and Scryfall link out of the tab
+ * order, instead of leaving Tab to walk through controls nobody can see.
  */
 
 import type { ReactElement } from 'react'
@@ -34,7 +40,6 @@ export function Drawer(): ReactElement | null {
   return (
     <aside
       className={open ? 'drawer drawer-open' : 'drawer'}
-      aria-hidden={!open}
       aria-label={isCard ? 'Card details' : 'Plane details'}
     >
       <button
@@ -52,7 +57,8 @@ export function Drawer(): ReactElement | null {
         </span>
       </button>
 
-      <div className="drawer-scroll">
+      {/* React 18 renders `inert` only from a string; `undefined` omits the attribute. */}
+      <div className="drawer-scroll" {...(open ? {} : { inert: '' })}>
         {isCard ? (
           detail.card !== null && detail.plane !== null ? (
             <CardPanel card={detail.card} plane={detail.plane} dimmed={dimmed} />

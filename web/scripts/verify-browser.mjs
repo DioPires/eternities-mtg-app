@@ -16,7 +16,9 @@
  *   5. Random (PRD 6.9) lands on a card; the card panel shows the encoding as text and a
  *      `rel`-safe Scryfall link (PRD 7.5.3, 7.6.2); activating a printing changes no route.
  *   6. Esc and browser back go up a level (PRD 6.1.3, 6.2.2); forward replays.
- *   7. A dead card link falls back to the multiverse with a toast (PRD risk 9).
+ *   7. Bad links toast and land somewhere sensible: a dead card id falls back to the multiverse
+ *      (PRD risk 9), and a malformed id, slug or path is caught at boot (PRD 6.7.1). Separate
+ *      cases because they are separate code paths.
  *   8. Touch does not break the page (PRD 6.1.5).
  *   9. The WebGL2 fallback renders a plain explanation with no canvas at all (PRD 7.1.2).
  *  10. Throughout: no console error, no failed request, nothing blocked by the CSP.
@@ -388,6 +390,39 @@ async function verifyShell(page, url, log) {
   }
   log(`  random: "${card.name}" · ${card.printings} printings · encoding as text · rel-safe link`)
 
+  // Collapsing the drawer must not strand the keyboard (PRD 7.5.2). The toggle is the only way
+  // back in, so it stays reachable; everything it hid goes out of the tab order with it, rather
+  // than staying tabbable while translated off-screen.
+  await page.click('.drawer-toggle')
+  await pause(300)
+  const collapsed = await page.evaluate(() => {
+    const toggle = document.querySelector('.drawer-toggle')
+    toggle.focus()
+    const scroll = document.querySelector('.drawer-scroll')
+    const inside = scroll.querySelector('a, button')
+    inside?.focus()
+    return {
+      open: document.querySelector('aside.drawer').classList.contains('drawer-open'),
+      toggleFocusable: document.activeElement === toggle || toggle.matches(':focus'),
+      hidden: scroll.hasAttribute('inert'),
+      insideFocusable: inside !== null && document.activeElement === inside,
+      ariaHiddenOnContainer: document.querySelector('aside.drawer').hasAttribute('aria-hidden'),
+    }
+  })
+  check(!collapsed.open, 'the drawer toggle did not collapse the panel')
+  check(collapsed.hidden, 'the collapsed drawer contents are not inert')
+  check(!collapsed.insideFocusable, 'an off-screen control inside the collapsed drawer took focus')
+  check(
+    !collapsed.ariaHiddenOnContainer,
+    'the drawer container is aria-hidden, which hides its own reopen toggle from assistive tech',
+  )
+  await page.click('.drawer-toggle')
+  await page.waitForFunction(
+    () => document.querySelector('aside.drawer')?.classList.contains('drawer-open') === true,
+    { timeout: 5_000 },
+  )
+  log('  drawer: collapses inert, the toggle stays reachable and reopens it')
+
   // --- 6. Esc and history (PRD 6.1.3, 6.2.2) ---------------------------------------------
   await page.keyboard.press('Escape')
   await page.waitForFunction(() => /^\/plane\/[^/]+$/.test(location.pathname), { timeout: 10_000 })
@@ -414,20 +449,50 @@ async function verifyShell(page, url, log) {
   await page.waitForFunction(() => location.pathname === '/', { timeout: 10_000 })
   log(`  Esc walks card → ${planeRoute} → / ; back and forward replay it`)
 
-  // --- 7. dead card link (PRD risk 9) ----------------------------------------------------
-  await page.goto(`${url}/plane/${roster.plane.slug}/card/00000000-0000-4000-8000-000000000000`, {
-    waitUntil: 'networkidle0',
-  })
-  await page.waitForFunction(() => document.querySelector('.toast-error') !== null, {
-    timeout: 30_000,
-  })
-  const dead = await page.evaluate(() => ({
-    route: location.pathname,
-    toast: document.querySelector('.toast-error')?.textContent ?? '',
-  }))
-  check(dead.route === '/', `dead card link landed on ${dead.route}, expected the multiverse`)
-  check(dead.toast.length > 0, 'no toast for a dead card link')
-  log(`  dead link → ${dead.route} with a toast`)
+  // --- 7. bad links: dead (PRD risk 9) and malformed (PRD 6.7.1) --------------------------
+  // Two different code paths that both end in a toast, and they are checked separately because
+  // the first version of this step only exercised the dead one — which let a bug where every
+  // malformed-link toast was silently dropped pass a green run.
+  //
+  //  - dead: a *well-formed* oracle id that is not in this dataset. Resolution gets as far as
+  //    `sets.bin` and fails there, so it is `failCardResolution` → the multiverse.
+  //  - malformed: an id the router could not parse at all. Caught at cold start, before any
+  //    resolution, and it keeps whatever part of the route did parse.
+  const badLink = async (path, expectedRoute, expectedToast, label) => {
+    // `domcontentloaded`, not `networkidle0`: the malformed-link toast is raised during boot and
+    // self-dismisses after six seconds, so waiting for the dataset to go quiet first could outlast
+    // the thing being checked. Polling starts immediately instead; the dead-link toast, which does
+    // wait on `sets.bin`, is covered by the generous `waitForFunction` timeout below.
+    await page.goto(`${url}${path}`, { waitUntil: 'domcontentloaded' })
+    await page.waitForFunction(() => document.querySelector('.toast-error') !== null, {
+      timeout: 30_000,
+    })
+    const seen = await page.evaluate(() => ({
+      route: location.pathname,
+      toast: document.querySelector('.toast-error')?.textContent ?? '',
+    }))
+    check(seen.route === expectedRoute, `${label} landed on ${seen.route}, expected ${expectedRoute}`)
+    check(
+      seen.toast.includes(expectedToast),
+      `${label} said ${JSON.stringify(seen.toast)}, expected it to mention ${JSON.stringify(expectedToast)}`,
+    )
+    log(`  ${label} → ${seen.route} with "${seen.toast.trim()}"`)
+  }
+
+  await badLink(
+    `/plane/${roster.plane.slug}/card/00000000-0000-4000-8000-000000000000`,
+    '/',
+    'no longer in this dataset',
+    'dead card link',
+  )
+  await badLink(
+    `/plane/${roster.plane.slug}/card/not-a-uuid`,
+    `/plane/${roster.plane.slug}`,
+    'card link is malformed',
+    'malformed card link',
+  )
+  await badLink('/plane/NOT_A_SLUG', '/', 'plane link is malformed', 'malformed plane link')
+  await badLink('/wat', '/', 'does not exist', 'unknown route')
 
   // --- 8. touch does not break the page (PRD 6.1.5) --------------------------------------
   await page.goto(`${url}/plane/${roster.plane.slug}`, { waitUntil: 'networkidle0' })
