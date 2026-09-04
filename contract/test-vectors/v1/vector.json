@@ -1,0 +1,296 @@
+{
+  "contractVersion": 1,
+  "dataHash": "177eec2a3ed78483",
+  "starCount": 6,
+  "stars": [
+    {
+      "index": 0,
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0,
+      "planeIndex": 0,
+      "hueClass": 6,
+      "sizeClass": 0,
+      "brightness": 40,
+      "twinklePhase": 0,
+      "typeMask": 8
+    },
+    {
+      "index": 1,
+      "x": 0.5,
+      "y": 0.0625,
+      "z": -0.25,
+      "planeIndex": 1,
+      "hueClass": 0,
+      "sizeClass": 2,
+      "brightness": 128,
+      "twinklePhase": 64,
+      "typeMask": 1
+    },
+    {
+      "index": 2,
+      "x": -1.1943359375,
+      "y": 0.0,
+      "z": 0.0,
+      "planeIndex": 1,
+      "hueClass": 5,
+      "sizeClass": 1,
+      "brightness": 200,
+      "twinklePhase": 128,
+      "typeMask": 2
+    },
+    {
+      "index": 3,
+      "x": 0.125,
+      "y": -0.03125,
+      "z": 0.75,
+      "planeIndex": 2,
+      "hueClass": 1,
+      "sizeClass": 0,
+      "brightness": 1,
+      "twinklePhase": 200,
+      "typeMask": 1
+    },
+    {
+      "index": 4,
+      "x": 0.25,
+      "y": 0.5,
+      "z": -0.125,
+      "planeIndex": 2,
+      "hueClass": 6,
+      "sizeClass": 2,
+      "brightness": 255,
+      "twinklePhase": 255,
+      "typeMask": 0
+    },
+    {
+      "index": 5,
+      "x": 0.0009765625,
+      "y": 1.0,
+      "z": 0.0,
+      "planeIndex": 2,
+      "hueClass": 5,
+      "sizeClass": 3,
+      "brightness": 0,
+      "twinklePhase": 7,
+      "typeMask": 255
+    }
+  ],
+  "oracleIds": [
+    "00000000-0000-4000-8000-000000000001",
+    "00000000-0000-4000-8000-000000000002",
+    "00000000-0000-4000-8000-000000000003",
+    "00000000-0000-4000-8000-000000000004",
+    "00000000-0000-4000-8000-000000000005",
+    "00000000-0000-4000-8000-000000000006"
+  ],
+  "setIdsPerStar": [
+    [
+      0
+    ],
+    [
+      0,
+      1,
+      3
+    ],
+    [
+      0
+    ],
+    [
+      2
+    ],
+    [
+      2
+    ],
+    [
+      2,
+      3
+    ]
+  ],
+  "planeShards": {
+    "blind-eternities": 1,
+    "dominaria": 1,
+    "ravnica": 1,
+    "segovia": 1
+  },
+  "files": [
+    "planes.json",
+    "planes/blind-eternities.0.json",
+    "planes/dominaria.0.json",
+    "planes/ravnica.0.json",
+    "planes/segovia.0.json",
+    "search.json",
+    "sets.bin",
+    "stars.bin"
+  ],
+  "cardBackUri": "https://backs.scryfall.io/large/0/a/0aeebaf5-8c7d-4636-9e82-8c27447861f7.jpg",
+  "uris": [
+    {
+      "printingId": "aaaaaaaa-0000-4000-8000-000000000001",
+      "imageTs": "1700000001",
+      "small": "https://cards.scryfall.io/small/front/a/a/aaaaaaaa-0000-4000-8000-000000000001.jpg?1700000001",
+      "large": "https://cards.scryfall.io/large/front/a/a/aaaaaaaa-0000-4000-8000-000000000001.jpg?1700000001",
+      "artCrop": "https://cards.scryfall.io/art_crop/front/a/a/aaaaaaaa-0000-4000-8000-000000000001.jpg?1700000001",
+      "backLarge": "https://cards.scryfall.io/large/back/a/a/aaaaaaaa-0000-4000-8000-000000000001.jpg?1700000001",
+      "page": "https://scryfall.com/card/tv1/1"
+    },
+    {
+      "printingId": "aaaaaaaa-0000-4000-8000-000000000002",
+      "imageTs": "1700000002",
+      "small": "https://cards.scryfall.io/small/front/a/a/aaaaaaaa-0000-4000-8000-000000000002.jpg?1700000002",
+      "large": "https://cards.scryfall.io/large/front/a/a/aaaaaaaa-0000-4000-8000-000000000002.jpg?1700000002",
+      "artCrop": "https://cards.scryfall.io/art_crop/front/a/a/aaaaaaaa-0000-4000-8000-000000000002.jpg?1700000002",
+      "backLarge": "https://cards.scryfall.io/large/back/a/a/aaaaaaaa-0000-4000-8000-000000000002.jpg?1700000002",
+      "page": "https://scryfall.com/card/tv1/12"
+    },
+    {
+      "printingId": "aaaaaaaa-0000-4000-8000-000000000003",
+      "imageTs": "1700000003",
+      "small": "https://cards.scryfall.io/small/front/a/a/aaaaaaaa-0000-4000-8000-000000000003.jpg?1700000003",
+      "large": "https://cards.scryfall.io/large/front/a/a/aaaaaaaa-0000-4000-8000-000000000003.jpg?1700000003",
+      "artCrop": "https://cards.scryfall.io/art_crop/front/a/a/aaaaaaaa-0000-4000-8000-000000000003.jpg?1700000003",
+      "backLarge": "https://cards.scryfall.io/large/back/a/a/aaaaaaaa-0000-4000-8000-000000000003.jpg?1700000003",
+      "page": "https://scryfall.com/card/tv2/13a"
+    },
+    {
+      "printingId": "aaaaaaaa-0000-4000-8000-000000000004",
+      "imageTs": "1700000004",
+      "small": "https://cards.scryfall.io/small/front/a/a/aaaaaaaa-0000-4000-8000-000000000004.jpg?1700000004",
+      "large": "https://cards.scryfall.io/large/front/a/a/aaaaaaaa-0000-4000-8000-000000000004.jpg?1700000004",
+      "artCrop": "https://cards.scryfall.io/art_crop/front/a/a/aaaaaaaa-0000-4000-8000-000000000004.jpg?1700000004",
+      "backLarge": "https://cards.scryfall.io/large/back/a/a/aaaaaaaa-0000-4000-8000-000000000004.jpg?1700000004",
+      "page": "https://scryfall.com/card/rp0/301"
+    },
+    {
+      "printingId": "aaaaaaaa-0000-4000-8000-000000000005",
+      "imageTs": "1700000005",
+      "small": "https://cards.scryfall.io/small/front/a/a/aaaaaaaa-0000-4000-8000-000000000005.jpg?1700000005",
+      "large": "https://cards.scryfall.io/large/front/a/a/aaaaaaaa-0000-4000-8000-000000000005.jpg?1700000005",
+      "artCrop": "https://cards.scryfall.io/art_crop/front/a/a/aaaaaaaa-0000-4000-8000-000000000005.jpg?1700000005",
+      "backLarge": "https://cards.scryfall.io/large/back/a/a/aaaaaaaa-0000-4000-8000-000000000005.jpg?1700000005",
+      "page": "https://scryfall.com/card/tv1/77"
+    },
+    {
+      "printingId": "aaaaaaaa-0000-4000-8000-000000000006",
+      "imageTs": "1700000006",
+      "small": "https://cards.scryfall.io/small/front/a/a/aaaaaaaa-0000-4000-8000-000000000006.jpg?1700000006",
+      "large": "https://cards.scryfall.io/large/front/a/a/aaaaaaaa-0000-4000-8000-000000000006.jpg?1700000006",
+      "artCrop": "https://cards.scryfall.io/art_crop/front/a/a/aaaaaaaa-0000-4000-8000-000000000006.jpg?1700000006",
+      "backLarge": "https://cards.scryfall.io/large/back/a/a/aaaaaaaa-0000-4000-8000-000000000006.jpg?1700000006",
+      "page": "https://scryfall.com/card/tv3/60"
+    },
+    {
+      "printingId": "aaaaaaaa-0000-4000-8000-000000000007",
+      "imageTs": "1700000007",
+      "small": "https://cards.scryfall.io/small/front/a/a/aaaaaaaa-0000-4000-8000-000000000007.jpg?1700000007",
+      "large": "https://cards.scryfall.io/large/front/a/a/aaaaaaaa-0000-4000-8000-000000000007.jpg?1700000007",
+      "artCrop": "https://cards.scryfall.io/art_crop/front/a/a/aaaaaaaa-0000-4000-8000-000000000007.jpg?1700000007",
+      "backLarge": "https://cards.scryfall.io/large/back/a/a/aaaaaaaa-0000-4000-8000-000000000007.jpg?1700000007",
+      "page": "https://scryfall.com/card/tv3/3"
+    },
+    {
+      "printingId": "aaaaaaaa-0000-4000-8000-000000000008",
+      "imageTs": "1700000008",
+      "small": "https://cards.scryfall.io/small/front/a/a/aaaaaaaa-0000-4000-8000-000000000008.jpg?1700000008",
+      "large": "https://cards.scryfall.io/large/front/a/a/aaaaaaaa-0000-4000-8000-000000000008.jpg?1700000008",
+      "artCrop": "https://cards.scryfall.io/art_crop/front/a/a/aaaaaaaa-0000-4000-8000-000000000008.jpg?1700000008",
+      "backLarge": "https://cards.scryfall.io/large/back/a/a/aaaaaaaa-0000-4000-8000-000000000008.jpg?1700000008",
+      "page": "https://scryfall.com/card/tv3/★1"
+    },
+    {
+      "printingId": "aaaaaaaa-0000-4000-8000-000000000009",
+      "imageTs": "1700000009",
+      "small": "https://cards.scryfall.io/small/front/a/a/aaaaaaaa-0000-4000-8000-000000000009.jpg?1700000009",
+      "large": "https://cards.scryfall.io/large/front/a/a/aaaaaaaa-0000-4000-8000-000000000009.jpg?1700000009",
+      "artCrop": "https://cards.scryfall.io/art_crop/front/a/a/aaaaaaaa-0000-4000-8000-000000000009.jpg?1700000009",
+      "backLarge": "https://cards.scryfall.io/large/back/a/a/aaaaaaaa-0000-4000-8000-000000000009.jpg?1700000009",
+      "page": "https://scryfall.com/card/rp0/999"
+    }
+  ],
+  "hueClassChecks": [
+    {
+      "colourIdentity": "W",
+      "hueClass": 0
+    },
+    {
+      "colourIdentity": "U",
+      "hueClass": 1
+    },
+    {
+      "colourIdentity": "B",
+      "hueClass": 2
+    },
+    {
+      "colourIdentity": "R",
+      "hueClass": 3
+    },
+    {
+      "colourIdentity": "G",
+      "hueClass": 4
+    },
+    {
+      "colourIdentity": "WU",
+      "hueClass": 5
+    },
+    {
+      "colourIdentity": "WUBRG",
+      "hueClass": 5
+    },
+    {
+      "colourIdentity": "",
+      "hueClass": 6
+    }
+  ],
+  "typeMaskChecks": [
+    {
+      "typeLine": "Creature — Human Wizard",
+      "typeMask": 1
+    },
+    {
+      "typeLine": "Basic Land — Island",
+      "typeMask": 64
+    },
+    {
+      "typeLine": "Artifact Creature — Golem",
+      "typeMask": 9
+    },
+    {
+      "typeLine": "Legendary Planeswalker — Jace",
+      "typeMask": 32
+    },
+    {
+      "typeLine": "Conspiracy",
+      "typeMask": 0
+    },
+    {
+      "typeLine": "Battle — Siege",
+      "typeMask": 128
+    },
+    {
+      "typeLine": "Instant",
+      "typeMask": 2
+    },
+    {
+      "typeLine": "Enchantment Creature — Nymph",
+      "typeMask": 17
+    }
+  ],
+  "shardIndexChecks": [
+    {
+      "localIndex": 0,
+      "shard": 0
+    },
+    {
+      "localIndex": 1999,
+      "shard": 0
+    },
+    {
+      "localIndex": 2000,
+      "shard": 1
+    },
+    {
+      "localIndex": 4001,
+      "shard": 2
+    }
+  ]
+}

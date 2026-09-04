@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Eternities">
+  <rect width="32" height="32" rx="6" fill="#05060a"/>
+  <g fill="none" stroke-linecap="round">
+    <circle cx="16" cy="16" r="10.5" stroke="#2a3358" stroke-width="0.6"/>
+    <path d="M16 16 q5.5 -1.5 8.5 -6.5" stroke="#7fb2ff" stroke-width="1.5" opacity="0.85"/>
+    <path d="M16 16 q-5.5 1.5 -8.5 6.5" stroke="#c98cff" stroke-width="1.5" opacity="0.85"/>
+    <path d="M16 16 q1.5 5.5 6.5 8.5" stroke="#ffb877" stroke-width="1.4" opacity="0.75"/>
+    <path d="M16 16 q-1.5 -5.5 -6.5 -8.5" stroke="#7cf0c0" stroke-width="1.4" opacity="0.75"/>
+  </g>
+  <circle cx="16" cy="16" r="2.6" fill="#f2e9c8"/>
+</svg>

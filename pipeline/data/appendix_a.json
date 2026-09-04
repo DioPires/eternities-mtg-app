@@ -1,0 +1,420 @@
+{
+  "source": "prd_v3.md Appendix A",
+  "planes": [
+    {
+      "slug": "blind-eternities",
+      "displayName": "Blind Eternities",
+      "notes": "Catch-all; rendered as dust (5.3.4)"
+    },
+    {
+      "slug": "abyss",
+      "displayName": "The Abyss",
+      "notes": "Possibly the same as Hell or the Nether Void; kept separate as named"
+    },
+    {
+      "slug": "alara",
+      "displayName": "Alara",
+      "notes": "Five shards, one plane"
+    },
+    {
+      "slug": "alkabah",
+      "displayName": "Alkabah",
+      "notes": ""
+    },
+    {
+      "slug": "amonkhet",
+      "displayName": "Amonkhet",
+      "notes": ""
+    },
+    {
+      "slug": "antausia",
+      "displayName": "Antausia",
+      "notes": "*Duelist* magazine prototype plane"
+    },
+    {
+      "slug": "aranzhur",
+      "displayName": "Aranzhur",
+      "notes": ""
+    },
+    {
+      "slug": "arcavios",
+      "displayName": "Arcavios",
+      "notes": "Strixhaven"
+    },
+    {
+      "slug": "arkhos",
+      "displayName": "Arkhos",
+      "notes": "Proto-Theros; distinct plane"
+    },
+    {
+      "slug": "avishkar",
+      "displayName": "Avishkar (formerly Kaladesh)",
+      "notes": "Renamed in lore; slug uses the current name"
+    },
+    {
+      "slug": "azgol",
+      "displayName": "Azgol",
+      "notes": ""
+    },
+    {
+      "slug": "azoria",
+      "displayName": "Azoria",
+      "notes": "Shard of the Twelve Worlds"
+    },
+    {
+      "slug": "belenon",
+      "displayName": "Belenon",
+      "notes": ""
+    },
+    {
+      "slug": "bloomburrow",
+      "displayName": "Bloomburrow",
+      "notes": ""
+    },
+    {
+      "slug": "cabralin",
+      "displayName": "Cabralin",
+      "notes": ""
+    },
+    {
+      "slug": "capenna",
+      "displayName": "Capenna",
+      "notes": "New Capenna"
+    },
+    {
+      "slug": "cridhe",
+      "displayName": "Cridhe",
+      "notes": ""
+    },
+    {
+      "slug": "diraden",
+      "displayName": "Diraden",
+      "notes": ""
+    },
+    {
+      "slug": "dominaria",
+      "displayName": "Dominaria",
+      "notes": ""
+    },
+    {
+      "slug": "duskmourn",
+      "displayName": "Duskmourn",
+      "notes": ""
+    },
+    {
+      "slug": "echoir",
+      "displayName": "Echoir",
+      "notes": ""
+    },
+    {
+      "slug": "edge",
+      "displayName": "The Edge",
+      "notes": "Region beyond the Chaos Wall; treated as a roster member so Edge of Eternities has a home"
+    },
+    {
+      "slug": "eldraine",
+      "displayName": "Eldraine",
+      "notes": ""
+    },
+    {
+      "slug": "equilor",
+      "displayName": "Equilor",
+      "notes": ""
+    },
+    {
+      "slug": "ergamon",
+      "displayName": "Ergamon",
+      "notes": ""
+    },
+    {
+      "slug": "fabacin",
+      "displayName": "Fabacin",
+      "notes": ""
+    },
+    {
+      "slug": "fiora",
+      "displayName": "Fiora",
+      "notes": "Paliano"
+    },
+    {
+      "slug": "gargantikar",
+      "displayName": "Gargantikar",
+      "notes": ""
+    },
+    {
+      "slug": "gastal",
+      "displayName": "Gastal",
+      "notes": ""
+    },
+    {
+      "slug": "gobakhan",
+      "displayName": "Gobakhan",
+      "notes": ""
+    },
+    {
+      "slug": "hell",
+      "displayName": "Hell",
+      "notes": ""
+    },
+    {
+      "slug": "ikoria",
+      "displayName": "Ikoria",
+      "notes": ""
+    },
+    {
+      "slug": "ilcae",
+      "displayName": "Ilcae",
+      "notes": ""
+    },
+    {
+      "slug": "innistrad",
+      "displayName": "Innistrad",
+      "notes": ""
+    },
+    {
+      "slug": "iquatana",
+      "displayName": "Iquatana",
+      "notes": ""
+    },
+    {
+      "slug": "ir",
+      "displayName": "Ir",
+      "notes": ""
+    },
+    {
+      "slug": "ixalan",
+      "displayName": "Ixalan",
+      "notes": ""
+    },
+    {
+      "slug": "kaldheim",
+      "displayName": "Kaldheim",
+      "notes": ""
+    },
+    {
+      "slug": "kamigawa",
+      "displayName": "Kamigawa",
+      "notes": ""
+    },
+    {
+      "slug": "karsus",
+      "displayName": "Karsus",
+      "notes": ""
+    },
+    {
+      "slug": "kephalai",
+      "displayName": "Kephalai",
+      "notes": ""
+    },
+    {
+      "slug": "kinshala",
+      "displayName": "Kinshala",
+      "notes": ""
+    },
+    {
+      "slug": "kodisha",
+      "displayName": "Kodisha",
+      "notes": ""
+    },
+    {
+      "slug": "kolbahan",
+      "displayName": "Kolbahan",
+      "notes": ""
+    },
+    {
+      "slug": "kylem",
+      "displayName": "Kylem",
+      "notes": "Battlebond"
+    },
+    {
+      "slug": "kyneth",
+      "displayName": "Kyneth",
+      "notes": ""
+    },
+    {
+      "slug": "lorwyn",
+      "displayName": "Lorwyn–Shadowmoor",
+      "notes": "One plane, two aspects"
+    },
+    {
+      "slug": "luvion",
+      "displayName": "Luvion",
+      "notes": ""
+    },
+    {
+      "slug": "meditation-realm",
+      "displayName": "Bolas's Meditation Realm",
+      "notes": "Also \"Meditation Plane\""
+    },
+    {
+      "slug": "mercadia",
+      "displayName": "Mercadia",
+      "notes": ""
+    },
+    {
+      "slug": "metal-island",
+      "displayName": "Metal Island",
+      "notes": "Pocket plane off Esper"
+    },
+    {
+      "slug": "mirrankkar",
+      "displayName": "Mirrankkar",
+      "notes": ""
+    },
+    {
+      "slug": "moag",
+      "displayName": "Moag",
+      "notes": ""
+    },
+    {
+      "slug": "mongseng",
+      "displayName": "Mongseng",
+      "notes": ""
+    },
+    {
+      "slug": "muraganda",
+      "displayName": "Muraganda",
+      "notes": "Cards via overrides from Aetherdrift"
+    },
+    {
+      "slug": "nether-void",
+      "displayName": "Nether Void",
+      "notes": ""
+    },
+    {
+      "slug": "new-phyrexia",
+      "displayName": "New Phyrexia (formerly Mirrodin)",
+      "notes": "Argentum → Mirrodin → New Phyrexia; one plane"
+    },
+    {
+      "slug": "obsidias",
+      "displayName": "Obsidias",
+      "notes": ""
+    },
+    {
+      "slug": "phyrexia",
+      "displayName": "Phyrexia",
+      "notes": "The original nine-sphere artificial plane; distinct from New Phyrexia"
+    },
+    {
+      "slug": "shenmeng",
+      "displayName": "Shenmeng",
+      "notes": "Formerly \"the Plane of Mountains and Seas\""
+    },
+    {
+      "slug": "pyrulea",
+      "displayName": "Pyrulea",
+      "notes": ""
+    },
+    {
+      "slug": "rabiah",
+      "displayName": "Rabiah",
+      "notes": ""
+    },
+    {
+      "slug": "rath",
+      "displayName": "Rath",
+      "notes": "Later overlaid onto Dominaria; kept as its own plane for its sets"
+    },
+    {
+      "slug": "ravnica",
+      "displayName": "Ravnica",
+      "notes": ""
+    },
+    {
+      "slug": "regatha",
+      "displayName": "Regatha",
+      "notes": ""
+    },
+    {
+      "slug": "segovia",
+      "displayName": "Segovia",
+      "notes": ""
+    },
+    {
+      "slug": "serras-realm",
+      "displayName": "Serra's Realm",
+      "notes": "Artificial, collapsed"
+    },
+    {
+      "slug": "parnash",
+      "displayName": "Seven Planes of Parnash",
+      "notes": "A named collection; one roster entry"
+    },
+    {
+      "slug": "shandalar",
+      "displayName": "Shandalar",
+      "notes": ""
+    },
+    {
+      "slug": "skalla",
+      "displayName": "Skalla",
+      "notes": "Destroyed"
+    },
+    {
+      "slug": "tarkir",
+      "displayName": "Tarkir",
+      "notes": ""
+    },
+    {
+      "slug": "tavelia",
+      "displayName": "Tavelia",
+      "notes": ""
+    },
+    {
+      "slug": "theros",
+      "displayName": "Theros",
+      "notes": ""
+    },
+    {
+      "slug": "thunder-junction",
+      "displayName": "Thunder Junction",
+      "notes": ""
+    },
+    {
+      "slug": "tolvada",
+      "displayName": "Tolvada",
+      "notes": ""
+    },
+    {
+      "slug": "ulgrotha",
+      "displayName": "Ulgrotha",
+      "notes": "Homelands"
+    },
+    {
+      "slug": "valla",
+      "displayName": "Valla",
+      "notes": "Split from Kaldheim"
+    },
+    {
+      "slug": "vatraquaz",
+      "displayName": "Vatraquaz",
+      "notes": ""
+    },
+    {
+      "slug": "vryn",
+      "displayName": "Vryn",
+      "notes": ""
+    },
+    {
+      "slug": "wildfire",
+      "displayName": "Wildfire",
+      "notes": ""
+    },
+    {
+      "slug": "xerex",
+      "displayName": "Xerex",
+      "notes": ""
+    },
+    {
+      "slug": "zendikar",
+      "displayName": "Zendikar",
+      "notes": ""
+    },
+    {
+      "slug": "zhalfir",
+      "displayName": "Zhalfir",
+      "notes": "Its own plane since March of the Machine; cards via overrides"
+    }
+  ]
+}

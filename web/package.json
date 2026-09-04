@@ -1,0 +1,44 @@
+{
+  "name": "eternities-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@10.34.5",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --build --force && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --build --force",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "check-budget": "node scripts/check-budget.mjs"
+  },
+  "dependencies": {
+    "@react-three/drei": "9.122.0",
+    "@react-three/fiber": "8.18.0",
+    "@react-three/postprocessing": "2.19.1",
+    "postprocessing": "6.36.6",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "three": "0.170.0",
+    "zustand": "5.0.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.17.0",
+    "@types/node": "22.10.2",
+    "@types/react": "18.3.17",
+    "@types/react-dom": "18.3.5",
+    "@types/three": "0.170.0",
+    "@vitejs/plugin-react": "4.3.4",
+    "eslint": "9.17.0",
+    "globals": "15.14.0",
+    "puppeteer-core": "23.11.1",
+    "typescript": "5.7.2",
+    "typescript-eslint": "8.18.1",
+    "vite": "6.0.5",
+    "vitest": "2.1.8"
+  }
+}
