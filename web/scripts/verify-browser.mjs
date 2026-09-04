@@ -1,15 +1,19 @@
 #!/usr/bin/env node
 /**
- * Phase 0 exit-criteria check, in a real browser.
+ * Exit-criteria check, in a real browser.
  *
  * Builds the site against a fixture, serves it through `vite preview` (which sends the *production*
  * PRD 7.6.1 headers, not the dev-server relaxation), drives a local Chrome at it, and asserts:
  *
  *   1. the page renders a WebGL2 canvas — the hello-scene of PRD 5.3.18 actually draws;
- *   2. the fixture decodes: manifest, planes.json, streamed stars.bin, search.json, sets.bin and
- *      a plane detail shard all come back through the contract decoders;
- *   3. nothing was blocked by the Content Security Policy;
- *   4. no console error and no failed request.
+ *   2. `planes.json` decodes and the camera rig comes up on it;
+ *   3. the label overlay places plane names as HTML billboards (PRD 5.3.8);
+ *   4. **navigation works end to end**: a keypress flies the camera to the Blind Eternities, the
+ *      focus changes, the camera actually moves, and Esc brings it back (PRD 5.7.2, 6.1.3);
+ *   5. plane detail loads through the worker, shard by shard, on focus (PRD 8.7.6, amendment A1) —
+ *      the Blind Eternities is the sharded one, so it is the one this drives;
+ *   6. nothing was blocked by the Content Security Policy, including `worker-src`;
+ *   7. no console error and no failed request.
  *
  * Uses `puppeteer-core` against the browser already on the machine — nothing is downloaded. CI
  * runs the Node-side suites; this is the local gate the implementation plan §6 asks for, and it
@@ -44,7 +48,7 @@ function findChrome() {
 }
 
 function parseArgs(argv) {
-  const args = { dataset: 'small', keep: false }
+  const args = { dataset: 'scale', keep: false }
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--dataset') args.dataset = argv[++i]
     else if (argv[i] === '--keep') args.keep = true
@@ -124,32 +128,104 @@ async function verify(dataset) {
     }
     console.log(`  CSP: ${csp}`)
 
-    // Wait for the decode report to land (or fail loudly).
+    const statusText = () =>
+      page.evaluate(() => document.querySelector('[data-testid="phase2b-status"]')?.textContent ?? '')
+    const cameraProbe = () =>
+      page.evaluate(() => document.querySelector('[data-testid="camera"]')?.textContent ?? '')
+    const cameraDistance = async () => Number.parseFloat((await cameraProbe()).split('· d ')[1] ?? 'NaN')
+    /** Wait for the status panel to match, i.e. for the rig to have got there. */
+    const waitForStatus = (pattern, timeout = 30_000) =>
+      page.waitForFunction(
+        (source) =>
+          new RegExp(source).test(
+            document.querySelector('[data-testid="phase2b-status"]')?.textContent ?? '',
+          ),
+        { timeout },
+        pattern.source,
+      )
+
+    // The rig is up, and PRD 6.8.2's intro has flown in and settled: `flight: idle` at the
+    // multiverse focus is checkpoint 1 of PRD 9.3, the home view after the intro.
+    await waitForStatus(/focus: multiverse/)
+    await waitForStatus(/flight: idle/, 30_000)
+    const homeDistance = await cameraDistance()
+    console.log(`  intro settled at the home view, ${homeDistance.toFixed(1)} from the centre`)
+    if (!(homeDistance > 0) || homeDistance > 600) {
+      throw new Error(`the intro did not fly in: still ${homeDistance} from the centre`)
+    }
+
+    // PRD 5.3.8: plane names as HTML overlay billboards, never 3D text. Wait for the layout solver
+    // to have run at least one frame and made some of them visible.
     await page.waitForFunction(
-      () => {
-        const panel = document.querySelector('[data-testid="phase0-status"]')
-        return panel !== null && /data directory|FAILED/.test(panel.textContent ?? '')
-      },
+      () =>
+        Array.from(document.querySelectorAll('.label')).filter(
+          (node) => Number.parseFloat(node.style.opacity || '0') > 0.05,
+        ).length > 10,
       { timeout: 30_000 },
     )
-    // The last line only appears once every artefact has decoded.
-    await page.waitForFunction(
-      () => /plane shard |FAILED/.test(
-        document.querySelector('[data-testid="phase0-status"]')?.textContent ?? '',
-      ),
-      { timeout: 60_000 },
-    )
-
-    const report = await page.evaluate(() => {
-      const panel = document.querySelector('[data-testid="phase0-status"]')
-      const list = panel?.querySelector('ul')
+    const labels = await page.evaluate(() => {
+      const nodes = Array.from(document.querySelectorAll('.label'))
+      const visible = nodes.filter((n) => Number.parseFloat(n.style.opacity || '0') > 0.05)
       return {
-        ok: list?.classList.contains('ok') ?? false,
-        lines: Array.from(list?.querySelectorAll('li') ?? []).map((li) => li.textContent ?? ''),
+        total: nodes.length,
+        visible: visible.length,
+        sample: visible.slice(0, 3).map((n) => n.textContent ?? ''),
       }
     })
-    for (const line of report.lines) console.log(`  ${line}`)
-    if (!report.ok) throw new Error('the data contract decode report reported a failure')
+    console.log(
+      `  labels: ${labels.visible} of ${labels.total} visible, e.g. ${labels.sample.join(', ')}`,
+    )
+    if (labels.total < 40) throw new Error(`only ${labels.total} plane labels were created`)
+
+    // PRD 5.7.2 / 6.1.3: fly to the Blind Eternities and back. The harness binds 'b' and Escape;
+    // Phase 4 binds the real controls, and this is what proves the contract drives a real camera.
+    const beforeFly = await cameraProbe()
+
+    await page.keyboard.press('b')
+    await waitForStatus(/focus: plane \(blind-eternities\)/, 15_000)
+    await waitForStatus(/flight: idle/, 20_000)
+    const dustDistance = await cameraDistance()
+    console.log(`  flew to the Blind Eternities and settled ${dustDistance.toFixed(1)} out`)
+    // PRD 5.3.4: the dust anchor tethers with *plane-level* distance limits, so arriving there
+    // must leave the camera an order of magnitude closer than the multiverse home view.
+    if (!(dustDistance < homeDistance / 2)) {
+      throw new Error(
+        `the Blind Eternities fly-to did not reach plane level: ${dustDistance} vs home ${homeDistance}`,
+      )
+    }
+
+    // PRD 8.7.6 + amendment A1: every shard of the focused plane, fetched and parsed in the worker.
+    await page.waitForFunction(
+      () =>
+        /detail: blind-eternities \d+ cards over 4 shard\(s\) \(sharded, worker-parsed\)/.test(
+          document.querySelector('[data-testid="phase2b-status"]')?.textContent ?? '',
+        ),
+      { timeout: 30_000 },
+    )
+    const detail = await page.evaluate(
+      () =>
+        /detail: [^\n]*/.exec(
+          document.querySelector('[data-testid="phase2b-status"]')?.textContent ?? '',
+        )?.[0] ?? '',
+    )
+    console.log(`  ${detail}`)
+
+    const afterFly = await cameraProbe()
+    if (beforeFly === afterFly) {
+      problems.push(`the camera did not move: still at ${afterFly}`)
+    } else {
+      console.log(`  the camera moved: ${beforeFly}  ->  ${afterFly}`)
+    }
+
+    await page.keyboard.press('Escape')
+    await waitForStatus(/focus: multiverse/, 15_000)
+    await waitForStatus(/flight: idle/, 20_000)
+    const backDistance = await cameraDistance()
+    console.log(`  Esc returned to the multiverse, ${backDistance.toFixed(1)} from the centre`)
+    if (!(backDistance > dustDistance * 2)) {
+      throw new Error(`Esc did not fly back out: ${backDistance} vs ${dustDistance}`)
+    }
+    void statusText
 
     const canvas = await page.evaluate(() => {
       const element = document.querySelector('canvas')
@@ -179,7 +255,7 @@ async function verify(dataset) {
     if (problems.length > 0) {
       throw new Error(`browser reported problems:\n  - ${problems.join('\n  - ')}`)
     }
-    console.log(`  OK — ${dataset} decodes in the browser under the production CSP`)
+    console.log(`  OK — ${dataset} is navigable in the browser under the production CSP`)
   } finally {
     await browser.close()
     child.kill('SIGTERM')
@@ -191,4 +267,4 @@ const datasets = args.dataset === 'all' ? ['small', 'scale'] : [args.dataset]
 for (const dataset of datasets) {
   await verify(dataset)
 }
-console.log('\nall datasets verified in the browser')
+console.log('\nall datasets navigable in the browser')
