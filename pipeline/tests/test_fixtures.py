@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from pathlib import Path
 
 import pytest
 
@@ -131,3 +132,31 @@ def test_blind_eternities_share_is_in_the_expected_band(scale: Dataset):
     blind = scale.planes[0]
     share = blind.star_count / len(scale.stars)
     assert 0.20 <= share <= 0.25
+
+
+def test_writing_fixtures_elsewhere_leaves_the_registry_alone(tmp_path: Path):
+    """CI regenerates the fixtures into a scratch directory to diff them against what is
+    committed (`.github/workflows/ci.yml`). That must not touch `web/datasets.json`."""
+    from eternities.cli import DATASETS_FILE, main
+
+    before = DATASETS_FILE.read_bytes() if DATASETS_FILE.exists() else None
+    assert main(["fixtures", "small", "--out", str(tmp_path), "--set-active", "small"]) == 0
+    after = DATASETS_FILE.read_bytes() if DATASETS_FILE.exists() else None
+    assert after == before
+    assert len(list(tmp_path.iterdir())) == 1
+
+
+def test_scratch_fixtures_match_the_committed_ones(tmp_path: Path):
+    """The committed data directories must be exactly what the generator produces today."""
+    from eternities.cli import WEB_DATA_ROOT, main
+
+    assert main(["fixtures", "all", "--out", str(tmp_path)]) == 0
+    for produced in sorted(tmp_path.iterdir()):
+        committed = WEB_DATA_ROOT / produced.name
+        assert committed.is_dir(), f"{produced.name} is not committed under web/public/data/"
+        for path in sorted(produced.rglob("*")):
+            if path.is_file():
+                relative = path.relative_to(produced)
+                assert path.read_bytes() == (committed / relative).read_bytes(), (
+                    f"{relative} differs from the committed fixture"
+                )

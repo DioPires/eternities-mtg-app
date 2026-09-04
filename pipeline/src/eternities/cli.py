@@ -24,9 +24,21 @@ DATASETS_FILE = REPO_ROOT / "web" / "datasets.json"
 _FIXTURES: dict[str, FixtureSpec] = {"small": SMALL, "scale": SCALE}
 
 
+def _display(path: Path) -> str:
+    """Repository-relative when it is inside the repository, absolute when it is not."""
+    try:
+        return str(path.relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
+
+
 def _cmd_fixtures(args: argparse.Namespace) -> int:
     data_root = Path(args.out).resolve()
     names: list[str] = list(_FIXTURES) if args.which == "all" else [args.which]
+    # Only the canonical data directory owns `datasets.json`. Writing fixtures somewhere else is
+    # a scratch run — CI does exactly this to diff against what is committed — and must not
+    # mutate a tracked file.
+    owns_registry = data_root == WEB_DATA_ROOT.resolve()
 
     registry: dict[str, Any] = {}
     if DATASETS_FILE.exists():
@@ -48,8 +60,13 @@ def _cmd_fixtures(args: argparse.Namespace) -> int:
             print(f"  removed stale {previous}/")
         print(
             f"{spec.name}: {len(dataset.stars)} stars, {len(dataset.planes)} planes "
-            f"-> {out_dir.relative_to(REPO_ROOT)}"
+            f"-> {_display(out_dir)}"
         )
+
+    if not owns_registry:
+        if args.set_active:
+            print(f"--set-active ignored: {_display(data_root)} is not the canonical data root")
+        return 0
 
     registry["fixtures"] = fixtures
     registry.setdefault("active", fixtures.get("scale") or next(iter(fixtures.values())))
