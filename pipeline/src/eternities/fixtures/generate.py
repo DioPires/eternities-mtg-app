@@ -53,28 +53,52 @@ MULTIVERSE_RADIUS: Final = 130.0
 BLIND_ETERNITIES_SHARE: Final = 0.22
 """PRD 9.2.2 expects 20-25% in the real data; the fixtures sit in that range on purpose."""
 
-_COLOUR_IDENTITIES: Final[tuple[str, ...]] = (
-    "W",
-    "U",
-    "B",
-    "R",
-    "G",
-    "WU",
-    "UB",
-    "BR",
-    "RG",
-    "GW",
-    "WB",
-    "UR",
-    "BG",
-    "RW",
-    "GU",
-    "WUB",
-    "BRG",
-    "GWU",
-    "RGW",
-    "URW",
-    "",
+_COLOUR_IDENTITIES: Final[tuple[tuple[str, float], ...]] = (
+    # Card share per colour identity, in per cent. Measured on the Phase 1 production dataset —
+    # 28,587 cards from the 2026-09-04 Scryfall bulk after the PRD 4.3/4.4 filters, counted off
+    # the committed plane shards (pipeline/reports/2026-09-04.md).
+    #
+    # These are weights, not a flat list, on purpose. Phase 0 drew uniformly from 21 identities,
+    # 15 of which are multicolour, so ~70% of every plane landed in the BULGE_SCALE bulge of
+    # `layout.card_position` and the five arms of PRD 5.4.1 were left with ~5% each — planes read
+    # as round blobs rather than spirals. Real Magic is the other way round: the mono colours are
+    # ~15% each and multicolour is a 16.5% minority.
+    ("W", 15.140),
+    ("U", 14.874),
+    ("B", 15.105),
+    ("R", 15.010),
+    ("G", 14.783),
+    # The ten guild pairs, ally then enemy.
+    ("WU", 1.427),
+    ("UB", 1.424),
+    ("BR", 1.441),
+    ("RG", 1.371),
+    ("GW", 1.403),
+    ("WB", 1.298),
+    ("UR", 1.249),
+    ("BG", 1.322),
+    ("RW", 1.284),
+    ("GU", 1.266),
+    # All ten triples: the five shards, then the five wedges.
+    ("WUB", 0.290),
+    ("UBR", 0.315),
+    ("BRG", 0.308),
+    ("RGW", 0.332),
+    ("GWU", 0.287),
+    ("WBG", 0.206),
+    ("URW", 0.248),
+    ("BGU", 0.231),
+    ("RWB", 0.227),
+    ("GUR", 0.210),
+    # Four-colour cards are genuinely this rare — a couple of cards each at fixture scale. They
+    # stay in so the shards carry a mana cost of every arity the real data has.
+    ("WUBR", 0.007),
+    ("UBRG", 0.007),
+    ("BRGW", 0.007),
+    ("RGWU", 0.014),
+    ("GWUB", 0.010),
+    ("WUBRG", 0.357),
+    ("", 8.546),
 )
 _TYPE_LINES: Final[tuple[str, ...]] = (
     "Creature — Human Wizard",
@@ -450,7 +474,7 @@ def _plane_cards(
 
     for i in range(card_count):
         oracle_id = _stable_uuid("card", slug, i)
-        identity = rng.choice(list(_COLOUR_IDENTITIES), oracle_id, "ci")
+        identity = rng.weighted(_COLOUR_IDENTITIES, oracle_id, "ci")
         type_line = rng.choice(list(_TYPE_LINES), oracle_id, "type")
         card_layout = rng.choice(list(_LAYOUTS), oracle_id, "layout")
         band = band_of[i]

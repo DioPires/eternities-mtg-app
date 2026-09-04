@@ -76,8 +76,16 @@ def _cmd_fixtures(args: argparse.Namespace) -> int:
     # Follow the fixture, not the hash. Regenerating rewrites every content hash and deletes the
     # old directory, so a `setdefault` here would leave `active` pointing at a directory that no
     # longer exists and the app fetching 404s until someone thought to pass `--set-active`.
-    fallback = fixtures.get("scale") or next(iter(fixtures.values()))
-    registry["active"] = fixtures.get(active_name or "", fallback) if active_name else fallback
+    #
+    # When `active` is not a fixture at all it is something this command does not own — Phase 1's
+    # real dataset, which supersedes the fixtures as what the app ships (PRD 8.3) — and only
+    # `--set-active` may move it. Regenerating fixtures must not quietly point the app back at
+    # synthetic data.
+    if active_name:
+        fallback = fixtures.get("scale") or next(iter(fixtures.values()))
+        registry["active"] = fixtures.get(active_name, fallback)
+    elif not previous_active:
+        registry["active"] = fixtures.get("scale") or next(iter(fixtures.values()))
     if args.set_active:
         registry["active"] = fixtures[args.set_active]
     DATASETS_FILE.write_text(
