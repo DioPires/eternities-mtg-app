@@ -194,14 +194,44 @@ buys, stated to match what it actually asserts:
 
 - no star it located was drawn 3 px or more from where the mirror puts it;
 - no systematic drift above about 1.5 px mean across everything it located;
-- no well-sampled plane row was displaced far enough to vanish from its own pick windows.
+- no well-sampled plane row that still projects on screen was displaced far enough to vanish from
+  its own pick windows.
 
-And what it still does not buy, which the deferred draw-range fix closes: a row too thinly sampled
-to judge can be displaced without failing. Sixty-four samples over `fixture-scale`'s 83 planes leave
-most rows with one sample, and row 0 is the only one there that clears the floor — that is the Blind
-Eternities dust, the row PRD 8.5.7 is named after and the one Phase 2b's tether frames, so the
-coverage is aimed at the right place, but it is coverage of one row and not of 83. An error scattered
-across rows rather than confined to one would likewise reduce coverage rather than fail.
+And what it still does not buy. **This list is what is known, not a claim that it is complete** —
+every entry on it was found by injecting a larger error than the round before had thought to try,
+and that is the only method that has found any of them.
+
+*A row too thinly sampled to judge can be displaced without failing.* Sixty-four samples over
+`fixture-scale`'s 83 planes leave most rows with one sample, and row 0 is the only one there that
+clears the floor — that is the Blind Eternities dust, the row PRD 8.5.7 is named after and the one
+Phase 2b's tether frames, so the coverage is aimed at the right place, but it is coverage of one row
+and not of 83. An error scattered across rows rather than confined to one would likewise reduce
+coverage rather than fail. The deferred draw-range fix closes this one.
+
+*An error large enough to push the row off screen is absorbed, and the run passes green.*
+`mirrorPixel` decides "off screen" from the mirror's **own** projected position and returns `null`
+before the sample enters `checked` and before the `sampledRows` tally, so a row displaced clean out
+of NDC leaves the numerator and the denominator at once — and the dark-row rule cannot judge a row
+it never saw. Continuing the ladder above on `fixture-small`:
+
+| injected into row 0 | measured | samples per plane row | verdict |
+| --- | --- | --- | --- |
+| `py += 60` | 35/64 | `4x27 3x17 0x15 1x5` | **fail** — row 0 dark, named |
+| `py += 400` | 35/49 | `4x27 3x17 1x5` — row 0 absent | **pass, exit 0** |
+
+The 15 dust samples are reported as `15 off screen`, `measured` stays above the floor of 16, and the
+run prints `OK — small decodes …`. So sensitivity is monotone from 3 up to about 60 world units and
+goes blind again past roughly 400 — not an exotic regime for this failure, since a sign flip, a
+wrong radius scale or a stale plane-table row lands there rather than at 4 px.
+
+That second hole is left open on purpose. Applying the same concentration rule to `offScreen` would
+fail a plane row that is *legitimately* outside the view frustum: it is 100% off screen for reasons
+that have nothing to do with the mirror. Both fixtures report `0 off screen` at this camera, so the
+gate would cost nothing today, but that is not a property of the real 89-shard dataset.
+Discriminating the two needs a design decision rather than a threshold — `planeWorldPosition` has
+the plane centre, and "centre on screen, every sampled star off screen" is the bug's signature, but
+that path shares drift and home with the mirror and so would miss an error injected there. It is
+deferred to Phase 2b with the draw-range work.
 
 The `--use-angle=metal` flag that gets `verify-browser` onto a real driver is **macOS-specific**. On
 Linux CI it would be wrong, and the `SOFTWARE_RENDERER` regex would then be the only thing between

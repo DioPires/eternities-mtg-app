@@ -286,24 +286,30 @@ async function verify(dataset, allowSoftware) {
             `(z ${miss.z}), shader drew it ${miss.drawnAtPx}px away; pointer would pick ${miss.picked}`,
         )
       }
-      if (selfCheck.missed.length > 0) {
-        throw new Error(
-          `the CPU motion mirror disagrees with the vertex shader for ${selfCheck.missed.length} ` +
-            `stars — PRD 8.5.7's camera tether would frame the wrong point`,
-        )
-      }
       // An error too large to measure looks like agreement: every star on the row is outside its
       // own pick window, so none of them lands in `missed` and the mean improves. The row going
       // dark is the only trace it leaves, and it is the trace of the worst version of the bug.
-      if (selfCheck.darkRows.length > 0) {
-        throw new Error(
-          `the self-check could not locate the stars of plane ` +
+      //
+      // Built before the miss throw rather than after it. Both conditions can hold in one run, and
+      // the misses throw first, so a dark row reported only from its own throw would be lost in
+      // exactly the runs that have the most wrong with them.
+      const darkRows =
+        selfCheck.darkRows.length > 0
+          ? `the self-check could not locate the stars of plane ` +
             `${selfCheck.darkRows.length === 1 ? 'row' : 'rows'} ` +
             `${selfCheck.darkRows.map(([row, dark, n]) => `${row} (${dark} of ${n} samples missing from their own pick window)`).join(', ')} ` +
             `— a whole well-sampled row going dark is what a motion-mirror error too large to ` +
-            `measure looks like, not what occlusion looks like`,
+            `measure looks like, not what occlusion looks like`
+          : ''
+
+      if (selfCheck.missed.length > 0) {
+        throw new Error(
+          `the CPU motion mirror disagrees with the vertex shader for ${selfCheck.missed.length} ` +
+            `stars — PRD 8.5.7's camera tether would frame the wrong point` +
+            (darkRows === '' ? '' : `. And in the same run, ${darkRows}`),
         )
       }
+      if (darkRows !== '') throw new Error(darkRows)
       throw new Error(
         `the self-check located only ${selfCheck.measured} of ${selfCheck.checked} sampled stars ` +
           `in their own pick window — too few to establish PRD 8.5.7 either way`,

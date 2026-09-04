@@ -152,13 +152,6 @@ export function float16ToNumber(bits: number): number {
 }
 
 /**
- * Incremental reader for the streaming `stars.bin` fetch of PRD 8.3.
- *
- * Feed it chunks as they arrive; `complete` is the number of whole records available, which is
- * exactly the draw range the renderer may use. Because records are plane-ordered, whole planes
- * become drawable one after another (PRD 6.8.1).
- */
-/**
  * The most `StarStreamReader` will allocate on a header's word alone, before the bytes to fill it
  * have arrived.
  *
@@ -169,6 +162,13 @@ export function float16ToNumber(bits: number): number {
  */
 const MAX_EAGER_BODY_BYTES = 64 * 1024 * 1024
 
+/**
+ * Incremental reader for the streaming `stars.bin` fetch of PRD 8.3.
+ *
+ * Feed it chunks as they arrive; `complete` is the number of whole records available, which is
+ * exactly the draw range the renderer may use. Because records are plane-ordered, whole planes
+ * become drawable one after another (PRD 6.8.1).
+ */
 export class StarStreamReader {
   /** Chunks held only until the header arrives and the buffer below can be sized from it. */
   private chunks: Uint8Array[] = []

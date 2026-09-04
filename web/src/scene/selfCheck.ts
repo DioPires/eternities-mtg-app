@@ -28,8 +28,11 @@
  * than a share of them. But `unmeasured` is *also* what a mirror error too large to fit the search
  * window looks like, which made it an escape hatch for the worst version of the very bug this
  * exists to catch: see `DARK_ROW_MIN_SAMPLES`, which tells the two apart by how they distribute
- * across plane rows. And the resolution is the pixel grid: see `COINCIDENT_PX` for what size of
- * disagreement this does and does not catch, which was measured by injection rather than assumed.
+ * across plane rows — and which also states the hole that rule does *not* close, an error big
+ * enough to project the row off screen. And the resolution is the pixel grid: see `COINCIDENT_PX`
+ * for what size of disagreement this does and does not catch, which was measured by injection
+ * rather than assumed. What the check buys is bounded from below by injection and stated in
+ * `docs/star-renderer.md`; neither that statement nor this one is a claim to be exhaustive.
  *
  * Nothing runs unless `?selfcheck=1` asks for it. `scripts/verify-browser.mjs` is the caller.
  */
@@ -163,7 +166,8 @@ const world = new Vector3()
  * The qualification is load-bearing and is why this constant is not the whole story. Beyond about
  * half the 11 px search window the star is not in its own window to be measured, so this bound
  * goes blind exactly as the error grows past it. {@link DARK_ROW_MIN_SAMPLES} is what catches it
- * there.
+ * there — up to the point the row projects off screen entirely, which nothing here catches. See
+ * that constant for the reproduction and for why the remaining hole is deferred rather than closed.
  */
 const COINCIDENT_PX = 3
 
@@ -213,11 +217,39 @@ const MIN_MEASURED = 16
  * event. It is 0.9 rather than 1.0 so that one measurable star on an otherwise displaced row does
  * not buy the whole row an exemption.
  *
- * What this does not do is judge a thinly sampled row. Sixty-four samples over `fixture-scale`'s
- * 83 planes leave most rows with one sample each, and the only row there that clears the floor is
- * row 0 — which is the Blind Eternities dust, the row PRD 8.5.7's failure is named after and the
- * one Phase 2b's tether frames. `docs/star-renderer.md` states that limit rather than papering
- * over it; the draw-range fix deferred to Phase 2b is what removes it.
+ * Two things this does not do. The list is **not** offered as exhaustive — each of them was found
+ * by pushing an injection further than the round before it had thought to, and the next one would
+ * be found the same way.
+ *
+ * It does not judge a thinly sampled row. Sixty-four samples over `fixture-scale`'s 83 planes leave
+ * most rows with one sample each, and the only row there that clears the floor is row 0 — which is
+ * the Blind Eternities dust, the row PRD 8.5.7's failure is named after and the one Phase 2b's
+ * tether frames. The draw-range fix deferred to Phase 2b is what removes that one.
+ *
+ * And it does not see an error large enough to project the row off screen, because such a row never
+ * reaches either tally. `mirrorPixel` decides "off screen" from the mirror's *own* projected
+ * position and returns `null` before `checked += 1` and before `sampledRows`, so the row leaves the
+ * numerator and the denominator at once and `findDarkRows` cannot judge a row it never saw. The
+ * ladder above continues, on `fixture-small`:
+ *
+ *     py += 60     35/64 measured   rows `4x27 3x17 0x15 1x5`      fail, names row 0
+ *     py += 400    35/49 measured   rows `4x27 3x17 1x5`           **pass, exit 0** — row 0 is gone
+ *
+ * The 15 dust samples are reported as `15 off screen`, `measured` stays above {@link MIN_MEASURED},
+ * and the run prints `OK`. So sensitivity is monotone from 3 up to about 60 world units and blind
+ * again past roughly 400 — which is not an exotic regime for this failure: a sign flip, a wrong
+ * radius scale or a stale plane-table row lands there rather than at 4 px.
+ *
+ * That hole is left open deliberately rather than overlooked. The obvious gate — this same
+ * concentration rule applied to `offScreen` — would fail a plane row that is *legitimately* outside
+ * the view frustum, which is 100% off screen for reasons that have nothing to do with the mirror.
+ * Both fixtures report `0 off screen` at this camera, so today the gate would be free, but that is
+ * not a property of the real 89-shard dataset. Telling the two apart needs a discriminator and
+ * therefore a design decision — `planeWorldPosition` already has the plane centre, and "centre on
+ * screen, every sampled star off screen" is the bug's signature, but that path shares drift and
+ * home with the mirror and so would not catch an error injected there. It is deferred to Phase 2b
+ * alongside the draw-range work. `docs/star-renderer.md` states both limits rather than papering
+ * over them.
  */
 const DARK_ROW_MIN_SAMPLES = 10
 const DARK_ROW_RATE = 0.9
