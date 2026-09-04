@@ -1,7 +1,7 @@
 /**
  * A live readout of where the camera actually is.
  *
- * Harness-only, and it goes with the rest of the harness when Phase 4's HUD lands. It exists
+ * Development-only, and it goes when Phase 4's HUD lands. It exists
  * because "the camera moved" is otherwise unobservable from outside: reading a WebGL canvas back
  * with `toDataURL` returns a stale or cleared drawing buffer unless the context was created with
  * `preserveDrawingBuffer`, which costs a full-frame copy every frame and is not something to turn

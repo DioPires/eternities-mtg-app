@@ -8,11 +8,13 @@
  * below is Phase 0's contract self-test with the scene's own progress added — not PRD section 6's
  * HUD, which is Phase 4's.
  *
- * Phase 2b's harness is the sibling {@link import('./Phase2bScene').Phase2bScene}, and `App`
- * routes between the two. They are still two scenes: the camera rig flies over Phase 0's
- * background starfield, not over this star field. Folding this field into the rig's scene — one
- * scene, rig camera, real picking — is the integration the two phases each anticipate but neither
- * built, and it is Phase 3's to do.
+ * Phase 3 folded the field, the rig, the labels and the card tier into one scene
+ * ({@link import('../scene/EternitiesScene').EternitiesScene}), which is what the app now renders.
+ * This harness stayed behind for the two things that cannot run inside it: the bench flies the
+ * scripted path of `bench/benchPath` and the GPU self-check freezes the field and reads pixels
+ * back, and both of those drive the camera themselves, which they cannot do in a scene where the
+ * rig is also flying it. `App` routes `?bench`, `?hold` and `?selfcheck` here; PRD 9.1.2's real
+ * `/bench` route is Phase 6's, and that is where the two rejoin.
  */
 
 import { OrbitControls } from '@react-three/drei'

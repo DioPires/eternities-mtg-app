@@ -9,6 +9,7 @@
 
 import { describe, expect, it } from 'vitest'
 
+import { SceneMotion } from '../src/camera/motion'
 import { StarStreamReader } from '../src/data/decode'
 import { BINARY_HEADER_BYTES, STAR_RECORD_BYTES, type PlaneRecord } from '../src/data/types'
 import { SceneErrorHub } from '../src/scene/errors'
@@ -537,5 +538,127 @@ describe('plane table layout', () => {
     expect(PT_SPIN_ANGLE).toBe(11)
     expect(Math.floor(PT_SPIN_ANGLE / 4)).toBe(2)
     expect(PT_SPIN_ANGLE % 4).toBe(3)
+  })
+})
+
+/**
+ * The two CPU implementations of one motion function, checked against each other.
+ *
+ * `scene/starfield/motion.ts` is what the star field draws from and what the vertex shader mirrors;
+ * `camera/motion.ts` is what the camera tethers to. Until Phase 3 they disagreed — the camera
+ * rotated a star about world +Y where the field rotates it about the plane's local +z, and the two
+ * used different shear phase gradients — and nothing caught it, because every tether the rig had
+ * ever resolved had a local position of (0,0,0), where neither difference can show. The card tether
+ * is the first with a star's own local position in it.
+ *
+ * This is not the same claim `scripts/verify-browser.mjs` makes. That one compares the CPU mirror
+ * with the *GPU*; this compares the camera's copy with the field's, which is the pair a card tier
+ * puts on screen together.
+ */
+describe('the camera mirror agrees with the star field (PRD 8.5.3, 8.5.7)', () => {
+  const LOCALS: ReadonlyArray<readonly [number, number, number]> = [
+    [0.83, 0.04, -0.51],
+    [-0.62, 0.77, 0.03],
+    [0.11, -0.94, 0.02],
+    [1.15, 0.2, -0.04],
+    [0, 0, 0],
+  ]
+
+  function agreeAt(record: PlaneRecord, seconds: number): void {
+    const table = new PlaneTable([record], 130)
+    const motion = new SceneMotion({
+      contractVersion: 1,
+      shardSize: 2000,
+      multiverseRadius: 130,
+      discThickness: 0.15,
+      planes: [record],
+    })
+    const dt = 1 / 60
+    for (let i = 0; i < Math.round(seconds * 60); i += 1) {
+      table.advance(dt, 1)
+      motion.advance(dt)
+    }
+    // The one clock: the field's. This is what `scene/EternitiesScene`'s `MotionSync` does, and
+    // without it the two integrate the same angles separately.
+    motion.syncClock(table.time, table.multiverseAngle)
+    motion.syncSpin(0, table.planes[0]!.spinAngle)
+
+    const field = vec()
+    const camera = vec()
+    for (const [x, y, z] of LOCALS) {
+      starWorldPosition(table.raw, 0, x, y, z, table.time, table.multiverseAngle, 1, field)
+      motion.starPosition(camera, record, x, y, z)
+      expect(camera.x).toBeCloseTo(field.x, 6)
+      expect(camera.y).toBeCloseTo(field.y, 6)
+      expect(camera.z).toBeCloseTo(field.z, 6)
+    }
+  }
+
+  it('puts a star in the same world place on an untilted plane', () => {
+    agreeAt(plane(), 7)
+  })
+
+  it('puts a star in the same world place on a tilted, drifting, shearing plane', () => {
+    // A tilt that actually rotates the disc out of the xy plane, which is where a rotation about
+    // the wrong axis stops being a rotation about the right one by any amount.
+    const half = Math.SQRT1_2
+    agreeAt(
+      plane({
+        tilt: [0.31 * half, 0.52 * half, 0.19 * half, 0.9],
+        shearAmplitude: 0.17,
+        shearPeriodS: 43,
+        driftAmplitude: 1.4,
+        spinPeriodS: 71,
+        spinDirection: -1,
+        radius: 9,
+      }),
+      11,
+    )
+  })
+
+  it('agrees on the dust row, where the turbulence and not the spin does the moving (PRD 8.6.3)', () => {
+    // The Blind Eternities row: identity transform, radius R, curl noise instead of a spiral.
+    agreeAt(
+      plane({
+        kind: 'dust',
+        tilt: [0, 0, 0, 1],
+        radius: 130,
+        spinPeriodS: 0,
+        driftAmplitude: 0,
+        driftPeriodS: 0,
+        shearAmplitude: 0,
+        shearPeriodS: 0,
+      }),
+      5,
+    )
+  })
+
+  it('agrees under reduced motion, where the field zeroes what the camera freezes (PRD 5.9)', () => {
+    const record = plane({ shearAmplitude: 0.2, driftAmplitude: 2 })
+    const table = new PlaneTable([record], 130)
+    const motion = new SceneMotion(
+      {
+        contractVersion: 1,
+        shardSize: 2000,
+        multiverseRadius: 130,
+        discThickness: 0.15,
+        planes: [record],
+      },
+      { reducedMotion: true },
+    )
+    // The table keeps its clock running under reduced motion and multiplies the moving terms by
+    // zero; the camera freezes its own. Syncing the clock is what makes the two land together, and
+    // it is the reason `MotionSync` exists rather than two `advance` calls being enough.
+    for (let i = 0; i < 300; i += 1) table.advance(1 / 60, 0)
+    motion.syncClock(table.time, table.multiverseAngle)
+    motion.syncSpin(0, table.planes[0]!.spinAngle)
+
+    const field = vec()
+    const camera = vec()
+    starWorldPosition(table.raw, 0, 0.7, -0.3, 0.05, table.time, table.multiverseAngle, 0, field)
+    motion.starPosition(camera, record, 0.7, -0.3, 0.05)
+    expect(camera.x).toBeCloseTo(field.x, 9)
+    expect(camera.y).toBeCloseTo(field.y, 9)
+    expect(camera.z).toBeCloseTo(field.z, 9)
   })
 })

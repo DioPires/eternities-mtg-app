@@ -11,14 +11,17 @@ import { securityHeaders } from './security-headers.mjs'
 interface DatasetRegistry {
   active: string
   fixtures: Record<string, string>
+  /** `production`, and anything else the pipeline records beside it. */
+  [key: string]: string | Record<string, string>
 }
 
 /**
  * Resolves which data directory this build points at.
  *
  * `web/datasets.json` records the hashes the pipeline last wrote. `ETERNITIES_DATASET` overrides
- * it with a fixture name (`small`, `scale`) or a raw hash, which is how the bench and the CI
- * budget check switch datasets without editing a committed file.
+ * it with a fixture name (`small`, `scale`), any other top-level key (`production`), or a raw
+ * hash — which is how the bench, the CI budget check and `verify-browser` switch datasets without
+ * editing a committed file.
  */
 function resolveDataHash(root: string): string {
   const registry = JSON.parse(
@@ -26,7 +29,10 @@ function resolveDataHash(root: string): string {
   ) as DatasetRegistry
   const requested = process.env.ETERNITIES_DATASET
   if (!requested) return registry.active
-  return registry.fixtures[requested] ?? requested
+  const fixture = registry.fixtures[requested]
+  if (fixture) return fixture
+  const named = registry[requested]
+  return typeof named === 'string' ? named : requested
 }
 
 /**

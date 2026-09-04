@@ -11,6 +11,16 @@
  *   local → spin + bounded shear about the plane axis → tilt → × radius → + drift → + home
  *         → multiverse rotation
  *
+ * **"The plane axis" is local +z, and the constants are `scene/tuning`'s.** Until Phase 3 this file
+ * rotated about world +Y with a shear phase gradient of its own, and nothing caught it: every
+ * tether the rig had ever resolved was either a plane centre or a dust anchor, and the local
+ * position of both is the origin, where the axis and the gradient cannot matter. The card tether is
+ * the first one with a star's own local position in it, so the card tier is where a plane's disc —
+ * which lies in local xy with its normal at local +z (PRD 8.6.2) — stopped agreeing with a rotation
+ * about y. `scene/starfield/motion.ts` and the vertex shader are the definition; this mirrors them,
+ * and `test/starfield.test.ts` now checks the two against each other on the same numbers rather
+ * than each against itself.
+ *
  * **Frame-rate independence (PRD 5.3.17, 9.1.3).** Everything except the two accumulated angles is
  * a pure function of elapsed time, and the two accumulators are integrated exactly: at constant
  * rate `Σ rate·dtᵢ = rate·Σ dtᵢ`, so 30, 60 and 120 fps land on the same angle. The accumulators
@@ -19,10 +29,19 @@
  */
 
 import type { PlaneRecord, PlanesFile } from '../data/types'
+import { curlNoise } from '../scene/starfield/motion'
+import {
+  DRIFT_VERTICAL_RATIO,
+  DUST_CURL_AMPLITUDE,
+  DUST_CURL_SCALE,
+  DUST_CURL_SPEED,
+  SHEAR_RADIAL_PHASE,
+} from '../scene/tuning'
 import {
   applyQuat,
   copy,
   rotateY,
+  rotateZ,
   set,
   type MutVec3,
   vec,
@@ -30,12 +49,6 @@ import {
 
 /** PRD 5.3.13: the whole multiverse turns about its vertical axis once every 20 minutes. */
 export const MULTIVERSE_PERIOD_S = 20 * 60
-
-/**
- * PRD 5.4.13: the shear's phase varies with the star's radius, which is what makes the arms
- * *breathe* rather than rock as one rigid body. One radian of phase across the disc.
- */
-const SHEAR_RADIAL_PHASE = Math.PI
 
 /** PRD 5.6.6: a focused plane's rotation eases to a stop over 1 s, and back over 1 s. */
 export const SPIN_EASE_S = 1
@@ -69,6 +82,8 @@ export class SceneMotion {
   private elapsed = 0
   private multiverseAngle = 0
   private reducedMotion: boolean
+  /** See {@link setExternalClock}. False everywhere the star field is not the clock. */
+  private externalClock = false
   private readonly states: PlaneMotionState[]
   private readonly bySlug = new Map<string, PlaneRecord>()
 
@@ -102,6 +117,44 @@ export class SceneMotion {
   }
 
   /**
+   * 1 while the scene moves, 0 under PRD 5.9's reduced motion.
+   *
+   * The star field's plane table applies exactly this factor to drift, shear and the accumulated
+   * angles rather than stopping its clock, so mirroring the factor — instead of freezing `elapsed`
+   * alone — is what keeps a frozen field and a frozen tether in the same place.
+   */
+  get motionScale(): number {
+    return this.reducedMotion ? 0 : 1
+  }
+
+  /**
+   * Take the clock from the star field's plane table (PRD 8.5.2), which is what the vertex shader
+   * reads and therefore the only clock the drawn stars have.
+   *
+   * Without this there are two integrations of one angle — the table's and `advance`'s — that agree
+   * only for as long as they are fed identical deltas and identical reduced-motion histories. They
+   * are not obliged to be: the table advances its `time` under reduced motion and this does not, so
+   * one toggle mid-session is enough to put the camera's idea of a star's shear phase somewhere the
+   * shader's is not. The scene calls this once per frame, after the table has advanced and before
+   * the rig reads a tether. Allocation-free.
+   */
+  syncClock(time: number, multiverseAngle: number): void {
+    this.elapsed = time
+    this.multiverseAngle = multiverseAngle
+  }
+
+  /** One plane's accumulated spin angle, from the same table. See {@link syncClock}. */
+  syncSpin(index: number, spinAngle: number): void {
+    const state = this.states[index]
+    if (state) state.spinAngle = spinAngle
+  }
+
+  /** PRD 5.6.6's eased scale for a plane, so the star field can drive its table from one easing. */
+  spinScaleOf(index: number): number {
+    return this.states[index]?.spinScale ?? 1
+  }
+
+  /**
    * PRD 5.6.6: while a card is focused its plane's rotation eases to a stop and eases back when
    * focus is released. `null` releases every plane.
    */
@@ -112,11 +165,24 @@ export class SceneMotion {
     }
   }
 
+  /**
+   * Hand the clock over to the star field's plane table (PRD 8.5.2), which the vertex shader reads
+   * and this only mirrors. See {@link syncClock}: with an external clock, `advance` still runs PRD
+   * 5.6.6's spin easing — that is the camera's own state, and the table is *told* it — but stops
+   * integrating the time, the multiverse angle and the spin angles, which now arrive from the table
+   * instead of being computed a second time beside it.
+   */
+  setExternalClock(enabled: boolean): void {
+    this.externalClock = enabled
+  }
+
   /** Advance the scene clock. Call once per frame with the real delta (PRD 5.3.17). */
   advance(dt: number): void {
     if (this.reducedMotion || dt <= 0) return
-    this.elapsed += dt
-    this.multiverseAngle += ((2 * Math.PI) / MULTIVERSE_PERIOD_S) * dt
+    if (!this.externalClock) {
+      this.elapsed += dt
+      this.multiverseAngle += ((2 * Math.PI) / MULTIVERSE_PERIOD_S) * dt
+    }
 
     const easeStep = dt / SPIN_EASE_S
     for (let i = 0; i < this.states.length; i += 1) {
@@ -129,7 +195,7 @@ export class SceneMotion {
         const step = Math.sign(delta) * Math.min(Math.abs(delta), easeStep)
         state.spinScale += step
       }
-      if (plane.spinPeriodS > 0) {
+      if (plane.spinPeriodS > 0 && !this.externalClock) {
         const rate = ((2 * Math.PI) / plane.spinPeriodS) * plane.spinDirection
         state.spinAngle += rate * state.spinScale * dt
       }
@@ -138,10 +204,31 @@ export class SceneMotion {
 
   /** PRD 5.3.15: the plane's small slow orbit around its home position, at the current time. */
   driftOffset(out: MutVec3, plane: PlaneRecord): MutVec3 {
-    if (plane.driftAmplitude === 0 || plane.driftPeriodS === 0) return set(out, 0, 0, 0)
+    if (plane.driftAmplitude === 0 || plane.driftPeriodS === 0 || this.reducedMotion) {
+      return set(out, 0, 0, 0)
+    }
     const phase = (2 * Math.PI * this.elapsed) / plane.driftPeriodS + plane.driftPhase
     const a = plane.driftAmplitude
-    return set(out, a * Math.cos(phase), 0.35 * a * Math.sin(2 * phase), a * Math.sin(phase))
+    return set(
+      out,
+      a * Math.cos(phase),
+      DRIFT_VERTICAL_RATIO * a * Math.sin(2 * phase),
+      a * Math.sin(phase),
+    )
+  }
+
+  /**
+   * PRD 5.4.13's bounded shear for one star, in radians about the plane's local +z.
+   *
+   * The radius it is a function of is the star's radius *in the disc*, which is its local xy
+   * distance from the plane's centre — the same `length(p.xy)` the vertex shader takes.
+   */
+  private shearAngle(plane: PlaneRecord, lx: number, ly: number): number {
+    if (plane.shearAmplitude === 0 || plane.shearPeriodS === 0 || this.reducedMotion) return 0
+    const r = Math.hypot(lx, ly)
+    const phase =
+      (2 * Math.PI * this.elapsed) / plane.shearPeriodS + plane.shearPhase + r * SHEAR_RADIAL_PHASE
+    return plane.shearAmplitude * Math.sin(phase)
   }
 
   /** World position of a plane's centre — its tether point (PRD 5.7.1). */
@@ -172,16 +259,27 @@ export class SceneMotion {
 
     // PRD 5.4.13: a bounded angular offset A·sin(2πt/T + φ(r)) on top of the rigid spin. Bounded is
     // the point — a true differential rotation would wind the arms up over a long session.
-    let shear = 0
-    if (plane.shearAmplitude > 0 && plane.shearPeriodS > 0) {
-      const r = Math.hypot(lx, lz)
-      const phase =
-        (2 * Math.PI * this.elapsed) / plane.shearPeriodS + plane.shearPhase + r * SHEAR_RADIAL_PHASE
-      shear = plane.shearAmplitude * Math.sin(phase)
-    }
+    const shear = this.shearAngle(plane, lx, ly)
 
-    set(this.tmpB, lx, ly, lz)
-    rotateY(this.tmpB, this.tmpB, spin + shear)
+    if (plane.kind === 'dust') {
+      // PRD 8.6.3 / 5.3.16: the Blind Eternities does not spin — it turbulates. The dust's stored
+      // position is in multiverse-normalised coordinates, so the curl is applied here, before the
+      // radius scale, exactly as the field does it. Leaving it out is a tether up to
+      // `DUST_CURL_AMPLITUDE × R` — half a world unit, against a card 0.63 wide — from the card it
+      // is supposed to be framing, and every dust card focus would show it.
+      const sample = this.elapsed * DUST_CURL_SPEED
+      curlNoise(
+        lx * DUST_CURL_SCALE + sample,
+        ly * DUST_CURL_SCALE + sample,
+        lz * DUST_CURL_SCALE + sample,
+        this.tmpB,
+      )
+      const amplitude = DUST_CURL_AMPLITUDE * this.motionScale
+      set(this.tmpB, lx + this.tmpB.x * amplitude, ly + this.tmpB.y * amplitude, lz + this.tmpB.z * amplitude)
+    } else {
+      set(this.tmpB, lx, ly, lz)
+      rotateZ(this.tmpB, this.tmpB, spin + shear)
+    }
     applyQuat(this.tmpB, this.tmpB, plane.tilt)
     set(this.tmpB, this.tmpB.x * plane.radius, this.tmpB.y * plane.radius, this.tmpB.z * plane.radius)
 
@@ -198,7 +296,12 @@ export class SceneMotion {
   /**
    * Convert a world point into the plane's local frame — the inverse of `starPosition`'s
    * *placement* half (rotation and translation), without the shear, which is a per-star function
-   * of the star's own radius and is not invertible from a bare point.
+   * of the star's own radius and is not invertible from a bare point, and without the dust
+   * turbulence, which is a displacement field and not invertible at all.
+   *
+   * Neither omission costs anything at the call sites: this converts *anchors* — a clicked point, a
+   * card's already-known world position — into the frame they will be tracked in, and an anchor is
+   * a place in the volume rather than a star with a shear phase or a curl offset of its own.
    *
    * The fly-to needs this for PRD 5.7.4: a framing offset is chosen in the destination's rotating
    * local frame so that a spinning plane is framed correctly on arrival, however long the flight
@@ -218,13 +321,13 @@ export class SceneMotion {
     // Inverse tilt: conjugate the unit quaternion.
     applyQuat(this.tmpA, this.tmpA, [-plane.tilt[0], -plane.tilt[1], -plane.tilt[2], plane.tilt[3]])
     const spin = this.states[plane.index]?.spinAngle ?? 0
-    return rotateY(out, this.tmpA, -spin)
+    return rotateZ(out, this.tmpA, -spin)
   }
 
   /** The forward direction of `worldToPlaneLocal`, so a local offset tracks the spinning plane. */
   planeLocalToWorld(out: MutVec3, plane: PlaneRecord, local: Readonly<MutVec3>): MutVec3 {
     const spin = this.states[plane.index]?.spinAngle ?? 0
-    rotateY(this.tmpB, local, spin)
+    rotateZ(this.tmpB, local, spin)
     applyQuat(this.tmpB, this.tmpB, plane.tilt)
     set(
       this.tmpB,
@@ -253,7 +356,7 @@ export class SceneMotion {
    */
   planeLocalDirToWorld(out: MutVec3, plane: PlaneRecord, local: Readonly<MutVec3>): MutVec3 {
     const spin = this.states[plane.index]?.spinAngle ?? 0
-    rotateY(this.tmpB, local, spin)
+    rotateZ(this.tmpB, local, spin)
     applyQuat(this.tmpB, this.tmpB, plane.tilt)
     return rotateY(out, this.tmpB, this.multiverseAngle)
   }
@@ -267,7 +370,7 @@ export class SceneMotion {
       plane.tilt[3],
     ])
     const spin = this.states[plane.index]?.spinAngle ?? 0
-    return rotateY(out, this.tmpB, -spin)
+    return rotateZ(out, this.tmpB, -spin)
   }
 
   spinAngleOf(index: number): number {

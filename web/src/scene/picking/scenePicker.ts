@@ -13,6 +13,7 @@
 
 import { Ray, Sphere, Vector2, Vector3, type PerspectiveCamera } from 'three'
 
+import { PLANET_ID_BASE } from '../cards/focusedCard'
 import { PlaneKindCode, planeWorldPosition } from '../starfield/motion'
 import type { PlaneTable } from '../starfield/planeTable'
 import { PICK_BUSY } from './idPicker'
@@ -20,6 +21,8 @@ import { PICK_BUSY } from './idPicker'
 export type PickResult =
   | { readonly kind: 'star'; readonly index: number; readonly planeIndex: number }
   | { readonly kind: 'plane'; readonly index: number }
+  /** PRD 5.6.9: a printing's planet, orbiting the focused card. */
+  | { readonly kind: 'planet'; readonly index: number }
   | null
 
 /**
@@ -29,6 +32,13 @@ export type PickResult =
  * consulted". The plane raycast is deliberately a thunk so that this case cannot run it: a
  * `PICK_BUSY` treated as a miss is how a click on a star used to come back as its plane, and the
  * raycaster is the thing that must not be reached.
+ *
+ * Phase 3 added two writers to the same id buffer, and neither needs a branch here:
+ *
+ *  - a **thumbnail** writes its own star's id, because PRD 5.6.1 makes clicking a star and clicking
+ *    the thumbnail it cross-faded into the same act. It arrives as a star and is one;
+ *  - a **planet** writes an id above {@link PLANET_ID_BASE}, which no dataset's star count can
+ *    reach, so the two ranges cannot be confused for one another.
  */
 export function resolvePick(
   starIndex: number,
@@ -37,6 +47,9 @@ export function resolvePick(
   pickPlane: () => number,
 ): PickResult | undefined {
   if (starIndex === PICK_BUSY) return undefined
+  if (starIndex >= PLANET_ID_BASE) {
+    return { kind: 'planet', index: starIndex - PLANET_ID_BASE }
+  }
   if (starIndex >= 0 && starIndex < drawCount) {
     return { kind: 'star', index: starIndex, planeIndex: planeRowOf(starIndex) }
   }

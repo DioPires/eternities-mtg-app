@@ -138,6 +138,28 @@ body,
   font-variant-numeric: tabular-nums;
 }
 
+/*
+ * PRD 5.6.9's planet hover label: set name and year, beside the planet under the pointer.
+ *
+ * Deliberately *not* `.label`: the plane-label solver of PRD 5.3.8-12 owns that class and counts
+ * its nodes, and a hover label is not a candidate in its collision layout. It shares the compositor
+ * rules, because it is written every frame by the same kind of `transform`-only update.
+ */
+.planet-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 0.15em 0.5em;
+  transform: translate3d(-50%, -160%, 0);
+  border-radius: 4px;
+  background: rgb(5 6 10 / 78%);
+  white-space: nowrap;
+  font-size: 0.85em;
+  opacity: 0;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 85%);
+  will-change: transform, opacity;
+}
+
 /* PRD 5.4.5: set labels sit at low priority beneath star labels, and read as quieter. */
 .label-band .label-name {
   font-weight: 400;

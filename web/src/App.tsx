@@ -1,36 +1,36 @@
 /**
  * The app.
  *
- * Phase 0's decode/stub panel has done its job — `web/test/` now proves both fixtures decode and
- * the navigation contract holds against two implementations, which is a better place for it than a
- * list of strings on screen. What replaced it is the Phase 2b harness: the navigation contract
- * driving the real camera rig over fixture-scale's 83 planes.
+ * Since Phase 3 there is one scene — `scene/EternitiesScene` — and it is the product: the star
+ * field, the camera rig, the labels, the thumbnails, the focused card and its planets, all in one
+ * canvas with one camera and one picker. The two-scene arrangement Phase 2a's and Phase 2b's
+ * harnesses left behind is gone, and so are `harness/Phase2bScene`, `harness/pick.ts`,
+ * `harness/PlaneProxies` and `scene/HelloScene`, which existed only to stand in for the half each
+ * phase did not build.
  *
- * Phase 2a then landed a second harness — the star field, the bench and the GPU self-check — and
- * the two are still two scenes. Each phase's doc anticipates the other replacing it (2a's orbit
- * control by 2b's rig; 2b's Phase 0 backdrop by 2a's field), but neither built that integration,
- * and doing it inside the merge would have shipped a scene no review had seen. So this routes:
- * `?bench`, `?hold` and `?selfcheck` — the three flags `bench.mjs` and `verify-browser.mjs` drive
- * the star field with — get Phase 2a's harness, `?harness=2a` gets it by hand, and everything else
- * gets Phase 2b's. Both phases' exit criteria stay checkable exactly as they were reviewed.
+ * What still routes elsewhere is instrumentation, not a second product. `?bench`, `?hold` and
+ * `?selfcheck` mount Phase 2a's harness because each of those *drives the camera itself* — the
+ * bench flies the scripted path of `bench/benchPath`, the self-check freezes the field and reads
+ * pixels back — which cannot be done in a scene where the rig is also flying it. The committed
+ * bench baseline in `web/bench/` was measured there too, so moving it would silently invalidate
+ * the comparison. PRD 9.1.2's real `/bench` route is Phase 6's, and that is where the two rejoin.
  *
- * Phase 3 owns folding them into one scene, and Phase 4 (DEC-589) replaces this file with the
- * router and the app shell.
+ * Phase 4 (DEC-589) replaces this file with the router and the app shell.
  */
 
 import type { ReactElement } from 'react'
 
 import { benchHold, benchRequested } from './bench/BenchRunner'
 import { Phase2aScene } from './harness/Phase2aScene'
-import { Phase2bScene } from './harness/Phase2bScene'
+import { EternitiesScene } from './scene/EternitiesScene'
 import { selfCheckRequested } from './scene/selfCheck'
 
-function phase2aRequested(): boolean {
+function instrumentationRequested(): boolean {
   const search = typeof location === 'undefined' ? '' : location.search
   if (benchRequested(search) || benchHold(search) !== null || selfCheckRequested(search)) return true
   return new URLSearchParams(search).get('harness') === '2a'
 }
 
 export function App(): ReactElement {
-  return phase2aRequested() ? <Phase2aScene /> : <Phase2bScene />
+  return instrumentationRequested() ? <Phase2aScene /> : <EternitiesScene />
 }
