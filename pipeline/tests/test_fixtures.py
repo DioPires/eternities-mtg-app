@@ -2,17 +2,32 @@
 
 from __future__ import annotations
 
+import json
 import math
+from collections import Counter
 from pathlib import Path
 
 import pytest
 
 from eternities.contract import FRAME_RADIUS, SHARD_SIZE, decode_sets, decode_stars
 from eternities.contract.encode import encode_artefacts, shard_count_for
-from eternities.contract.enums import BLIND_ETERNITIES_SLUG, PlaneKind
+from eternities.contract.enums import BLIND_ETERNITIES_SLUG, HueClass, PlaneKind
 from eternities.contract.models import Dataset
 from eternities.fixtures import SCALE, SMALL, build
 from eternities.fixtures.generate import MULTIVERSE_RADIUS
+
+REAL_HUE_SHARE: dict[HueClass, float] = {
+    HueClass.WHITE: 0.1514,
+    HueClass.BLUE: 0.1487,
+    HueClass.BLACK: 0.1510,
+    HueClass.RED: 0.1501,
+    HueClass.GREEN: 0.1478,
+    HueClass.MULTICOLOUR: 0.1654,
+    HueClass.COLOURLESS: 0.0855,
+}
+"""Hue-class shares of the Phase 1 production dataset — 28,587 cards from the 2026-09-04 Scryfall
+bulk after the PRD 4.3/4.4 filters. The same measurement `generate._COLOUR_IDENTITIES` is weighted
+from, restated here so the two have to be changed together deliberately."""
 
 
 @pytest.fixture(scope="module")
@@ -103,8 +118,6 @@ def test_sets_bin_round_trips_through_the_contract(small: Dataset):
 
 def test_shards_cover_every_card_exactly_once(small: Dataset):
     artefacts, manifest = encode_artefacts(small)
-    import json
-
     for plane in small.planes:
         seen: list[str] = []
         for shard in range(manifest["planeShards"][plane.slug]):
@@ -134,6 +147,46 @@ def test_blind_eternities_share_is_in_the_expected_band(scale: Dataset):
     assert 0.20 <= share <= 0.25
 
 
+@pytest.mark.parametrize(("name", "tolerance"), [("scale", 0.015), ("small", 0.05)])
+def test_hue_classes_follow_the_real_card_distribution(
+    name: str, tolerance: float, request: pytest.FixtureRequest
+):
+    """DEC-605. The five arms of PRD 5.4.1 are the mono-colour hue classes; multicolour goes to
+    the bulge and colourless to the halo (`layout.card_position`). Phase 0 drew colour identity
+    uniformly from a list that was 15/21 multicolour, so ~70% of every plane sat in the bulge and
+    the planes rendered as round blobs. The fixture has to carry real Magic's proportions or
+    nobody can judge the star field against it.
+
+    The tolerance is per hue class and absolute; ``fixture-small`` draws 500 times, so it gets the
+    wider band that sampling noise alone needs.
+    """
+    dataset: Dataset = request.getfixturevalue(name)
+    counts = Counter(int(star.hue) for star in dataset.stars)
+    for hue, expected in REAL_HUE_SHARE.items():
+        share = counts[int(hue)] / len(dataset.stars)
+        assert abs(share - expected) <= tolerance, (
+            f"{hue.name} is {share:.2%} of {dataset.dataset}, real Magic is {expected:.2%}"
+        )
+
+
+def test_multicolour_never_dominates_a_spiral_plane(scale: Dataset):
+    """The failure DEC-605 was filed for, stated per plane rather than in aggregate: a spiral's
+    arms hold more stars than its bulge. A plane-level check is what catches a distribution that
+    is right overall but skewed inside the planes that are actually rendered as spirals."""
+    for plane in scale.planes:
+        if plane.kind is not PlaneKind.SPIRAL:
+            continue
+        stars = scale.stars[plane.star_offset : plane.star_offset + plane.star_count]
+        bulge = sum(1 for s in stars if s.hue is HueClass.MULTICOLOUR)
+        arms = sum(1 for s in stars if int(s.hue) < 5)
+        # Real Magic puts 4.5 arm stars in for every bulge star. The margin here is deliberately
+        # slack: a 50-card spiral is the smallest one there is, and sampling noise alone moves its
+        # ratio by a lot. The regression this locks out sat at 0.35.
+        assert arms > 2 * bulge, (
+            f"{plane.slug}: {bulge} stars in the bulge against {arms} in the arms"
+        )
+
+
 def test_writing_fixtures_elsewhere_leaves_the_registry_alone(tmp_path: Path):
     """CI regenerates the fixtures into a scratch directory to diff them against what is
     committed (`.github/workflows/ci.yml`). That must not touch `web/datasets.json`."""
@@ -144,6 +197,33 @@ def test_writing_fixtures_elsewhere_leaves_the_registry_alone(tmp_path: Path):
     after = DATASETS_FILE.read_bytes() if DATASETS_FILE.exists() else None
     assert after == before
     assert len(list(tmp_path.iterdir())) == 1
+
+
+def test_regenerating_fixtures_leaves_a_non_fixture_active_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """`active` may point at something `eternities fixtures` does not own — Phase 1's real dataset
+    supersedes the fixtures as what the app ships (PRD 8.3). Regenerating must not quietly point
+    the app back at synthetic data; only `--set-active` moves it."""
+    from eternities import cli
+
+    registry = tmp_path / "datasets.json"
+    registry.write_text(
+        json.dumps({"active": "deadbeefdeadbeef", "production": "deadbeefdeadbeef"}) + "\n",
+        encoding="utf-8",
+    )
+    data_root = tmp_path / "data"
+    monkeypatch.setattr(cli, "DATASETS_FILE", registry)
+    monkeypatch.setattr(cli, "WEB_DATA_ROOT", data_root)
+
+    assert cli.main(["fixtures", "small", "--out", str(data_root)]) == 0
+    written = json.loads(registry.read_text(encoding="utf-8"))
+    assert written["active"] == "deadbeefdeadbeef"
+    assert written["fixtures"]["small"] != "deadbeefdeadbeef"
+
+    assert cli.main(["fixtures", "small", "--out", str(data_root), "--set-active", "small"]) == 0
+    written = json.loads(registry.read_text(encoding="utf-8"))
+    assert written["active"] == written["fixtures"]["small"]
 
 
 def test_scratch_fixtures_match_the_committed_ones(tmp_path: Path):

@@ -75,6 +75,11 @@ waits on the pipeline and bench numbers mean something from the first shader com
 | `fixture-small` | 4 planes + the Blind Eternities, 500 cards, one dust shard | Semantic and decoder tests |
 | `fixture-scale` | all 83 Appendix A roster entries, 30 000 stars, 4 dust shards | Performance, label collision, budget |
 
+Both draw colour identity from the proportions of the real Phase 1 dataset — mono colours ~15%
+each, multicolour a 16.5% minority, colourless 8.5% — so a plane's five arms carry the stars and
+the bulge stays a bulge. Judging the star field against a fixture is only meaningful because of
+that; see `_COLOUR_IDENTITIES` in `pipeline/src/eternities/fixtures/generate.py`.
+
 `web/datasets.json` says which one the build points at. `ETERNITIES_DATASET=scale pnpm build`
 overrides it. The real dataset arrives in Phase 1.
 
