@@ -452,6 +452,10 @@
       "hasBackImage": false
     },
     {
+      "layout": "front_card",
+      "hasBackImage": false
+    },
+    {
       "layout": "host",
       "hasBackImage": false
     },
@@ -477,6 +481,10 @@
     },
     {
       "layout": "planar",
+      "hasBackImage": false
+    },
+    {
+      "layout": "prepare",
       "hasBackImage": false
     },
     {

@@ -7,6 +7,7 @@ else, so Phase 1 can reuse it verbatim.
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Final
 
@@ -26,6 +27,21 @@ HALO_MIN: Final = 1.05
 HALO_MAX: Final = 1.2
 BAND_JITTER: Final = 0.35
 """PRD 8.6.2: radial jitter is +/- 0.35 of a band."""
+
+PLANE_MARGIN_FACTOR: Final = 0.15
+"""PRD 5.3.3, as a fraction of mean plane spacing: the anti-overlap margin :func:`place_planes`
+must be given. Every plane drifts by ``DRIFT_FACTOR`` of the same spacing and a pair can drift
+toward each other, so this has to clear twice that with room to spare. Named rather than written
+twice, because the pipeline and the fixture generator both have to pass the same value."""
+
+DRIFT_FACTOR: Final = 0.03
+"""PRD 5.3.15: drift amplitude is 3% of mean plane spacing."""
+
+FRAME_CLAMP_SAFETY: Final = 0.995
+"""How far inside ``FRAME_RADIUS`` :func:`_clamp_to_frame` actually clamps.
+
+``float16(1.2)`` is ``1.2001953125``, so a star sitting exactly on the frame radius fails the 8.9.1
+invariant once it is encoded. The margin is what keeps the invariant true of the *bytes*."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,7 +120,7 @@ def plane_motion(slug: str, mean_spacing: float) -> PlaneMotion:
         spin_period_s=rng.between(120.0, 300.0, slug, "spin"),
         spin_direction=1 if rng.flag(0.5, slug, "spindir") else -1,
         # PRD 5.3.15: 3% of mean plane spacing, 60-120 s.
-        drift_amplitude=0.03 * mean_spacing,
+        drift_amplitude=DRIFT_FACTOR * mean_spacing,
         drift_period_s=rng.between(60.0, 120.0, slug, "driftperiod"),
         drift_phase=rng.between(0.0, 2.0 * math.pi, slug, "driftphase"),
         # PRD 5.4.13: amplitude <= 10 degrees, period 40-90 s.
@@ -212,7 +228,7 @@ def card_position(
 def _clamp_to_frame(p: tuple[float, float, float]) -> tuple[float, float, float]:
     """PRD 8.9.1 invariant: plane-local positions stay inside the frame radius of 1.2."""
     length = math.sqrt(p[0] ** 2 + p[1] ** 2 + p[2] ** 2)
-    limit = FRAME_RADIUS * 0.995  # float16 rounding must not push a star over the invariant
+    limit = FRAME_RADIUS * FRAME_CLAMP_SAFETY
     if length <= limit:
         return p
     scale = limit / length
@@ -317,3 +333,37 @@ def arm_width_scale(arm_count: int, mean_count: float) -> float:
     if mean_count <= 0:
         return 1.0
     return min(max(math.sqrt(arm_count / mean_count), 0.5), 1.8)
+
+
+type Palette = tuple[float, float, float, float, float, float, float]
+
+_NEBULA_BASE: Final[tuple[tuple[float, float, float], ...]] = (
+    (0.98, 0.94, 0.84),  # W warm ivory
+    (0.24, 0.55, 0.90),  # U cerulean
+    (0.45, 0.28, 0.70),  # B violet
+    (0.95, 0.42, 0.20),  # R ember orange
+    (0.24, 0.68, 0.42),  # G viridian
+    (0.92, 0.76, 0.30),  # multicolour gold
+    (0.72, 0.75, 0.80),  # colourless silver
+)
+
+
+def palette_from_hue_counts(counts: Sequence[float]) -> Palette:
+    """PRD 5.3.5: a plane's palette is its colour-identity distribution over the hue classes."""
+    total = sum(counts)
+    if total <= 0:
+        return (1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7)
+    w, u, b, r, g, m, c = (v / total for v in counts)
+    return (w, u, b, r, g, m, c)
+
+
+def nebula_tint(palette: Palette) -> tuple[float, float, float]:
+    """PRD 5.3.5: a weighted blend of the two dominant hues, in the base hues of 5.4.8."""
+    ranked = sorted(range(7), key=lambda i: (-palette[i], i))[:2]
+    w0, w1 = palette[ranked[0]], palette[ranked[1]]
+    total = (w0 + w1) or 1.0
+    red, green, blue = (
+        (_NEBULA_BASE[ranked[0]][c] * w0 + _NEBULA_BASE[ranked[1]][c] * w1) / total
+        for c in range(3)
+    )
+    return (red, green, blue)

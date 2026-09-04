@@ -1,0 +1,73 @@
+{
+  "contractVersion": 1,
+  "pipelineVersion": "0.2.0",
+  "dataset": "fixture-small",
+  "dataHash": "ccd8d6b8bb8fff57",
+  "asOf": "2026-09-04",
+  "generatedAt": "2026-09-04T00:00:00Z",
+  "scryfallBulkUpdatedAt": null,
+  "starRecordBytes": 12,
+  "shardSize": 2000,
+  "counts": {
+    "planes": 5,
+    "stars": 500,
+    "sets": 23,
+    "printings": 1099,
+    "blindEternitiesStars": 110,
+    "blindEternitiesShare": 0.22
+  },
+  "planeShards": {
+    "blind-eternities": 1,
+    "dominaria": 1,
+    "innistrad": 1,
+    "ravnica": 1,
+    "segovia": 1
+  },
+  "files": [
+    {
+      "path": "planes.json",
+      "bytes": 4570,
+      "sha256": "ebbf843154efffa8437136e85115ff6b8231c12feae8ec35f439241d4de3e363"
+    },
+    {
+      "path": "planes/blind-eternities.0.json",
+      "bytes": 44728,
+      "sha256": "95e87130cf1e2bf239beaaa73262a768938de46b9b64f93f2c19e232955347c7"
+    },
+    {
+      "path": "planes/dominaria.0.json",
+      "bytes": 17637,
+      "sha256": "615808ffaac1c53223bcaabcc8fcaac0be7ee187f1f4b61deffb218e3b01b5de"
+    },
+    {
+      "path": "planes/innistrad.0.json",
+      "bytes": 95,
+      "sha256": "1b9cdade160215e7cce7d252f26eabec3732253d493b0b506e4587296c8da99e"
+    },
+    {
+      "path": "planes/ravnica.0.json",
+      "bytes": 53383,
+      "sha256": "e40ec490e004534c1c730e3ee52ff827e8b57f9725a58f04aa12a506a1dd275c"
+    },
+    {
+      "path": "planes/segovia.0.json",
+      "bytes": 89941,
+      "sha256": "8286713f455573420995b5aaa007232af08ecbc04905f400144a7be4ac23b183"
+    },
+    {
+      "path": "search.json",
+      "bytes": 17122,
+      "sha256": "19e5d95443e059c83cd80394f815db79d96fb41f0c832d5f8a539a15e7a60a91"
+    },
+    {
+      "path": "sets.bin",
+      "bytes": 11272,
+      "sha256": "255cf956e598557f68f496939d5cc6b87137aa09d02194618038c9ac6abd47d3"
+    },
+    {
+      "path": "stars.bin",
+      "bytes": 6016,
+      "sha256": "9cad91f687ca410f1a0286c1e2fb7142f1c95df0b9905e61f36ef7e89c249ac4"
+    }
+  ]
+}
