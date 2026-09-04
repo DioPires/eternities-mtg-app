@@ -178,8 +178,14 @@ describe('navigation stub, called free-standing (no `this`)', () => {
     nav.dispose()
   })
 
-  it('survives every method being detached at once', async () => {
+  it('survives every method being detached at once, on every branch', async () => {
     // The blunt version of the same check, so a `this` reintroduced anywhere fails here.
+    //
+    // "Every branch", not "every method", and the distinction is load-bearing: the Phase 0 bug was
+    // `this.flyToBlindEternities(...)` inside `flyToPlane`, which only the 'blind-eternities' slug
+    // reaches. An earlier version of this test called `flyToPlane('dominaria')` alone and passed
+    // with that bug in place. Both delegating branches — `flyToPlane`'s and `focusParent`'s — have
+    // to run detached, or this test is false comfort.
     const nav = createNavigationStub({ instant: true })
     const {
       snapshot,
@@ -204,12 +210,25 @@ describe('navigation stub, called free-standing (no `this`)', () => {
     await playIntro({ kind: 'multiverse' }).done
     await flyToMultiverse().done
     await flyToPlane('dominaria').done
+    // `flyToPlane`'s other branch: this slug is the one that delegates to `flyToBlindEternities`.
+    await flyToPlane('blind-eternities').done
+    expect(snapshot().focus).toEqual({ kind: 'plane', slug: 'blind-eternities' })
     await flyToBlindEternities([1, 2, 3]).done
     await flyToCard({ planeSlug: 'ravnica', oracleId: 'a' }).done
     resolveCard('a', { starIndex: 7 })
     failCardResolution('a')
+    // `focusParent`'s two branches: a normal card walks up through `flyToPlane`, a Blind
+    // Eternities card through `flyToBlindEternities`.
     await flyToCard({ planeSlug: 'ravnica', oracleId: 'b' }).done
-    focusParent()
+    await focusParent()?.done
+    expect(snapshot().focus).toEqual({ kind: 'plane', slug: 'ravnica' })
+    await flyToCard({ planeSlug: 'blind-eternities', oracleId: 'c', anchor: [4, 5, 6] }).done
+    await focusParent()?.done
+    expect(snapshot().focus).toEqual({
+      kind: 'plane',
+      slug: 'blind-eternities',
+      anchor: [4, 5, 6],
+    })
     enterAttract()
     exitAttract('keyboard')
     setReducedMotion(true)
@@ -369,6 +388,47 @@ describe('resolving a card after sets.bin lands (PRD 6.7.1, 5.7)', () => {
     expect(result.focus).toEqual({ kind: 'plane', slug: 'innistrad' })
     expect(nav.snapshot().focus).toEqual({ kind: 'plane', slug: 'innistrad' })
     expect(nav.snapshot().flight).toBeNull()
+    nav.dispose()
+  })
+
+  it("keeps a Blind Eternities card's anchor in the default fallback (PRD 5.3.4)", async () => {
+    // `anchor: undefined` on the Blind Eternities *means* the multiverse centre (contract §1), so
+    // a fallback that dropped the anchor would tell the router the camera had crossed the whole
+    // multiverse while it in fact sat still, framing the dust around the card.
+    const nav = createNavigationStub()
+    const flight = nav.flyToCard(
+      { planeSlug: 'blind-eternities', oracleId: 'gone', anchor: [12, 0.5, -30] },
+      { durationMs: 5000 },
+    )
+
+    nav.failCardResolution('gone')
+
+    const landed = { kind: 'plane', slug: 'blind-eternities', anchor: [12, 0.5, -30] }
+    expect((await flight.done).focus).toEqual(landed)
+    expect(nav.snapshot().focus).toEqual(landed)
+    nav.dispose()
+  })
+
+  it('still corrects the focus when the flight has already settled (PRD 5.9)', () => {
+    // Invariant 6 is scoped to flights still in the air, and this is why. Under reduced motion the
+    // flight is 300 ms and `immediate` collapses it entirely, so `sets.bin` can land *after* the
+    // flight resolved 'completed' at the card. There is then no flight to fail — but the focus is
+    // still wrong, so the `'correction'` must fire regardless. That is what PRD risk 9's toast
+    // hangs off, which is why it cannot hang off the 'failed' flight result.
+    const nav = createNavigationStub({ instant: true })
+    nav.flyToCard({ planeSlug: 'innistrad', oracleId: 'gone' })
+    expect(nav.snapshot().flight).toBeNull()
+
+    const reasons: string[] = []
+    const ends: string[] = []
+    nav.on('focuschange', ({ reason }) => reasons.push(reason))
+    nav.on('flightend', ({ status }) => ends.push(status))
+
+    nav.failCardResolution('gone')
+
+    expect(reasons).toEqual(['correction'])
+    expect(ends).toHaveLength(0)
+    expect(nav.snapshot().focus).toEqual({ kind: 'plane', slug: 'innistrad' })
     nav.dispose()
   })
 })

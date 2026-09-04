@@ -72,8 +72,14 @@ export type NavigationReason =
    * PRD 6.7.1: the scene corrected a focus the caller supplied — the data resolved the card onto
    * a different plane, or the id turned out not to exist. The router **must** treat a
    * `'correction'` focus change as `replaceState`, never `pushState`: it rewrites the URL the user
-   * already has, it is not somewhere they navigated to. It is also the reason a re-issued but
-   * unchanged focus carries (PRD 6.8.2's deferred second stage), so the router may dedupe on it.
+   * already has, it is not somewhere they navigated to.
+   *
+   * `resolveCard` and `failCardResolution` emit it and nothing else does. In particular a
+   * *re-issued* focus does not carry it: PRD 6.8.2's deferred second stage follows
+   * `playIntro(cardFocus)` with a `flyToCard` for the same card, and `flyToCard` emits
+   * `options.reason ?? 'programmatic'` like every other fly-to. Suppressing that duplicate history
+   * entry is the router's job and the test is focus equality, not the reason — see
+   * `docs/navigation-contract.md` §3a.
    */
   | 'correction'
 
@@ -192,12 +198,17 @@ export type Unsubscribe = () => void
  *  - `resolveCard` refines a focus and a flight target in place and never supersedes; a
  *    `'correction'` focus change is a `replaceState`, not a navigation (PRD 6.7.1).
  *
- * **Every member is a function-typed property, not a method, and that is load-bearing.** Method
- * syntax would tell TypeScript the implementation may depend on `this`, and callers destructure
- * constantly — `const { flyToPlane } = useNavigation()` and `onPointerDown={nav.handOver}` are the
- * natural React spellings. Written this way, an implementation that reaches for `this` fails to
- * type-check and `@typescript-eslint/unbound-method` stops flagging every caller that pulls a
- * method off the object. An implementation must close over its own state.
+ * **Every member is a function-typed property, not a method, and that is load-bearing.** Callers
+ * destructure constantly — `const { flyToPlane } = useNavigation()` and
+ * `onPointerDown={nav.handOver}` are the natural React spellings — and against a method signature
+ * every one of those lines is an `@typescript-eslint/unbound-method` error. Property signatures
+ * silence the rule. That is what this shape buys.
+ *
+ * What it does **not** buy is compiler enforcement of the no-`this` rule. TypeScript contextually
+ * types `this` inside an object literal whichever syntax the implementation uses, so one that
+ * reaches for `this` type-checks clean and fails only at runtime, once a caller detaches it. The
+ * detachment tests in `web/test/navigation.test.ts` are the enforcement. An implementation must
+ * close over its own state.
  */
 export interface NavigationApi {
   snapshot: () => NavigationSnapshot
@@ -254,11 +265,20 @@ export interface NavigationApi {
 
   /**
    * PRD 6.7.1 and risk 9: `sets.bin` came back `-1` — the `oracle_id` is not in this dataset,
-   * which a bookmark that survived a data refresh will do. Settles the flight `'failed'` and drops
-   * focus to `fallback`, which defaults to the card's plane (the URL already names a real one).
-   * The camera stops where it is; no new tween. Emits `focuschange` with reason `'correction'`, so
-   * the router rewrites the URL with `replaceState` and PRD risk 9's toast has something to fire
-   * on. A no-op if the current focus is not that card.
+   * which a bookmark that survived a data refresh will do. Drops focus to `fallback`, which
+   * defaults to the card's plane (the URL already names a real one) and carries the card's
+   * `anchor` up with it — on the Blind Eternities `anchor: undefined` *means* the multiverse
+   * centre, so dropping it would claim the camera had crossed the multiverse while it in fact sat
+   * still. The camera stops where it is; no new tween.
+   *
+   * Settles the flight `'failed'` **if one is still in the air**. Under PRD 5.9 reduced motion, or
+   * with `immediate: true`, the flight can settle `'completed'` before `sets.bin` lands, leaving
+   * nothing to fail — see `docs/navigation-contract.md` §2 invariant 6.
+   *
+   * The `focuschange` with reason `'correction'` is therefore the signal that always fires: it is
+   * what the router rewrites the URL from with `replaceState`, and what PRD risk 9's toast fires
+   * on. A `'correction'` that moves focus *off* the card is the failure; one that leaves a card
+   * focus in place is `resolveCard` succeeding. A no-op if the current focus is not that card.
    */
   failCardResolution: (oracleId: OracleId, fallback?: Focus) => void
 

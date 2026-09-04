@@ -254,6 +254,13 @@ describe('shared contract test vector', () => {
     const uri = cardBackImageUri(meld, meld.p[0]!, 'large')
     expect(uri).toBe(imageUri(meld.b!.id!, meld.b!.ts!, 'large', 'front'))
     expect(uri).not.toContain('/back/')
+
+    // The trap the card tier has to avoid: these two disagree on meld, and both are right.
+    // `hasBackImage` asks "does this layout derive a back URI from the printing id" — no. But a
+    // back image does exist, via `b.id`. So `cardBackImageUri(...) !== null` is the gate on
+    // rendering a back face; gating on `hasBackImage` drops every meld back silently.
+    expect(hasBackImage('meld')).toBe(false)
+    expect(uri).not.toBeNull()
   })
 
   it('finds every second face in backNames, not only the double-faced ones (PRD 6.5.2)', () => {
