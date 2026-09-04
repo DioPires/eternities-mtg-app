@@ -1,0 +1,94 @@
+/* Phase 0 only. The design system is Phase 5's (implementation-plan.md §2). */
+
+:root {
+  color-scheme: dark;
+  --sky: #05060a;
+  --ink: #e8ecf8;
+  --muted: #8b93ab;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--sky);
+  color: var(--ink);
+  font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+.app {
+  position: relative;
+  height: 100%;
+}
+
+.app canvas {
+  display: block;
+}
+
+/* PRD 8.4.4: one HTML layer over the canvas. */
+.overlay {
+  position: absolute;
+  inset: auto auto 1.5rem 1.5rem;
+  max-width: 40rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 10px;
+  background: rgb(5 6 10 / 72%);
+  backdrop-filter: blur(6px);
+}
+
+.overlay h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.overlay h2 {
+  margin: 1rem 0 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.overlay ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.overlay li {
+  font-variant-numeric: tabular-nums;
+}
+
+.overlay .muted {
+  margin: 0;
+  color: var(--muted);
+}
+
+.overlay .ok li::marker {
+  color: #6ee7a8;
+}
+
+.overlay .bad {
+  color: #ff9c8a;
+}
+
+.fallback {
+  display: grid;
+  place-content: center;
+  height: 100%;
+  padding: 2rem;
+  text-align: center;
+}
+
+.fallback p {
+  max-width: 34rem;
+  color: var(--muted);
+}

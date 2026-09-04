@@ -1,0 +1,319 @@
+"""The seeded layout rules of PRD 8.6, shared by the fixture generator and Phase 1's pipeline.
+
+Kept free of Scryfall concepts on purpose: it maps counts and hue classes to positions and nothing
+else, so Phase 1 can reuse it verbatim.
+"""
+
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass
+from typing import Final
+
+from ..contract.enums import FRAME_RADIUS, HueClass, PlaneKind
+from . import rng
+
+R_MIN: Final = 3.0
+R_MAX: Final = 12.0
+"""PRD 5.3.2: visual radius is log(card count), clamped to [r_min, r_max]."""
+
+SPIRAL_THRESHOLD: Final = 50
+"""PRD 5.3.6: >= 50 cards is a five-arm spiral, 1-49 an irregular cloud, 0 an empty glow."""
+
+ARMS: Final = 5
+BULGE_SCALE: Final = 0.3
+HALO_MIN: Final = 1.05
+HALO_MAX: Final = 1.2
+BAND_JITTER: Final = 0.35
+"""PRD 8.6.2: radial jitter is +/- 0.35 of a band."""
+
+
+@dataclass(frozen=True, slots=True)
+class PlaneMotion:
+    """The seeded per-plane parameters of PRD 5.3.14-15, 5.4.13 and 8.6.2."""
+
+    tilt: tuple[float, float, float, float]
+    spin_period_s: float
+    spin_direction: int
+    drift_amplitude: float
+    drift_period_s: float
+    drift_phase: float
+    shear_amplitude: float
+    shear_period_s: float
+    shear_phase: float
+    arm_pitch: float
+    disc_thickness: float
+    bar: bool
+
+
+def visual_radius(card_count: int) -> float:
+    """PRD 5.3.2. Zero-card planes render at ``R_MIN``."""
+    if card_count <= 0:
+        return R_MIN
+    span = math.log(30000.0)
+    t = min(math.log(card_count + 1) / span, 1.0)
+    return R_MIN + (R_MAX - R_MIN) * t
+
+
+def plane_kind(slug: str, card_count: int) -> PlaneKind:
+    if slug == "blind-eternities":
+        return PlaneKind.DUST
+    if card_count == 0:
+        return PlaneKind.EMPTY
+    if card_count < SPIRAL_THRESHOLD:
+        return PlaneKind.IRREGULAR
+    return PlaneKind.SPIRAL
+
+
+def _quaternion_from_axis_angle(
+    axis: tuple[float, float, float], angle: float
+) -> tuple[float, float, float, float]:
+    length = math.sqrt(sum(c * c for c in axis)) or 1.0
+    x, y, z = (c / length for c in axis)
+    half = angle * 0.5
+    s = math.sin(half)
+    return (x * s, y * s, z * s, math.cos(half))
+
+
+def plane_motion(slug: str, mean_spacing: float) -> PlaneMotion:
+    """Seeded motion parameters. The Blind Eternities gets the identity transform (PRD 8.3)."""
+    if slug == "blind-eternities":
+        return PlaneMotion(
+            tilt=(0.0, 0.0, 0.0, 1.0),
+            spin_period_s=0.0,
+            spin_direction=1,
+            drift_amplitude=0.0,
+            drift_period_s=0.0,
+            drift_phase=0.0,
+            shear_amplitude=0.0,
+            shear_period_s=0.0,
+            shear_phase=0.0,
+            arm_pitch=0.0,
+            disc_thickness=0.05,
+            bar=False,
+        )
+
+    tilt_axis = (
+        rng.between(-1.0, 1.0, slug, "tiltx"),
+        rng.between(-0.35, 0.35, slug, "tilty"),
+        rng.between(-1.0, 1.0, slug, "tiltz"),
+    )
+    return PlaneMotion(
+        tilt=_quaternion_from_axis_angle(tilt_axis, rng.between(-0.9, 0.9, slug, "tiltangle")),
+        # PRD 5.3.14: 2-5 minute spin.
+        spin_period_s=rng.between(120.0, 300.0, slug, "spin"),
+        spin_direction=1 if rng.flag(0.5, slug, "spindir") else -1,
+        # PRD 5.3.15: 3% of mean plane spacing, 60-120 s.
+        drift_amplitude=0.03 * mean_spacing,
+        drift_period_s=rng.between(60.0, 120.0, slug, "driftperiod"),
+        drift_phase=rng.between(0.0, 2.0 * math.pi, slug, "driftphase"),
+        # PRD 5.4.13: amplitude <= 10 degrees, period 40-90 s.
+        shear_amplitude=rng.between(0.02, math.radians(10.0), slug, "shearamp"),
+        shear_period_s=rng.between(40.0, 90.0, slug, "shearperiod"),
+        shear_phase=rng.between(0.0, 2.0 * math.pi, slug, "shearphase"),
+        arm_pitch=rng.between(0.35, 0.85, slug, "pitch"),
+        disc_thickness=rng.between(0.035, 0.07, slug, "thickness"),
+        bar=rng.flag(0.3, slug, "bar"),
+    )
+
+
+def place_planes(
+    entries: list[tuple[str, float, bool]],
+    multiverse_radius: float,
+    margin: float,
+) -> dict[str, tuple[float, float, float]]:
+    """PRD 8.6.1 plane placement by seeded rejection sampling.
+
+    ``entries`` are ``(slug, visual_radius, is_zero_card)``. Returns home positions. Placement is
+    largest-first so the tight constraints are satisfied while the disc is still empty. The
+    ``margin`` must be at least twice the drift amplitude (PRD 5.3.3), which the caller enforces.
+    """
+    half_thickness = 0.075 * multiverse_radius
+    placed: list[tuple[str, float, tuple[float, float, float]]] = []
+    result: dict[str, tuple[float, float, float]] = {}
+
+    for slug, radius, zero_card in sorted(entries, key=lambda e: (-e[1], e[0])):
+        position: tuple[float, float, float] | None = None
+        for attempt in range(4000):
+            # sqrt keeps the sample uniform over the disc's area.
+            u = rng.unit(slug, "r", attempt)
+            frac = math.sqrt(0.5 + 0.5 * u) if zero_card else math.sqrt(u)
+            r = frac * (multiverse_radius - radius)
+            theta = rng.between(0.0, 2.0 * math.pi, slug, "theta", attempt)
+            y = rng.gaussian(slug, "y", attempt) * half_thickness * 0.5
+            y = max(-half_thickness, min(half_thickness, y))
+            candidate = (r * math.cos(theta), y, r * math.sin(theta))
+            if all(
+                _distance(candidate, other) >= radius + other_radius + margin
+                for _, other_radius, other in placed
+            ):
+                position = candidate
+                break
+        if position is None:
+            raise RuntimeError(
+                f"could not place plane {slug!r} without overlap after 4000 attempts; "
+                "raise multiverse_radius or lower r_max"
+            )
+        placed.append((slug, radius, position))
+        result[slug] = position
+    return result
+
+
+def _distance(a: tuple[float, float, float], b: tuple[float, float, float]) -> float:
+    return math.sqrt(sum((x - y) ** 2 for x, y in zip(a, b, strict=True)))
+
+
+def card_position(
+    plane_slug: str,
+    oracle_id: str,
+    hue: HueClass,
+    band: int,
+    band_count: int,
+    motion: PlaneMotion,
+    arm_width_scale: float,
+    spiral: bool,
+) -> tuple[float, float, float]:
+    """PRD 8.6.2 plane-local card placement. Always inside ``FRAME_RADIUS``."""
+    bands = max(band_count, 1)
+    jitter_r = rng.between(-BAND_JITTER, BAND_JITTER, plane_slug, oracle_id, "jr")
+    r = (band + 0.5 + jitter_r) / bands
+    r = min(max(r, 0.02), 1.0)
+
+    thickness = motion.disc_thickness
+
+    if hue is HueClass.MULTICOLOUR:
+        r *= BULGE_SCALE
+        theta = rng.between(0.0, 2.0 * math.pi, plane_slug, oracle_id, "bulge")
+        thickness *= 3.0
+    elif hue is HueClass.COLOURLESS:
+        r = rng.between(HALO_MIN, HALO_MAX, plane_slug, oracle_id, "halo")
+        theta = rng.between(0.0, 2.0 * math.pi, plane_slug, oracle_id, "halotheta")
+    elif not spiral:
+        # PRD 5.4.6 / 8.6.2: under 50 cards, angle is uniform everywhere.
+        theta = rng.between(0.0, 2.0 * math.pi, plane_slug, oracle_id, "uniform")
+    else:
+        arm = int(hue)  # W U B R G map to arms 0-4 (PRD 8.6.2).
+        r0 = 0.1
+        spread = (2.0 * math.pi / ARMS) * 0.5 * arm_width_scale
+        jitter_theta = rng.between(-spread, spread, plane_slug, oracle_id, "jt")
+        theta = (
+            2.0 * math.pi * arm / ARMS + motion.arm_pitch * math.log(max(r, r0) / r0) + jitter_theta
+        )
+
+    x = r * math.cos(theta)
+    z = r * math.sin(theta)
+    if motion.bar and hue is HueClass.MULTICOLOUR:
+        x *= 1.8
+    y = rng.gaussian(plane_slug, oracle_id, "y") * thickness
+
+    return _clamp_to_frame((x, y, z))
+
+
+def _clamp_to_frame(p: tuple[float, float, float]) -> tuple[float, float, float]:
+    """PRD 8.9.1 invariant: plane-local positions stay inside the frame radius of 1.2."""
+    length = math.sqrt(p[0] ** 2 + p[1] ** 2 + p[2] ** 2)
+    limit = FRAME_RADIUS * 0.995  # float16 rounding must not push a star over the invariant
+    if length <= limit:
+        return p
+    scale = limit / length
+    return (p[0] * scale, p[1] * scale, p[2] * scale)
+
+
+def blind_eternities_position(
+    oracle_id: str,
+    index: int,
+    plane_positions: list[tuple[float, float, float]],
+    plane_radii: list[float],
+    multiverse_radius: float,
+) -> tuple[float, float, float]:
+    """PRD 8.6.3: scatter through the disc, avoiding plane interiors, densest between neighbours.
+
+    Returns a position in the Blind Eternities' own local frame, which is multiverse coordinates
+    scaled by ``1 / multiverse_radius`` (PRD 8.3), so the shader path is identical for every star.
+    """
+    half_thickness = 0.075 * multiverse_radius
+    best: tuple[float, float, float] | None = None
+    best_weight = -1.0
+
+    for attempt in range(24):
+        # Half the samples are biased toward a midpoint between two neighbouring planes, which is
+        # the "connecting tissue" reading of PRD 8.6.3; the rest fill the volume.
+        if plane_positions and attempt % 2 == 0:
+            a = rng.integer(0, len(plane_positions) - 1, oracle_id, "pa", attempt)
+            b = _nearest_other(a, plane_positions)
+            pa, pb = plane_positions[a], plane_positions[b]
+            t = rng.between(0.35, 0.65, oracle_id, "t", attempt)
+            spread = 0.35 * _distance(pa, pb)
+            candidate = tuple(
+                pa[i] + (pb[i] - pa[i]) * t + rng.gaussian(oracle_id, "s", attempt, i) * spread
+                for i in range(3)
+            )
+        else:
+            u = rng.unit(oracle_id, "r", attempt)
+            r = math.sqrt(u) * multiverse_radius
+            theta = rng.between(0.0, 2.0 * math.pi, oracle_id, "theta", attempt)
+            candidate = (
+                r * math.cos(theta),
+                rng.gaussian(oracle_id, "y", attempt) * half_thickness * 0.6,
+                r * math.sin(theta),
+            )
+
+        x, y, z = candidate
+        y = max(-half_thickness * 1.4, min(half_thickness * 1.4, y))
+        radial = math.sqrt(x * x + z * z)
+        if radial > multiverse_radius:
+            scale = multiverse_radius / radial
+            x, z = x * scale, z * scale
+        candidate = (x, y, z)
+
+        clearance = min(
+            (
+                _distance(candidate, p) - 1.3 * radius
+                for p, radius in zip(plane_positions, plane_radii, strict=True)
+            ),
+            default=1.0,
+        )
+        if clearance <= 0.0:
+            continue
+        # Prefer samples nearest a plane's exclusion shell: that is where the dust reads densest.
+        weight = 1.0 / (1.0 + clearance)
+        if weight > best_weight:
+            best_weight, best = weight, candidate
+
+    if best is None:
+        # Every sample landed inside a plane: fall back to the outer rim, which is always clear.
+        theta = rng.between(0.0, 2.0 * math.pi, oracle_id, "fallback", index)
+        best = (
+            multiverse_radius * 0.98 * math.cos(theta),
+            0.0,
+            multiverse_radius * 0.98 * math.sin(theta),
+        )
+
+    inv = 1.0 / multiverse_radius
+    return _clamp_to_frame((best[0] * inv, best[1] * inv, best[2] * inv))
+
+
+def _nearest_other(index: int, positions: list[tuple[float, float, float]]) -> int:
+    best, best_d = index, math.inf
+    for j, p in enumerate(positions):
+        if j == index:
+            continue
+        d = _distance(positions[index], p)
+        if d < best_d:
+            best, best_d = j, d
+    return best
+
+
+def brightness_for(printing_count: int, cap: int) -> int:
+    """PRD 5.4.10: quantised log printing count, capped at the plane's 98th percentile."""
+    capped = min(max(printing_count, 1), max(cap, 1))
+    top = math.log(max(cap, 1) + 1.0)
+    t = math.log(capped + 1.0) / top if top > 0 else 1.0
+    return round(40 + 215 * min(max(t, 0.0), 1.0))
+
+
+def arm_width_scale(arm_count: int, mean_count: float) -> float:
+    """PRD 8.6.2: arm width scales with sqrt(count_arm / mean_count), clamped."""
+    if mean_count <= 0:
+        return 1.0
+    return min(max(math.sqrt(arm_count / mean_count), 0.5), 1.8)

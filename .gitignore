@@ -1,0 +1,22 @@
+# Node
+node_modules/
+web/dist/
+*.tsbuildinfo
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Pipeline working files. Artefacts under web/public/data/ ARE committed (PRD 8.1.4) so a clone
+# deploys without running the pipeline; the Scryfall bulk cache is not.
+pipeline/.cache/
+pipeline/scryfall-cache/
+
+# Local
+.DS_Store
+.vercel/
+.env
+.env.local

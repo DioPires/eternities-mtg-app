@@ -1,0 +1,379 @@
+/**
+ * The TypeScript half of the shared contract check.
+ *
+ * These read exactly the bytes `pipeline/tests/test_test_vector.py` re-encodes and asserts on.
+ * If the two sides ever disagree about a byte offset, an enum value, a section id or a derived
+ * URI, one of these two suites fails. That is the whole point of the vector.
+ */
+
+import { readFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+import { describe, expect, it } from 'vitest'
+
+import {
+  CONTRACT_VERSION,
+  ContractError,
+  SHARD_SIZE,
+  StarStreamReader,
+  cardBackImageUri,
+  decodeSets,
+  decodeStars,
+  float16ToNumber,
+  hasBackImage,
+  imageUri,
+  pageUri,
+  shardIndexFor,
+  shardPathFor,
+  CARD_BACK_URI,
+  type CardLayout,
+  type CardRecord,
+  type Manifest,
+  type PlaneShardFile,
+  type PlanesFile,
+  type SearchFile,
+} from '../src/data'
+
+const VECTOR_DIR = resolve(__dirname, '../../contract/test-vectors/v1')
+
+interface VectorStar {
+  index: number
+  x: number
+  y: number
+  z: number
+  planeIndex: number
+  hueClass: number
+  sizeClass: number
+  brightness: number
+  twinklePhase: number
+  typeMask: number
+}
+
+interface VectorUri {
+  printingId: string
+  imageTs: string
+  layout: CardLayout
+  hasSecondFace: boolean
+  hasBackImage: boolean
+  small: string
+  large: string
+  artCrop: string
+  /** `null` wherever the card has no back image — split, adventure, flip and single-faced. */
+  backLarge: string | null
+  page: string
+}
+
+interface Vector {
+  contractVersion: number
+  dataHash: string
+  starCount: number
+  stars: VectorStar[]
+  oracleIds: string[]
+  setIdsPerStar: number[][]
+  planeShards: Record<string, number>
+  files: string[]
+  cardBackUri: string
+  uris: VectorUri[]
+  hueClassChecks: Array<{ colourIdentity: string; hueClass: number }>
+  typeMaskChecks: Array<{ typeLine: string; typeMask: number }>
+  backImageChecks: Array<{ layout: CardLayout; hasBackImage: boolean }>
+  shardIndexChecks: Array<{ localIndex: number; shard: number }>
+}
+
+function bytes(relative: string): ArrayBuffer {
+  const buffer = readFileSync(join(VECTOR_DIR, relative))
+  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
+}
+
+function json<T>(relative: string): T {
+  return JSON.parse(readFileSync(join(VECTOR_DIR, relative), 'utf8')) as T
+}
+
+const vector = json<Vector>('vector.json')
+
+describe('shared contract test vector', () => {
+  it('is the version this build speaks', () => {
+    expect(vector.contractVersion).toBe(CONTRACT_VERSION)
+  })
+
+  it('decodes stars.bin to the exact values the encoder recorded', () => {
+    const stars = decodeStars(bytes('stars.bin'))
+    expect(stars.count).toBe(vector.starCount)
+    expect(stars.float32Positions).toBe(false)
+    for (const expected of vector.stars) {
+      const i = expected.index
+      expect(stars.x(i)).toBe(expected.x)
+      expect(stars.y(i)).toBe(expected.y)
+      expect(stars.z(i)).toBe(expected.z)
+      expect(stars.planeIndex(i)).toBe(expected.planeIndex)
+      expect(stars.hueClass(i)).toBe(expected.hueClass)
+      expect(stars.sizeClass(i)).toBe(expected.sizeClass)
+      expect(stars.brightness(i)).toBe(expected.brightness)
+      expect(stars.twinklePhase(i)).toBe(expected.twinklePhase)
+      expect(stars.typeMask(i)).toBe(expected.typeMask)
+    }
+  })
+
+  it('exposes stars.bin as one interleaved buffer with no repacking', () => {
+    const stars = decodeStars(bytes('stars.bin'))
+    expect(stars.interleaved.byteLength).toBe(stars.count * 12)
+    // The GPU binds HALF_FLOAT x3 at 0, UNSIGNED_BYTE x4 at 6 and UNSIGNED_BYTE x2 at 10.
+    expect(stars.interleaved[6]).toBe(vector.stars[0]!.planeIndex)
+    expect(stars.interleaved[11]).toBe(vector.stars[0]!.typeMask)
+  })
+
+  it('produces the same float32 positions through the fallback path', () => {
+    const stars = decodeStars(bytes('stars.bin'))
+    const flat = stars.toFloat32Positions()
+    expect(flat.length).toBe(stars.count * 3)
+    for (const expected of vector.stars) {
+      expect(flat[expected.index * 3]).toBe(expected.x)
+      expect(flat[expected.index * 3 + 1]).toBe(expected.y)
+      expect(flat[expected.index * 3 + 2]).toBe(expected.z)
+    }
+  })
+
+  it('decodes sets.bin oracle ids in both directions', () => {
+    const sets = decodeSets(bytes('sets.bin'))
+    expect(sets.starCount).toBe(vector.starCount)
+    vector.oracleIds.forEach((oracleId, index) => {
+      expect(sets.oracleId(index)).toBe(oracleId)
+      expect(sets.starIndexOf(oracleId)).toBe(index)
+    })
+    expect(sets.starIndexOf('ffffffff-ffff-4fff-8fff-ffffffffffff')).toBe(-1)
+  })
+
+  it('decodes sets.bin set-id lists and answers the facet test', () => {
+    const sets = decodeSets(bytes('sets.bin'))
+    vector.setIdsPerStar.forEach((ids, index) => {
+      expect(Array.from(sets.setIdsOf(index))).toEqual(ids)
+      for (const id of ids) expect(sets.hasSet(index, id)).toBe(true)
+      expect(sets.hasSet(index, 60000)).toBe(false)
+    })
+  })
+
+  it('fails loudly on an out-of-range star index in every direction', () => {
+    const sets = decodeSets(bytes('sets.bin'))
+    for (const bad of [-1, vector.starCount, 999]) {
+      expect(() => sets.oracleId(bad)).toThrow(ContractError)
+      expect(() => sets.setIdsOf(bad)).toThrow(ContractError)
+      // `hasSet` used to return a silent `false` here, so a filter off by a plane offset matched
+      // nothing instead of failing.
+      expect(() => sets.hasSet(bad, 0)).toThrow(ContractError)
+    }
+  })
+
+  it('reads manifest.json, planes.json and search.json', () => {
+    const manifest = json<Manifest>('manifest.json')
+    expect(manifest.dataHash).toBe(vector.dataHash)
+    expect(manifest.shardSize).toBe(SHARD_SIZE)
+    expect(manifest.planeShards).toEqual(vector.planeShards)
+    expect(manifest.files.map((f) => f.path)).toEqual(vector.files)
+
+    const planes = json<PlanesFile>('planes.json')
+    expect(planes.planes.map((p) => p.index)).toEqual(planes.planes.map((_, i) => i))
+    const blind = planes.planes[0]!
+    expect(blind.slug).toBe('blind-eternities')
+    expect(blind.tilt).toEqual([0, 0, 0, 1])
+    expect(blind.spinPeriodS).toBe(0)
+
+    // A plane owns a contiguous star range, which is how a star's plane is recovered (contract §2).
+    let cursor = 0
+    for (const plane of planes.planes) {
+      expect(plane.starOffset).toBe(cursor)
+      cursor += plane.starCount
+    }
+    expect(cursor).toBe(vector.starCount)
+
+    const search = json<SearchFile>('search.json')
+    expect(search.cardNames).toHaveLength(vector.starCount)
+    expect(search.sets.some((s) => s.planeSlug === null)).toBe(true)
+    expect(search.backNames.length).toBeGreaterThan(0)
+  })
+
+  it('derives Scryfall URIs exactly as the pipeline does', () => {
+    expect(CARD_BACK_URI).toBe(vector.cardBackUri)
+    for (const expected of vector.uris) {
+      const id = expected.printingId
+      const ts = Number(expected.imageTs)
+      expect(imageUri(id, ts, 'small')).toBe(expected.small)
+      expect(imageUri(id, ts, 'large')).toBe(expected.large)
+      expect(imageUri(id, ts, 'art_crop')).toBe(expected.artCrop)
+    }
+  })
+
+  it('agrees with the pipeline on which layouts have a back image (contract §9)', () => {
+    // Every Scryfall layout, both sides. This is what stops one language quietly deciding that,
+    // say, `adventure` has a back image while the other says it does not.
+    expect(vector.backImageChecks.length).toBeGreaterThan(20)
+    for (const check of vector.backImageChecks) {
+      expect(hasBackImage(check.layout)).toBe(check.hasBackImage)
+    }
+    // The specific claims the co-review verified against live Scryfall.
+    expect(hasBackImage('transform')).toBe(true)
+    expect(hasBackImage('modal_dfc')).toBe(true)
+    for (const layout of ['split', 'adventure', 'flip', 'meld', 'normal'] as const) {
+      expect(hasBackImage(layout)).toBe(false)
+    }
+  })
+
+  it('derives a back image only where one exists, never a URI that 404s', () => {
+    // The regression this pins: a split, adventure or flip card has a second *face* and no second
+    // *image*. Deriving `.../back/<id>.jpg` for one of those 404s on live Scryfall, and the old
+    // vector asserted exactly that URI for every printing.
+    const shards = ['blind-eternities', 'dominaria', 'ravnica'].map((slug) =>
+      json<PlaneShardFile>(`planes/${slug}.0.json`),
+    )
+    const cards = shards.flatMap((s) => s.cards)
+    const byPrintingId = new Map<string, CardRecord>()
+    for (const card of cards) for (const p of card.p) byPrintingId.set(p[0], card)
+
+    let checkedWithout = 0
+    let checkedWith = 0
+    for (const expected of vector.uris) {
+      const card = byPrintingId.get(expected.printingId)!
+      const printing = card.p.find((p) => p[0] === expected.printingId)!
+      expect(cardBackImageUri(card, printing, 'large')).toBe(expected.backLarge)
+      expect(card.b !== null).toBe(expected.hasSecondFace)
+      expect(card.l).toBe(expected.layout)
+      if (expected.hasSecondFace && !expected.hasBackImage) checkedWithout += 1
+      if (expected.hasBackImage) checkedWith += 1
+    }
+    // The vector must actually carry both shapes, or this test proves nothing.
+    expect(checkedWithout).toBeGreaterThan(0)
+    expect(checkedWith).toBeGreaterThan(0)
+  })
+
+  it('reaches a meld back face through its own printing id (PRD line 125)', () => {
+    const ravnica = json<PlaneShardFile>('planes/ravnica.0.json')
+    const meld = ravnica.cards.find((c) => c.l === 'meld')!
+    expect(meld.b).not.toBeNull()
+    // The meld result is a separate Scryfall object, so its image is its own *front* — not a back
+    // face of the component's printing, which is why `b` has to carry an id and a timestamp.
+    expect(meld.b!.id).toBeDefined()
+    expect(meld.b!.ts).toBeDefined()
+    const uri = cardBackImageUri(meld, meld.p[0]!, 'large')
+    expect(uri).toBe(imageUri(meld.b!.id!, meld.b!.ts!, 'large', 'front'))
+    expect(uri).not.toContain('/back/')
+  })
+
+  it('finds every second face in backNames, not only the double-faced ones (PRD 6.5.2)', () => {
+    const search = json<SearchFile>('search.json')
+    const named = new Set(search.backNames.map(([, name]) => name))
+    // A split card's second half must be searchable even though it has no back image.
+    expect(named).toContain('Frost')
+    expect(named).toContain('Stomp')
+    expect(named).toContain('Aberration of Vectors')
+  })
+
+  it('percent-encodes a collector number with a Scryfall star', () => {
+    // Scryfall collector numbers carry `★` and `†`. A browser papers over it inside an `href`;
+    // a `fetch` or a re-template does not.
+    expect(pageUri('tv3', '★1')).toBe('https://scryfall.com/card/tv3/%E2%98%851')
+    const starred = vector.uris.find((u) => u.page.includes('%E2%98%85'))
+    expect(starred).toBeDefined()
+  })
+
+  it('derives the Scryfall page URI from a shard printing tuple', () => {
+    const shard = json<PlaneShardFile>('planes/dominaria.0.json')
+    const search = json<SearchFile>('search.json')
+    const printing = shard.cards[0]!.p[0]!
+    const setCode = search.sets.find((s) => s.id === printing[1])!.code
+    expect(pageUri(setCode, printing[4])).toContain('https://scryfall.com/card/')
+  })
+
+  it('agrees on shard arithmetic and paths (amendment A1)', () => {
+    for (const check of vector.shardIndexChecks) {
+      expect(shardIndexFor(check.localIndex)).toBe(check.shard)
+    }
+    expect(shardPathFor('dominaria', 0)).toBe('planes/dominaria.0.json')
+    // A zero-card plane still gets one file, so the loader has no special case.
+    expect(vector.planeShards['segovia']).toBe(1)
+    expect(json<PlaneShardFile>('planes/segovia.0.json').cards).toEqual([])
+  })
+})
+
+describe('streaming reader (PRD 8.3, 6.8.1)', () => {
+  it('exposes only whole records as a safe draw range', () => {
+    const buffer = new Uint8Array(bytes('stars.bin'))
+    const reader = new StarStreamReader()
+
+    reader.push(buffer.subarray(0, 8))
+    expect(reader.completeRecords).toBe(0) // header not complete yet
+
+    reader.push(buffer.subarray(8, 16 + 12 + 5)) // one whole record and part of the next
+    expect(reader.expectedRecords).toBe(vector.starCount)
+    expect(reader.completeRecords).toBe(1)
+    expect(reader.done).toBe(false)
+    expect(reader.snapshot().count).toBe(1)
+
+    reader.push(buffer.subarray(16 + 12 + 5))
+    expect(reader.completeRecords).toBe(vector.starCount)
+    expect(reader.done).toBe(true)
+    expect(reader.snapshot().x(2)).toBe(vector.stars[2]!.x)
+  })
+
+  it('reads a chunk that is a view into a larger buffer (non-zero byteOffset)', () => {
+    // Regression: `push` used to decode `join().buffer`, which discards the view's byteOffset and
+    // byteLength, so it read whatever bytes sat at the start of the backing store — here, zeros,
+    // giving `bad magic "\0\0\0\0"`. `fetch`'s reader hands out offset-0 chunks, so nothing caught
+    // it; a worker or a pooled buffer (Phase 2a) does not.
+    const source = new Uint8Array(bytes('stars.bin'))
+    const padding = 8
+    const backing = new Uint8Array(padding + source.byteLength + padding)
+    backing.set(source, padding)
+    const chunk = backing.subarray(padding, padding + source.byteLength)
+    expect(chunk.byteOffset).toBe(padding)
+
+    const reader = new StarStreamReader()
+    reader.push(chunk)
+    expect(reader.expectedRecords).toBe(vector.starCount)
+    expect(reader.done).toBe(true)
+    expect(reader.snapshot().x(2)).toBe(vector.stars[2]!.x)
+    expect(reader.snapshot().typeMask(5)).toBe(vector.stars[5]!.typeMask)
+  })
+
+  it('reads offset chunks that only complete the header once joined', () => {
+    // The multi-chunk path merges into a fresh buffer, so it must stay correct too.
+    const source = new Uint8Array(bytes('stars.bin'))
+    const backing = new Uint8Array(16 + source.byteLength)
+    backing.set(source, 16)
+    const reader = new StarStreamReader()
+    reader.push(backing.subarray(16, 16 + 9)) // header incomplete
+    expect(reader.completeRecords).toBe(0)
+    reader.push(backing.subarray(16 + 9))
+    expect(reader.expectedRecords).toBe(vector.starCount)
+    expect(reader.snapshot().x(2)).toBe(vector.stars[2]!.x)
+  })
+})
+
+describe('float16 decoding', () => {
+  it('handles the cases the vector pins', () => {
+    expect(float16ToNumber(0x0000)).toBe(0)
+    expect(float16ToNumber(0x3c00)).toBe(1)
+    expect(float16ToNumber(0xbc00)).toBe(-1)
+    expect(float16ToNumber(0x3800)).toBe(0.5)
+    expect(float16ToNumber(0x1400)).toBe(0.0009765625) // 2^-10, from the vector
+    expect(float16ToNumber(0x7c00)).toBe(Infinity)
+    expect(Number.isNaN(float16ToNumber(0x7e00))).toBe(true)
+    expect(float16ToNumber(0x0001)).toBe(2 ** -24) // smallest subnormal
+  })
+})
+
+describe('loud failures', () => {
+  it('rejects a bad magic', () => {
+    const buffer = new Uint8Array(bytes('stars.bin'))
+    buffer[0] = 0x58
+    expect(() => decodeStars(buffer.buffer)).toThrow(ContractError)
+  })
+
+  it('rejects a stars file handed to the sets decoder', () => {
+    expect(() => decodeSets(bytes('stars.bin'))).toThrow(/expected a sets file/)
+  })
+
+  it('rejects a truncated stars file', () => {
+    const buffer = new Uint8Array(bytes('stars.bin'))
+    expect(() => decodeStars(buffer.slice(0, buffer.byteLength - 1).buffer)).toThrow(
+      ContractError,
+    )
+  })
+})
