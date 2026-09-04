@@ -1,0 +1,128 @@
+# Eternities pipeline run — 2026-09-04
+
+`eternities build --as-of 2026-09-04`. Report format: PRD 4.9.2. Data quality gates: PRD 9.2.
+
+## Run
+
+| Field | Value |
+|---|---|
+| Dataset | production |
+| Data hash | `f03d4cad5d110e87` |
+| Run date (`--as-of`) | 2026-09-04 |
+| Scryfall bulk `updated_at` | 2026-09-04T09:05:32.308+00:00 |
+| Scryfall bulk file | `default-cards-20260904090532.json` |
+| Pipeline version | 0.2.0 |
+| Contract version | 1 |
+
+## Counts
+
+| Measure | Value |
+|---|---|
+| Printings in the bulk file | 40 |
+| Distinct `oracle_id`s in the bulk file | 20 |
+| Printings included (4.3) | 27 |
+| Cards included (4.4) | 12 |
+| Printings emitted | 12 |
+| Planes | 4 |
+| Sets in the dictionary | 4 |
+
+## Printings excluded, per rule (PRD 4.3)
+
+| Rule | Printings |
+|---|---|
+| 4.3.4 promo | 9 |
+| 4.3.1 Appendix B universes_beyond | 4 |
+
+## Cards excluded, per rule (PRD 4.4)
+
+| Rule | Cards |
+|---|---|
+| 4.4.1 no included printing | 6 |
+| 4.4.3 Universes Beyond | 2 |
+
+## Data quality gates (PRD 9.2)
+
+| Gate | Result |
+|---|---|
+| 9.2.1 Unmapped sets | **0** — enforced; the run fails otherwise (4.6.4) |
+| 9.2.2 Blind Eternities share | **25.00%** (3 of 12 cards) — inside the 20-25% range PRD 9.2.2 expected |
+| 9.2.3 Cards that changed plane | 1 (vs run `0123456789abcdef`) |
+
+### Blind Eternities baseline (PRD 9.2.2)
+
+**Baseline: 25.00%.** The top contributing sets are where curation pays (PRD 11.9); the target is this baseline minus what curating the top three recovers.
+
+| Set | Code | Cards | Share of dust |
+|---|---|---|---|
+| Modern Horizons | `mh1` | 3 | 100.0% |
+
+## Cards per plane (PRD 4.9.2)
+
+| Plane | Slug | Cards | Bands | Kind |
+|---|---|---|---|---|
+| Dominaria | `dominaria` | 6 | 2 | irregular |
+| Blind-Eternities | `blind-eternities` | 3 | 1 | dust |
+| Ravnica | `ravnica` | 3 | 1 | irregular |
+| Segovia | `segovia` | 0 | 0 | empty |
+
+## Sets mapped through a parent set (PRD 4.6 rule 3)
+
+| Set | Inherited from |
+|---|---|
+| `dmr` | `lea` |
+
+Listed so a child set inheriting a plane it should not have — a bonus sheet under an in-universe parent — is visible rather than silent (PRD 4.6).
+
+## Sets dropped through an ancestor's Appendix B row (PRD 4.3.1)
+
+| Set | Dropped by the row on |
+|---|---|
+| `pza` | `tmt` |
+
+Appendix B rows a product, not every set code Scryfall splits it into: a Universes Beyond release ships tokens, promos, art series and bonus sheets that carry no row of their own. 4.3.1 follows the Scryfall parent chain exactly as 4.6 rule 3 does, so those children drop with their parent instead of leaking through.
+
+## Sets excluded as unreleased (PRD 4.3.8)
+
+`trk`
+
+## Card-level overrides applied (PRD 4.6 rule 1)
+
+Card 3
+
+## Cards whose plane changed since the previous run (PRD 4.9.2)
+
+| Card | Was | Now |
+|---|---|---|
+| Card 7 | `ravnica` | `dominaria` |
+
+Each row should trace to an appendix or override edit (PRD 9.2.3).
+
+## First-run verification duties
+
+### Q4 — security_stamp: triangle semantics (PRD 4.3.5)
+
+**Verdict:** confirmed — 4.3.5 is safe as a secondary guard
+
+- triangle printings: 4 across 1 sets
+
+### Q10 — Appendix B set codes marked “verify”
+
+**Verdict:** resolved with corrections — see below
+
+- confirmed: 1
+-   lea “Limited Edition Alpha” (1993-08-05, expansion)
+
+**For the CEO:** The PRD itself still needs the same edit.
+
+## Artefacts
+
+| File | Bytes |
+|---|---|
+| `planes.json` | 2,764 |
+| `search.json` | 862 |
+| `sets.bin` | 312 |
+| `stars.bin` | 160 |
+| `planes/*.json` (4 shards) | 2,911 |
+
+Written to `web/public/data/f03d4cad5d110e87/` (PRD 8.8.3).
+

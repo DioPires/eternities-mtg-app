@@ -93,6 +93,83 @@ def test_universes_beyond_row_drops_every_printing_in_the_set():
     assert result.dropped_by_rule["4.3.1 Appendix B universes_beyond or excluded"] == 1
 
 
+def test_an_excluded_row_drops_every_printing_in_the_set():
+    """4.3.1's other half. Appendix B has no `excluded` row today; the rule still has to work."""
+    apx = appendices(sets=[set_entry("bad", excluded=True)])
+    result = _filter([printing(set_code="bad")], sets={"bad": scry_set("bad")}, apx=apx)
+    assert result.kept == []
+    assert result.dropped_by_rule["4.3.1 Appendix B universes_beyond or excluded"] == 1
+
+
+def test_a_child_of_a_universes_beyond_set_drops_through_its_parents_row():
+    """4.3.1 through the parent chain, the way 4.6 rule 3 already reads Appendix B.
+
+    Appendix B rows a product, not every code Scryfall splits it into. `pza` — TMNT Source
+    Material, parent `tmt` — has no row of its own, and no other 4.3 rule catches it: its
+    `set_type` is `masterpiece`, its stamp is `oval`, and it carries no `flavor_name`. Reading
+    4.3.1 as "own row only" put 15 of its printings into the shipped artefacts and `pza` into
+    `search.json` as a facet value.
+    """
+    apx = appendices(sets=[set_entry("tmt", universes_beyond=True)])
+    sets = {
+        "tmt": scry_set("tmt"),
+        "pza": scry_set("pza", set_type="masterpiece", parent_set_code="tmt"),
+    }
+    result = _filter([printing(set_code="pza", security_stamp="oval")], sets=sets, apx=apx)
+    assert result.kept == []
+    assert (
+        result.dropped_by_rule[
+            "4.3.1 Appendix B universes_beyond or excluded (inherited from a parent)"
+        ]
+        == 1
+    )
+    assert result.dropped_via_parent == {"pza": "tmt"}, (
+        "an inherited drop must be reported, not silent"
+    )
+
+
+def test_the_parent_walk_climbs_more_than_one_level():
+    """`tltc` reaches `ltr` through `ltc`; the chain is not always one hop."""
+    apx = appendices(sets=[set_entry("ltr", universes_beyond=True)])
+    sets = {
+        "ltr": scry_set("ltr"),
+        "ltc": scry_set("ltc", parent_set_code="ltr"),
+        "tltc": scry_set("tltc", set_type="masterpiece", parent_set_code="ltc"),
+    }
+    result = _filter([printing(set_code="tltc")], sets=sets, apx=apx)
+    assert result.kept == []
+    assert result.dropped_via_parent == {"tltc": "ltr"}
+
+
+def test_the_nearest_row_wins_so_an_in_universe_child_survives():
+    """A child of an in-universe product is in-universe, whatever sits further up the chain."""
+    apx = appendices(
+        sets=[set_entry("ub", universes_beyond=True), set_entry("dom", plane="dominaria")]
+    )
+    sets = {
+        "ub": scry_set("ub"),
+        "dom": scry_set("dom", parent_set_code="ub"),
+        "dmr": scry_set("dmr", parent_set_code="dom"),
+    }
+    result = _filter([printing(set_code="dmr")], sets=sets, apx=apx)
+    assert len(result.kept) == 1
+    assert not result.dropped_via_parent
+
+
+def test_an_unrowed_set_with_no_rowed_ancestor_is_left_alone():
+    """4.3.1 must not become "no row means drop": reprint-only products carry no row (PRD 4.6)."""
+    sets = {"tst": scry_set(), "mma": scry_set("mma", set_type="masters")}
+    result = _filter([printing(set_code="mma")], sets=sets)
+    assert len(result.kept) == 1
+
+
+def test_a_parent_cycle_terminates():
+    """Scryfall would not publish one, but a parse of somebody else's data does not assume it."""
+    apx = appendices(sets=[set_entry("dom", plane="dominaria")])
+    sets = {"a": scry_set("a", parent_set_code="b"), "b": scry_set("b", parent_set_code="a")}
+    assert len(_filter([printing(set_code="a")], sets=sets, apx=apx).kept) == 1
+
+
 def test_secret_lair_is_a_rule_not_a_row():
     """Appendix B.4 states a predicate; new drop codes must not need an appendix edit."""
     result = _filter(
@@ -201,6 +278,41 @@ def test_universes_within_exemption_overrides_the_origin_test():
     ]
     result = exclude_cards(rows, [rows[1]], apx)
     assert result.included == {"within"}
+
+
+def test_basic_lands_are_included():
+    """PRD 4.4.4, which is a positive rule: nothing in 4.3 or 4.4 may quietly take them out.
+
+    Basic lands are the one card class where an over-eager set-type or layout rule would be easy
+    to miss — every plane has hundreds of them and their absence would read as a data gap, not a
+    rule change.
+    """
+    rows = [
+        printing(oracle_id="island", name="Island", set_code="lea"),
+        printing(oracle_id="wastes", name="Wastes", set_code="ogw"),
+    ]
+    apx = appendices(sets=[set_entry("lea"), set_entry("ogw")])
+    sets = {"lea": scry_set("lea"), "ogw": scry_set("ogw")}
+    assert len(_filter(rows, sets=sets, apx=apx).kept) == 2
+    assert exclude_cards(rows, rows, apx).included == {"island", "wastes"}
+
+
+def test_fiora_conspiracies_are_included():
+    """PRD 4.4.7. Conspiracies are booster cards printed on a plane, unlike planes and schemes.
+
+    The distinction is the layout: 4.3.3 drops `planar`, `scheme` and `vanguard`, and a conspiracy
+    is `normal`. Nothing else in the pipeline names conspiracies, so this is the only thing
+    stopping a future addition to `EXCLUDED_LAYOUTS` from emptying Fiora.
+    """
+    rows = [printing(oracle_id="backup-plan", name="Backup Plan", set_code="cns")]
+    apx = appendices(planes=["blind-eternities", "fiora"], sets=[set_entry("cns", plane="fiora")])
+    sets = {"cns": scry_set("cns", name="Conspiracy", set_type="draft_innovation")}
+    result = _filter(rows, sets=sets, apx=apx)
+    assert len(result.kept) == 1
+    assert exclude_cards(rows, result.kept, apx).included == {"backup-plan"}
+    assert assign_planes(
+        choose_first_printings(result.kept, {"backup-plan"}, sets), sets, apx
+    ).by_oracle_id == {"backup-plan": "fiora"}
 
 
 # --- PRD 4.5 first printing -------------------------------------------------------------------

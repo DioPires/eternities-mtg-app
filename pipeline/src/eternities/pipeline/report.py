@@ -37,6 +37,8 @@ class ReportInput:
     cards_excluded: Counter[str]
     via_parent: dict[str, str]
     via_override: list[str]
+    dropped_via_parent: dict[str, str] = field(default_factory=dict)
+    """PRD 4.3.1 read through 4.6.3: set code -> the ancestor whose row dropped it."""
     findings: list[Finding] = field(default_factory=list)
     plane_changes: list[tuple[str, str, str]] = field(default_factory=list)
     """``(card name, previous plane, new plane)`` — PRD 4.9.2's last section."""
@@ -48,29 +50,38 @@ def load_previous_planes(data_root: Path, exclude: str) -> tuple[str, dict[str, 
 
     No sidecar file: ``planes.json`` gives each plane's contiguous star range (data contract §2)
     and ``sets.bin``'s ORACLE_IDS section gives the star order, which is all the mapping needs.
+
+    "Previous" is the run with the latest ``asOf``/``generatedAt``, not the lexicographically
+    largest directory name. Directory names are content hashes and carry no ordering, so sorting on
+    them picks an arbitrary run the moment two production directories co-exist — and 4.9.2's diff
+    is only meaningful against the run this one actually follows.
     """
-    candidates = sorted(
-        d
-        for d in data_root.glob("*")
-        if d.is_dir() and d.name != exclude and (d / "manifest.json").exists()
-    )
-    for directory in reversed(candidates):
-        manifest = cast(
-            "dict[str, Any]", json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
-        )
+    production: list[tuple[tuple[str, str, str], Path]] = []
+    for directory in data_root.glob("*"):
+        if not directory.is_dir() or directory.name == exclude:
+            continue
+        manifest_path = directory / "manifest.json"
+        if not manifest_path.exists():
+            continue
+        manifest = cast("dict[str, Any]", json.loads(manifest_path.read_text(encoding="utf-8")))
         if manifest.get("dataset") != "production":
             continue
-        planes_doc = cast(
-            "dict[str, Any]", json.loads((directory / "planes.json").read_text(encoding="utf-8"))
-        )
-        oracle_ids, _ = decode_sets((directory / "sets.bin").read_bytes())
-        mapping: dict[str, str] = {}
-        for plane in cast("list[dict[str, Any]]", planes_doc["planes"]):
-            start = int(plane["starOffset"])
-            for oracle_id in oracle_ids[start : start + int(plane["starCount"])]:
-                mapping[oracle_id] = str(plane["slug"])
-        return directory.name, mapping
-    return None
+        key = (str(manifest.get("asOf", "")), str(manifest.get("generatedAt", "")), directory.name)
+        production.append((key, directory))
+
+    if not production:
+        return None
+    directory = max(production)[1]
+    planes_doc = cast(
+        "dict[str, Any]", json.loads((directory / "planes.json").read_text(encoding="utf-8"))
+    )
+    oracle_ids, _ = decode_sets((directory / "sets.bin").read_bytes())
+    mapping: dict[str, str] = {}
+    for plane in cast("list[dict[str, Any]]", planes_doc["planes"]):
+        start = int(plane["starOffset"])
+        for oracle_id in oracle_ids[start : start + int(plane["starCount"])]:
+            mapping[oracle_id] = str(plane["slug"])
+    return directory.name, mapping
 
 
 def diff_planes(dataset: Dataset, previous: dict[str, str]) -> list[tuple[str, str, str]]:
@@ -240,6 +251,27 @@ def render(data: ReportInput) -> str:
         )
     else:
         out.append("None: every first-printing set has its own Appendix B row.")
+
+    out.extend(["", "## Sets dropped through an ancestor's Appendix B row (PRD 4.3.1)", ""])
+    if data.dropped_via_parent:
+        out.extend(
+            _table(
+                ["Set", "Dropped by the row on"],
+                [
+                    [f"`{code}`", f"`{parent}`"]
+                    for code, parent in sorted(data.dropped_via_parent.items())
+                ],
+            )
+        )
+        out.append("")
+        out.append(
+            "Appendix B rows a product, not every set code Scryfall splits it into: a Universes "
+            "Beyond release ships tokens, promos, art series and bonus sheets that carry no row of "
+            "their own. 4.3.1 follows the Scryfall parent chain exactly as 4.6 rule 3 does, so "
+            "those children drop with their parent instead of leaking through."
+        )
+    else:
+        out.append("None: every dropped set carries its own row.")
 
     out.extend(
         [

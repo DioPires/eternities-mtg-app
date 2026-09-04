@@ -24,6 +24,7 @@ from typing import Any, Final, cast
 
 from .appendices import Appendices, SetEntry
 from .records import RawPrinting, ScrySet
+from .stages import governing_set_row
 
 WIKI_API: Final = "https://mtg.fandom.com/api.php"
 WIKI_CATEGORY: Final = "Category:Planes"
@@ -66,17 +67,12 @@ def _in_universes_beyond_set(
     Child sets - `pfin` (Final Fantasy Promos), `twho` (Doctor Who Tokens) - carry no Appendix B
     row of their own because 4.6 rule 3 already inherits one. A stamp check that ignored the
     parent would report them as unexplained triangles and make 4.3.5 look unsafe.
+
+    The walk itself lives in :func:`~eternities.pipeline.stages.governing_set_row`, which is what
+    4.3.1 uses to drop those same children. One implementation, so the two cannot drift apart.
     """
-    seen: set[str] = set()
-    current: str | None = code
-    while current is not None and current not in seen:
-        seen.add(current)
-        row = by_code.get(current)
-        if row is not None and row.universes_beyond:
-            return True
-        entry = sets.get(current)
-        current = entry.parent_set_code if entry else None
-    return False
+    resolved = governing_set_row(code, by_code, sets)
+    return resolved is not None and resolved[0].universes_beyond
 
 
 def verify_security_stamp(
@@ -199,8 +195,15 @@ def verify_set_codes(appendices: Appendices, sets: dict[str, ScrySet]) -> Findin
     )
 
 
-def verify_universes_within(all_printings: list[RawPrinting], appendices: Appendices) -> Finding:
-    """Q12 / PRD 4.4.5. Do ``slx`` cards share an ``oracle_id`` with their originals?"""
+def verify_universes_within(
+    all_printings: list[RawPrinting], appendices: Appendices, sets: dict[str, ScrySet]
+) -> Finding:
+    """Q12 / PRD 4.4.5. Do ``slx`` cards share an ``oracle_id`` with their originals?
+
+    The Secret Lair predicate of Appendix B.4 is a code prefix *and* a name substring, so it needs
+    the Scryfall set name. Passing the code twice made the clause dead — "Secret Lair" never
+    appears in a 3-4 character code — and left the finding resting on the prefix test alone.
+    """
     by_code = appendices.by_code()
     slx_oracle_ids = {p.oracle_id for p in all_printings if p.set_code == SECRET_LAIR_EXEMPT}
     shared: dict[str, set[str]] = {}
@@ -209,8 +212,11 @@ def verify_universes_within(all_printings: list[RawPrinting], appendices: Append
             continue
         row = by_code.get(printing.set_code)
         universes_beyond = row is not None and row.universes_beyond
-        secret_lair = appendices.secret_lair.matches(printing.set_code, printing.set_code)
-        if universes_beyond or secret_lair or printing.set_code.startswith("sl"):
+        scry_set = sets.get(printing.set_code)
+        secret_lair = scry_set is not None and appendices.secret_lair.matches(
+            scry_set.code, scry_set.name
+        )
+        if universes_beyond or secret_lair:
             shared.setdefault(printing.oracle_id, set()).add(printing.set_code)
 
     verdict = (

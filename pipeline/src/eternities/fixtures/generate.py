@@ -312,9 +312,9 @@ def build(spec: FixtureSpec) -> Dataset:
     radii = {s: layout.visual_radius(counts[s]) for s in named}
     mean_spacing = 2.0 * MULTIVERSE_RADIUS / max(math.sqrt(len(named)), 1.0)
     # PRD 5.3.3: spacing must exceed the radii sum plus at least twice the drift amplitude. Every
-    # plane drifts by 0.03 * mean_spacing, and a pair can drift toward each other, so the margin
-    # has to clear 4 x that, with slack for the float16 round trip.
-    margin = 0.15 * mean_spacing
+    # plane drifts by layout.DRIFT_FACTOR * mean_spacing, and a pair can drift toward each other,
+    # so the margin has to clear 4 x that, with slack for the float16 round trip.
+    margin = layout.PLANE_MARGIN_FACTOR * mean_spacing
     positions = layout.place_planes(
         [(s, radii[s], counts[s] == 0) for s in named], MULTIVERSE_RADIUS, margin
     )

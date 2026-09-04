@@ -115,7 +115,7 @@ def build(
     findings = [
         verify.verify_security_stamp(all_printings, appendices, scry_sets),
         verify.verify_set_codes(appendices, scry_sets),
-        verify.verify_universes_within(all_printings, appendices),
+        verify.verify_universes_within(all_printings, appendices, scry_sets),
         verify.verify_roster(appendices, wiki_titles),
     ]
 
@@ -141,6 +141,7 @@ def build(
             total_oracle_ids=len({p.oracle_id for p in all_printings}),
             printings_dropped=filtered.dropped_by_rule,
             unreleased_sets=filtered.unreleased_sets,
+            dropped_via_parent=filtered.dropped_via_parent,
             cards_excluded=excluded.excluded_by_rule,
             via_parent=assignment.via_parent,
             via_override=assignment.via_override,

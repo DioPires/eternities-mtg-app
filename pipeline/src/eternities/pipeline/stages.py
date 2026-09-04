@@ -43,6 +43,37 @@ _OTHER_SET_TYPE_PRIORITY: Final = 1
 
 UNIVERSES_BEYOND_STAMP: Final = "triangle"
 
+OWN_ROW_RULE: Final = "4.3.1 Appendix B universes_beyond or excluded"
+PARENT_ROW_RULE: Final = "4.3.1 Appendix B universes_beyond or excluded (inherited from a parent)"
+
+
+def governing_set_row(
+    code: str, by_code: dict[str, SetEntry], sets: dict[str, ScrySet]
+) -> tuple[SetEntry, str] | None:
+    """The Appendix B row that governs a set: its own, or the nearest one up its parent chain.
+
+    Appendix B rows a *product*, not every set code Scryfall splits it into. A Universes Beyond
+    release ships a spine set plus tokens, promos, art series, minigames and bonus sheets, and only
+    the spine gets a row — 4.6 rule 3 already inherits the plane through the Scryfall parent, so
+    nobody adds rows for the children. Reading 4.3.1 as "own row only" therefore leaks the children
+    of a Universes Beyond product into the data: `pza` (TMNT Source Material, parent `tmt`) is a
+    `masterpiece` with an `oval` stamp and no `flavor_name`, so no other 4.3 rule catches it either.
+
+    Nearest row wins rather than "any ancestor is flagged": a child of an in-universe product line
+    is in-universe, whatever sits further up the chain. Cycles are impossible in Scryfall's data but
+    are guarded anyway, because a parse of somebody else's data is not a place to trust that.
+    """
+    seen: set[str] = set()
+    current: str | None = code
+    while current is not None and current not in seen:
+        seen.add(current)
+        row = by_code.get(current)
+        if row is not None:
+            return row, current
+        entry = sets.get(current)
+        current = entry.parent_set_code if entry else None
+    return None
+
 
 # --------------------------------------------------------------------------------------------
 # Stage 2 — filter printings (PRD 4.3)
@@ -55,6 +86,11 @@ class PrintingFilterResult:
     dropped_by_rule: Counter[str]
     unreleased_sets: list[str]
     """PRD 4.9.2: sets excluded because they had not shipped on the run date."""
+    dropped_via_parent: dict[str, str] = field(default_factory=dict)
+    """Set code -> the ancestor whose Appendix B row dropped it (PRD 4.3.1, read through 4.6.3).
+
+    Reported for the same reason 4.6 reports its rule-3 inheritances: a set dropped because of a
+    row it does not carry itself must be visible, not silent."""
 
 
 def filter_printings(
@@ -67,11 +103,16 @@ def filter_printings(
     by_code = appendices.by_code()
     dropped: Counter[str] = Counter()
     unreleased: set[str] = set()
+    via_parent: dict[str, str] = {}
     kept: list[RawPrinting] = []
+    governing: dict[str, tuple[SetEntry, str] | None] = {}
 
     for printing in printings:
         scry_set = sets.get(printing.set_code)
-        row = by_code.get(printing.set_code)
+        if printing.set_code not in governing:
+            governing[printing.set_code] = governing_set_row(printing.set_code, by_code, sets)
+        resolved = governing[printing.set_code]
+        row = resolved[0] if resolved is not None else None
         rule = _printing_exclusion_rule(printing, scry_set, row, appendices, as_of)
         if rule is None:
             kept.append(printing)
@@ -79,9 +120,14 @@ def filter_printings(
         dropped[rule] += 1
         if rule == "4.3.8 set unreleased on the run date":
             unreleased.add(printing.set_code)
+        if rule == PARENT_ROW_RULE and resolved is not None:
+            via_parent[printing.set_code] = resolved[1]
 
     return PrintingFilterResult(
-        kept=kept, dropped_by_rule=dropped, unreleased_sets=sorted(unreleased)
+        kept=kept,
+        dropped_by_rule=dropped,
+        unreleased_sets=sorted(unreleased),
+        dropped_via_parent=dict(sorted(via_parent.items())),
     )
 
 
@@ -92,9 +138,12 @@ def _printing_exclusion_rule(
     appendices: Appendices,
     as_of: str,
 ) -> str | None:
-    """The first PRD 4.3 rule that excludes this printing, or ``None`` if it survives."""
+    """The first PRD 4.3 rule that excludes this printing, or ``None`` if it survives.
+
+    ``row`` is the *governing* row of :func:`governing_set_row`, not necessarily the set's own.
+    """
     if row is not None and row.drops_printings:
-        return "4.3.1 Appendix B universes_beyond or excluded"
+        return OWN_ROW_RULE if row.code == printing.set_code else PARENT_ROW_RULE
     if scry_set is not None and appendices.secret_lair.matches(scry_set.code, scry_set.name):
         return "4.3.2 Secret Lair"
     if scry_set is not None and scry_set.set_type in EXCLUDED_SET_TYPES:

@@ -1,31 +1,55 @@
 """PRD 8.9.1 invariants and PRD 4.9.1 determinism, over an assembled dataset.
 
-Two datasets are exercised: a small synthetic one built through the real
-:func:`~eternities.pipeline.assemble.build_dataset` (fast, always available), and the committed
-production dataset (skipped until `eternities build` has run, then checked in CI on every change).
+Three datasets are exercised, and the second one is here for a specific reason.
+
+* ``synthetic`` — 5 planes and 240 cards. Small enough to read.
+* ``dense`` — the whole Appendix A roster (83 planes) at 30 000 cards, production's shape.
+* the committed production dataset — read from bytes, so it only moves after a rebuild.
+
+Both of the first two go through the real :func:`~eternities.pipeline.assemble.build_dataset`,
+which matters: two of these invariants are constraints on a *margin* the pipeline computes, and a
+margin only binds when the data is dense enough to press against it.
+
+On the synthetic fixture the tightest plane pair clears by 35.9 units and only 2 of its 240 stars
+reach the frame clamp at all, so deleting the drift margin (``assemble.py``) or the float16 safety
+margin (``layout.py``) left both tests green — the regressions surfaced only via
+``test_committed_production_dataset_holds_the_invariants``, which reads already-committed bytes and
+so cannot fail until after a rebuild and recommit. PRD 9.1.4 wants them on the pipeline change
+itself.
+
+``dense`` is where they live: the tightest pair clears by 2.6 units and 219 stars sit above 1.19,
+against production's 2.76 and 155. Both mutations now fail. Note that ``fixture-scale`` would not
+have done the job for the first one — it is laid out by the fixture generator, which computes its
+own margin, so it cannot see a change to ``assemble.py``. ``test_fixtures.py`` covers that path.
+
+The two margins are also asserted directly, below, so a mutation is caught by arithmetic as well as
+by geometry. Building ``dense`` costs about eight seconds; the fixture is module-scoped.
 """
 
 from __future__ import annotations
 
 import itertools
 import math
+import struct
 from pathlib import Path
+from typing import Final
 
 import pytest
 from conftest import appendices, printing, read_json, scry_set, set_entry
 
 from eternities.contract.binary import decode_stars
 from eternities.contract.encode import encode_artefacts
-from eternities.contract.enums import FRAME_RADIUS
-from eternities.fixtures import layout
+from eternities.contract.enums import BLIND_ETERNITIES_SLUG, FRAME_RADIUS
 from eternities.contract.models import Dataset
+from eternities.fixtures import layout
+from eternities.pipeline.appendices import Appendices, load_appendices
 from eternities.pipeline.assemble import (
     MULTIVERSE_RADIUS,
     AssemblyStats,
     CardInput,
     build_dataset,
 )
-from eternities.pipeline.records import CardDetail, FaceDetail
+from eternities.pipeline.records import CardDetail, FaceDetail, ScrySet
 
 PLANES = ["blind-eternities", "dominaria", "ravnica", "segovia", "kylem"]
 SETS = {
@@ -46,6 +70,11 @@ APX = appendices(
 
 _IDENTITIES = ["W", "U", "B", "R", "G", "WU", "BRG", ""]
 _PLANE_OF_SET = {"lea": "dominaria", "rav": "ravnica", "cmd": "blind-eternities", "bbd": "kylem"}
+
+
+def _float16(value: float) -> float:
+    """``value`` as the encoder stores it: half precision, then back (data contract §3)."""
+    return struct.unpack("<e", struct.pack("<e", value))[0]
 
 
 def _detail(oracle_id: str, index: int) -> CardDetail:
@@ -86,11 +115,15 @@ def _cards(count: int = 240) -> list[CardInput]:
     return rows
 
 
-def _build() -> tuple[Dataset, AssemblyStats]:
+def _build(
+    cards: list[CardInput] | None = None,
+    sets: dict[str, ScrySet] | None = None,
+    apx: Appendices | None = None,
+) -> tuple[Dataset, AssemblyStats]:
     return build_dataset(
-        _cards(),
-        SETS,
-        APX,
+        _cards() if cards is None else cards,
+        SETS if sets is None else sets,
+        APX if apx is None else apx,
         {},
         dataset_name="test",
         as_of="2026-09-04",
@@ -99,9 +132,83 @@ def _build() -> tuple[Dataset, AssemblyStats]:
     )
 
 
-@pytest.fixture(scope="module")
-def dataset() -> Dataset:
-    return _build()[0]
+# --- the dense dataset (see the module docstring) ----------------------------------------------
+
+DENSE_CARDS: Final = 30_000
+DENSE_DUST_SHARE: Final = 0.22
+"""PRD 9.2.2's expected band; production came in at 17.4%, which is denser dust, not sparser."""
+
+
+def _dense_allocation(named: list[str]) -> dict[str, int]:
+    """Production's plane-size distribution: big spirals, a tail of clouds, some empty planes.
+
+    Deterministic on purpose — a seeded shuffle here would make a failure depend on which seed the
+    test happened to draw, and the point is a constraint that binds every run.
+    """
+    zero, small = named[-6:], named[-24:-6]
+    large = named[: -len(zero) - len(small)]
+    counts = dict.fromkeys(zero, 0)
+    counts.update(
+        {slug: 1 + (i * 7) % (layout.SPIRAL_THRESHOLD - 1) for i, slug in enumerate(small)}
+    )
+
+    weights = [1.0 / (i + 1.6) ** 0.95 for i in range(len(large))]
+    budget = DENSE_CARDS - round(DENSE_CARDS * DENSE_DUST_SHARE) - sum(counts.values())
+    scale = budget / sum(weights)
+    for slug, weight in zip(large, weights, strict=True):
+        counts[slug] = max(layout.SPIRAL_THRESHOLD, int(weight * scale))
+    return counts
+
+
+def _dense_dataset() -> Dataset:
+    """The whole Appendix A roster at roughly production's card count, through ``build_dataset``.
+
+    Appendix A rather than a synthetic roster: the number of planes is what decides how tightly
+    ``place_planes`` has to pack, and that is the quantity the drift margin is spent on.
+    """
+    roster = list(load_appendices().plane_slugs)
+    named = [s for s in roster if s != BLIND_ETERNITIES_SLUG]
+    counts = _dense_allocation(named)
+    counts[BLIND_ETERNITIES_SLUG] = DENSE_CARDS - sum(counts.values())
+
+    sets: dict[str, ScrySet] = {}
+    rows: list[CardInput] = []
+    index = 0
+    for plane_index, slug in enumerate(roster):
+        # One band per ~400 cards, so the chronology bands of 5.4.2 are exercised at scale too.
+        bands = max(1, min(24, counts[slug] // 400))
+        for band in range(bands):
+            code = f"s{plane_index:03d}{band:02d}"
+            sets[code] = scry_set(code, released_at=f"{1993 + band}-01-01")
+        for i in range(counts[slug]):
+            code = f"s{plane_index:03d}{i % bands:02d}"
+            oracle_id = f"00000000-0000-4000-8000-{index:012d}"
+            first = printing(
+                oracle_id=oracle_id,
+                printing_id=f"{oracle_id}-p",
+                set_code=code,
+                released_at=sets[code].released_at,
+                collector_number=str(i),
+            )
+            rows.append(
+                CardInput(
+                    oracle_id=oracle_id,
+                    plane_slug=slug,
+                    first_printing=first,
+                    printings=[first],
+                    detail=_detail(oracle_id, index),
+                )
+            )
+            index += 1
+
+    apx = appendices(planes=roster, sets=[set_entry(code, plane="dominaria") for code in sets])
+    return _build(rows, sets, apx)[0]
+
+
+@pytest.fixture(scope="module", params=["synthetic", "dense"])
+def dataset(request: pytest.FixtureRequest) -> Dataset:
+    """Every 8.9.1 invariant runs against both, for the reason in the module docstring."""
+    return _build()[0] if request.param == "synthetic" else _dense_dataset()
 
 
 # --- PRD 8.9.1 ---------------------------------------------------------------------------------
@@ -135,8 +242,38 @@ def test_positions_survive_the_float16_round_trip_inside_the_frame_radius(datase
     """The invariant has to hold on the *encoded* bytes, not just the in-memory floats."""
     artefacts, _ = encode_artefacts(dataset)
     stars = decode_stars(next(a for a in artefacts if a.path == "stars.bin").data)
-    for star in stars:
-        assert math.sqrt(star.x**2 + star.y**2 + star.z**2) <= FRAME_RADIUS
+    worst = max(math.sqrt(s.x**2 + s.y**2 + s.z**2) for s in stars)
+    assert worst <= FRAME_RADIUS, (
+        f"a star decodes at {worst!r}, outside the frame radius of {FRAME_RADIUS} — "
+        "layout.FRAME_CLAMP_SAFETY is what keeps the clamp inside float16's rounding"
+    )
+
+
+def test_the_frame_clamp_leaves_room_for_the_float16_round_trip():
+    """PRD 8.9.1, asserted on the margin itself rather than on a sample of stars.
+
+    ``layout._clamp_to_frame`` puts a star that overruns the frame *at* its limit, so the limit is
+    the worst case the encoder ever sees. Clamping to the frame radius exactly would round up and
+    break the invariant; this pins the safety factor that stops it.
+    """
+    assert _float16(FRAME_RADIUS) > FRAME_RADIUS, "float16(1.2) is 1.2001953125 — the reason for it"
+    limit = FRAME_RADIUS * layout.FRAME_CLAMP_SAFETY
+    assert _float16(limit) <= FRAME_RADIUS
+
+
+def test_the_placement_margin_clears_twice_the_drift_amplitude():
+    """PRD 5.3.3 and ``place_planes``'s contract, asserted on the margin the caller passes.
+
+    Rejection sampling only guarantees the gap the margin asks for, so if the margin stops covering
+    two planes drifting toward each other, the overlap invariant is broken by construction whatever
+    a particular seed happens to produce.
+    """
+    mean_spacing = 1.0
+    margin = layout.PLANE_MARGIN_FACTOR * mean_spacing
+    drift = layout.plane_motion("dominaria", mean_spacing).drift_amplitude
+    assert margin > 2.0 * drift, (
+        f"margin {margin} does not clear two planes drifting {drift} toward each other"
+    )
 
 
 def test_no_two_planes_overlap_even_at_maximum_drift(dataset: Dataset):
@@ -152,7 +289,8 @@ def test_no_two_planes_overlap_even_at_maximum_drift(dataset: Dataset):
             worst_case = distance - a.drift_amplitude - b.drift_amplitude
             assert worst_case > a.radius + b.radius, (
                 f"{a.slug} and {b.slug} overlap under drift: "
-                f"{worst_case:.2f} <= {a.radius + b.radius:.2f}"
+                f"{worst_case:.2f} <= {a.radius + b.radius:.2f} — the anti-overlap margin "
+                "place_planes is given (layout.PLANE_MARGIN_FACTOR) is what buys this gap"
             )
 
 

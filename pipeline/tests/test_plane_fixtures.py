@@ -59,6 +59,21 @@ PLANE_FIXTURES: list[tuple[str, str, str]] = [
     ("Sylvan Library", "dominaria", "Legends maps to Dominaria"),
 ]
 
+EXCLUDED_SETS: list[tuple[str, str]] = [
+    (
+        "pza",
+        "4.3.1 through the parent chain: TMNT Source Material has no Appendix B row, its parent "
+        "`tmt` does. Fifteen of its printings shipped in the first run — Brainstorm, Doubling "
+        "Season, Path to Exile — because 4.3.1 checked the printing's own set code only. No other "
+        "4.3 rule catches it: `masterpiece` set type, `oval` stamp, no flavor_name",
+    ),
+    ("omb", "4.3.1 through the parent chain: Through the Omenpaths Bonus Sheet, parent `mar`"),
+    ("sds", "4.3.1 through the parent chain: Stardates, parent `trk`"),
+    ("t40k", "4.3.1 through the parent chain: Warhammer 40,000 Tokens, parent `40k`"),
+]
+"""Sets that must not reach the artefacts at all. A set only enters the dictionary when one of its
+printings survives 4.3, so its absence there is the printing-level assertion (data contract §7)."""
+
 EXCLUDED_CARDS: list[tuple[str, str]] = [
     ("The One Ring", "4.4.3: Universes Beyond by origin, despite its reprints"),
     ("Orcish Bowmasters", "4.4.3: Universes Beyond by origin"),
@@ -99,6 +114,19 @@ def test_card_lands_on_its_expected_plane(
 @pytest.mark.parametrize(("name", "rule"), EXCLUDED_CARDS, ids=lambda v: str(v)[:40])
 def test_card_is_excluded(plane_of_card: dict[str, str], name: str, rule: str):
     assert name not in plane_of_card, f"{name!r} should have been excluded — {rule}"
+
+
+@pytest.mark.parametrize(("code", "rule"), EXCLUDED_SETS, ids=lambda v: str(v)[:40])
+def test_set_is_absent_from_the_artefacts(production_dir: Path, code: str, rule: str):
+    """PRD 9.1.5, applied to sets rather than cards.
+
+    Every set with at least one included printing gets a dictionary entry (data contract §7) and
+    becomes a facet value under 6.6.3, so "is it in `search.json`" is exactly "did any of its
+    printings survive 4.3".
+    """
+    search = read_json(production_dir / "search.json")
+    codes = {str(s["code"]) for s in search["sets"]}
+    assert code not in codes, f"`{code}` reached the artefacts — {rule}"
 
 
 def test_universes_within_card_is_reachable(plane_of_card: dict[str, str], production_dir: Path):

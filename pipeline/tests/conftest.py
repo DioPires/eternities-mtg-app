@@ -8,8 +8,9 @@ in-universe printing; each test overrides only the field whose rule it is exerci
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, NoReturn, cast
 
 import pytest
 
@@ -125,18 +126,32 @@ def appendices(
     )
 
 
+def _no_production_dataset(reason: str) -> NoReturn:
+    """Skip locally, fail in CI.
+
+    Locally a missing production dataset is an ordinary state: `eternities build` needs a 78 MB
+    bulk file and nobody should have to download it to run the unit tests. In CI it is a defect —
+    the 9.1.5 table, the four exclusions and the production invariant test are the gate PRD 9.1.4
+    wants on every change, and a silent skip would let all of them disappear at once by losing one
+    key in `datasets.json`.
+    """
+    if os.environ.get("CI"):
+        pytest.fail(f"{reason} — PRD 9.1.5 must run in CI, not skip")
+    pytest.skip(reason)
+
+
 @pytest.fixture(scope="session")
 def production_dir() -> Path:
-    """The committed production dataset, or a skip when none has been built yet."""
+    """The committed production dataset (see :func:`_no_production_dataset`)."""
     if not DATASETS_FILE.exists():
-        pytest.skip("web/datasets.json is missing")
+        _no_production_dataset("web/datasets.json is missing")
     registry = cast("dict[str, Any]", json.loads(DATASETS_FILE.read_text(encoding="utf-8")))
     name = registry.get("production")
     if not name:
-        pytest.skip("no production dataset committed yet (run `eternities build`)")
+        _no_production_dataset("no production dataset committed yet (run `eternities build`)")
     directory = DATA_ROOT / str(name)
     if not (directory / "manifest.json").exists():
-        pytest.skip(f"production dataset {name} is not on disk")
+        _no_production_dataset(f"production dataset {name} is not on disk")
     return directory
 
 
