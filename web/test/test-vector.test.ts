@@ -351,6 +351,42 @@ describe('streaming reader (PRD 8.3, 6.8.1)', () => {
     expect(reader.expectedRecords).toBe(vector.starCount)
     expect(reader.snapshot().x(2)).toBe(vector.stars[2]!.x)
   })
+
+  it('does not allocate a corrupt header’s record count', () => {
+    // Sizing the destination from `recordCount` is what makes the streaming path linear rather
+    // than quadratic, but `recordCount` is an unvalidated uint32 off the wire and the streaming
+    // path has no equivalent of the length check `decodeStars` does. A header claiming four
+    // billion records asks for 48 GB and threw `RangeError` on the first chunk, where the old
+    // chunk-list code streamed whatever actually arrived.
+    const source = new Uint8Array(bytes('stars.bin'))
+    const corrupt = source.slice()
+    new DataView(corrupt.buffer).setUint32(8, 0xffffffff, true)
+
+    const reader = new StarStreamReader()
+    expect(() => reader.push(corrupt)).not.toThrow()
+    expect(reader.expectedRecords).toBe(0xffffffff)
+    // Still streams what genuinely arrived, and still refuses to call it done.
+    expect(reader.completeRecords).toBe(vector.starCount)
+    expect(reader.done).toBe(false)
+    expect(reader.snapshot().x(2)).toBe(vector.stars[2]!.x)
+  })
+
+  it('grows geometrically when a file runs past its declared length', () => {
+    // `grow` used to size exactly to what had arrived, so once a file overran its header every
+    // subsequent chunk reallocated and recopied the whole buffer — the quadratic behaviour that
+    // sizing from the header exists to remove, back again on the one path already anomalous.
+    const source = new Uint8Array(bytes('stars.bin'))
+    const reader = new StarStreamReader()
+    reader.push(source)
+    expect(reader.done).toBe(true)
+
+    // 40 chunks past the end. Under exact-fit growth this is 40 reallocations; under doubling it
+    // is at most a handful, and the records the header declared decode unchanged either way.
+    for (let i = 0; i < 40; i += 1) reader.push(new Uint8Array(64))
+    expect(reader.completeRecords).toBe(vector.starCount)
+    expect(reader.snapshot().x(2)).toBe(vector.stars[2]!.x)
+    expect(reader.snapshot().typeMask(5)).toBe(vector.stars[5]!.typeMask)
+  })
 })
 
 describe('float16 decoding', () => {

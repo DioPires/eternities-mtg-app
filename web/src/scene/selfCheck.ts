@@ -25,7 +25,10 @@
  * Two things follow, both worth knowing before reading a result. A star inside a galaxy core is
  * covered by a nearer sprite and cannot be found at all — that is `unmeasured`, and it is a fact
  * about the fixture, so the run samples widely and demands a floor of real measurements rather
- * than a share of them. And the resolution is the pixel grid: see `COINCIDENT_PX` for what size of
+ * than a share of them. But `unmeasured` is *also* what a mirror error too large to fit the search
+ * window looks like, which made it an escape hatch for the worst version of the very bug this
+ * exists to catch: see `DARK_ROW_MIN_SAMPLES`, which tells the two apart by how they distribute
+ * across plane rows. And the resolution is the pixel grid: see `COINCIDENT_PX` for what size of
  * disagreement this does and does not catch, which was measured by injection rather than assumed.
  *
  * Nothing runs unless `?selfcheck=1` asks for it. `scripts/verify-browser.mjs` is the caller.
@@ -42,24 +45,42 @@ import { SELF_CHECK_PICK_MIN_PX } from './tuning'
 
 export interface SelfCheckResult {
   readonly checked: number
+  /**
+   * Measured samples where the star the mirror asked about is also the one the pointer would have
+   * selected there. `agreed + occluded + missed.length === measured`, not `checked`: an unmeasured
+   * sample established nothing and is bucketed nowhere. It used to fall through into this bucket
+   * and `occluded` — `drawn < 0` is not `> COINCIDENT_PX` — so the two of them summed to all 64
+   * samples and reported coverage the run had only over the measured ones.
+   */
   readonly agreed: number
   readonly offScreen: number
   /**
-   * Stars where the picker returned a *different* star that the mirror also places on the same
-   * pixel. Inside a galaxy's core several stars share a pixel and the id pass depth-sorts them, so
-   * this is the id buffer working correctly, not the mirror being wrong — and the mirror still had
-   * to be right about the other star for it to land there.
+   * Measured samples where the picker returned a *different* star that the mirror also places on
+   * the same pixel. Inside a galaxy's core several stars share a pixel and the id pass depth-sorts
+   * them, so this is the id buffer working correctly, not the mirror being wrong — and the mirror
+   * still had to be right about the other star for it to land there. Only samples whose own star
+   * was located reach this bucket, which is what makes the second half of that sentence true.
    */
   readonly occluded: number
   /**
    * Samples where the star was nowhere in its own pick window. Either the mirror is more than half
-   * a window out or a nearer sprite covered it entirely; from inside the check the two look the
-   * same, so these are counted rather than judged. A run made almost entirely of these has
-   * measured nothing, which is what `ok` guards against.
+   * a window out or a nearer sprite covered it entirely; from inside a single sample the two look
+   * the same, so these are counted rather than judged. Two things then judge them in aggregate: a
+   * run made almost entirely of these has measured nothing, and a run where they concentrate on
+   * one well-sampled plane row has found a mirror error too large to measure. See `ok`.
    */
   readonly unmeasured: number
   /** `[planeRow, count]` for the unmeasurable samples, commonest first. */
   readonly unmeasuredRows: readonly (readonly [number, number])[]
+  /** `[planeRow, count]` for *every* sample taken — the denominator of the line above. */
+  readonly sampledRows: readonly (readonly [number, number])[]
+  /**
+   * `[planeRow, unmeasured, sampled]` for rows the check sampled often enough to judge and then
+   * located essentially nothing on. See {@link DARK_ROW_MIN_SAMPLES}: this is the assertion that a
+   * mirror error big enough to push a whole row out of its own pick windows fails rather than
+   * passing quietly, which is the one thing the offset measurement cannot see.
+   */
+  readonly darkRows: readonly (readonly [number, number, number])[]
   /**
    * Stars the shader drew further from the mirror's pixel than the tolerance allows. Real
    * disagreements, measured against the shader rather than against the mirror's own other answers.
@@ -135,9 +156,14 @@ const world = new Vector3()
  * 2 px self-check sprite, the worst disagreement is 1.0 px on both fixtures and the mean is 0.2–0.3
  * px, most of which is the window's own pixel quantisation.
  *
- * Sensitivity, stated plainly: a per-star error of 3 px or more fails, and a systematic drift
- * shows in `meanOffsetPx` from about 1.5 px. Below that the check passes — verified by injection,
- * not assumed. A 4 px error confined to the dust row fails and names the row.
+ * Sensitivity, stated plainly: an error of 3 px or more *on a star the check located* fails, and a
+ * systematic drift shows in `meanOffsetPx` from about 1.5 px. Below that the check passes —
+ * verified by injection, not assumed.
+ *
+ * The qualification is load-bearing and is why this constant is not the whole story. Beyond about
+ * half the 11 px search window the star is not in its own window to be measured, so this bound
+ * goes blind exactly as the error grows past it. {@link DARK_ROW_MIN_SAMPLES} is what catches it
+ * there.
  */
 const COINCIDENT_PX = 3
 
@@ -150,6 +176,67 @@ const COINCIDENT_PX = 3
  * response is to sample more and require a real number of hits rather than a share of them.
  */
 const MIN_MEASURED = 16
+
+/**
+ * The assertion that closes `unmeasured`'s escape hatch.
+ *
+ * `distanceTo` searches an 11×11 window centred on the mirror's prediction, so the check's
+ * sensitivity is not monotone in the size of the error: a star the mirror puts more than half a
+ * window out is not in its own window at all, comes back `-1`, and is scored `unmeasured` —
+ * dropped from the mean, from `missed` and from `ok` alike. Injecting `py += 2` into the dust row
+ * of `fixture-small` fails the check; injecting `py += 3`, `4` or `6` — the same bug, larger —
+ * passed it, with a *better* mean than the clean run, because all 15 row-0 samples went dark. That
+ * is the exact PRD 8.5.7 catastrophe reported as agreement.
+ *
+ * What separates the two causes of `unmeasured` is not the individual sample — from inside one
+ * sample they are identical — but how they distribute across plane rows. Occlusion is a property
+ * of one star's neighbourhood: it strikes the stars inside a galaxy core and not the ones in its
+ * halo, so it is scattered, and it leaves plenty of the same row measurable. The mirror is written
+ * per plane row, so an error in it moves every star on that row together and takes the whole row
+ * out at once. A row that went all but entirely dark is therefore the signature of the bug and not
+ * of the field — provided enough of it was sampled to tell the difference, which is what the floor
+ * below is for. Rows sampled fewer times than that are reported but not judged; on an 83-plane fixture
+ * most rows draw one sample and can never be either.
+ *
+ * Both numbers are set from measurement, and the floor is the load-bearing one. A first attempt
+ * used four samples and failed the *clean* `fixture-scale` run: rows 47 and 43 drew five and four
+ * samples and every one of them was occluded. With 37 of 64 samples unmeasurable on that fixture,
+ * a run of four or five dark in a row is ordinary luck, not evidence. Ten is above every row that
+ * behaved that way — the largest was seven — and below the rows that carry a real sample:
+ *
+ *     fixture-small, clean    row 4: 8/27 dark    row 3: 7/17    row 0: 0/15    row 1: 1/5
+ *     fixture-scale, clean    row 0: 1/15 dark    row 67: 5/7    row 47: 5/5    row 43: 4/4
+ *     fixture-small, py += 3 injected into row 0  row 0: 15/15 dark
+ *
+ * So the judged rows sit at 0.0–0.41 clean against 1.0 injected, and 0.9 divides them with two
+ * orders of magnitude of room: reaching it from a 0.41 base rate over 17 samples is a 1-in-10⁶
+ * event. It is 0.9 rather than 1.0 so that one measurable star on an otherwise displaced row does
+ * not buy the whole row an exemption.
+ *
+ * What this does not do is judge a thinly sampled row. Sixty-four samples over `fixture-scale`'s
+ * 83 planes leave most rows with one sample each, and the only row there that clears the floor is
+ * row 0 — which is the Blind Eternities dust, the row PRD 8.5.7's failure is named after and the
+ * one Phase 2b's tether frames. `docs/star-renderer.md` states that limit rather than papering
+ * over it; the draw-range fix deferred to Phase 2b is what removes it.
+ */
+const DARK_ROW_MIN_SAMPLES = 10
+const DARK_ROW_RATE = 0.9
+
+/**
+ * The dark-row rule of {@link DARK_ROW_MIN_SAMPLES}, as a function of the two tallies alone.
+ *
+ * Separated from `sample` so it can be tested without a GPU: the rule is the whole assertion, and
+ * everything around it needs a driver, a fixture and a second of wall clock to exercise.
+ */
+export function findDarkRows(
+  sampledRows: ReadonlyMap<number, number>,
+  unmeasuredRows: ReadonlyMap<number, number>,
+): readonly (readonly [number, number, number])[] {
+  return [...sampledRows.entries()]
+    .map(([row, taken]) => [row, unmeasuredRows.get(row) ?? 0, taken] as const)
+    .filter(([, dark, taken]) => taken >= DARK_ROW_MIN_SAMPLES && dark / taken >= DARK_ROW_RATE)
+    .sort((a, b) => b[1] - a[1])
+}
 
 /** Where the CPU mirror says a star is, in device pixels. `null` when it is off screen. */
 function mirrorPixel(
@@ -241,6 +328,7 @@ async function sample(
   let checked = 0
   let unmeasured = 0
   const unmeasuredRows = new Map<number, number>()
+  const sampledRows = new Map<number, number>()
   let offsetTotal = 0
   let offsetMax = 0
   // Every sample that contributed to `offsetTotal`, which is the occluded ones *and* the misses
@@ -281,6 +369,10 @@ async function sample(
     }
 
     checked += 1
+    // The denominator for `unmeasuredRows`. Counted here, at the same point the sample enters
+    // `checked`, so the two tallies are over exactly the same set of samples.
+    const row = geometry.planeRowOf(index)
+    sampledRows.set(row, (sampledRows.get(row) ?? 0) + 1)
     // `pickQueued`, not `pick`: a `PICK_BUSY` here would decode as "some other star" and be scored
     // as a disagreement. The check must compare answers, never the absence of one.
     const picked = await picker.pickQueued(renderer, scene, camera, pixel.x, pixel.y)
@@ -294,24 +386,27 @@ async function sample(
     const drawn = picker.distanceTo(index)
     if (drawn < 0) {
       // Not in the window at all: either the mirror is more than half a window out, or a nearer
-      // sprite covered every pixel this star had. The two are indistinguishable from here, so
-      // count it rather than scoring it, and let the totals below decide whether the run measured
-      // enough to mean anything. Broken down by plane row, because "every unmeasurable sample is
-      // on one row" would mean something quite different from "they are spread across the field".
+      // sprite covered every pixel this star had. The two are indistinguishable from *this* sample,
+      // so count it rather than scoring it — and count it against its plane row, because the two
+      // causes do not distribute the same way across rows. Occlusion is a property of one star's
+      // neighbourhood; a mirror error is a property of a whole row. `darkRows` below is what turns
+      // that difference into a verdict.
       unmeasured += 1
-      const row = geometry.planeRowOf(index)
       unmeasuredRows.set(row, (unmeasuredRows.get(row) ?? 0) + 1)
-    } else {
-      offsetTotal += drawn
-      offsetMax = Math.max(offsetMax, drawn)
-      offsetSamples += 1
+      // Not scored as agreement either. An unmeasured sample established nothing about the mirror,
+      // and letting it fall through into `agreed`/`occluded` reported coverage the run never had.
+      continue
     }
+
+    offsetTotal += drawn
+    offsetMax = Math.max(offsetMax, drawn)
+    offsetSamples += 1
 
     if (drawn > COINCIDENT_PX) {
       missed.push({
         index,
         picked,
-        planeRow: geometry.planeRowOf(index),
+        planeRow: row,
         x: Math.round(pixel.x * 10) / 10,
         y: Math.round(pixel.y * 10) / 10,
         z: Math.round(pixel.z * 1000) / 1000,
@@ -328,6 +423,9 @@ async function sample(
   }
 
   const maxOffsetPx = Math.round(offsetMax * 100) / 100
+  // Rows the check looked at often enough to judge, and located nothing on. Read off the two
+  // tallies above rather than tracked separately, so it cannot disagree with what is reported.
+  const darkRows = findDarkRows(sampledRows, unmeasuredRows)
   return {
     checked,
     agreed,
@@ -335,6 +433,8 @@ async function sample(
     occluded,
     unmeasured,
     unmeasuredRows: [...unmeasuredRows.entries()].sort((a, b) => b[1] - a[1]),
+    sampledRows: [...sampledRows.entries()].sort((a, b) => b[1] - a[1]),
+    darkRows,
     missed,
     meanOffsetPx: offsetSamples > 0 ? Math.round((offsetTotal / offsetSamples) * 100) / 100 : 0,
     maxOffsetPx,
@@ -344,10 +444,14 @@ async function sample(
     buffer: [renderer.domElement.width, renderer.domElement.height],
     canvasBytes,
     positionMode: geometry.positionMode,
-    // Nothing may have missed, and the run must have located enough stars for that to mean
-    // something. Without the second clause the check passes vacuously on a crowded field: no
-    // misses, because nothing was ever compared. An absolute floor rather than a fraction, because
-    // what fraction is measurable is a property of the fixture's density, not of the mirror.
-    ok: missed.length === 0 && offsetSamples >= MIN_MEASURED,
+    // Three clauses, for three ways the mirror can be wrong.
+    //
+    // Nothing may have missed — the mirror agrees with the shader wherever the two were compared.
+    // The run must have located enough stars for that to mean something, or the check passes
+    // vacuously on a crowded field: no misses, because nothing was ever compared. An absolute
+    // floor rather than a fraction, because what fraction is measurable is a property of the
+    // fixture's density, not of the mirror. And no plane row may have gone dark, or an error too
+    // large to measure passes as an error that was never there — see `DARK_ROW_MIN_SAMPLES`.
+    ok: missed.length === 0 && offsetSamples >= MIN_MEASURED && darkRows.length === 0,
   }
 }

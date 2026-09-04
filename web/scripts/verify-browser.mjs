@@ -252,10 +252,14 @@ async function verify(dataset, allowSoftware) {
           : ''),
     )
     console.log(
-      `    of those the pointer would have selected ${selfCheck.agreed} exactly and ` +
-        `${selfCheck.occluded} via a nearer star (${selfCheck.offScreen} off screen, ` +
+      `    of those ${selfCheck.measured} the pointer would have selected ${selfCheck.agreed} ` +
+        `exactly and ${selfCheck.occluded} via a nearer star (${selfCheck.offScreen} off screen, ` +
         `${selfCheck.positionMode} positions, buffer ${selfCheck.buffer.join('x')}, ` +
         `${selfCheck.spriteFloorPx}px pick sprite)`,
+    )
+    console.log(
+      `    samples per plane row: ` +
+        selfCheck.sampledRows.map(([row, n]) => `${row}x${n}`).join(' '),
     )
     if (selfCheck.canvasBytes < 5000) {
       problems.push(`the canvas looks empty (${selfCheck.canvasBytes}-byte PNG) — nothing drew`)
@@ -264,8 +268,10 @@ async function verify(dataset, allowSoftware) {
     }
 
     // A drift too small to trip any single sample still moves the mean. Measured on Metal at the
-    // 2px self-check sprite: 0.36px on fixture-small, 0.76px on fixture-scale, most of which is
-    // the pixel quantisation of the window itself. 1.5px is a real bound, not a formality.
+    // 2px self-check sprite: 0.29-0.33px on fixture-small and 0.21px on fixture-scale, most of which is
+    // the pixel quantisation of the window itself. 1.5px is a real bound, not a formality — it is
+    // five times the observed figure, and a uniform 2 world-unit drift on one plane row of
+    // `fixture-small` takes the mean to 1.61px.
     if (selfCheck.meanOffsetPx > 1.5) {
       throw new Error(
         `the shader draws stars a mean of ${selfCheck.meanOffsetPx}px from where the CPU motion ` +
@@ -284,6 +290,18 @@ async function verify(dataset, allowSoftware) {
         throw new Error(
           `the CPU motion mirror disagrees with the vertex shader for ${selfCheck.missed.length} ` +
             `stars — PRD 8.5.7's camera tether would frame the wrong point`,
+        )
+      }
+      // An error too large to measure looks like agreement: every star on the row is outside its
+      // own pick window, so none of them lands in `missed` and the mean improves. The row going
+      // dark is the only trace it leaves, and it is the trace of the worst version of the bug.
+      if (selfCheck.darkRows.length > 0) {
+        throw new Error(
+          `the self-check could not locate the stars of plane ` +
+            `${selfCheck.darkRows.length === 1 ? 'row' : 'rows'} ` +
+            `${selfCheck.darkRows.map(([row, dark, n]) => `${row} (${dark} of ${n} samples missing from their own pick window)`).join(', ')} ` +
+            `— a whole well-sampled row going dark is what a motion-mirror error too large to ` +
+            `measure looks like, not what occlusion looks like`,
         )
       }
       throw new Error(

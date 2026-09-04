@@ -99,18 +99,6 @@ export class IdPicker {
     })
   }
 
-  /**
-   * Where in the pick window the last resolved pick found its star, in device pixels from the
-   * queried centre. Zero after a miss.
-   *
-   * This is the pick pass's answer to "and where *is* it?", which is otherwise unobservable — the
-   * id alone cannot distinguish a star exactly under the pointer from one four pixels away, since
-   * the scan returns both. The GPU self-check needs that distinction: the window is eleven pixels
-   * wide, so without this it could not detect a motion-mirror error smaller than five.
-   */
-  hitDx = 0
-  hitDy = 0
-
   /** True while a pick is outstanding. The caller skips a frame rather than queueing up reads. */
   get pending(): boolean {
     return this.outstanding > 0
@@ -224,10 +212,7 @@ export class IdPicker {
     }
 
     await read
-    const found = decodeNearest(this.pixels)
-    this.hitDx = found === PICK_MISS ? 0 : (hitPixel % PICK_SIZE) - CENTRE
-    this.hitDy = found === PICK_MISS ? 0 : Math.floor(hitPixel / PICK_SIZE) - CENTRE
-    return found
+    return decodeNearest(this.pixels)
   }
 
   /**
@@ -266,13 +251,6 @@ export class IdPicker {
   }
 }
 
-/**
- * Which pixel of the window {@link decodeNearest} last took its answer from. Module-level rather
- * than returned, so the scan stays allocation-free on the hover path (PRD 7.3.2); `IdPicker.read`
- * copies it out immediately, and reads are serialised, so there is no window for it to go stale.
- */
-let hitPixel = 0
-
 /** Centre-out scan, so the star under the pointer beats one merely near it. */
 function decodeNearest(pixels: Uint8Array): number {
   for (let i = 0; i < SCAN_ORDER.length; i += 1) {
@@ -280,10 +258,7 @@ function decodeNearest(pixels: Uint8Array): number {
     const pixel = index * 4
     if (pixels[pixel + 3] === 0) continue
     const id = pixels[pixel]! + pixels[pixel + 1]! * 256 + pixels[pixel + 2]! * 65536
-    if (id > 0) {
-      hitPixel = index
-      return id - 1
-    }
+    if (id > 0) return id - 1
   }
   return PICK_MISS
 }

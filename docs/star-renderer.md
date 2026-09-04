@@ -103,6 +103,15 @@ The readback is `readRenderTargetPixelsAsync`, and the renderer, camera and scen
 pixels are already captured; awaiting first would leave the camera on the pick layer and the scene
 without its sky for however many frames the fence takes, and the frame loop renders during those.
 
+**What is clickable is deliberately not what is drawn.** The draw pass rounds a star to a disc; the
+id pass leaves its sprite square. Below about 2 px a round sprite's `discard` can reject every
+covered pixel and the star becomes unclickable altogether, so the id pass keeps the corners — which
+strictly enlarges a target PRD 8.5.6 already inflates on purpose. The cost, stated rather than left
+to be discovered: at the 7 px production floor the corner reach goes from 3.5 px to ~4.95 px, so a
+click on visibly empty sky up to ~1.5 px diagonally past a small star's disc selects the star instead
+of falling through to its plane. That is the right trade for keeping a one-pixel star reachable, but
+it is a real divergence and it lives in `ID_PASS`.
+
 Because the fence resolves a frame or two later, a pick can be in flight when the next one is asked
 for, and **"busy" is not "miss"** — `PICK_BUSY`, not `-1`. Conflating them cost clicks: a hover pick
 runs on every frame the pointer moved, so a click made while the pointer was still moving fell
@@ -153,14 +162,50 @@ real bug in it looks like.
 
 The check picks at a 2 px sprite rather than the production 7 px (`SELF_CHECK_PICK_MIN_PX`), because
 an inflated sprite is 7 px of some *nearer* star covering the one being measured. Stars it cannot
-locate at all — covered inside a galaxy core — are counted as `unmeasured` rather than judged, and
-the run must locate a floor of 16 before its verdict counts, so it cannot pass vacuously.
+locate at all are counted as `unmeasured` rather than judged, and the run must locate a floor of 16
+before its verdict counts, so it cannot pass vacuously.
 
-Measured on Metal, both fixtures: worst disagreement **1.0 px**, mean 0.2–0.3 px, against a 3 px
-tolerance. The sensitivity was established by injecting known errors into the mirror rather than
-assumed — a 4 px error confined to the dust row fails and names the row; a 1.5 px uniform drift
-passes. So what the check buys is "no star is drawn 3 px or more from where the mirror puts it, and
-no systematic drift above about 1.5 px mean".
+`unmeasured` has two causes and they are indistinguishable from a single sample: a nearer sprite
+covered the star inside a galaxy core, or the mirror put it more than half a pick window out and it
+is not in its own window at all. The second is the failure the check exists for, and it used to
+escape through this gap — the search window is 11 px, so **sensitivity is not monotone in the size
+of the error**. Injecting a uniform offset into the dust row of `fixture-small` and growing it:
+
+| injected into row 0 | mean | max | unmeasured rows | verdict |
+| --- | --- | --- | --- | --- |
+| none | 0.29 px | 1.0 | `4x8 3x7 1x1` | pass |
+| `py += 2` | 1.65 px | 5.1 | `4x8 3x7 0x1 1x1` | **fail** — mean, and one star past tolerance |
+| `py += 3` | 0.47 px | 1.41 | `0x15` `3x7 4x7` | **fail** — row 0 dark |
+| `py += 4` | 0.47 px | 1.0 | `0x15` `3x7 4x7 1x1` | **fail** — row 0 dark |
+| `py += 6` | 0.44 px | 1.41 | `0x15` `3x7 4x7` | **fail** — row 0 dark |
+
+Before the dark-row rule, the last three passed — with a *better* mean than the clean run, because
+all 15 dust samples left their windows at once and were dropped from the average. So the third
+clause: no plane row sampled at least 10 times may come back 90% unlocatable. What separates the two
+causes is not the sample but the distribution. Occlusion is a property of one star's neighbourhood
+and strikes scattered stars; the mirror is written per plane row, so an error in it moves the whole
+row together. The floor of 10 is measured, not chosen — on `fixture-scale` 37 of 64 samples are
+occluded, and at that base rate rows drawing four or five samples come back *entirely* dark in a
+clean run (rows 47 and 43 do). Judged rows sit at 0.0–0.41 clean against 1.0 injected.
+
+Measured on Metal, both fixtures: worst disagreement **1.0–1.41 px**, mean 0.21 px on
+`fixture-scale` and 0.29–0.33 px on `fixture-small`, against a 3 px tolerance. So what the check
+buys, stated to match what it actually asserts:
+
+- no star it located was drawn 3 px or more from where the mirror puts it;
+- no systematic drift above about 1.5 px mean across everything it located;
+- no well-sampled plane row was displaced far enough to vanish from its own pick windows.
+
+And what it still does not buy, which the deferred draw-range fix closes: a row too thinly sampled
+to judge can be displaced without failing. Sixty-four samples over `fixture-scale`'s 83 planes leave
+most rows with one sample, and row 0 is the only one there that clears the floor — that is the Blind
+Eternities dust, the row PRD 8.5.7 is named after and the one Phase 2b's tether frames, so the
+coverage is aimed at the right place, but it is coverage of one row and not of 83. An error scattered
+across rows rather than confined to one would likewise reduce coverage rather than fail.
+
+The `--use-angle=metal` flag that gets `verify-browser` onto a real driver is **macOS-specific**. On
+Linux CI it would be wrong, and the `SOFTWARE_RENDERER` regex would then be the only thing between
+the suite and a green SwiftShader run that establishes nothing about a driver.
 
 Two things the bench output does **not** say. The `cpu ms` row is only `StarScene`'s own callback
 duration — it excludes three.js's draw submission and the effect composer — so PRD 7.2's "CPU time

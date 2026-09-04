@@ -158,6 +158,17 @@ export function float16ToNumber(bits: number): number {
  * exactly the draw range the renderer may use. Because records are plane-ordered, whole planes
  * become drawable one after another (PRD 6.8.1).
  */
+/**
+ * The most `StarStreamReader` will allocate on a header's word alone, before the bytes to fill it
+ * have arrived.
+ *
+ * 64 MB is ~5.6 million star records — two orders of magnitude past the real dataset and 180×
+ * `fixture-scale`, so no honest file ever reaches it and the single-allocation fast path is
+ * unaffected. It is not a contract limit and nothing is rejected for exceeding it: a file that
+ * really is larger simply grows through `grow`.
+ */
+const MAX_EAGER_BODY_BYTES = 64 * 1024 * 1024
+
 export class StarStreamReader {
   /** Chunks held only until the header arrives and the buffer below can be sized from it. */
   private chunks: Uint8Array[] = []
@@ -193,9 +204,19 @@ export class StarStreamReader {
       if (this.header.kind !== BinaryKind.Stars) {
         throw new ContractError(`expected a stars file, got kind ${this.header.kind}`)
       }
-      // The header knows the length, so from here every chunk is written straight into place.
+      // The header knows the length, so from here every chunk is written straight into place —
+      // but `recordCount` is an unvalidated uint32 off the wire, and the streaming path has no
+      // equivalent of the length check `decodeStars` does against a whole buffer. Trusting it
+      // outright turns a corrupt header that still passes magic, version and the reserved word
+      // into a `RangeError` on the first chunk, where the old chunk-list code streamed whatever
+      // actually arrived. So size to the header only as far as `MAX_EAGER_BODY_BYTES` and let
+      // `grow` take it from there: a real file under the cap still allocates exactly once, which
+      // is the whole point of allocating from the header, and a claim of four billion records
+      // costs nothing until the bytes turn up.
       const declared = BINARY_HEADER_BYTES + this.header.recordCount * STAR_RECORD_BYTES
-      const sized = new Uint8Array(Math.max(declared, this.received))
+      const sized = new Uint8Array(
+        Math.max(Math.min(declared, BINARY_HEADER_BYTES + MAX_EAGER_BODY_BYTES), this.received),
+      )
       sized.set(joined, 0)
       this.buffer = sized
       this.chunks = []
@@ -203,14 +224,21 @@ export class StarStreamReader {
   }
 
   /**
-   * Make room for a chunk running past the length the header declared.
+   * Make room for a chunk that does not fit: either the file is longer than its own header says,
+   * or the header declared more than {@link MAX_EAGER_BODY_BYTES} and the bytes are now arriving
+   * to back the claim.
    *
-   * Nothing in the contract produces this — it means the file is longer than its own header says.
-   * `completeRecords` already clamps to `recordCount`, so the excess is ignored rather than
-   * decoded; growing rather than throwing keeps that tolerance exactly as it was.
+   * Doubling, not fitting exactly. Fitting reallocates and recopies on *every* chunk once this
+   * path is live, which is the quadratic behaviour that sizing from the header exists to remove —
+   * reintroducing it on the one path where the stream is already anomalous. Doubling makes the
+   * total copied linear in what arrives, at the cost of at most one unused buffer's worth of
+   * slack. `completeRecords` still clamps to `recordCount`, so an over-long file's excess is
+   * ignored rather than decoded, exactly as before.
    */
   private grow(incoming: number): void {
-    const grown = new Uint8Array(this.received + incoming)
+    const needed = this.received + incoming
+    const previous = this.buffer?.byteLength ?? 0
+    const grown = new Uint8Array(Math.max(needed, previous * 2))
     if (this.buffer !== null) grown.set(this.buffer.subarray(0, this.received), 0)
     this.buffer = grown
   }
