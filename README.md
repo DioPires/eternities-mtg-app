@@ -31,8 +31,13 @@ pipeline/                 Python 3.13, uv. Scryfall bulk data to artefacts.
   src/eternities/
     contract/             The data contract, encoder side. Frozen.
     fixtures/             Seeded synthetic datasets and the PRD 8.6 layout rules.
+    pipeline/             The PRD 8.2 stages: fetch, filter, exclude, first printing,
+                          assign plane, layout, emit — plus the run report.
     cli.py                The `eternities` CLI.
   data/appendix_a.json    The plane roster (PRD Appendix A).
+  data/appendix_b.json    The set to plane seed table (PRD Appendix B).
+  data/overrides.json     Card-name to plane overrides (PRD 4.1.5). Starts empty.
+  reports/<date>.md       One run report per pipeline run, committed with its data.
 web/                      Vite, React, TypeScript strict, react-three-fiber, Zustand. pnpm.
   src/data/               The data contract, decoder side. Frozen.
   src/navigation/         The navigation contract. Frozen. One state machine, two transports:
@@ -58,6 +63,7 @@ uv run pytest
 uv run eternities --help
 uv run eternities fixtures all        # regenerate both fixture datasets
 uv run eternities test-vector         # regenerate the shared test vector
+uv run eternities build               # the real run: Scryfall -> artefacts + report
 
 # Web
 cd web
@@ -86,14 +92,45 @@ each, multicolour a 16.5% minority, colourless 8.5% — so a plane's five arms c
 the bulge stays a bulge. Judging the star field against a fixture is only meaningful because of
 that; see `_COLOUR_IDENTITIES` in `pipeline/src/eternities/fixtures/generate.py`.
 
-`web/datasets.json` says which one the build points at. `ETERNITIES_DATASET=scale pnpm build`
-overrides it. The real dataset arrives in Phase 1.
+The real dataset is committed alongside them:
+
+| Dataset | Contents |
+|---|---|
+| `production` | 28 587 cards across 83 planes, 89 plane shards, from the Scryfall bulk file of 2026-09-04 |
+
+`web/datasets.json` says which one the build points at — `active` is the production dataset.
+`ETERNITIES_DATASET=scale pnpm build` overrides it with a fixture name or a raw hash.
+
+## Refreshing the data (PRD 8.8.3, 4.10)
+
+```sh
+cd pipeline
+uv run eternities build                       # --as-of defaults to today
+uv run pytest                                 # invariants + the 9.1.5 plane fixtures
+cd ../web && node scripts/check-budget.mjs --dataset "$(node -p "require('./datasets.json').production")"
+```
+
+`build` caches the Scryfall bulk file under `pipeline/.cache/` (git-ignored) keyed by Scryfall's
+`updated_at`, writes `web/public/data/<hash>/`, deletes the superseded hash directory, points
+`datasets.json` at the new one, and writes `pipeline/reports/<date>.md`. Commit the data directory
+and the report together in a pull request titled with the Scryfall bulk timestamp, and review the
+report diff — it is the reviewable artefact.
+
+Two rules stop a run rather than guess, both by design:
+
+- **An unknown Scryfall enum** (`set_type`, `layout`, `rarity`, `security_stamp`) — PRD 7.7.2.
+  Classify it in `contract/enums.py` (and its TypeScript twin, if it is a layout).
+- **A first-printing set with no Appendix B row** — PRD 4.6.4. Add the row to
+  `pipeline/data/appendix_b.json`. The error names every offending set and its card count.
+
+Determinism (PRD 4.9.1): the same bulk file, appendices and `--as-of` produce byte-identical
+artefacts *and* an identical manifest, so a refresh reviews as a diff.
 
 ## Where things stand
 
-Phase 0 (scaffold and contracts) is complete. Phase 2b (camera, navigation, labels) is complete:
-the navigation contract now has a real implementation, and `web/test/navigation.test.ts` runs the
-same suite over both it and the stub. Phases 1, 2a and 4 run in parallel — see
+Phases 0 (scaffold and contracts), 1 (data pipeline) and 2b (camera, navigation, labels) are
+complete: the navigation contract now has a real implementation, and `web/test/navigation.test.ts`
+runs the same suite over both it and the stub. Phases 2a and 4 run in parallel from here — see
 `implementation-plan.md` §3.
 
 `node web/scripts/verify-browser.mjs --dataset scale` drives a real browser through the intro, a

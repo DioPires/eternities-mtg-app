@@ -336,9 +336,9 @@ def build(spec: FixtureSpec) -> Dataset:
     radii = {s: layout.visual_radius(counts[s]) for s in named}
     mean_spacing = 2.0 * MULTIVERSE_RADIUS / max(math.sqrt(len(named)), 1.0)
     # PRD 5.3.3: spacing must exceed the radii sum plus at least twice the drift amplitude. Every
-    # plane drifts by 0.03 * mean_spacing, and a pair can drift toward each other, so the margin
-    # has to clear 4 x that, with slack for the float16 round trip.
-    margin = 0.15 * mean_spacing
+    # plane drifts by layout.DRIFT_FACTOR * mean_spacing, and a pair can drift toward each other,
+    # so the margin has to clear 4 x that, with slack for the float16 round trip.
+    margin = layout.PLANE_MARGIN_FACTOR * mean_spacing
     positions = layout.place_planes(
         [(s, radii[s], counts[s] == 0) for s in named], MULTIVERSE_RADIUS, margin
     )
@@ -434,7 +434,7 @@ def build(spec: FixtureSpec) -> Dataset:
                 disc_thickness=motion.disc_thickness,
                 bar=motion.bar,
                 palette=palette,
-                nebula_tint=_nebula_tint(palette),
+                nebula_tint=layout.nebula_tint(palette),
                 sets=refs,
             )
         )
@@ -529,37 +529,10 @@ def _mana_cost(oracle_id: str, identity: str) -> str:
 
 
 def _palette(rows: list[_Row]) -> tuple[float, float, float, float, float, float, float]:
-    """PRD 5.3.5: a plane's palette is its colour-identity distribution over the hue classes."""
     buckets = [0.0] * 7
     for row in rows:
         buckets[int(row.hue)] += 1.0
-    total = sum(buckets)
-    if total == 0:
-        return (1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7)
-    w, u, b, r, g, m, c = (v / total for v in buckets)
-    return (w, u, b, r, g, m, c)
-
-
-def _nebula_tint(
-    palette: tuple[float, float, float, float, float, float, float],
-) -> tuple[float, float, float]:
-    """PRD 5.3.5: a weighted blend of the two dominant hues, in the base hues of 5.4.8."""
-    base = (
-        (0.98, 0.94, 0.84),  # W warm ivory
-        (0.24, 0.55, 0.90),  # U cerulean
-        (0.45, 0.28, 0.70),  # B violet
-        (0.95, 0.42, 0.20),  # R ember orange
-        (0.24, 0.68, 0.42),  # G viridian
-        (0.92, 0.76, 0.30),  # multicolour gold
-        (0.72, 0.75, 0.80),  # colourless silver
-    )
-    ranked = sorted(range(7), key=lambda i: (-palette[i], i))[:2]
-    w0, w1 = palette[ranked[0]], palette[ranked[1]]
-    total = (w0 + w1) or 1.0
-    red, green, blue = (
-        (base[ranked[0]][c] * w0 + base[ranked[1]][c] * w1) / total for c in range(3)
-    )
-    return (red, green, blue)
+    return layout.palette_from_hue_counts(buckets)
 
 
 def blind_eternities_shard_count(dataset: Dataset) -> int:

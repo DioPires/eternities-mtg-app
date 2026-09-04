@@ -1,7 +1,8 @@
 {
-  "active": "c1deb2c243617b7c",
+  "active": "b63c58fcbd6bb584",
   "fixtures": {
     "scale": "c1deb2c243617b7c",
     "small": "ccd8d6b8bb8fff57"
-  }
+  },
+  "production": "b63c58fcbd6bb584"
 }
