@@ -17,6 +17,7 @@ In order of authority. Read the first two before changing anything.
 | [`implementation-plan.md`](implementation-plan.md) | Board-approved plan, v2. Read your phase section fully before you start. |
 | [`docs/data-contract.md`](docs/data-contract.md) | The pipeline ↔ web artefact formats. **Frozen.** |
 | [`docs/navigation-contract.md`](docs/navigation-contract.md) | The UI ↔ scene navigation API. **Frozen.** |
+| [`docs/camera-and-labels.md`](docs/camera-and-labels.md) | The Phase 2b camera rig, labels and plane-detail loading. |
 | [`docs/scryfall-policy.md`](docs/scryfall-policy.md) | Scryfall CORS and terms verification. Verdict: PASS. |
 | [`docs/deployment.md`](docs/deployment.md) | Vercel setup and the headers. |
 
@@ -34,8 +35,13 @@ pipeline/                 Python 3.13, uv. Scryfall bulk data to artefacts.
   data/appendix_a.json    The plane roster (PRD Appendix A).
 web/                      Vite, React, TypeScript strict, react-three-fiber, Zustand. pnpm.
   src/data/               The data contract, decoder side. Frozen.
-  src/navigation/         The navigation contract, plus its Phase 0 stub. Frozen.
-  src/scene/              The hello-scene.
+  src/navigation/         The navigation contract. Frozen. One state machine, two transports:
+                          the no-op stub and the camera rig.
+  src/camera/             The camera rig: tethered orbit, fly-to, attract mode (Phase 2b).
+  src/labels/             Plane and chronology-band labels, and the CPU projection they use.
+  src/plane-detail/       Plane shards fetched and parsed in a worker (amendment A1).
+  src/scene/              The hello-scene: sky and background starfield.
+  src/harness/            Phase 2b's demo shell. Deleted when 2a and 4 land.
   public/data/<hash>/     Committed artefacts, immutable, content-hashed.
   scripts/                Budget check, vercel.json generation, browser verification.
 contract/test-vectors/v1/ The shared byte-level test vector. Both languages assert against it.
@@ -80,5 +86,10 @@ overrides it. The real dataset arrives in Phase 1.
 
 ## Where things stand
 
-Phase 0 (scaffold and contracts) is complete. Phases 1, 2a, 2b and 4 run in parallel from here —
-see `implementation-plan.md` §3.
+Phase 0 (scaffold and contracts) is complete. Phase 2b (camera, navigation, labels) is complete:
+the navigation contract now has a real implementation, and `web/test/navigation.test.ts` runs the
+same suite over both it and the stub. Phases 1, 2a and 4 run in parallel — see
+`implementation-plan.md` §3.
+
+`node web/scripts/verify-browser.mjs --dataset scale` drives a real browser through the intro, a
+fly-to the Blind Eternities, its worker-parsed shards and Esc back out, under the production CSP.

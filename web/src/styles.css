@@ -92,3 +92,65 @@ body,
   max-width: 34rem;
   color: var(--muted);
 }
+
+/*
+ * Plane and chronology-band labels (PRD 5.3.8-12, 5.4.5).
+ *
+ * The visual design is Phase 5's; this is the geometry the layout solver needs to be true. Two
+ * rules are load-bearing rather than cosmetic:
+ *
+ *  - `will-change: transform` puts every label on its own compositor layer, so the per-frame
+ *    `transform` write of PRD 7.3.3 never touches layout;
+ *  - `position: absolute` with `top/left: 0` means the solver's pixel coordinates go straight into
+ *    `translate3d` with no offset arithmetic, and the labels never affect each other's boxes.
+ */
+.labels {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.15;
+  white-space: nowrap;
+  opacity: 0;
+  /* PRD 5.3.20: bloom is inside the canvas, so a label is never washed out by it — but it does sit
+     over additive stars, and a shadow is what keeps it legible there. */
+  text-shadow: 0 1px 3px rgb(0 0 0 / 85%);
+  will-change: transform, opacity;
+}
+
+.label-name {
+  font-weight: 550;
+  letter-spacing: 0.01em;
+}
+
+.label-sub {
+  font-size: 0.72em;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* PRD 5.4.5: set labels sit at low priority beneath star labels, and read as quieter. */
+.label-band .label-name {
+  font-weight: 400;
+  color: #b9c2dd;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.overlay kbd {
+  padding: 0.05em 0.35em;
+  border: 1px solid rgb(255 255 255 / 20%);
+  border-radius: 4px;
+  background: rgb(255 255 255 / 6%);
+  font: inherit;
+  font-size: 0.85em;
+}

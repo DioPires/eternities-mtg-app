@@ -7,10 +7,18 @@ Phase 0, risk 2).
 | Piece | Path |
 |---|---|
 | The typed API | `web/src/navigation/types.ts` |
-| No-op stub (Phase 0) | `web/src/navigation/stub.ts` |
+| The state machine, camera left abstract | `web/src/navigation/machine.ts` |
+| No-op transport (Phase 0's stub) | `web/src/navigation/stub.ts` |
+| Camera-rig transport (Phase 2b) | `web/src/navigation/scene.ts` |
+| The rig itself | `web/src/camera/` |
 | Demo caller (type-checks and runs) | `web/src/navigation/demo.ts` |
-| Behavioural tests | `web/test/navigation.test.ts` |
-| Real implementation | Phase 2b |
+| Behavioural tests, over **both** implementations | `web/test/navigation.test.ts` |
+
+**Since Phase 2b there is one state machine, not two.** `machine.ts` holds every rule in §2 and §3a
+below — focus, flight lifecycle, supersede, events — and takes a `NavigationTransport`: "start
+moving to this focus, tell me when you arrive". The stub's transport is a `setTimeout`; the scene's
+is the camera rig. Re-implementing the rules beside the rig would have produced two machines that
+agreed on the day they were written and drifted on the first bug fix.
 
 This is everything the UI is allowed to ask of the 3D scene. Phase 4 builds the whole app shell
 against `createNavigationStub()`; Phase 2b swaps in the real rig without a single call site
@@ -216,10 +224,16 @@ The one thing it fakes is time: `durationMs` is honoured with `setTimeout`. `Stu
 collapses the stub's own timings so tests never wait, while an *explicit* `durationMs` is still
 honoured, so hand-over and supersede stay exercisable.
 
-`web/test/navigation.test.ts` pins all six invariants of §2 plus every PRD rule in §3 and §3a.
-Phase 2b's implementation should pass the same suite against the real rig — that is the acceptance
-test for the swap. It also pins that every method survives being pulled off the object, which is a
-requirement of the contract (§2) and not just of the stub.
+`web/test/navigation.test.ts` pins all six invariants of §2 plus every PRD rule in §3 and §3a. It
+also pins that every method survives being pulled off the object, which is a requirement of the
+contract (§2) and not just of the stub.
+
+**Phase 2b closed the acceptance test this section asked for.** The suite is parameterised: all 27
+checks run against the Phase 0 stub *and* against `createSceneNavigation()`, which flies a real
+camera over fixture-scale's 83-plane roster. The swap is therefore a swap. Running it against the
+rig immediately found a rule the stub could not have exercised — a real transport reports its own
+cancellation back, and `failCardResolution` was settling that flight `'cancelled'` a moment before
+settling it `'failed'` (see `PendingFlight.stale` in `machine.ts`).
 
 That last group is not belt-and-braces. It is the **only** enforcement of §2's no-`this` rule,
 because the compiler does not catch a `this` (§2). So it has to cover every *branch*, not every
@@ -239,14 +253,35 @@ of `flyToPlane` and both of `focusParent`.
   navigation API never touches the URL. The one rule the API does impose: reason `'correction'`
   is a `replaceState` (§3a).
 
-## 7. Known open question, for Phase 2b
+## 7. Resolved in Phase 2b: manual zoom after hand-over
 
-**Manual zoom after hand-over does not move `focus`.** PRD 5.1.3 makes levels distances, and
-invariant 3 makes `focus` sticky through a hand-over. So a user who hands over at a card and then
-manually zooms out to multiverse distance still has a card focus and a card URL. No invariant covers
-it and no method expresses it, because deciding it needs the real rig: the answer is either "focus
-is sticky until the next explicit navigation, and the breadcrumb is what the user clicks to change
-it" or "the rig emits a distance-driven `focuschange`", and the second needs hysteresis thresholds
-that only exist once the camera does. Phase 2b (DEC-588) owns the decision. If it lands as
-distance-driven, the event already exists and only §2 changes; that is why this is a question and
-not a contract gap.
+**Decision: `focus` is sticky until the next explicit navigation. The rig does not emit a
+distance-driven `focuschange`.** No change to §2, no change to the API, and the alternative is
+recorded below so a later phase can reopen it with the reasons rather than from scratch.
+
+The question was: PRD 5.1.3 makes levels distances, and invariant 3 makes `focus` sticky through a
+hand-over, so a user who hands over at a card and then manually zooms out to multiverse distance
+still has a card focus and a card URL. Either that is correct, or the rig should notice and
+renavigate.
+
+Building the rig answered it three ways.
+
+1. **There is no honest threshold.** Levels are distances *from a tether*, and the tethers are not
+   nested: card level is 0.9–6 world units from a star, plane level is 1.4–8 plane radii from a
+   plane centre, and a plane radius on fixture-scale runs from 3 to 13. "Multiverse distance" from a
+   card on Segovia is inside Dominaria's plane level. A distance-driven `focuschange` would need a
+   threshold per tether pair, and every one of them would be a guess that changes the URL.
+2. **It would fight PRD 5.7.1's limits.** The rig already keeps the camera inside the focus's
+   distance limits — hard on zoom input (PRD 6.1.1 says zoom is "within the focus's distance
+   limits"), softly after a hand-over. A user cannot in fact zoom from card level to multiverse
+   distance: the zoom clamps. The scenario the question was about is reachable only by handing over
+   mid-flight, and there the soft spring brings the camera back inside the limits over about a
+   second, which resolves it without a route change.
+3. **It would push history changes into scrolling.** PRD 6.2.2 pushes a history entry for every
+   focus change that changes the route. A distance-driven `focuschange` would put entries in the
+   back stack for turning a scroll wheel, and PRD 6.7.1 makes the URL the source of truth, so the
+   address bar would rewrite itself while the user was still moving.
+
+So the breadcrumb (PRD 6.3.1) and Esc (PRD 6.1.3) remain the only ways to change level, which is
+what invariant 3 already said. **What Phase 4 must not do** is infer a level from the camera: read
+`snapshot().level`, which is derived from `focus` and is the same value the URL carries.
