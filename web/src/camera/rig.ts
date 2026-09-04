@@ -72,10 +72,25 @@ const ORBIT_DAMPING = 2.6
  * tether whose limit is 63 — and correcting that by moving the camera, however smoothly damped,
  * puts a step in its velocity on the very frame PRD 5.7.3 requires to be continuous. Feeding the
  * error into `distanceRate` instead makes it a force: the camera keeps the velocity it had and
- * eases inwards over a second or so. Chosen overdamped against `ORBIT_DAMPING` (λ² > 4k), so it
- * never overshoots and bounces.
+ * eases inwards over the following seconds — from 258 units outside a 60-unit limit it is within
+ * 5% of it after 5.5 s and 0.1% after 10 s. Chosen overdamped against `ORBIT_DAMPING` (λ² > 4k),
+ * so it never overshoots and bounces.
  */
 const LIMIT_SPRING = 1.5
+
+/**
+ * The characteristic roots of the limit spring, `r = (-λ ± √(λ² - 4k)) / 2` for `ẍ + λẋ + kx = 0`
+ * with `x = distance - limit`, `λ = ORBIT_DAMPING` and `k = LIMIT_SPRING`.
+ *
+ * Precomputed because `advanceDistance` solves that equation in closed form rather than stepping it
+ * — see the comment there. The constants above are chosen overdamped, so the discriminant is real
+ * and the two roots are distinct; the floor keeps them distinct (and the solution finite) if they
+ * are ever retuned to critical damping.
+ */
+const SPRING_ROOT_GAP = Math.sqrt(Math.max(ORBIT_DAMPING * ORBIT_DAMPING - 4 * LIMIT_SPRING, 1e-6))
+const SPRING_ROOT_SLOW = (-ORBIT_DAMPING + SPRING_ROOT_GAP) / 2
+const SPRING_ROOT_FAST = (-ORBIT_DAMPING - SPRING_ROOT_GAP) / 2
+
 /** Polar angle is clamped hard: the poles are a singularity in the spherical basis, not a view. */
 const MIN_POLAR = 0.12
 const MAX_POLAR = Math.PI - 0.12
@@ -251,7 +266,19 @@ export class CameraRig {
   durationMsFor(destination: Readonly<Tether>): number {
     if (this.reducedMotion) return REDUCED_MOTION_DURATION_MS
     tetherPosition(this.sTetherB, destination, this.motion)
-    const travel = distance(this.position, this.sTetherB)
+    return this.durationMsForTravel(distance(this.position, this.sTetherB))
+  }
+
+  /**
+   * The same rule, for a leg whose length the caller has worked out itself.
+   *
+   * `durationMsFor` measures from where the camera *is*, which is the wrong end of the second leg
+   * of a two-stage card fly-to (PRD 6.2.3): that leg starts where the first one lands, somewhere
+   * the camera has not been yet. PRD 5.7.3 scales both of them with their own distance all the
+   * same, so the scene measures the leg and asks here.
+   */
+  durationMsForTravel(travel: number): number {
+    if (this.reducedMotion) return REDUCED_MOTION_DURATION_MS
     // One multiverse radius of travel is "a one-level hop"; a cross-multiverse jump is several.
     const hops = travel / Math.max(this.framing.multiverseRadius, 1e-6)
     const scaled = DEFAULT_DURATION_MS * (1 + Math.max(0, hops - 0.35) * 1.1)
@@ -403,22 +430,88 @@ export class CameraRig {
       MIN_POLAR,
       MAX_POLAR,
     )
-    this.dist += decayIntegral(this.distanceRate, ORBIT_DAMPING, dt)
     const decay = Math.exp(-ORBIT_DAMPING * dt)
     this.azimuthRate *= decay
     this.polarRate *= decay
-    this.distanceRate *= decay
+    this.advanceDistance(dt)
+  }
 
-    // PRD 5.7.1's limits, as a force rather than a correction. A hand-over or an attract-mode exit
-    // can leave the camera well outside them, and moving it back — however smoothly — would put a
-    // step in its velocity on the one frame PRD 5.7.3 and 7.3.6 require to be continuous.
-    const excess =
-      this.dist < this.tether.minDistance
-        ? this.tether.minDistance - this.dist
-        : this.dist > this.tether.maxDistance
-          ? this.tether.maxDistance - this.dist
-          : 0
-    if (excess !== 0) this.distanceRate += excess * LIMIT_SPRING * dt
+  /**
+   * The distance channel, in closed form — PRD 5.7.1's limits without breaking PRD 9.1.3.
+   *
+   * Inside the limits the distance simply coasts, on the same exactly integrated decay the two
+   * angles use. Outside them the limit pulls back as a *force* rather than a position correction
+   * (see `LIMIT_SPRING`), which makes `(distance, distanceRate)` a damped oscillator. Stepping that
+   * acceleration per frame — `distanceRate += excess · k · dt` — was a Riemann sum and therefore
+   * frame-rate dependent: 0.022 units of spread between 30 and 120 fps over the same six seconds.
+   * Both regimes are solved exactly here instead.
+   *
+   * The step is also split at the instant the camera crosses a limit, so the regime changes at the
+   * same *time* at every frame rate rather than at whichever frame boundary comes next. Both
+   * crossing times are closed forms too, which is what keeps this a fixed amount of work: an
+   * overdamped spring cannot overshoot, so a step contains at most one crossing each way.
+   */
+  private advanceDistance(dt: number): void {
+    let remaining = dt
+    for (let guard = 0; guard < 4 && remaining > 1e-12; guard += 1) {
+      const limit =
+        this.dist < this.tether.minDistance
+          ? this.tether.minDistance
+          : this.dist > this.tether.maxDistance
+            ? this.tether.maxDistance
+            : null
+      remaining -=
+        limit === null ? this.coastDistance(remaining) : this.springDistance(limit, remaining)
+    }
+  }
+
+  /**
+   * A free coast inside the limits, cut short at the moment it would leave them. Returns the time
+   * it consumed, which is less than `dt` only when the camera crossed out.
+   */
+  private coastDistance(dt: number): number {
+    const rate = this.distanceRate
+    let t = dt
+    if (rate !== 0) {
+      const limit = rate > 0 ? this.tether.maxDistance : this.tether.minDistance
+      // `d(t) = d₀ + r₀(1 - e^(-λt))/λ`, solved for `d(t) = limit`. A share of 1 or more means the
+      // coast decays to a halt before it ever gets there; a share at (or below) zero means the
+      // camera is already sitting on the limit, where the spring has nothing to pull against.
+      const share = ((limit - this.dist) * ORBIT_DAMPING) / rate
+      if (share > 1e-9 && share < 1) t = Math.min(dt, -Math.log(1 - share) / ORBIT_DAMPING)
+    }
+    this.dist += decayIntegral(rate, ORBIT_DAMPING, t)
+    this.distanceRate = rate * Math.exp(-ORBIT_DAMPING * t)
+    return t
+  }
+
+  /**
+   * The overdamped return to `limit`, solved exactly, cut short at the instant the camera gets back
+   * inside. Returns the time it consumed.
+   */
+  private springDistance(limit: number, dt: number): number {
+    const x0 = this.dist - limit
+    const v0 = this.distanceRate
+    // `x(t) = a·e^(slow·t) + b·e^(fast·t)`, fitted to `x(0) = x₀` and `ẋ(0) = v₀`.
+    const a = (v0 - SPRING_ROOT_FAST * x0) / SPRING_ROOT_GAP
+    const b = (SPRING_ROOT_SLOW * x0 - v0) / SPRING_ROOT_GAP
+
+    let t = dt
+    if (a !== 0) {
+      // `x` reaches zero — the camera is back inside — where `e^((slow - fast)·t) = -b/a`. Two
+      // decaying exponentials of the same sign never cancel, so there is at most this one root.
+      const ratio = -b / a
+      if (ratio > 0) {
+        const crossing = Math.log(ratio) / SPRING_ROOT_GAP
+        if (crossing > 0 && crossing < t) t = crossing
+      }
+    }
+
+    const slow = Math.exp(SPRING_ROOT_SLOW * t)
+    const fast = Math.exp(SPRING_ROOT_FAST * t)
+    this.dist = limit + a * slow + b * fast
+    this.distanceRate = a * SPRING_ROOT_SLOW * slow + b * SPRING_ROOT_FAST * fast
+    return t
   }
 
   private advanceFlight(dt: number): void {

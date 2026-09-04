@@ -275,8 +275,11 @@ Building the rig answered it three ways.
    distance limits — hard on zoom input (PRD 6.1.1 says zoom is "within the focus's distance
    limits"), softly after a hand-over. A user cannot in fact zoom from card level to multiverse
    distance: the zoom clamps. The scenario the question was about is reachable only by handing over
-   mid-flight, and there the soft spring brings the camera back inside the limits over about a
-   second, which resolves it without a route change.
+   mid-flight, and there the soft spring draws the camera back towards the limits and resolves it
+   without a route change. It is not quick: from a hand-over 258 units outside a 60-unit limit the
+   camera is within 5% of the limit after 5.5 s and within 0.1% after 10 s, and it approaches
+   asymptotically rather than arriving. An earlier draft of this section said "about a second",
+   which was wrong — the PR's own test runs 12 s of frames before it asserts (DEC-606).
 3. **It would push history changes into scrolling.** PRD 6.2.2 pushes a history entry for every
    focus change that changes the route. A distance-driven `focuschange` would put entries in the
    back stack for turning a scroll wheel, and PRD 6.7.1 makes the URL the source of truth, so the

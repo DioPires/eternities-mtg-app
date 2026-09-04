@@ -91,7 +91,12 @@ export interface NavigationTransport {
   setReducedMotion: (enabled: boolean) => void
   /** PRD 5.3.22–23. Neither may touch focus or the route. */
   enterAttract: () => void
-  exitAttract: (cause: HandoverCause) => void
+  /**
+   * `focus` is the one attract mode never changed, and it is passed because the transport has to
+   * put the camera back on it: PRD 5.7.1 tethers the camera to the focus, and an attract tour
+   * leaves it tethered to whichever plane the tour was flying to. Read, never written.
+   */
+  exitAttract: (cause: HandoverCause, focus: Focus) => void
   dispose: () => void
 }
 
@@ -433,8 +438,9 @@ export function createNavigationMachine(
     if (!attract) return
     attract = false
     // PRD 5.3.23: "returns control without a jump" — the transport hands the camera back at its
-    // current position and velocity, exactly as it does for a fly-to.
-    transport.exitAttract(cause)
+    // current position and velocity, exactly as it does for a fly-to, and re-tethers it to the
+    // focus the tour left alone.
+    transport.exitAttract(cause, focus)
     emit('attractexit', { cause })
     notify()
   }

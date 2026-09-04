@@ -13,6 +13,7 @@
 
 import { describe, expect, it } from 'vitest'
 
+import { distance, vec } from '../src/camera/vec'
 import { levelOf, runNavigationDemo, type Focus, type NavigationApi } from '../src/navigation'
 import { createNavigationStub } from '../src/navigation/stub'
 import { createSceneNavigation } from '../src/navigation/scene'
@@ -536,3 +537,84 @@ for (const { name: implementation, create } of IMPLEMENTATIONS) {
   })
   })
 }
+
+/**
+ * Checks the stub cannot hold an opinion about, because they are about where the camera actually
+ * is. Run against `createSceneNavigation` only, with `drive: 'manual'` so the frames are ours.
+ */
+describe('the scene transport', () => {
+  const scenePlanes = loadFixturePlanes('scale')
+
+  const run = (scene: { update: (dt: number) => void }, seconds: number): void => {
+    for (let i = 0; i < 60 * seconds; i += 1) scene.update(1 / 60)
+  }
+
+  it('re-tethers to the focus when attract mode exits (PRD 5.7.1, 5.3.23)', () => {
+    const scene = createSceneNavigation(scenePlanes, { drive: 'manual', attractSeed: 3 })
+    expect(scene.api.snapshot().focus).toEqual({ kind: 'multiverse' })
+
+    scene.api.enterAttract()
+    run(scene, 20)
+    // The tour really is somewhere else by now: it flies to planes, and it is mid-leg here.
+    expect(scene.rig.currentTether.kind).toBe('plane')
+
+    const before = vec(scene.rig.position.x, scene.rig.position.y, scene.rig.position.z)
+    const distanceBefore = distance(before, vec())
+    scene.api.handOver('pointer')
+
+    expect(scene.api.snapshot().attract).toBe(false)
+    // PRD 5.7.1: "the camera is always tethered to a focus". Attract mode never changed focus, so
+    // the focus is still the multiverse — and before DEC-606 the camera was left on the tour's
+    // plane instead, then drove itself ~81 units to *that* plane's `maxDistance` with no input.
+    expect(scene.api.snapshot().focus).toEqual({ kind: 'multiverse' })
+    expect(scene.rig.currentTether.kind).toBe('multiverse')
+    expect(scene.rig.currentTether.planeIndex).toBe(-1)
+    // PRD 5.3.23: "returns control without a jump". `rebaseTo` re-derives the pose *from* the world
+    // position, so the camera has not moved at all rather than moved a little.
+    expect(distance(before, scene.rig.position)).toBeLessThan(1e-9)
+    expect(scene.rig.distanceToTether).toBeCloseTo(distanceBefore, 9)
+
+    // And it stays put: the multiverse's own limits already contain it, so nothing pulls it away.
+    // All that is left is the hand-over's inertia bleeding off over a couple of seconds.
+    run(scene, 20)
+    expect(scene.rig.currentTether.kind).toBe('multiverse')
+    expect(distance(before, scene.rig.position)).toBeLessThan(
+      scene.rig.framing.multiverseRadius * 0.1,
+    )
+    scene.api.dispose()
+  })
+
+  it('scales the two-stage card fly-to with distance under the 3.5 s cap (PRD 6.2.3, 5.7.3)', () => {
+    // The duration is not on the API — PRD 5.7.3 makes it the scene's, not the caller's — so it is
+    // measured the way a user experiences it: drive frames until the flight settles.
+    const flightMs = (from: Focus | null): number => {
+      const scene = createSceneNavigation(scenePlanes, {
+        drive: 'manual',
+        ...(from && { initialFocus: from }),
+      })
+      scene.api.flyToCard({ planeSlug: 'innistrad', oracleId: 'a' })
+      let frames = 0
+      while (scene.api.snapshot().flight !== null && frames < 120 * 10) {
+        scene.update(1 / 120)
+        frames += 1
+      }
+      scene.api.dispose()
+      return (frames / 120) * 1000
+    }
+
+    // Both of these are two-stage: neither start is inside Innistrad (PRD 6.2.3, not 6.2.4).
+    const fromKaldheim = flightMs({ kind: 'plane', slug: 'kaldheim' })
+    const fromHome = flightMs(null)
+
+    // PRD 6.2.3's 3.5 s is a *cap* on the combined flight. Before DEC-606 both of these took it in
+    // full, because the scene returned the cap unconditionally for every two-stage fly-to.
+    expect(fromKaldheim).toBeLessThan(3400)
+    expect(fromKaldheim).toBeGreaterThan(1200) // still two legs and a hold, not one hop
+    // PRD 5.7.3: further is slower, and the cap still binds at the far end.
+    expect(fromHome).toBeGreaterThan(fromKaldheim)
+    expect(fromHome).toBeLessThan(3600) // 3.5 s plus the frame it settles on
+
+    // PRD 6.2.4: from inside the plane it is one stage, and the cap has nothing to do with it.
+    expect(flightMs({ kind: 'plane', slug: 'innistrad' })).toBeLessThan(1400)
+  })
+})

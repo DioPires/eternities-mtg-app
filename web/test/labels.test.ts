@@ -158,6 +158,61 @@ describe('collision priority (PRD 5.3.10)', () => {
     expect(first[0]!.y).toBeCloseTo(second[0]!.y, 9)
   })
 
+  it('does not let a faded label push a visible one', () => {
+    // PRD 5.4.15 fades every plane label out at plane level, and PRD 5.4.5's band labels share the
+    // solver. A box nobody can see must not displace one they can: before DEC-606 the band was
+    // shoved aside by an invisible plane name sitting on the same point.
+    const shared = { sub: null, radiusPx: 20, depth: 60, onScreen: true, x: 800, y: 500 }
+    const out: LabelPlacement[] = []
+    const count = layoutLabels(
+      [
+        { ...shared, key: 'plane', text: 'Ravnica', tier: 'plane', priority: 900 },
+        { ...shared, key: 'band', text: 'Guildpact', tier: 'band', priority: 0, widthPx: 400 },
+      ],
+      out,
+      { ...VIEWPORT, planeLevelFade: 1 },
+    )
+    expect(count).toBe(2)
+    const plane = out.find((p) => p.key === 'plane')!
+    const band = out.find((p) => p.key === 'band')!
+    expect(plane.opacity).toBe(0)
+    expect(band.opacity).toBe(1)
+    // Same anchor, same radius, same font: the band lands exactly where the invisible one asked to.
+    expect(band.x).toBeCloseTo(shared.x, 6)
+    expect(band.y).toBeCloseTo(plane.y, 6)
+  })
+
+  it('keeps a shifted label inside the viewport', () => {
+    const out: LabelPlacement[] = []
+    const count = layoutLabels(
+      [
+        {
+          key: 'corner',
+          text: 'A Very Long Plane Name Indeed',
+          sub: null,
+          tier: 'plane',
+          priority: 1,
+          // Bottom-right corner: the label hangs below and to the right of nothing at all.
+          x: VIEWPORT.viewportWidth - 20,
+          y: VIEWPORT.viewportHeight - 10,
+          radiusPx: 40,
+          depth: 10,
+          onScreen: true,
+        },
+      ],
+      out,
+      VIEWPORT,
+    )
+    expect(count).toBe(1)
+    const placed = out[0]!
+    const halfWidth = (placed.text.length * placed.fontPx * 0.58 + 10) / 2
+    const halfHeight = (placed.fontPx * 1.3) / 2
+    expect(placed.x + halfWidth).toBeLessThanOrEqual(VIEWPORT.viewportWidth)
+    expect(placed.x - halfWidth).toBeGreaterThanOrEqual(0)
+    expect(placed.y + halfHeight).toBeLessThanOrEqual(VIEWPORT.viewportHeight)
+    expect(placed.y - halfHeight).toBeGreaterThanOrEqual(0)
+  })
+
   it('fades a label that cannot be shifted clear', () => {
     // Six long names stacked on one point: the shift budget runs out and PRD 5.3.10's "then fades"
     // is the only outcome left.
@@ -219,11 +274,7 @@ describe('occlusion and level (PRD 5.3.11, 5.4.15)', () => {
   it('fades every plane label out at plane level (PRD 5.4.15)', () => {
     const candidates = homeViewCandidates()
     const out: LabelPlacement[] = []
-    const count = layoutLabels(candidates, out, {
-      ...VIEWPORT,
-      focusedPlaneKey: 'ravnica',
-      planeLevelFade: 1,
-    })
+    const count = layoutLabels(candidates, out, { ...VIEWPORT, planeLevelFade: 1 })
     for (let i = 0; i < count; i += 1) expect(out[i]!.opacity).toBe(0)
   })
 

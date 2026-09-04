@@ -84,6 +84,36 @@ describe('frame-rate independence (PRD 9.1.3, 5.3.17)', () => {
     }
   })
 
+  it('holds the same path at 30, 60 and 120 fps while the distance-limit spring runs', () => {
+    // The other checks never leave the tether's distance limits, so they never engage the spring
+    // that PRD 5.7.1's limits are applied through. A hand-over mid-flight does: it lands the camera
+    // well outside the destination's `maxDistance` and lets the spring pull it back in over the
+    // following seconds. Integrating that acceleration per frame — `rate += excess · k · dt` — put
+    // 0.022 units between 30 and 120 fps here, two decimal places short of what this asserts.
+    const sampled = RATES.map((fps) => {
+      const rig = new CameraRig(planes)
+      const target = rig.framing.plane(emptyTether(), planeNamed('ravnica'))
+      rig.fly([{ tether: target, durationS: 3, holdS: 0 }], () => {})
+      step((dt) => {
+        rig.update(dt)
+      }, fps, 0.6)
+      rig.handOver()
+      // The spring is what is being measured, so fail loudly if the setup stopped engaging it.
+      expect(rig.distanceToTether).toBeGreaterThan(target.maxDistance)
+      step((dt) => {
+        rig.update(dt)
+      }, fps, ELAPSED_S)
+      expect(rig.distanceToTether).toBeGreaterThan(target.maxDistance)
+      return [rig.position.x, rig.position.y, rig.position.z, rig.distanceToTether]
+    })
+
+    const [at30, at60, at120] = sampled as [number[], number[], number[]]
+    for (let i = 0; i < at30.length; i += 1) {
+      expect(at60[i]!).toBeCloseTo(at30[i]!, 6)
+      expect(at120[i]!).toBeCloseTo(at30[i]!, 6)
+    }
+  })
+
   it('coasts the same distance after a drag at 30, 60 and 120 fps', () => {
     // Inertia is the classic place a rig stops being frame-rate independent: `angle += rate * dt`
     // with `rate *= decay` is a Riemann sum. `decayIntegral` integrates it exactly instead.

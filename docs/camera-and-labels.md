@@ -60,8 +60,16 @@ dust works (PRD 5.3.4) — one mechanism, three requirements.
 **Distance limits are a force, not a correction.** A hand-over can leave the camera 140 units from a
 tether whose limit is 63. Moving it back, however smoothly damped, puts a step in its velocity on
 the exact frame that has to be continuous. So the error feeds `distanceRate` as a spring, overdamped
-against the orbit's own damping so it never bounces. Zoom *input* is still clamped hard, because
-PRD 6.1.1 says zoom is "within the focus's distance limits".
+against the orbit's own damping so it never bounces. It is a slow return, not a snap: from 258 units
+outside a 60-unit limit the camera is within 5% of the limit after 5.5 s and 0.1% after 10 s, and it
+approaches asymptotically. Zoom *input* is still clamped hard, because PRD 6.1.1 says zoom is
+"within the focus's distance limits".
+
+**Attract mode re-tethers on the way out.** The hand-over rebases onto the leg the rig was flying,
+and an attract leg is aimed at a plane the user never chose, so `exitAttract` follows it with a
+`rebaseTo` onto the focus's own tether. `rebaseTo` keeps the world position and the orbit rates and
+changes only the point being orbited, so PRD 5.3.23's "without a jump" survives and PRD 5.7.1's
+"always tethered to a focus" holds after an attract exit as well as before one (DEC-606).
 
 ## 3. Frame-rate independence (PRD 5.3.17, 9.1.3)
 
@@ -74,10 +82,20 @@ The two places the lazy spelling would have failed:
 
 - **Inertia.** `angle += rate · dt; rate *= decay` is a Riemann sum and depends on the frame rate.
   `decayIntegral` is the exact integral of `∫ r·e^(-λs) ds` instead.
-- **Limit relaxation**, for the same reason — hence `approach`, the closed form of `ẋ = -λ(x - t)`.
+- **Limit relaxation**, for the same reason. Because the limit is applied as a force and not as a
+  position correction, `(distance, distanceRate)` is a damped oscillator rather than a first-order
+  relaxation, so a first-order `approach` — the closed form of `ẋ = -λ(x - t)`, which earlier drafts
+  of this note claimed was used here — is the wrong shape for it, and putting the correction in the
+  position is the velocity step the paragraph above exists to avoid. `advanceDistance` solves the
+  second-order `ẍ + λẋ + kx = 0` instead, from its two real roots, and splits
+  the frame at the instant the camera crosses a limit so the regime changes at the same *time* at
+  every frame rate. Stepping the acceleration per frame put 0.022 units between 30 and 120 fps
+  (DEC-606).
 
 PRD 9.1.3's check runs the motion function and the rig at 30, 60 and 120 fps for a fixed elapsed
-time and compares positions to nine decimal places.
+time and compares positions to nine decimal places — six for the rig, whose flights and springs
+carry float error through more arithmetic. `web/test/camera.test.ts` runs it over a plain flight and
+over a path where the limit spring is engaged throughout.
 
 ## 4. Paths that arc (PRD 5.7.5)
 
@@ -114,7 +132,11 @@ Two constraints shaped the implementation:
   the overlap PRD 9.3 is judged on.
 
 React renders one `<div>` per plane once and never re-renders; every frame writes `transform` and
-`opacity` through refs. The layer lives outside the canvas, per PRD 8.4.4.
+`opacity` through refs, both of which are composited. `fontSize` is the one style here that
+invalidates layout, and it tracks the plane's on-screen radius, so it changes on nearly every moving
+frame: the overlay keeps the last value it wrote per node and skips the write when it has not
+changed, which is what makes PRD 7.3.3's "no layout-triggering style changes per frame" true rather
+than nearly true (DEC-606). The layer lives outside the canvas, per PRD 8.4.4.
 
 `web/test/labels.test.ts` runs the home view of all 82 named planes and asserts no two visible
 labels overlap — PRD 9.3's one criterion stated as a rule rather than a judgement.

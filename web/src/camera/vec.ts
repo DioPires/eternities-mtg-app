@@ -186,16 +186,6 @@ export function easeInOutSlope(u: number): number {
 }
 
 /**
- * Frame-rate-independent exponential approach: the exact solution of `ẋ = -λ(x - target)` over
- * `dt`, not a per-frame `x += (target - x) · k`. PRD 5.3.17 and 7.3.1 make this the difference
- * between a rig that behaves identically at 30 and 120 fps and one that only looks like it does.
- */
-export function approach(current: number, target: number, lambda: number, dt: number): number {
-  if (lambda <= 0) return current
-  return target + (current - target) * Math.exp(-lambda * dt)
-}
-
-/**
  * The exact integral of a decaying rate over `dt`: `∫₀^dt r·e^(-λs) ds`. Stepping
  * `position += rate · dt; rate *= e^(-λ·dt)` is a Riemann sum and therefore depends on the frame
  * rate; this does not.

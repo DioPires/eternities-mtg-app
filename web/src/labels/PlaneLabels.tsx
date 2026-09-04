@@ -11,8 +11,9 @@
  * The React part runs once: one `<div>` per plane, created when `planes.json` lands and never
  * re-rendered. Every frame after that writes `transform` and `opacity` straight onto the DOM nodes
  * through refs — PRD 7.3.3 forbids layout-triggering style changes per frame, and re-rendering 83
- * React elements at 60 fps would be exactly that. `will-change: transform` keeps them on their own
- * compositor layers.
+ * React elements at 60 fps would be exactly that. Both of those are composited; `fontSize` is the
+ * one style here that is not, so it is written only when it changes. `will-change: transform` keeps
+ * the nodes on their own compositor layers.
  *
  * The chronology-band labels of PRD 5.4.5 share the layer and the same collision solver, at lower
  * priority, so a band label can never displace a plane name.
@@ -82,6 +83,11 @@ export function PlaneLabels({
   fov = 55,
 }: PlaneLabelsProps): ReactElement {
   const nodes = useRef(new Map<string, HTMLDivElement | null>())
+  // PRD 7.3.3: `fontSize` is the one style here that invalidates layout, and it tracks the plane's
+  // on-screen radius, so it changes on nearly every moving frame — writing it unconditionally cost
+  // 82 layout invalidations a frame. Writing it only when the rounded value actually changes keeps
+  // the frame path to `transform` and `opacity`, which are composited.
+  const fontPx = useRef(new Map<string, string>())
   const projector = useMemo(() => new Projector(), [])
   const projected = useMemo(() => createProjected(), [])
   const point = useMemo<MutVec3>(() => vec(), [])
@@ -174,7 +180,6 @@ export function PlaneLabels({
     const count = layoutLabels(all, placements, {
       viewportWidth: width,
       viewportHeight: height,
-      focusedPlaneKey: focusedPlaneSlug,
       // PRD 5.4.15: at plane level and below, the multiverse's plane labels are gone.
       planeLevelFade: level === 'multiverse' ? 0 : 1,
       enabled,
@@ -191,7 +196,11 @@ export function PlaneLabels({
       if (!node) continue
       node.style.transform = `translate3d(${placement.x.toFixed(1)}px, ${placement.y.toFixed(1)}px, 0) translate(-50%, -50%)`
       node.style.opacity = placement.opacity.toFixed(3)
-      node.style.fontSize = `${placement.fontPx.toFixed(1)}px`
+      const font = `${placement.fontPx.toFixed(1)}px`
+      if (fontPx.current.get(placement.key) !== font) {
+        node.style.fontSize = font
+        fontPx.current.set(placement.key, font)
+      }
     }
   }
 
@@ -213,6 +222,9 @@ export function PlaneLabels({
           className={candidate.tier === 'band' ? 'label label-band' : 'label'}
           ref={(node) => {
             nodes.current.set(candidate.key, node)
+            // A fresh node carries no inline font size, so the cached value it would be compared
+            // against is not what is on it.
+            fontPx.current.delete(candidate.key)
           }}
         >
           <span className="label-name">{candidate.text}</span>

@@ -23,7 +23,7 @@ import type { Stars } from '../data/decode'
 import type { PlaneRecord, PlanesFile } from '../data/types'
 import { BLIND_ETERNITIES_SLUG } from '../data/types'
 import { AttractDirector } from '../camera/attract'
-import { emptyTether, type Framing, type Tether } from '../camera/framing'
+import { emptyTether, tetherPosition, type Framing, type Tether } from '../camera/framing'
 import {
   CameraRig,
   DEFAULT_DURATION_MS,
@@ -32,7 +32,7 @@ import {
   TWO_STAGE_HOLD_MS,
   type FlightLeg,
 } from '../camera/rig'
-import { fromTuple, set, vec, type MutVec3 } from '../camera/vec'
+import { distance, fromTuple, set, vec, type MutVec3 } from '../camera/vec'
 
 import { createNavigationMachine, type NavigationTransport } from './machine'
 import type { Focus, NavigationApi } from './types'
@@ -144,6 +144,8 @@ export function createSceneNavigation(
   // that a `retarget` can reach during a flight.
   const scratchLocal: MutVec3 = vec()
   const scratchWorld: MutVec3 = vec()
+  const scratchLegFrom: MutVec3 = vec()
+  const scratchLegTo: MutVec3 = vec()
 
   const loop = createFrameLoop((dt) => {
     if (disposed) return
@@ -219,6 +221,48 @@ export function createSceneNavigation(
     )
   }
 
+  /**
+   * PRD 6.2.3's two stages, and how long each of them takes on its own distance (PRD 5.7.3).
+   *
+   * Shared by `legsFor` and `baseDurationMs` so the flight the rig is given and the duration the
+   * machine publishes are the same arithmetic rather than two guesses that happen to agree.
+   */
+  interface TwoStage {
+    readonly stage1: Tether
+    readonly stage2: Tether
+    /** Arrival distance for stage two when the card's position is not known yet; see below. */
+    readonly stage2Distance: number | undefined
+    readonly leg1Ms: number
+    readonly leg2Ms: number
+  }
+
+  const twoStageFor = (target: Extract<Focus, { kind: 'card' }>): TwoStage => {
+    const stage1 = planeTether(emptyTether(), target.planeSlug, target.anchor)
+    const card = cardTether(emptyTether(), target)
+    // Without a resolved position the second stage still has somewhere to go: closer in on the same
+    // plane. `resolveCard` re-aims it in place when `sets.bin` lands, with no restart (PRD 6.7.1).
+    const stage2 = card ?? { ...stage1, local: { ...stage1.local } }
+    const stage2Distance = card ? undefined : stage1.minDistance * 1.05
+
+    // Stage two starts where stage one lands, which is nowhere the camera has been, so its length
+    // is measured rather than asked for: the two tether points, plus the change in framing radius.
+    // Both stages arrive from the same direction — the camera closes in, it does not swing round —
+    // so the triangle inequality collapses to that sum.
+    tetherPosition(scratchLegFrom, stage1, rig.motion)
+    tetherPosition(scratchLegTo, stage2, rig.motion)
+    const leg2Travel =
+      distance(scratchLegFrom, scratchLegTo) +
+      Math.abs(stage1.frameDistance - (stage2Distance ?? stage2.frameDistance))
+
+    return {
+      stage1,
+      stage2,
+      stage2Distance,
+      leg1Ms: rig.durationMsFor(stage1),
+      leg2Ms: rig.durationMsForTravel(leg2Travel),
+    }
+  }
+
   const legsFor = (target: Focus, from: Focus, durationMs: number, intro: boolean): FlightLeg[] => {
     const total = durationMs / 1000
 
@@ -233,28 +277,27 @@ export function createSceneNavigation(
       return [{ tether, durationS: total, holdS: 0 }]
     }
 
-    const card = cardTether(emptyTether(), target)
     if (insideTargetPlane(from, target)) {
       // PRD 6.2.4: a single stage, because the plane is already framed.
+      const card = cardTether(emptyTether(), target)
       const tether = card ?? planeTether(emptyTether(), target.planeSlug, target.anchor)
       return [{ tether, durationS: total, holdS: 0 }]
     }
 
     // PRD 6.2.3: frame the plane, hold 0.4 s, then the card, capped at 3.5 s combined.
+    const { stage1, stage2, stage2Distance, leg1Ms, leg2Ms } = twoStageFor(target)
     const capped = Math.min(durationMs, TWO_STAGE_CAP_MS)
     const holdS = Math.min(TWO_STAGE_HOLD_MS, capped * 0.2) / 1000
     const flyS = Math.max(capped / 1000 - holdS, 0)
-    const stage1 = planeTether(emptyTether(), target.planeSlug, target.anchor)
-    // Without a resolved position the second stage still has somewhere to go: closer in on the same
-    // plane. `resolveCard` re-aims it in place when `sets.bin` lands, with no restart (PRD 6.7.1).
-    const stage2 = card ?? { ...stage1, local: { ...stage1.local } }
-    const stage2Distance = card ? undefined : stage1.minDistance * 1.05
+    // PRD 5.7.3: each stage gets the share of the budget its own distance earns, so the long haul
+    // across the multiverse is not given the same time as the short close-in on the card.
+    const share = leg1Ms / Math.max(leg1Ms + leg2Ms, 1e-6)
 
     return [
-      { tether: stage1, durationS: flyS * 0.55, holdS: 0 },
+      { tether: stage1, durationS: flyS * share, holdS: 0 },
       {
         tether: stage2,
-        durationS: flyS * 0.45,
+        durationS: flyS * (1 - share),
         holdS,
         ...(stage2Distance !== undefined && { distance: stage2Distance }),
       },
@@ -319,12 +362,15 @@ export function createSceneNavigation(
     cameraState: () => rig.cameraState(),
 
     /**
-     * PRD 5.7.3: 1.2 s for a one-level hop, scaled with distance to a 3 s cap. PRD 6.2.3 caps the
-     * two-stage card fly-to at 3.5 s *combined*, which is more than a single hop precisely because
-     * it is two of them plus a hold.
+     * PRD 5.7.3: 1.2 s for a one-level hop, scaled with distance to a 3 s cap. PRD 6.2.3's 3.5 s is
+     * a *cap* on the two-stage card fly-to and not its duration — it is more than a single hop
+     * because it is two of them plus a hold — so both legs are scaled and their sum is clamped.
      */
     baseDurationMs: (target, from) => {
-      if (target.kind === 'card' && !insideTargetPlane(from, target)) return TWO_STAGE_CAP_MS
+      if (target.kind === 'card' && !insideTargetPlane(from, target)) {
+        const { leg1Ms, leg2Ms } = twoStageFor(target)
+        return Math.min(leg1Ms + leg2Ms + TWO_STAGE_HOLD_MS, TWO_STAGE_CAP_MS)
+      }
       const tether = tetherFor(emptyTether(), target)
       return Math.max(rig.durationMsFor(tether), DEFAULT_DURATION_MS * 0.25)
     },
@@ -338,12 +384,16 @@ export function createSceneNavigation(
       wake()
     },
 
-    exitAttract: () => {
+    exitAttract: (_cause, focus) => {
       attract.stop()
-      // PRD 5.3.23: "returns control without a jump". The rig's ordinary hand-over does it —
-      // position preserved exactly, the tween's velocity handed to the orbit's inertia — and then
-      // the focus's own tether takes over, softly drawing the distance back inside its limits.
+      // PRD 5.3.23: "returns control without a jump". The rig's ordinary hand-over does that half —
+      // position preserved exactly, the tween's velocity handed to the orbit's inertia — but it
+      // rebases onto the leg it was flying, and an attract leg is aimed at a plane the user never
+      // chose. PRD 5.7.1 says the camera is tethered to the *focus*, so put it back on the focus:
+      // `rebaseTo` keeps the world position and the orbit rates and moves only the point being
+      // orbited, so the no-jump promise survives and the focus's own limits take over.
       rig.handOver()
+      rig.rebaseTo(tetherFor(emptyTether(), focus))
       wake()
     },
 

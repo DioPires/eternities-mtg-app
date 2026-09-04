@@ -33,6 +33,8 @@ export const OCCLUDED_OPACITY = 0.4
 const MAX_SHIFTS = 3
 /** Breathing room between two label boxes, in pixels. */
 const GAP_PX = 4
+/** And between a label box and the edge of the screen. */
+const EDGE_PX = 6
 
 /** PRD 5.4.5: set labels sit "at low priority beneath star labels", so they are placed last. */
 export type LabelTier = 'plane' | 'band'
@@ -74,15 +76,19 @@ export interface LabelPlacement {
   occluded: boolean
 }
 
+/**
+ * There is deliberately no `focusedPlaneKey` here. PRD 5.4.15 moves the focused plane's name to the
+ * fixed HUD and fades every other plane's label out, so at plane level *every* plane label in this
+ * overlay goes — the focused one because it has moved, the rest because the requirement says so.
+ * `planeLevelFade` says all of that, and the solver never needed to know which plane it was.
+ */
 export interface LabelLayoutOptions {
+  /**
+   * The screen a label has to stay on. PRD 5.3.10's shift walks a label along the separating axis,
+   * and without these it can walk straight off an edge; `keepOnScreen` is what stops it.
+   */
   readonly viewportWidth: number
   readonly viewportHeight: number
-  /**
-   * PRD 5.4.15: at plane level the focused plane's name moves to the fixed HUD and every other
-   * plane's label fades out. The HUD is Phase 4's; this is the "fades out" half, and it applies to
-   * the focused plane too — its name has not disappeared, it has moved.
-   */
-  readonly focusedPlaneKey?: string | null
   /** 0 at multiverse level, 1 at plane level: how far the plane labels have faded (PRD 5.4.15). */
   readonly planeLevelFade?: number
   /** PRD 6.10.1's labels on/off setting. */
@@ -148,6 +154,16 @@ function overlaps(a: Box, b: Box): boolean {
 }
 
 /**
+ * Pull a coordinate back inside the viewport. A label that is wider (or taller) than the screen has
+ * no legal position at all, so it is centred: the least-bad of the two edges it must overhang.
+ */
+function keepOnScreen(value: number, half: number, extent: number): number {
+  const margin = half + EDGE_PX
+  if (extent <= margin * 2) return extent / 2
+  return value < margin ? margin : value > extent - margin ? extent - margin : value
+}
+
+/**
  * Place every candidate.
  *
  * Returns how many entries of `out` were filled. `out` is grown as needed and its records are
@@ -176,6 +192,11 @@ export function layoutLabels(
   })
 
   let written = 0
+  // Boxes a later label has to avoid — the *visible* ones only. A label faded out by the shift
+  // budget (PRD 5.3.10) or by plane level (PRD 5.4.15) is not on screen, so letting it keep a
+  // collision box would have visible labels yielding to labels nobody can see. Tracked separately
+  // from `written` because every candidate still gets a placement, faded or not.
+  let reserved = 0
   for (const index of order) {
     const candidate = candidates[index]!
     if (!candidate.onScreen) continue
@@ -190,11 +211,15 @@ export function layoutLabels(
     const halfWidth = estimateWidth(candidate.text, sub, fontPx) / 2
     const halfHeight = estimateHeight(sub, fontPx) / 2
 
-    // The label hangs just below the thing it names.
-    let x = candidate.x
-    let y = candidate.y + candidate.radiusPx + halfHeight + 6
+    // The label hangs just below the thing it names, and never off the edge of the screen.
+    let x = keepOnScreen(candidate.x, halfWidth, options.viewportWidth)
+    let y = keepOnScreen(
+      candidate.y + candidate.radiusPx + halfHeight + 6,
+      halfHeight,
+      options.viewportHeight,
+    )
 
-    const box = boxAt(written)
+    const box = boxAt(reserved)
     box.halfWidth = halfWidth
     box.halfHeight = halfHeight
 
@@ -204,7 +229,7 @@ export function layoutLabels(
       box.x = x
       box.y = y
       let blocker: Box | null = null
-      for (let i = 0; i < written; i += 1) {
+      for (let i = 0; i < reserved; i += 1) {
         const other = boxes[i]!
         if (overlaps(box, other)) {
           blocker = other
@@ -225,6 +250,11 @@ export function layoutLabels(
       const pushY = box.halfHeight + blocker.halfHeight + GAP_PX - Math.abs(dy)
       if (pushY <= pushX) y += (dy >= 0 ? 1 : -1) * pushY
       else x += (dx >= 0 ? 1 : -1) * pushX
+      // A shift that would leave the screen is pulled back in, which usually means the next pass
+      // finds the same blocker and the label spends a shift getting nowhere — correctly, since
+      // there was nowhere to go. Three of those and PRD 5.3.10 fades it, which is the right answer.
+      x = keepOnScreen(x, halfWidth, options.viewportWidth)
+      y = keepOnScreen(y, halfHeight, options.viewportHeight)
       shifts += 1
     }
 
@@ -248,6 +278,10 @@ export function layoutLabels(
     // has moved to the fixed HUD, the others because the requirement says they fade out. Band
     // labels are the plane level's own labels (PRD 5.4.5) and are untouched by this.
     if (candidate.tier === 'plane' && fade > 0) opacity *= 1 - fade
+
+    // Every opacity rule has now had its say, so this is the last honest moment to ask whether the
+    // label is on screen at all — which is what decides whether it keeps its collision box.
+    if (opacity > 0) reserved += 1
 
     const placement = out[written] ?? createPlacement()
     out[written] = placement

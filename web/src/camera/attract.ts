@@ -13,8 +13,10 @@
  *   when they touch the mouse again.
  * - **Any input cancels it without a jump.** That is the rig's ordinary hand-over — rebase onto the
  *   leg's tether, project the tween velocity onto the orbit rates — so leaving attract mode is
- *   continuous in position and velocity for free, and then the focus's own distance limits draw the
- *   camera back in softly rather than snapping (`LIMIT_RELAX` in `rig.ts`).
+ *   continuous in position and velocity for free. The hand-over alone would leave the camera
+ *   tethered to the *tour's* plane, though, so `scene.ts`'s `exitAttract` follows it with a
+ *   `rebaseTo` onto the focus (PRD 5.7.1), after which the focus's own distance limits draw the
+ *   camera back in softly rather than snapping (`LIMIT_SPRING` in `rig.ts`).
  *
  * The tour is seeded, not random: the same build shows the same tour, which is the promise PRD
  * 5.3.1 already makes about the multiverse itself. No `Math.random` anywhere in the scene.
