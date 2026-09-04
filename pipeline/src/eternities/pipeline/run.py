@@ -43,6 +43,7 @@ def build(
     cache_dir: Path,
     dataset_name: str = "production",
     roster_diff: bool = True,
+    bulk_updated_at: str | None = None,
     log: object = print,
 ) -> BuildResult:
     """Run every stage of PRD 8.2 and write the artefacts and the report."""
@@ -52,7 +53,9 @@ def build(
     appendices = load_appendices()
 
     emit("fetch: Scryfall default_cards + /sets (PRD 8.2.1)")
-    source = scryfall.fetch(cache_dir)
+    source = scryfall.fetch(cache_dir, pinned_updated_at=bulk_updated_at)
+    if bulk_updated_at is not None:
+        emit(f"  pinned to the cached bulk file {source.path.name}")
     emit(f"  bulk updated_at {source.updated_at}")
     scry_sets = {
         s.code: s for s in (records.parse_set(row) for row in scryfall.read_sets(source.sets_path))
@@ -71,7 +74,7 @@ def build(
     emit(f"  {len(filtered.kept):,} kept, {sum(filtered.dropped_by_rule.values()):,} dropped")
 
     emit("exclude cards (PRD 4.4)")
-    excluded = exclude_cards(all_printings, filtered.kept, appendices)
+    excluded = exclude_cards(all_printings, filtered.kept, appendices, scry_sets)
     emit(f"  {len(excluded.included):,} cards included")
 
     emit("first printing (PRD 4.5)")
@@ -121,13 +124,26 @@ def build(
 
     emit("emit: artefacts (PRD 8.3) + report (PRD 4.9.2)")
     previous = report.load_previous_planes(data_root, exclude="")
-    data_dir = write_dataset(dataset, data_root)
+    # The manifest records which run the 4.9.2 diff below was taken against, because 8.8.3 deletes
+    # that directory in the same commit and the report names it in prose only.
+    #
+    # Two candidates, because a *re-run* in an already-pruned tree finds only the directory it is
+    # about to overwrite. Read that directory's own record before the write replaces it: it is the
+    # predecessor the first build established, and using it keeps the re-run byte-identical (4.9.1)
+    # instead of dropping the field and claiming to be a first run.
+    carried = report.recorded_previous_run(data_root / previous[0]) if previous else None
+    data_dir = write_dataset(
+        dataset, data_root, previous_runs=[previous[0] if previous else None, carried]
+    )
 
     plane_changes: list[tuple[str, str, str]] = []
     previous_run: str | None = None
+    previous_run_pruned = False
     if previous is not None and previous[0] != data_dir.name:
         previous_run, previous_map = previous
         plane_changes = report.diff_planes(dataset, previous_map)
+    elif carried is not None:
+        previous_run, previous_run_pruned = carried, True
 
     text = report.render(
         report.ReportInput(
@@ -142,12 +158,14 @@ def build(
             printings_dropped=filtered.dropped_by_rule,
             unreleased_sets=filtered.unreleased_sets,
             dropped_via_parent=filtered.dropped_via_parent,
+            parent_rule_only=filtered.parent_rule_only,
             cards_excluded=excluded.excluded_by_rule,
             via_parent=assignment.via_parent,
             via_override=assignment.via_override,
             findings=findings,
             plane_changes=plane_changes,
             previous_run=previous_run,
+            previous_run_pruned=previous_run_pruned,
         )
     )
     reports_dir.mkdir(parents=True, exist_ok=True)

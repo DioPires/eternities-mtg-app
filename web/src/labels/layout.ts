@@ -122,8 +122,35 @@ function estimateWidth(text: string, sub: string | null, fontPx: number): number
   return Math.max(main, subWidth) + 10
 }
 
+/**
+ * One line, or two.
+ *
+ * PRD 5.3.12 gives a zero-card plane no count, so its label is a single line and its box is a
+ * little over half as tall. Anything re-deriving label geometry has to honour that or it will see
+ * collisions that are not there — a roster is mostly zero-card planes.
+ */
 function estimateHeight(sub: string | null, fontPx: number): number {
   return sub === null ? fontPx * 1.3 : fontPx * 2.15
+}
+
+/**
+ * The collision box this module reserves for a label, and the clearance it insists on around it.
+ *
+ * Exported so a test can check the *arrangement* against the geometry actually used, rather than
+ * re-deriving the geometry and drifting from it. The estimates themselves are asserted directly in
+ * `test/labels.test.ts`; this is the one place they are defined.
+ */
+export const LABEL_GAP_PX = GAP_PX
+
+export function labelHalfExtents(
+  text: string,
+  sub: string | null,
+  fontPx: number,
+): { halfWidth: number; halfHeight: number } {
+  return {
+    halfWidth: estimateWidth(text, sub, fontPx) / 2,
+    halfHeight: estimateHeight(sub, fontPx) / 2,
+  }
 }
 
 interface Box {

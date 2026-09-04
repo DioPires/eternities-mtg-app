@@ -176,38 +176,48 @@ export type PrintingTuple = readonly [string, SetId, string, number, string]
  * note that meld's back comes from elsewhere, so layout alone is not the gate. The Python twin is
  * `LAYOUTS` in `pipeline/src/eternities/contract/enums.py`, and the encoder rejects any layout
  * outside this set rather than emitting a URI that would 404.
+ *
+ * A value list, with the union derived from it, rather than a bare union. The test vector reaches
+ * TypeScript through a `JSON.parse(...) as Vector` cast, and a type alone is erased: a layout
+ * added to `enums.py` and not here would have passed CI unnoticed, because `hasBackImage` answers
+ * `false` for an unknown string and Python would answer `false` too. `test/test-vector.test.ts`
+ * compares this array against the vector's `backImageChecks` as a set, so drift is visible in
+ * either direction without a hand-maintained count to keep in step.
  */
-export type CardLayout =
-  | 'normal'
-  | 'split'
-  | 'flip'
-  | 'transform'
-  | 'modal_dfc'
-  | 'meld'
-  | 'leveler'
-  | 'class'
-  | 'case'
-  | 'saga'
-  | 'adventure'
-  | 'mutate'
-  | 'prototype'
-  | 'battle'
-  | 'planar'
-  | 'scheme'
-  | 'vanguard'
-  | 'token'
-  | 'double_faced_token'
-  | 'emblem'
-  | 'augment'
-  | 'host'
-  | 'art_series'
-  | 'reversible_card'
+export const CARD_LAYOUTS = [
+  'normal',
+  'split',
+  'flip',
+  'transform',
+  'modal_dfc',
+  'meld',
+  'leveler',
+  'class',
+  'case',
+  'saga',
+  'adventure',
+  'mutate',
+  'prototype',
+  'battle',
+  'planar',
+  'scheme',
+  'vanguard',
+  'token',
+  'double_faced_token',
+  'emblem',
+  'augment',
+  'host',
+  'art_series',
+  'reversible_card',
   // Added by the Phase 1 first run (2026-09-04), which failed loudly on both per PRD 7.7.2.
   // `prepare` is Secrets of Strixhaven's two-faces-on-one-side layout — like `split`, it has a
   // second face and no back image. `front_card` is a Jumpstart theme card; every set carrying one
   // is `memorabilia`, so 4.3.2 drops it before it can reach a shard.
-  | 'prepare'
-  | 'front_card'
+  'prepare',
+  'front_card',
+] as const
+
+export type CardLayout = (typeof CARD_LAYOUTS)[number]
 
 /**
  * A card's second face — "there is another face", **not** "there is a back image". Split,

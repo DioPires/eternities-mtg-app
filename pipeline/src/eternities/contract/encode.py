@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -127,10 +128,22 @@ def _card_json(card: Card) -> dict[str, Any]:
     return row
 
 
-def encode_artefacts(dataset: Dataset) -> tuple[list[EncodedArtefact], dict[str, Any]]:
+def encode_artefacts(
+    dataset: Dataset, *, previous_runs: Sequence[str | None] = ()
+) -> tuple[list[EncodedArtefact], dict[str, Any]]:
     """Encode everything but ``manifest.json``, and return it alongside the manifest body.
 
     The manifest is produced last because it carries the hash over the others.
+
+    ``previous_runs`` are candidate predecessors in priority order, and the manifest records the
+    first that is not this run's own ``dataHash``. That is what makes the field survive a re-run:
+    8.8.3 deletes the superseded directory in the same commit, so a second build in the same tree
+    finds only *itself* on disk, and a manifest naming itself would both be wrong and break 4.9.1's
+    byte-identical guarantee. The caller's second candidate is the predecessor the first build
+    already recorded, which is exactly the answer that keeps the two runs identical.
+
+    The key is omitted rather than written as ``null`` when no candidate survives — every fixture,
+    and a first production run — so every already-committed manifest is unchanged.
     """
     artefacts: list[EncodedArtefact] = []
 
@@ -241,6 +254,7 @@ def encode_artefacts(dataset: Dataset) -> tuple[list[EncodedArtefact], dict[str,
         "asOf": dataset.as_of,
         "generatedAt": dataset.generated_at,
         "scryfallBulkUpdatedAt": dataset.scryfall_bulk_updated_at,
+        "previousRun": None,
         "starRecordBytes": STAR_RECORD_BYTES,
         "shardSize": SHARD_SIZE,
         "counts": {
@@ -254,6 +268,15 @@ def encode_artefacts(dataset: Dataset) -> tuple[list[EncodedArtefact], dict[str,
         "planeShards": {p.slug: shard_count_for(p.card_count) for p in dataset.planes},
         "files": [{"path": a.path, "bytes": len(a.data), "sha256": a.sha256} for a in artefacts],
     }
+    # Declared in place above so the key sits beside the other provenance fields rather than after
+    # the `files` array, then resolved here, where the hash it must not equal is finally known.
+    resolved = next(
+        (run for run in previous_runs if run is not None and run != manifest["dataHash"]), None
+    )
+    if resolved is None:
+        del manifest["previousRun"]
+    else:
+        manifest["previousRun"] = resolved
     return artefacts, manifest
 
 
@@ -264,9 +287,11 @@ def compute_data_hash(artefacts: list[EncodedArtefact]) -> str:
     return digest[:DATA_HASH_LENGTH]
 
 
-def write_dataset(dataset: Dataset, data_root: Path) -> Path:
+def write_dataset(
+    dataset: Dataset, data_root: Path, *, previous_runs: Sequence[str | None] = ()
+) -> Path:
     """Write one run into ``<data_root>/<dataHash>/`` and return that directory."""
-    artefacts, manifest = encode_artefacts(dataset)
+    artefacts, manifest = encode_artefacts(dataset, previous_runs=previous_runs)
     out_dir = data_root / str(manifest["dataHash"])
     out_dir.mkdir(parents=True, exist_ok=True)
     for artefact in artefacts:

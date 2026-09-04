@@ -14,7 +14,7 @@ from eternities.contract.encode import encode_artefacts, shard_count_for
 from eternities.contract.enums import BLIND_ETERNITIES_SLUG, HueClass, PlaneKind
 from eternities.contract.models import Dataset
 from eternities.fixtures import SCALE, SMALL, build
-from eternities.fixtures.generate import MULTIVERSE_RADIUS
+from eternities.fixtures.generate import APPENDIX_A, MULTIVERSE_RADIUS
 
 REAL_HUE_SHARE: dict[HueClass, float] = {
     HueClass.WHITE: 0.1514,
@@ -50,7 +50,14 @@ def test_small_fixture_shape(small: Dataset):
 
 def test_scale_fixture_shape(scale: Dataset):
     assert scale.dataset == "fixture-scale"
-    assert len(scale.planes) == 83, "every Appendix A roster entry, Blind Eternities included"
+    # Read off the roster rather than hard-coded. `fixture-scale` *is* Appendix A, so a literal
+    # here would only assert that someone remembered to edit two files at once — and it would fail
+    # every time the board ratifies a plane, which is a roster event, not a fixture regression.
+    # The floor keeps it from passing vacuously if the roster is ever emptied. 87 as of 2026-09-04.
+    roster = json.loads(APPENDIX_A.read_text(encoding="utf-8"))["planes"]
+    assert len(scale.planes) == len(roster) >= 87, (
+        "every Appendix A roster entry, Blind Eternities included"
+    )
     assert len(scale.stars) == 30000
     blind = next(p for p in scale.planes if p.slug == BLIND_ETERNITIES_SLUG)
     assert shard_count_for(blind.card_count) > 1, "fixture-scale must exercise sharded dust"

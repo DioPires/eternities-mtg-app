@@ -8,7 +8,7 @@
  * Everything past that glow is Phase 2a's (DEC-587): the single-`Points` star renderer, the
  * per-plane `DataTexture`, the in-shader motion of PRD 8.5.3, the dust, selective bloom. When that
  * lands this component is deleted, not extended — it exists so that Phase 2b could be built and
- * reviewed against the real 83-plane roster while 2a was being written in parallel, and it holds
+ * reviewed against the real Appendix A roster while 2a was being written in parallel, and it holds
  * no requirement of its own.
  *
  * It does share one thing with the real renderer, on purpose: positions come from `SceneMotion`,

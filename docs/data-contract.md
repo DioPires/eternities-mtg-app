@@ -73,6 +73,7 @@ Loaded first (PRD 8.7.2). Small, human-diffable, the single source of truth for 
   "asOf": "2026-09-04",                    // PRD 4.9.1 run date
   "generatedAt": "2026-09-04T00:00:00Z",
   "scryfallBulkUpdatedAt": "2026-09-03T09:00:00Z" | null,
+  "previousRun": "a1b2c3d4e5f60718",  // optional; absent when there is no predecessor
   "starRecordBytes": 12,
   "shardSize": 2000,                        // A1: every plane shards at this size
   "counts": {
@@ -85,6 +86,8 @@ Loaded first (PRD 8.7.2). Small, human-diffable, the single source of truth for 
 ```
 
 `files` covers every artefact except `manifest.json`, sorted by path. `planeShards` gives the loader the shard count per plane without a probe request; a zero-card plane has `1` (an empty shard file is still emitted, so the loader has no special case).
+
+`previousRun` is **optional** and carries the `dataHash` of the run this one's PRD 4.9.2 plane diff was taken against. It is omitted, not written as `null`, when there is no predecessor — a fixture, or a first production run — so a decoder must treat it as absent-by-default. Nothing in the app reads it; it is provenance, so the committed run report is still reproducible once PRD 8.8.3 deletes the superseded directory.
 
 ## 4. `planes.json`
 
@@ -198,7 +201,7 @@ Card `oracle_id`s are **not** in `search.json`; they are in `sets.bin` section 1
 
 ## 8. Payload budget
 
-PRD 7.2 budgets the pair `search.json` + `sets.bin` at ≤ 700 KB target / 1.5 MB ceiling, **encoded transferred size**. Measured on `fixture-scale` (30 000 stars, 83 planes, ~1 100 sets), brotli quality 11 — the numbers `web/scripts/check-budget.mjs` reports:
+PRD 7.2 budgets the pair `search.json` + `sets.bin` at ≤ 700 KB target / 1.5 MB ceiling, **encoded transferred size**. Measured on `fixture-scale` (30 000 stars, 87 planes, ~1 100 sets), brotli quality 11 — the numbers `web/scripts/check-budget.mjs` reports:
 
 | Artefact | Raw | Brotli |
 |---|---|---|
@@ -310,7 +313,7 @@ The card's plane is not repeated in the shard; the URL's plane slug and the `pla
 ## 10. Enforcement
 
 - `contract/test-vectors/v1/` holds a hand-checkable dataset: `vector.json` (the inputs and the expected derived URIs) plus the encoded `stars.bin`, `sets.bin`, `manifest.json`, `planes.json`, `search.json`, `planes/*.json`. Python re-encodes it and asserts byte equality; TypeScript decodes it and asserts the values round-trip. Both run in CI.
-- `web/scripts/check-budget.mjs` measures **brotli-encoded** size of the built shell and of the data directory's files, and checks them against the PRD 7.2 table plus the A1 row. Ceilings fail the build; targets are reported.
+- `web/scripts/check-budget.mjs` measures **brotli-encoded** size of the built shell and of the data directory's files, and checks them against the PRD 7.2 table plus the A1 row. Ceilings fail the build; targets are reported, and a row at or above 90% of its target is warned about so the run before the miss is visible.
 - Adding a field is a minor change and bumps `pipelineVersion`. Changing a byte layout, a section id, an enum value, or a filename bumps `contractVersion` and requires a review by the Frontend Engineer and the Interactive Tools Engineer.
 
 ## 11. Change log
@@ -324,6 +327,16 @@ Two values were **added** to the `l` layout union (§9). Both came from the firs
 | `prepare` | Secrets of Strixhaven's two-faces-on-one-side layout. Like `split`, Scryfall gives it no top-level `oracle_text` at all — the text lives only in `card_faces` — so `b` **must** be populated | no | yes, `sos`/`soc`/`plst` |
 | `front_card` | A Jumpstart theme card | no | no — every set carrying one is `set_type: memorabilia`, which PRD 4.3.2 drops |
 
-`contractVersion` stays **1**. No byte layout, section id, filename, or numeric enum value changed; the union gained two members it had no way to carry before, and no already-encoded artefact contains either value, so every v1 decoder still reads every v1 artefact. `pipelineVersion` moved to 0.2.0 to mark it.
+`contractVersion` stays **1**. No byte layout, section id, filename, or numeric enum value changed. `pipelineVersion` moved to 0.2.0 to mark it.
 
-**This still needs the §10 review**, because the change touches a closed union that both languages must agree on: `LAYOUTS` in `contract/enums.py`, `CardLayout` in `data/types.ts`, and the regenerated `backImageChecks` in the test vector, which pins `hasBackImage` for every member on both sides.
+What makes the addition safe is that a decoder never enumerates this union at runtime: its only consumer is the `BACK_IMAGE_LAYOUTS` allowlist behind `hasBackImage`, so a v1 decoder meeting a layout it has never heard of answers "no back image" — the correct answer for both new members, verified against the committed artefacts. It is **not** that the new values go unobserved; `prepare` does reach a shard, 46 cards of it in `planes/arcavios.0.json` of the production dataset. The distinction is load-bearing for the *next* addition: a future layout that does have a back image would be read wrongly by an un-widened decoder, silently, and must bump `contractVersion`.
+
+**§10 review: complete.** Signed off independently from the web-decoder side and the tools/consumer side, both measuring compatibility rather than arguing it: the Phase 0 decoder was run verbatim over all 89 production shards and 28,587 cards and agreed with the Phase 1 decoder on every card and printing. Note that bumping to 2 would have been the breaking option — `assertContractVersion` and `decodeHeader` test strict equality, so every deployed v1 decoder would throw on `stars.bin` and all 89 shards for a change no consumer can observe.
+
+The union is closed over three sources that must agree: `LAYOUTS` in `contract/enums.py`, `CardLayout` in `data/types.ts`, and `backImageChecks` in the test vector, which pins `hasBackImage` for every member on both sides.
+
+### v1, `pipelineVersion` 0.2.0 — Appendix A roster amendment, 2026-09-04
+
+Four zero-card planes joined the PRD Appendix A roster (Kandoka, Foldaria, Clamhattan, Horsehead Nebula). That changes the plane count and every plane's layout position, so the dataset re-hashes, but **no contract surface moved**: no format, field, enum or filename changed.
+
+`manifest.json` may now carry one optional key, **`previousRun`** (§3): the `dataHash` of the run whose plane assignments this run's 4.9.2 diff was taken against. It is absent when there is no predecessor — every fixture, and a first production run — so every already-committed manifest is still byte-identical to what the encoder produces today. Decoders ignore it; it exists so the committed run report stays reproducible after 8.8.3 deletes the superseded directory in the same commit.

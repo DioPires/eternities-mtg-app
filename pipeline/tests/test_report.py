@@ -28,7 +28,13 @@ from conftest import appendices, printing, scry_set, set_entry
 from eternities.contract import write_dataset
 from eternities.pipeline.assemble import CardInput, build_dataset
 from eternities.pipeline.records import CardDetail, FaceDetail
-from eternities.pipeline.report import ReportInput, diff_planes, load_previous_planes, render
+from eternities.pipeline.report import (
+    ReportInput,
+    diff_planes,
+    load_previous_planes,
+    recorded_previous_run,
+    render,
+)
 from eternities.pipeline.verify import Finding
 
 SNAPSHOT = Path(__file__).parent / "data" / "report-snapshot.md"
@@ -120,7 +126,8 @@ def _report_input(data_root: Path) -> ReportInput:
         cards_excluded=Counter({"4.4.1 no included printing": 6, "4.4.3 Universes Beyond": 2}),
         via_parent={"dmr": "lea"},
         via_override=["Card 3"],
-        dropped_via_parent={"pza": "tmt"},
+        dropped_via_parent={"pza": "tmt", "ttmt": "tmt"},
+        parent_rule_only={"pza": 15},
         findings=[
             Finding(
                 question="Q4",
@@ -202,6 +209,7 @@ def test_an_absent_section_says_so_rather_than_vanishing(tmp_path: Path):
     data.via_parent = {}
     data.via_override = []
     data.dropped_via_parent = {}
+    data.parent_rule_only = {}
     data.unreleased_sets = []
     data.findings = []
     data.plane_changes = []
@@ -211,6 +219,87 @@ def test_an_absent_section_says_so_rather_than_vanishing(tmp_path: Path):
     assert "None: every dropped set carries its own row." in text
     assert "First production run: nothing to compare against." in text
     assert "Not run." in text
+
+
+def test_the_parent_drop_table_says_how_much_of_it_is_load_bearing(report_text: str):
+    """PRD 4.3.1's inherited-drop list is long and almost entirely over-determined.
+
+    Without this line the table reads as though the parent walk were doing every row's work. The
+    number is measured per run rather than asserted in prose, so it cannot go stale the next time
+    a Universes Beyond product ships a new child set.
+    """
+    assert "Only 1 of these 2 sets is load-bearing: `pza` (15 printings" in report_text
+
+
+def test_a_fully_over_determined_parent_drop_table_says_so(tmp_path: Path):
+    """The other branch: every dropped child is caught by another 4.3 rule too."""
+    data = _report_input(tmp_path)
+    data.parent_rule_only = {}
+    assert "None of these 2 sets needs the walk to be dropped" in render(data)
+
+
+def test_the_manifest_records_the_run_the_plane_diff_was_taken_against(tmp_path: Path):
+    """PRD 8.8.3 deletes the superseded directory in the same commit, and the report names it in
+    prose only, so without this the committed report cannot be reproduced from the committed tree.
+
+    Omitted rather than written as `null` when there is no predecessor, which is what keeps every
+    already-committed manifest — the fixtures and the test vector — byte-identical.
+    """
+    data = _report_input(tmp_path)
+    plain = json.loads((data.data_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert "previousRun" not in plain, "no predecessor means no key, not a null"
+
+    # Same dataset, so the same content hash and the same directory: the field is provenance about
+    # the run, and it is deliberately outside `dataHash`, which covers the artefacts only.
+    with_previous = write_dataset(data.dataset, tmp_path, previous_runs=["0123456789abcdef"])
+    assert with_previous == data.data_dir
+    manifest = json.loads((with_previous / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["previousRun"] == "0123456789abcdef"
+    assert manifest["dataHash"] == plain["dataHash"]
+
+
+def test_a_rerun_in_a_pruned_tree_keeps_the_predecessor_and_stays_byte_identical(tmp_path: Path):
+    """The case 8.8.3 creates and 4.9.1 has to survive.
+
+    The first build supersedes `0123456789abcdef` and deletes it, so the second build finds only
+    itself on disk. Naming itself would be wrong; dropping the key would make the second manifest
+    differ from the first, which is determinism lost to a field added for provenance. The
+    second candidate — what the run already recorded — is the answer that is both true and stable.
+    """
+    data = _report_input(tmp_path)
+    first = write_dataset(data.dataset, tmp_path, previous_runs=["0123456789abcdef"])
+    first_bytes = (first / "manifest.json").read_bytes()
+
+    carried = recorded_previous_run(first)
+    assert carried == "0123456789abcdef"
+
+    # What `run.build` passes on the re-run: the only production directory on disk is this one.
+    again = write_dataset(data.dataset, tmp_path, previous_runs=[first.name, carried])
+
+    assert again == first
+    assert (again / "manifest.json").read_bytes() == first_bytes
+
+
+def test_a_run_with_no_surviving_candidate_omits_the_key(tmp_path: Path):
+    data = _report_input(tmp_path)
+    written = write_dataset(data.dataset, tmp_path, previous_runs=[data.data_dir.name, None])
+    manifest = json.loads((written / "manifest.json").read_text(encoding="utf-8"))
+    assert "previousRun" not in manifest, "a run may not name itself as its own predecessor"
+
+
+def test_a_rebuilt_run_does_not_claim_to_be_the_first(tmp_path: Path):
+    """PRD 9.2.3 read off a pruned tree used to say "no previous production run", which is a false
+    statement about the data rather than a missing detail. The manifest knows better."""
+    data = _report_input(tmp_path)
+    data.previous_run = "0123456789abcdef"
+    data.previous_run_pruned = True
+    data.plane_changes = []
+
+    text = render(data)
+
+    assert "no previous production run to compare against" not in text
+    assert "First production run" not in text
+    assert "not computed — this run follows `0123456789abcdef`" in text
 
 
 def test_the_previous_run_is_the_latest_one_not_the_largest_hash(tmp_path: Path):

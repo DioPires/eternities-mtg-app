@@ -46,6 +46,16 @@ WIKI_ALIASES: Final[dict[str, str]] = {
 ALARA_SHARDS: Final[frozenset[str]] = frozenset({"bant", "esper", "grixis", "jund", "naya"})
 """PRD 4.7.2 keeps Alara's five shards as one plane; the wiki gives each a page."""
 
+OPEN_QUESTION_1_CANDIDATES: Final[tuple[str, ...]] = (
+    "kandoka",
+    "foldaria",
+    "clamhattan",
+    "horsehead-nebula",
+)
+"""The four planes PRD open question 1 left undecided. All four were ratified onto Appendix A on
+2026-09-04, so the roster finding no longer names them; the list stays because it is what the
+question asked about, and dropping it would lose the trail from the question to its answer."""
+
 
 @dataclass(frozen=True, slots=True)
 class Finding:
@@ -318,22 +328,30 @@ def verify_roster(appendices: Appendices, wiki_titles: list[str] | None) -> Find
             f"in Appendix A with no wiki page of that name ({len(only_appendix)}): "
             + ", ".join(only_appendix)
         )
-    open_q1 = [
-        s for s in ("kandoka", "foldaria", "clamhattan", "horsehead-nebula") if s in candidates
-    ]
+    # Open question 1's candidates, reported only while they are still a question. Listing them
+    # unconditionally outlived their usefulness the moment the board ratified them: the finding
+    # went on asking the CEO to decide something already decided, in a report whose whole job is
+    # to surface what needs a decision.
+    open_q1 = [s for s in OPEN_QUESTION_1_CANDIDATES if s in candidates and s not in ours]
     if open_q1:
         detail.append(
-            "PRD open question 1's four candidates present in the category: " + ", ".join(open_q1)
+            "PRD open question 1 candidates in the category and not yet on the roster: "
+            + ", ".join(open_q1)
+        )
+
+    action = (
+        "Roster additions are a PRD change, not a pipeline change. The list above is the raw "
+        "diff; most entries are Universes Beyond settings or non-canon, which PRD 2.2 keeps out."
+    )
+    if open_q1:
+        action += (
+            " Open question 1's remaining candidates appear in the category — the CEO decides "
+            "whether they join Appendix A."
         )
     return Finding(
         question="Roster",
         title="Appendix A vs the MTG wiki plane category",
         verdict=f"{len(only_wiki)} wiki entries absent from Appendix A",
         detail=detail,
-        action=(
-            "Roster additions are a PRD change, not a pipeline change. The list above is the "
-            "raw diff; most entries are Universes Beyond settings or non-canon, which PRD 2.2 "
-            "keeps out. Open question 1's four candidates do appear in the category — the CEO "
-            "decides whether they join Appendix A."
-        ),
+        action=action,
     )

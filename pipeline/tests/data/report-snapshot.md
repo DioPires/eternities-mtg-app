@@ -78,8 +78,11 @@ Listed so a child set inheriting a plane it should not have — a bonus sheet un
 | Set | Dropped by the row on |
 |---|---|
 | `pza` | `tmt` |
+| `ttmt` | `tmt` |
 
 Appendix B rows a product, not every set code Scryfall splits it into: a Universes Beyond release ships tokens, promos, art series and bonus sheets that carry no row of their own. 4.3.1 follows the Scryfall parent chain exactly as 4.6 rule 3 does, so those children drop with their parent instead of leaking through.
+
+Only 1 of these 2 sets is load-bearing: `pza` (15 printings, inherited from `tmt`). Every printing in the rest is caught by another 4.3 rule anyway — a token or promo set falls to 4.3.2 whichever Appendix B row is consulted — so the length of the table is not a measure of how much the walk is doing.
 
 ## Sets excluded as unreleased (PRD 4.3.8)
 

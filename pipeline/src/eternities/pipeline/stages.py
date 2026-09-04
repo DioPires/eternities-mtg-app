@@ -91,6 +91,14 @@ class PrintingFilterResult:
 
     Reported for the same reason 4.6 reports its rule-3 inheritances: a set dropped because of a
     row it does not carry itself must be visible, not silent."""
+    parent_rule_only: dict[str, int] = field(default_factory=dict)
+    """Set code -> printings the parent walk is the *only* thing dropping.
+
+    Most of :attr:`dropped_via_parent` is over-determined: a Universes Beyond release's tokens and
+    promos would fall to 4.3.2's ``set_type`` list or 4.3.5's stamp anyway. Counting the printings
+    that no other 4.3 rule catches keeps the long list from being over-read — today one set, `pza`,
+    is the whole reason the walk exists — and turns that into a number the next run re-measures
+    rather than a comment that quietly goes stale."""
 
 
 def filter_printings(
@@ -104,6 +112,7 @@ def filter_printings(
     dropped: Counter[str] = Counter()
     unreleased: set[str] = set()
     via_parent: dict[str, str] = {}
+    parent_only: Counter[str] = Counter()
     kept: list[RawPrinting] = []
     governing: dict[str, tuple[SetEntry, str] | None] = {}
 
@@ -122,12 +131,17 @@ def filter_printings(
             unreleased.add(printing.set_code)
         if rule == PARENT_ROW_RULE and resolved is not None:
             via_parent[printing.set_code] = resolved[1]
+            # Re-run 4.3 with the inherited row withheld: whatever comes back is what would have
+            # caught this printing without the walk, and `None` means nothing would have.
+            if _printing_exclusion_rule(printing, scry_set, None, appendices, as_of) is None:
+                parent_only[printing.set_code] += 1
 
     return PrintingFilterResult(
         kept=kept,
         dropped_by_rule=dropped,
         unreleased_sets=sorted(unreleased),
         dropped_via_parent=dict(sorted(via_parent.items())),
+        parent_rule_only=dict(sorted(parent_only.items())),
     )
 
 
@@ -189,12 +203,16 @@ def exclude_cards(
     all_printings: list[RawPrinting],
     included_printings: list[RawPrinting],
     appendices: Appendices,
+    sets: dict[str, ScrySet],
 ) -> CardExclusionResult:
     """PRD 4.4, over every printing in the bulk file — not only the ones 4.3 kept.
 
     Rule 3 is the reason ``all_printings`` is needed: the Universes Beyond origin test looks at a
     card's *earliest* printing of any kind, so that Sol Ring is not exiled by its Warhammer
     40,000 reprint and The One Ring is not rescued by its appearance in The List (PRD 4.4.3).
+
+    ``sets`` is needed for the same reason 4.3.1 needs it: the origin test reads Appendix B, and
+    Appendix B rows a product rather than every set code Scryfall splits it into.
     """
     by_code = appendices.by_code()
     exempt_codes = appendices.secret_lair.exempt_codes
@@ -231,7 +249,7 @@ def exclude_cards(
             continue
         first_ever = earliest[oracle_id]
         # 4.4.5: an `slx` printing (Universes Within) exempts the card from rule 3 outright.
-        if oracle_id not in exempted and _originates_universes_beyond(first_ever, by_code):
+        if oracle_id not in exempted and _originates_universes_beyond(first_ever, by_code, sets):
             excluded_by_rule["4.4.3 Universes Beyond origin"] += 1
             universes_beyond += 1
             continue
@@ -248,15 +266,24 @@ def exclude_cards(
     )
 
 
-def _originates_universes_beyond(first_ever: RawPrinting, by_code: dict[str, SetEntry]) -> bool:
+def _originates_universes_beyond(
+    first_ever: RawPrinting, by_code: dict[str, SetEntry], sets: dict[str, ScrySet]
+) -> bool:
     """PRD 4.4.3, read as a test on the *earliest* printing.
 
     Both clauses bind to the earliest printing. Applying the stamp clause to *any* printing would
     exile in-universe staples reprinted inside Universes Beyond products, which is precisely the
     failure 4.4.3's own rationale rules out and which PRD 9.1.5's Sol Ring row locks against.
+
+    The Appendix B lookup is :func:`governing_set_row`, the same walk 4.3.1 uses. Reading it as
+    "own row only" would leave the two rules disagreeing about what "its set is Universes Beyond"
+    means for a child set — the shape the `pza` leak had. Nothing observable depends on it today
+    (a card first printed in an inherited-drop set has no included printing there, so 4.4.1 takes
+    it first, and genuine originals carry the triangle stamp the second clause catches), but two
+    accidents are not a reason for one file to read one appendix two ways.
     """
-    row = by_code.get(first_ever.set_code)
-    if row is not None and row.universes_beyond:
+    resolved = governing_set_row(first_ever.set_code, by_code, sets)
+    if resolved is not None and resolved[0].universes_beyond:
         return True
     return first_ever.security_stamp == UNIVERSES_BEYOND_STAMP and first_ever.flavor_name is None
 
@@ -354,17 +381,17 @@ def assign_planes(
             result.via_override.append(printing.card_name)
             continue
 
-        row = by_code.get(printing.set_code)
-        if row is not None and row.plane is not None:
-            result.by_oracle_id[oracle_id] = row.plane
-            continue
-
-        scry_set = sets.get(printing.set_code)
-        parent_code = scry_set.parent_set_code if scry_set else None
-        parent_row = by_code.get(parent_code) if parent_code else None
-        if parent_code is not None and parent_row is not None and parent_row.plane is not None:
-            result.by_oracle_id[oracle_id] = parent_row.plane
-            result.via_parent[printing.set_code] = parent_code
+        # Rules 2 and 3 are one walk, not two lookups: `governing_set_row` returns the set's own
+        # row when it has one and the nearest ancestor's otherwise, which is exactly what 4.6
+        # states. Climbing a single level instead — as this did — makes a grandchild set fail
+        # 4.6.4 rather than inherit, and leaves a third reading of "parent" in the codebase after
+        # 4.3.1 and the stamp check were unified on this one.
+        resolved = governing_set_row(printing.set_code, by_code, sets)
+        if resolved is not None and (plane := resolved[0].plane) is not None:
+            source = resolved[1]
+            result.by_oracle_id[oracle_id] = plane
+            if source != printing.set_code:
+                result.via_parent[printing.set_code] = source
             continue
 
         result.unmapped[printing.set_code] = result.unmapped.get(printing.set_code, 0) + 1

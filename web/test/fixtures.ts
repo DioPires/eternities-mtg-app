@@ -1,6 +1,6 @@
 /**
  * Reading the committed fixture datasets from disk, so the camera and label tests run against the
- * same 82-plane roster the browser gets (implementation plan, Phase 0: "bench numbers mean
+ * same Appendix A roster the browser gets (implementation plan, Phase 0: "bench numbers mean
  * something from the first shader commit").
  */
 
