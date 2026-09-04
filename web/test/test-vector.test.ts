@@ -15,14 +15,18 @@ import {
   ContractError,
   SHARD_SIZE,
   StarStreamReader,
+  cardBackImageUri,
   decodeSets,
   decodeStars,
   float16ToNumber,
+  hasBackImage,
   imageUri,
   pageUri,
   shardIndexFor,
   shardPathFor,
   CARD_BACK_URI,
+  type CardLayout,
+  type CardRecord,
   type Manifest,
   type PlaneShardFile,
   type PlanesFile,
@@ -44,6 +48,20 @@ interface VectorStar {
   typeMask: number
 }
 
+interface VectorUri {
+  printingId: string
+  imageTs: string
+  layout: CardLayout
+  hasSecondFace: boolean
+  hasBackImage: boolean
+  small: string
+  large: string
+  artCrop: string
+  /** `null` wherever the card has no back image — split, adventure, flip and single-faced. */
+  backLarge: string | null
+  page: string
+}
+
 interface Vector {
   contractVersion: number
   dataHash: string
@@ -54,9 +72,10 @@ interface Vector {
   planeShards: Record<string, number>
   files: string[]
   cardBackUri: string
-  uris: Array<Record<string, string>>
+  uris: VectorUri[]
   hueClassChecks: Array<{ colourIdentity: string; hueClass: number }>
   typeMaskChecks: Array<{ typeLine: string; typeMask: number }>
+  backImageChecks: Array<{ layout: CardLayout; hasBackImage: boolean }>
   shardIndexChecks: Array<{ localIndex: number; shard: number }>
 }
 
@@ -132,6 +151,17 @@ describe('shared contract test vector', () => {
     })
   })
 
+  it('fails loudly on an out-of-range star index in every direction', () => {
+    const sets = decodeSets(bytes('sets.bin'))
+    for (const bad of [-1, vector.starCount, 999]) {
+      expect(() => sets.oracleId(bad)).toThrow(ContractError)
+      expect(() => sets.setIdsOf(bad)).toThrow(ContractError)
+      // `hasSet` used to return a silent `false` here, so a filter off by a plane offset matched
+      // nothing instead of failing.
+      expect(() => sets.hasSet(bad, 0)).toThrow(ContractError)
+    }
+  })
+
   it('reads manifest.json, planes.json and search.json', () => {
     const manifest = json<Manifest>('manifest.json')
     expect(manifest.dataHash).toBe(vector.dataHash)
@@ -163,13 +193,84 @@ describe('shared contract test vector', () => {
   it('derives Scryfall URIs exactly as the pipeline does', () => {
     expect(CARD_BACK_URI).toBe(vector.cardBackUri)
     for (const expected of vector.uris) {
-      const id = expected.printingId!
+      const id = expected.printingId
       const ts = Number(expected.imageTs)
       expect(imageUri(id, ts, 'small')).toBe(expected.small)
       expect(imageUri(id, ts, 'large')).toBe(expected.large)
       expect(imageUri(id, ts, 'art_crop')).toBe(expected.artCrop)
-      expect(imageUri(id, ts, 'large', 'back')).toBe(expected.backLarge)
     }
+  })
+
+  it('agrees with the pipeline on which layouts have a back image (contract §9)', () => {
+    // Every Scryfall layout, both sides. This is what stops one language quietly deciding that,
+    // say, `adventure` has a back image while the other says it does not.
+    expect(vector.backImageChecks.length).toBeGreaterThan(20)
+    for (const check of vector.backImageChecks) {
+      expect(hasBackImage(check.layout)).toBe(check.hasBackImage)
+    }
+    // The specific claims the co-review verified against live Scryfall.
+    expect(hasBackImage('transform')).toBe(true)
+    expect(hasBackImage('modal_dfc')).toBe(true)
+    for (const layout of ['split', 'adventure', 'flip', 'meld', 'normal'] as const) {
+      expect(hasBackImage(layout)).toBe(false)
+    }
+  })
+
+  it('derives a back image only where one exists, never a URI that 404s', () => {
+    // The regression this pins: a split, adventure or flip card has a second *face* and no second
+    // *image*. Deriving `.../back/<id>.jpg` for one of those 404s on live Scryfall, and the old
+    // vector asserted exactly that URI for every printing.
+    const shards = ['blind-eternities', 'dominaria', 'ravnica'].map((slug) =>
+      json<PlaneShardFile>(`planes/${slug}.0.json`),
+    )
+    const cards = shards.flatMap((s) => s.cards)
+    const byPrintingId = new Map<string, CardRecord>()
+    for (const card of cards) for (const p of card.p) byPrintingId.set(p[0], card)
+
+    let checkedWithout = 0
+    let checkedWith = 0
+    for (const expected of vector.uris) {
+      const card = byPrintingId.get(expected.printingId)!
+      const printing = card.p.find((p) => p[0] === expected.printingId)!
+      expect(cardBackImageUri(card, printing, 'large')).toBe(expected.backLarge)
+      expect(card.b !== null).toBe(expected.hasSecondFace)
+      expect(card.l).toBe(expected.layout)
+      if (expected.hasSecondFace && !expected.hasBackImage) checkedWithout += 1
+      if (expected.hasBackImage) checkedWith += 1
+    }
+    // The vector must actually carry both shapes, or this test proves nothing.
+    expect(checkedWithout).toBeGreaterThan(0)
+    expect(checkedWith).toBeGreaterThan(0)
+  })
+
+  it('reaches a meld back face through its own printing id (PRD line 125)', () => {
+    const ravnica = json<PlaneShardFile>('planes/ravnica.0.json')
+    const meld = ravnica.cards.find((c) => c.l === 'meld')!
+    expect(meld.b).not.toBeNull()
+    // The meld result is a separate Scryfall object, so its image is its own *front* — not a back
+    // face of the component's printing, which is why `b` has to carry an id and a timestamp.
+    expect(meld.b!.id).toBeDefined()
+    expect(meld.b!.ts).toBeDefined()
+    const uri = cardBackImageUri(meld, meld.p[0]!, 'large')
+    expect(uri).toBe(imageUri(meld.b!.id!, meld.b!.ts!, 'large', 'front'))
+    expect(uri).not.toContain('/back/')
+  })
+
+  it('finds every second face in backNames, not only the double-faced ones (PRD 6.5.2)', () => {
+    const search = json<SearchFile>('search.json')
+    const named = new Set(search.backNames.map(([, name]) => name))
+    // A split card's second half must be searchable even though it has no back image.
+    expect(named).toContain('Frost')
+    expect(named).toContain('Stomp')
+    expect(named).toContain('Aberration of Vectors')
+  })
+
+  it('percent-encodes a collector number with a Scryfall star', () => {
+    // Scryfall collector numbers carry `★` and `†`. A browser papers over it inside an `href`;
+    // a `fetch` or a re-template does not.
+    expect(pageUri('tv3', '★1')).toBe('https://scryfall.com/card/tv3/%E2%98%851')
+    const starred = vector.uris.find((u) => u.page.includes('%E2%98%85'))
+    expect(starred).toBeDefined()
   })
 
   it('derives the Scryfall page URI from a shard printing tuple', () => {
@@ -208,6 +309,39 @@ describe('streaming reader (PRD 8.3, 6.8.1)', () => {
     reader.push(buffer.subarray(16 + 12 + 5))
     expect(reader.completeRecords).toBe(vector.starCount)
     expect(reader.done).toBe(true)
+    expect(reader.snapshot().x(2)).toBe(vector.stars[2]!.x)
+  })
+
+  it('reads a chunk that is a view into a larger buffer (non-zero byteOffset)', () => {
+    // Regression: `push` used to decode `join().buffer`, which discards the view's byteOffset and
+    // byteLength, so it read whatever bytes sat at the start of the backing store — here, zeros,
+    // giving `bad magic "\0\0\0\0"`. `fetch`'s reader hands out offset-0 chunks, so nothing caught
+    // it; a worker or a pooled buffer (Phase 2a) does not.
+    const source = new Uint8Array(bytes('stars.bin'))
+    const padding = 8
+    const backing = new Uint8Array(padding + source.byteLength + padding)
+    backing.set(source, padding)
+    const chunk = backing.subarray(padding, padding + source.byteLength)
+    expect(chunk.byteOffset).toBe(padding)
+
+    const reader = new StarStreamReader()
+    reader.push(chunk)
+    expect(reader.expectedRecords).toBe(vector.starCount)
+    expect(reader.done).toBe(true)
+    expect(reader.snapshot().x(2)).toBe(vector.stars[2]!.x)
+    expect(reader.snapshot().typeMask(5)).toBe(vector.stars[5]!.typeMask)
+  })
+
+  it('reads offset chunks that only complete the header once joined', () => {
+    // The multi-chunk path merges into a fresh buffer, so it must stay correct too.
+    const source = new Uint8Array(bytes('stars.bin'))
+    const backing = new Uint8Array(16 + source.byteLength)
+    backing.set(source, 16)
+    const reader = new StarStreamReader()
+    reader.push(backing.subarray(16, 16 + 9)) // header incomplete
+    expect(reader.completeRecords).toBe(0)
+    reader.push(backing.subarray(16 + 9))
+    expect(reader.expectedRecords).toBe(vector.starCount)
     expect(reader.snapshot().x(2)).toBe(vector.stars[2]!.x)
   })
 })

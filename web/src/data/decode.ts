@@ -167,7 +167,12 @@ export class StarStreamReader {
     this.chunks.push(chunk)
     this.received += chunk.byteLength
     if (this.header === null && this.received >= BINARY_HEADER_BYTES) {
-      this.header = decodeHeader(this.join().buffer as ArrayBuffer)
+      // Read through the view's own offset. A chunk may be a view into a larger backing buffer —
+      // `fetch`'s reader hands out offset-0 chunks today, but a worker or a pooled buffer (Phase
+      // 2a moves shard parsing off the main thread) does not, and `.buffer` alone would silently
+      // decode whatever bytes happen to sit at the start of the backing store.
+      const joined = this.join()
+      this.header = decodeHeader(joined.buffer as ArrayBuffer, joined.byteOffset)
       if (this.header.kind !== BinaryKind.Stars) {
         throw new ContractError(`expected a stars file, got kind ${this.header.kind}`)
       }
@@ -305,6 +310,10 @@ export function decodeSets(buffer: ArrayBuffer): SetsSidecar {
       return entries.subarray(offsets[i], offsets[i + 1])
     },
     hasSet(i, setId) {
+      // Throws like `oracleId` and `setIdsOf` rather than returning a silent `false`: this sits in
+      // the facet path, and a filter that is off by a plane offset must fail loudly, not match
+      // nothing (PRD 7.7.2).
+      if (i < 0 || i >= starCount) throw new ContractError(`star index ${i} out of range`)
       let low = offsets[i]!
       let high = offsets[i + 1]! - 1
       while (low <= high) {

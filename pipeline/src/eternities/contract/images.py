@@ -7,6 +7,10 @@ PRD 4.11.3 still holds: the browser loads Scryfall's own URIs at the size the vi
 from __future__ import annotations
 
 from typing import Final, Literal
+from urllib.parse import quote
+
+from .enums import assert_known_layout
+from .models import CardFace
 
 type ImageSize = Literal["small", "normal", "large", "art_crop", "border_crop"]
 type CardFaceSide = Literal["front", "back"]
@@ -40,5 +44,48 @@ def image_uri(
 
 
 def page_uri(set_code: str, collector_number: str) -> str:
-    """Scryfall page for a printing (PRD 6.4 'Open on Scryfall')."""
-    return f"{PAGE_ORIGIN}/card/{set_code}/{collector_number}"
+    """Scryfall page for a printing (PRD 6.4 'Open on Scryfall').
+
+    Both halves are percent-encoded: Scryfall collector numbers carry ``★`` and ``†`` (``266★``),
+    which a browser papers over inside an ``href`` but which breaks the moment the string is
+    fetched or re-templated.
+    """
+    return f"{PAGE_ORIGIN}/card/{quote(set_code, safe='')}/{quote(collector_number, safe='')}"
+
+
+BACK_IMAGE_LAYOUTS: Final[frozenset[str]] = frozenset(
+    {"transform", "modal_dfc", "double_faced_token", "reversible_card", "art_series"}
+)
+"""The layouts whose printings have a ``.../back/<id>.jpg`` image.
+
+Two faces is *not* the same thing as a back image. Split, adventure and flip cards have two faces —
+PRD line 156 needs the per-face oracle text, and on Scryfall a split card's text exists **only**
+inside ``card_faces`` — but they are printed on one side, have no per-face ``image_uris``, and
+their derived back URI 404s. ``b`` therefore answers "is there a second face", and this answers
+"is there a second image". The TypeScript twin is ``BACK_IMAGE_LAYOUTS`` in ``images.ts``."""
+
+
+def has_back_image(layout: str) -> bool:
+    """Whether a printing of this layout has a back image (PRD 4.2.2, 5.6.2)."""
+    return assert_known_layout(layout) in BACK_IMAGE_LAYOUTS
+
+
+def back_image_uri(
+    layout: str, back: CardFace | None, printing_id: str, image_ts: int, size: ImageSize
+) -> str | None:
+    """The back image of a card as printed, or ``None`` when it has none.
+
+    Two sources, because there are two kinds of back:
+
+    - A **meld** result (PRD line 125) is its own Scryfall card with its own id and its own
+      ``image_uris``; it has no ``card_faces``. Its image is a *front*, keyed by ``b.id``/``b.ts``.
+      This is why :class:`~eternities.contract.models.CardFace` carries an optional printing id.
+    - A **transform**-family printing has a genuine back image under the same printing id.
+
+    Everything else — split, adventure, flip, and every single-faced layout — returns ``None``.
+    """
+    if back is not None and back.printing_id is not None and back.image_ts is not None:
+        return image_uri(back.printing_id, back.image_ts, size, "front")
+    if has_back_image(layout):
+        return image_uri(printing_id, image_ts, size, "back")
+    return None

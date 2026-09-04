@@ -186,9 +186,11 @@ Loaded in the background after the first frame, with `sets.bin` (PRD 8.7.5). Cli
     "cardCount": 295                    // cards first printed here; 0 for reprint-only sets
   }],
   "cardNames": ["Sol Ring", "…"],       // index == star index; PRD 6.5.2 front-face name
-  "backNames": [[1234, "Insectile Aberration"]]  // sparse, double-faced backs only
+  "backNames": [[1234, "Insectile Aberration"]]  // sparse; every card with a second face (§9)
 }
 ```
+
+`backNames` carries a row for **every** non-null `b`, not only the double-faced cards: PRD 6.5.2 wants "Stomp" to find Bonecrusher Giant and "Ice" to find Fire // Ice, and those are adventure and split cards. A row here says a card has a second *face*; it says nothing about whether it has a back *image*. See §9.
 
 The set dictionary is global and includes reprint-only sets, because PRD 6.6.3–4 filter by them and PRD 6.5.4 searches them. Its ids are the ids used by `sets.bin` §6.3 and by `planes.json` §4. There is no per-card plane field: a star's plane is the `planes.json` range that contains its index (§2).
 
@@ -215,7 +217,9 @@ PRD 7.2 budgets the pair `search.json` + `sets.bin` at ≤ 700 KB target / 1.5 M
 Two caveats to read the table honestly:
 
 1. `fixture-scale`'s card names are drawn from a 16×16 synthetic vocabulary, so they compress better than real Magic card names will. Expect `search.json` to grow by roughly 60–100 KB brotli on the first real run, which puts the pair near the 700 KB target rather than comfortably under it. The budget check (§10) **fails on the ceiling and reports against the target**, matching PRD 9.1.1–2, so a target overshoot is visible without blocking a merge.
-2. If the first real run overshoots the target and the owner wants it back, the documented lever is: truncate `ORACLE_IDS` to the leading 8 bytes (collision probability ≈ 2 × 10⁻¹¹ at 30 000 ids) and keep the full id only in the plane detail shards, which a card focus always loads first. That saves ~240 KB. It is *not* done now, because it makes the star → `oracle_id` direction depend on a shard fetch, and PRD 8.3 asks for a `star index ↔ oracle_id` table. Taking the lever is a contract change.
+2. If the first real run overshoots the target and the owner wants it back, the documented lever is: truncate `ORACLE_IDS` to the leading 8 bytes and keep the full id only in the plane detail shards, which a card focus always loads first. That saves 234 KiB ≈ 240 KB. It is *not* done now, because it makes the star → `oracle_id` direction depend on a shard fetch, and PRD 8.3 asks for a `star index ↔ oracle_id` table. Taking the lever is a contract change.
+
+   The collision probability if it is ever taken is **≈ 3.9 × 10⁻¹⁰** at 30 000 ids, not the 2 × 10⁻¹¹ this document carried before. Oracle ids are UUIDv4 (Sol Ring is `6ad8011d-3471-…`, byte 6 = `0x43`), and the leading 8 bytes contain the 4 fixed version bits, so a truncated id holds **60** random bits rather than 64 — a factor of 16 the earlier number missed. Still negligible against a 30 000-row table, so the lever stays sound; the number is now the right one.
 
 **Amendment A1 budget row** (implementation-plan.md §8), added to the 7.2 table:
 
@@ -240,10 +244,10 @@ Two caveats to read the table honestly:
     "m": "{1}",                                     // mana cost
     "t": "Artifact",                                // type line
     "o": "{T}: Add {C}{C}.",                        // oracle text, front face
-    "b": null,                                      // back face { n, m, t, o } or null (PRD 4.2.2)
+    "b": null,                                      // second face { n, m, t, o, id?, ts? } or null
     "ci": "",                                       // colour identity letters, "" = colourless
     "r": 2,                                         // first-printing size class
-    "l": "normal",                                  // Scryfall layout
+    "l": "normal",                                  // Scryfall layout, a closed union (below)
     "p": [["91fdb56b-…", 12, "u", 1783903215, "266"]]  // printings
   }]
 }
@@ -256,11 +260,50 @@ A printing is a fixed tuple `[id, setId, rarityChar, imageTs, collectorNumber]`,
 ```
 image:  https://cards.scryfall.io/<size>/<face>/<id[0]>/<id[1]>/<id>.jpg?<imageTs>
         size ∈ { small, normal, large, art_crop, border_crop }   face ∈ { front, back }
-page:   https://scryfall.com/card/<setCode>/<collectorNumber>
+page:   https://scryfall.com/card/<setCode>/<collectorNumber>     both halves percent-encoded
 back:   https://backs.scryfall.io/large/0/a/0aeebaf5-8c7d-4636-9e82-8c27447861f7.jpg
 ```
 
 Both sides implement this in one place — `pipeline/src/eternities/contract/images.py` and `web/src/data/images.ts` — and the test vector covers it. This still satisfies PRD 4.11.3: images are loaded from Scryfall's URIs at the size the view needs, never mirrored or resized server-side.
+
+The page URI percent-encodes both halves: Scryfall collector numbers carry `★` and `†` (`266★`). A browser papers over that inside an `href`, but not if the string is ever fetched or re-templated.
+
+### A second face is not a back image
+
+**`b` answers "is there another face". It does not answer "is there a back image".** These are different questions and conflating them derives URIs that 404. Verified against live Scryfall in Phase 0:
+
+| Layout | `b` non-null | Back image | Derived `.../back/<id>.jpg` |
+|---|---|---|---|
+| `normal` | no | no | — |
+| `split` (Fire // Ice) | **yes** | **no** | **404** |
+| `adventure` (Bonecrusher Giant) | **yes** | **no** | **404** |
+| `flip` (Erayo) | **yes** | **no** | **404** |
+| `transform` (Delver of Secrets) | yes | yes | 200 |
+| `modal_dfc` (Malakir Rebirth) | yes | yes | 200 |
+| `meld` (Bruna) | yes | yes, *elsewhere* | n/a — see below |
+
+Split, adventure and flip cards have two faces printed on one physical side. They carry no per-face `image_uris`, so there is no back image — but `b` **must** be populated for them, because PRD line 156 needs per-face oracle text and Scryfall gives a split card no top-level `oracle_text` at all. The text exists only inside `card_faces`.
+
+So:
+
+- **`l` is a closed union** of Scryfall's layout values — `LAYOUTS` in `contract/enums.py`, `CardLayout` in `data/types.ts`. The encoder rejects an unclassified layout and fails the run (PRD 7.7.2) rather than guessing at a URI.
+- **One shared predicate decides**: `has_back_image(layout)` / `hasBackImage(layout)`, defined next to the URI derivation in both files. The back-image layouts are `transform`, `modal_dfc`, `double_faced_token`, `reversible_card` and `art_series`.
+- **Consumers call `cardBackImageUri(card, printing, size)`** (`back_image_uri` in Python), which returns `null` when there is no back image. Never `printingImageUri(p, size, 'back')` directly — that signature cannot know whether a back exists.
+- The test vector carries a `split`, an `adventure`, a `flip`, a `transform` and a `meld` card, pins `backLarge` as `null` wherever there is no back image, and pins `hasBackImage` for *every* layout in `backImageChecks` so the two languages cannot drift apart.
+
+### Meld backs
+
+PRD line 125 keeps meld results out of the card set but requires them to stay reachable as the back faces of their components. A meld result is a separate Scryfall object: its own id, its own top-level `image_uris`, and **no** `card_faces`. Its image therefore cannot be derived from the component's printing at all.
+
+`CardFaceRecord` carries two optional fields for exactly this:
+
+```jsonc
+"b": { "n": "Brisela, Voice of Nightmares", "m": "", "t": "…", "o": "…",
+       "id": "5a7a2a…",      // the meld result's own printing id
+       "ts": 1783903215 }    // and its image timestamp
+```
+
+They are set together or not at all, and only on a meld back. The image is fetched with `face: 'front'`, because the meld result's own image *is* a front. This is the contract extension rather than the alternative — ruling meld backs text-only — because that would amend PRD 125, and the extension costs two optional keys on a few hundred cards.
 
 The card's plane is not repeated in the shard; the URL's plane slug and the `planes.json` range agree, and PRD 6.7.1 makes the card win if a refresh moved it.
 

@@ -92,7 +92,21 @@ _TYPE_LINES: Final[tuple[str, ...]] = (
     "Battle — Siege",
     "Conspiracy",
 )
-_LAYOUTS: Final[tuple[str, ...]] = ("normal", "normal", "normal", "normal", "split", "transform")
+_LAYOUT_WEIGHTS: Final[dict[str, int]] = {
+    # Deliberately covers every *back* shape contract §9 distinguishes, because the fixtures are
+    # what Phase 2+ develops against and "two faces" is not "has a back image".
+    "normal": 30,  # one face
+    "split": 1,  # two faces, no back image — the derived back URI would 404
+    "adventure": 1,  # ditto
+    "flip": 1,  # ditto
+    "transform": 2,  # two faces and a real back image under the same printing id
+    "modal_dfc": 1,  # ditto
+    "meld": 1,  # back face is a separate Scryfall object, carrying its own id and timestamp
+}
+_LAYOUTS: Final[tuple[str, ...]] = tuple(
+    layout for layout, weight in _LAYOUT_WEIGHTS.items() for _ in range(weight)
+)
+_TWO_FACED: Final[frozenset[str]] = frozenset(_LAYOUT_WEIGHTS) - {"normal"}
 _ADJECTIVES: Final[tuple[str, ...]] = (
     "Ancient",
     "Gilded",
@@ -441,14 +455,24 @@ def _plane_cards(
         card_layout = rng.choice(list(_LAYOUTS), oracle_id, "layout")
         band = band_of[i]
         first_set_id = refs[band].id if refs else reprint_pool[0]
+        # Every two-faced layout gets a `b`, not only the ones with a back image: a split card has
+        # no top-level oracle text on Scryfall at all, so `b` is the only place the second half can
+        # live (PRD line 156). A meld back additionally carries its own printing id and timestamp,
+        # because the meld result is a separate Scryfall object (PRD line 125).
         back = (
             CardFace(
                 name=f"{_card_name(slug, i)} // Reverse",
                 mana_cost="",
                 type_line="Creature — Spirit",
                 oracle_text=rng.choice(list(_ORACLE_CLAUSES), oracle_id, "backtext"),
+                printing_id=_stable_uuid("meld", oracle_id) if card_layout == "meld" else None,
+                image_ts=(
+                    1700000000 + rng.integer(0, 90000000, oracle_id, "meldts")
+                    if card_layout == "meld"
+                    else None
+                ),
             )
-            if card_layout == "transform"
+            if card_layout in _TWO_FACED
             else None
         )
         printings = _printings(oracle_id, first_set_id, reprint_pool)

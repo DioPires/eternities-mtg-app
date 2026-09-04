@@ -22,7 +22,7 @@ from .enums import (
     SIZE_CLASS_TO_RARITY_CHAR,
     STAR_RECORD_BYTES,
 )
-from .models import Card, Dataset, Plane
+from .models import Card, CardFace, Dataset, Plane
 
 DATA_HASH_LENGTH = 16
 """Hex characters. 8 bytes of sha256 — collision-free for a repository's worth of runs."""
@@ -92,6 +92,19 @@ def _plane_json(plane: Plane) -> dict[str, Any]:
     }
 
 
+def _face_json(face: CardFace) -> dict[str, Any]:
+    row: dict[str, Any] = {
+        "n": face.name,
+        "m": face.mana_cost,
+        "t": face.type_line,
+        "o": face.oracle_text,
+    }
+    if face.printing_id is not None and face.image_ts is not None:
+        row["id"] = face.printing_id
+        row["ts"] = face.image_ts
+    return row
+
+
 def _card_json(card: Card) -> dict[str, Any]:
     row: dict[str, Any] = {
         "u": card.oracle_id,
@@ -99,14 +112,10 @@ def _card_json(card: Card) -> dict[str, Any]:
         "m": card.mana_cost,
         "t": card.type_line,
         "o": card.oracle_text,
-        "b": None
-        if card.back is None
-        else {
-            "n": card.back.name,
-            "m": card.back.mana_cost,
-            "t": card.back.type_line,
-            "o": card.back.oracle_text,
-        },
+        # `b` is "there is a second face", not "there is a back image": split, adventure and flip
+        # cards have one and not the other (contract §9). `id`/`ts` appear only on a meld back,
+        # whose image is a separate Scryfall object and cannot be derived from the printing.
+        "b": None if card.back is None else _face_json(card.back),
         "ci": card.colour_identity,
         "r": int(card.rarity),
         "l": card.layout,
@@ -152,6 +161,8 @@ def encode_artefacts(dataset: Dataset) -> tuple[list[EncodedArtefact], dict[str,
         )
     )
 
+    # Every non-null back face, not only the double-faced ones: PRD 6.5.2 wants "Stomp" to find
+    # Bonecrusher Giant and "Ice" to find Fire // Ice, and those are adventure and split cards.
     back_names = [[i, c.back.name] for i, c in enumerate(dataset.cards) if c.back is not None]
     artefacts.append(
         EncodedArtefact(
@@ -188,6 +199,14 @@ def encode_artefacts(dataset: Dataset) -> tuple[list[EncodedArtefact], dict[str,
     )
 
     for plane in dataset.planes:
+        # The shard *count* comes from card_count and the shard *slices* from star_count. They are
+        # the same number by construction — one star per card — but nothing else enforces it, and a
+        # divergence would silently drop cards off the end or emit empty trailing shards.
+        if plane.card_count != plane.star_count:
+            raise ValueError(
+                f"plane {plane.slug} has {plane.card_count} cards but {plane.star_count} stars; "
+                "shard arithmetic needs them equal"
+            )
         shards = shard_count_for(plane.card_count)
         for shard in range(shards):
             start = plane.star_offset + shard * SHARD_SIZE

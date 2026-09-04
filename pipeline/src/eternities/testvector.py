@@ -8,7 +8,12 @@ Deliberately exercises the awkward cases:
   - a zero-card plane (PRD 5.3.6) whose shard file is present but empty,
   - a plane that crosses the 2000-card shard boundary is out of reach at this size, so the vector
     instead pins ``shardSize`` and the shard-index arithmetic explicitly in ``vector.json``,
-  - a double-faced card (PRD 4.2.2) so ``backNames`` is non-empty,
+  - one card of every *back* shape the contract distinguishes (contract §9): a ``transform`` card
+    (two faces **and** a back image), a ``split``, an ``adventure`` and a ``flip`` card (two faces,
+    **no** back image — their derived back URI 404s on live Scryfall), a ``meld`` card (a back face
+    whose image is a separate Scryfall object, reached through ``b.id``/``b.ts``), and plain
+    single-faced cards. ``backNames`` is non-empty and covers every non-null ``b``, not only the
+    double-faced ones — PRD 6.5.2 wants "Stomp" to find Bonecrusher Giant,
   - a card with no colour identity, a multicolour card, and a conspiracy with an empty type mask,
   - a star at the frame radius, a negative coordinate, and an exact-zero coordinate, so float16
     rounding is pinned,
@@ -27,12 +32,13 @@ from .contract.encode import encode_artefacts
 from .contract.enums import (
     CONTRACT_VERSION,
     FRAME_RADIUS,
+    LAYOUTS,
     PlaneKind,
     SizeClass,
     hue_class_for,
     type_mask_for,
 )
-from .contract.images import CARD_BACK_URI, image_uri, page_uri
+from .contract.images import CARD_BACK_URI, back_image_uri, has_back_image, image_uri, page_uri
 from .contract.models import (
     Card,
     CardFace,
@@ -91,7 +97,7 @@ def build_test_vector() -> Dataset:
     sets = [
         SetRecord(0, "tv1", "Test Vector One", 1993, "dominaria", 3),
         SetRecord(1, "tv2", "Test Vector Two", 2004, "dominaria", 1),
-        SetRecord(2, "tv3", "Test Vector Three", 2015, "ravnica", 2),
+        SetRecord(2, "tv3", "Test Vector Three", 2015, "ravnica", 7),
         SetRecord(3, "rp0", "Reprint Only Masters", 2020, None, 0),
     ]
 
@@ -159,7 +165,7 @@ def build_test_vector() -> Dataset:
             ],
             set_ids=[0],
         ),
-        # 3 — double-faced, so backNames is non-empty (PRD 4.2.2, 6.5.2).
+        # 3 — transform: two faces AND a back image, derived from the same printing id.
         Card(
             oracle_id="00000000-0000-4000-8000-000000000004",
             name="Watcher of Vectors",
@@ -222,6 +228,106 @@ def build_test_vector() -> Dataset:
             ],
             set_ids=[2, 3],
         ),
+        # 6 — split. Two faces, one physical side: `b` is non-null and there is NO back image.
+        # Checked live in Phase 0 — Fire // Ice's derived back URI 404s. `b` is also the only place
+        # the second half's oracle text can live: Scryfall gives a split card no top-level
+        # `oracle_text` at all, only `card_faces` (PRD line 156).
+        Card(
+            oracle_id="00000000-0000-4000-8000-000000000007",
+            name="Flame // Frost",
+            mana_cost="{1}{R} // {1}{U}",
+            type_line="Instant // Instant",
+            oracle_text="Flame deals 2 damage to any target.",
+            back=CardFace(
+                name="Frost",
+                mana_cost="{1}{U}",
+                type_line="Instant",
+                oracle_text="Tap target creature.",
+            ),
+            colour_identity="UR",
+            rarity=SizeClass.UNCOMMON,
+            layout="split",
+            printings=[
+                printing(
+                    "aaaaaaaa-0000-4000-8000-000000000010", 2, SizeClass.UNCOMMON, 1700000010, "215"
+                )
+            ],
+            set_ids=[2],
+        ),
+        # 7 — adventure. Same shape as split: a second face, no second image.
+        Card(
+            oracle_id="00000000-0000-4000-8000-000000000008",
+            name="Bonecrusher Fixture",
+            mana_cost="{2}{R}",
+            type_line="Creature — Giant",
+            oracle_text="Whenever this creature becomes the target of a spell, it deals 2 damage.",
+            back=CardFace(
+                name="Stomp",
+                mana_cost="{1}{R}",
+                type_line="Instant — Adventure",
+                oracle_text="Damage can't be prevented this turn.",
+            ),
+            colour_identity="R",
+            rarity=SizeClass.RARE,
+            layout="adventure",
+            printings=[
+                printing(
+                    "aaaaaaaa-0000-4000-8000-000000000011", 2, SizeClass.RARE, 1700000011, "781"
+                )
+            ],
+            set_ids=[2],
+        ),
+        # 8 — flip. Two faces printed upside down on one side: still no back image.
+        Card(
+            oracle_id="00000000-0000-4000-8000-000000000009",
+            name="Erayo Fixture",
+            mana_cost="{1}{U}",
+            type_line="Legendary Creature — Moonfolk Monk",
+            oracle_text="Flying.",
+            back=CardFace(
+                name="Erayo's Essence",
+                mana_cost="",
+                type_line="Legendary Enchantment",
+                oracle_text="Counter the first spell each opponent casts each turn.",
+            ),
+            colour_identity="U",
+            rarity=SizeClass.RARE,
+            layout="flip",
+            printings=[
+                printing(
+                    "aaaaaaaa-0000-4000-8000-000000000012", 2, SizeClass.RARE, 1700000012, "35"
+                )
+            ],
+            set_ids=[2],
+        ),
+        # 9 — meld. PRD line 125: the meld result is not a card of its own but stays reachable as
+        # the back face of its components. It is a separate Scryfall object with its own id and its
+        # own *front* image and no `card_faces`, so `b` carries that id and timestamp — the only
+        # shape in the contract where the back image is not derived from the component's printing.
+        Card(
+            oracle_id="00000000-0000-4000-8000-00000000000a",
+            name="Bruna Fixture",
+            mana_cost="{5}{W}{W}",
+            type_line="Legendary Creature — Angel Horror",
+            oracle_text="Flying. (Melds with Gisela Fixture.)",
+            back=CardFace(
+                name="Brisela Fixture",
+                mana_cost="",
+                type_line="Legendary Creature — Eldrazi Angel",
+                oracle_text="Flying, first strike, vigilance, lifelink.",
+                printing_id="bbbbbbbb-0000-4000-8000-000000000001",
+                image_ts=1700000013,
+            ),
+            colour_identity="W",
+            rarity=SizeClass.RARE,
+            layout="meld",
+            printings=[
+                printing(
+                    "aaaaaaaa-0000-4000-8000-000000000013", 2, SizeClass.RARE, 1700000014, "15a"
+                )
+            ],
+            set_ids=[2],
+        ),
     ]
 
     positions: list[tuple[float, float, float]] = [
@@ -231,9 +337,13 @@ def build_test_vector() -> Dataset:
         (0.125, -0.03125, 0.75),
         (0.25, 0.5, -0.125),
         (0.0009765625, 1.0, 0.0),  # a value that only survives a correct float16 round trip
+        (-0.5, 0.25, 0.0625),
+        (0.75, -0.5, -0.75),
+        (-0.0009765625, 0.0, 0.5),
+        (1.0, -1.0, 1.0),
     ]
-    brightness = [40, 128, 200, 1, 255, 0]
-    twinkle = [0, 64, 128, 200, 255, 7]
+    brightness = [40, 128, 200, 1, 255, 0, 17, 96, 160, 224]
+    twinkle = [0, 64, 128, 200, 255, 7, 31, 96, 160, 250]
 
     stars = [
         StarRecord(
@@ -281,13 +391,13 @@ def build_test_vector() -> Dataset:
             "ravnica",
             "Ravnica",
             PlaneKind.IRREGULAR,
-            3,
+            7,
             3,
             (-30.0, -1.25, 15.0),
             6.5,
-            [PlaneSetRef(2, "tv3", "Test Vector Three", 2015, 3)],
+            [PlaneSetRef(2, "tv3", "Test Vector Three", 2015, 7)],
         ),
-        _plane(3, "segovia", "Segovia", PlaneKind.EMPTY, 0, 6, (55.0, 0.0, 40.0), 3.0, []),
+        _plane(3, "segovia", "Segovia", PlaneKind.EMPTY, 0, 10, (55.0, 0.0, 40.0), 3.0, []),
     ]
 
     return Dataset(
@@ -304,21 +414,30 @@ def build_test_vector() -> Dataset:
     )
 
 
-def expected_uris() -> list[dict[str, str]]:
-    """Derived Scryfall URIs, pinned so both implementations agree (contract §9)."""
+def expected_uris() -> list[dict[str, Any]]:
+    """Derived Scryfall URIs, pinned so both implementations agree (contract §9).
+
+    ``backLarge`` is ``None`` wherever the card has no back image. That is the case the vector
+    exists to pin: a split, adventure or flip card has a second *face* and no second *image*, and
+    the URI a naive ``face='back'`` derivation produces 404s on live Scryfall.
+    """
     dataset = build_test_vector()
     by_id = {s.id: s for s in dataset.sets}
-    out: list[dict[str, str]] = []
+    out: list[dict[str, Any]] = []
     for card in dataset.cards:
         for p in card.printings:
+            back_large = back_image_uri(card.layout, card.back, p.id, p.image_ts, "large")
             out.append(
                 {
                     "printingId": p.id,
                     "imageTs": str(p.image_ts),
+                    "layout": card.layout,
+                    "hasSecondFace": card.back is not None,
+                    "hasBackImage": back_large is not None,
                     "small": image_uri(p.id, p.image_ts, "small"),
                     "large": image_uri(p.id, p.image_ts, "large"),
                     "artCrop": image_uri(p.id, p.image_ts, "art_crop"),
-                    "backLarge": image_uri(p.id, p.image_ts, "large", "back"),
+                    "backLarge": back_large,
                     "page": page_uri(by_id[p.set_id].code, p.collector_number),
                 }
             )
@@ -375,6 +494,12 @@ def vector_summary() -> dict[str, Any]:
                 "Instant",
                 "Enchantment Creature — Nymph",
             ]
+        ],
+        # Every Scryfall layout and whether it has a back *image*. This is the cross-language
+        # enforcement of contract §9's split between "second face" and "back image": both sides
+        # answer for all of them, so neither can quietly disagree about, say, `adventure`.
+        "backImageChecks": [
+            {"layout": layout, "hasBackImage": has_back_image(layout)} for layout in sorted(LAYOUTS)
         ],
         "shardIndexChecks": [
             {"localIndex": 0, "shard": 0},

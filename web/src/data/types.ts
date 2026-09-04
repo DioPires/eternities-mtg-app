@@ -158,18 +158,68 @@ export interface SearchFile {
   readonly sets: readonly SearchSetRecord[]
   /** Index is the star index. */
   readonly cardNames: readonly string[]
-  /** Sparse `[starIndex, backFaceName]` pairs for double-faced cards (PRD 4.2.2, 6.5.2). */
+  /**
+   * Sparse `[starIndex, backFaceName]` pairs for **every** card with a second face, not only the
+   * double-faced ones (PRD 4.2.2, 6.5.2): searching "Stomp" must find Bonecrusher Giant and "Ice"
+   * must find Fire // Ice, and those are adventure and split cards. A row here says nothing about
+   * whether the card has a back image.
+   */
   readonly backNames: ReadonlyArray<readonly [StarIndex, string]>
 }
 
 /** `[id, setId, rarityChar, imageTs, collectorNumber]` — ordered by release date (PRD 5.6.7). */
 export type PrintingTuple = readonly [string, SetId, string, number, string]
 
+/**
+ * Every Scryfall `layout` value. Closed on purpose: `l` is this union, and whether a printing has
+ * a back *image* is derived from it — see `hasBackImage` in `./images`. The Python twin is
+ * `LAYOUTS` in `pipeline/src/eternities/contract/enums.py`, and the encoder rejects any layout
+ * outside this set rather than emitting a URI that would 404.
+ */
+export type CardLayout =
+  | 'normal'
+  | 'split'
+  | 'flip'
+  | 'transform'
+  | 'modal_dfc'
+  | 'meld'
+  | 'leveler'
+  | 'class'
+  | 'case'
+  | 'saga'
+  | 'adventure'
+  | 'mutate'
+  | 'prototype'
+  | 'battle'
+  | 'planar'
+  | 'scheme'
+  | 'vanguard'
+  | 'token'
+  | 'double_faced_token'
+  | 'emblem'
+  | 'augment'
+  | 'host'
+  | 'art_series'
+  | 'reversible_card'
+
+/**
+ * A card's second face — "there is another face", **not** "there is a back image". Split,
+ * adventure and flip cards have one and not the other (contract §9); use `hasBackImage(card.l)`
+ * or `cardBackImageUri` to decide whether an image exists, never `b !== null`.
+ */
 export interface CardFaceRecord {
   readonly n: string
   readonly m: string
   readonly t: string
   readonly o: string
+  /**
+   * Present only on a **meld** back (PRD line 125). The meld result is a separate Scryfall object
+   * with its own *front* image, so its URI cannot be derived from the component's printing; these
+   * two fields are the only way to reach it. Absent on every other layout.
+   */
+  readonly id?: string
+  /** Cache-busting timestamp for `id`. Present exactly when `id` is. */
+  readonly ts?: number
 }
 
 export interface CardRecord {
@@ -179,11 +229,12 @@ export interface CardRecord {
   readonly m: string
   readonly t: string
   readonly o: string
+  /** The second face, or `null`. See `CardFaceRecord`: this does not imply a back image. */
   readonly b: CardFaceRecord | null
   /** Colour identity letters; `''` is colourless. */
   readonly ci: string
   readonly r: SizeClass
-  readonly l: string
+  readonly l: CardLayout
   readonly p: readonly PrintingTuple[]
 }
 

@@ -79,6 +79,46 @@ class SetsSection(IntEnum):
     SET_ENTRIES = 3
 
 
+LAYOUTS: Final[frozenset[str]] = frozenset(
+    {
+        "normal",
+        "split",
+        "flip",
+        "transform",
+        "modal_dfc",
+        "meld",
+        "leveler",
+        "class",
+        "case",
+        "saga",
+        "adventure",
+        "mutate",
+        "prototype",
+        "battle",
+        "planar",
+        "scheme",
+        "vanguard",
+        "token",
+        "double_faced_token",
+        "emblem",
+        "augment",
+        "host",
+        "art_series",
+        "reversible_card",
+    }
+)
+"""Every Scryfall ``layout`` value. Closed on purpose: ``l`` in a plane shard is this union, and
+which layouts have a *back image* is derived from it (``images.has_back_image``). An unknown
+layout fails the run rather than guessing at a URI that would 404 (PRD 7.7.2)."""
+
+
+def assert_known_layout(layout: str) -> str:
+    """Fail loudly on a layout this contract has not classified (PRD 7.7.2)."""
+    if layout not in LAYOUTS:
+        raise ValueError(f"unknown Scryfall layout {layout!r}")
+    return layout
+
+
 RARITY_TO_SIZE_CLASS: Final[dict[str, SizeClass]] = {
     "common": SizeClass.COMMON,
     "uncommon": SizeClass.UNCOMMON,

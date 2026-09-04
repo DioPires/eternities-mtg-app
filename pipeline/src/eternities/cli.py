@@ -46,6 +46,10 @@ def _cmd_fixtures(args: argparse.Namespace) -> int:
     fixtures: dict[str, str] = {
         str(k): str(v) for k, v in cast("dict[str, Any]", registry.get("fixtures", {})).items()
     }
+    # Which *fixture* the app is pointed at, resolved before the hashes move under us. The registry
+    # stores a hash, but the intent it encodes is a name, and regenerating changes every hash.
+    previous_active = str(registry.get("active", ""))
+    active_name = next((n for n, h in fixtures.items() if h == previous_active), None)
 
     for name in names:
         spec = _FIXTURES[name]
@@ -69,7 +73,11 @@ def _cmd_fixtures(args: argparse.Namespace) -> int:
         return 0
 
     registry["fixtures"] = fixtures
-    registry.setdefault("active", fixtures.get("scale") or next(iter(fixtures.values())))
+    # Follow the fixture, not the hash. Regenerating rewrites every content hash and deletes the
+    # old directory, so a `setdefault` here would leave `active` pointing at a directory that no
+    # longer exists and the app fetching 404s until someone thought to pass `--set-active`.
+    fallback = fixtures.get("scale") or next(iter(fixtures.values()))
+    registry["active"] = fixtures.get(active_name or "", fallback) if active_name else fallback
     if args.set_active:
         registry["active"] = fixtures[args.set_active]
     DATASETS_FILE.write_text(

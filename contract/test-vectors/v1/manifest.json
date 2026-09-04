@@ -2,7 +2,7 @@
   "contractVersion": 1,
   "pipelineVersion": "0.1.0",
   "dataset": "test-vector",
-  "dataHash": "177eec2a3ed78483",
+  "dataHash": "a8bdbe136f2e6469",
   "asOf": "2026-09-04",
   "generatedAt": "2026-09-04T00:00:00Z",
   "scryfallBulkUpdatedAt": "2026-09-03T09:00:00Z",
@@ -10,11 +10,11 @@
   "shardSize": 2000,
   "counts": {
     "planes": 4,
-    "stars": 6,
+    "stars": 10,
     "sets": 4,
-    "printings": 9,
+    "printings": 13,
     "blindEternitiesStars": 1,
-    "blindEternitiesShare": 0.166667
+    "blindEternitiesShare": 0.1
   },
   "planeShards": {
     "blind-eternities": 1,
@@ -25,8 +25,8 @@
   "files": [
     {
       "path": "planes.json",
-      "bytes": 2477,
-      "sha256": "df4f101c211e9a35986d1454baf99ce3014cba0781afb7126c018396331c3881"
+      "bytes": 2478,
+      "sha256": "5cde2e4b0b3d58b6f8783902c3fc24a725e810685eeed5e9a4d93f543782f392"
     },
     {
       "path": "planes/blind-eternities.0.json",
@@ -40,28 +40,28 @@
     },
     {
       "path": "planes/ravnica.0.json",
-      "bytes": 1074,
-      "sha256": "10e0a20910349846d515da9c44d7bc142530a60445049a0ef8db6f120b00d4c0"
+      "bytes": 2594,
+      "sha256": "fbda8887ff033803859b0489f78f2fcdadbcca52b2b68ddf3341351e28bd644f"
     },
     {
       "path": "planes/segovia.0.json",
-      "bytes": 91,
-      "sha256": "23b65e81c2949e7f4e78d400a9da16927887262a738cb2ac81dfd73bafe4e93c"
+      "bytes": 92,
+      "sha256": "127e65730d95267805d006e392c895c0ad59f0a9b13597263ea9ef62661c59e0"
     },
     {
       "path": "search.json",
-      "bytes": 876,
-      "sha256": "41d48eafba18167fe8174c6399cc6ce8e231a719241150f9e167b587f294cad5"
+      "bytes": 1016,
+      "sha256": "b5af0c40d99e2e52ad0f8fd0122f8063972d96415b3157a60580d0999dd60e9c"
     },
     {
       "path": "sets.bin",
-      "bytes": 200,
-      "sha256": "10e3be049f2e73e801981572349713d26ab2a3cb643860211e8055c8bf1b9cda"
+      "bytes": 280,
+      "sha256": "e22f8097b25020ace58c97f79a3a2d0d76aa54d1e10b0ad17eca62b3258a6bc4"
     },
     {
       "path": "stars.bin",
-      "bytes": 88,
-      "sha256": "321cf34f5fe9df5f19e946162ad3ceb5fa9702e68451fd97898667a1b835a5ed"
+      "bytes": 136,
+      "sha256": "5a672c46188165e652f337bcc47ae39098ab8b433354ef6e49375ae7cb9d5432"
     }
   ]
 }

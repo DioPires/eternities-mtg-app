@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .enums import HueClass, PlaneKind, SizeClass
+from .enums import HueClass, PlaneKind, SizeClass, assert_known_layout
 
 type Vec3 = tuple[float, float, float]
 type Quat = tuple[float, float, float, float]
@@ -99,10 +99,29 @@ class Printing:
 
 @dataclass(frozen=True, slots=True)
 class CardFace:
+    """A card's second face. ``b`` in a plane shard (contract §9)."""
+
     name: str
     mana_cost: str
     type_line: str
     oracle_text: str
+
+    printing_id: str | None = None
+    """Set only for a **meld** back (PRD line 125).
+
+    A meld result is excluded as a card of its own but stays reachable as the back face of its
+    components. It is a separate Scryfall object with its own id and its own top-level
+    ``image_uris`` and **no** ``card_faces``, so its image cannot be derived from the component's
+    printing. These two fields are the only way the image is reachable at all; they are absent on
+    every other layout, which costs nothing in a shard.
+    """
+
+    image_ts: int | None = None
+    """Cache-busting timestamp for :attr:`printing_id`. Set together with it or not at all."""
+
+    def __post_init__(self) -> None:
+        if (self.printing_id is None) != (self.image_ts is None):
+            raise ValueError("a back face needs both printing_id and image_ts, or neither")
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,6 +140,11 @@ class Card:
     printings: list[Printing]
     set_ids: list[int]
     """Distinct included-printing set ids, ascending. Drives ``sets.bin`` section 3."""
+
+    def __post_init__(self) -> None:
+        # `layout` decides whether a back *image* exists (contract §9), so an unclassified value
+        # must stop the run rather than reach a consumer that would derive a URI which 404s.
+        assert_known_layout(self.layout)
 
 
 @dataclass(frozen=True, slots=True)

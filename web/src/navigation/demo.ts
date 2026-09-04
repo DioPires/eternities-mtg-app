@@ -71,7 +71,61 @@ export async function runNavigationDemo(nav: NavigationApi = createNavigationStu
     { reason: 'random' },
   ).done
 
+  // PRD 6.7.1 cold start: the deep link's fly-to is already in the air when `sets.bin` resolves the
+  // id. `resolveCard` refines it in place — a second `flyToCard` would supersede and restart the
+  // camera, which is exactly the discontinuity PRD 5.7 and 7.3.6 exist to prevent.
+  const deepLink = nav.flyToCard(
+    { planeSlug: 'innistrad', oracleId: '00000000-0000-4000-8000-000000000006' },
+    { reason: 'deep-link', durationMs: 5000 },
+  )
+  nav.resolveCard('00000000-0000-4000-8000-000000000006', { starIndex: 4242 })
+  events.push(`resolved:${(nav.snapshot().focus as { starIndex?: number }).starIndex}`)
+  events.push(`resolved-same-flight:${nav.snapshot().flight?.id === deepLink.id}`)
+  deepLink.cancel('route')
+  await deepLink.done
+
+  // PRD 6.7.1 again: a data refresh moved the card, so the card wins and the URL is rewritten.
+  const moved = nav.flyToCard(
+    { planeSlug: 'innistrad', oracleId: '00000000-0000-4000-8000-000000000007' },
+    { reason: 'deep-link', durationMs: 5000 },
+  )
+  nav.resolveCard('00000000-0000-4000-8000-000000000007', { starIndex: 7, planeSlug: 'ravnica' })
+  events.push(`retargeted:${(nav.snapshot().focus as { planeSlug?: string }).planeSlug}`)
+  moved.cancel('route')
+  await moved.done
+
+  // PRD risk 9: a bookmark survived a refresh that dropped the card. `starIndexOf` gives -1, and
+  // the flight must not resolve 'completed' at a focus that does not exist.
+  const missing = nav.flyToCard(
+    { planeSlug: 'ravnica', oracleId: 'not-in-this-dataset' },
+    { reason: 'deep-link', durationMs: 5000 },
+  )
+  nav.failCardResolution('not-in-this-dataset')
+  events.push(`unresolvable:${(await missing.done).status}`)
+
+  // PRD 6.2.3: a Blind Eternities card is framed against the dust around its own position, and Esc
+  // must come back to that anchor rather than to the multiverse centre.
+  await nav.flyToBlindEternities(anchor, { reason: 'user' }).done
+  await nav.flyToCard(
+    {
+      planeSlug: 'blind-eternities',
+      oracleId: '00000000-0000-4000-8000-000000000008',
+      starIndex: 9,
+      anchor,
+    },
+    { reason: 'user' },
+  ).done
+  await nav.focusParent({ reason: 'history' })?.done
+  const dustParent = nav.snapshot().focus
+  events.push(
+    `dust-parent-anchor:${dustParent.kind === 'plane' ? (dustParent.anchor?.join(',') ?? 'none') : 'not-a-plane'}`,
+  )
+
   // PRD 6.1.3: Esc walks up card to plane to multiverse, then does nothing.
+  await nav.flyToCard(
+    { planeSlug: 'innistrad', oracleId: '00000000-0000-4000-8000-000000000009', starIndex: 3 },
+    { reason: 'search' },
+  ).done
   await nav.focusParent({ reason: 'history' })?.done
   await nav.focusParent({ reason: 'history' })?.done
   const atRoot = nav.focusParent({ reason: 'history' })
