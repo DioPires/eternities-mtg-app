@@ -19,6 +19,7 @@ In order of authority. Read the first two before changing anything.
 | [`docs/navigation-contract.md`](docs/navigation-contract.md) | The UI ↔ scene navigation API. **Frozen.** |
 | [`docs/scryfall-policy.md`](docs/scryfall-policy.md) | Scryfall CORS and terms verification. Verdict: PASS. |
 | [`docs/deployment.md`](docs/deployment.md) | Vercel setup and the headers. |
+| [`docs/app-shell.md`](docs/app-shell.md) | The Phase 4 UI shell: where state lives, the seams for 2a/2b/3/5, and the calls the PRD left open. |
 
 Both contracts are freeze points. Changing a byte layout, an enum value, a filename or a method
 signature is a reviewed contract change, not an ordinary commit.
@@ -36,6 +37,12 @@ web/                      Vite, React, TypeScript strict, react-three-fiber, Zus
   src/data/               The data contract, decoder side. Frozen.
   src/navigation/         The navigation contract, plus its Phase 0 stub. Frozen.
   src/scene/              The hello-scene.
+  src/router/             PRD 6.7's URL: the source of truth for focus and filters.
+  src/store/              PRD 8.4.2's transient view state, and the persisted settings.
+  src/filters/            PRD 6.6's facets: the dimming mask and the exact count.
+  src/search/             PRD 6.5's client-side fuzzy index over search.json.
+  src/app/                Cold start, dataset loading, and the shell's hooks.
+  src/ui/                 HUD, drawers, overlays, toasts, WebGL2 fallback.
   public/data/<hash>/     Committed artefacts, immutable, content-hashed.
   scripts/                Budget check, vercel.json generation, browser verification.
 contract/test-vectors/v1/ The shared byte-level test vector. Both languages assert against it.
@@ -80,5 +87,7 @@ overrides it. The real dataset arrives in Phase 1.
 
 ## Where things stand
 
-Phase 0 (scaffold and contracts) is complete. Phases 1, 2a, 2b and 4 run in parallel from here —
-see `implementation-plan.md` §3.
+Phase 0 (scaffold and contracts) is complete. Phase 4 (app shell and UI) is built against the Phase
+0 navigation stub — see [`docs/app-shell.md`](docs/app-shell.md). Phases 1, 2a and 2b run in
+parallel; the shell's camera-dependent flows become real when 2b swaps `createNavigation()`. See
+`implementation-plan.md` §3.

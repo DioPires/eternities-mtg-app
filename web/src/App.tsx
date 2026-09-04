@@ -1,95 +1,75 @@
 /**
- * Phase 0's app: the hello-scene, plus a small panel that proves both fixtures decode in the
- * browser and the navigation stub answers a real caller. Phase 4 replaces all of this.
+ * The Phase 4 app shell: one R3F canvas and one HTML overlay (PRD 8.4.3-4).
+ *
+ * The scene inside the canvas is still Phase 0's hello-scene. Phase 2a's star field and Phase 2b's
+ * camera rig drop in here without the shell changing, because the shell only ever talks to the
+ * scene through the navigation contract — see `createNavigation()` in `./app/services`.
+ *
+ * Everything this component does is composition. The behaviour lives in `./app/boot` (the cold
+ * start), `./app/hooks` (the URL, the store and the keyboard) and `./ui/*` (the surfaces).
  */
 
 import { Canvas } from '@react-three/fiber'
-import { useEffect, useState, type ReactElement } from 'react'
+import { useEffect, type ReactElement } from 'react'
 
+import { boot } from './app/boot'
 import {
-  BLIND_ETERNITIES_SLUG,
-  dataRoot,
-  loadManifest,
-  loadPlaneShard,
-  loadPlanes,
-  loadSearch,
-  loadSets,
-  streamStars,
-  type Manifest,
-} from './data'
-import { createNavigationStub, levelOf, type NavigationSnapshot } from './navigation'
+  useAttractMode,
+  useFilterEvaluation,
+  useKeyboardMap,
+  usePanelAutoOpen,
+  useReducedMotion,
+  useResetActivePrintingOnFocus,
+  useRouter,
+  useNavigation,
+} from './app/hooks'
 import { HelloScene, SKY_COLOUR } from './scene/HelloScene'
+import { useStore } from './store/store'
+import { Drawer } from './ui/Drawer'
+import { FilterOverlay } from './ui/FilterOverlay'
+import { FirstVisitHint } from './ui/FirstVisitHint'
+import { HelpOverlay } from './ui/HelpOverlay'
+import { Hud } from './ui/Hud'
+import { PlaneIndexOverlay } from './ui/PlaneIndexOverlay'
+import { SearchOverlay } from './ui/SearchOverlay'
+import { SettingsOverlay } from './ui/SettingsOverlay'
+import { Toasts } from './ui/Toasts'
 
-interface DecodeReport {
-  readonly lines: string[]
-  readonly ok: boolean
-}
-
-async function decodeEverything(): Promise<DecodeReport> {
-  const lines: string[] = []
-  try {
-    const root = dataRoot()
-    lines.push(`data directory ${root}`)
-
-    const manifest: Manifest = await loadManifest()
-    lines.push(
-      `manifest: ${manifest.dataset}, contract v${manifest.contractVersion}, ` +
-        `${manifest.counts.stars} stars, ${manifest.counts.planes} planes`,
-    )
-
-    const planes = await loadPlanes()
-    lines.push(`planes.json: ${planes.planes.length} rows, R = ${planes.multiverseRadius}`)
-
-    let lastProgress = 0
-    const stars = await streamStars((reader) => {
-      lastProgress = reader.completeRecords
-    })
-    lines.push(
-      `stars.bin: streamed ${stars.count} records (last draw range ${lastProgress}), ` +
-        `star 0 at ${stars.x(0).toFixed(4)}, ${stars.y(0).toFixed(4)}, ${stars.z(0).toFixed(4)}`,
-    )
-
-    const [search, sets] = await Promise.all([loadSearch(), loadSets()])
-    lines.push(`search.json: ${search.cardNames.length} names, ${search.sets.length} sets`)
-    const oracleId = sets.oracleId(0)
-    lines.push(
-      `sets.bin: star 0 is ${oracleId}, resolves back to index ${sets.starIndexOf(oracleId)}, ` +
-        `${sets.setIdsOf(0).length} set id(s)`,
-    )
-
-    const blind = planes.planes.find((p) => p.slug === BLIND_ETERNITIES_SLUG)
-    if (blind) {
-      const shard = await loadPlaneShard(blind.slug, blind.shardCount - 1)
-      lines.push(
-        `plane shard ${blind.slug}.${shard.shard}: ${shard.cards.length} cards ` +
-          `(of ${blind.shardCount} shards)`,
-      )
-    }
-    return { lines, ok: true }
-  } catch (error) {
-    lines.push(`FAILED: ${error instanceof Error ? error.message : String(error)}`)
-    return { lines, ok: false }
+function Overlays(): ReactElement | null {
+  const overlay = useStore((state) => state.overlay)
+  switch (overlay) {
+    case 'search':
+      return <SearchOverlay />
+    case 'plane-index':
+      return <PlaneIndexOverlay />
+    case 'settings':
+      return <SettingsOverlay />
+    case 'help':
+      return <HelpOverlay />
+    case 'filters':
+      return <FilterOverlay />
+    case null:
+      return null
   }
 }
 
 export function App(): ReactElement {
-  const [report, setReport] = useState<DecodeReport | null>(null)
-  const [nav, setNav] = useState<NavigationSnapshot | null>(null)
+  const nav = useNavigation()
+  const router = useRouter()
+  const hintVisible = useStore((state) => state.hintVisible)
+  const overlay = useStore((state) => state.overlay)
 
-  useEffect(() => {
-    void decodeEverything().then(setReport)
-  }, [])
+  // PRD 8.7's loading order, PRD 6.8.2's intro and PRD 6.7.1's deep-link resolution.
+  useEffect(() => boot(nav, router), [nav, router])
 
-  useEffect(() => {
-    const stub = createNavigationStub()
-    const unsubscribe = stub.subscribe(setNav)
-    setNav(stub.snapshot())
-    void stub.flyToPlane('dominaria', { reason: 'user', immediate: true }).done
-    return () => {
-      unsubscribe()
-      stub.dispose()
-    }
-  }, [])
+  const reducedMotion = useReducedMotion()
+  // PRD 5.9: attract mode is disabled under reduced motion.
+  useAttractMode(!reducedMotion)
+  useKeyboardMap()
+  usePanelAutoOpen()
+  useResetActivePrintingOnFocus()
+  // Publishes the dimming mask Phase 2a's shader reads, and the exact count PRD 6.3.2 shows.
+  useFilterEvaluation()
 
   return (
     <div className="app">
@@ -97,41 +77,25 @@ export function App(): ReactElement {
         camera={{ position: [0, 40, 140], fov: 55, near: 0.1, far: 4000 }}
         gl={{ antialias: true, alpha: false }}
         style={{ background: SKY_COLOUR }}
+        onPointerDown={() => {
+          // PRD 5.7.3 / 6.1: touching the camera hands control back from any tween in flight.
+          // Phase 2b's rig owns orbit and zoom themselves (navigation contract §6); this is the
+          // one thing the UI is responsible for.
+          nav.handOver('pointer')
+        }}
+        onWheel={() => {
+          nav.handOver('wheel')
+        }}
       >
         <HelloScene />
       </Canvas>
 
-      <div className="overlay" data-testid="phase0-status">
-        <h1>Eternities — Phase 0</h1>
-        <p className="muted">
-          Hello-scene: sky and the three-layer parallax background starfield (PRD 5.3.18).
-        </p>
-        <h2>Data contract</h2>
-        {report === null ? (
-          <p className="muted">decoding…</p>
-        ) : (
-          <ul className={report.ok ? 'ok' : 'bad'}>
-            {report.lines.map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ul>
-        )}
-        <h2>Navigation contract</h2>
-        {nav === null ? (
-          <p className="muted">…</p>
-        ) : (
-          <ul>
-            <li>
-              focus: {nav.focus.kind}
-              {nav.focus.kind === 'plane' ? ` (${nav.focus.slug})` : ''} · level {levelOf(nav.focus)}
-            </li>
-            <li>flight: {nav.flight ? `#${nav.flight.id}` : 'idle'}</li>
-            <li>
-              attract: {String(nav.attract)} · reduced motion: {String(nav.reducedMotion)}
-            </li>
-          </ul>
-        )}
-      </div>
+      <Hud />
+      <Drawer />
+      {/* PRD 6.8.3: the hint yields to anything the user deliberately opened. */}
+      {hintVisible && overlay === null ? <FirstVisitHint /> : null}
+      <Overlays />
+      <Toasts />
     </div>
   )
 }
