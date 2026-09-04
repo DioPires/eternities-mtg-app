@@ -1,0 +1,5 @@
+{
+  "source": "PRD 4.1.5 — curated card-name to plane-slug overrides",
+  "notes": "Starts empty (PRD 4.1.5). Grows as misassignments are noticed; PRD 11.9 orders the curation work. Keys are exact Scryfall front-face card names; values are Appendix A plane slugs.",
+  "overrides": {}
+}

@@ -1,6 +1,6 @@
 {
   "contractVersion": 1,
-  "pipelineVersion": "0.1.0",
+  "pipelineVersion": "0.2.0",
   "dataset": "test-vector",
   "dataHash": "a8bdbe136f2e6469",
   "asOf": "2026-09-04",

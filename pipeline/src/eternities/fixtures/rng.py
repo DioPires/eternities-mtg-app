@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import math
 import struct
+from collections.abc import Sequence
 from typing import Final
 
 SALT: Final = b"eternities/v1"
@@ -37,6 +38,25 @@ def integer(low: int, high: int, *key: object) -> int:
 
 def choice[T](options: list[T], *key: object) -> T:
     return options[integer(0, len(options) - 1, *key)]
+
+
+def weighted[T](options: Sequence[tuple[T, float]], *key: object) -> T:
+    """``choice`` with a relative weight per option.
+
+    Weights need not sum to anything in particular and a zero-weight option is never drawn. Used
+    where a flat list would misrepresent the shape of the real data, not just its vocabulary.
+    """
+    total = math.fsum(weight for _, weight in options)
+    if total <= 0.0:
+        raise ValueError("weighted() needs at least one option with a positive weight")
+    target = unit(*key) * total
+    cumulative = 0.0
+    for value, weight in options:
+        cumulative += weight
+        if target < cumulative:
+            return value
+    # Only reachable through float summation drift at the very top of the range.
+    return options[-1][0]
 
 
 def flag(probability: float, *key: object) -> bool:

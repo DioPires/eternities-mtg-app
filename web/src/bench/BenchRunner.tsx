@@ -1,0 +1,383 @@
+/**
+ * The local bench of implementation-plan §6, in the page.
+ *
+ * Flies the fixed path of `./benchPath`, records one sample per frame, and publishes a JSON
+ * summary on `window.__eternitiesBench` for `scripts/bench.mjs` to read. Nothing here runs unless
+ * the URL asks for it, and the recorder allocates its buffers up front (PRD 7.3.2).
+ *
+ * What it measures, against PRD 7.2:
+ *   - steady-state frame rate at every level, per path segment (target 60 fps, ceiling 50);
+ *   - p95 frame time (target ≤ 16.7 ms, ceiling 33 ms), the row that covers fly-to;
+ *   - CPU time per frame in the render loop (target ≤ 2 ms, ceiling 4 ms), reported by the scene
+ *     itself through `recordBenchCpu` rather than guessed at from the outside.
+ *
+ * Frame *rate* is capped by the display's refresh, so the honest reading of a 60 fps result on a
+ * 60 Hz panel is "never missed a vsync". The frame-time percentiles say how much headroom is
+ * left, which is why they are reported alongside and not instead.
+ *
+ * Note on `useFrame` priority: it stays at the default. A priority above zero takes over the
+ * render loop in react-three-fiber, and the effect composer already owns that. `delta` measures
+ * animation-frame to animation-frame, so it covers the previous frame's full render either way.
+ */
+
+import { useFrame, useThree } from '@react-three/fiber'
+import { useEffect, useMemo, useRef, type ReactElement } from 'react'
+import { Vector3, type PerspectiveCamera } from 'three'
+
+import { planeWorldPosition } from '../scene/starfield/motion'
+import type { PlaneTable } from '../scene/starfield/planeTable'
+import {
+  BENCH_DURATION_S,
+  BENCH_PATH,
+  anchorPlane,
+  benchPose,
+  segmentEndTime,
+  type BenchAnchors,
+  type BenchPose,
+} from './benchPath'
+
+/**
+ * The path is 31 s. An uncapped run on a fast GPU reaches ~700 fps, so this holds a whole run with
+ * room to spare — and `saturated` says so plainly if a future machine ever exceeds it, rather than
+ * silently dropping the tail of the path from the percentiles.
+ */
+const CAPACITY = 40000
+/** Frames discarded at the start of each segment, so a segment's numbers are its own. */
+const SETTLE_FRAMES = 6
+/** The last chunk of `stars.bin` and its fade-in are not steady state. */
+const WARMUP_MS = 800
+
+export interface BenchSummary {
+  readonly frames: number
+  readonly fps: number
+  readonly frameMsP50: number
+  readonly frameMsP95: number
+  readonly frameMsMax: number
+  readonly cpuMsP50: number
+  readonly cpuMsP95: number
+}
+
+export interface BenchSegmentResult extends BenchSummary {
+  readonly segment: string
+}
+
+export interface BenchResult extends BenchSummary {
+  readonly dataset: string
+  readonly stars: number
+  readonly planes: number
+  readonly positionMode: string
+  readonly viewport: { readonly width: number; readonly height: number; readonly dpr: number }
+  readonly renderer: string
+  readonly durationS: number
+  readonly qualityTier: string
+  readonly qualityChanges: number
+  readonly anchorPlane: string
+  readonly segments: readonly BenchSegmentResult[]
+  /** True if the sample buffer filled and the tail of the path went unrecorded. */
+  readonly saturated: boolean
+  /** PRD 7.2's two thresholds, evaluated here so the harness cannot disagree with the page. */
+  readonly meetsTarget: boolean
+  readonly meetsCeiling: boolean
+}
+
+declare global {
+  interface Window {
+    __eternitiesBench?: BenchResult
+    __eternitiesBenchProgress?: { elapsed: number; total: number; frames: number }
+    /** Set once the camera has been parked at a named segment, for a screenshot. */
+    __eternitiesHold?: string
+  }
+}
+
+export interface BenchContext {
+  readonly dataset: string
+  readonly stars: number
+  readonly planes: number
+  readonly positionMode: string
+  readonly multiverseRadius: number
+  /** The live plane table, so the path can track a real plane as it drifts and turns. */
+  readonly table: PlaneTable
+}
+
+export interface BenchRunnerProps {
+  /** The bench only starts once the whole fixture is drawable, or the numbers mean nothing. */
+  readonly ready: boolean
+  readonly context: BenchContext
+  /** Live tier label from the quality monitor, and how many times it has changed. */
+  readonly qualityTier: string
+  readonly qualityChanges: number
+  /**
+   * Park the camera at the end of this named segment instead of flying and recording. This is how
+   * the visual checks get a reproducible frame; nothing is measured in this mode.
+   */
+  readonly hold?: string | null
+  readonly onComplete?: (result: BenchResult) => void
+}
+
+/** Whether the URL asked for a bench run. */
+export function benchRequested(
+  search = typeof location === 'undefined' ? '' : location.search,
+): boolean {
+  const value = new URLSearchParams(search).get('bench')
+  return value !== null && value !== '0'
+}
+
+/** Which segment the URL asked the camera to be parked at, if any. */
+export function benchHold(
+  search = typeof location === 'undefined' ? '' : location.search,
+): string | null {
+  return new URLSearchParams(search).get('hold')
+}
+
+/**
+ * The scene reports its own per-frame CPU cost here. PRD 7.2's "CPU time per frame in the render
+ * loop" is the scene's work, not the whole task, and only the scene knows where that starts.
+ */
+let lastCpuMs = 0
+export function recordBenchCpu(ms: number): void {
+  lastCpuMs = ms
+}
+
+export function BenchRunner({
+  ready,
+  context,
+  qualityTier,
+  qualityChanges,
+  hold = null,
+  onComplete,
+}: BenchRunnerProps): ReactElement | null {
+  const camera = useThree((state) => state.camera) as PerspectiveCamera
+  const gl = useThree((state) => state.gl)
+
+  const state = useRef({
+    running: false,
+    finished: false,
+    elapsed: 0,
+    count: 0,
+    settle: SETTLE_FRAMES,
+    segment: '',
+  }).current
+  const frameMs = useMemo(() => new Float32Array(CAPACITY), [])
+  const cpuMs = useMemo(() => new Float32Array(CAPACITY), [])
+  const segmentIds = useMemo(() => new Uint8Array(CAPACITY), [])
+  const pose = useRef<BenchPose>({
+    segment: 'home',
+    px: 0,
+    py: 0,
+    pz: 0,
+    tx: 0,
+    ty: 0,
+    tz: 0,
+  }).current
+  const target = useRef(new Vector3()).current
+  const centre = useRef(new Vector3()).current
+
+  const anchor = useMemo(
+    () => anchorPlane(context.table.planes.map((state) => state.record)),
+    [context.table],
+  )
+  const anchors = useRef<BenchAnchors>({
+    multiverseRadius: context.multiverseRadius,
+    planeRadius: anchor?.radius ?? context.multiverseRadius * 0.1,
+    planeX: 0,
+    planeY: 0,
+    planeZ: 0,
+    dustX: 0,
+    dustY: 0,
+    dustZ: 0,
+  }).current
+
+  /** Re-read the anchor plane's live position. PRD 5.7.4: targets live in the rotating frame. */
+  const trackAnchors = (): void => {
+    if (anchor) {
+      planeWorldPosition(
+        context.table.raw,
+        anchor.index,
+        context.table.time,
+        context.table.multiverseAngle,
+        1,
+        centre,
+      )
+      anchors.planeX = centre.x
+      anchors.planeY = centre.y
+      anchors.planeZ = centre.z
+      // A dust vantage point: the same direction from the centre, pulled well inside the plane, so
+      // the camera sits in the connecting tissue rather than in a galaxy (PRD 8.6.3).
+      anchors.dustX = centre.x * 0.45
+      anchors.dustY = centre.y * 0.45
+      anchors.dustZ = centre.z * 0.45
+    }
+  }
+  const live = useRef({ onComplete, qualityTier, qualityChanges })
+  live.current = { onComplete, qualityTier, qualityChanges }
+
+  useEffect(() => {
+    if (hold !== null || !ready || state.running || state.finished) return
+    const timer = window.setTimeout(() => {
+      state.elapsed = 0
+      state.count = 0
+      state.running = true
+    }, WARMUP_MS)
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [ready, hold, state])
+
+  useFrame((_, delta) => {
+    if (hold !== null) {
+      // Parked: the camera sits at the segment's end pose while the field keeps moving, so a
+      // screenshot shows a real frame of a live scene rather than a frozen one.
+      const at = segmentEndTime(hold)
+      if (at === null) return
+      trackAnchors()
+      benchPose(at, anchors, pose)
+      camera.position.set(pose.px, pose.py, pose.pz)
+      target.set(pose.tx, pose.ty, pose.tz)
+      camera.lookAt(target)
+      camera.updateMatrixWorld()
+      if (ready) window.__eternitiesHold = hold
+      return
+    }
+    if (!state.running || state.finished) return
+    state.elapsed += delta
+
+    trackAnchors()
+    benchPose(state.elapsed, anchors, pose)
+    if (pose.segment !== state.segment) {
+      state.segment = pose.segment
+      state.settle = SETTLE_FRAMES
+    }
+    camera.position.set(pose.px, pose.py, pose.pz)
+    target.set(pose.tx, pose.ty, pose.tz)
+    camera.lookAt(target)
+    camera.updateMatrixWorld()
+
+    if (state.settle > 0) {
+      state.settle -= 1
+    } else if (state.count < CAPACITY) {
+      frameMs[state.count] = delta * 1000
+      cpuMs[state.count] = lastCpuMs
+      segmentIds[state.count] = segmentIndex(state.segment)
+      state.count += 1
+    }
+    window.__eternitiesBenchProgress = {
+      elapsed: state.elapsed,
+      total: BENCH_DURATION_S,
+      frames: state.count,
+    }
+
+    if (state.elapsed >= BENCH_DURATION_S) {
+      state.finished = true
+      state.running = false
+      const result = summarise(
+        frameMs.subarray(0, state.count),
+        cpuMs.subarray(0, state.count),
+        segmentIds.subarray(0, state.count),
+        context,
+        gl.domElement,
+        gl.getPixelRatio(),
+        live.current,
+        anchor?.slug ?? 'none',
+        state.count >= CAPACITY,
+      )
+      window.__eternitiesBench = result
+      live.current.onComplete?.(result)
+    }
+  })
+
+  return null
+}
+
+function segmentIndex(name: string): number {
+  const index = BENCH_PATH.findIndex((key) => key.name === name)
+  return index < 0 ? 255 : index
+}
+
+function summarise(
+  frames: Float32Array,
+  cpu: Float32Array,
+  segments: Uint8Array,
+  context: BenchContext,
+  canvas: HTMLCanvasElement,
+  dpr: number,
+  quality: { qualityTier: string; qualityChanges: number },
+  anchor: string,
+  saturated: boolean,
+): BenchResult {
+  const overall = summariseRange(frames, cpu)
+
+  const perSegment: BenchSegmentResult[] = []
+  for (let i = 0; i < BENCH_PATH.length; i += 1) {
+    let count = 0
+    for (let f = 0; f < frames.length; f += 1) if (segments[f] === i) count += 1
+    if (count === 0) continue
+    const picked = new Float32Array(count)
+    const pickedCpu = new Float32Array(count)
+    let at = 0
+    for (let f = 0; f < frames.length; f += 1) {
+      if (segments[f] !== i) continue
+      picked[at] = frames[f]!
+      pickedCpu[at] = cpu[f]!
+      at += 1
+    }
+    perSegment.push({ segment: BENCH_PATH[i]!.name, ...summariseRange(picked, pickedCpu) })
+  }
+
+  return {
+    dataset: context.dataset,
+    stars: context.stars,
+    planes: context.planes,
+    positionMode: context.positionMode,
+    viewport: {
+      width: Math.round(canvas.clientWidth),
+      height: Math.round(canvas.clientHeight),
+      dpr,
+    },
+    renderer: rendererName(canvas),
+    durationS: BENCH_DURATION_S,
+    qualityTier: quality.qualityTier,
+    qualityChanges: quality.qualityChanges,
+    anchorPlane: anchor,
+    segments: perSegment,
+    saturated,
+    ...overall,
+    // PRD 7.2: 60 fps target, 50 fps ceiling; p95 frame time 16.7 ms target, 33 ms ceiling. The
+    // fps target allows one frame of slack, because a vsync-locked 60 Hz display samples at 59.9x.
+    meetsTarget: overall.fps >= 59 && overall.frameMsP95 <= 16.7,
+    meetsCeiling: overall.fps >= 50 && overall.frameMsP95 <= 33,
+  }
+}
+
+/** Which GPU actually drew this, so a bench result can never be mistaken for a software render. */
+function rendererName(canvas: HTMLCanvasElement): string {
+  const gl = canvas.getContext('webgl2')
+  if (!gl) return 'no webgl2'
+  const debug = gl.getExtension('WEBGL_debug_renderer_info')
+  if (debug) return String(gl.getParameter(debug.UNMASKED_RENDERER_WEBGL))
+  return String(gl.getParameter(gl.RENDERER))
+}
+
+function summariseRange(frames: Float32Array, cpu: Float32Array): BenchSummary {
+  const sorted = Float32Array.from(frames).sort()
+  const sortedCpu = Float32Array.from(cpu).sort()
+  let total = 0
+  for (let i = 0; i < frames.length; i += 1) total += frames[i]!
+  return {
+    frames: frames.length,
+    fps: total > 0 ? round((frames.length * 1000) / total) : 0,
+    frameMsP50: round(percentile(sorted, 0.5)),
+    frameMsP95: round(percentile(sorted, 0.95)),
+    frameMsMax: round(sorted.length > 0 ? sorted[sorted.length - 1]! : 0),
+    cpuMsP50: round(percentile(sortedCpu, 0.5)),
+    cpuMsP95: round(percentile(sortedCpu, 0.95)),
+  }
+}
+
+function percentile(sorted: Float32Array, quantile: number): number {
+  if (sorted.length === 0) return 0
+  return sorted[Math.min(sorted.length - 1, Math.floor(quantile * sorted.length))]!
+}
+
+function round(value: number): number {
+  return Math.round(value * 100) / 100
+}
