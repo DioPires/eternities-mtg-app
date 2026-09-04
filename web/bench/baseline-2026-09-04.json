@@ -1,0 +1,215 @@
+{
+  "note": "Phase 2a baseline on the reference machine (implementation-plan.md section 6). Closes PRD open question 7's first data point. `vsync` is the protocol run; `uncapped` adds --disable-gpu-vsync to show the real headroom, because a 120 Hz panel reports 8.3 ms whether the frame cost 2 ms or 8.",
+  "recordedAt": "2026-09-04",
+  "issue": "DEC-587",
+  "machine": {
+    "description": "Apple Silicon MacBook, the development machine this team runs on",
+    "gpu": "ANGLE (Apple, ANGLE Metal Renderer: Apple M5 Pro, Unspecified Version)",
+    "display": "ProMotion, 120 Hz refresh",
+    "browser": "Google Chrome, headed, 1920x1080 viewport"
+  },
+  "runs": {
+    "vsync": {
+      "run": 1,
+      "headless": false,
+      "uncapped": false,
+      "dataset": "fixture-scale",
+      "stars": 30000,
+      "planes": 83,
+      "positionMode": "float16",
+      "viewport": {
+        "width": 1920,
+        "height": 1080,
+        "dpr": 1
+      },
+      "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M5 Pro, Unspecified Version)",
+      "durationS": 31,
+      "qualityTier": "full",
+      "qualityChanges": 0,
+      "anchorPlane": "shandalar",
+      "segments": [
+        {
+          "segment": "home",
+          "frames": 474,
+          "fps": 119.97,
+          "frameMsP50": 8.3,
+          "frameMsP95": 9.7,
+          "frameMsMax": 10.3,
+          "cpuMsP50": 0,
+          "cpuMsP95": 0.1
+        },
+        {
+          "segment": "approach",
+          "frames": 594,
+          "fps": 120,
+          "frameMsP50": 8.3,
+          "frameMsP95": 9.8,
+          "frameMsMax": 10.4,
+          "cpuMsP50": 0,
+          "cpuMsP95": 0.1
+        },
+        {
+          "segment": "plane",
+          "frames": 473,
+          "fps": 120.05,
+          "frameMsP50": 8.3,
+          "frameMsP95": 9.6,
+          "frameMsMax": 11.9,
+          "cpuMsP50": 0,
+          "cpuMsP95": 0.1
+        },
+        {
+          "segment": "sheet",
+          "frames": 475,
+          "fps": 120.01,
+          "frameMsP50": 8.3,
+          "frameMsP95": 9.8,
+          "frameMsMax": 10.5,
+          "cpuMsP50": 0,
+          "cpuMsP95": 0.1
+        },
+        {
+          "segment": "dust",
+          "frames": 473,
+          "fps": 120,
+          "frameMsP50": 8.3,
+          "frameMsP95": 9.7,
+          "frameMsMax": 10.4,
+          "cpuMsP50": 0,
+          "cpuMsP95": 0.1
+        },
+        {
+          "segment": "sweep",
+          "frames": 715,
+          "fps": 119.99,
+          "frameMsP50": 8.3,
+          "frameMsP95": 9.7,
+          "frameMsMax": 10.5,
+          "cpuMsP50": 0,
+          "cpuMsP95": 0.1
+        },
+        {
+          "segment": "home-return",
+          "frames": 474,
+          "fps": 119.99,
+          "frameMsP50": 8.3,
+          "frameMsP95": 9.8,
+          "frameMsMax": 10.3,
+          "cpuMsP50": 0,
+          "cpuMsP95": 0.1
+        }
+      ],
+      "saturated": false,
+      "frames": 3678,
+      "fps": 120,
+      "frameMsP50": 8.3,
+      "frameMsP95": 9.7,
+      "frameMsMax": 11.9,
+      "cpuMsP50": 0,
+      "cpuMsP95": 0.1,
+      "meetsTarget": true,
+      "meetsCeiling": true
+    },
+    "uncapped": {
+      "run": 1,
+      "headless": false,
+      "uncapped": true,
+      "dataset": "fixture-scale",
+      "stars": 30000,
+      "planes": 83,
+      "positionMode": "float16",
+      "viewport": {
+        "width": 1920,
+        "height": 1080,
+        "dpr": 1.5
+      },
+      "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M5 Pro, Unspecified Version)",
+      "durationS": 31,
+      "qualityTier": "full",
+      "qualityChanges": 0,
+      "anchorPlane": "shandalar",
+      "segments": [
+        {
+          "segment": "home",
+          "frames": 2888,
+          "fps": 723.83,
+          "frameMsP50": 1.9,
+          "frameMsP95": 2.8,
+          "frameMsMax": 3.4,
+          "cpuMsP50": 0,
+          "cpuMsP95": 0
+        },
+        {
+          "segment": "approach",
+          "frames": 3486,
+          "fps": 698.54,
+          "frameMsP50": 2.1,
+          "frameMsP95": 2.8,
+          "frameMsMax": 3.1,
+          "cpuMsP50": 0,
+          "cpuMsP95": 0
+        },
+        {
+          "segment": "plane",
+          "frames": 2787,
+          "fps": 698.09,
+          "frameMsP50": 1.9,
+          "frameMsP95": 2.8,
+          "frameMsMax": 3.7,
+          "cpuMsP50": 0,
+          "cpuMsP95": 0
+        },
+        {
+          "segment": "sheet",
+          "frames": 2818,
+          "fps": 705.93,
+          "frameMsP50": 2,
+          "frameMsP95": 2.8,
+          "frameMsMax": 3.1,
+          "cpuMsP50": 0,
+          "cpuMsP95": 0
+        },
+        {
+          "segment": "dust",
+          "frames": 2818,
+          "fps": 706.16,
+          "frameMsP50": 1.8,
+          "frameMsP95": 2.8,
+          "frameMsMax": 3.1,
+          "cpuMsP50": 0,
+          "cpuMsP95": 0
+        },
+        {
+          "segment": "sweep",
+          "frames": 4237,
+          "fps": 707.02,
+          "frameMsP50": 1.9,
+          "frameMsP95": 2.8,
+          "frameMsMax": 5.8,
+          "cpuMsP50": 0,
+          "cpuMsP95": 0
+        },
+        {
+          "segment": "home-return",
+          "frames": 2810,
+          "fps": 703.78,
+          "frameMsP50": 2,
+          "frameMsP95": 2.8,
+          "frameMsMax": 3,
+          "cpuMsP50": 0,
+          "cpuMsP95": 0
+        }
+      ],
+      "saturated": false,
+      "frames": 21844,
+      "fps": 706,
+      "frameMsP50": 1.9,
+      "frameMsP95": 2.8,
+      "frameMsMax": 5.8,
+      "cpuMsP50": 0,
+      "cpuMsP95": 0,
+      "meetsTarget": true,
+      "meetsCeiling": true
+    }
+  }
+}
