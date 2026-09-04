@@ -74,6 +74,16 @@ export interface StarField {
   /** PRD 5.4.12: the star under the pointer brightens by 30%. `-1` for none. */
   setHovered(index: number): void
 
+  /**
+   * Override the pick pass's minimum sprite size, in CSS pixels, or `null` for `PICK_MIN_PX`.
+   *
+   * Only the GPU self-check uses this. The production floor exists so a one-pixel star is still
+   * clickable, but an inflated sprite means a *neighbour's* sprite also covers the queried pixel
+   * and can win the depth test — which is a property of the sprite, not of where the shader put
+   * the star. The check narrows the sprite so that what it measures is position agreement.
+   */
+  setPickSpriteFloorPx(px: number | null): void
+
   dispose(): void
 }
 
@@ -93,6 +103,8 @@ export function createStarField(
   const uMaxPixels = uniform(STAR_MAX_PX)
   const uPickMinPixels = uniform(PICK_MIN_PX)
   const uHoverIndex = uniform(-1)
+  /** `null` means "use `PICK_MIN_PX`". See `setPickSpriteFloorPx`. */
+  let pickSpriteFloorPx: number | null = null
 
   const hues = HUE_COLOURS.map(([r, g, b]) => new Color(r, g, b))
   const starUniforms = {
@@ -163,10 +175,13 @@ export function createStarField(
       uSizeScale.value = drawingBufferHeight / (2 * Math.tan(fovRadians / 2))
       uMinPixels.value = STAR_MIN_PX * pixelRatio
       uMaxPixels.value = STAR_MAX_PX * pixelRatio
-      uPickMinPixels.value = PICK_MIN_PX * pixelRatio
+      uPickMinPixels.value = (pickSpriteFloorPx ?? PICK_MIN_PX) * pixelRatio
     },
     setHovered(index) {
       uHoverIndex.value = index
+    },
+    setPickSpriteFloorPx(px) {
+      pickSpriteFloorPx = px
     },
     dispose() {
       material.dispose()

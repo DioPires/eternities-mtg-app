@@ -9,13 +9,19 @@
  *   2. the fixture decodes: manifest, planes.json, streamed stars.bin, search.json, sets.bin and
  *      a plane detail shard all come back through the contract decoders;
  *   3. nothing was blocked by the Content Security Policy;
- *   4. no console error and no failed request.
+ *   4. no console error and no failed request;
+ *   5. the GPU self-check of PRD 8.5.7 — that the CPU motion mirror agrees with the vertex shader
+ *      — passes on this machine's actual driver.
  *
  * Uses `puppeteer-core` against the browser already on the machine — nothing is downloaded. CI
  * runs the Node-side suites; this is the local gate the implementation plan §6 asks for, and it
  * is what Phase 6's Playwright smoke replaces.
  *
- *   node scripts/verify-browser.mjs [--dataset small|scale] [--keep]
+ * Runs on the machine's real GPU, the way `bench.mjs` does, and fails if Chrome falls back to a
+ * software rasteriser: assertion 5 below is the GPU self-check, and SwiftShader cannot answer for
+ * a driver. `--allow-software` downgrades that to a warning, for a box that has no GPU at all.
+ *
+ *   node scripts/verify-browser.mjs [--dataset small|scale|all] [--keep] [--allow-software]
  */
 
 import { execFileSync, spawn } from 'node:child_process'
@@ -44,13 +50,17 @@ function findChrome() {
 }
 
 function parseArgs(argv) {
-  const args = { dataset: 'small', keep: false }
+  const args = { dataset: 'small', keep: false, allowSoftware: false }
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--dataset') args.dataset = argv[++i]
     else if (argv[i] === '--keep') args.keep = true
+    else if (argv[i] === '--allow-software') args.allowSoftware = true
   }
   return args
 }
+
+/** A software rasteriser answering as the GPU. `bench.mjs` refuses these; so does this. */
+const SOFTWARE_RENDERER = /swiftshader|llvmpipe|software|mesa offscreen/i
 
 async function startPreview(dataset) {
   const child = spawn('pnpm', ['exec', 'vite', 'preview', '--port', '0', '--strictPort', 'false'], {
@@ -76,7 +86,7 @@ async function startPreview(dataset) {
   return { child, url }
 }
 
-async function verify(dataset) {
+async function verify(dataset, allowSoftware) {
   console.log(`\n=== ${dataset} ===`)
   execFileSync('pnpm', ['build'], {
     cwd: WEB_ROOT,
@@ -85,10 +95,20 @@ async function verify(dataset) {
   })
 
   const { child, url } = await startPreview(dataset)
+  // The same launch `bench.mjs` uses. This check is cited as the mitigation for PRD risk 6 and for
+  // driver variance, and it cannot say anything about driver variance from a software rasteriser:
+  // the GPU self-check has to run on a GPU. `--enable-unsafe-swiftshader` stays only so that a
+  // fallback surfaces as the assertion below rather than as a crash with no explanation.
   const browser = await puppeteer.launch({
     executablePath: findChrome(),
     headless: true,
-    args: ['--no-sandbox', '--enable-unsafe-swiftshader', '--use-gl=swiftshader'],
+    args: [
+      '--no-sandbox',
+      '--ignore-gpu-blocklist',
+      '--enable-gpu-rasterization',
+      '--use-angle=metal',
+      '--enable-unsafe-swiftshader',
+    ],
   })
 
   const problems = []
@@ -154,6 +174,15 @@ async function verify(dataset) {
     for (const line of report.lines) console.log(`  ${line}`)
     if (!report.ok) throw new Error('the data contract decode report reported a failure')
 
+    // R3F sizes the drawing buffer from a resize observer, which fires after `load`. Reading
+    // before it does reports the 300x150 HTML default and asserts nothing about the renderer.
+    await page.waitForFunction(
+      () =>
+        Array.from(document.querySelectorAll('canvas')).some(
+          (element) => element.width > 300 && element.height > 150,
+        ),
+      { timeout: 30_000 },
+    )
     const canvas = await page.evaluate(() => {
       // Pick the largest canvas: postprocessing and some dev tooling add their own, and the first
       // one in the document is not necessarily the scene's.
@@ -161,18 +190,36 @@ async function verify(dataset) {
       const element = all.sort((a, b) => b.width * b.height - a.width * a.height)[0]
       if (!element) return null
       const context = element.getContext('webgl2')
+      const debug = context?.getExtension('WEBGL_debug_renderer_info')
       return {
         count: all.length,
         width: element.width,
         height: element.height,
         webgl2: context !== null,
-        // A non-black pixel somewhere proves the background starfield actually drew.
-        renderer: context?.getParameter(context.VERSION) ?? null,
+        version: context?.getParameter(context.VERSION) ?? null,
+        // Which driver actually drew this. The whole point of the self-check below.
+        gpu: context
+          ? String(
+              debug
+                ? context.getParameter(debug.UNMASKED_RENDERER_WEBGL)
+                : context.getParameter(context.RENDERER),
+            )
+          : null,
       }
     })
     if (!canvas) throw new Error('no <canvas> in the document')
     if (!canvas.webgl2) throw new Error('the canvas has no WebGL2 context')
-    console.log(`  canvas ${canvas.width}x${canvas.height} (${canvas.count} on the page), ${canvas.renderer}`)
+    console.log(`  canvas ${canvas.width}x${canvas.height} (${canvas.count} on the page), ${canvas.version}`)
+    console.log(`  GPU: ${canvas.gpu}`)
+    if (SOFTWARE_RENDERER.test(canvas.gpu ?? '')) {
+      const message =
+        `Chrome fell back to a software rasteriser (${canvas.gpu}). The GPU self-check below ` +
+        `is cited as the mitigation for driver variance and cannot establish it from software.`
+      if (!allowSoftware) {
+        throw new Error(`${message}\n  Re-run on a machine with a working GPU, or pass --allow-software to accept a software run.`)
+      }
+      console.log(`  WARNING: ${message} Continuing because --allow-software was passed.`)
+    }
 
     // --- Phase 2a ------------------------------------------------------------------------------
 
@@ -196,11 +243,19 @@ async function verify(dataset) {
     })
     const selfCheck = await page.evaluate(() => window.__eternitiesSelfCheck)
     console.log(
-      `  id-buffer picking vs CPU motion mirror: ${selfCheck.agreed}/${selfCheck.checked} agreed, ` +
-        `${selfCheck.occluded} shared a pixel with a nearer star` +
-        `(${selfCheck.offScreen} off screen, ${selfCheck.positionMode} positions, ` +
-        `buffer ${selfCheck.buffer.join('x')}); neighbour offset mean ` +
-        `${selfCheck.meanOffsetPx}px, max ${selfCheck.maxOffsetPx}px`,
+      `  id-buffer picking vs CPU motion mirror: the shader drew ${selfCheck.measured}/` +
+        `${selfCheck.checked} sampled stars a mean of ${selfCheck.meanOffsetPx}px ` +
+        `(max ${selfCheck.maxOffsetPx}px, tolerance ${selfCheck.tolerancePx}px) from the pixel ` +
+        `the mirror predicted; ${selfCheck.unmeasured} not in window` +
+        (selfCheck.unmeasuredRows.length > 0
+          ? ` (plane rows ${selfCheck.unmeasuredRows.map(([row, n]) => `${row}x${n}`).join(' ')})`
+          : ''),
+    )
+    console.log(
+      `    of those the pointer would have selected ${selfCheck.agreed} exactly and ` +
+        `${selfCheck.occluded} via a nearer star (${selfCheck.offScreen} off screen, ` +
+        `${selfCheck.positionMode} positions, buffer ${selfCheck.buffer.join('x')}, ` +
+        `${selfCheck.spriteFloorPx}px pick sprite)`,
     )
     if (selfCheck.canvasBytes < 5000) {
       problems.push(`the canvas looks empty (${selfCheck.canvasBytes}-byte PNG) — nothing drew`)
@@ -208,26 +263,32 @@ async function verify(dataset) {
       console.log(`  star field drew (${selfCheck.canvasBytes}-byte PNG round-trip)`)
     }
 
-    // A systematic error would move every star the same way and show up here even though each
-    // individual sample landed on a plausible neighbour.
-    if (selfCheck.meanOffsetPx > 3) {
+    // A drift too small to trip any single sample still moves the mean. Measured on Metal at the
+    // 2px self-check sprite: 0.36px on fixture-small, 0.76px on fixture-scale, most of which is
+    // the pixel quantisation of the window itself. 1.5px is a real bound, not a formality.
+    if (selfCheck.meanOffsetPx > 1.5) {
       throw new Error(
-        `the picker's stars sit a mean of ${selfCheck.meanOffsetPx}px from where the CPU motion ` +
-          `mirror puts them — that is a systematic disagreement, not crowding`,
+        `the shader draws stars a mean of ${selfCheck.meanOffsetPx}px from where the CPU motion ` +
+          `mirror puts them — that is a systematic disagreement, not quantisation`,
       )
     }
 
     if (!selfCheck.ok) {
       for (const miss of selfCheck.missed.slice(0, 8)) {
         console.log(
-          `    star ${miss.index} (plane row ${miss.planeRow}) at ${miss.x},${miss.y} ` +
-            `picked ${miss.picked}` +
-            `${miss.pickedAt ? `, which the mirror puts at ${miss.pickedAt.join(',')}` : ''}`,
+          `    star ${miss.index} (plane row ${miss.planeRow}): mirror says ${miss.x},${miss.y} ` +
+            `(z ${miss.z}), shader drew it ${miss.drawnAtPx}px away; pointer would pick ${miss.picked}`,
+        )
+      }
+      if (selfCheck.missed.length > 0) {
+        throw new Error(
+          `the CPU motion mirror disagrees with the vertex shader for ${selfCheck.missed.length} ` +
+            `stars — PRD 8.5.7's camera tether would frame the wrong point`,
         )
       }
       throw new Error(
-        `the CPU motion mirror disagrees with the vertex shader for ${selfCheck.missed.length} ` +
-          `stars — PRD 8.5.7's camera tether would frame the wrong point`,
+        `the self-check located only ${selfCheck.measured} of ${selfCheck.checked} sampled stars ` +
+          `in their own pick window — too few to establish PRD 8.5.7 either way`,
       )
     }
 
@@ -244,6 +305,6 @@ async function verify(dataset) {
 const args = parseArgs(process.argv.slice(2))
 const datasets = args.dataset === 'all' ? ['small', 'scale'] : [args.dataset]
 for (const dataset of datasets) {
-  await verify(dataset)
+  await verify(dataset, args.allowSoftware)
 }
 console.log('\nall datasets verified in the browser')

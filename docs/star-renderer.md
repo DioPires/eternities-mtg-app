@@ -103,6 +103,15 @@ The readback is `readRenderTargetPixelsAsync`, and the renderer, camera and scen
 pixels are already captured; awaiting first would leave the camera on the pick layer and the scene
 without its sky for however many frames the fence takes, and the frame loop renders during those.
 
+Because the fence resolves a frame or two later, a pick can be in flight when the next one is asked
+for, and **"busy" is not "miss"** — `PICK_BUSY`, not `-1`. Conflating them cost clicks: a hover pick
+runs on every frame the pointer moved, so a click made while the pointer was still moving fell
+through to the plane raycast and selected the star's *plane*. Hover calls `pick`, which returns
+`PICK_BUSY` rather than waiting, because it has a next frame to retry on. A click calls `pickQueued`,
+which takes a turn in the queue and always gets a real answer, because it does not. `resolvePick`
+holds the precedence rule and takes the plane raycast as a thunk, so a busy pick structurally cannot
+reach it.
+
 ## 6. Adaptive quality
 
 PRD 8.5.11's ladder, in `web/src/scene/quality/adaptiveQuality.ts`:
@@ -128,13 +137,37 @@ pnpm verify-browser --dataset all
 pnpm bench --dataset scale --uncapped --shots ../shots
 ```
 
-`verify-browser` runs the **GPU self-check** (`web/src/scene/selfCheck.ts`, `?selfcheck=1`), which
-is the only way to test the one claim that cannot be tested without a GPU: that the CPU motion
-mirror agrees with the vertex shader. It takes a star, computes its world position on the CPU,
-projects it to a pixel, and asks the id buffer what is there. A returned neighbour is fine — inside
-a galaxy core several stars share a pixel and the id pass depth-sorts them — but the mirror still
-has to place *that* star on that pixel, and the mean displacement across all samples is asserted, so
-a systematic offset cannot hide behind crowding.
+`verify-browser` runs on the machine's **real GPU** — the same launch flags as `bench` — and fails
+if Chrome falls back to SwiftShader. That matters because the check below is cited as the mitigation
+for driver variance, and a software rasteriser cannot answer for a driver. `--allow-software`
+downgrades it to a warning, for a box with no GPU at all.
+
+It runs the **GPU self-check** (`web/src/scene/selfCheck.ts`, `?selfcheck=1`), the only way to test
+the one claim that cannot be tested without a GPU: that the CPU motion mirror agrees with the vertex
+shader. It takes a star, computes its world position on the CPU, projects it to a pixel, renders the
+pick window there, and finds *that same star* in the window — the CPU on one side, the GPU on the
+other, nothing in between. It deliberately does not ask what is nearest the pixel: that is the
+answer to a click, and scoring it means comparing one mirrored position against another, which
+cancels any error the two stars share. The mirror is per plane row, so sharing is exactly what a
+real bug in it looks like.
+
+The check picks at a 2 px sprite rather than the production 7 px (`SELF_CHECK_PICK_MIN_PX`), because
+an inflated sprite is 7 px of some *nearer* star covering the one being measured. Stars it cannot
+locate at all — covered inside a galaxy core — are counted as `unmeasured` rather than judged, and
+the run must locate a floor of 16 before its verdict counts, so it cannot pass vacuously.
+
+Measured on Metal, both fixtures: worst disagreement **1.0 px**, mean 0.2–0.3 px, against a 3 px
+tolerance. The sensitivity was established by injecting known errors into the mirror rather than
+assumed — a 4 px error confined to the dust row fails and names the row; a 1.5 px uniform drift
+passes. So what the check buys is "no star is drawn 3 px or more from where the mirror puts it, and
+no systematic drift above about 1.5 px mean".
+
+Two things the bench output does **not** say. The `cpu ms` row is only `StarScene`'s own callback
+duration — it excludes three.js's draw submission and the effect composer — so PRD 7.2's "CPU time
+per frame in the render loop" is *not* measured by it and the near-zero figure should not be read as
+satisfying that row. The frame-time percentiles carry the real evidence. And the run is at
+`deviceScaleFactor` 2 by default so the tier-0 cap of 1.5 actually binds, which is what the Retina
+reference machine does; `--device-scale 1` reproduces a non-Retina display.
 
 `bench` is the local protocol of implementation-plan §6: headed Chrome on the reference machine,
 along a fixed camera path anchored to the largest real plane and tracked live as it drifts. Use

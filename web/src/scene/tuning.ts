@@ -50,6 +50,20 @@ export const STAR_MAX_PX = 22.0
 /** Below this the pick pass grows the sprite, so a one-pixel star is still clickable. */
 export const PICK_MIN_PX = 7.0
 
+/**
+ * The sprite floor the GPU self-check picks with, in CSS pixels.
+ *
+ * `PICK_MIN_PX` is a *usability* number: it inflates the click target so that a one-pixel star can
+ * still be hit. For the self-check that inflation is pure loss. The check has to find one specific
+ * star in the pick window, and every sprite inflated to seven pixels is seven pixels of something
+ * else covering it — the id pass depth-tests, so a nearer star simply wins. Measured on Metal, the
+ * narrower sprite is what makes the samples measurable at all.
+ *
+ * Two, not one: below about two pixels a sprite covers so few fragments that rasterisation rather
+ * than position decides what lands in the id buffer.
+ */
+export const SELF_CHECK_PICK_MIN_PX = 2.0
+
 /** PRD 5.4.11: subtle seeded twinkle, default amplitude ±8% brightness. */
 export const TWINKLE_AMPLITUDE = 0.08
 /** Radians per second of the twinkle oscillator. ~2.4 s period, slow enough to read as breathing. */

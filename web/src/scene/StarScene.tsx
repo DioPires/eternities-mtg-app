@@ -18,7 +18,7 @@ import { Vector2, Vector3, type PerspectiveCamera } from 'three'
 
 import { advanceBackground, createBackground } from './background'
 import { IdPicker, isPerspective } from './picking/idPicker'
-import { PlanePicker, type PickResult } from './picking/scenePicker'
+import { PlanePicker, resolvePick, type PickResult } from './picking/scenePicker'
 import { QualityMonitor, type QualityTier } from './quality/adaptiveQuality'
 import { runSelfCheck, selfCheckRequested } from './selfCheck'
 import { starWorldPosition } from './starfield/motion'
@@ -189,29 +189,36 @@ export function StarScene({
   async function runPick(select: boolean): Promise<void> {
     if (!resources || !isPerspective(camera)) return
     const perspective: PerspectiveCamera = camera
+    // Bound before the awaits below, so the closures the resolver takes cannot see a `resources`
+    // that a re-render swapped underneath them.
+    const geometry = resources.geometry
+    const table = resources.table
     let result: PickResult = null
 
     if (pointer.inside) {
-      const starIndex = await idPicker.pick(gl, scene, perspective, pointer.x, pointer.y)
-      if (starIndex >= 0 && starIndex < resources.geometry.drawCount) {
-        result = {
-          kind: 'star',
-          index: starIndex,
-          planeIndex: resources.geometry.planeRowOf(starIndex),
-        }
-      } else {
-        ndc.set(
-          (pointer.x / gl.domElement.width) * 2 - 1,
-          -((pointer.y / gl.domElement.height) * 2 - 1),
-        )
-        const planeIndex = planePicker.pick(
-          ndc,
-          perspective,
-          resources.table,
-          reducedMotion ? 0 : 1,
-        )
-        if (planeIndex >= 0) result = { kind: 'plane', index: planeIndex }
-      }
+      // A click queues for its turn; a hover takes whatever is going. Hover has a next frame to
+      // retry on and a click does not, and answering a click from the plane raycast because a
+      // hover read happened to be in flight is exactly the precedence rule inverted.
+      const starIndex = select
+        ? await idPicker.pickQueued(gl, scene, perspective, pointer.x, pointer.y)
+        : await idPicker.pick(gl, scene, perspective, pointer.x, pointer.y)
+
+      const resolved = resolvePick(
+        starIndex,
+        geometry.drawCount,
+        (index) => geometry.planeRowOf(index),
+        () => {
+          ndc.set(
+            (pointer.x / gl.domElement.width) * 2 - 1,
+            -((pointer.y / gl.domElement.height) * 2 - 1),
+          )
+          return planePicker.pick(ndc, perspective, table, reducedMotion ? 0 : 1)
+        },
+      )
+      // The id buffer was not consulted. Leave hover and focus exactly as they were and let the
+      // next frame ask again; reporting anything here would be reporting a guess.
+      if (resolved === undefined) return
+      result = resolved
     }
 
     const hoverIndex = result?.kind === 'star' ? result.index : -1
@@ -264,6 +271,7 @@ export function StarScene({
         idPicker,
         resources.table,
         resources.geometry,
+        resources.field,
         reducedMotion,
       ).then((result) => {
         if (!cancelled) window.__eternitiesSelfCheck = result

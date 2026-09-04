@@ -56,10 +56,36 @@ const SCAN_ORDER = ((): Int32Array => {
   return Int32Array.from(order)
 })()
 
+/** Nothing under the pointer. A real answer: the caller should fall through to plane picking. */
+export const PICK_MISS = -1
+
+/**
+ * A read was already in flight and the caller asked not to wait. *Not* an answer — the id buffer
+ * was never consulted, so falling through to the plane raycast here would report a plane for a
+ * pointer that is over a star (PRD 8.5.6 gives the id buffer precedence "when it hits", and this
+ * is the case where it was not asked whether it hits).
+ */
+export const PICK_BUSY = -2
+
 export class IdPicker {
   private readonly target: WebGLRenderTarget
   private readonly pixels = new Uint8Array(PICK_SIZE * PICK_SIZE * 4)
-  private busy = false
+  /**
+   * Picks issued and not yet resolved — in flight *or* waiting a turn. Incremented synchronously
+   * at the call, so the frame loop's `pending` guard is true the moment a pick is asked for rather
+   * than a microtask later.
+   */
+  private outstanding = 0
+  /**
+   * Tail of the queue of reads. `pickQueued` chains onto this so a caller that cannot accept
+   * `PICK_BUSY` is guaranteed a turn, and turns are taken in the order they were asked for.
+   *
+   * A queued turn cannot be starved by the frame loop: the settling of one read and the start of
+   * the next queued one are adjacent microtasks, and no `requestAnimationFrame` task can run
+   * between them. `outstanding` stays above zero for the whole handover, so the frame loop's
+   * `pending` guard never sees a gap to slip a hover pick into either.
+   */
+  private tail: Promise<unknown> = Promise.resolve()
 
   constructor() {
     this.target = new WebGLRenderTarget(PICK_SIZE, PICK_SIZE, {
@@ -73,9 +99,21 @@ export class IdPicker {
     })
   }
 
-  /** True while a read is outstanding. The caller skips a frame rather than queueing up reads. */
+  /**
+   * Where in the pick window the last resolved pick found its star, in device pixels from the
+   * queried centre. Zero after a miss.
+   *
+   * This is the pick pass's answer to "and where *is* it?", which is otherwise unobservable — the
+   * id alone cannot distinguish a star exactly under the pointer from one four pixels away, since
+   * the scan returns both. The GPU self-check needs that distinction: the window is eleven pixels
+   * wide, so without this it could not detect a motion-mirror error smaller than five.
+   */
+  hitDx = 0
+  hitDy = 0
+
+  /** True while a pick is outstanding. The caller skips a frame rather than queueing up reads. */
   get pending(): boolean {
-    return this.busy
+    return this.outstanding > 0
   }
 
   /**
@@ -84,8 +122,9 @@ export class IdPicker {
    * `x` and `y` are in device (drawing-buffer) pixels with a top-left origin, which is what a
    * pointer event gives once multiplied by the pixel ratio.
    *
-   * Resolves to the id the shader wrote minus one — that is, the star index — or `-1` for a miss.
-   * Resolves `-1` immediately if a read is already in flight.
+   * Resolves to the id the shader wrote minus one — that is, the star index — or `PICK_MISS`.
+   * Resolves `PICK_BUSY` immediately if a read is already in flight: the hover path would rather
+   * keep last frame's answer than wait, and it retries on the next frame anyway.
    */
   async pick(
     renderer: WebGLRenderer,
@@ -94,9 +133,44 @@ export class IdPicker {
     x: number,
     y: number,
   ): Promise<number> {
-    if (this.busy) return -1
-    this.busy = true
+    if (this.outstanding > 0) return PICK_BUSY
+    return this.pickQueued(renderer, scene, camera, x, y)
+  }
 
+  /**
+   * The same pick, for a caller that needs a real answer rather than a fast one: it queues behind
+   * whatever read is in flight and never resolves `PICK_BUSY`.
+   *
+   * This is the click path. A click is a discrete user intent — there is no next frame to retry on
+   * — and the frame loop starts a hover pick on every frame the pointer moved, so a click made
+   * while the pointer is still moving lands squarely inside an in-flight read's window.
+   */
+  async pickQueued(
+    renderer: WebGLRenderer,
+    scene: Scene,
+    camera: PerspectiveCamera,
+    x: number,
+    y: number,
+  ): Promise<number> {
+    this.outstanding += 1
+    const run = this.tail.then(() => this.read(renderer, scene, camera, x, y))
+    // Swallow on the queue only. `run` keeps its rejection for the caller; the *tail* must stay
+    // resolvable or one failed read would wedge every pick after it.
+    this.tail = run.then(ignore, ignore)
+    try {
+      return await run
+    } finally {
+      this.outstanding -= 1
+    }
+  }
+
+  private async read(
+    renderer: WebGLRenderer,
+    scene: Scene,
+    camera: PerspectiveCamera,
+    x: number,
+    y: number,
+  ): Promise<number> {
     const width = renderer.domElement.width
     const height = renderer.domElement.height
     const offsetX = Math.round(x) - CENTRE
@@ -149,12 +223,42 @@ export class IdPicker {
       renderer.setRenderTarget(previousTarget)
     }
 
-    try {
-      await read
-    } finally {
-      this.busy = false
+    await read
+    const found = decodeNearest(this.pixels)
+    this.hitDx = found === PICK_MISS ? 0 : (hitPixel % PICK_SIZE) - CENTRE
+    this.hitDy = found === PICK_MISS ? 0 : Math.floor(hitPixel / PICK_SIZE) - CENTRE
+    return found
+  }
+
+  /**
+   * Distance in device pixels from the queried centre to where the *given* star was drawn in the
+   * last resolved pick's window, or `-1` if that star is nowhere in the window.
+   *
+   * The difference from `pick`'s own answer matters. `pick` reports whatever is nearest the
+   * pointer, which is the right answer for a click and the wrong one for a measurement: if the
+   * motion mirror is off, the nearest thing to the queried pixel is likely to be some *other*
+   * star, and comparing two mirrored positions cancels an error the two share. Asking where one
+   * specific star is compares the mirror against the shader directly, and nothing else.
+   *
+   * Only the GPU self-check needs this; the pick path never calls it.
+   */
+  distanceTo(id: number): number {
+    const encoded = id + 1
+    let best = -1
+    for (let i = 0; i < SCAN_ORDER.length; i += 1) {
+      const index = SCAN_ORDER[i]!
+      const pixel = index * 4
+      if (this.pixels[pixel + 3] === 0) continue
+      const found =
+        this.pixels[pixel]! + this.pixels[pixel + 1]! * 256 + this.pixels[pixel + 2]! * 65536
+      if (found !== encoded) continue
+      // SCAN_ORDER is centre-out, so the first match is the nearest.
+      const dx = (index % PICK_SIZE) - CENTRE
+      const dy = Math.floor(index / PICK_SIZE) - CENTRE
+      best = Math.hypot(dx, dy)
+      break
     }
-    return decodeNearest(this.pixels)
+    return best
   }
 
   dispose(): void {
@@ -162,16 +266,29 @@ export class IdPicker {
   }
 }
 
+/**
+ * Which pixel of the window {@link decodeNearest} last took its answer from. Module-level rather
+ * than returned, so the scan stays allocation-free on the hover path (PRD 7.3.2); `IdPicker.read`
+ * copies it out immediately, and reads are serialised, so there is no window for it to go stale.
+ */
+let hitPixel = 0
+
 /** Centre-out scan, so the star under the pointer beats one merely near it. */
 function decodeNearest(pixels: Uint8Array): number {
   for (let i = 0; i < SCAN_ORDER.length; i += 1) {
-    const pixel = SCAN_ORDER[i]! * 4
+    const index = SCAN_ORDER[i]!
+    const pixel = index * 4
     if (pixels[pixel + 3] === 0) continue
     const id = pixels[pixel]! + pixels[pixel + 1]! * 256 + pixels[pixel + 2]! * 65536
-    if (id > 0) return id - 1
+    if (id > 0) {
+      hitPixel = index
+      return id - 1
+    }
   }
-  return -1
+  return PICK_MISS
 }
+
+function ignore(): void {}
 
 /** `getClearColor` writes into a target; one reused instance keeps the pick path allocation-free. */
 const clearColourScratch = new Color()

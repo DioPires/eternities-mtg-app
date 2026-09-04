@@ -12,10 +12,21 @@
  *   1. take a star index;
  *   2. compute its world position on the CPU with `starWorldPosition`;
  *   3. project that with the camera to a device pixel;
- *   4. ask the id-buffer picker what is under that pixel.
+ *   4. render the pick window around that pixel, and find *that star* in it.
  *
- * If the picker returns the same index, the CPU mirror and the vertex shader put the star in the
- * same place, to within the pick window. If it returns a different star or a miss, they do not.
+ * Step 4 is the whole thing, and it is deliberately not "ask what is under that pixel". What is
+ * under the pixel is the answer to a click; it is the nearest star, which in a crowded field is
+ * usually a different one, and judging it means comparing the sampled star's mirrored position
+ * against the neighbour's mirrored position — the mirror on both sides of its own exam. An error
+ * the two share cancels, and because the mirror is per plane row, sharing is exactly what a real
+ * bug in it would do. Asking where one nominated star was rasterised puts the CPU on one side and
+ * the GPU on the other and nothing in between.
+ *
+ * Two things follow, both worth knowing before reading a result. A star inside a galaxy core is
+ * covered by a nearer sprite and cannot be found at all — that is `unmeasured`, and it is a fact
+ * about the fixture, so the run samples widely and demands a floor of real measurements rather
+ * than a share of them. And the resolution is the pixel grid: see `COINCIDENT_PX` for what size of
+ * disagreement this does and does not catch, which was measured by injection rather than assumed.
  *
  * Nothing runs unless `?selfcheck=1` asks for it. `scripts/verify-browser.mjs` is the caller.
  */
@@ -24,8 +35,10 @@ import { Vector3, type PerspectiveCamera, type Scene, type WebGLRenderer } from 
 
 import type { IdPicker } from './picking/idPicker'
 import { starWorldPosition } from './starfield/motion'
+import type { StarField } from './starfield/starFieldObjects'
 import type { StarGeometry } from './starfield/starGeometry'
 import type { PlaneTable } from './starfield/planeTable'
+import { SELF_CHECK_PICK_MIN_PX } from './tuning'
 
 export interface SelfCheckResult {
   readonly checked: number
@@ -38,15 +51,29 @@ export interface SelfCheckResult {
    * to be right about the other star for it to land there.
    */
   readonly occluded: number
-  /** Stars the picker put somewhere the mirror does not. These are real disagreements. */
+  /**
+   * Samples where the star was nowhere in its own pick window. Either the mirror is more than half
+   * a window out or a nearer sprite covered it entirely; from inside the check the two look the
+   * same, so these are counted rather than judged. A run made almost entirely of these has
+   * measured nothing, which is what `ok` guards against.
+   */
+  readonly unmeasured: number
+  /** `[planeRow, count]` for the unmeasurable samples, commonest first. */
+  readonly unmeasuredRows: readonly (readonly [number, number])[]
+  /**
+   * Stars the shader drew further from the mirror's pixel than the tolerance allows. Real
+   * disagreements, measured against the shader rather than against the mirror's own other answers.
+   */
   readonly missed: readonly {
     readonly index: number
     readonly picked: number
     readonly planeRow: number
     readonly x: number
     readonly y: number
-    /** Where the mirror puts whatever the picker returned, if it is on screen. */
-    readonly pickedAt: readonly [number, number] | null
+    /** NDC depth of the sample. Outside [-1, 1] means the projection was never on screen. */
+    readonly z: number
+    /** How far from the mirror's pixel the shader actually drew this star, in device pixels. */
+    readonly drawnAtPx: number
   }[]
   /** The drawing buffer the check measured against, for diagnosing a stretched canvas. */
   readonly buffer: readonly [number, number]
@@ -58,13 +85,21 @@ export interface SelfCheckResult {
    */
   readonly canvasBytes: number
   /**
-   * Mean and worst distance, in device pixels, between the queried pixel and where the mirror puts
-   * whatever the picker returned. This is what stops the tolerance below from hiding a systematic
-   * offset: individual samples can land on a neighbour, but the *average* displacement can only
-   * stay near zero if the mirror and the shader agree.
+   * Mean and worst distance, in device pixels, between the pixel the mirror predicted and where
+   * the shader actually put a star — measured inside the pick window when the right star came
+   * back, and against the neighbour's own mirrored position when a different one did.
+   *
+   * This, not the agreed/occluded split, is the check's real output. The counts are bucketed by a
+   * tolerance; these are the underlying measurement, at pixel resolution.
    */
   readonly meanOffsetPx: number
   readonly maxOffsetPx: number
+  /** How many samples the offsets above are over: `checked` minus `unmeasured`. */
+  readonly measured: number
+  /** The pick sprite floor the check ran at, in CSS pixels. What the numbers above are relative to. */
+  readonly spriteFloorPx: number
+  /** How far a neighbour could sit from the queried pixel and still count as sharing it. */
+  readonly tolerancePx: number
   readonly positionMode: string
   readonly ok: boolean
 }
@@ -83,14 +118,38 @@ export function selfCheckRequested(
 }
 
 const world = new Vector3()
-const projected = new Vector3()
 
 /**
- * How close two stars' projected pixels must be to count as sharing one: half the pick window.
- * The picker reads an 11-pixel window and every star sprite in it is at least 7 pixels across, so
- * a star this close genuinely covers the queried pixel and legitimately wins the depth test.
+ * How far the shader may draw a star from the pixel the mirror predicted, in device pixels.
+ *
+ * The bound has to be narrower than the disagreement it exists to detect, and the quantity it
+ * bounds has to be the right one. Neither used to hold. The old check compared the sampled star's
+ * mirrored pixel against *another star's mirrored pixel*, which puts the mirror on both sides of
+ * the comparison: an error the two stars share — a whole plane row drifting together, which is the
+ * shape a per-row mirror bug actually takes — cancels exactly and reads as agreement. And it
+ * allowed 6 px, over half the pick window, while picking at an inflated 7 px sprite that made
+ * almost every sample land on a neighbour in the first place.
+ *
+ * What is bounded now is `IdPicker.distanceTo`: the CPU's predicted pixel against the GPU's own
+ * rasterisation of that same star, with nothing else in the comparison. Measured on Metal at the
+ * 2 px self-check sprite, the worst disagreement is 1.0 px on both fixtures and the mean is 0.2–0.3
+ * px, most of which is the window's own pixel quantisation.
+ *
+ * Sensitivity, stated plainly: a per-star error of 3 px or more fails, and a systematic drift
+ * shows in `meanOffsetPx` from about 1.5 px. Below that the check passes — verified by injection,
+ * not assumed. A 4 px error confined to the dust row fails and names the row.
  */
-const COINCIDENT_PX = 6
+const COINCIDENT_PX = 3
+
+/**
+ * How many stars the run has to have actually located before its verdict counts.
+ *
+ * A star inside a galaxy core is covered by a nearer sprite and cannot be found in the id buffer
+ * at all, so on a dense fixture much of the sample is unmeasurable however many are taken — 14 of
+ * 24 on `fixture-scale`. That is a fact about the field, not about the mirror, and the honest
+ * response is to sample more and require a real number of hits rather than a share of them.
+ */
+const MIN_MEASURED = 16
 
 /** Where the CPU mirror says a star is, in device pixels. `null` when it is off screen. */
 function mirrorPixel(
@@ -131,8 +190,48 @@ export async function runSelfCheck(
   picker: IdPicker,
   table: PlaneTable,
   geometry: StarGeometry,
+  field: StarField,
   reducedMotion: boolean,
-  sampleCount = 24,
+  // 64, not 24. A star in a galaxy core is covered by a nearer sprite and cannot be measured
+  // through the id buffer at all — on `fixture-scale` that is over half the samples — so the
+  // sample count has to be large enough that what survives is still a real sample. One frame and
+  // one readback each, so this costs about a second, once, under `?selfcheck=1`.
+  sampleCount = 64,
+): Promise<SelfCheckResult> {
+  // Narrow the pick sprite for the duration, so what comes back is about position rather than
+  // about how far a neighbour's inflated sprite reaches. Restored in the `finally` below — leaving
+  // it set would shrink every click target in the app.
+  const spriteFloorPx = SELF_CHECK_PICK_MIN_PX
+  field.setPickSpriteFloorPx(spriteFloorPx)
+  try {
+    return await sample(
+      renderer,
+      scene,
+      camera,
+      picker,
+      table,
+      geometry,
+      reducedMotion,
+      sampleCount,
+      spriteFloorPx,
+    )
+  } finally {
+    field.setPickSpriteFloorPx(null)
+  }
+}
+
+async function sample(
+  renderer: WebGLRenderer,
+  scene: Scene,
+  camera: PerspectiveCamera,
+  picker: IdPicker,
+  table: PlaneTable,
+  geometry: StarGeometry,
+  reducedMotion: boolean,
+  sampleCount: number,
+  // Passed rather than read back from the constant, so the result reports the floor the run
+  // actually picked at rather than the one it was supposed to use.
+  spriteFloorPx: number,
 ): Promise<SelfCheckResult> {
   const total = geometry.drawCount
   const missed: SelfCheckResult['missed'][number][] = []
@@ -140,8 +239,14 @@ export async function runSelfCheck(
   let offScreen = 0
   let occluded = 0
   let checked = 0
+  let unmeasured = 0
+  const unmeasuredRows = new Map<number, number>()
   let offsetTotal = 0
   let offsetMax = 0
+  // Every sample that contributed to `offsetTotal`, which is the occluded ones *and* the misses
+  // where the picker returned an on-screen star. Dividing by `occluded` alone inflated the mean
+  // exactly when there were misses to diagnose.
+  let offsetSamples = 0
 
   const motion = reducedMotion ? 0 : 1
 
@@ -176,48 +281,73 @@ export async function runSelfCheck(
     }
 
     checked += 1
-    const picked = await picker.pick(renderer, scene, camera, pixel.x, pixel.y)
-    if (picked === index) {
-      agreed += 1
+    // `pickQueued`, not `pick`: a `PICK_BUSY` here would decode as "some other star" and be scored
+    // as a disagreement. The check must compare answers, never the absence of one.
+    const picked = await picker.pickQueued(renderer, scene, camera, pixel.x, pixel.y)
+
+    // The measurement. Not "what did the pointer select" but "where did the shader actually draw
+    // the star the mirror was asked about" — the one comparison that puts the CPU on one side and
+    // the GPU on the other. Everything else compares the mirror with itself: `picked`'s position
+    // comes from the same mirror, so an error the two stars share cancels and vanishes. A whole
+    // plane row drifting together — the exact PRD 8.5.7 failure, since the mirror is per-row — is
+    // invisible to that comparison and plain to this one.
+    const drawn = picker.distanceTo(index)
+    if (drawn < 0) {
+      // Not in the window at all: either the mirror is more than half a window out, or a nearer
+      // sprite covered every pixel this star had. The two are indistinguishable from here, so
+      // count it rather than scoring it, and let the totals below decide whether the run measured
+      // enough to mean anything. Broken down by plane row, because "every unmeasurable sample is
+      // on one row" would mean something quite different from "they are spread across the field".
+      unmeasured += 1
+      const row = geometry.planeRowOf(index)
+      unmeasuredRows.set(row, (unmeasuredRows.get(row) ?? 0) + 1)
+    } else {
+      offsetTotal += drawn
+      offsetMax = Math.max(offsetMax, drawn)
+      offsetSamples += 1
+    }
+
+    if (drawn > COINCIDENT_PX) {
+      missed.push({
+        index,
+        picked,
+        planeRow: geometry.planeRowOf(index),
+        x: Math.round(pixel.x * 10) / 10,
+        y: Math.round(pixel.y * 10) / 10,
+        z: Math.round(pixel.z * 1000) / 1000,
+        drawnAtPx: Math.round(drawn * 100) / 100,
+      })
       continue
     }
-    // A different star came back. That is correct if the mirror also puts *that* star on this
-    // pixel — inside a galaxy core several stars share one, and the id pass depth-sorts them.
-    const other =
-      picked >= 0
-        ? mirrorPixel(picked, table, geometry, camera, motion, width, height, projected)
-        : null
-    if (other !== null) {
-      const offset = Math.hypot(other.x - pixel.x, other.y - pixel.y)
-      offsetTotal += offset
-      offsetMax = Math.max(offsetMax, offset)
-      if (offset <= COINCIDENT_PX) {
-        occluded += 1
-        continue
-      }
-    }
-    missed.push({
-      index,
-      picked,
-      planeRow: geometry.planeRowOf(index),
-      x: Math.round(pixel.x * 10) / 10,
-      y: Math.round(pixel.y * 10) / 10,
-      pickedAt:
-        other === null ? null : [Math.round(other.x * 10) / 10, Math.round(other.y * 10) / 10],
-    })
+
+    // The star is where the mirror said. What the *pointer* would have selected there is a
+    // separate question — a nearer star legitimately wins the depth test in a crowded field — and
+    // it is bookkeeping, not a verdict.
+    if (picked === index) agreed += 1
+    else occluded += 1
   }
 
+  const maxOffsetPx = Math.round(offsetMax * 100) / 100
   return {
     checked,
     agreed,
     offScreen,
     occluded,
+    unmeasured,
+    unmeasuredRows: [...unmeasuredRows.entries()].sort((a, b) => b[1] - a[1]),
     missed,
-    meanOffsetPx: occluded > 0 ? Math.round((offsetTotal / occluded) * 100) / 100 : 0,
-    maxOffsetPx: Math.round(offsetMax * 100) / 100,
+    meanOffsetPx: offsetSamples > 0 ? Math.round((offsetTotal / offsetSamples) * 100) / 100 : 0,
+    maxOffsetPx,
+    measured: offsetSamples,
+    spriteFloorPx,
+    tolerancePx: COINCIDENT_PX,
     buffer: [renderer.domElement.width, renderer.domElement.height],
     canvasBytes,
     positionMode: geometry.positionMode,
-    ok: checked > 0 && missed.length === 0,
+    // Nothing may have missed, and the run must have located enough stars for that to mean
+    // something. Without the second clause the check passes vacuously on a crowded field: no
+    // misses, because nothing was ever compared. An absolute floor rather than a fraction, because
+    // what fraction is measurable is a property of the fixture's density, not of the mirror.
+    ok: missed.length === 0 && offsetSamples >= MIN_MEASURED,
   }
 }

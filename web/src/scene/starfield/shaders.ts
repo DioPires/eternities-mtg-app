@@ -309,7 +309,16 @@ void main() {
   // is what the bloom threshold of PRD 5.3.20 then picks up.
   float d = length(gl_PointCoord - 0.5) * 2.0;
 #ifdef ID_PASS
-  if (vPickable < 0.5 || d > 1.0) discard;
+  // The pick sprite is a square where the drawn sprite is a disc, deliberately.
+  //
+  // A round pick target is worse in both directions. At the production floor it throws away the
+  // corners of a target PRD 8.5.6 inflated on purpose so a one-pixel star stays clickable. Below
+  // about two pixels it is outright wrong: a point that small covers one or two fragments, whose
+  // gl_PointCoord lands wherever the rasteriser puts it, so a d > 1.0 test can discard the only
+  // fragment the star has and the star becomes unpickable. Measured on Metal: at a one-pixel
+  // floor three dust stars vanished from the id buffer entirely, and removing this test brought
+  // all three back. Nothing here is visible; the drawn pass keeps its disc below.
+  if (vPickable < 0.5) discard;
   gl_FragColor = vec4(vIdColour, 1.0);
 #else
   // Defined-argument-order smoothstep, then inverted: edge0 >= edge1 is undefined in GLSL.

@@ -15,11 +15,34 @@ import { Ray, Sphere, Vector2, Vector3, type PerspectiveCamera } from 'three'
 
 import { PlaneKindCode, planeWorldPosition } from '../starfield/motion'
 import type { PlaneTable } from '../starfield/planeTable'
+import { PICK_BUSY } from './idPicker'
 
 export type PickResult =
   | { readonly kind: 'star'; readonly index: number; readonly planeIndex: number }
   | { readonly kind: 'plane'; readonly index: number }
   | null
+
+/**
+ * The precedence rule itself, as one function over an id-buffer answer.
+ *
+ * `undefined` — distinct from the `null` that means "empty space" — is "the id buffer was not
+ * consulted". The plane raycast is deliberately a thunk so that this case cannot run it: a
+ * `PICK_BUSY` treated as a miss is how a click on a star used to come back as its plane, and the
+ * raycaster is the thing that must not be reached.
+ */
+export function resolvePick(
+  starIndex: number,
+  drawCount: number,
+  planeRowOf: (index: number) => number,
+  pickPlane: () => number,
+): PickResult | undefined {
+  if (starIndex === PICK_BUSY) return undefined
+  if (starIndex >= 0 && starIndex < drawCount) {
+    return { kind: 'star', index: starIndex, planeIndex: planeRowOf(starIndex) }
+  }
+  const planeIndex = pickPlane()
+  return planeIndex >= 0 ? { kind: 'plane', index: planeIndex } : null
+}
 
 /**
  * How much bigger than its visual radius a plane's pick sphere is. A galaxy's outer stars are

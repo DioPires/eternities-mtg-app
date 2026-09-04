@@ -159,11 +159,28 @@ export function float16ToNumber(bits: number): number {
  * become drawable one after another (PRD 6.8.1).
  */
 export class StarStreamReader {
+  /** Chunks held only until the header arrives and the buffer below can be sized from it. */
   private chunks: Uint8Array[] = []
+  /**
+   * The destination, allocated once from the header's `recordCount`.
+   *
+   * The alternative — a chunk list merged on demand — is quadratic in bytes copied here, because
+   * the consumer asks for `body()` after every chunk and each merge copies everything received so
+   * far. Unnoticeable on a 360 KB fixture; tens of megabytes of copying and GC on the real file,
+   * during the intro fly-to, which is the one moment the frame budget is not negotiable.
+   */
+  private buffer: Uint8Array | null = null
   private received = 0
   private header: BinaryHeader | null = null
 
   push(chunk: Uint8Array): void {
+    if (this.buffer !== null) {
+      if (this.received + chunk.byteLength > this.buffer.byteLength) this.grow(chunk.byteLength)
+      this.buffer.set(chunk, this.received)
+      this.received += chunk.byteLength
+      return
+    }
+
     this.chunks.push(chunk)
     this.received += chunk.byteLength
     if (this.header === null && this.received >= BINARY_HEADER_BYTES) {
@@ -176,7 +193,26 @@ export class StarStreamReader {
       if (this.header.kind !== BinaryKind.Stars) {
         throw new ContractError(`expected a stars file, got kind ${this.header.kind}`)
       }
+      // The header knows the length, so from here every chunk is written straight into place.
+      const declared = BINARY_HEADER_BYTES + this.header.recordCount * STAR_RECORD_BYTES
+      const sized = new Uint8Array(Math.max(declared, this.received))
+      sized.set(joined, 0)
+      this.buffer = sized
+      this.chunks = []
     }
+  }
+
+  /**
+   * Make room for a chunk running past the length the header declared.
+   *
+   * Nothing in the contract produces this — it means the file is longer than its own header says.
+   * `completeRecords` already clamps to `recordCount`, so the excess is ignored rather than
+   * decoded; growing rather than throwing keeps that tolerance exactly as it was.
+   */
+  private grow(incoming: number): void {
+    const grown = new Uint8Array(this.received + incoming)
+    if (this.buffer !== null) grown.set(this.buffer.subarray(0, this.received), 0)
+    this.buffer = grown
   }
 
   /** Whole records received so far. Safe to use as a draw range. */
@@ -199,7 +235,11 @@ export class StarStreamReader {
    *
    * Phase 2a's renderer uploads the new tail of this to the GPU on every chunk (PRD 8.7.3), and
    * copying the whole buffer each time to do so would be the largest allocation on the load path.
-   * The view is only valid until the next `push`, which is why this is a method, not a property.
+   * Genuinely no copy once the header has landed, because `push` writes into a buffer sized from
+   * `recordCount` — before that fix this claim was false and every call merged the whole stream.
+   *
+   * The view is only valid until the next `push`, which is why this is a method, not a property:
+   * an over-long file reallocates, and the old view would then be of a stale buffer.
    */
   body(): Uint8Array {
     const records = this.completeRecords
@@ -218,7 +258,13 @@ export class StarStreamReader {
     return makeStars(bytes.buffer, records, this.header.flags)
   }
 
+  /**
+   * Everything received so far, contiguous. Once the header has landed this is a view of the
+   * sized buffer and costs nothing; before that it merges the handful of chunks that arrived
+   * first, which happens at most once.
+   */
   private join(): Uint8Array {
+    if (this.buffer !== null) return this.buffer.subarray(0, this.received)
     if (this.chunks.length > 1) {
       const merged = new Uint8Array(this.received)
       let offset = 0

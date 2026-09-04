@@ -360,6 +360,72 @@ describe('stream reader body view (PRD 8.7.3)', () => {
     expect(reader.body().byteLength).toBe(STAR_RECORD_BYTES * 3)
     expect(reader.done).toBe(true)
   })
+
+  /**
+   * `push` now writes into a buffer sized from the header rather than merging a chunk list on
+   * every call, so these cover the seams that introduces: the handover from the pre-header chunk
+   * list to the buffer, and the bytes landing at the right offsets rather than merely adding up to
+   * the right length. The old path was correct but quadratic; a sized buffer is linear and has
+   * offsets to get wrong.
+   */
+  function starsHeader(records: number): Uint8Array {
+    const header = new Uint8Array(BINARY_HEADER_BYTES)
+    header.set([0x45, 0x54, 0x52, 0x4e], 0) // 'ETRN'
+    header[4] = 1 // kind: stars
+    header[5] = 1 // contract version
+    new DataView(header.buffer).setUint32(8, records, true)
+    return header
+  }
+
+  /** A record whose every byte is `fill`, so a misplaced write shows up rather than merely sizing. */
+  function record(fill: number): Uint8Array {
+    return new Uint8Array(STAR_RECORD_BYTES).fill(fill)
+  }
+
+  it('places every byte correctly when the header arrives split across chunks', () => {
+    const header = starsHeader(2)
+    const reader = new StarStreamReader()
+    // The header straddles a chunk boundary, so the buffer cannot be sized on the first push.
+    reader.push(header.subarray(0, 5))
+    expect(reader.completeRecords).toBe(0)
+    reader.push(header.subarray(5))
+    expect(reader.expectedRecords).toBe(2)
+
+    reader.push(record(0xa1))
+    reader.push(record(0xb2))
+    expect(reader.done).toBe(true)
+
+    const body = reader.body()
+    expect(body.byteLength).toBe(STAR_RECORD_BYTES * 2)
+    expect([...body.subarray(0, STAR_RECORD_BYTES)].every((b) => b === 0xa1)).toBe(true)
+    expect([...body.subarray(STAR_RECORD_BYTES)].every((b) => b === 0xb2)).toBe(true)
+  })
+
+  it('keeps every record at its own offset across many chunks', () => {
+    const fills = [0x11, 0x22, 0x33, 0x44]
+    const reader = new StarStreamReader()
+    reader.push(starsHeader(fills.length))
+    for (const fill of fills) reader.push(record(fill))
+
+    const body = reader.body()
+    expect(body.byteLength).toBe(STAR_RECORD_BYTES * fills.length)
+    for (const [i, fill] of fills.entries()) {
+      const slice = body.subarray(i * STAR_RECORD_BYTES, (i + 1) * STAR_RECORD_BYTES)
+      expect([...slice].every((b) => b === fill)).toBe(true)
+    }
+  })
+
+  it('tolerates a file longer than its own header says, ignoring the excess', () => {
+    const reader = new StarStreamReader()
+    reader.push(starsHeader(1))
+    reader.push(record(0x77))
+    // One record more than declared. `completeRecords` clamps, and this must not throw.
+    reader.push(record(0x99))
+
+    expect(reader.completeRecords).toBe(1)
+    expect(reader.body().byteLength).toBe(STAR_RECORD_BYTES)
+    expect([...reader.body()].every((b) => b === 0x77)).toBe(true)
+  })
 })
 
 describe('adaptive quality (PRD 8.5.11)', () => {

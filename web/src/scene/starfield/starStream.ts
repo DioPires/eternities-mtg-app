@@ -96,6 +96,15 @@ export async function streamStarsIntoScene(
     })
   } catch (error) {
     if (retry.signal?.aborted) throw error
-    errors.report('stars.bin', Math.max(attempts, ATTEMPTS), error)
+    // What was actually tried, not the budget. `onRetry` fires once per failed attempt, so it stays
+    // at zero when the *response* came back fine and the failure was mid-body — which is the likely
+    // way the largest artefact in the contract breaks, and telling the user it was tried three
+    // times when it was tried once is worse than useless when they are deciding whether to reload.
+    //
+    // A mid-body failure genuinely gets one attempt: `fetchWithRetry` retries the response, and
+    // once the body is streaming a `read()` rejection propagates straight out. Making that path
+    // resumable is a real change — see the deferral note on PRD 7.4.1 — but it must not be
+    // misreported in the meantime.
+    errors.report('stars.bin', Math.max(attempts, 1), error)
   }
 }

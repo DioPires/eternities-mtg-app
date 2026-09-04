@@ -13,7 +13,7 @@
  *
  *   node scripts/bench.mjs [--dataset scale|small] [--positions float16|float32]
  *                          [--headless] [--uncapped] [--out path.json] [--runs N]
- *                          [--shots dir]
+ *                          [--shots dir] [--device-scale N]
  *
  * `--uncapped` unlocks the frame rate, which is the only way to see how much headroom is actually
  * left: with vsync on, a 120 Hz panel reports 8.3 ms whether the frame cost 2 ms or 8.
@@ -55,6 +55,10 @@ function parseArgs(argv) {
     out: null,
     shots: null,
     runs: 1,
+    // 2, so the page sees `devicePixelRatio` 2 and the tier-0 cap of 1.5 actually binds — which
+    // is what the Retina reference machine of implementation-plan §6 does. `--device-scale 1`
+    // reproduces a non-Retina display, and the degradation ladder's top rung with it.
+    deviceScaleFactor: 2,
   }
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--dataset') args.dataset = argv[++i]
@@ -64,6 +68,7 @@ function parseArgs(argv) {
     else if (argv[i] === '--out') args.out = argv[++i]
     else if (argv[i] === '--shots') args.shots = argv[++i]
     else if (argv[i] === '--runs') args.runs = Number(argv[++i])
+    else if (argv[i] === '--device-scale') args.deviceScaleFactor = Number(argv[++i])
     else throw new Error(`unknown argument ${argv[i]}`)
   }
   return args
@@ -99,7 +104,12 @@ function launch(args) {
     headless: args.headless,
     // A fixed window, so the numbers are comparable between runs and machines. The reference
     // viewport of PRD 7.1.1 is 1920x1080.
-    defaultViewport: { width: 1920, height: 1080 },
+    //
+    // `deviceScaleFactor` is not optional here. Without it puppeteer pins `devicePixelRatio` to 1,
+    // so `setDpr(min(1.5, 1))` yields 1 and the bench measures a quarter fewer fragments than the
+    // Retina reference machine actually draws — and the first rung of the degradation ladder
+    // (1.5 -> 1.0) cannot be exercised at all, because the run never starts above it.
+    defaultViewport: { width: 1920, height: 1080, deviceScaleFactor: args.deviceScaleFactor },
     args: [
       '--no-sandbox',
       '--window-size=1920,1140',
