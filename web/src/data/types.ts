@@ -202,6 +202,12 @@ export type CardLayout =
   | 'host'
   | 'art_series'
   | 'reversible_card'
+  // Added by the Phase 1 first run (2026-09-04), which failed loudly on both per PRD 7.7.2.
+  // `prepare` is Secrets of Strixhaven's two-faces-on-one-side layout — like `split`, it has a
+  // second face and no back image. `front_card` is a Jumpstart theme card; every set carrying one
+  // is `memorabilia`, so 4.3.2 drops it before it can reach a shard.
+  | 'prepare'
+  | 'front_card'
 
 /**
  * A card's second face — "there is another face", **not** "there is a back image". Split,

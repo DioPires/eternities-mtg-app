@@ -10,6 +10,7 @@ import argparse
 import json
 import shutil
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -20,6 +21,8 @@ from .fixtures import SCALE, SMALL, FixtureSpec, build
 REPO_ROOT = Path(__file__).resolve().parents[3]
 WEB_DATA_ROOT = REPO_ROOT / "web" / "public" / "data"
 DATASETS_FILE = REPO_ROOT / "web" / "datasets.json"
+REPORTS_DIR = REPO_ROOT / "pipeline" / "reports"
+CACHE_DIR = REPO_ROOT / "pipeline" / ".cache" / "scryfall"
 
 _FIXTURES: dict[str, FixtureSpec] = {"small": SMALL, "scale": SCALE}
 
@@ -96,14 +99,52 @@ def _cmd_test_vector(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_build(_: argparse.Namespace) -> int:
-    print(
-        "eternities build runs the full Scryfall pipeline of PRD 8.2 and is Phase 1's deliverable "
-        "(implementation-plan.md §2). Phase 0 froze the contract it will write through: see "
-        "docs/data-contract.md and eternities.contract.",
-        file=sys.stderr,
-    )
-    return 2
+def _cmd_build(args: argparse.Namespace) -> int:
+    from .pipeline import UnmappedSetError
+    from .pipeline import build as run_pipeline
+    from .pipeline.records import UnknownEnumError
+
+    data_root = Path(args.out).resolve()
+    try:
+        result = run_pipeline(
+            as_of=str(args.as_of),
+            data_root=data_root,
+            reports_dir=Path(args.reports).resolve(),
+            cache_dir=Path(args.cache).resolve(),
+            dataset_name=str(args.dataset),
+            roster_diff=not args.no_roster_diff,
+        )
+    except (UnknownEnumError, UnmappedSetError) as error:
+        # PRD 7.7.2 and 4.6.4 are the two rules that stop a run rather than guess. Neither is a
+        # crash to be read from a traceback: the message names what to add and where.
+        print(f"\nbuild failed — {error}", file=sys.stderr)
+        return 1
+
+    print()
+    print(f"data:   {_display(result.data_dir)}")
+    print(f"report: {_display(result.report_path)}")
+
+    if data_root == WEB_DATA_ROOT.resolve():
+        registry: dict[str, Any] = {}
+        if DATASETS_FILE.exists():
+            registry = cast("dict[str, Any]", json.loads(DATASETS_FILE.read_text(encoding="utf-8")))
+        previous = str(registry.get("production", ""))
+        registry["production"] = result.data_dir.name
+        # A real dataset supersedes the fixtures as what the app ships (PRD 8.3).
+        registry["active"] = result.data_dir.name
+        DATASETS_FILE.write_text(
+            json.dumps(registry, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        print(f"datasets.json active = {result.data_dir.name}")
+        if previous and previous != result.data_dir.name and (data_root / previous).exists():
+            # PRD 8.8.3: the stale hash directory goes in the same pull request.
+            shutil.rmtree(data_root / previous)
+            print(f"  removed stale {previous}/")
+    return 0
+
+
+def _today() -> str:
+    return datetime.now(tz=UTC).date().isoformat()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -115,7 +156,28 @@ def main(argv: list[str] | None = None) -> int:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    build_cmd = sub.add_parser("build", help="run every pipeline stage (Phase 1)")
+    build_cmd = sub.add_parser(
+        "build", help="run every pipeline stage against Scryfall and write artefacts + report"
+    )
+    build_cmd.add_argument(
+        "--as-of",
+        default=_today(),
+        metavar="YYYY-MM-DD",
+        help="run date (PRD 4.9.1). Fixes which sets have shipped (4.3.8) and is recorded in the "
+        "manifest; the same date and inputs give byte-identical artefacts. Default: today.",
+    )
+    build_cmd.add_argument("--out", default=str(WEB_DATA_ROOT), help="data root directory")
+    build_cmd.add_argument("--reports", default=str(REPORTS_DIR), help="report directory")
+    build_cmd.add_argument("--cache", default=str(CACHE_DIR), help="Scryfall download cache")
+    build_cmd.add_argument(
+        "--dataset", default="production", help="manifest `dataset` label (PRD 8.3)"
+    )
+    build_cmd.add_argument(
+        "--no-roster-diff",
+        action="store_true",
+        help="skip the MTG wiki roster diff (implementation plan §2); the run still succeeds "
+        "without network access to the wiki",
+    )
     build_cmd.set_defaults(func=_cmd_build)
 
     fixtures_cmd = sub.add_parser("fixtures", help="generate the seeded fixture datasets")

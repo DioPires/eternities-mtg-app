@@ -146,3 +146,6 @@ jobs:
         run: node scripts/check-budget.mjs --dataset scale
       - name: fixture-small
         run: node scripts/check-budget.mjs --dataset small
+      # The real dataset is what ships. The fixtures approximate it; only this row is binding.
+      - name: production
+        run: node scripts/check-budget.mjs --dataset "$(node -p "require('./datasets.json').production")"

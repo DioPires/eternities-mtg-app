@@ -312,3 +312,18 @@ The card's plane is not repeated in the shard; the URL's plane slug and the `pla
 - `contract/test-vectors/v1/` holds a hand-checkable dataset: `vector.json` (the inputs and the expected derived URIs) plus the encoded `stars.bin`, `sets.bin`, `manifest.json`, `planes.json`, `search.json`, `planes/*.json`. Python re-encodes it and asserts byte equality; TypeScript decodes it and asserts the values round-trip. Both run in CI.
 - `web/scripts/check-budget.mjs` measures **brotli-encoded** size of the built shell and of the data directory's files, and checks them against the PRD 7.2 table plus the A1 row. Ceilings fail the build; targets are reported.
 - Adding a field is a minor change and bumps `pipelineVersion`. Changing a byte layout, a section id, an enum value, or a filename bumps `contractVersion` and requires a review by the Frontend Engineer and the Interactive Tools Engineer.
+
+## 11. Change log
+
+### v1, `pipelineVersion` 0.2.0 — Phase 1 first run, 2026-09-04
+
+Two values were **added** to the `l` layout union (§9). Both came from the first real run, which failed loudly on them per PRD 7.7.2 rather than guessing at a URI:
+
+| Layout | What it is | Back image | Reaches a shard |
+|---|---|---|---|
+| `prepare` | Secrets of Strixhaven's two-faces-on-one-side layout. Like `split`, Scryfall gives it no top-level `oracle_text` at all — the text lives only in `card_faces` — so `b` **must** be populated | no | yes, `sos`/`soc`/`plst` |
+| `front_card` | A Jumpstart theme card | no | no — every set carrying one is `set_type: memorabilia`, which PRD 4.3.2 drops |
+
+`contractVersion` stays **1**. No byte layout, section id, filename, or numeric enum value changed; the union gained two members it had no way to carry before, and no already-encoded artefact contains either value, so every v1 decoder still reads every v1 artefact. `pipelineVersion` moved to 0.2.0 to mark it.
+
+**This still needs the §10 review**, because the change touches a closed union that both languages must agree on: `LAYOUTS` in `contract/enums.py`, `CardLayout` in `data/types.ts`, and the regenerated `backImageChecks` in the test vector, which pins `hasBackImage` for every member on both sides.

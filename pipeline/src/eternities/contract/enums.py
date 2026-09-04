@@ -8,7 +8,7 @@ from typing import Final
 CONTRACT_VERSION: Final = 1
 """Bumped only for a byte-layout, section-id, enum-value or filename change."""
 
-PIPELINE_VERSION: Final = "0.1.0"
+PIPELINE_VERSION: Final = "0.2.0"
 
 STAR_RECORD_BYTES: Final = 12
 BINARY_HEADER_BYTES: Final = 16
@@ -105,6 +105,13 @@ LAYOUTS: Final[frozenset[str]] = frozenset(
         "host",
         "art_series",
         "reversible_card",
+        # Added by the Phase 1 first run (2026-09-04), which failed loudly on both per PRD 7.7.2.
+        # `prepare` is Secrets of Strixhaven's two-faces-on-one-side layout: like `split` it has a
+        # second face and no back image, and Scryfall gives it no top-level oracle text at all.
+        # `front_card` is a Jumpstart theme card; every set carrying one is `memorabilia`, so
+        # 4.3.2 drops it long before it could reach a shard.
+        "prepare",
+        "front_card",
     }
 )
 """Every Scryfall ``layout`` value. Closed on purpose: ``l`` in a plane shard is this union, and

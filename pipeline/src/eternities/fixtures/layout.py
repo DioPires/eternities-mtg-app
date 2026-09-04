@@ -7,6 +7,7 @@ else, so Phase 1 can reuse it verbatim.
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Final
 
@@ -317,3 +318,37 @@ def arm_width_scale(arm_count: int, mean_count: float) -> float:
     if mean_count <= 0:
         return 1.0
     return min(max(math.sqrt(arm_count / mean_count), 0.5), 1.8)
+
+
+type Palette = tuple[float, float, float, float, float, float, float]
+
+_NEBULA_BASE: Final[tuple[tuple[float, float, float], ...]] = (
+    (0.98, 0.94, 0.84),  # W warm ivory
+    (0.24, 0.55, 0.90),  # U cerulean
+    (0.45, 0.28, 0.70),  # B violet
+    (0.95, 0.42, 0.20),  # R ember orange
+    (0.24, 0.68, 0.42),  # G viridian
+    (0.92, 0.76, 0.30),  # multicolour gold
+    (0.72, 0.75, 0.80),  # colourless silver
+)
+
+
+def palette_from_hue_counts(counts: Sequence[float]) -> Palette:
+    """PRD 5.3.5: a plane's palette is its colour-identity distribution over the hue classes."""
+    total = sum(counts)
+    if total <= 0:
+        return (1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7)
+    w, u, b, r, g, m, c = (v / total for v in counts)
+    return (w, u, b, r, g, m, c)
+
+
+def nebula_tint(palette: Palette) -> tuple[float, float, float]:
+    """PRD 5.3.5: a weighted blend of the two dominant hues, in the base hues of 5.4.8."""
+    ranked = sorted(range(7), key=lambda i: (-palette[i], i))[:2]
+    w0, w1 = palette[ranked[0]], palette[ranked[1]]
+    total = (w0 + w1) or 1.0
+    red, green, blue = (
+        (_NEBULA_BASE[ranked[0]][c] * w0 + _NEBULA_BASE[ranked[1]][c] * w1) / total
+        for c in range(3)
+    )
+    return (red, green, blue)
