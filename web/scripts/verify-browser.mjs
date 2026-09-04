@@ -113,7 +113,10 @@ async function verify(dataset) {
       problems.push(`request failed: ${request.url()} (${request.failure()?.errorText})`),
     )
 
-    const response = await page.goto(url, { waitUntil: 'networkidle0', timeout: 60_000 })
+    // `load`, not `networkidle0`: since Phase 2a the canvas animates continuously and the star
+    // field keeps a software renderer busy, so "the network went quiet" is not a signal worth
+    // waiting on. The assertions below wait on the page's own state instead.
+    const response = await page.goto(`${url}/?selfcheck=1`, { waitUntil: 'load', timeout: 60_000 })
     const csp = response?.headers()['content-security-policy']
     if (!csp) throw new Error('the preview server sent no Content-Security-Policy header')
     if (csp.includes("'unsafe-inline'") && csp.includes('script-src')) {
@@ -152,10 +155,14 @@ async function verify(dataset) {
     if (!report.ok) throw new Error('the data contract decode report reported a failure')
 
     const canvas = await page.evaluate(() => {
-      const element = document.querySelector('canvas')
+      // Pick the largest canvas: postprocessing and some dev tooling add their own, and the first
+      // one in the document is not necessarily the scene's.
+      const all = Array.from(document.querySelectorAll('canvas'))
+      const element = all.sort((a, b) => b.width * b.height - a.width * a.height)[0]
       if (!element) return null
       const context = element.getContext('webgl2')
       return {
+        count: all.length,
         width: element.width,
         height: element.height,
         webgl2: context !== null,
@@ -165,16 +172,64 @@ async function verify(dataset) {
     })
     if (!canvas) throw new Error('no <canvas> in the document')
     if (!canvas.webgl2) throw new Error('the canvas has no WebGL2 context')
-    console.log(`  canvas ${canvas.width}x${canvas.height}, ${canvas.renderer}`)
+    console.log(`  canvas ${canvas.width}x${canvas.height} (${canvas.count} on the page), ${canvas.renderer}`)
 
-    const drew = await page.evaluate(() => {
-      const element = document.querySelector('canvas')
-      // toDataURL round-trips the drawing buffer; a scene of only the #05060a sky and no stars
-      // compresses to a much shorter data URL than one with thousands of additive points.
-      return (element?.toDataURL('image/png').length ?? 0) > 5000
+    // --- Phase 2a ------------------------------------------------------------------------------
+
+    // Every record drawable and every plane revealed: the streaming loader of PRD 8.7.3 reached
+    // the end and the per-plane fade-in of PRD 6.8.1 fired for each one.
+    await page.waitForFunction(
+      () => /\(complete\)/.test(document.querySelector('[data-testid="scene-status"]')?.textContent ?? ''),
+      { timeout: 120_000 },
+    )
+    const scene = await page.evaluate(
+      () => document.querySelector('[data-testid="scene-status"]')?.textContent ?? '',
+    )
+    console.log(`  scene: ${scene.replace(/\s+/g, ' ').trim().slice(0, 160)}`)
+
+
+    // PRD 8.5.6 and 8.5.7 checked against each other on the GPU: the CPU motion mirror's world
+    // position, projected to a pixel, has to pick the same star back out of the id buffer.
+    await page.waitForFunction(() => window.__eternitiesSelfCheck !== undefined, {
+      timeout: 120_000,
+      polling: 250,
     })
-    if (!drew) problems.push('the canvas looks empty — the background starfield may not have drawn')
-    else console.log('  background starfield drew')
+    const selfCheck = await page.evaluate(() => window.__eternitiesSelfCheck)
+    console.log(
+      `  id-buffer picking vs CPU motion mirror: ${selfCheck.agreed}/${selfCheck.checked} agreed, ` +
+        `${selfCheck.occluded} shared a pixel with a nearer star` +
+        `(${selfCheck.offScreen} off screen, ${selfCheck.positionMode} positions, ` +
+        `buffer ${selfCheck.buffer.join('x')}); neighbour offset mean ` +
+        `${selfCheck.meanOffsetPx}px, max ${selfCheck.maxOffsetPx}px`,
+    )
+    if (selfCheck.canvasBytes < 5000) {
+      problems.push(`the canvas looks empty (${selfCheck.canvasBytes}-byte PNG) — nothing drew`)
+    } else {
+      console.log(`  star field drew (${selfCheck.canvasBytes}-byte PNG round-trip)`)
+    }
+
+    // A systematic error would move every star the same way and show up here even though each
+    // individual sample landed on a plausible neighbour.
+    if (selfCheck.meanOffsetPx > 3) {
+      throw new Error(
+        `the picker's stars sit a mean of ${selfCheck.meanOffsetPx}px from where the CPU motion ` +
+          `mirror puts them — that is a systematic disagreement, not crowding`,
+      )
+    }
+
+    if (!selfCheck.ok) {
+      for (const miss of selfCheck.missed.slice(0, 8)) {
+        console.log(
+          `    star ${miss.index} (plane row ${miss.planeRow}) at ${miss.x},${miss.y} ` +
+            `picked ${miss.picked}` +
+            `${miss.pickedAt ? `, which the mirror puts at ${miss.pickedAt.join(',')}` : ''}`,
+        )
+      }
+      throw new Error(
+        `the CPU motion mirror disagrees with the vertex shader for ${selfCheck.missed.length} ` +
+          `stars — PRD 8.5.7's camera tether would frame the wrong point`,
+      )
+    }
 
     if (problems.length > 0) {
       throw new Error(`browser reported problems:\n  - ${problems.join('\n  - ')}`)

@@ -14,7 +14,9 @@
     "typecheck": "tsc --build --force",
     "lint": "eslint .",
     "test": "vitest run",
-    "check-budget": "node scripts/check-budget.mjs"
+    "check-budget": "node scripts/check-budget.mjs",
+    "bench": "node scripts/bench.mjs",
+    "verify-browser": "node scripts/verify-browser.mjs"
   },
   "dependencies": {
     "@react-three/drei": "9.122.0",

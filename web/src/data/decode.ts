@@ -194,6 +194,22 @@ export class StarStreamReader {
     return this.header !== null && this.completeRecords === this.header.recordCount
   }
 
+  /**
+   * The whole records received so far, header stripped, as a **view** — no copy.
+   *
+   * Phase 2a's renderer uploads the new tail of this to the GPU on every chunk (PRD 8.7.3), and
+   * copying the whole buffer each time to do so would be the largest allocation on the load path.
+   * The view is only valid until the next `push`, which is why this is a method, not a property.
+   */
+  body(): Uint8Array {
+    const records = this.completeRecords
+    if (records === 0) return new Uint8Array(0)
+    return this.join().subarray(
+      BINARY_HEADER_BYTES,
+      BINARY_HEADER_BYTES + records * STAR_RECORD_BYTES,
+    )
+  }
+
   /** Materialise what has arrived. Allocates, so call it on chunk boundaries, not per frame. */
   snapshot(): Stars {
     if (this.header === null) throw new ContractError('no header received yet')
