@@ -106,9 +106,12 @@ export function createNavigationStub(options: StubOptions = {}): NavigationApi {
     notify()
   }
 
-  const durationFor = (options: FlyOptions | undefined, base: number): number => {
-    if (options?.immediate) return 0
-    if (options?.durationMs !== undefined) return options.durationMs
+  // `opts`, not `options`: everywhere else in this factory `options` is the `StubOptions` argument
+  // — `start` reads `options.instant` off it a few lines down — so binding the name to a
+  // `FlyOptions` here shadowed it and made the two easy to misread for each other.
+  const durationFor = (opts: FlyOptions | undefined, base: number): number => {
+    if (opts?.immediate) return 0
+    if (opts?.durationMs !== undefined) return opts.durationMs
     return reducedMotion ? REDUCED_MOTION_DURATION_MS : base
   }
 
@@ -180,7 +183,14 @@ export function createNavigationStub(options: StubOptions = {}): NavigationApi {
   // Every method is a free-standing `const` that closes over this factory's state, and the
   // returned object only references them. Nothing uses `this`: React callers destructure — the
   // natural spellings are `const { flyToPlane } = useNavigation()` and `onPointerDown={nav.handOver}`
-  // — and a `this`-dependent method throws a `TypeError` the moment it leaves the object.
+  // — and a `this`-dependent method would throw a `TypeError` the moment it left the object.
+  //
+  // The compiler will not catch a regression here. TypeScript contextually types `this` inside an
+  // object literal, so `this.flyToBlindEternities(...)` type-checks clean even against the
+  // function-typed properties of `NavigationApi`; the properties buy silence from
+  // `@typescript-eslint/unbound-method` at the call sites, not enforcement here. The detachment
+  // tests in `web/test/navigation.test.ts` are the only guard, which is why they exercise both
+  // branches of `flyToPlane` and both of `focusParent` rather than just the common ones.
 
   const subscribe = (listener: (snapshot: NavigationSnapshot) => void): Unsubscribe => {
     subscribers.add(listener)
@@ -272,6 +282,12 @@ export function createNavigationStub(options: StubOptions = {}): NavigationApi {
       starIndex: resolution.starIndex,
       ...((resolution.anchor ?? focus.anchor) && { anchor: resolution.anchor ?? focus.anchor }),
     }
+    // `anchor` is compared by reference on purpose. `next.anchor` is either `focus.anchor` itself
+    // — same reference, so an unchanged anchor never reads as changed — or the caller's new tuple.
+    // The only false positive is a caller handing back a fresh but equal `Vec3`, and that costs
+    // one extra `'correction'` focuschange, which §3a makes a `replaceState` the router dedupes on
+    // focus equality: a redundant URL rewrite, not a history entry. Not worth a deep compare on
+    // every call.
     const changed =
       focus.starIndex !== next.starIndex ||
       focus.planeSlug !== next.planeSlug ||
@@ -289,13 +305,26 @@ export function createNavigationStub(options: StubOptions = {}): NavigationApi {
   const failCardResolution = (oracleId: string, fallback?: Focus): void => {
     if (focus.kind !== 'card' || focus.oracleId !== oracleId) return
 
-    // The URL's plane slug is real even when its oracle id is not, so it is the honest fallback.
-    const next: Focus = fallback ?? { kind: 'plane', slug: focus.planeSlug }
+    // The URL's plane slug is real even when its oracle id is not, so it is the honest fallback —
+    // and it carries the card's anchor up with it, exactly as `focusParent` does. On the Blind
+    // Eternities `anchor: undefined` *means* the multiverse centre, so dropping it here would tell
+    // the router the camera had crossed the whole multiverse while it in fact stayed where stage
+    // one left it, framing the dust around the card (PRD 5.3.4, 6.2.3).
+    const next: Focus =
+      fallback ?? {
+        kind: 'plane',
+        slug: focus.planeSlug,
+        ...(focus.anchor && { anchor: focus.anchor }),
+      }
     focus = next
     // `focuschange` before `flightend`, matching `start()`: the URL is the source of truth
     // (PRD 6.7.1), so the router must have corrected it before anyone reacts to the failure.
     emit('focuschange', { focus, reason: 'correction' })
     // The camera stops where it is — it is already framing the plane after stage one of PRD 6.2.3.
+    //
+    // There may be no flight left to fail: under reduced motion (PRD 5.9) or `immediate` it can
+    // have settled 'completed' before `sets.bin` landed. The `'correction'` above is what always
+    // fires, and what PRD risk 9's toast hangs off (§2 invariant 6).
     if (pending) settle(pending, 'failed', next)
     notify()
   }

@@ -171,8 +171,9 @@ export interface SearchFile {
 export type PrintingTuple = readonly [string, SetId, string, number, string]
 
 /**
- * Every Scryfall `layout` value. Closed on purpose: `l` is this union, and whether a printing has
- * a back *image* is derived from it — see `hasBackImage` in `./images`. The Python twin is
+ * Every Scryfall `layout` value. Closed on purpose: `l` is this union, and whether a printing
+ * derives a back *image* from its own id is read off it — see `hasBackImage` in `./images`, and
+ * note that meld's back comes from elsewhere, so layout alone is not the gate. The Python twin is
  * `LAYOUTS` in `pipeline/src/eternities/contract/enums.py`, and the encoder rejects any layout
  * outside this set rather than emitting a URI that would 404.
  */
@@ -204,8 +205,15 @@ export type CardLayout =
 
 /**
  * A card's second face — "there is another face", **not** "there is a back image". Split,
- * adventure and flip cards have one and not the other (contract §9); use `hasBackImage(card.l)`
- * or `cardBackImageUri` to decide whether an image exists, never `b !== null`.
+ * adventure and flip cards have one and not the other (contract §9), so `b !== null` is never the
+ * test for whether a back image exists.
+ *
+ * The test is **`cardBackImageUri(card, printing, size) !== null`**, and only that.
+ * `hasBackImage(card.l)` is *not* interchangeable with it: it answers the narrower question "does
+ * this layout derive a back URI from the printing id", and it is `false` for **meld** (PRD line
+ * 125), whose back is a separate Scryfall object reached through the `id`/`ts` below. Both
+ * functions are correct; only one is the rendering gate. A card tier that gated the back face on
+ * `hasBackImage` would drop every meld back silently — no 404, no error, just a missing face.
  */
 export interface CardFaceRecord {
   readonly n: string

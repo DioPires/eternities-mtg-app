@@ -72,7 +72,15 @@ export const BACK_IMAGE_LAYOUTS: ReadonlySet<CardLayout> = new Set<CardLayout>([
   'art_series',
 ])
 
-/** Whether a printing of this layout has a back image (PRD 4.2.2, 5.6.2). */
+/**
+ * Whether a printing of this layout derives a back image from *its own printing id* (PRD 4.2.2,
+ * 5.6.2).
+ *
+ * **Not the gate for rendering a back face.** That gate is `cardBackImageUri(...) !== null`. This
+ * returns `false` for `meld`, whose back image exists but belongs to a different Scryfall object
+ * (PRD line 125), so a card tier that gated on this would drop every meld back silently. The two
+ * are not interchangeable; see `CardFaceRecord` in `./types`.
+ */
 export function hasBackImage(layout: CardLayout): boolean {
   return BACK_IMAGE_LAYOUTS.has(layout)
 }
@@ -80,6 +88,10 @@ export function hasBackImage(layout: CardLayout): boolean {
 /**
  * The back image of a card as printed, or `null` when it has none. Use this rather than
  * `printingImageUri(p, size, 'back')`, which cannot know whether a back exists.
+ *
+ * **`cardBackImageUri(...) !== null` is the one correct gate on rendering a back face** —
+ * `hasBackImage(card.l)` is not, because it misses meld (see below), and `card.b !== null` is not,
+ * because split, adventure and flip cards have a second face and no second image.
  *
  * Two sources, because there are two kinds of back:
  *

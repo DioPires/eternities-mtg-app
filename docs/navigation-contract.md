@@ -79,14 +79,28 @@ Six invariants an implementation must hold. They are the contract's real content
 5. **A flight target is refined in place, never by restarting.** `resolveCard` (§3a) mutates the
    focus and the pending flight's `target`; it starts no flight and ends none. `Flight.target` is
    therefore a live view, not the value passed in — read it, do not cache it.
-6. **No flight resolves `'completed'` at a focus that does not exist.** An `oracle_id` a data
-   refresh dropped resolves `'failed'` at a fallback focus (§3a), never `'completed'`.
+6. **No flight *still in the air* resolves `'completed'` at a focus that does not exist.** An
+   `oracle_id` a data refresh dropped resolves `'failed'` at a fallback focus (§3a).
+
+   Scoped to flights still in the air on purpose, because the unscoped version is unholdable. Under
+   PRD 5.9 reduced motion the flight is 300 ms, and `immediate: true` settles it in the same tick —
+   either way `sets.bin` can land *after* the flight already resolved `'completed'` at the card.
+   `failCardResolution` then has no flight to fail and only corrects the focus. What is
+   unconditionally true is the §3a `'correction'` focuschange, not the flight status; anything that
+   needs to know a resolution failed must listen for that.
 
 **`NavigationApi` members are function-typed properties, not methods.** That is load-bearing, not
-style: method syntax tells TypeScript the implementation may depend on `this`, and callers
-destructure constantly (`const { flyToPlane } = useNavigation()`, `onPointerDown={nav.handOver}`).
-Written as properties, an implementation that reaches for `this` fails to type-check. Close over
-your state.
+style: callers destructure constantly (`const { flyToPlane } = useNavigation()`,
+`onPointerDown={nav.handOver}`), and against a method signature every one of those lines is an
+`@typescript-eslint/unbound-method` error. Property signatures silence the rule. That is what the
+shape buys.
+
+It does **not** buy compiler enforcement of the no-`this` rule, and the contract used to claim it
+did. TypeScript contextually types `this` inside an object literal whichever syntax you use, so an
+implementation that reaches for `this` type-checks clean and fails only at runtime, once a caller
+detaches it. Verified against this repo: reintroduce the Phase 0 `this.flyToBlindEternities(...)`
+bug in `stub.ts` and `pnpm typecheck` still exits 0, while the detachment tests in
+`web/test/navigation.test.ts` fail. **Those tests are the enforcement.** Close over your state.
 
 Durations come from the scene, not the caller: PRD 5.7.3's 1.2 s one-level hop scaled with distance
 to a 3 s cap, PRD 6.2.3's 3.5 s cap on the combined two-stage card fly-to, PRD 6.8.2's 4 s intro,
@@ -140,10 +154,21 @@ by then the user has moved on and there is nothing to correct.
 
 **`failCardResolution`** is the case `starIndexOf` answers `-1`: a bookmark that survived a data
 refresh which dropped the card. Previously this had no expression at all, and such a flight resolved
-`'completed'` at a focus that does not exist. It now settles the flight `'failed'`, drops focus to
-`fallback` — defaulting to the card's plane, since the URL's slug is real even when its `oracle_id`
-is not — and emits `focuschange` with reason `'correction'`. The camera stops where it is; it is
-already framing the plane after stage one. PRD risk 9's toast fires on the `'failed'` result.
+`'completed'` at a focus that does not exist. It now settles the flight `'failed'` — *if one is
+still in the air*, per invariant 6 — drops focus to `fallback`, defaulting to the card's plane since
+the URL's slug is real even when its `oracle_id` is not, and emits `focuschange` with reason
+`'correction'`. The camera stops where it is; it is already framing the plane after stage one.
+
+The default fallback **carries the card's `anchor` up with it**, exactly as `focusParent` does. On
+the Blind Eternities `anchor: undefined` *means* the multiverse centre (§1), so dropping it would
+tell the router the camera had crossed the whole multiverse while it in fact sat still, framing the
+dust around the card.
+
+**PRD risk 9's toast fires on that `'correction'` focuschange, not on the `'failed'` flight
+result.** Under reduced motion or `immediate` there may be no flight left to fail (invariant 6), so
+`'failed'` is not guaranteed to arrive and `'correction'` is. To tell the two producers apart: a
+`'correction'` that moves focus *off* the card is this failure; one that leaves a card focus in
+place is `resolveCard` succeeding.
 
 ### `'correction'` is a `replaceState`
 
@@ -152,11 +177,22 @@ already framing the plane after stage one. PRD risk 9's toast fires on the `'fai
 to, and pushing it would put a dead card id in their back history. This is the one rule Phase 4
 would otherwise have to guess, and it would guess `pushState`.
 
-`'correction'` is also the reason a re-issued but unchanged focus carries, which is how PRD 6.8.2's
-deferred second stage stays expressible: `playIntro(cardFocus)` ends framing the card's *plane*, and
-the caller follows with `flyToCard` for the same card once `search.json` resolves. That second
-`focuschange` names the focus the URL already holds, so the router dedupes it rather than
-double-pushing history.
+### A re-issued focus is the router's to dedupe
+
+`'correction'` is emitted by `resolveCard` and `failCardResolution`, and by nothing else. An earlier
+draft of this section also called it "the reason a re-issued but unchanged focus carries". That was
+wrong — nothing produced it — and the gap it papered over is real, so here is the rule instead.
+
+PRD 6.8.2's deferred second stage is the case: `playIntro(cardFocus)` ends framing the card's
+*plane*, and the caller follows with `flyToCard` for the same card once `search.json` resolves. That
+second `focuschange` names the focus the URL already holds — but it carries an ordinary reason,
+because `flyToCard` emits `options.reason ?? 'programmatic'` like every other fly-to.
+
+**Suppressing the duplicate history entry is therefore the router's obligation, and the test is
+focus equality, not the reason.** That is consistent with §6, where `pushState` is the router's
+throughout. The navigation API deliberately does not dedupe: it cannot tell whether a caller
+re-issuing the same focus means "nothing happened" or "go there again", and PRD 6.9's random button
+landing on the plane you are already looking at is a real instance of the second.
 
 ## 4. Events
 
@@ -184,6 +220,12 @@ honoured, so hand-over and supersede stay exercisable.
 Phase 2b's implementation should pass the same suite against the real rig — that is the acceptance
 test for the swap. It also pins that every method survives being pulled off the object, which is a
 requirement of the contract (§2) and not just of the stub.
+
+That last group is not belt-and-braces. It is the **only** enforcement of §2's no-`this` rule,
+because the compiler does not catch a `this` (§2). So it has to cover every *branch*, not every
+method: the Phase 0 bug lived in `flyToPlane`'s Blind Eternities delegation, and a detachment test
+that flew to any other plane walked straight past it. The suite now detaches through both branches
+of `flyToPlane` and both of `focusParent`.
 
 ## 6. Deliberately out of scope
 
