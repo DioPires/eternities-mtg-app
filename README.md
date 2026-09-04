@@ -21,6 +21,8 @@ In order of authority. Read the first two before changing anything.
 | [`docs/scryfall-policy.md`](docs/scryfall-policy.md) | Scryfall CORS and terms verification. Verdict: PASS. |
 | [`docs/deployment.md`](docs/deployment.md) | Vercel setup and the headers. |
 | [`docs/app-shell.md`](docs/app-shell.md) | The Phase 4 UI shell: where state lives, the seams for 2a/2b/3/5, and the calls the PRD left open. |
+| [`docs/design-system.md`](docs/design-system.md) | The Phase 5 visual system, the contrast proof, and the accessibility checklist. |
+| [`docs/csp-audit.md`](docs/csp-audit.md) | The Phase 5 security-header audit: what changed, what was flagged and left alone. |
 
 Both contracts are freeze points. Changing a byte layout, an enum value, a filename or a method
 signature is a reviewed contract change, not an ordinary commit.

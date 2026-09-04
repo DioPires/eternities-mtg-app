@@ -36,8 +36,11 @@ import {
  * remove facet values and something has to let them *add* one. The PRD names the chips and the
  * facets without ever naming the surface that picks them; this is that surface, kept out of the
  * control cluster so 6.3.3's list stays exactly as written.
+ *
+ * `'about'` is the same story for the same reason: PRD 4.11 requires the view, PRD 6.3.3's list of
+ * six is closed, so it opens from the help sheet instead of taking a seventh slot.
  */
-export type Overlay = 'search' | 'plane-index' | 'settings' | 'help' | 'filters' | null
+export type Overlay = 'search' | 'plane-index' | 'settings' | 'help' | 'filters' | 'about' | null
 
 export type ToastTone = 'info' | 'error'
 

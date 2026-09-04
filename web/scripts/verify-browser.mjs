@@ -23,6 +23,18 @@
  *   8. Touch does not break the page (PRD 6.1.5).
  *   9. The WebGL2 fallback renders a plain explanation with no canvas at all (PRD 7.1.2).
  *
+ * Then Phase 5's accessibility checklist, on that same shell:
+ *
+ *  9a. Inter loaded, from this origin, and in use (PRD 7.6.1).
+ *  9b. The HUD paints with the tokens `test/design.test.ts` proves the contrast of (PRD 7.5.4).
+ *  9c. A sheet opens focused, traps Tab, shows a focus ring and hands focus back on Esc; the
+ *      search combobox holds focus on its input (PRD 7.5.2).
+ *  9d. The About view carries the Fan Content notice verbatim and credits Scryfall, with every
+ *      external link `rel`-safe (PRD 4.11, 7.6.2).
+ *  9e. Under `prefers-reduced-motion`, the duration tokens collapse and nothing transitions
+ *      (PRD 5.9, 7.5.1).
+ *  9f. The audited headers arrive and the page does not violate its own policy (PRD 7.6.1).
+ *
  * `?harness=2b` — Phase 2b's harness:
  *
  *  10. `planes.json` decodes and the camera rig comes up on it;
@@ -634,6 +646,297 @@ async function verifyShell(page, url, log) {
   log('  touch: a pinch on the canvas throws nothing and leaves the page usable')
 }
 
+/**
+ * Phase 5's accessibility checklist, in the only place it can honestly be checked.
+ *
+ * `test/design.test.ts` proves the contrast arithmetic on the token values, and
+ * `test/dialog.test.ts` proves the tab-order arithmetic. Neither can say whether the stylesheet
+ * actually *uses* those tokens, whether the focus trap holds against a real browser's focus model,
+ * or whether the self-hosted face loaded. That is what this is for. Each block below names the
+ * requirement it is standing in for.
+ */
+async function verifyAccessibility(page, url, log) {
+  console.log('  -- Phase 5: design system and accessibility --')
+
+  // A CSP violation is a console error, which `watch` already collects — but the message is easy
+  // to lose in a long run, so the report is made explicit and attributed to a directive.
+  const violations = []
+  await page.exposeFunction('reportCspViolation', (directive, blocked) => {
+    violations.push(`${directive} blocked ${blocked}`)
+  })
+  await page.evaluateOnNewDocument(() => {
+    document.addEventListener('securitypolicyviolation', (event) => {
+      window.reportCspViolation(event.effectiveDirective, event.blockedURI || '(inline)')
+    })
+  })
+
+  /*
+   * A plane route, not the root, and for two reasons.
+   *
+   * The breadcrumb only has an *ancestor* segment below the multiverse, and the ancestor and the
+   * current segment are the two ends of the HUD's contrast range — at the root there is only one
+   * crumb and it is the current one, so the probe below would compare `--ink` against itself and
+   * pass while proving nothing.
+   *
+   * It also puts the drawer on screen, which makes the focus-trap check meaningfully harder: the
+   * panel's set rows are focusable, outside the dialog, and behind the scrim. If the trap leaks,
+   * Tab lands on one of them.
+   */
+  // Which plane, read from the fixture rather than hard-coded — the two fixtures and the real
+  // dataset each put cards somewhere different. Derived here rather than handed over, so this
+  // verifier stands alone the way the others do.
+  await page.goto(url, { waitUntil: 'networkidle0', timeout: 60_000 })
+  const slug = await page.evaluate(async () => {
+    const base = document.querySelector('meta[name="eternities:data"]')?.getAttribute('content')
+    const file = await (await fetch(`${base}planes.json`)).json()
+    return file.planes.find(
+      (plane) => plane.slug !== 'blind-eternities' && plane.cardCount > 0 && plane.sets.length > 0,
+    )?.slug
+  })
+  check(slug, 'planes.json has no plane with cards and sets to open the drawer on')
+
+  const response = await page.goto(`${url}/plane/${slug}`, {
+    waitUntil: 'networkidle0',
+    timeout: 60_000,
+  })
+  await waitForDataset(page)
+  await page.waitForSelector('.drawer-open .set-row', { timeout: 30_000 })
+
+  // --- fonts are self-hosted and actually in use (PRD 7.6.1) --------------------------------
+  const fonts = await page.evaluate(async () => {
+    await document.fonts.ready
+    return {
+      family: getComputedStyle(document.body).fontFamily,
+      loaded: document.fonts.check('400 16px Inter') && document.fonts.check('600 16px Inter'),
+      // Where the faces came from. Same-origin is the requirement; `font-src 'self'` is what
+      // enforces it, and this is what proves the enforcement was never tested against nothing.
+      origins: performance
+        .getEntriesByType('resource')
+        .filter((entry) => entry.name.endsWith('.woff2'))
+        .map((entry) => new URL(entry.name).origin),
+    }
+  })
+  check(/^["']?Inter/.test(fonts.family), `body font-family is ${fonts.family}, expected Inter`)
+  check(fonts.loaded, 'the Inter faces did not load — the page is on the fallback stack')
+  check(fonts.origins.length > 0, 'no .woff2 was fetched at all')
+  const foreign = fonts.origins.filter((origin) => origin !== new URL(url).origin)
+  check(foreign.length === 0, `a font came from a third party: ${foreign.join(', ')}`)
+  log(`  fonts: Inter loaded, ${String(fonts.origins.length)} face(s), all same-origin`)
+
+  // --- the stylesheet uses the tokens the contrast proof is about (PRD 7.5.4) ---------------
+  // `test/design.test.ts` proves `--ink-muted` clears 4.5:1 on every surface. That proof is worth
+  // nothing if a rule quietly paints with something else, so the computed colours are compared
+  // back to the tokens here — the one seam the Node-side test cannot see across.
+  const painted = await page.evaluate(() => {
+    const root = getComputedStyle(document.documentElement)
+    const token = (name) => root.getPropertyValue(name).trim()
+    const colourOf = (selector) => {
+      const element = document.querySelector(selector)
+      return element === null ? null : getComputedStyle(element).color
+    }
+    // `getComputedStyle().color` is always `rgb(r, g, b)`; the tokens are hex. Normalise via a
+    // throwaway element rather than by parsing, so the browser does the conversion.
+    const asRgb = (value) => {
+      const probe = document.createElement('span')
+      probe.style.color = value
+      document.body.append(probe)
+      const computed = getComputedStyle(probe).color
+      probe.remove()
+      return computed
+    }
+    return {
+      ink: asRgb(token('--ink')),
+      muted: asRgb(token('--ink-muted')),
+      crumbCurrent: colourOf('.crumb-current'),
+      crumb: colourOf('.crumb:not(.crumb-current)'),
+      control: colourOf('.control'),
+      setYear: colourOf('.drawer-open .set-year'),
+      oracle: colourOf('.drawer-open .panel-title'),
+    }
+  })
+  // Non-null first: every one of these is a "paints X" assertion, and a missing element would
+  // otherwise make it pass by comparing `null` to `null`.
+  for (const [name, value] of Object.entries(painted)) {
+    check(value !== null, `the token probe found no element for ${name}`)
+  }
+  for (const [name, value] of [
+    ['the current breadcrumb', painted.crumbCurrent],
+    ['the plane panel title', painted.oracle],
+  ]) {
+    check(value === painted.ink, `${name} paints ${value}, not --ink ${painted.ink}`)
+  }
+  for (const [name, value] of [
+    ['an ancestor crumb', painted.crumb],
+    ['a cluster control', painted.control],
+    ['a set row year', painted.setYear],
+  ]) {
+    check(value === painted.muted, `${name} paints ${value}, not --ink-muted ${painted.muted}`)
+  }
+  log('  contrast: the HUD paints with the tokens the proof in test/design.test.ts is about')
+
+  // --- modal focus behaviour (PRD 7.5.2) ----------------------------------------------------
+  // Driven from the keyboard throughout: focusing the control and pressing Enter is what a
+  // keyboard user does, and unlike a click it leaves no doubt about where focus started.
+  await page.focus('[aria-label="Plane index"]')
+  await page.keyboard.press('Enter')
+  await page.waitForSelector('.plane-list', { timeout: 5000 })
+
+  const opened = await page.evaluate(() => ({
+    inside: document.querySelector('[role="dialog"]')?.contains(document.activeElement) ?? false,
+    tag: document.activeElement?.className ?? '',
+  }))
+  check(opened.inside, 'opening the plane index left focus outside the dialog')
+  check(
+    opened.tag.includes('sheet-filter'),
+    `the plane index opened on ${JSON.stringify(opened.tag)}, expected the filter box`,
+  )
+
+  // Tab far enough to pass the end of the sheet and wrap. `aria-modal="true"` promises everything
+  // outside is inert; if Tab can reach the HUD, the promise is a lie and a keyboard user is
+  // tabbing through controls their screen reader says do not exist.
+  let escaped = null
+  for (let step = 0; step < 40 && escaped === null; step += 1) {
+    await page.keyboard.press('Tab')
+    escaped = await page.evaluate(() => {
+      const dialog = document.querySelector('[role="dialog"]')
+      const active = document.activeElement
+      if (dialog === null) return 'the dialog closed while tabbing'
+      if (active === null || active === document.body) return 'focus fell off the document'
+      return dialog.contains(active) ? null : `focus escaped to ${active.outerHTML.slice(0, 90)}`
+    })
+  }
+  check(escaped === null, `the plane index does not trap focus: ${escaped}`)
+
+  // A visible focus state, and specifically the sandwich — a bare accent ring is only 1.99:1 on a
+  // bloomed star, so "there is an outline" is not the assertion worth making.
+  const ring = await page.evaluate(() => getComputedStyle(document.activeElement).boxShadow)
+  check(ring !== 'none' && ring.split('rgb').length >= 3, `focus ring is ${JSON.stringify(ring)}`)
+
+  await page.keyboard.press('Escape')
+  await page.waitForFunction(() => document.querySelector('.plane-list') === null, { timeout: 5000 })
+  const restored = await page.evaluate(
+    () => document.activeElement?.getAttribute('aria-label') ?? null,
+  )
+  check(
+    restored === 'Plane index',
+    `closing the dialog left focus on ${JSON.stringify(restored)}, not the control that opened it`,
+  )
+  log('  keyboard: the sheet opens focused, traps Tab, shows a ring, and hands focus back')
+
+  // The search box is the other shape: one tabbable element, with `aria-activedescendant` rows.
+  // Tab has nowhere to go, and "nowhere to go" must mean "stay", not "leave".
+  await page.keyboard.press('/')
+  await page.waitForSelector('.search-input', { timeout: 5000 })
+  await page.keyboard.press('Tab')
+  await page.keyboard.press('Tab')
+  const search = await page.evaluate(() => document.activeElement?.className ?? '')
+  check(search.includes('search-input'), `Tab left the search box and landed on ${search}`)
+  await page.keyboard.press('Escape')
+  await page.waitForFunction(() => document.querySelector('.search-input') === null, {
+    timeout: 5000,
+  })
+  log('  keyboard: the search combobox holds focus on its input')
+
+  // --- the About view (PRD 4.11) ------------------------------------------------------------
+  await page.focus('[aria-label="Help"]')
+  await page.keyboard.press('Enter')
+  await page.waitForSelector('[aria-label="Help"][role="dialog"], .sheet', { timeout: 5000 })
+  await page.evaluate(() => {
+    const button = [...document.querySelectorAll('.sheet-foot button')].find((element) =>
+      /about/i.test(element.textContent ?? ''),
+    )
+    if (!button) throw new Error('the help sheet has no route to the About view')
+    button.click()
+  })
+  await page.waitForFunction(
+    () => document.querySelector('[aria-label="About"]') !== null,
+    { timeout: 5000 },
+  )
+  const about = await page.evaluate(() => {
+    const dialog = document.querySelector('[aria-label="About"]')
+    return {
+      text: dialog?.textContent ?? '',
+      links: [...(dialog?.querySelectorAll('a') ?? [])].map((a) => ({
+        href: a.href,
+        rel: a.rel,
+        target: a.target,
+      })),
+    }
+  })
+  // PRD 4.11.1: the policy's required notice, not a paraphrase of it.
+  for (const clause of [
+    'unofficial Fan Content permitted under the',
+    'Fan Content Policy',
+    'Not approved/endorsed by Wizards',
+    'Portions of the materials used are property of Wizards of the Coast',
+    '©Wizards of the Coast LLC',
+  ]) {
+    check(about.text.includes(clause), `the About view is missing the clause ${JSON.stringify(clause)}`)
+  }
+  // PRD 4.11.2: Scryfall credited as the source of the data *and* the images.
+  check(/Scryfall/.test(about.text), 'the About view does not credit Scryfall')
+  check(
+    about.links.some((link) => link.href.startsWith('https://scryfall.com')),
+    'the About view has no link to Scryfall',
+  )
+  check(about.links.length >= 2, `the About view has ${String(about.links.length)} link(s)`)
+  // PRD 7.6.2, on the only page in the product with external links on it.
+  for (const link of about.links) {
+    check(
+      link.rel.includes('noopener') && link.rel.includes('noreferrer'),
+      `${link.href} opens with rel="${link.rel}"`,
+    )
+    check(link.target === '_blank', `${link.href} has target="${link.target}"`)
+  }
+  await page.keyboard.press('Escape')
+  log(`  About: the Fan Content notice, the Scryfall credit, ${String(about.links.length)} safe links`)
+
+  // --- reduced motion (PRD 5.9, 7.5.1) ------------------------------------------------------
+  await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }])
+  await page.goto(`${url}/`, { waitUntil: 'networkidle0' })
+  await waitForDataset(page)
+  const motion = await page.evaluate(() => {
+    const root = getComputedStyle(document.documentElement)
+    return {
+      tokens: ['--dur-fast', '--dur-base', '--dur-slow'].map((name) =>
+        root.getPropertyValue(name).trim(),
+      ),
+      // The blanket rule is the belt to the tokens' braces: it catches anything that transitions
+      // without reading a token, including a future dependency's stylesheet.
+      control: getComputedStyle(document.querySelector('.control')).transitionDuration,
+    }
+  })
+  check(
+    motion.tokens.every((value) => value === '0ms'),
+    `the duration tokens are ${motion.tokens.join(', ')} under reduced motion`,
+  )
+  check(
+    Number.parseFloat(motion.control) < 0.05,
+    `a control still transitions for ${motion.control} under reduced motion`,
+  )
+  await page.emulateMediaFeatures([])
+  log('  reduced motion: duration tokens collapse to 0ms and nothing animates')
+
+  // --- the audited headers actually arrive (PRD 7.6.1) --------------------------------------
+  const headers = response?.headers() ?? {}
+  const csp = headers['content-security-policy'] ?? ''
+  check(
+    /(^|;\s*)style-src 'self'(;|$)/.test(csp),
+    `style-src is not the audited value: ${JSON.stringify(/style-src[^;]*/.exec(csp)?.[0] ?? '')}`,
+  )
+  check(csp.includes("style-src-attr 'unsafe-inline'"), 'style-src-attr is missing from the policy')
+  check(csp.includes("font-src 'self'"), 'font-src is missing from the policy')
+  check(
+    (headers['strict-transport-security'] ?? '').includes('max-age='),
+    'the audit added HSTS, and it did not arrive',
+  )
+  check(
+    violations.length === 0,
+    `the page violated its own policy:\n  - ${violations.join('\n  - ')}`,
+  )
+  log('  CSP: style-src tightened to \'self\', no violations, HSTS present')
+}
+
 /** PRD 7.1.2, in a page where WebGL2 is genuinely unavailable. */
 async function verifyWebGL2Fallback(browser, url, log) {
   const page = await browser.newPage()
@@ -978,6 +1281,9 @@ async function verify(dataset, allowSoftware) {
     // Phase 4's shell first, on a fresh profile: its first-visit-hint assertions (PRD 6.8.3) only
     // mean something before anything has dismissed the hint.
     await verifyShell(page, url, log)
+    // After the shell, because it needs the first-visit hint already dismissed — the hint takes
+    // focus on purpose (PRD 6.8.3) and would answer every focus question below for itself.
+    await verifyAccessibility(page, url, log)
     await verifyWebGL2Fallback(browser, url, log)
     await verifyNavigation(page, url, roster, problems)
     await verifyStarField(page, url, allowSoftware, problems)

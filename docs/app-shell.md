@@ -79,10 +79,16 @@ calls `handOver` on canvas pointer-down and wheel, triggers `playIntro`, `enterA
 the active printing; `activePrinting` in the store is the index the planets should follow, and it
 changes no route (PRD 6.2.2).
 
-**Phase 5 (design).** One stylesheet, `src/styles.css`, tokens at the top. Three rules in it are
-behavioural rather than decorative and should survive the redesign: `.hud { pointer-events: none }`
+**Phase 5 (design). Landed** — see [`docs/design-system.md`](design-system.md). The tokens moved
+out to `src/tokens.css` and `src/styles.css` now references them exclusively. The three rules
+flagged here as behavioural rather than decorative did survive it: `.hud { pointer-events: none }`
 with opt-in on controls (PRD 6.3), the `touch-action`/`overscroll-behavior` pair (PRD 6.1.5), and
 the `prefers-reduced-motion` block (PRD 5.9).
+
+Phase 5 also added the behaviour behind this shell's `aria-modal` markup — focus entry, a Tab trap
+and focus restoration, in `src/ui/dialog.ts` — and a sixth overlay, `'about'`, for PRD 4.11's
+required notices. It opens from the help sheet rather than a seventh cluster control, because PRD
+6.3.3's list of six is closed.
 
 ## 4. Decisions the PRD did not make
 
