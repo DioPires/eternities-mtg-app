@@ -290,21 +290,42 @@ dark, and `findDarkRows` still will not judge the row because 8 is under its flo
 sample does not only lose that sample — it can drag the row it came from under the floor and take
 the rest down with it.
 
-Requiring a flat zero is safe because of two facts, one about the camera and one about the data. The
-camera runs from outside the field looking in, ~247 units out at the home view. The data cannot
-reach round behind it: `MULTIVERSE_RADIUS = 130.0` in `pipeline/src/eternities/pipeline/assemble.py`
-bounds where a plane centre may be placed, and `fixtures/layout.py` places the fixture centres
-inside the same radius. That invariant, not the camera alone, is why the real 87-plane production
-dataset also comes back `0 unprojectable`.
+Requiring a flat zero is safe because of two facts, one about the camera and one about the data.
+
+The camera runs from outside the field looking in. `?selfcheck=1` routes to the Phase 2a harness,
+which uses its own fixed dev camera rather than the rig — `[0, 150, 260]` in
+`web/src/harness/Phase2aScene.tsx`, so 300.2 units out. (Not the rig's home framing of `R * 1.9 =
+247`: the self-check and the bench live in the harness precisely because they drive the camera
+themselves.)
+
+The data cannot reach round behind that eye, but the chain takes one more step than the radius
+alone. `MULTIVERSE_RADIUS = 130.0` in `pipeline/src/eternities/pipeline/assemble.py` bounds where a
+plane *centre* may be placed, and `fixtures/layout.py` places the fixture centres inside the same
+radius — and a centre is not a star. `starWorldPosition` in `web/src/scene/starfield/motion.ts` adds
+two further terms before the star lands: the local position scaled by the plane's visual radius
+(`px *= radius`), and `drift * motion`. Spin, tilt, shear and the multiverse rotation are rotations
+and move nothing further out, so
+
+    |star| <= |centre| + FRAME_RADIUS * radius + driftAmplitude
+
+with `FRAME_RADIUS = 1.2` from `contract/enums.py`. For a named plane that is `130 + 1.2 * 12 +
+drift` ≈ 145, where `R_MAX = 12` is the largest visual radius `layout.py` emits and drift is 3% of
+mean plane spacing (0.85 on an 87-plane dataset, 3.9 on five-plane `fixture-small`). The widest row
+is the Blind Eternities dust row, which PRD 8.3 gives the identity transform and radius `R` itself:
+`0 + 1.2 * 130 = 156`. Either way a star sits within **156** of the origin, so depth stays inside
+`300.2 ± 156` — **144.2 to 456.2**. That invariant, not the camera alone, is why the real 87-plane
+production dataset also comes back `0 unprojectable`.
 
 Both margins are printed on every run, green ones included, so the clause is a pair of numbers to
 watch rather than an argument to trust. Clean runs report sampled stars **285.2–402.0** units in
 front of the eye on `fixture-small`, **200.5–412.2** on `fixture-scale` and **197.7–405.4** on the
-87-plane production dataset — three orders of magnitude clear of the 0.1 near plane and a factor of
-19 clear of the 8000 far one, against a 3 px tolerance that fails at a few world units. Note the far
-figure is the *widest* of the three and barely moves between datasets: it is set by the home
-camera's distance plus the multiverse radius, not by how many planes there are, which is the shape
-you would expect if the radius invariant is what bounds it. Read them knowing they are a min and a max
+87-plane production dataset — all inside the 144.2–456.2 band above, three orders of magnitude clear
+of the 0.1 near plane and a factor of 14 clear of the harness camera's 6000 far one, against a 3 px
+tolerance that fails at a few world units. The measured spans are narrower than the bound because no
+star sits on the view axis at full extent. Note the far figure is the *widest* of the three and
+barely moves between datasets: it is set by the camera's distance plus the star-offset bound, not by
+how many planes there are, which is the shape you would expect if that bound is what limits it. Read
+them knowing they are a min and a max
 over the samples that *survived*: a run that fails on `unprojectable` still prints a healthy near
 margin, because the samples that tripped the clause never reached the `Math.min`. They are the
 margin of a passing run, not a diagnosis of a failing one — `unprojectableRows` is what says where a
@@ -322,9 +343,9 @@ the field both clauses go wrong at once and only one of them says so.
 Data that legitimately places a plane far enough out fails the same way with the mirror and the
 shader in perfect agreement. The plane-table control at `home + 4000` does it: 15 unprojectable, and
 the message used to call it a mirror error. The same control at `home + 400` passes, so the
-false-positive boundary sits between the two — three orders of magnitude outside what
-`MULTIVERSE_RADIUS` allows, which is why no dataset the pipeline can emit reaches it. The failure
-message now names both causes.
+false-positive boundary sits between the two — a factor of 30 beyond the 130 a centre is allowed,
+which is why no dataset the pipeline can emit reaches it. The failure message now names both
+causes.
 
 If either regime arrives the clause should be replaced rather than loosened, and the replacement is
 a comparison against the shader — a star the mirror puts behind the eye that the id buffer still

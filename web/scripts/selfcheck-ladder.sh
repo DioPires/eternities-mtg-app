@@ -31,7 +31,15 @@
 # and abort the run before the star self-check is ever reached (`py += 400` dies at PRD 5.6.1's card
 # framing, and with that muted, at 5.6.9's hover). The ladder's question is what the self-check
 # *alone* can see, so the check under test has to be the one that reports.
-set -u
+#
+# `-e` as well as `-u`: the patch steps below are `assert`-guarded, and without `-e` a failed assert
+# only printed a traceback and the run carried on to build and measure a partly-patched tree — a
+# result that looks like a rung rather than like a broken script. `trap ... EXIT` rather than
+# `INT TERM`: those two cover a Ctrl-C but not the `-e` abort itself, nor any other signal, and what
+# is left behind is a patched working tree plus `.orig` files. `restore` is idempotent so the
+# explicit call on the normal path — which keeps the tree clean while the summary prints — and the
+# trap firing afterwards do not fight.
+set -eu
 
 # The repo root, from this script's own location: web/scripts/<here> -> ../.. Overridable so the
 # ladder can be pointed at a second worktree (running the "before" column against `origin/main`
@@ -44,11 +52,18 @@ INJECT="$1"
 LABEL="$2"
 DATASET="${3:-small}"
 
-restore() { cp "$MOTION.orig" "$MOTION"; cp "$VERIFY.orig" "$VERIFY"; rm -f "$MOTION.orig" "$VERIFY.orig"; }
+# Guarded per file, not once for both: the two `cp`s below are separate statements, so "one backup
+# exists and the other does not" is reachable. `return 0` because the last `[[ ]]` being false would
+# otherwise make the function itself non-zero, which under `-e` turns a no-op restore into an abort.
+restore() {
+  [[ -f "$MOTION.orig" ]] && { cp "$MOTION.orig" "$MOTION"; rm -f "$MOTION.orig"; }
+  [[ -f "$VERIFY.orig" ]] && { cp "$VERIFY.orig" "$VERIFY"; rm -f "$VERIFY.orig"; }
+  return 0
+}
 
+trap restore EXIT INT TERM
 cp "$MOTION" "$MOTION.orig"
 cp "$VERIFY" "$VERIFY.orig"
-trap restore INT TERM
 
 python3 - "$VERIFY" <<'PY'
 import sys
@@ -79,9 +94,11 @@ PY
 fi
 
 cd "$ROOT/web"
-pnpm build >/dev/null 2>&1 || { echo "$LABEL: BUILD FAILED"; restore; exit 1; }
-OUT=$(node scripts/verify-browser.mjs --dataset "$DATASET" 2>&1)
-CODE=$?
+pnpm build >/dev/null 2>&1 || { echo "$LABEL: BUILD FAILED"; exit 1; }
+# `|| CODE=$?` rather than a bare assignment then `$?`: under `-e` a failing verify run would abort
+# here, and a failing run is most of what this script is for.
+CODE=0
+OUT=$(node scripts/verify-browser.mjs --dataset "$DATASET" 2>&1) || CODE=$?
 restore
 
 echo "=============== $LABEL [$DATASET] (exit $CODE) ==============="
