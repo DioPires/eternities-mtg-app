@@ -12,7 +12,9 @@
 
 import { readFileSync, readdirSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 
 import {
   COLOUR_BYTE_OFFSET,
@@ -30,7 +32,10 @@ import {
   hueClassFromIdentity,
   matchesColourIdentity,
   packColourByte,
+  type ColourLetter,
 } from '../src/data'
+import type { FilterColour } from '../src/filters/types'
+import { ColourIdentityLine } from '../src/ui/CardPanel'
 
 describe('byte 7 packing', () => {
   it('round-trips every byte the encoder can emit', () => {
@@ -115,6 +120,17 @@ describe('identity letters and hue class', () => {
   })
 })
 
+describe('the colour facet and the identity bits are one vocabulary', () => {
+  it('keys the bit table by exactly the facet minus C', () => {
+    // DEC-650 N4. `FILTER_COLOURS` is spread from `COLOUR_LETTERS`, so these are the same type by
+    // construction — and a sixth letter added on one side only stops compiling here. Under the old
+    // `Record<string, ColourBit>` a seventh facet value typechecked clean everywhere and mapped to
+    // `1 << undefined`, which is the White bit.
+    expectTypeOf<Exclude<FilterColour, 'C'>>().toEqualTypeOf<ColourLetter>()
+    expect(COLOUR_LETTERS).toEqual(Object.keys(COLOUR_LETTER_BIT))
+  })
+})
+
 describe('PRD 6.6.2 colour match', () => {
   const W = colourIdentityBits('W')
   const U = colourIdentityBits('U')
@@ -151,11 +167,13 @@ describe('PRD 6.6.2 colour match', () => {
  *     or its offset. A new reader that masks for itself trips this before it can be wrong.
  *  2. **Offset.** Nothing outside the helper may compute a star-record offset that lands on byte 7.
  *
- * Scope, stated honestly: this reads the two idioms the codebase actually uses to address a record
- * — `index * STAR_RECORD_BYTES + <offset>` and `decode.ts`'s local `at(i, <offset>)` — and it would
- * not see a reader that hard-coded the stride as `12`. It is a tripwire for the mistake that has
- * happened, not a proof. Rule 1 is the wider net of the two, and offsets it cannot resolve
- * statically are pinned below rather than waved through.
+ * Scope, stated honestly: this reads the three idioms that can address a record —
+ * `index * STAR_RECORD_BYTES + <offset>`, `decode.ts`'s local `at(i, <offset>)`, and a hard-coded
+ * stride, `records[i * 12 + 7]`. The third was added for DEC-650 N1, where a reviewer's mutant slid
+ * past the first two. It is still a tripwire for mistakes of a shape that has happened, not a
+ * proof: an offset assembled at runtime, or a stride reached through an alias, would not be seen.
+ * Rule 1 is the wider net, and offsets the scan cannot resolve statically are pinned below rather
+ * than waved through.
  *
  * The shaders are the one exemption: GLSL cannot call a TypeScript helper, so they mask inline and
  * the last test here asserts that they still do.
@@ -205,19 +223,42 @@ interface Site {
   offset: number | null
 }
 
+/**
+ * The three idioms that address a star record.
+ *
+ * The third is the one the reviewer's mutant D exposed (DEC-650 N1): `records[i * 12 + 7]` names
+ * neither `STAR_RECORD_BYTES` nor `at(...)`, so the first two patterns walked straight past a
+ * reader that hard-coded the stride, and rule 1 does not see it either — it writes none of the
+ * masks. Built from `STAR_RECORD_BYTES` rather than a literal `12`, so a stride change to the
+ * contract cannot leave a stale number here. No legitimate site hard-codes the stride, so the pass
+ * state for this pattern over `web/src` is zero matches.
+ */
+function patterns(): RegExp[] {
+  return [
+    /\bSTAR_RECORD_BYTES\s*\+([^;\]),]*)/g,
+    /\bat\(\s*[A-Za-z_$][\w$]*\s*,([^)]*)\)/g,
+    new RegExp(
+      String.raw`\b\w+\s*\[\s*[A-Za-z_$][\w$]*\s*\*\s*${STAR_RECORD_BYTES}\s*\+([^\]]*)\]`,
+      'g',
+    ),
+  ]
+}
+
+function scanLine(file: string, line: string, index: number): Site[] {
+  const sites: Site[] = []
+  for (const pattern of patterns()) {
+    for (const match of line.matchAll(pattern)) {
+      sites.push({ file, line: index + 1, text: line.trim(), offset: resolveOffset(match[1]!) })
+    }
+  }
+  return sites
+}
+
 function recordReads(): Site[] {
   const sites: Site[] = []
   for (const { path, text } of FILES) {
     text.split('\n').forEach((line, index) => {
-      const patterns = [
-        /\bSTAR_RECORD_BYTES\s*\+([^;\]),]*)/g,
-        /\bat\(\s*[A-Za-z_$][\w$]*\s*,([^)]*)\)/g,
-      ]
-      for (const pattern of patterns) {
-        for (const match of line.matchAll(pattern)) {
-          sites.push({ file: path, line: index + 1, text: line.trim(), offset: resolveOffset(match[1]!) })
-        }
-      }
+      sites.push(...scanLine(path, line, index))
     })
   }
   return sites
@@ -247,6 +288,33 @@ describe('byte 7 has exactly one reader (tripwire)', () => {
     expect(raw.map((s) => `${s.file}:${s.line} ${s.text}`)).toEqual([])
   })
 
+  it('sees a hard-coded stride, not only the named constant', () => {
+    // The reviewer's mutant D (DEC-650 N1). `records[i * 12 + 7]` writes none of rule 1's tokens
+    // and never names `STAR_RECORD_BYTES`, so before the third pattern the scan returned nothing
+    // for this line and the tripwire passed on a raw byte-7 read.
+    const mutant = scanLine('scene/mutant.ts', '  const hue = records[i * 12 + 7] & 7', 41)
+    expect(mutant).toEqual([
+      {
+        file: 'scene/mutant.ts',
+        line: 42,
+        text: 'const hue = records[i * 12 + 7] & 7',
+        offset: COLOUR_BYTE_OFFSET,
+      },
+    ])
+    // Which is what the byte-7 assertion above rejects, so seeing it is the whole of the fix.
+    expect(mutant.filter((s) => s.offset === COLOUR_BYTE_OFFSET && s.file !== HELPER)).not.toEqual(
+      [],
+    )
+    // And the pass state over the real tree is zero: nothing legitimate hard-codes the stride.
+    const stride = new RegExp(String.raw`\*\s*${STAR_RECORD_BYTES}\s*\+`)
+    const strided = FILES.flatMap(({ path, text }) =>
+      text
+        .split('\n')
+        .flatMap((line, index) => (stride.test(line) ? scanLine(path, line, index) : [])),
+    )
+    expect(strided.map((s) => `${s.file}:${s.line} ${s.text}`)).toEqual([])
+  })
+
   it('pins the offsets it cannot resolve statically', () => {
     // An unresolvable offset is not a pass. These three are the position path and the `at` helper
     // that feeds every resolved site above; a fourth means someone added a computed record read,
@@ -268,6 +336,32 @@ describe('byte 7 has exactly one reader (tripwire)', () => {
       const shader = FILES.find((f) => f.path === path)!
       expect(shader.text).toMatch(/uHues\[[^\]]*&\s*7\s*\]|int\s+hue\s*=[^\n]*&\s*7/)
     }
+  })
+})
+
+describe('PRD 7.5.3 identity line', () => {
+  /** The sentence as a reader sees it, tags stripped — the surface PRD 7.5.3 is actually about. */
+  function line(colourIdentity: number): string {
+    return renderToStaticMarkup(createElement(ColourIdentityLine, { colourIdentity })).replaceAll(
+      /<[^>]*>/g,
+      '',
+    )
+  }
+
+  it('composes the identity and the rendered class into one sentence', () => {
+    // DEC-650 N5. Both halves were pinned; the composition was not, so a lost separator or a
+    // swapped order shipped silently.
+    expect(line(colourIdentityBits('UR'))).toBe('Blue, Red · renders Multicolour')
+    // WUBRG order, not the order the letters were written in.
+    expect(line(colourIdentityBits('RU'))).toBe('Blue, Red · renders Multicolour')
+    // A mono card names its own class twice, and that is correct rather than redundant: the left
+    // side is the identity and the right side is what the star looks like.
+    expect(line(colourIdentityBits('G'))).toBe('Green · renders Green')
+    // PRD 6.6.2's empty identity, where the chip row's word and the panel's word must agree.
+    expect(line(0)).toBe('Colourless · renders Colourless')
+    expect(line(COLOUR_IDENTITY_MASK)).toBe(
+      'White, Blue, Black, Red, Green · renders Multicolour',
+    )
   })
 })
 
