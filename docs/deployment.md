@@ -65,7 +65,9 @@ fetched at build time, or a Vercel build command that materialises the directory
 
 ## 5. Refresh
 
-PRD 8.8.3's flow is Phase 1's to exercise and Phase 6's to rehearse and write up as a runbook.
+**The flow is `docs/refresh-runbook.md`** — rehearsed end to end on 2026-09-05 and written from that
+run. Owner: Simulation Engineer, roughly once per set release (PRD 4.10.1).
+
 Phase 0's part is that `datasets.json` and the build-time injection make switching the active data
 directory a one-line change:
 
