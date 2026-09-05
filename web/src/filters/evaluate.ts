@@ -73,7 +73,9 @@ function selectedColours(colours: FilterState['colours']): ColourSelection {
   let colourless = false
   for (const colour of colours) {
     if (colour === 'C') colourless = true
-    else bits |= 1 << COLOUR_LETTER_BIT[colour]!
+    // No `!`: `COLOUR_LETTER_BIT` is keyed by the facet minus `C`, so this lookup is total and a
+    // seventh `FILTER_COLOURS` entry fails to compile here rather than mapping to the White bit.
+    else bits |= 1 << COLOUR_LETTER_BIT[colour]
   }
   return { bits, colourless, active: colours.length > 0 }
 }

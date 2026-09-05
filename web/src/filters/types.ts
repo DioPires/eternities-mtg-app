@@ -6,10 +6,16 @@
  * (`./evaluate`) and the chips (`../ui/FilterChips`) all read the same vocabulary.
  */
 
-import { CardTypeBit, HueClass, SizeClass } from '../data'
+import { CardTypeBit, COLOUR_LETTERS, HueClass, SizeClass } from '../data'
 
-/** PRD 6.7.2's `c` parameter: colour letters plus `C` for colourless. */
-export const FILTER_COLOURS = ['W', 'U', 'B', 'R', 'G', 'C'] as const
+/**
+ * PRD 6.7.2's `c` parameter: colour letters plus `C` for colourless.
+ *
+ * Spread from `COLOUR_LETTERS` rather than written out again, so `Exclude<FilterColour, 'C'>` is
+ * exactly `COLOUR_LETTER_BIT`'s key set and a sixth letter cannot be added on one side only.
+ * `colour-byte.test.ts` pins that equivalence at the type level (DEC-650 N4).
+ */
+export const FILTER_COLOURS = [...COLOUR_LETTERS, 'C'] as const
 export type FilterColour = (typeof FILTER_COLOURS)[number]
 
 /** PRD 6.6.2's eight filterable types, in star-record bit order. */
@@ -114,8 +120,13 @@ export const RARITY_LABEL: Readonly<Record<FilterRarity, string>> = {
   mythic: 'Mythic',
 }
 
-/** PRD 7.5.3: the star encoding is spelled out as text in the panels, never colour alone. */
-export const HUE_LABEL: Readonly<Record<number, string>> = {
+/**
+ * PRD 7.5.3: the star encoding is spelled out as text in the panels, never colour alone.
+ *
+ * Keyed by `HueClass`, not by `number`: all seven classes are present, so a lookup on a value
+ * `hueClassFromIdentity` returned is total and the panel needs no fallback behind it.
+ */
+export const HUE_LABEL: Readonly<Record<HueClass, string>> = {
   [HueClass.White]: 'White',
   [HueClass.Blue]: 'Blue',
   [HueClass.Black]: 'Black',
