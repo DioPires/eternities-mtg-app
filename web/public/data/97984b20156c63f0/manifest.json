@@ -2,11 +2,11 @@
   "contractVersion": 2,
   "pipelineVersion": "0.4.0",
   "dataset": "production",
-  "dataHash": "d5ee9661aaffafa3",
-  "asOf": "2026-09-04",
-  "generatedAt": "2026-09-04T00:00:00Z",
-  "scryfallBulkUpdatedAt": "2026-09-04T09:05:32.308+00:00",
-  "previousRun": "fe74a34ff803574b",
+  "dataHash": "97984b20156c63f0",
+  "asOf": "2026-09-05",
+  "generatedAt": "2026-09-05T00:00:00Z",
+  "scryfallBulkUpdatedAt": "2026-09-05T09:05:28.871+00:00",
+  "previousRun": "d5ee9661aaffafa3",
   "starRecordBytes": 12,
   "shardSize": 2000,
   "counts": {
@@ -175,12 +175,12 @@
     {
       "path": "planes/blind-eternities.0.json",
       "bytes": 1000375,
-      "sha256": "a9fa3b2764a25d13c4e466baea933dde02bcf72a427813aa6c380708dbae6a55"
+      "sha256": "3f8d391bfc1058dd4090add1c81d36afc1b830eecab38be95c5667608361f94a"
     },
     {
       "path": "planes/blind-eternities.1.json",
       "bytes": 1013130,
-      "sha256": "ec036fdfe1cd2f665ba5e18526783bb4ff0b1a4ce62c2f2296e9246b57f7560c"
+      "sha256": "0272e4c8244d08c02e712ca1369be68c7943b56989201d4a2b6b6aea0cf53f2a"
     },
     {
       "path": "planes/blind-eternities.2.json",
@@ -200,7 +200,7 @@
     {
       "path": "planes/capenna.0.json",
       "bytes": 175968,
-      "sha256": "09c083a5dddd9c637dd286fb0212911df645683d7a75cd9d4860154356a76e5a"
+      "sha256": "8eda9133fc1f0109d9a8461466bd03c2a0028f5dd6fff254c933ebcd66fba260"
     },
     {
       "path": "planes/clamhattan.0.json",
@@ -220,17 +220,17 @@
     {
       "path": "planes/dominaria.0.json",
       "bytes": 1241841,
-      "sha256": "04d42b42909eb6d94b5dbabe0bc578314a9bdbc3a15918070e0d27c966465d1c"
+      "sha256": "50ef97891f8df197a9146dd82e45eda2f3ed4de6cc997d8c0aac35b4a23ed41d"
     },
     {
       "path": "planes/dominaria.1.json",
       "bytes": 857367,
-      "sha256": "3535a4152f9f9652295238538ea29dfe85995872727a4d35e8f6c0d6fe9ad0c2"
+      "sha256": "9e6e90eb3e2d58c8c57af1c35d021973948d9dec65b32fd1e7924eebff3931ae"
     },
     {
       "path": "planes/dominaria.2.json",
       "bytes": 969718,
-      "sha256": "279830beba49eee3fa753320a99c784560e37cda079eab546fac860628c72e5e"
+      "sha256": "2dbbb333e1276f240c9b6969f8386e5d88184b70b1ad1030f4480452c9caab99"
     },
     {
       "path": "planes/dominaria.3.json",
@@ -320,7 +320,7 @@
     {
       "path": "planes/innistrad.0.json",
       "bytes": 852635,
-      "sha256": "17e680ce9bd30674513f6cfcf546795ac432d41a1d83c056695189a75b96da92"
+      "sha256": "069714a52819260b79009d87a0009f68dbc4131e8c122882a34b719f9542cd13"
     },
     {
       "path": "planes/iquatana.0.json",
@@ -340,7 +340,7 @@
     {
       "path": "planes/kaldheim.0.json",
       "bytes": 148389,
-      "sha256": "4d2e7ce2021284756b0402a0ece90b752cad9fe0bf0031021b3d4f646dd8e170"
+      "sha256": "375b7584d9675503a54ba97fef0e3f6eb7658d9067dd0ce93adfcdee7638639d"
     },
     {
       "path": "planes/kamigawa.0.json",
@@ -390,7 +390,7 @@
     {
       "path": "planes/lorwyn.0.json",
       "bytes": 536243,
-      "sha256": "6aaf8e67f33fd3a0724bed7f921e2f9c7326ecb010add82b226c930bc646167d"
+      "sha256": "632fc7d2bacf02971c17e8ed40adf1f00133e4709ce024f33ab8ab7dccf59caf"
     },
     {
       "path": "planes/luvion.0.json",
@@ -440,7 +440,7 @@
     {
       "path": "planes/new-phyrexia.0.json",
       "bytes": 643922,
-      "sha256": "430c9fca713a2d0ff67db183f2872847104c7840524712734815a7082539aaf3"
+      "sha256": "a22e04e8c75632456f133bf1f8ba0c2dcee3d1d26386e957b757ca7a31bc130d"
     },
     {
       "path": "planes/obsidias.0.json",
@@ -470,12 +470,12 @@
     {
       "path": "planes/rath.0.json",
       "bytes": 308815,
-      "sha256": "7523ffe7cda4ae4b26cf33ddd6b91a574922d7a96478bbced4f9cf9cdf6c71e6"
+      "sha256": "aa2609d72ed2ccb5a4971a562b6b8cdf630dea0433e8a9e23763ced5ac24cd13"
     },
     {
       "path": "planes/ravnica.0.json",
       "bytes": 960053,
-      "sha256": "a1ca874a2c5dc2f5bcc4f1521fb4406ed25a258ee0d3d9c0f0b6accd60fac02e"
+      "sha256": "174befbb08640a463d2fe4e6b9e51f4b6c2ee727decdfbdb23fd9368a95cde2d"
     },
     {
       "path": "planes/ravnica.1.json",
@@ -525,7 +525,7 @@
     {
       "path": "planes/theros.0.json",
       "bytes": 353108,
-      "sha256": "9c4a0d727253af3f67be7fa80ecd6e06deb418462ecc1d6c24928eed735d6d83"
+      "sha256": "64a3e3c0d74e896d54c72f543338d92aca6beb7c0618b6fd524bfe62c32cce7e"
     },
     {
       "path": "planes/thunder-junction.0.json",
