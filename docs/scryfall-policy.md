@@ -3,7 +3,12 @@
 **Verdict: PASS.** The card tier can be built as the PRD specifies. No board decision is needed.
 
 Checked 2026-09-04 as PRD risk 1 and open question 5 require, before any dependent code
-(implementation-plan.md §2 Phase 0). Re-confirmed at Phase 6 before launch, per the same plan.
+(implementation-plan.md §2 Phase 0).
+
+**Re-confirmed 2026-09-05 (Phase 6, DEC-592), before launch.** Nothing has moved. §8's checks were
+re-run in full; the evidence is in §9. CORS headers identical, CSP guidance identical, rate limits
+identical, the terms of use identical clause for clause, and §6's derived URI scheme still holding
+for both faces of a transform card. The residual risks in §7 stand as written; none of them fired.
 
 ---
 
@@ -159,6 +164,36 @@ curl -sS -A "Eternities/0.1 (contact)" https://scryfall.com/docs/api
 curl -sS -A "Eternities/0.1 (contact)" https://scryfall.com/docs/api/rate-limits
 curl -sS -A "Eternities/0.1 (contact)" https://scryfall.com/docs/api/http-concerns
 
+# §6's URI derivation, against live API responses
+curl -sS -A "Eternities/0.1 (contact)" \
+  "https://api.scryfall.com/cards/91fdb56b-54d5-4272-8319-505ff987fe9b"     # single-faced
+curl -sS -A "Eternities/0.1 (contact)" \
+  'https://api.scryfall.com/cards/search?q=%21%22Delver+of+Secrets%22&unique=prints'   # transform
+
 # The CSP as the browser sees it
 cd web && node scripts/verify-browser.mjs --dataset small
 ```
+
+## 9. Phase 6 re-confirmation, 2026-09-05
+
+Every check in §8 re-run. Verdict unchanged: **PASS**, no drift, nothing to escalate.
+
+| Check | Result |
+|---|---|
+| §2 CORS, `cards.scryfall.io` | `HTTP/2 200`, `access-control-allow-origin: *`, `access-control-allow-methods: GET, OPTIONS`, `cache-control: public, max-age=31556952`, `server: ScryfallEdgeCDN`. Byte-for-byte what §2 records, plus an `x-content-type-options: nosniff` that changes nothing for us. |
+| §2 CORS, `backs.scryfall.io` | `HTTP/2 200`, `access-control-allow-origin: *`. |
+| §3 CSP guidance (`/docs/api/http-concerns`) | Unchanged, including the `Origin`-header requirement and the exhaustive spec `connect-src api.scryfall.com embed.scryfall.com; img-src *.scryfall.io …`. Our policy still grantlists `https://*.scryfall.io` in both `img-src` and `connect-src`, which is what PRD 8.5.8's `fetch` needs. |
+| §4 rate limits (`/docs/api/rate-limits`) | Unchanged: `*.scryfall.io` still has **no** rate limits; API limits still 2/second on the card endpoints and 10/second elsewhere, neither of which the browser touches. The "cache for at least 24 hours, use bulk data" guidance is unchanged, and PRD 4.10.1's per-set-release refresh stays well inside it. A `/cards/manifest — 10/minute` row is new since 2026-09-04; the pipeline does not call it. |
+| §5 terms of use (`/docs/api`) | Unchanged clause for clause — all four data guidelines and all six image guidelines, including the `art_crop` attribution rule, read exactly as §5 quotes them. |
+| §6 URI derivation | Still holds. Sol Ring returns `…/small/front/9/1/91fdb56b-….jpg?1783903215` and the same for `large` and `art_crop`. Delver of Secrets (`6904ea20-e504-47da-95a0-08739fdde260`, `layout: transform`) returns `…/small/front/6/9/….jpg?1783908173` and `…/small/back/6/9/….jpg?1783908173`, and its page is `https://scryfall.com/card/inr/60/…`. |
+
+Two notes for the record.
+
+**The Delver id in §6 was abbreviated to its first block.** The full printing id is
+`6904ea20-e504-47da-95a0-08739fdde260`; §6's `6904ea20-…` matched the *wrong* full id when expanded
+naively, which is worth knowing before anyone re-runs that row by hand. The scheme it demonstrates is
+unaffected.
+
+**§7.3's ask is discharged into the runbook, not here.** "Re-read the terms" belongs in the periodic
+refresh the Simulation Engineer owns, so it goes in the refresh runbook rather than being re-promised
+in this document.
