@@ -29,6 +29,24 @@ import type { BenchResult } from '../src/bench/BenchRunner'
 /** Every segment PRD 9.1.2's path is built from, in order. */
 const SEGMENTS = BENCH_PATH.map((key) => key.name)
 
+/**
+ * A small viewport, and only here.
+ *
+ * SwiftShader is fill-rate bound, and at PRD 7.1.1's 1920×1080 reference viewport a cloud runner
+ * managed **11 frames in 39 seconds** — about one per segment. Every assertion below passed, and
+ * would have failed on the next run that was fractionally slower. An assertion that survives by one
+ * frame is not a check.
+ *
+ * Nothing here measures anything, so the viewport is free to be whatever makes the check reliable;
+ * a ninth of the fragments buys roughly a ninth of the frame time and turns one sample per segment
+ * into dozens. The reference-machine `pnpm bench` keeps 1920×1080, which is where the viewport
+ * actually matters, and the result payload records whichever was used either way.
+ *
+ * The route specs are *not* covered by this: they assert what the shell puts on screen, and screen
+ * size is part of that.
+ */
+test.use({ viewport: { width: 640, height: 360 } })
+
 test('/bench completes and emits valid JSON', async ({ page }) => {
   // PRD 9.1.2 says the result goes "to the console in JSON". That is the contract a human with
   // devtools relies on, so it is the one asserted here — `window.__eternitiesBench` is read after,
