@@ -31,7 +31,7 @@ import {
   pinnedQualityTier,
   type QualityTier,
 } from './quality/adaptiveQuality'
-import { runSelfCheck, selfCheckRequested } from './selfCheck'
+import { runSelfCheck, samplesPerRowRequested, selfCheckRequested } from './selfCheck'
 import { starWorldPosition } from './starfield/motion'
 import { SKY_COLOUR } from './tuning'
 import type { SceneResources } from './useSceneData'
@@ -289,6 +289,9 @@ export function StarScene({
         resources.geometry,
         resources.field,
         reducedMotion,
+        // `?perrow=N` when the URL sets it, the built-in budget otherwise. Diagnostic knob, on a
+        // path that only runs under `?selfcheck=1`; see `samplesPerRowRequested`.
+        samplesPerRowRequested() ?? undefined,
       ).then((result) => {
         if (!cancelled) window.__eternitiesSelfCheck = result
       })

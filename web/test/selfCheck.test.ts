@@ -9,21 +9,33 @@
  * bug, larger — passed it with a *better* mean than the clean run, because every sample on the
  * affected row went dark at once.
  *
+ * The second tally is `unexplainedRows`, not `unmeasuredRows`: a dark sample counts against its row
+ * only when the pick window held nothing nearer to account for it. That distinction is what lets the
+ * rule judge production's `dominaria`, which is legitimately 96% occluded — see the test for it, and
+ * `DARK_ROW_MIN_SAMPLES` for the measurements behind both constants.
+ *
  * No GPU here. The rule is a function of the two per-row tallies, and those are what the numbers
- * below are: real counts from real runs on Metal, clean and injected. See `DARK_ROW_MIN_SAMPLES`
- * for why the sample floor is the load-bearing half of it.
+ * below are: real counts from real runs on Metal, clean and injected.
  */
 
 import { describe, expect, it } from 'vitest'
 
-import { findDarkRows, pixelForNdc } from '../src/scene/selfCheck'
+import {
+  findDarkRows,
+  pixelForNdc,
+  planeRowRuns,
+  rowSampleIndices,
+} from '../src/scene/selfCheck'
 
 const rows = (entries: readonly (readonly [number, number])[]): Map<number, number> =>
   new Map(entries.map(([row, count]) => [row, count]))
 
 describe('findDarkRows', () => {
   it('passes a clean fixture-small run', () => {
-    // Measured on Metal: 64 samples, 16 unmeasurable, worst judged row at 7 of 17.
+    // Measured on Metal: 64 samples, 16 unmeasurable, worst judged row at 7 of 17. These are
+    // `unmeasured` counts from the file-wide sampler, fed in where the rule now takes `unexplained`
+    // — deliberately, as a worst case. Unexplained is a subset of unmeasured, and the real run has
+    // 0 of these unexplained, so a rule that passes them passes anything that dataset produces.
     const sampled = rows([
       [4, 27],
       [3, 17],
@@ -39,6 +51,7 @@ describe('findDarkRows', () => {
   })
 
   it('passes a clean fixture-scale run, where thin rows do go fully dark', () => {
+    // Same worst-case reading as above: these are dark counts standing in for unexplained ones.
     // The reason the floor is ten and not four. On `fixture-scale` 37 of 64 samples are occluded,
     // and at that base rate rows drawing four or five samples come back entirely dark as a matter
     // of ordinary luck — rows 47 and 43 did, on a build with no injected error at all. Judging
@@ -64,6 +77,21 @@ describe('findDarkRows', () => {
     expect(findDarkRows(sampled, unmeasured)).toEqual([])
   })
 
+  it('passes the darkest row on the real dataset, which is 96% occluded', () => {
+    // The case that forced the rule's numerator to change (DEC-634). `dominaria` is production row
+    // 19: 6266 stars, 21.9% of the field, and at a 2px pick sprite 23 of its 24 samples come back
+    // dark on a clean build — 23/24 on all three measured runs. On `unmeasured` there is no
+    // threshold that passes this and still catches a displaced row: 0.9 and 0.95 both fail it, and
+    // 1.0 sits one sample away while excusing any row that leaves a straggler.
+    //
+    // Nothing about it is unexplained, though. Every one of those 23 samples had a nearer star in
+    // the window, which is what occlusion looks like and what a missing star does not.
+    expect(findDarkRows(rows([[19, 24]]), rows([]))).toEqual([])
+    // The same row with the mirror displaced 400 units: still 24 samples, still dark, but now
+    // nothing nearer accounts for any of them. Measured, not constructed.
+    expect(findDarkRows(rows([[19, 24]]), rows([[19, 24]]))).toEqual([[19, 24, 24]])
+  })
+
   it('fails a row the mirror displaced out of its own pick windows, and names it', () => {
     // `py += 3` injected into row 0 of `fixture-small`: all 15 dust samples leave their windows.
     // The old rule scored this as 15 quiet `unmeasured` and reported a 0.41px mean — better than
@@ -84,13 +112,19 @@ describe('findDarkRows', () => {
   })
 
   it('does not let one measurable star buy a displaced row an exemption', () => {
-    // Why the rate is 0.9 rather than 1.0. A uniform world-space offset is not a uniform pixel
-    // offset — perspective gives near stars more of it than far ones — so a row can be displaced
-    // far enough to go dark and still leave a straggler inside its window.
-    expect(findDarkRows(rows([[0, 15]]), rows([[0, 14]]))).toEqual([[0, 14, 15]])
-    // Two stragglers out of 15 is 0.87 and is not judged dark. That band is left to `missed`:
-    // a star measured further than the tolerance fails on its own offset, whatever its row did.
-    expect(findDarkRows(rows([[0, 15]]), rows([[0, 13]]))).toEqual([])
+    // Why the rate is well below 1.0. Two separate things leave a displaced row with samples that
+    // do not count: perspective, since a uniform world-space offset is a larger pixel offset on
+    // near stars than on far ones; and occlusion, which explains some of a displaced row's dark
+    // samples exactly as it explains a clean row's. Measured, `py += 3` into `fixture-small`'s row
+    // 0 leaves 4 of 24 explained and reads 0.833 — so at 0.9 the ladder's smallest rung passed
+    // green, and this is the assertion that would have caught it.
+    expect(findDarkRows(rows([[0, 24]]), rows([[0, 20]]))).toEqual([[0, 20, 24]])
+    expect(findDarkRows(rows([[0, 24]]), rows([[0, 23]]))).toEqual([[0, 23, 24]])
+    // The floor of the gap the rate sits in: clean rows reach 1 of 24 unexplained and no more, on
+    // any of the three datasets. Half a row is twelve times that and well clear of it.
+    expect(findDarkRows(rows([[0, 24]]), rows([[0, 12]]))).toEqual([[0, 12, 24]])
+    expect(findDarkRows(rows([[0, 24]]), rows([[0, 11]]))).toEqual([])
+    expect(findDarkRows(rows([[0, 24]]), rows([[0, 1]]))).toEqual([])
   })
 
   it('does not judge a row it barely sampled, however dark', () => {
@@ -110,6 +144,91 @@ describe('findDarkRows', () => {
       [4, 12],
     ])
     expect(findDarkRows(sampled, unmeasured).map(([row]) => row)).toEqual([3, 0, 4])
+  })
+})
+
+/**
+ * The per-row sampler (DEC-634).
+ *
+ * The hole this closes is in the *denominator* of the rule above, not in the rule. `findDarkRows`
+ * cannot judge a row sampled below `DARK_ROW_MIN_SAMPLES`, and the old sampler spread its budget
+ * evenly over the file — which is evenly over the *stars*, so a row's share of the samples was its
+ * share of the stars. Measured against `origin/main`'s `planes.json`: on `fixture-scale` that gave
+ * row 0 fifteen samples, the next best rows seven, five, four and two, and exactly **one row of
+ * eighty** cleared the floor. The rule that exists to catch PRD 8.5.7's whole-row displacement was
+ * being applied to one row, and an error scattered across rows lowered coverage rather than failing.
+ *
+ * No GPU here either: what the sampler picks is a function of the row layout alone.
+ */
+const runsOf = (rowSequence: readonly number[]) =>
+  planeRowRuns((index) => rowSequence[index]!, rowSequence.length)
+
+/** `[[row, starCount], ...]` laid out plane after plane, which is how the pipeline writes it. */
+const layout = (rowCounts: readonly (readonly [number, number])[]): readonly number[] =>
+  rowCounts.flatMap(([row, count]) => Array.from({ length: count }, () => row))
+
+describe('planeRowRuns', () => {
+  it('collapses each plane into one run, in file order', () => {
+    expect(runsOf(layout([[0, 3], [1, 2]]))).toEqual([
+      { row: 0, start: 0, count: 3 },
+      { row: 1, start: 3, count: 2 },
+    ])
+  })
+
+  it('splits a row that is not contiguous, rather than losing the second piece', () => {
+    // Not a layout the encoder produces today. It is the one that would silently halve a row's
+    // coverage if the sampler assumed `[start, start + count)`, so the runs carry it explicitly.
+    expect(runsOf([0, 0, 1, 1, 0, 0])).toEqual([
+      { row: 0, start: 0, count: 2 },
+      { row: 1, start: 2, count: 2 },
+      { row: 0, start: 4, count: 2 },
+    ])
+  })
+})
+
+describe('rowSampleIndices', () => {
+  it('gives every non-empty row the same budget, whatever its size', () => {
+    // The whole point. Row 0 holds 100 stars and row 1 holds 12; both get 8 samples, where the old
+    // sampler would have given row 0 roughly eight times row 1's share.
+    const picks = rowSampleIndices(runsOf(layout([[0, 100], [1, 12]])), 8)
+    const perRow = new Map<number, number>()
+    for (const index of picks) {
+      const row = index < 100 ? 0 : 1
+      perRow.set(row, (perRow.get(row) ?? 0) + 1)
+    }
+    expect(perRow.get(0)).toBe(8)
+    expect(perRow.get(1)).toBe(8)
+  })
+
+  it('never samples a row twice over, however small the row', () => {
+    // `lorwyn` has 6 stars and the floor is 10. Reaching the floor by re-reading stars would be
+    // worse than not judging the row: ten reads of one occluded star are ten dark samples that
+    // establish what one established, so a clean fixture would report a dark row.
+    const picks = rowSampleIndices(runsOf(layout([[0, 6]])), 40)
+    expect(picks).toHaveLength(6)
+    expect(new Set(picks).size).toBe(6)
+  })
+
+  it('spreads a row across its stars instead of pinning it to the first', () => {
+    // Centred in strata: `floor((j + 0.5) * total / take)`. Pinned picks would be [0, 2, 5, 7] and,
+    // worse, would make every run of the check re-measure one fixed star per row.
+    expect(rowSampleIndices(runsOf(layout([[0, 10]])), 4)).toEqual([1, 3, 6, 8])
+  })
+
+  it('interleaves rows, so a run cut short has covered all of them thinly', () => {
+    expect(rowSampleIndices(runsOf(layout([[0, 3], [1, 3]])), 3)).toEqual([0, 3, 1, 4, 2, 5])
+  })
+
+  it('samples both halves of a split row', () => {
+    // Every pick stays inside the row it belongs to: 0-1 and 4-5 are row 0, 2-3 are row 1.
+    expect(rowSampleIndices(runsOf([0, 0, 1, 1, 0, 0]), 4)).toEqual([0, 2, 1, 3, 4, 5])
+  })
+
+  it('cannot reach a row with no stars, which is why the denominator is 80 and not 87', () => {
+    // Six of `fixture-scale`'s planes hold no stars at all. They are absent from the runs, so they
+    // are absent from the picks: no gate can ever judge them, at any budget.
+    const picks = rowSampleIndices(runsOf(layout([[0, 2], [2, 2]])), 4)
+    expect(picks).toEqual([0, 2, 1, 3])
   })
 })
 

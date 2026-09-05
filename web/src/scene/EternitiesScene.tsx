@@ -884,7 +884,7 @@ export function SceneView({
     <div className="app">
       {body}
 
-      <div className="overlay" data-testid="eternities-status">
+      <div className="scene-status" data-testid="eternities-status">
         <h1>Eternities</h1>
         <p className="muted">
           Drag to orbit · scroll to zoom · click a plane, a star or a thumbnail · Esc to go back ·{' '}

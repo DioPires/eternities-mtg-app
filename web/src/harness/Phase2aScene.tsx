@@ -144,7 +144,7 @@ export function Phase2aScene(): ReactElement {
         )}
       </Canvas>
 
-      <div className="overlay" data-testid="phase0-status">
+      <div className="scene-status" data-testid="phase0-status">
         <h1>Eternities — Phase 2a</h1>
         <p className="muted">
           Star field: one Points object, motion in the vertex shader (PRD 8.5.1-5). Drag to orbit,

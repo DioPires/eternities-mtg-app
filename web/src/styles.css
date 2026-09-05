@@ -1186,3 +1186,78 @@ kbd {
   letter-spacing: var(--tracking-eyebrow);
   text-transform: uppercase;
 }
+
+/* ------------------------------------ the development state readout (`?harness=2a`, `?harness=3`) */
+
+/*
+ * The panel `EternitiesScene` and `Phase2aScene` render. It is not product UI — no shipped route
+ * mounts either scene — but it is where `verify-browser.mjs` and `visual-gate.mjs` read the scene's
+ * state from, so it is worth its bytes.
+ *
+ * It had no rule at all for two phases. Both scenes asked for `class="overlay"`, Phase 5's
+ * stylesheet replaced the harness's and defines `.overlay-scrim` but no `.overlay`, so the panel
+ * laid out at `position: static` after a canvas that already fills `.app` — a full viewport below
+ * the fold, on a `body` with `overflow: hidden`, and therefore never on screen. It stayed in the
+ * DOM the whole time, which is why every assertion reading its `textContent` kept passing. The
+ * class is named for the panel now rather than for a generic layer, so the next `.overlay` in this
+ * stylesheet cannot silently become its rule, and `verify-browser.mjs` measures the box as well as
+ * reading it.
+ *
+ * Two declarations are load-bearing rather than cosmetic:
+ *
+ *  - `pointer-events: none`, because the panel is pinned over the canvas and the harness picks
+ *    stars and planes by clicking through exactly this corner;
+ *  - `max-height`, because a readout that outgrows its viewport would push its own last lines off
+ *    screen again — the same invisibility, arrived at from the other end.
+ */
+.scene-status {
+  position: absolute;
+  top: var(--space-3);
+  left: var(--space-3);
+  /* Over the shipped stack of PRD 6.3, which tops out at 5. Nothing mounts both today; if Phase 6
+     ever folds a scene into the shell, a development readout still wants to be the thing on top. */
+  z-index: 6;
+  max-width: 26rem;
+  max-height: calc(100% - var(--space-6));
+  overflow: hidden;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-glass);
+  font-size: var(--text-sm);
+  line-height: var(--leading-tight);
+  pointer-events: none;
+}
+
+.scene-status h1 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-strong);
+}
+
+.scene-status p {
+  margin: 0 0 var(--space-2);
+}
+
+.scene-status ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Every line is a counter that changes while it is being read; proportional figures make the
+   column jitter horizontally as the digits change width. */
+.scene-status li {
+  font-variant-numeric: tabular-nums;
+  /* A camera readout is one long line of numbers. Wrapping it is better than clipping it. */
+  overflow-wrap: anywhere;
+}
+
+.scene-status .ok {
+  color: var(--accent);
+}
+
+.scene-status .bad {
+  margin: var(--space-2) 0 0;
+  color: var(--danger);
+}

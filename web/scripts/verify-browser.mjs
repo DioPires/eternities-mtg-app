@@ -333,6 +333,74 @@ function check(condition, message) {
 const route = (page) => page.evaluate(() => location.pathname + location.search)
 const pause = (ms) => new Promise((r) => setTimeout(r, ms))
 
+/**
+ * The development readout is on screen, not merely in the DOM.
+ *
+ * Every other assertion in this file reads the panel's `textContent`, and `textContent` is happy
+ * with a node that never paints. It was: for two phases both scenes asked for `class="overlay"`,
+ * Phase 5's stylesheet had no such rule, and the panel laid out `position: static` after a canvas
+ * that already fills `.app` — a viewport below the fold, on a `body` with `overflow: hidden`. The
+ * whole suite stayed green through it. That is the class of defect a text-only assertion cannot
+ * see, so this one is deliberately not about text.
+ *
+ * Three things are asked, because each catches a different way to be invisible:
+ *
+ *  - `checkVisibility` for `display: none`, `visibility: hidden`, zero opacity and an unrendered
+ *    subtree — the failures that leave a box behind;
+ *  - the intersection with the viewport, for the failure that actually happened: a laid-out,
+ *    perfectly visible box positioned somewhere nobody can see;
+ *  - `position`, because `static` is what put it there, and naming it makes the diagnosis obvious
+ *    from the message alone.
+ *
+ * Occlusion is out of scope here: `pointer-events: none` takes the panel out of hit testing on
+ * purpose (the harness clicks stars through this corner), so `elementsFromPoint` would report the
+ * canvas whatever the panel is doing. The check is geometry and computed style, as PRD 9.3's
+ * follow-up asks.
+ */
+async function verifyStatusPanelPaints(page, testid, label) {
+  const seen = await page.evaluate((id) => {
+    const node = document.querySelector(`[data-testid="${id}"]`)
+    if (!node) return null
+    const rect = node.getBoundingClientRect()
+    const style = getComputedStyle(node)
+    const width = Math.max(0, Math.min(rect.right, window.innerWidth) - Math.max(rect.left, 0))
+    const height = Math.max(0, Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0))
+    return {
+      rendered: node.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }),
+      box: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+      onScreen: { width, height },
+      position: style.position,
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+    }
+  }, testid)
+
+  check(seen !== null, `${label}: the status panel [data-testid="${testid}"] is not in the DOM`)
+  const where =
+    `${Math.round(seen.box.width)}x${Math.round(seen.box.height)} at ` +
+    `(${Math.round(seen.box.x)}, ${Math.round(seen.box.y)}) in a ` +
+    `${seen.viewport.width}x${seen.viewport.height} viewport, position:${seen.position}`
+  check(seen.rendered, `${label}: the status panel is in the DOM but does not render — ${where}`)
+  check(
+    seen.position !== 'static',
+    `${label}: the status panel is statically positioned, so it lays out after the canvas that ` +
+      `fills .app instead of over it — ${where}. Its textContent still reads, which is why only ` +
+      `this assertion can see it. Check the .scene-status rule in styles.css.`,
+  )
+  // A tenth of the viewport in each axis: enough that a stray sliver poking in from off screen is
+  // not mistaken for a panel that can be read, and far below anything the real rule produces.
+  const floorW = seen.viewport.width / 10
+  const floorH = seen.viewport.height / 10
+  check(
+    seen.onScreen.width >= floorW && seen.onScreen.height >= floorH,
+    `${label}: the status panel is positioned off screen — only ${Math.round(seen.onScreen.width)}x` +
+      `${Math.round(seen.onScreen.height)} of it is inside the viewport (${where})`,
+  )
+  console.log(
+    `  the status panel paints: ${where}, ${Math.round(seen.onScreen.width)}x` +
+      `${Math.round(seen.onScreen.height)} of it on screen`,
+  )
+}
+
 /** The shell is ready when `sets.bin` has landed, which is what enables the random control. */
 async function waitForDataset(page) {
   await page.waitForFunction(
@@ -1175,6 +1243,9 @@ async function verifyNavigation(page, url, roster, problems) {
   // multiverse focus is checkpoint 1 of PRD 9.3, the home view after the intro.
   await waitForStatus(/focus: multiverse/)
   await waitForStatus(/flight: idle/, 30_000)
+  // Before anything else reads this panel: it is on screen, and not just in the tree. See
+  // `verifyStatusPanelPaints` — every assertion below is a `textContent` read and blind to it.
+  await verifyStatusPanelPaints(page, 'eternities-status', '?harness=3')
   const homeDistance = await cameraDistance()
   console.log(`  intro settled at the home view, ${homeDistance.toFixed(1)} from the centre`)
   if (!(homeDistance > 0) || homeDistance > 600) {
@@ -1777,6 +1848,10 @@ async function verifyStarField(page, url, allowSoftware, problems) {
   for (const line of report.lines) console.log(`  ${line}`)
   if (!report.ok) throw new Error('the data contract decode report reported a failure')
 
+  // `Phase2aScene` asked for the same missing `.overlay` rule, so it was invisible in the same way
+  // and for the same reason. It gets the same check.
+  await verifyStatusPanelPaints(page, 'phase0-status', '?selfcheck=1')
+
   const canvas = await readCanvas(page)
   if (SOFTWARE_RENDERER.test(canvas.gpu ?? '')) {
     const message =
@@ -1813,9 +1888,10 @@ async function verifyStarField(page, url, allowSoftware, problems) {
     `  id-buffer picking vs CPU motion mirror: the shader drew ${selfCheck.measured}/` +
       `${selfCheck.checked} sampled stars a mean of ${selfCheck.meanOffsetPx}px ` +
       `(max ${selfCheck.maxOffsetPx}px, tolerance ${selfCheck.tolerancePx}px) from the pixel ` +
-      `the mirror predicted; ${selfCheck.unmeasured} not in window` +
-      (selfCheck.unmeasuredRows.length > 0
-        ? ` (plane rows ${selfCheck.unmeasuredRows.map(([row, n]) => `${row}x${n}`).join(' ')})`
+      `the mirror predicted; ${selfCheck.unmeasured} not in window, of which ` +
+      `${selfCheck.unexplained} not explained by a nearer star` +
+      (selfCheck.unexplainedRows.length > 0
+        ? ` (plane rows ${selfCheck.unexplainedRows.map(([row, n]) => `${row}x${n}`).join(' ')})`
         : ''),
   )
   console.log(
@@ -1877,7 +1953,7 @@ async function verifyStarField(page, url, allowSoftware, problems) {
       selfCheck.darkRows.length > 0
         ? `the self-check could not locate the stars of plane ` +
           `${selfCheck.darkRows.length === 1 ? 'row' : 'rows'} ` +
-          `${selfCheck.darkRows.map(([row, dark, n]) => `${row} (${dark} of ${n} samples missing from their own pick window)`).join(', ')} ` +
+          `${selfCheck.darkRows.map(([row, dark, n]) => `${row} (${dark} of ${n} samples missing from their own pick window with nothing nearer to explain it)`).join(', ')} ` +
           `— a whole well-sampled row going dark is what a motion-mirror error too large to ` +
           `measure looks like, not what occlusion looks like`
         : ''
