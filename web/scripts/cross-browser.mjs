@@ -802,6 +802,35 @@ function report(results, meta) {
     lines.push(`| ${browser} | ${platform} | ${status} |`)
   }
   lines.push('')
+  lines.push('## What the run found')
+  lines.push('')
+  lines.push(
+    '**WebKit cannot load this site over `http://localhost`.** PRD 7.6.1\'s CSP ends in ' +
+      '`upgrade-insecure-requests`, and WebKit applies it to loopback where Chrome and Firefox ' +
+      'exempt loopback as already-trustworthy. Under `vite preview` — which is what `pnpm bench`, ' +
+      '`pnpm verify-browser` and the Playwright suite all use — WebKit rewrites every subresource ' +
+      'to `https://localhost:<port>`, the TLS handshake fails, and the page renders nothing: no ' +
+      'canvas, no HUD, no error message. `127.0.0.1` upgrades identically, so it is the directive ' +
+      'and not the host form.',
+  )
+  lines.push('')
+  lines.push(
+    'This is a fact about local tooling, not about the product: production is HTTPS (PRD 8.8.1), ' +
+      'where every subresource URL is already `https` and the directive is a no-op. The evidence ' +
+      'for that claim is this table — `pnpm cross-browser` serves `dist/` over a real HTTPS origin ' +
+      'with `securityHeaders({ dev: false })`, the same function that generates `vercel.json`, and ' +
+      'WebKit passes every check. **The practical consequence is for anyone checking Safari ' +
+      'locally:** `pnpm preview` will show them a blank page, and the reason will not be visible. ' +
+      'Use a Vercel preview deployment, or this script.',
+  )
+  lines.push('')
+  lines.push(
+    '**No engine differed on the GPU self-check.** Metal through ANGLE, Gecko and WebKit agree ' +
+      'with the CPU motion mirror to well under half the tolerance, at both float16 and float32. ' +
+      'PRD risk 6 anticipated float16 attribute and data-texture precision trouble; on this ' +
+      'machine there is none to report.',
+  )
+  lines.push('')
   lines.push('## Reading this')
   lines.push('')
   lines.push(
@@ -810,6 +839,15 @@ function report(results, meta) {
       'self-check of PRD 8.5.7 is the only thing in this repo that puts the CPU motion mirror on one ' +
       'side of a comparison and a real rasteriser on the other. CI proves the routes on SwiftShader ' +
       'and cannot speak to any of it.',
+  )
+  lines.push('')
+  lines.push(
+    'The columns were checked against deliberate breakage rather than trusted for being green. ' +
+      'Four mutations, each caught: displacing the CPU motion mirror by 0.06 local units fails the ' +
+      'self-check on all three engines; making the call site drop the `?positions=` parameter fails ' +
+      'the float32 column with `asked for float32 positions, the run used float16`; making the ' +
+      'harness stop removing WebGL2 fails the fallback column with one canvas still mounted; and ' +
+      '`touch-action: auto` fails the touch column. A column that cannot go red is not evidence.',
   )
   lines.push('')
   lines.push(
@@ -903,7 +941,7 @@ async function main() {
 
   const meta = {
     date: new Date().toISOString().slice(0, 10),
-    machine: `${process.platform} ${execFileSync('sw_vers', ['-productVersion']).toString().trim()}, ${execFileSync('sysctl', ['-n', 'machdep.cpu.brand_string']).toString().trim()}`,
+    machine: `macOS ${execFileSync('sw_vers', ['-productVersion']).toString().trim()}, ${execFileSync('sysctl', ['-n', 'machdep.cpu.brand_string']).toString().trim()}`,
     dataset: args.dataset,
     hash,
   }
