@@ -157,6 +157,14 @@ cards changed: 38
 All thirty-eight were `imageTs` — the cache-buster in Scryfall's image URI, which they re-stamp when
 a card is re-scanned (`docs/data-contract.md`). No product-visible change at all.
 
+**The two numbers on the cache-buster line count different things** (DEC-673 N2). `N card(s)` is
+the cards whose **only** symptom was cache-buster churn; `M printing tuple(s)` is **every**
+cache-buster tuple in the diff, including tuples on cards that also changed in some other way and
+are therefore reported in a louder bucket instead. So `M` can exceed what `N` accounts for, and the
+two agreeing — as they nearly do above, 38 and 40 — is a coincidence of this particular diff, not
+an invariant. Read `N` as "how many cards were pure noise" and `M` as "how much of this diff is
+noise"; do not read `M` as belonging to those `N`.
+
 **How to read the buckets.** The first two are routine: cache-buster churn is noise, and a new
 printing of an existing card is what a set release looks like. The last three are not. A
 non-printing field moving (name, type line, oracle text, colour identity, layout, size class) means
