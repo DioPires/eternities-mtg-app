@@ -796,9 +796,18 @@ export function SceneView({
           cameraRef.current = camera as PerspectiveCamera
           rendererRef.current = gl
         }}
-        // The canvas's starting ratio only. `StarScene` owns it from its first effect onwards, and
-        // caps it by `devicePixelRatio` as this prop does not — so this must not track `tier`, or a
-        // step down would re-raise the ratio behind the monitor's back.
+        // The tier the scene *starts* at, which is tier 0 unless `?quality=` pinned another.
+        //
+        // This prop is an authority, not a starting hint: R3F applies it from an effect in this
+        // component, and a parent's effect runs after its children's, so it lands on top of the
+        // `setDpr(min(tier.pixelRatioCap, devicePixelRatio))` that `StarScene` runs on mount. It
+        // has to name the pinned tier or a pinned run renders at tier 0's ratio — latent until
+        // `?quality=` existed, because tier 0 was the only tier a scene could start at.
+        //
+        // Dropping the prop instead does not work: R3F then re-establishes `devicePixelRatio` from
+        // its own resize path and the cap becomes a race, which is PRD 7.1.3's ceiling failing
+        // intermittently. Two writers that agree is the correct shape here; `e2e/quality.spec.ts`
+        // records what that costs the check.
         dpr={QUALITY_TIERS[pinnedTier ?? 0]!.pixelRatioCap}
         style={{ background: SKY_COLOUR }}
       >
