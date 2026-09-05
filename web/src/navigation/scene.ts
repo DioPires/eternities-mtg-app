@@ -190,19 +190,33 @@ export function createSceneNavigation(
    */
   const cardTether = (out: Tether, focus: Focus): Tether | null => {
     if (focus.kind !== 'card') return null
+
+    // The star's own local position, whenever `stars.bin` can supply it — including on the Blind
+    // Eternities, whose row PRD 8.3 makes an ordinary plane row with the identity transform and
+    // radius R. Reaching for it *first* rather than only off the dust's anchor is what Phase 3
+    // found: a dust card focused from the scene arrives with a `starIndex` and, depending on how
+    // the focus was built, without an `anchor`, and the anchor-only branch below then returned
+    // `null` and dropped the whole flight back to the dust's own plane-level tether — 25 units out
+    // instead of 2.2, with the card a tenth of the size it should be. The star position is also
+    // the more accurate of the two: `worldToPlaneLocal` cannot invert PRD 8.6.3's curl, so an
+    // anchor round-tripped through it lands a little off the dust it was pointing at.
+    if (focus.starIndex !== undefined && stars) {
+      const planeIndex = stars.starLocal(focus.starIndex, scratchLocal)
+      if (planeIndex !== null) {
+        const plane: PlaneRecord | undefined = rig.motion.planes[planeIndex]
+        if (plane) return framing.card(out, plane, scratchLocal)
+      }
+    }
+
     if (focus.planeSlug === BLIND_ETERNITIES_SLUG) {
-      // A dust card is at its anchor, and PRD 6.2.3 makes that anchor the focus's own.
+      // The cold-start deep-link path (PRD 6.7.1): no `starIndex` until `sets.bin` resolves it, so
+      // the anchor of PRD 6.2.3 is all there is. `resolveCard` re-aims this in place afterwards.
       if (!blindEternities || !focus.anchor) return null
       fromTuple(scratchWorld, focus.anchor)
       rig.motion.worldToPlaneLocal(scratchLocal, blindEternities, scratchWorld)
       return framing.card(out, blindEternities, scratchLocal)
     }
-    if (focus.starIndex === undefined || !stars) return null
-    const planeIndex = stars.starLocal(focus.starIndex, scratchLocal)
-    if (planeIndex === null) return null
-    const plane: PlaneRecord | undefined = rig.motion.planes[planeIndex]
-    if (!plane) return null
-    return framing.card(out, plane, scratchLocal)
+    return null
   }
 
   const tetherFor = (out: Tether, focus: Focus): Tether => {

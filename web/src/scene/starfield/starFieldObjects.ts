@@ -33,6 +33,8 @@ import {
   STAR_MAX_PX,
   STAR_MIN_PX,
   STAR_WORLD_DIAMETER,
+  THUMBNAIL_FADE_FULL_PX,
+  THUMBNAIL_FADE_START_PX,
 } from '../tuning'
 import { PlaneKindCode } from './motion'
 import type { PlaneTable } from './planeTable'
@@ -103,6 +105,8 @@ export function createStarField(
   const uMaxPixels = uniform(STAR_MAX_PX)
   const uPickMinPixels = uniform(PICK_MIN_PX)
   const uHoverIndex = uniform(-1)
+  const uThumbStartPx = uniform(THUMBNAIL_FADE_START_PX)
+  const uThumbFullPx = uniform(THUMBNAIL_FADE_FULL_PX)
   /** `null` means "use `PICK_MIN_PX`". See `setPickSpriteFloorPx`. */
   let pickSpriteFloorPx: number | null = null
 
@@ -119,6 +123,8 @@ export function createStarField(
     uMinPixels,
     uMaxPixels,
     uHoverIndex,
+    uThumbStartPx,
+    uThumbFullPx,
   }
 
   const material = new ShaderMaterial({
@@ -176,6 +182,10 @@ export function createStarField(
       uMinPixels.value = STAR_MIN_PX * pixelRatio
       uMaxPixels.value = STAR_MAX_PX * pixelRatio
       uPickMinPixels.value = (pickSpriteFloorPx ?? PICK_MIN_PX) * pixelRatio
+      // PRD 5.5.1's threshold is 24 CSS pixels; `pixels` in the shader is device pixels, so the
+      // band scales with the ratio exactly as the star size floors above it do.
+      uThumbStartPx.value = THUMBNAIL_FADE_START_PX * pixelRatio
+      uThumbFullPx.value = THUMBNAIL_FADE_FULL_PX * pixelRatio
     },
     setHovered(index) {
       uHoverIndex.value = index

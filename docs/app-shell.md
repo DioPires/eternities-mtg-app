@@ -1,7 +1,11 @@
 # Eternities — app shell (Phase 4)
 
-**Status:** built against the Phase 0 navigation stub. Camera-dependent flows are wired through the
-contract and become real when Phase 2b (DEC-588) swaps the implementation in.
+**Status:** built against the Phase 0 navigation stub, and **still on it**. Camera-dependent flows
+are wired through the contract and become real when the seam below is swapped. Phases 2b and 3 have
+since landed — `scene/EternitiesScene.tsx` is one scene with the real rig, the star field and the
+card tier, reached with `?harness=3` — but it is not mounted inside the shell yet, because it builds
+its own navigation from the dataset once that dataset loads and the shell's services are created
+once, outside React, before any data exists. Bridging those two lifetimes is Phase 6's (DEC-644).
 **Authority:** `prd_v3.md` §6 in full, plus §7.1.2, §7.4.1, §7.5, §7.6.2, §8.4.
 **Not this document's business:** the visual design, which is Phase 5's (implementation plan §2).
 
@@ -55,10 +59,17 @@ both fixtures under the production CSP.
 
 ## 3. Seams for the other phases
 
-**Phase 2b (camera, navigation, labels).** `createNavigation()` in `src/app/services.tsx` is the
-one line to change. Nothing else in the shell imports `createNavigationStub`. The shell already
-calls `handOver` on canvas pointer-down and wheel, triggers `playIntro`, `enterAttract`/
-`exitAttract` and `setReducedMotion`, and treats `'correction'` as a `replaceState`.
+**Phase 2b (camera, navigation, labels) — landed, seam still open.** `createNavigation()` in
+`src/app/services.tsx` is the one line to change. Nothing else in the shell imports
+`createNavigationStub`. The shell already calls `handOver` on canvas pointer-down and wheel,
+triggers `playIntro`, `enterAttract`/`exitAttract` and `setReducedMotion`, and treats
+`'correction'` as a `replaceState`.
+
+It is one line *here*, but not one line overall, which is why Phase 3's merge did not take it:
+`createServices()` runs once in `main.tsx`, before any fetch, and `createSceneNavigation()` needs
+the decoded `planes.json` to exist. Whoever closes this owns that ordering — either the shell waits
+on the dataset before its services exist, or the seam returns a navigation that re-targets itself
+when the data lands.
 
 **Phase 2a (star renderer).**
 - The dimming mask of PRD 5.8 is `useStore.getState().filterEvaluation?.mask` — one `Uint8Array`,
@@ -75,9 +86,11 @@ calls `handOver` on canvas pointer-down and wheel, triggers `playIntro`, `enterA
   `stars` and `starsDrawable` into the store: the HUD's loading line and the filter evaluation both
   read them.
 
-**Phase 3 (card tier).** The card panel already resolves the focused card's shard and highlights
-the active printing; `activePrinting` in the store is the index the planets should follow, and it
-changes no route (PRD 6.2.2).
+**Phase 3 (card tier) — landed as its own scene.** The card panel already resolves the focused
+card's shard and highlights the active printing; `activePrinting` in the store is the index the
+planets should follow, and it changes no route (PRD 6.2.2). The card tier itself lives in
+`src/scene/cards/` and currently reads its active printing from the scene's own navigation, not
+from this store — joining the two is the same job as the seam above.
 
 **Phase 5 (design). Landed** — see [`docs/design-system.md`](design-system.md). The tokens moved
 out to `src/tokens.css` and `src/styles.css` now references them exclusively. The three rules

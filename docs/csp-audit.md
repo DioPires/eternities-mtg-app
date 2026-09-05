@@ -128,17 +128,19 @@ not apply to CSSOM writes. Everything this app does is a CSSOM write:
 - `labels/PlaneLabels.tsx` sets `node.style.transform`, `node.style.opacity` and
   `node.style.fontSize` — property assignments, not attributes, so no directive governs them;
 - the three `style={{ background: SKY_COLOUR }}` props in `App.tsx`, `Phase2aScene.tsx` and
-  `Phase2bScene.tsx` are React style objects, which React applies through the CSSOM as well;
+  `EternitiesScene.tsx` are React style objects, which React applies through the CSSOM as well;
 - `index.html` contains no literal `style=`, and nothing in the tree uses
   `dangerouslySetInnerHTML`.
 
-The label overlay named in the old rationale is also mounted **only in `Phase2bScene`**
-(`?harness=2b`), so it is not on the shipped shell route at all.
+The label overlay named in the old rationale is also mounted **only in the scene**, never on the
+shipped shell route. Phase 3 folded Phase 2b's harness into `EternitiesScene` and deleted it, so
+the route that reaches the overlay is now `?harness=3`; when this was audited it was `?harness=2b`,
+which is the route the experiment below was run against.
 
 The reviewer tested it rather than reasoning about it: with `style-src-attr` removed entirely and
 the built site served under `style-src 'self'` alone, all 82 labels received their `translate3d`
 transform, with zero `securitypolicyviolation` events and zero console errors on both the shell
-root and `?harness=2b`.
+root and the overlay route.
 
 **Not dropped in this phase, on purpose.** Phase 3 (DEC-590) is mid-flight and will add the card
 tier — the one part of the product not exercised by that experiment. Removing a directive on the

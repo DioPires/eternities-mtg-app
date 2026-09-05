@@ -138,6 +138,101 @@ export const BLOOM_INTENSITY = 1.15
 export const VIGNETTE_OFFSET = 0.28
 export const VIGNETTE_DARKNESS = 0.72
 
+/*
+ * ---------------------------------------------------------------------------------------------
+ * The card tier (PRD 5.5, 5.6, 8.5.8-10). Phase 3.
+ * ---------------------------------------------------------------------------------------------
+ */
+
+/**
+ * PRD 5.5.1: a star cross-fades into a thumbnail once it "would occupy ≥ 24 px on screen".
+ *
+ * A single threshold would pop, which PRD 7.3.4 forbids, so the 24 px is the *end* of a band the
+ * fade runs across. It is the end rather than the middle because the PRD's sentence is a promise
+ * about when the thumbnail is fully there, and a band that straddled it would leave the card half
+ * transparent at exactly the size the PRD says it should be a card.
+ *
+ * The size measured is the star's own drawn diameter — `STAR_WORLD_DIAMETER × rarity`, projected —
+ * so the trigger is camera distance and rarity, never asset arrival (PRD 7.3.4 again).
+ */
+export const THUMBNAIL_FADE_START_PX = 14.0
+export const THUMBNAIL_FADE_FULL_PX = 24.0
+
+/**
+ * A thumbnail's height in world units, as a multiple of the star diameter it replaces.
+ *
+ * At the fade-full distance a common star is 24 px across, and a card at this multiple is then
+ * about 130 px tall — legible as a card rather than as a stamp, which is the point of the tier.
+ */
+export const THUMBNAIL_WORLD_HEIGHT = STAR_WORLD_DIAMETER * 5.4
+
+/** PRD 5.5.2: "thumbnails keep their hue as a rim glow, so encoding is not lost." */
+export const THUMBNAIL_RIM_WIDTH = 0.055
+export const THUMBNAIL_RIM_GAIN = 1.35
+
+/** PRD 8.5.8's atlas: 4096², 128 × 178 cells, base level only. */
+export const ATLAS_SIZE = 4096
+export const ATLAS_CELL_WIDTH = 128
+export const ATLAS_CELL_HEIGHT = 178
+
+/**
+ * PRD 5.5.4: "thumbnails outside the frustum unload after a grace period." Seconds a cell may go
+ * unseen before the LRU is allowed to take it, so a camera swinging past a shelf and back does not
+ * re-fetch what it just had.
+ */
+export const THUMBNAIL_GRACE_S = 6
+
+/** How often the nearest-first selector re-ranks candidates. PRD 5.5.3 wants nearest, not instant. */
+export const THUMBNAIL_SELECT_INTERVAL_S = 0.2
+
+/** PRD 7.2: 6 concurrent image requests to Scryfall, ceiling 8. The target is what ships. */
+export const IMAGE_CONCURRENCY = 6
+
+/** PRD 7.3.5: "images fade in over 200 ms". */
+export const IMAGE_FADE_MS = 200
+
+/**
+ * PRD 5.6.1-2: the card is a thin rounded-rectangle solid at a fixed on-screen size.
+ *
+ * A Magic card is 63 × 88 mm. The half-diagonal is `CARD_RADIUS` in `camera/framing`, which is what
+ * the card tether frames against, so these two follow from it rather than being chosen beside it.
+ */
+export const CARD_WIDTH = 0.63
+export const CARD_HEIGHT = 0.88
+export const CARD_THICKNESS = 0.014
+export const CARD_CORNER_RADIUS = 0.032
+
+/** PRD 5.6.3: "±12° on both axes, with spring damping". */
+export const CARD_TILT_MAX_RAD = (12 * Math.PI) / 180
+/** Undamped angular frequency and damping ratio of that spring. 0.85 settles without overshoot. */
+export const CARD_TILT_FREQUENCY = 13.0
+export const CARD_TILT_DAMPING = 0.85
+
+/** PRD 5.6.4: "a subtle specular sheen moves with the tilt. No foil rainbow effect in v1." */
+export const CARD_SHEEN_INTENSITY = 0.22
+export const CARD_SHEEN_WIDTH = 0.42
+
+/** PRD 5.6.5: the flip turns the card 180° about its vertical axis. Seconds for the turn. */
+export const CARD_FLIP_S = 0.7
+
+/** PRD 5.6.8: up to 24 planets per ring, three rings, 72 planets. */
+export const PLANETS_PER_RING = 24
+export const PLANET_RING_COUNT = 3
+export const PLANET_CAP = PLANETS_PER_RING * PLANET_RING_COUNT
+
+/** PRD 5.6.7: "one revolution per 60 s", independent of the plane's spin. */
+export const PLANET_PERIOD_S = 60
+
+/** Planet radius and ring radii, in the card's own units. The first ring clears the card's corner. */
+export const PLANET_RADIUS = 0.058
+export const PLANET_RING_RADII: readonly number[] = [0.82, 1.12, 1.42]
+
+/** PRD 8.5.10: `art_crop` textures downscaled on decode to 256 px on the long side. */
+export const PLANET_TEXTURE_PX = 256
+
+/** PRD 5.6.9: the active printing's planet is marked. A brighter rim, not a different shape. */
+export const PLANET_ACTIVE_GAIN = 1.8
+
 /** PRD 5.3.18: the three-layer parallax background. */
 export interface BackgroundLayerSpec {
   readonly count: number

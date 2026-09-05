@@ -25,7 +25,12 @@ import {
 } from 'three'
 
 import { float16ToNumber } from '../../data/decode'
-import { STAR_RECORD_BYTES } from '../../data/types'
+import {
+  COLOUR_IDENTITY_MASK,
+  COLOUR_IDENTITY_SHIFT,
+  HUE_CLASS_MASK,
+  STAR_RECORD_BYTES,
+} from '../../data/types'
 
 /**
  * PRD risk 6's named mitigation. `float16` is the default and halves the position buffer;
@@ -74,6 +79,8 @@ export class StarGeometry {
   private readonly positionAttribute: BufferAttribute
   private readonly filter: Uint8Array
   private readonly filterAttribute: BufferAttribute
+  private readonly thumb: Uint8Array
+  private readonly thumbAttribute: BufferAttribute
 
   constructor(capacity: number, positionMode: PositionMode = 'float16') {
     this.capacity = capacity
@@ -99,11 +106,20 @@ export class StarGeometry {
     this.filter = this.filterAttribute.array as Uint8Array
     this.filterAttribute.setUsage(DynamicDrawUsage)
 
+    // PRD 5.5.1 and 5.5.3, as one byte per star: 255 once this star's thumbnail is in the atlas and
+    // may be cross-faded to, 0 while it is not. The *timing* of the cross-fade is camera distance
+    // and nothing else (PRD 7.3.4); this only says whether there is anything to fade to, which is
+    // PRD 5.5.3's "fall back to the star glow until loaded". Phase 3's thumbnail layer owns it.
+    this.thumbAttribute = new BufferAttribute(new Uint8Array(capacity), 1, true)
+    this.thumb = this.thumbAttribute.array as Uint8Array
+    this.thumbAttribute.setUsage(DynamicDrawUsage)
+
     this.geometry = new BufferGeometry()
     this.geometry.setAttribute('position', this.positionAttribute)
     this.geometry.setAttribute('aClass', new InterleavedBufferAttribute(this.recordBuffer, 3, 6))
     this.geometry.setAttribute('aStyle', new InterleavedBufferAttribute(this.recordBuffer, 3, 9))
     this.geometry.setAttribute('aFilter', this.filterAttribute)
+    this.geometry.setAttribute('aThumb', this.thumbAttribute)
     this.geometry.setDrawRange(0, 0)
     // Positions are plane-local here and become world positions in the vertex shader, so three's
     // bounding sphere would describe a volume nothing is actually drawn in.
@@ -182,9 +198,51 @@ export class StarGeometry {
     return index >= 0 && index < this.capacity && this.filter[index] !== 0
   }
 
+  /**
+   * PRD 5.5.1: this star now has a thumbnail in the atlas, or no longer does.
+   *
+   * One byte per call rather than a mask, because the caller is an LRU that gains and loses cells
+   * a few at a time — the whole point of PRD 8.5.8's fixed capacity.
+   */
+  setThumbnailPresent(index: number, present: boolean): void {
+    if (index < 0 || index >= this.capacity) return
+    const value = present ? 255 : 0
+    if (this.thumb[index] === value) return
+    this.thumb[index] = value
+    this.thumbAttribute.addUpdateRange(index, 1)
+    this.thumbAttribute.needsUpdate = true
+  }
+
+  hasThumbnail(index: number): boolean {
+    return index >= 0 && index < this.capacity && this.thumb[index] !== 0
+  }
+
   /** The plane row a star belongs to, read straight out of the uploaded record. */
   planeRowOf(index: number): number {
     return this.records[index * STAR_RECORD_BYTES + POSITION_BYTES_IN_RECORD]!
+  }
+
+  /**
+   * PRD 5.4.8's hue class, for the thumbnail rim glow of PRD 5.5.2.
+   *
+   * Masked, because this reads the record bytes directly rather than through `decodeStars`, and
+   * byte 7 packs the colour identity into bits 3-7 (contract §5, amendment A3). Unmasked, a
+   * mono-green star answers 132 — which `HUE_COLOURS` in `focusedCard` silently falls back to
+   * colourless for, and which the thumbnail's `aHue` attribute would carry to the GPU.
+   */
+  hueClassOf(index: number): number {
+    return this.records[index * STAR_RECORD_BYTES + POSITION_BYTES_IN_RECORD + 1]! & HUE_CLASS_MASK
+  }
+
+  /** The card's five-bit WUBRG colour identity (PRD 6.6.2, amendment A3), from the same byte. */
+  colourIdentityOf(index: number): number {
+    const byte = this.records[index * STAR_RECORD_BYTES + POSITION_BYTES_IN_RECORD + 1]!
+    return (byte >> COLOUR_IDENTITY_SHIFT) & COLOUR_IDENTITY_MASK
+  }
+
+  /** PRD 5.4.9's size class. The cross-fade threshold is a *drawn* size, so rarity is part of it. */
+  sizeClassOf(index: number): number {
+    return this.records[index * STAR_RECORD_BYTES + POSITION_BYTES_IN_RECORD + 2]!
   }
 
   /** A star's plane-local position, for the CPU motion mirror of PRD 8.5.7. */

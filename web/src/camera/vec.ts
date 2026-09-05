@@ -129,6 +129,25 @@ export function rotateY(out: MutVec3, a: Readonly<MutVec3>, angle: number): MutV
   return out
 }
 
+/**
+ * Rotate about the local +Z axis.
+ *
+ * A plane's disc lies in its local xy plane and its normal is local +z (PRD 8.6.2), so the spin of
+ * PRD 5.3.14 and the bounded shear of PRD 5.4.13 are both this — *not* {@link rotateY}, which is
+ * the multiverse's own rotation about world +Y. The two axes are only interchangeable for a plane
+ * whose tilt happens to lay its disc flat, which is why mixing them up survives every test that
+ * looks at a plane centre and shows up the moment a card is framed. See `./motion`.
+ */
+export function rotateZ(out: MutVec3, a: Readonly<MutVec3>, angle: number): MutVec3 {
+  const c = Math.cos(angle)
+  const s = Math.sin(angle)
+  const { x, y } = a
+  out.x = x * c - y * s
+  out.y = x * s + y * c
+  out.z = a.z
+  return out
+}
+
 /** Apply a unit quaternion `[x, y, z, w]` — the plane tilt of PRD 5.3.6. */
 export function applyQuat(
   out: MutVec3,

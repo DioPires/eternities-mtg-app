@@ -59,7 +59,7 @@ const DEFINES = [
   ['PT_TINT_TEXEL', 5],
 ] as const
 
-const DEFINE_BLOCK = DEFINES.map(
+export const DEFINE_BLOCK = DEFINES.map(
   ([name, value]) =>
     `#define ${name} ${
       name.endsWith('_TEXEL') || name.startsWith('KIND_') ? String(value) : glslFloat(value)
@@ -106,10 +106,12 @@ float hash01(ivec3 c) {
 `
 
 /**
- * The shared motion chunk. It appears in the star vertex shader and in the glow vertex shader, so
- * a glow always sits exactly where its plane's stars do.
+ * The shared motion chunk. It appears in the star vertex shader, in the glow vertex shader and —
+ * since Phase 3 — in the thumbnail layer's, so a glow and a card thumbnail always sit exactly where
+ * their plane's stars do. Exported for that third caller: a second copy of `starWorldPosition` is
+ * precisely the drift the file header exists to forbid.
  */
-const MOTION_GLSL = /* glsl */ `
+export const MOTION_GLSL = /* glsl */ `
 ${HASH_GLSL}
 uniform sampler2D uPlaneTable;
 uniform float uTime;
@@ -237,6 +239,8 @@ ${MOTION_GLSL}
 attribute vec3 aClass;   // planeIndex, colour byte, sizeClass  (0-255)
 attribute vec3 aStyle;   // brightness, twinklePhase, typeMask (0-255)
 attribute float aFilter; // PRD 8.5.1's uint8 filter mask, normalised: 1 passes, 0 fails
+/** PRD 5.5.3: 1 once this star's thumbnail is in the atlas. Until then the star never fades out. */
+attribute float aThumb;
 
 uniform vec3 uHues[7];
 uniform float uRaritySize[4];
@@ -247,6 +251,9 @@ uniform float uMinPixels;
 uniform float uMaxPixels;
 /** PRD 5.4.12: the hovered star brightens by 30%. -1 when nothing is hovered. */
 uniform float uHoverIndex;
+/** PRD 5.5.1's cross-fade band, in device pixels — the same numbers the thumbnail layer uses. */
+uniform float uThumbStartPx;
+uniform float uThumbFullPx;
 
 varying vec3 vColour;
 varying float vPickable;
@@ -290,11 +297,17 @@ void main() {
   float focus = mix(1.0, DUST_FOCUS_GAIN, fade.y);
   float hover = (uHoverIndex >= 0.0 && abs(float(gl_VertexID) - uHoverIndex) < 0.5) ? HOVER_GAIN : 1.0;
 
+  // PRD 5.5.1 and 5.5.4: the star cross-fades into its thumbnail as it grows past the band, and
+  // back out again on the way away. Timed by the drawn size above, which is camera distance and
+  // rarity, so the transition is never keyed to when an image arrived (PRD 7.3.4, 7.3.5).
+  float crossFade = smoothstep(uThumbStartPx, uThumbFullPx, pixels) * aThumb;
+
   // Byte 7 is packed (amendment A3): hue class in bits 0-2, colour identity in bits 3-7. Take
-  // the low three bits, or a mono-green star (byte 132) indexes uHues far past its seventh
-  // element. mod() rather than a bitwise and, because this compiles as GLSL ES 1.00.
-  int hue = int(mod(aClass.y + 0.5, 8.0));
-  vColour = uHues[hue] * (brightness * twinkle * dim * fade.x * focus * hover);
+  // the low three bits, or a mono-green star (byte 132) indexes uHues far past its seventh and
+  // last element.
+  int hue = int(aClass.y + 0.5) & 7;
+  vColour = uHues[hue]
+    * (brightness * twinkle * dim * fade.x * focus * hover * (1.0 - crossFade));
 #endif
 }
 `
