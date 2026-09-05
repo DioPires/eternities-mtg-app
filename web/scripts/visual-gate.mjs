@@ -337,6 +337,50 @@ function thinToBudget(frames, budget) {
 }
 
 /**
+ * A burst of `count` stills during `during()`, at the **drawing buffer's own resolution**.
+ *
+ * `Page.startScreencast` will not do this. Its `maxWidth`/`maxHeight` are honoured against the CSS
+ * viewport rather than the device frame, so the largest cast this page can produce is 1440x900 —
+ * two thirds of the 2160x1350 the renderer actually draws, and a resample of every star in it.
+ * `page.screenshot()` has no such ceiling: it returns the device frame. So criterion 5's evidence is
+ * a burst of real screenshots, kept as individual PNGs *and* assembled into an APNG, with each
+ * frame's true wall-clock gap as its delay.
+ *
+ * What this buys and what it costs, because both matter to the judgement: the pixels are the ones
+ * the GPU wrote, which is the whole point — aliasing shimmer is a per-pixel artefact and any
+ * downscale averages it away. But a screenshot takes ~100–200 ms, so the burst samples the motion
+ * far below frame rate. It is evidence about *what a star looks like*, not about cadence; the
+ * recording beside it carries the cadence.
+ */
+async function burst(page, dir, name, { count, gapMs = 0, during }) {
+  const frames = []
+  const shots = (async () => {
+    for (let i = 0; i < count; i += 1) {
+      const at = Date.now()
+      const png = await page.screenshot({ path: resolve(dir, `${name}-${String(i + 1).padStart(2, '0')}.png`) })
+      frames.push({ png: Buffer.from(png), at })
+      if (gapMs > 0) await sleep(gapMs)
+    }
+  })()
+  await Promise.all([shots, during ? during() : Promise.resolve()])
+
+  const withDelays = frames.map((frame, i) => ({
+    png: frame.png,
+    delayMs: i + 1 < frames.length ? frames[i + 1].at - frame.at : 120,
+  }))
+  const bytes = apng(withDelays)
+  const path = resolve(dir, `${name}.png`)
+  writeFileSync(path, bytes)
+  const ihdr = chunksOf(frames[0].png).find((c) => c.type === 'IHDR')
+  const size = `${ihdr.data.readUInt32BE(0)}x${ihdr.data.readUInt32BE(4)}`
+  const cadence = withDelays.slice(0, -1).reduce((sum, f) => sum + f.delayMs, 0) / Math.max(1, frames.length - 1)
+  console.log(
+    `  burst ${frames.length} stills at ${size} (${cadence.toFixed(0)} ms apart) -> ${name}-NN.png + ${name}.png ${(bytes.length / 1e6).toFixed(1)} MB`,
+  )
+  return { path, frames: frames.length, bytes: bytes.length, size, meanGapMs: Math.round(cadence) }
+}
+
+/**
  * Record the page for `seconds` while `during()` runs, and write an APNG.
  *
  * `Page.startScreencast` pushes a PNG per compositor frame, which at 60 Hz is far more than a
@@ -896,10 +940,13 @@ async function capture(args) {
       // camera move the product makes, so it is the best case the criterion has, and it is
       // uninterruptible by anything this script does. `scale: 1` is the drawing buffer 1:1 — gate
       // #1 judged this on half-size frames, which average away the single-pixel stars that shimmer.
-      console.log('  criterion 5 — the slow drift at the drawing buffer\'s own resolution')
+      console.log('  criterion 5 — the slow drift, at both resolutions')
       recordings.push(
-        await record(page, resolve(args.out, '5a-shimmer-attract-native.png'), { seconds: 5, fps: 10, scale: 1 }),
+        await record(page, resolve(args.out, '5a-shimmer-attract-cast.png'), { seconds: 5, fps: 10, scale: 1 }),
       )
+      // …and the same drift as real device-resolution frames, which the cast above cannot give:
+      // see `burst`. This is the one that answers the criterion.
+      recordings.push(await burst(page, args.out, '5a2-shimmer-attract-full', { count: 14 }))
       await shoot(page, args.out, '7b-attract-later')
 
       // PRD 5.3.23: any input cancels attract. Deliberate, so the stages below start from rest.
@@ -1048,13 +1095,23 @@ async function capture(args) {
 
     // ---- criterion 5: a slow camera move at plane level -------------------------------------
     if (wanted('shimmer')) {
-      console.log('\ncriterion 5 — a slow zoom at plane level, at the drawing buffer\'s own resolution')
+      console.log('\ncriterion 5 — a slow zoom at plane level')
       await flyToPlane(page, mid.slug)
       recordings.push(
-        await record(page, resolve(args.out, '5b-shimmer-slow-zoom-native.png'), {
+        await record(page, resolve(args.out, '5b-shimmer-slow-zoom-cast.png'), {
           seconds: 9,
           fps: 10,
           scale: 1,
+          during: () => wheel(page, 12, -120, 700),
+        }),
+      )
+      // The same move again, as device-resolution stills. Re-flown rather than shot during the cast
+      // above: a screenshot every ~150 ms while a screencast is running perturbs the cadence the
+      // cast is there to record, and each is cheap enough to take separately.
+      await flyToPlane(page, mid.slug)
+      recordings.push(
+        await burst(page, args.out, '5b2-shimmer-slow-zoom-full', {
+          count: 14,
           during: () => wheel(page, 12, -120, 700),
         }),
       )
