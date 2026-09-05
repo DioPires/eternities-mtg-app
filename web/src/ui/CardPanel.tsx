@@ -24,13 +24,22 @@ import type { ReactElement } from 'react'
 
 import { useFilters } from '../app/hooks'
 import {
-  HueClass,
+  COLOUR_LETTERS,
+  COLOUR_LETTER_BIT,
+  colourIdentityBits,
+  hueClassFromIdentity,
   printingPageUri,
   type CardRecord,
   type PlaneRecord,
   type PrintingTuple,
 } from '../data'
-import { HUE_LABEL, RARITY_LABEL, RARITY_OF_CLASS, isFilterActive } from '../filters/types'
+import {
+  COLOUR_LABEL,
+  HUE_LABEL,
+  RARITY_LABEL,
+  RARITY_OF_CLASS,
+  isFilterActive,
+} from '../filters/types'
 import { useStore } from '../store/store'
 
 const RARITY_CHAR_LABEL: Readonly<Record<string, string>> = {
@@ -41,33 +50,23 @@ const RARITY_CHAR_LABEL: Readonly<Record<string, string>> = {
 }
 
 /**
- * PRD 5.4.8's seven hue classes, from the colour identity letters the shard carries.
+ * The identity this panel names, as the five bits the star record and the filter both use.
  *
- * A second implementation of the pipeline's `hue_class_for`, because the shard hands this panel
- * the letters and not the packed byte. Exported so the shared test vector can pin the two
- * together: unasserted, a drift here mislabels a card's colour and nothing fails. The duplicate
- * goes when the exact-colour-filter leg moves this panel onto the record's own `colourIdentity`.
+ * This file used to hold a second implementation of the pipeline's `hue_class_for`, walking the
+ * shard's `ci` letters itself. It now goes letters → identity bits → class through
+ * `../data/colourByte`, so the sentence "Blue, Red · renders Multicolour" and the answer PRD
+ * 6.6.2's colour filter gives that same card are derived from one value and cannot disagree.
+ *
+ * Bits rather than the letters as written: the identity is a set, so the order is ours to choose,
+ * and WUBRG is the order Scryfall, the chip row and the star record all use.
  */
-export function hueClassOf(colourIdentity: string): HueClass {
-  if (colourIdentity.length === 0) return HueClass.Colourless
-  if (colourIdentity.length > 1) return HueClass.Multicolour
-  return (
-    { W: HueClass.White, U: HueClass.Blue, B: HueClass.Black, R: HueClass.Red, G: HueClass.Green }[
-      colourIdentity
-    ] ?? HueClass.Colourless
-  )
-}
-
-function colourIdentityText(colourIdentity: string): string {
-  const names: Readonly<Record<string, string>> = {
-    W: 'White',
-    U: 'Blue',
-    B: 'Black',
-    R: 'Red',
-    G: 'Green',
-  }
-  if (colourIdentity.length === 0) return 'Colourless'
-  return [...colourIdentity].map((letter) => names[letter] ?? letter).join(', ')
+function colourIdentityText(colourIdentity: number): string {
+  const names = COLOUR_LETTERS.filter(
+    (letter) => (colourIdentity & (1 << COLOUR_LETTER_BIT[letter]!)) !== 0,
+  ).map((letter) => COLOUR_LABEL[letter])
+  // PRD 6.6.2 again: an empty identity *is* colourless, and the chip row's word for it is the
+  // panel's word for it.
+  return names.length === 0 ? COLOUR_LABEL.C : names.join(', ')
 }
 
 function Face({
@@ -121,6 +120,7 @@ export function CardPanel({ card, plane, dimmed }: CardPanelProps): ReactElement
   // focused plane's own set list covers every printing first-printed here, which is the common case.
   const planeSet = active ? plane.sets.find((set) => set.id === active[1]) : undefined
   const setCode = activeSet?.code ?? planeSet?.code ?? null
+  const identity = colourIdentityBits(card.ci)
 
   return (
     <div className="panel-body">
@@ -131,8 +131,11 @@ export function CardPanel({ card, plane, dimmed }: CardPanelProps): ReactElement
         <div>
           <dt>Colour identity</dt>
           <dd>
-            {colourIdentityText(card.ci)}
-            <span className="muted"> · renders {HUE_LABEL[hueClassOf(card.ci)] ?? 'Colourless'}</span>
+            {colourIdentityText(identity)}
+            <span className="muted">
+              {' '}
+              · renders {HUE_LABEL[hueClassFromIdentity(identity)] ?? COLOUR_LABEL.C}
+            </span>
           </dd>
         </div>
         <div>

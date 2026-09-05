@@ -21,10 +21,13 @@ import {
   SHARD_SIZE,
   StarStreamReader,
   cardBackImageUri,
+  colourIdentityBits,
   decodeSets,
   decodeStars,
   float16ToNumber,
   hasBackImage,
+  hueClassFromIdentity,
+  packColourByte,
   imageUri,
   loadManifest,
   loadPlaneShard,
@@ -43,7 +46,6 @@ import {
   type SearchFile,
 } from '../src/data'
 import { StarGeometry } from '../src/scene/starfield/starGeometry'
-import { hueClassOf } from '../src/ui/CardPanel'
 
 const VECTOR_DIR = resolve(__dirname, '../../contract/test-vectors/v2')
 
@@ -141,10 +143,13 @@ describe('shared contract test vector', () => {
       expect((check.colourByte >> COLOUR_IDENTITY_SHIFT) & COLOUR_IDENTITY_MASK).toBe(
         check.identityMask,
       )
-      // The other half of the row: the identity *letters* map to the same class the pipeline's
-      // `hue_class_for` gave them. Python pins its side by byte equality; without this the only
-      // TypeScript implementation of that mapping is unasserted. (DEC-647 N2.)
-      expect(hueClassOf(check.colourIdentity)).toBe(check.hueClass)
+      // The encoder's side of the same byte, so the packing is pinned in both directions.
+      expect(packColourByte(check.hueClass, check.identityMask)).toBe(check.colourByte)
+      // The other half of the row: the identity *letters*. Python pins its side by byte equality;
+      // without these the TypeScript twins of `colour_identity_mask` and `hue_class_for` — which
+      // are what `CardPanel` now labels a card with — are unasserted. (DEC-647 N2.)
+      expect(colourIdentityBits(check.colourIdentity)).toBe(check.identityMask)
+      expect(hueClassFromIdentity(check.identityMask)).toBe(check.hueClass)
     }
     // A mono-coloured card sets exactly the bit its hue class names, so the shader's uHues
     // lookup and the 6.6.2 identity mask can never disagree about which colour a star is.
