@@ -108,6 +108,11 @@ export function segmentEndTime(name: string): number | null {
   return null
 }
 
+/** How long a named segment lasts, in seconds, or `null` for an unknown name. */
+export function segmentSeconds(name: string): number | null {
+  return BENCH_PATH.find((key) => key.name === name)?.seconds ?? null
+}
+
 /** Ease-in-out, the same curve PRD 5.7.3 specifies for a fly-to. */
 export function easeInOut(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2

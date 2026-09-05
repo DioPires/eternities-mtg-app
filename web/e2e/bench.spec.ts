@@ -78,7 +78,15 @@ test('/bench completes and emits valid JSON', async ({ page }) => {
 
   // Every segment of PRD 9.1.2's path is present. A segment that stopped being scheduled would
   // otherwise vanish silently from the summary and from the baseline it is compared against.
-  expect(bench.segments.map((segment) => segment.segment)).toEqual(SEGMENTS)
+  //
+  // A segment can also go missing by contributing no samples, which is what the settle rule in
+  // `BenchRunner.stillSettling` exists to prevent — on a slow enough rasteriser a fixed six-frame
+  // allowance swallowed whole segments. If this ever fails on a runner and not locally, check that
+  // first: `frames` will be small rather than zero.
+  expect(
+    bench.segments.map((segment) => segment.segment),
+    'a segment of the path contributed no samples, or stopped being scheduled',
+  ).toEqual(SEGMENTS)
   expect(bench.stars).toBeGreaterThan(0)
   expect(bench.planes).toBeGreaterThan(0)
 

@@ -33,6 +33,7 @@ import {
   anchorPlane,
   benchPose,
   segmentEndTime,
+  segmentSeconds,
   smallPlane,
   type BenchAnchors,
   type BenchPose,
@@ -46,8 +47,37 @@ import {
 const CAPACITY = 40000
 /** Frames discarded at the start of each segment, so a segment's numbers are its own. */
 const SETTLE_FRAMES = 6
+/**
+ * …but never for more than this share of the segment's own duration.
+ *
+ * A frame count is the right unit for settling — what is being waited out is the pipeline flushing
+ * the previous segment's work, which is measured in frames, not seconds. It is the wrong unit for
+ * *bounding* the wait. On the reference machine six frames is 9–50 ms out of a four-second segment
+ * and this cap is nowhere near binding. On a software rasteriser managing about a frame a second it
+ * is the entire segment, and the bench then reports a completed run with **zero** samples in it and
+ * an empty `segments` array — a result that looks like a result and is not one. CI caught exactly
+ * that on a two-core runner.
+ *
+ * 20% is chosen to be unreachable on any machine the numbers are meant for, so the reference
+ * baseline is untouched, while still guaranteeing every segment contributes samples.
+ */
+const SETTLE_MAX_FRACTION = 0.2
 /** The last chunk of `stars.bin` and its fade-in are not steady state. */
 const WARMUP_MS = 800
+
+/**
+ * Whether this frame is still settling into its segment, and so should not be recorded.
+ *
+ * Exported because it is the one part of the recording rule that can be reasoned about without a
+ * GPU, and `test/starfield.test.ts` pins both halves of the `&&`.
+ */
+export function stillSettling(
+  framesLeft: number,
+  segmentElapsedS: number,
+  segmentDurationS: number,
+): boolean {
+  return framesLeft > 0 && segmentElapsedS < SETTLE_MAX_FRACTION * segmentDurationS
+}
 
 export interface BenchSummary {
   readonly frames: number
@@ -183,6 +213,9 @@ export function BenchRunner({
     count: 0,
     settle: SETTLE_FRAMES,
     segment: '',
+    /** Time spent in the current segment, which bounds the settle above. */
+    segmentElapsed: 0,
+    segmentSeconds: BENCH_PATH[0]?.seconds ?? 0,
   }).current
   const frameMs = useMemo(() => new Float32Array(CAPACITY), [])
   const cpuMs = useMemo(() => new Float32Array(CAPACITY), [])
@@ -351,14 +384,17 @@ export function BenchRunner({
     if (pose.segment !== state.segment) {
       state.segment = pose.segment
       state.settle = SETTLE_FRAMES
+      state.segmentElapsed = 0
+      state.segmentSeconds = segmentSeconds(pose.segment) ?? 0
       driveSegment(pose.segment)
     }
+    state.segmentElapsed += delta
     camera.position.set(pose.px, pose.py, pose.pz)
     target.set(pose.tx, pose.ty, pose.tz)
     camera.lookAt(target)
     camera.updateMatrixWorld()
 
-    if (state.settle > 0) {
+    if (stillSettling(state.settle, state.segmentElapsed, state.segmentSeconds)) {
       state.settle -= 1
     } else if (state.count < CAPACITY) {
       frameMs[state.count] = delta * 1000
