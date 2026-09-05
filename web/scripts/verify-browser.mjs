@@ -104,6 +104,12 @@ import { fileURLToPath } from 'node:url'
 
 import puppeteer from 'puppeteer-core'
 
+import {
+  measureStatusPanel,
+  statusPanelFaults,
+  summariseStatusPanel,
+} from './lib/status-panel.mjs'
+
 const WEB_ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const CHROME_CANDIDATES = [
   process.env.CHROME_PATH,
@@ -210,12 +216,41 @@ function readRoster(dataset) {
   return { hash, planes: planes.length, labelled, shards, stars: manifest.counts.stars, realImages }
 }
 
+/** How much stderr the death notice carries. Enough for a vite stack trace, not a whole log. */
+const TAIL_LIMIT = 4000
+
+/**
+ * The preview server, plus the two things needed to diagnose it when it dies.
+ *
+ * `stdio` has always piped stderr and nothing has ever read it, so the server's own diagnostics
+ * went nowhere and a mid-run exit was invisible at the layer that caused it: the run carried on
+ * against a dead port and surfaced as an opaque puppeteer error at whatever step came next. That
+ * reads exactly like a regression in the step, which is the expensive way to be wrong. So stderr
+ * is drained and echoed, its tail is kept for the exit message, and the exit itself is announced.
+ *
+ * `stop()` rather than `child.kill()` at the call site, so the deliberate teardown at the end of
+ * a run is not reported as the death this is watching for. `stop()` is also all the caller gets:
+ * the child itself is not returned, so there is no second way to kill it.
+ */
 async function startPreview(dataset) {
   const child = spawn('pnpm', ['exec', 'vite', 'preview', '--port', '0', '--strictPort', 'false'], {
     cwd: WEB_ROOT,
     env: { ...process.env, ETERNITIES_DATASET: dataset },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
+  // A rolling tail, so a server that has been chattering for ten minutes still fits in the
+  // message and the last words are the ones kept. Bounded in characters rather than chunks: a
+  // chunk has no size limit, so a single vite stack trace arriving whole would have blown the
+  // message out however few of them were kept.
+  let tail = ''
+  child.stderr.setEncoding('utf8')
+  child.stderr.on('data', (chunk) => {
+    tail = (tail + chunk).slice(-TAIL_LIMIT)
+    process.stderr.write(`  [vite preview] ${chunk.replace(/\n(?=.)/g, '\n  [vite preview] ')}`)
+  })
+
+  let started = false
+  let stopping = false
   const url = await new Promise((resolvePromise, rejectPromise) => {
     const timer = setTimeout(() => rejectPromise(new Error('vite preview did not start')), 30_000)
     child.stdout.setEncoding('utf8')
@@ -223,15 +258,38 @@ async function startPreview(dataset) {
       const match = /(http:\/\/localhost:\d+)/.exec(chunk)
       if (match) {
         clearTimeout(timer)
+        started = true
         resolvePromise(match[1])
       }
     })
-    child.on('exit', (code) => {
+    child.on('exit', (code, signal) => {
+      if (started) return
       clearTimeout(timer)
-      rejectPromise(new Error(`vite preview exited with ${code}`))
+      rejectPromise(new Error(`vite preview exited with ${code}${signal ? ` (${signal})` : ''}`))
     })
   })
-  return { child, url }
+
+  child.on('exit', (code, signal) => {
+    if (stopping) return
+    console.error(
+      `\n  vite preview exited mid-run (code ${code}${signal ? `, signal ${signal}` : ''}). ` +
+        `Everything after this point is talking to a dead server, so the next failure is that ` +
+        `and not the step it lands in.` +
+        (tail.length > 0
+          ? `\n  Its last output:\n  ${tail.trimEnd().replace(/\n/g, '\n  ')}`
+          : ' It said nothing on stderr.'),
+    )
+  })
+
+  // No `child`: `stop()` is the only teardown that suppresses the death notice above, so handing
+  // back the raw kill handle would leave the one mistake `stop()` exists to prevent in reach.
+  return {
+    url,
+    stop: () => {
+      stopping = true
+      child.kill('SIGTERM')
+    },
+  }
 }
 
 /**
@@ -336,69 +394,17 @@ const pause = (ms) => new Promise((r) => setTimeout(r, ms))
 /**
  * The development readout is on screen, not merely in the DOM.
  *
- * Every other assertion in this file reads the panel's `textContent`, and `textContent` is happy
- * with a node that never paints. It was: for two phases both scenes asked for `class="overlay"`,
- * Phase 5's stylesheet had no such rule, and the panel laid out `position: static` after a canvas
- * that already fills `.app` — a viewport below the fold, on a `body` with `overflow: hidden`. The
- * whole suite stayed green through it. That is the class of defect a text-only assertion cannot
- * see, so this one is deliberately not about text.
- *
- * Three things are asked, because each catches a different way to be invisible:
- *
- *  - `checkVisibility` for `display: none`, `visibility: hidden`, zero opacity and an unrendered
- *    subtree — the failures that leave a box behind;
- *  - the intersection with the viewport, for the failure that actually happened: a laid-out,
- *    perfectly visible box positioned somewhere nobody can see;
- *  - `position`, because `static` is what put it there, and naming it makes the diagnosis obvious
- *    from the message alone.
- *
- * Occlusion is out of scope here: `pointer-events: none` takes the panel out of hit testing on
- * purpose (the harness clicks stars through this corner), so `elementsFromPoint` would report the
- * canvas whatever the panel is doing. The check is geometry and computed style, as PRD 9.3's
- * follow-up asks.
+ * The measurement and the four faults live in `lib/status-panel.mjs`, shared with
+ * `visual-gate.mjs`; see that file for what each one catches and why. All this adds is the
+ * disposition: here a fault fails the run, and only the first is reported, since the list is
+ * ordered so the first explains the rest.
  */
 async function verifyStatusPanelPaints(page, testid, label) {
-  const seen = await page.evaluate((id) => {
-    const node = document.querySelector(`[data-testid="${id}"]`)
-    if (!node) return null
-    const rect = node.getBoundingClientRect()
-    const style = getComputedStyle(node)
-    const width = Math.max(0, Math.min(rect.right, window.innerWidth) - Math.max(rect.left, 0))
-    const height = Math.max(0, Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0))
-    return {
-      rendered: node.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }),
-      box: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-      onScreen: { width, height },
-      position: style.position,
-      viewport: { width: window.innerWidth, height: window.innerHeight },
-    }
-  }, testid)
-
+  const seen = await measureStatusPanel(page, testid)
   check(seen !== null, `${label}: the status panel [data-testid="${testid}"] is not in the DOM`)
-  const where =
-    `${Math.round(seen.box.width)}x${Math.round(seen.box.height)} at ` +
-    `(${Math.round(seen.box.x)}, ${Math.round(seen.box.y)}) in a ` +
-    `${seen.viewport.width}x${seen.viewport.height} viewport, position:${seen.position}`
-  check(seen.rendered, `${label}: the status panel is in the DOM but does not render — ${where}`)
-  check(
-    seen.position !== 'static',
-    `${label}: the status panel is statically positioned, so it lays out after the canvas that ` +
-      `fills .app instead of over it — ${where}. Its textContent still reads, which is why only ` +
-      `this assertion can see it. Check the .scene-status rule in styles.css.`,
-  )
-  // A tenth of the viewport in each axis: enough that a stray sliver poking in from off screen is
-  // not mistaken for a panel that can be read, and far below anything the real rule produces.
-  const floorW = seen.viewport.width / 10
-  const floorH = seen.viewport.height / 10
-  check(
-    seen.onScreen.width >= floorW && seen.onScreen.height >= floorH,
-    `${label}: the status panel is positioned off screen — only ${Math.round(seen.onScreen.width)}x` +
-      `${Math.round(seen.onScreen.height)} of it is inside the viewport (${where})`,
-  )
-  console.log(
-    `  the status panel paints: ${where}, ${Math.round(seen.onScreen.width)}x` +
-      `${Math.round(seen.onScreen.height)} of it on screen`,
-  )
+  const faults = statusPanelFaults(seen)
+  check(faults.length === 0, `${label}: ${faults[0]}`)
+  console.log(`  ${summariseStatusPanel(seen)}`)
 }
 
 /** The shell is ready when `sets.bin` has landed, which is what enables the random control. */
@@ -1874,11 +1880,13 @@ async function verifyStarField(page, url, allowSoftware, problems) {
   // the end and the per-plane fade-in of PRD 6.8.1 fired for each one.
   await page.waitForFunction(
     () =>
-      /\(complete\)/.test(document.querySelector('[data-testid="scene-status"]')?.textContent ?? ''),
+      /\(complete\)/.test(
+        document.querySelector('[data-testid="phase0-scene-state"]')?.textContent ?? '',
+      ),
     { timeout: 120_000 },
   )
   const scene = await page.evaluate(
-    () => document.querySelector('[data-testid="scene-status"]')?.textContent ?? '',
+    () => document.querySelector('[data-testid="phase0-scene-state"]')?.textContent ?? '',
   )
   console.log(`  scene: ${scene.replace(/\s+/g, ' ').trim().slice(0, 160)}`)
 
@@ -1894,10 +1902,7 @@ async function verifyStarField(page, url, allowSoftware, problems) {
       `${selfCheck.checked} sampled stars a mean of ${selfCheck.meanOffsetPx}px ` +
       `(max ${selfCheck.maxOffsetPx}px, tolerance ${selfCheck.tolerancePx}px) from the pixel ` +
       `the mirror predicted; ${selfCheck.unmeasured} not in window, of which ` +
-      `${selfCheck.unexplained} not explained by a nearer star` +
-      (selfCheck.unexplainedRows.length > 0
-        ? ` (plane rows ${selfCheck.unexplainedRows.map(([row, n]) => `${row}x${n}`).join(' ')})`
-        : ''),
+      `${selfCheck.unexplained} not explained by a nearer star`,
   )
   console.log(
     `    of those ${selfCheck.measured} the pointer would have selected ${selfCheck.agreed} ` +
@@ -1905,8 +1910,18 @@ async function verifyStarField(page, url, allowSoftware, problems) {
       `${selfCheck.positionMode} positions, buffer ${selfCheck.buffer.join('x')}, ` +
       `${selfCheck.spriteFloorPx}px pick sprite)`,
   )
+  const byRow = (entries) => entries.map(([row, n]) => `${row}x${n}`).join(' ')
+  console.log(`    samples per plane row: ` + byRow(selfCheck.sampledRows))
+  // Both numerators, not just the one the verdict reads. `unexplained` is what `darkRowsOf` judges
+  // and is the right thing for a pass/fail; `unmeasured` is raw darkness, which is the column the
+  // ladder tables in `docs/star-renderer.md` are written in and the number that shows production's
+  // `dominaria` going 96% dark on a clean build. Printing only the verdict's tally left the other
+  // reproducible solely through `selfcheck-measure.mjs`, so a doc table could not be checked against
+  // a plain run. Empty lists print as `none` rather than vanishing: an absent line reads as an
+  // omission, and on a green run "none unexplained" is the result worth seeing.
+  console.log(`    dark samples per plane row: ` + (byRow(selfCheck.unmeasuredRows) || 'none'))
   console.log(
-    `    samples per plane row: ` + selfCheck.sampledRows.map(([row, n]) => `${row}x${n}`).join(' '),
+    `    of those, unexplained by a nearer star: ` + (byRow(selfCheck.unexplainedRows) || 'none'),
   )
   // The one bucket still dropped before `checked` and `sampledRows`, so the one place the
   // absorption DEC-625 closed could re-open. Printed on every run, including green ones, because
@@ -2032,7 +2047,7 @@ async function verify(dataset, allowSoftware, shots) {
     stdio: 'inherit',
   })
 
-  const { child, url } = await startPreview(dataset)
+  const { url, stop } = await startPreview(dataset)
   // The same launch `bench.mjs` uses. This check is cited as the mitigation for PRD risk 6 and for
   // driver variance, and it cannot say anything about driver variance from a software rasteriser:
   // the GPU self-check has to run on a GPU. `--enable-unsafe-swiftshader` stays only so that a
@@ -2085,7 +2100,7 @@ async function verify(dataset, allowSoftware, shots) {
     )
   } finally {
     await browser.close()
-    child.kill('SIGTERM')
+    stop()
   }
 }
 

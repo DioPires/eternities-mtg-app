@@ -1226,6 +1226,12 @@ kbd {
   background: var(--surface-glass);
   font-size: var(--text-sm);
   line-height: var(--leading-tight);
+  /* On the panel rather than on `li`, so it is inherited by every line in the readout. `overflow`
+     is `hidden` on both axes, so anything that does not wrap is lost silently; the readout is a
+     `<li>` today, but the day an `<h1>` or `<p>` here carries an unbroken token — a hash, a URL, a
+     slug — it should wrap too. `verify-browser.mjs` checks only for vertical truncation, and this
+     is what makes the horizontal half of that argument true rather than nearly true. */
+  overflow-wrap: anywhere;
   pointer-events: none;
 }
 
@@ -1249,8 +1255,6 @@ kbd {
    column jitter horizontally as the digits change width. */
 .scene-status li {
   font-variant-numeric: tabular-nums;
-  /* A camera readout is one long line of numbers. Wrapping it is better than clipping it. */
-  overflow-wrap: anywhere;
 }
 
 .scene-status .ok {

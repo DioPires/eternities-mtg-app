@@ -282,6 +282,12 @@ Two things to read the table with:
 
 A printing is a fixed tuple `[id, setId, rarityChar, imageTs, collectorNumber]`, ordered by release date — the planet order of PRD 5.6.7. `rarityChar` is one of `c u r m` (already normalised per PRD 4.8).
 
+`imageTs` moves on Scryfall's schedule rather than the product's, so a refresh that changes nothing
+a user could see still rewrites the shards that contain those cards. That churn was measured and
+deliberately left alone — see [`decisions/imagets-churn.md`](decisions/imagets-churn.md), which also
+records the trigger for revisiting it and the rule that any replacement rides an existing contract
+bump rather than causing one.
+
 **Image and page URIs are derived, not stored.** Storing three ~90-character URIs per printing costs ~270 bytes against ~50 for the key, and the derivation was verified against live Scryfall data in Phase 0 (`docs/scryfall-policy.md`):
 
 ```

@@ -21,6 +21,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  darkRowsOf,
   findDarkRows,
   pixelForNdc,
   planeRowRuns,
@@ -144,6 +145,70 @@ describe('findDarkRows', () => {
       [4, 12],
     ])
     expect(findDarkRows(sampled, unmeasured).map(([row]) => row)).toEqual([3, 0, 4])
+  })
+})
+
+/**
+ * Which tally the rule above is applied to — the assertion the tests around it did not make.
+ *
+ * `findDarkRows` was pinned thoroughly and its call site was not, so mutating
+ * `findDarkRows(sampledRows, unexplainedRows)` to `findDarkRows(sampledRows, unmeasuredRows)` in
+ * `sample` left all 437 tests green (DEC-663, N1). That choice is the entire finding of DEC-634:
+ * production's `dominaria` is legitimately 96% occluded, so on raw darkness there is no threshold
+ * that passes a clean build and still catches a displaced row. It was defended by a comment and by a
+ * `verify-browser --dataset production` run, which no CI job performs.
+ *
+ * `darkRowsOf` exists so the choice happens somewhere a test can reach, and these are that test. The
+ * numbers are the real `dominaria` measurements, clean and injected.
+ */
+describe('darkRowsOf', () => {
+  const entries = (e: readonly (readonly [number, number])[]) => e
+
+  it('does not judge production row 19 dark, though 23 of its 24 samples were', () => {
+    // `dominaria`: 6266 stars, 21.9% of the production field, 23 of 24 samples unlocatable at a 2px
+    // pick sprite on a clean build — and every one of those 23 had a nearer star in the window to
+    // account for it. Raw darkness is 0.958 here, so reading `unmeasuredRows` red-lights the
+    // shipping dataset; reading `unexplainedRows` correctly finds nothing. This is the assertion
+    // that dies if the numerator is ever swapped back.
+    expect(
+      darkRowsOf({
+        sampledRows: entries([[19, 24]]),
+        unmeasuredRows: entries([[19, 23]]),
+        unexplainedRows: entries([]),
+      }),
+    ).toEqual([])
+  })
+
+  it('judges the same row dark once nothing accounts for it', () => {
+    // The identical row with a 400-unit mirror error injected: still 24 samples, still dark, but now
+    // the pick windows hold nothing the mirror puts nearer. The two cases differ only in the tally
+    // that is *not* the denominator, which is what makes the pair a pin rather than one example.
+    expect(
+      darkRowsOf({
+        sampledRows: entries([[19, 24]]),
+        unmeasuredRows: entries([[19, 24]]),
+        unexplainedRows: entries([[19, 24]]),
+      }),
+    ).toEqual([[19, 24, 24]])
+  })
+
+  it('applies the same floor and rate it does through findDarkRows', () => {
+    // Not a second rule. `fixture-scale`'s three small planes stay unjudged however dark, and the
+    // rate still denies a displaced row an exemption for one straggler.
+    expect(
+      darkRowsOf({
+        sampledRows: entries([[7, 9]]),
+        unmeasuredRows: entries([[7, 9]]),
+        unexplainedRows: entries([[7, 9]]),
+      }),
+    ).toEqual([])
+    expect(
+      darkRowsOf({
+        sampledRows: entries([[0, 24]]),
+        unmeasuredRows: entries([[0, 24]]),
+        unexplainedRows: entries([[0, 20]]),
+      }),
+    ).toEqual([[0, 20, 24]])
   })
 })
 
