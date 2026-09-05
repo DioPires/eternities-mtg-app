@@ -15,6 +15,7 @@ from typing import Final
 from ..contract.enums import (
     BLIND_ETERNITIES_SLUG,
     HueClass,
+    colour_identity_mask,
     hue_class_for,
     size_class_for,
     type_mask_for,
@@ -159,6 +160,7 @@ def build_dataset(
                     z=position[2],
                     plane_index=index,
                     hue=hue,
+                    colour_identity=colour_identity_mask(row.detail.colour_identity),
                     size=card.rarity,
                     brightness=layout.brightness_for(len(row.printings), cap),
                     twinkle_phase=rng.integer(0, 255, row.oracle_id, "twinkle"),

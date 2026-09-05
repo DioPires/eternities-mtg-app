@@ -12,9 +12,10 @@ from .enums import (
     CONTRACT_VERSION,
     STAR_RECORD_BYTES,
     BinaryKind,
-    HueClass,
     SetsSection,
     SizeClass,
+    pack_colour_byte,
+    unpack_colour_byte,
 )
 from .models import StarRecord
 
@@ -64,7 +65,7 @@ def encode_stars(stars: Sequence[StarRecord]) -> bytes:
                 s.y,
                 s.z,
                 _u8(s.plane_index, "planeIndex"),
-                _u8(int(s.hue), "hueClass"),
+                _u8(pack_colour_byte(s.hue, s.colour_identity), "colour"),
                 _u8(int(s.size), "sizeClass"),
                 _u8(s.brightness, "brightness"),
                 _u8(s.twinkle_phase, "twinklePhase"),
@@ -86,16 +87,18 @@ def decode_stars(data: bytes | bytearray | memoryview) -> list[StarRecord]:
 
     out: list[StarRecord] = []
     for i in range(count):
-        x, y, z, plane, hue, size, brightness, phase, mask = _STAR.unpack_from(
+        x, y, z, plane, colour, size, brightness, phase, mask = _STAR.unpack_from(
             data, BINARY_HEADER_BYTES + i * STAR_RECORD_BYTES
         )
+        hue, identity = unpack_colour_byte(colour)
         out.append(
             StarRecord(
                 x=x,
                 y=y,
                 z=z,
                 plane_index=plane,
-                hue=HueClass(hue),
+                hue=hue,
+                colour_identity=identity,
                 size=SizeClass(size),
                 brightness=brightness,
                 twinkle_phase=phase,

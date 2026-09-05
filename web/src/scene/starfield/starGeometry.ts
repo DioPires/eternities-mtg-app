@@ -25,7 +25,12 @@ import {
 } from 'three'
 
 import { float16ToNumber } from '../../data/decode'
-import { STAR_RECORD_BYTES } from '../../data/types'
+import {
+  COLOUR_IDENTITY_MASK,
+  COLOUR_IDENTITY_SHIFT,
+  HUE_CLASS_MASK,
+  STAR_RECORD_BYTES,
+} from '../../data/types'
 
 /**
  * PRD risk 6's named mitigation. `float16` is the default and halves the position buffer;
@@ -217,9 +222,22 @@ export class StarGeometry {
     return this.records[index * STAR_RECORD_BYTES + POSITION_BYTES_IN_RECORD]!
   }
 
-  /** PRD 5.4.8's hue class, for the thumbnail rim glow of PRD 5.5.2. */
+  /**
+   * PRD 5.4.8's hue class, for the thumbnail rim glow of PRD 5.5.2.
+   *
+   * Masked, because this reads the record bytes directly rather than through `decodeStars`, and
+   * byte 7 packs the colour identity into bits 3-7 (contract §5, amendment A3). Unmasked, a
+   * mono-green star answers 132 — which `HUE_COLOURS` in `focusedCard` silently falls back to
+   * colourless for, and which the thumbnail's `aHue` attribute would carry to the GPU.
+   */
   hueClassOf(index: number): number {
-    return this.records[index * STAR_RECORD_BYTES + POSITION_BYTES_IN_RECORD + 1]!
+    return this.records[index * STAR_RECORD_BYTES + POSITION_BYTES_IN_RECORD + 1]! & HUE_CLASS_MASK
+  }
+
+  /** The card's five-bit WUBRG colour identity (PRD 6.6.2, amendment A3), from the same byte. */
+  colourIdentityOf(index: number): number {
+    const byte = this.records[index * STAR_RECORD_BYTES + POSITION_BYTES_IN_RECORD + 1]!
+    return (byte >> COLOUR_IDENTITY_SHIFT) & COLOUR_IDENTITY_MASK
   }
 
   /** PRD 5.4.9's size class. The cross-fade threshold is a *drawn* size, so rarity is part of it. */

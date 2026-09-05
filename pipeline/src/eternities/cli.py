@@ -207,8 +207,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     fixtures_cmd.set_defaults(func=_cmd_fixtures)
 
-    vector_cmd = sub.add_parser("test-vector", help="regenerate contract/test-vectors/v1")
-    vector_cmd.add_argument("--out", default=str(REPO_ROOT / "contract" / "test-vectors" / "v1"))
+    vector_cmd = sub.add_parser("test-vector", help="regenerate contract/test-vectors/v2")
+    vector_cmd.add_argument("--out", default=str(REPO_ROOT / "contract" / "test-vectors" / "v2"))
     vector_cmd.set_defaults(func=_cmd_test_vector)
 
     args = parser.parse_args(argv)

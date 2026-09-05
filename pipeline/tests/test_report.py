@@ -26,6 +26,7 @@ import pytest
 from conftest import appendices, printing, scry_set, set_entry
 
 from eternities.contract import write_dataset
+from eternities.contract.enums import CONTRACT_VERSION
 from eternities.pipeline.assemble import CardInput, build_dataset
 from eternities.pipeline.records import CardDetail, FaceDetail
 from eternities.pipeline.report import (
@@ -339,5 +340,71 @@ def test_the_previous_run_is_the_latest_one_not_the_largest_hash(tmp_path: Path)
 
     found = load_previous_planes(tmp_path, exclude="")
     assert found is not None
-    assert found[0] == only.name, "the lexicographically larger but older directory won"
-    assert diff_planes(data.dataset, found[1]) == []
+    assert found.name == only.name, "the lexicographically larger but older directory won"
+    assert found.planes is not None
+    assert diff_planes(data.dataset, found.planes) == []
+
+
+def _rewrite_manifest(directory: Path, **fields: object) -> None:
+    manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
+    manifest.update(fields)
+    (directory / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+
+def test_a_predecessor_under_an_older_contract_reads_as_unreadable_not_absent(tmp_path: Path):
+    """DEC-647 B1. The version skip used to `continue`, so the loader returned `None` — the same
+    answer as "no production run has ever been built". That dropped `previousRun` from the manifest
+    and put "First production run" into a report for a run that was at least the third.
+
+    The predecessor is still the predecessor. Only the diff is lost.
+    """
+    _report_input(tmp_path)  # writes the one production directory this reads back
+    (only,) = [d for d in tmp_path.iterdir() if d.is_dir()]
+    _rewrite_manifest(only, contractVersion=CONTRACT_VERSION - 1)
+    # The v1 layout is not merely different, it is undecodable by this build: prove the loader
+    # never reaches for the bytes by removing the file it would have had to read.
+    (only / "sets.bin").unlink()
+
+    found = load_previous_planes(tmp_path, exclude="")
+
+    assert found is not None, "an unreadable predecessor is not an absent one"
+    assert found.name == only.name
+    assert found.planes is None
+    assert found.contract_version == str(CONTRACT_VERSION - 1)
+
+
+def test_a_same_version_predecessor_is_still_found_and_diffed(tmp_path: Path):
+    """The other half of DEC-647 B2: the guard must not swallow the runs it is not about.
+
+    Without this, a `contractVersion` written as a string — or the key renamed — would skip every
+    predecessor forever, and nothing would fail.
+    """
+    data = _report_input(tmp_path)
+    (only,) = [d for d in tmp_path.iterdir() if d.is_dir()]
+    assert (
+        json.loads((only / "manifest.json").read_text(encoding="utf-8"))["contractVersion"]
+        == CONTRACT_VERSION
+    )
+
+    found = load_previous_planes(tmp_path, exclude="")
+
+    assert found is not None
+    assert found.contract_version is None, "the current contract is not a mismatch"
+    assert found.planes is not None
+    assert diff_planes(data.dataset, found.planes) == []
+
+
+def test_a_predecessor_under_an_older_contract_does_not_claim_to_be_the_first(tmp_path: Path):
+    """The report half of DEC-647 B1: 9.2.3 and §4.9.2 both have to say what actually happened."""
+    data = _report_input(tmp_path)
+    data.previous_run = "fe74a34ff803574b"
+    data.previous_run_contract_version = "1"
+    data.plane_changes = []
+
+    text = render(data)
+
+    assert "no previous production run to compare against" not in text
+    assert "First production run" not in text
+    assert "8.8.3 removed" not in text, "the artefacts are present; this is not the pruned case"
+    assert "`contractVersion` 1" in text
+    assert "not computed — this run follows `fe74a34ff803574b`" in text

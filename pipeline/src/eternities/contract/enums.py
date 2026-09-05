@@ -5,11 +5,14 @@ from __future__ import annotations
 from enum import IntEnum, StrEnum
 from typing import Final
 
-CONTRACT_VERSION: Final = 1
-"""Bumped only for a byte-layout, section-id, enum-value or filename change."""
+CONTRACT_VERSION: Final = 2
+"""Bumped only for a byte-layout, section-id, enum-value or filename change.
 
-PIPELINE_VERSION: Final = "0.3.0"
-"""Bumped when a field is added, per docs/data-contract.md §10. 0.3.0 adds `previousRun`."""
+v2 is amendment A3: star-record byte 7 packs the colour identity into the hue class's spare bits.
+"""
+
+PIPELINE_VERSION: Final = "0.4.0"
+"""Bumped when a field is added, per docs/data-contract.md §10. 0.4.0 adds `colourIdentity`."""
 
 STAR_RECORD_BYTES: Final = 12
 BINARY_HEADER_BYTES: Final = 16
@@ -39,6 +42,28 @@ class HueClass(IntEnum):
     GREEN = 4
     MULTICOLOUR = 5
     COLOURLESS = 6
+
+
+class ColourBit(IntEnum):
+    """Bit index in the star record's colour-identity mask (PRD 6.6.2, amendment A3).
+
+    Deliberately the same indices as :class:`HueClass`'s five mono values, so a mono-coloured
+    card satisfies ``identity == 1 << hue`` and the two fields can be cross-checked.
+    """
+
+    WHITE = 0
+    BLUE = 1
+    BLACK = 2
+    RED = 3
+    GREEN = 4
+
+
+HUE_CLASS_MASK: Final = 0b0000_0111
+"""Byte 7, bits 0-2: the :class:`HueClass`. Seven values, so three bits."""
+
+COLOUR_IDENTITY_SHIFT: Final = 3
+COLOUR_IDENTITY_MASK: Final = 0b0001_1111
+"""Byte 7, bits 3-7: the five-bit WUBRG identity, read after shifting down."""
 
 
 class SizeClass(IntEnum):
@@ -151,6 +176,14 @@ _COLOUR_TO_HUE: Final[dict[str, HueClass]] = {
     "G": HueClass.GREEN,
 }
 
+_COLOUR_TO_BIT: Final[dict[str, ColourBit]] = {
+    "W": ColourBit.WHITE,
+    "U": ColourBit.BLUE,
+    "B": ColourBit.BLACK,
+    "R": ColourBit.RED,
+    "G": ColourBit.GREEN,
+}
+
 TYPE_KEYWORDS: Final[tuple[tuple[str, CardType], ...]] = (
     ("creature", CardType.CREATURE),
     ("instant", CardType.INSTANT),
@@ -171,6 +204,37 @@ def hue_class_for(colour_identity: str) -> HueClass:
     if len(set(letters)) > 1:
         return HueClass.MULTICOLOUR
     return _COLOUR_TO_HUE[letters[0]]
+
+
+def colour_identity_mask(colour_identity: str) -> int:
+    """Map a colour-identity string such as ``"WU"`` to its five-bit WUBRG mask (PRD 6.6.2).
+
+    Colourless is 0, which is why the filter needs the hue class as well: 0 is both "no colours"
+    and "the field was never written", and only ``hueClass == COLOURLESS`` distinguishes them.
+    """
+    mask = 0
+    for letter in colour_identity.upper():
+        bit = _COLOUR_TO_BIT.get(letter)
+        if bit is not None:
+            mask |= 1 << bit
+    return mask
+
+
+def pack_colour_byte(hue: HueClass, identity: int) -> int:
+    """Byte 7 of the star record: hue class in bits 0-2, colour identity in bits 3-7."""
+    if not 0 <= int(hue) <= HUE_CLASS_MASK:
+        raise ValueError(f"hue class {int(hue)} does not fit in three bits")
+    if not 0 <= identity <= COLOUR_IDENTITY_MASK:
+        raise ValueError(f"colour identity {identity} does not fit in five bits")
+    return int(hue) | (identity << COLOUR_IDENTITY_SHIFT)
+
+
+def unpack_colour_byte(value: int) -> tuple[HueClass, int]:
+    """Inverse of :func:`pack_colour_byte`."""
+    return (
+        HueClass(value & HUE_CLASS_MASK),
+        (value >> COLOUR_IDENTITY_SHIFT) & COLOUR_IDENTITY_MASK,
+    )
 
 
 def size_class_for(rarity: str) -> SizeClass:

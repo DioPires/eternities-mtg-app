@@ -60,7 +60,7 @@ web/                      Vite, React, TypeScript strict, react-three-fiber, Zus
                           Phase 3 folds them into the shell's scene.
   public/data/<hash>/     Committed artefacts, immutable, content-hashed.
   scripts/                Budget check, vercel.json generation, browser verification.
-contract/test-vectors/v1/ The shared byte-level test vector. Both languages assert against it.
+contract/test-vectors/v2/ The shared byte-level test vector. Both languages assert against it.
 docs/                     The contract and policy documents above.
 ```
 

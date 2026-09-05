@@ -20,6 +20,9 @@ class StarRecord:
     z: float
     plane_index: int
     hue: HueClass
+    #: Five-bit WUBRG mask, sharing byte 7 with ``hue``. No default on purpose: a silently
+    #: zeroed identity reads as colourless and would dim real cards under the 6.6.2 filter.
+    colour_identity: int
     size: SizeClass
     brightness: int
     twinkle_phase: int

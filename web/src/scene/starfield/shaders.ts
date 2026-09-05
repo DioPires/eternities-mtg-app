@@ -236,7 +236,7 @@ export const STAR_VERTEX_SHADER = /* glsl */ `
 ${DEFINE_BLOCK}
 ${MOTION_GLSL}
 
-attribute vec3 aClass;   // planeIndex, hueClass, sizeClass  (0-255)
+attribute vec3 aClass;   // planeIndex, colour byte, sizeClass  (0-255)
 attribute vec3 aStyle;   // brightness, twinklePhase, typeMask (0-255)
 attribute float aFilter; // PRD 8.5.1's uint8 filter mask, normalised: 1 passes, 0 fails
 /** PRD 5.5.3: 1 once this star's thumbnail is in the atlas. Until then the star never fades out. */
@@ -302,7 +302,11 @@ void main() {
   // rarity, so the transition is never keyed to when an image arrived (PRD 7.3.4, 7.3.5).
   float crossFade = smoothstep(uThumbStartPx, uThumbFullPx, pixels) * aThumb;
 
-  vColour = uHues[int(aClass.y + 0.5)]
+  // Byte 7 is packed (amendment A3): hue class in bits 0-2, colour identity in bits 3-7. Take
+  // the low three bits, or a mono-green star (byte 132) indexes uHues far past its seventh and
+  // last element.
+  int hue = int(aClass.y + 0.5) & 7;
+  vColour = uHues[hue]
     * (brightness * twinkle * dim * fade.x * focus * hover * (1.0 - crossFade));
 #endif
 }
