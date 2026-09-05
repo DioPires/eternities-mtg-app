@@ -117,16 +117,43 @@ def test_byte_identical_plane_move_is_reported(tmp_path: Path, capsys: Any) -> N
     assert "Test Card: alara -> abyss" in out
 
 
-def test_plane_move_outranks_a_field_change(tmp_path: Path, capsys: Any) -> None:
-    """A move that also edits the card is still a move. Loudest bucket wins."""
+def test_plane_move_does_not_hide_a_field_change(tmp_path: Path, capsys: Any) -> None:
+    """DEC-673 N1: a move that also edits the card is reported as both, not just the louder one.
+
+    Until N1 the plane-move branch ended the comparison, so the rename here left the field row
+    reading zero. `cards changed` counts oracle ids, so the card is still counted once across the
+    two rows it now appears in.
+    """
     old = write_dataset(tmp_path / "old", {"alara": [card()], "abyss": []})
     new = write_dataset(tmp_path / "new", {"alara": [], "abyss": [card(name="Renamed Card")]})
 
     found, _ = buckets(capsys, old, new)
 
     assert found["plane"] == 1
-    assert found["field"] == 0
+    assert found["field"] == 1
     assert found["changed"] == 1
+
+
+def test_plane_move_does_not_hide_a_printing_change(tmp_path: Path, capsys: Any) -> None:
+    """DEC-673 N1, the case that motivated it.
+
+    `printing changed otherwise` is the row the runbook tells the operator to read, and the runbook
+    also tells them every `card changed plane` row should trace to an appendix edit they made. In
+    the run where it does trace, they wave the move through — so a genuine Scryfall anomaly on that
+    same card must not be riding along in a row that reads zero.
+    """
+    moved = card()
+    odd = card(p=[["printing-1", 99, "c", 1783903215, "1"]])
+    old = write_dataset(tmp_path / "old", {"alara": [moved], "abyss": []})
+    new = write_dataset(tmp_path / "new", {"alara": [], "abyss": [odd]})
+
+    found, out = buckets(capsys, old, new)
+
+    assert found["plane"] == 1
+    assert found["printing_other"] == 1
+    # The move is a real move and the anomaly is a real anomaly; neither is invented by the other.
+    assert [found[k] for k in ("changed", "field", "cache_buster")] == [1, 0, 0]
+    assert "Test Card: alara -> abyss" in out
 
 
 def test_field_change_does_not_hide_a_printing_change(tmp_path: Path, capsys: Any) -> None:
@@ -164,13 +191,84 @@ def test_duplicate_oracle_id_is_reported(tmp_path: Path, capsys: Any) -> None:
 
     With the slug now load-bearing, a card in two shards at once could otherwise read as a plane
     move that never happened.
+
+    DEC-673 N5 puts this on **stdout**. The runbook has the operator paste the classifier output
+    into the pull request; on stderr a redirect carried the phantom move and dropped the warning
+    that disqualifies it.
     """
     root = write_dataset(tmp_path / "one", {"alara": [card()], "abyss": [card()]})
 
     slug, _ = classifier.load_shards(root)["card-1"]
 
     assert slug == "alara"  # sorted order: abyss loads first, alara wins
-    assert "appears in both abyss and alara" in capsys.readouterr().err
+    captured = capsys.readouterr()
+    assert "appears in both abyss and alara" in captured.out
+    assert captured.err == ""
+
+
+def test_duplicate_is_reported_beside_the_plane_move_it_disqualifies(
+    tmp_path: Path, capsys: Any
+) -> None:
+    """DEC-673 N5, through `classify` rather than `load_shards`.
+
+    The dangerous duplicate is one in a shard sorting *after* the true one, because that is when
+    last-shard-wins flips the answer and invents the move. Both must reach the same stream, and the
+    warning has to come after the row it is about or a reader who stops at the list never sees it.
+    """
+    old = write_dataset(tmp_path / "old", {"alara": [card()], "amonkhet": []})
+    # `card-1` now sits in both shards; `amonkhet` sorts last, so it takes the card.
+    new = write_dataset(tmp_path / "new", {"alara": [card()], "amonkhet": [card()]})
+
+    found, out = buckets(capsys, old, new)
+
+    assert found["plane"] == 1  # the phantom move
+    assert capsys.readouterr().err == ""
+    assert "appears in both alara and amonkhet" in out
+    # The warning is useless to an operator who is not told what it costs them, so pin the reason
+    # and not just the message.
+    assert "duplicate oracle ids (1) — each can fake a plane move above" in out
+    # After the move it disqualifies, not before it and not on another stream.
+    assert out.index("Test Card: alara -> amonkhet") < out.index("appears in both")
+
+
+def test_cache_buster_bucket_excludes_a_card_whose_fields_also_moved(
+    tmp_path: Path, capsys: Any
+) -> None:
+    """DEC-673 N3: the `not fields_changed` guard, which is what makes the accounting safe.
+
+    A card that was re-stamped *and* edited is not "cache-buster only" — but its tuples are still
+    real cache-buster tuples and must stay in the tuple total, which is the whole point of counting
+    tuples separately from cards. Without the guard this card lands in both rows and the bucket
+    entries outnumber the changed cards.
+    """
+    old = write_dataset(tmp_path / "old", {"alara": [card()]})
+    both = card(t="Enchantment", p=[["printing-1", 7, "c", 1783999999, "1"]])
+    new = write_dataset(tmp_path / "new", {"alara": [both]})
+
+    found, out = buckets(capsys, old, new)
+
+    assert found["field"] == 1
+    assert found["cache_buster"] == 0
+    # The tuple still counts, on the same row whose card count excludes it.
+    assert re.search(r"image cache-buster only:\s+0 card\(s\), 1 printing tuple\(s\)", out)
+    assert found["changed"] == 1
+
+
+def test_shard_without_a_slug_falls_back_to_the_file_name(tmp_path: Path) -> None:
+    """DEC-673 N4: the `<slug>.<n>.json` fallback, which no real dataset has ever exercised.
+
+    All 93 shards in both the old and new 2026-09-05 datasets carry a `slug` equal to their file
+    name stem, so this is belt-and-braces against a contract that has not moved. It is also the
+    only thing standing between a slug-less shard and every card in it reading as a plane move.
+    """
+    root = tmp_path / "one"
+    (root / "planes").mkdir(parents=True)
+    payload = {"contractVersion": 2, "shard": 0, "shardSize": 2000, "cards": [card()]}
+    (root / "planes" / "alara.0.json").write_text(json.dumps(payload, separators=(",", ":")))
+
+    slug, _ = classifier.load_shards(root)["card-1"]
+
+    assert slug == "alara"
 
 
 def test_load_shards_returns_the_slug(tmp_path: Path) -> None:
