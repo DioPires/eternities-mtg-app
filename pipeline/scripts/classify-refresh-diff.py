@@ -14,7 +14,7 @@ Thirteen shards changed anyway: 38 cards, 40 printing tuples, **every one of the
 re-scanned. Nothing about the product changed. But "nothing changed" was a conclusion that took a
 script to reach, and eyeballing 351 KB of minified JSON per shard would never have reached it.
 
-So this sorts every difference into one of six buckets, loudest last:
+So this sorts every difference into six buckets, loudest last:
 
   * `imageTs` only                  — Scryfall re-stamped an image. Expected, ignorable, noisy.
   * printing added or removed       — a new printing of an existing card. Expected after a release.
@@ -31,9 +31,17 @@ So this sorts every difference into one of six buckets, loudest last:
                                       9.2.3 number at all — then this line is the only account of
                                       it that exists.
 
-A card is reported in one bucket, the loudest that applies, except that a non-printing field change
-and a printing change are reported side by side: they answer different questions and the second is
-the one the runbook tells the operator to read.
+A card is reported in every bucket whose symptom it actually has, not just the loudest: the buckets
+answer different questions, and a louder row must not swallow a quieter one on the same card. The
+`printing changed otherwise` row in particular is the one the runbook tells the operator to read,
+and it would otherwise be hidden by a rename or a plane move on that card. `cards changed` counts
+oracle ids, so a card with two symptoms appears in two rows and is still counted once — the bucket
+rows sum to more than it, by design.
+
+The one thing that is still a count of a different population: the `printing tuple(s)` figure on the
+cache-buster row counts every cache-buster tuple in the diff, including tuples on cards that landed
+in a louder bucket, while the `card(s)` figure beside it counts only cards whose *sole* symptom was
+cache-buster churn.
 
 Exit code is 0 whatever it finds. This is a reading aid for a human review step, not a gate — the
 gates are PRD 9.2's and they live in the report.
@@ -51,11 +59,18 @@ PRINTING_ID = 0
 PRINTING_IMAGE_TS = 3
 
 
-def load_shards(root: Path) -> dict[str, tuple[str, dict]]:
+def load_shards(root: Path, duplicates: list[str] | None = None) -> dict[str, tuple[str, dict]]:
     """Every card in a dataset, by `oracle_id`, with the shard slug it came from.
 
     The slug is what makes a plane move visible: a card can move between shards without a single
     byte of the card itself changing, so the card alone cannot answer PRD 9.2.3's question.
+
+    A duplicate oracle id is what makes that answer untrustworthy — last-shard-wins picks the slug,
+    so a card duplicated into a later-sorting shard reads as a plane move that never happened. The
+    warning therefore goes to **stdout**, not stderr: the runbook has the operator paste the
+    classifier output into the pull request, and on stderr the warning was dropped by any redirect
+    while the phantom move it disqualifies went through (DEC-673 N5). Pass `duplicates` to collect
+    the messages instead, which is how `classify` reprints them beside that row.
     """
     cards: dict[str, tuple[str, dict]] = {}
     for shard in sorted((root / "planes").glob("*.json")):
@@ -67,18 +82,22 @@ def load_shards(root: Path) -> dict[str, tuple[str, dict]]:
             if seen is not None:
                 # Last shard wins, as it always has — but say so. A card in two planes at once
                 # would otherwise surface as a plane move that never happened.
-                print(
+                message = (
                     f"warning: {root.name}: {card.get('n', card['u'])} appears in both "
-                    f"{seen[0]} and {slug}; taking {slug}",
-                    file=sys.stderr,
+                    f"{seen[0]} and {slug}; taking {slug}"
                 )
+                if duplicates is None:
+                    print(message)
+                else:
+                    duplicates.append(message)
             cards[card["u"]] = (slug, card)
     return cards
 
 
 def classify(old: Path, new: Path) -> int:
-    before = load_shards(old)
-    after = load_shards(new)
+    duplicates: list[str] = []
+    before = load_shards(old, duplicates)
+    after = load_shards(new, duplicates)
 
     added = sorted(set(after) - set(before))
     removed = sorted(set(before) - set(after))
@@ -102,7 +121,11 @@ def classify(old: Path, new: Path) -> int:
         # Loudest bucket, and the only one that can fire on a byte-identical card.
         if slug_a != slug_b:
             plane_moves.append((name, slug_a, slug_b))
-            continue
+            # Deliberately no `continue`, for the same reason as the field-change branch below: a
+            # move must not hide a printing change on the same card. The runbook's flow is that
+            # every `card changed plane` row traces back to an appendix edit you made — so in the
+            # run where it does trace, the operator waves it through, and a genuine Scryfall
+            # anomaly on that card would ride along invisibly (DEC-673 N1).
 
         rest_a = {k: v for k, v in a.items() if k != "p"}
         rest_b = {k: v for k, v in b.items() if k != "p"}
@@ -134,6 +157,11 @@ def classify(old: Path, new: Path) -> int:
                 only_stamp = False
                 printing_oddities.append((name, x, y))
         image_ts_printings += stamp_printings
+        # All three conjuncts are load-bearing. `stamp_printings` became so with N1's fix above:
+        # a byte-identical plane move now reaches this line with `a == b`, so it leaves
+        # `only_stamp` true and `fields_changed` false, and only the zero stamp count keeps it out
+        # of the quietest bucket. `not fields_changed` is what keeps a card whose fields also moved
+        # from being reported as cache-buster-only while still counting its tuples (DEC-673 N3).
         if only_stamp and stamp_printings and not fields_changed:
             image_ts_only.append(name)
 
@@ -188,6 +216,13 @@ def classify(old: Path, new: Path) -> int:
             print(f"  {name}: {was} -> {now}")
         if len(plane_moves) > 40:
             print(f"  ... and {len(plane_moves) - 40} more")
+    if duplicates:
+        # Immediately after the plane-move rows, because that is the list these disqualify: a
+        # duplicated card gets its slug from whichever shard sorts last, which can fabricate a
+        # move above. Read these before believing that list (DEC-673 N5).
+        print(f"\nduplicate oracle ids ({len(duplicates)}) — each can fake a plane move above:")
+        for message in duplicates:
+            print(f"  {message}")
 
     return 0
 
