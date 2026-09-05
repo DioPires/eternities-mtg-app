@@ -18,9 +18,9 @@
 #   web/scripts/selfcheck-control.sh \
 #     'if (record.index === 0) d[base + PT_HOME + 1] = record.home[1] + 4000' 'home + 4000'
 #       -> FAILS, with 15 unprojectable and a message naming both possible causes. This is the
-#          false-positive boundary of the `unprojectable === 0` clause, and it sits three orders of
-#          magnitude outside `MULTIVERSE_RADIUS = 130.0`, so no real dataset can reach it. See the
-#          clause in `selfCheck.ts`.
+#          false-positive boundary of the `unprojectable === 0` clause, and it sits a factor of 30
+#          beyond the 130 `MULTIVERSE_RADIUS` allows a centre, so no real dataset can reach it. See
+#          the clause in `selfCheck.ts`.
 #
 # Write the injection as an assignment, not `d[...] += 400`. `noUncheckedIndexedAccess` types a
 # `Float32Array` index as `number | undefined`, so a compound assignment fails `tsc` with TS2532 and
@@ -29,7 +29,11 @@
 #
 # Skips the verify steps before `verifyStarField` for the same reason `selfcheck-ladder.sh` does:
 # they are downstream of the same plane table and would report first. See that script's header.
-set -u
+#
+# `set -eu` and an EXIT trap for the same reasons as the ladder — a failed `assert` in a patch step
+# must not go on to measure a partly-patched tree, and INT/TERM alone leave `.orig` files behind on
+# any other exit. See that script's header.
+set -eu
 
 # See `selfcheck-ladder.sh` for why this is derived rather than hard-coded, and what overriding it
 # is for.
@@ -40,11 +44,16 @@ INJECT="$1"
 LABEL="$2"
 DATASET="${3:-small}"
 
-restore() { cp "$TABLE.orig" "$TABLE"; cp "$VERIFY.orig" "$VERIFY"; rm -f "$TABLE.orig" "$VERIFY.orig"; }
+# Guarded per file and returning 0 unconditionally; see `selfcheck-ladder.sh` for why both matter.
+restore() {
+  [[ -f "$TABLE.orig" ]] && { cp "$TABLE.orig" "$TABLE"; rm -f "$TABLE.orig"; }
+  [[ -f "$VERIFY.orig" ]] && { cp "$VERIFY.orig" "$VERIFY"; rm -f "$VERIFY.orig"; }
+  return 0
+}
 
+trap restore EXIT INT TERM
 cp "$TABLE" "$TABLE.orig"
 cp "$VERIFY" "$VERIFY.orig"
-trap restore INT TERM
 
 python3 - "$VERIFY" <<'PY'
 import sys
@@ -73,9 +82,11 @@ open(path, "w").write(src)
 PY
 
 cd "$ROOT/web"
-pnpm build >/dev/null 2>&1 || { echo "$LABEL: BUILD FAILED"; restore; exit 1; }
-OUT=$(node scripts/verify-browser.mjs --dataset "$DATASET" 2>&1)
-CODE=$?
+pnpm build >/dev/null 2>&1 || { echo "$LABEL: BUILD FAILED"; exit 1; }
+# See `selfcheck-ladder.sh`: `|| CODE=$?` so that `-e` does not abort on the run this script exists
+# to measure. Here the green case is the expected one, but the `home + 4000` rung fails by design.
+CODE=0
+OUT=$(node scripts/verify-browser.mjs --dataset "$DATASET" 2>&1) || CODE=$?
 restore
 
 echo "=============== CONTROL: $LABEL [$DATASET] (exit $CODE) ==============="

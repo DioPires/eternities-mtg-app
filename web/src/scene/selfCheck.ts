@@ -80,11 +80,11 @@ export interface SelfCheckResult {
   /**
    * View-space depth of the sampled stars closest to and furthest from the eye, in world units, or
    * `null` when nothing was sampled. `z > 1` is a two-sided test — behind the 0.1 near plane *or*
-   * past the 8000 far one — and these are the margin on each side, so the `unprojectable === 0`
-   * clause of `ok` is checkable against numbers rather than against the paragraph that argues for
-   * it. At the home view they measure 285.2-402.0 on `fixture-small`, 200.5-412.2 on
-   * `fixture-scale` and 197.7-405.4 on production: three orders of magnitude clear at the near end
-   * and a factor of 19 at the far one.
+   * past the harness camera's 6000 far one — and these are the margin on each side, so the
+   * `unprojectable === 0` clause of `ok` is checkable against numbers rather than against the
+   * paragraph that argues for it. At the harness camera they measure 285.2-402.0 on
+   * `fixture-small`, 200.5-412.2 on `fixture-scale` and 197.7-405.4 on production: three orders of
+   * magnitude clear at the near end and a factor of 14 at the far one.
    *
    * Both are taken over the *surviving* samples: a sample that trips the clause never reaches the
    * `Math.min`/`Math.max`, so a run that fails on `unprojectable` still reports healthy margins
@@ -354,8 +354,9 @@ function mirrorPixel(
   )
   // `project` is exactly these two applies. Split so the view-space depth is readable between
   // them: it is the quantity the `unprojectable` clause is actually about, and NDC z hides it —
-  // with a 0.1 near plane against an 8000 far one, everything from 117 units out to 377 sits
-  // between 0.9983 and 0.9995, so an NDC margin says nothing about how close to the eye a star got.
+  // with a 0.1 near plane against the harness camera's 6000 far one, the whole 144.2-456.2 band a
+  // star can occupy sits between 0.9986 and 0.9996, so an NDC margin says nothing about how close
+  // to the eye a star got. The `ok` clause derives that band.
   out.applyMatrix4(camera.matrixWorldInverse)
   const depth = -out.z
   out.applyMatrix4(camera.projectionMatrix)
@@ -473,7 +474,7 @@ async function sample(
   let unmeasured = 0
   let unprojectable = 0
   // The margins the `unprojectable` clause of `ok` rests on, in world units: the closest any
-  // sampled star came to the 0.1 near plane and the furthest any got towards the 8000 far one. The
+  // sampled star came to the 0.1 near plane and the furthest any got towards the 6000 far one. The
   // clause is two-sided, so a single margin would only argue for half of it. Reported so it is
   // checkable against numbers rather than against an argument — see the clause itself.
   let nearestDepth = Infinity
@@ -634,13 +635,35 @@ async function sample(
     // sample lands behind the eye either by the eye moving towards it or by the star being placed
     // out past the eye.
     //
-    // The camera: `?selfcheck=1` measures at the home view, ~247 units out, the eye outside the
-    // multiverse looking in. The data: `MULTIVERSE_RADIUS = 130.0`
-    // (`pipeline/src/eternities/pipeline/assemble.py`) bounds where the pipeline may place a plane
-    // centre, and `pipeline/src/eternities/fixtures/layout.py` places the fixture centres inside
-    // the same radius, so nothing any dataset can emit reaches round behind that eye or out
-    // towards the 8000 far plane. That invariant, not the camera alone, is why production comes
-    // back `0 unprojectable` over 87 planes. `nearestDepth` and `farthestDepth` report both
+    // The camera: `?selfcheck=1` routes to the Phase 2a harness, and that harness runs its own
+    // fixed dev camera rather than the rig — `[0, 150, 260]` in `harness/Phase2aScene.tsx`, so
+    // 300.2 units out, the eye well outside the multiverse looking in. Not the rig's home framing
+    // of `R * 1.9 = 247`; the self-check and the bench live in the harness precisely because they
+    // drive the camera themselves.
+    //
+    // The data: `MULTIVERSE_RADIUS = 130.0` (`pipeline/src/eternities/pipeline/assemble.py`) bounds
+    // where the pipeline may place a plane *centre*, and the fixture centres go inside the same
+    // radius (`pipeline/src/eternities/fixtures/layout.py`). But a centre is not a star.
+    // `starWorldPosition` (`starfield/motion.ts`) puts two further terms on top of it: the star's
+    // local position scaled by the plane's visual radius (`px *= radius`), and `drift * motion`.
+    // Spin, tilt, shear and the multiverse rotation are all rotations and move nothing further out,
+    // so the bound is
+    //
+    //   |star| <= |centre| + FRAME_RADIUS * radius + driftAmplitude
+    //
+    // with `FRAME_RADIUS = 1.2` (`contract/enums.py`) bounding a local position. For a named plane
+    // that is `130 + 1.2 * 12 + drift` ~ 145, `R_MAX = 12` being the largest visual radius
+    // `layout.py` emits and drift being 3% of mean plane spacing (0.85 on an 87-plane dataset, 3.9
+    // on five-plane `fixture-small`). The widest row is the Blind Eternities dust row, which PRD
+    // 8.3 gives the identity transform and radius `R` itself: `0 + 1.2 * 130 = 156`. Either way a
+    // star sits within 156 of the origin, so depth stays inside `300.2 +/- 156` — 144.2 to 456.2.
+    // That clears the 0.1 near plane by three orders of magnitude and sits inside the harness
+    // camera's 6000 far plane by a factor of 13, which is why production comes back
+    // `0 unprojectable` over 87 planes.
+    //
+    // Those are bounds rather than measurements, and the measured spans are narrower because no
+    // star sits on the view axis at full extent: 197.7-405.4 on production, 200.5-412.2 on
+    // `fixture-scale`, the widest of the three. `nearestDepth` and `farthestDepth` report both
     // margins on every run so the claim is checkable against numbers — but read them knowing they
     // are taken over the surviving samples, so they cannot warn about the samples that trip this
     // clause. A failing run still prints a healthy nearest.
@@ -655,9 +678,9 @@ async function sample(
     //
     // What would break the data half is a plane legitimately placed far enough out. Measured: the
     // plane-table control at `home + 4000` — mirror and shader in perfect agreement, the data
-    // simply saying the plane is up there — fails with 15 unprojectable and a message that calls
-    // it a mirror error, which it is not. The same control at `home + 400` passes, so the boundary
-    // sits between the two, three orders of magnitude outside what `MULTIVERSE_RADIUS` allows.
+    // simply saying the plane is up there — fails with 15 unprojectable. The message used to call
+    // that a mirror error; it now names both causes. The same control at `home + 400` passes, so
+    // the boundary sits between the two, a factor of 30 beyond the 130 a centre is allowed.
     //
     // It is a flat zero rather than a rate because neither regime exists today, and it should be
     // replaced rather than loosened if either arrives — the replacement is a comparison against
