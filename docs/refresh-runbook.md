@@ -8,9 +8,11 @@ from the 2026-09-05 rehearsal**, which took the production dataset from `d5ee966
 smoothed over — the surprises are the reason this document exists.
 
 **§6 is the exception and is marked as such.** The merge, the deploy and the rollback have not been
-exercised by anyone: merges route through the CEO rather than the refresh owner, and there is no
-production host yet — connecting the Vercel project is still an outstanding one-time owner action
-(`docs/deployment.md` §2). Read §6 as the intended flow, not as a rehearsed one.
+exercised by anyone, for one reason: **you do not merge your own refresh — the CEO does**, so the
+2026-09-05 rehearsal stopped at step 5 and could not go further. The production host itself is real
+and live — `https://eternities-mtg-app.vercel.app`, deployed automatically on every merge to `main`
+— so §6's verification commands do run today; they simply were not run *as part of a refresh*. Read
+§6 as the intended flow, not as a rehearsed one.
 
 A refresh is a **data** change. It does not touch rendering, so it does not need `pnpm bench`
 (PRD 9.1.2's rule is "before merging any change that touches rendering"). It does need the report
@@ -225,13 +227,14 @@ re-derive what you already ran.
 
 ## 6. Merge, and what happens next — NOT REHEARSED
 
-> **Everything in this section is unexercised.** The 2026-09-05 rehearsal stopped at step 5, and it
-> could not have gone further: **you do not merge your own refresh — the CEO does**, and there is no
-> production host to deploy to. `docs/deployment.md` §2 still lists connecting the Vercel project as
-> an outstanding one-time owner action, so the **first deploy is an owner gate**, not a step in this
-> runbook. The commands below are written from the configuration in the repository, not from a run.
-> The first operator to reach this section is exercising it for the first time: expect to correct it,
-> and do correct it.
+> **Everything in this section is unexercised *by a refresh*.** The 2026-09-05 rehearsal stopped at
+> step 5, and it could not have gone further, for exactly one reason: **you do not merge your own
+> refresh — the CEO does.** The deploy itself is not an owner gate and never was — the Vercel project
+> is connected and Production deploys automatically on every merge to `main`. What has not been done
+> is walking a *data* change through that machinery and watching the live hash move. The commands
+> below are written from the configuration in the repository and from a live check of the site, not
+> from a refresh. The first operator to reach this section is exercising it for the first time:
+> expect to correct it, and do correct it.
 
 **Your step is step 5.** Hand the pull request over — the merge is the CEO's call and the deploy
 follows from it.
@@ -241,12 +244,27 @@ The new data directory is immutable and content-hashed, and `Cache-Control: max-
 immutable` covers `/data/**` — so no cache purge is needed and no user gets a mixed dataset: the
 shell that references the new hash and the files under it ship together.
 
-After the deploy, confirm the live site is on the new hash. `<production-host>` is a placeholder
-until the project is connected; there is no host to substitute today:
+After the deploy, confirm the live site is on the new hash. The host is
+**`eternities-mtg-app.vercel.app`** and this command runs verbatim today:
 
 ```sh
-curl -s https://<production-host>/ | grep 'eternities:data'
+curl -s https://eternities-mtg-app.vercel.app/ | grep 'eternities:data'
 ```
+
+Run it **before** you hand the pull request over, so you know what the old hash looks like, and again
+after the CEO merges. On 2026-09-05, before the refresh merged, it returned:
+
+```
+    <meta name="eternities:data" content="/data/d5ee9661aaffafa3/" />
+```
+
+`d5ee9661aaffafa3` is the hash this refresh replaces. When the value changes to the hash in your
+`web/datasets.json`, the deploy has shipped. Vercel takes a couple of minutes; if the old hash is
+still there after five, check the deployment in the Vercel dashboard before assuming anything is
+wrong with the data.
+
+This is the only live-site check in this runbook, and it is the one that distinguishes "the merge
+landed" from "the users have it".
 
 **Rollback** is a revert of the merge commit and a redeploy. Because the previous data directory was
 deleted in the same commit, reverting restores it — there is no separate step, and nothing to

@@ -31,8 +31,8 @@
  *
  * Every anchored segment is **tracked live**: planes drift (PRD 5.3.15) and the multiverse turns
  * (PRD 5.3.13), so a fixed world coordinate would slide off the thing it was chosen to frame over a
- * 35-second run. That is also what PRD 5.7.4 asks of a real fly-to — targets are computed in the
- * destination's rotating local frame.
+ * 39-second run (`BENCH_DURATION_S`, below). That is also what PRD 5.7.4 asks of a real fly-to —
+ * targets are computed in the destination's rotating local frame.
  */
 
 import type { PlaneRecord } from '../data/types'

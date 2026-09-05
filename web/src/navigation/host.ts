@@ -38,17 +38,29 @@ import {
   type Unsubscribe,
 } from './types'
 
-/** Every event in the contract. Listed rather than derived, so adding one to `NavigationEvents`
- *  without forwarding it is a type error here instead of silence at runtime. */
-const EVENT_NAMES: readonly NavigationEventName[] = [
-  'focuschange',
-  'flightstart',
-  'flightend',
-  'handover',
-  'attractenter',
-  'attractexit',
-  'anchorchange',
-]
+/**
+ * Every event in the contract.
+ *
+ * Keyed by name rather than written as a `NavigationEventName[]`, because that is what makes the
+ * claim in this comment true: `Record<NavigationEventName, true>` is exhaustiveness-checked, so
+ * adding an event to `NavigationEvents` without forwarding it is a type error **here**, at the
+ * list, instead of silence at runtime.
+ *
+ * A `readonly NavigationEventName[]` — which this was — is not checked that way: removing
+ * `'anchorchange'` from it left `pnpm typecheck` clean (DEC-667 N4). The mutant was caught, by six
+ * unit tests and a lint error, so the behaviour was covered; but the comment named the type system,
+ * and a future author would have trusted it. Now it is the type system.
+ */
+const EVENT_NAMES_BY_NAME: Record<NavigationEventName, true> = {
+  focuschange: true,
+  flightstart: true,
+  flightend: true,
+  handover: true,
+  attractenter: true,
+  attractexit: true,
+  anchorchange: true,
+}
+const EVENT_NAMES = Object.keys(EVENT_NAMES_BY_NAME) as readonly NavigationEventName[]
 
 export interface NavigationHost extends NavigationApi {
   /**

@@ -40,9 +40,10 @@ import {
 } from './benchPath'
 
 /**
- * The path is 31 s. An uncapped run on a fast GPU reaches ~700 fps, so this holds a whole run with
- * room to spare — and `saturated` says so plainly if a future machine ever exceeds it, rather than
- * silently dropping the tail of the path from the percentiles.
+ * The path is 39 s (`BENCH_DURATION_S`, nine segments). An uncapped run on a fast GPU reaches
+ * ~700 fps, so this holds a whole run with room to spare — 39 × 670 ≈ 26k — and `saturated` says so
+ * plainly if a future machine ever exceeds it, rather than silently dropping the tail of the path
+ * from the percentiles.
  */
 const CAPACITY = 40000
 /** Frames discarded at the start of each segment, so a segment's numbers are its own. */
@@ -64,6 +65,15 @@ const SETTLE_FRAMES = 6
 const SETTLE_MAX_FRACTION = 0.2
 /** The last chunk of `stars.bin` and its fade-in are not steady state. */
 const WARMUP_MS = 800
+/**
+ * How long a `?hold=` will wait for its segment's contents before giving up and saying so.
+ *
+ * Only `card` ever waits: it needs the anchor plane's shards, which the recorded path budgets five
+ * seconds for (the `approach` segment). Twenty is generously above that on a cold cache and a slow
+ * link, and well under `bench.mjs --shots`'s 120 s page timeout, so the page reports the failure
+ * itself instead of the harness reporting a timeout it cannot explain.
+ */
+const HOLD_TIMEOUT_S = 20
 
 /**
  * Whether this frame is still settling into its segment, and so should not be recorded.
@@ -107,6 +117,15 @@ export interface BenchResult extends BenchSummary {
   readonly segments: readonly BenchSegmentResult[]
   /** True if the sample buffer filled and the tail of the path went unrecorded. */
   readonly saturated: boolean
+  /**
+   * Segments whose scene state could not be established — today only `card`, whose focus fails
+   * until the anchor plane's shards have arrived (DEC-667 N8).
+   *
+   * Without this a run whose card never resolved would report a `card` segment measuring an empty
+   * sky, with nothing in the result to tell it apart from a good one, and a baseline could be
+   * recorded against the wrong contents. `bench.mjs` refuses to summarise when this is non-empty.
+   */
+  readonly undrivenSegments: readonly string[]
   /** PRD 7.2's two thresholds, evaluated here so the harness cannot disagree with the page. */
   readonly meetsTarget: boolean
   readonly meetsCeiling: boolean
@@ -116,8 +135,17 @@ declare global {
   interface Window {
     __eternitiesBench?: BenchResult
     __eternitiesBenchProgress?: { elapsed: number; total: number; frames: number }
-    /** Set once the camera has been parked at a named segment, for a screenshot. */
+    /**
+     * Set once the camera has been parked at a named segment **and the scene is in that segment's
+     * state**, for a screenshot. `bench.mjs --shots` waits on this, so it is a readiness gate, not
+     * a mount signal: a hold that cannot establish its contents never sets it (DEC-667 B1).
+     */
     __eternitiesHold?: string
+    /**
+     * Why a hold gave up, if it did. `bench.mjs --shots` fails on this rather than photographing
+     * the right camera pose over the wrong contents.
+     */
+    __eternitiesHoldError?: string
   }
 }
 
@@ -216,6 +244,13 @@ export function BenchRunner({
     /** Time spent in the current segment, which bounds the settle above. */
     segmentElapsed: 0,
     segmentSeconds: BENCH_PATH[0]?.seconds ?? 0,
+    /** Hold mode only: whether the held segment's scene state has been established yet. */
+    holdDriven: false,
+    /** Hold mode only: seconds spent retrying that, bounded by `HOLD_TIMEOUT_S`. */
+    holdElapsed: 0,
+    holdFailed: false,
+    /** Recorded runs: segments whose `driveSegment` reported failure. Surfaced on `BenchResult`. */
+    undriven: [] as string[],
     /**
      * Read once during warm-up rather than at teardown. `rendererName` is a synchronous round trip
      * to the GPU process, which cannot answer until the command buffer has drained — and uncapped
@@ -323,32 +358,47 @@ export function BenchRunner({
    * begins gives them the five seconds of the fly-in to arrive, which is the same head start a real
    * user's fly-to gives them. Asking at the segment boundary instead would measure the loading, not
    * the drawing.
+   *
+   * Returns whether the scene is now in the segment's state. Only `card` can answer `false`: there
+   * is no card to focus until the anchor plane's shards have arrived. Every caller has to act on
+   * that — discarding it is what let `?hold=card` photograph an empty multiverse (DEC-667 B1, N8).
    */
-  const driveSegment = (segment: string): void => {
+  const driveSegment = (segment: string): boolean => {
     const drive = context.drive
-    if (!drive) return
+    if (!drive) return true
     switch (segment) {
       case 'approach':
       case 'sheet':
         if (anchor) drive.focusPlane(anchor.slug)
-        break
+        return true
       case 'small-plane':
         if (small) drive.focusPlane(small.slug)
-        break
+        return true
       case 'card':
-        drive.focusCard()
-        break
+        return drive.focusCard()
       case 'dust':
         drive.focusPlane(BLIND_ETERNITIES_SLUG)
-        break
+        return true
       // PRD 9.1.2's "Esc back to multiverse".
       case 'sweep':
         drive.focusMultiverse()
-        break
+        return true
       default:
-        break
+        return true
     }
   }
+
+  /**
+   * What a held segment needs to have happened before it, in order.
+   *
+   * A recorded run gets this for free: by the time the camera reaches `card` at 24 s, `approach`
+   * focused dominaria twenty seconds earlier and its shards are long since parsed. A hold drives
+   * exactly one segment (`state.segment !== hold` fires once), so it has to establish the chain
+   * itself — otherwise `focusCard` runs against an empty card map, returns false, and the camera
+   * parks at the card keyframe about the world origin over an empty multiverse (DEC-667 B1).
+   */
+  const holdPrerequisites = (segment: string): readonly string[] =>
+    segment === 'card' ? ['sheet'] : []
 
   useEffect(() => {
     if (hold !== null || !ready || state.running || state.finished) return
@@ -371,11 +421,27 @@ export function BenchRunner({
       if (at === null) return
       // The scene has to be in the segment's state too, or PRD 9.3's checkpoint photographs the
       // right camera pose over the wrong contents — a card-sheet shot with no thumbnails in it.
-      // Once, on the first frame the hold is live, because these are focus changes and repeating
-      // them every frame would restart the shard load.
+      //
+      // The prerequisites and the segment's own focus go once, on the first frame the hold is live,
+      // because these are focus changes and repeating them every frame would restart the shard
+      // load. `card` is the exception in both directions: it depends on a load it just started, so
+      // it is retried — but only until it answers true, after which repeating it would re-focus the
+      // same star every frame.
       if (ready && state.segment !== hold) {
         state.segment = hold
-        driveSegment(hold)
+        for (const step of holdPrerequisites(hold)) driveSegment(step)
+        state.holdDriven = driveSegment(hold)
+      } else if (ready && !state.holdDriven && !state.holdFailed) {
+        state.holdElapsed += delta
+        state.holdDriven = driveSegment(hold)
+        if (!state.holdDriven && state.holdElapsed > HOLD_TIMEOUT_S) {
+          // Loudly, rather than a plausible-looking photograph of the wrong thing. `__eternitiesHold`
+          // stays undefined, so `bench.mjs --shots` never takes the shot.
+          window.__eternitiesHoldError =
+            `hold "${hold}": the scene never reached this segment's state after ` +
+            `${HOLD_TIMEOUT_S}s — no shot taken`
+          state.holdFailed = true
+        }
       }
       trackAnchors()
       benchPose(at, anchors, pose)
@@ -383,7 +449,7 @@ export function BenchRunner({
       target.set(pose.tx, pose.ty, pose.tz)
       camera.lookAt(target)
       camera.updateMatrixWorld()
-      if (ready) window.__eternitiesHold = hold
+      if (ready && state.holdDriven) window.__eternitiesHold = hold
       return
     }
     if (!state.running || state.finished) return
@@ -396,7 +462,7 @@ export function BenchRunner({
       state.settle = SETTLE_FRAMES
       state.segmentElapsed = 0
       state.segmentSeconds = segmentSeconds(pose.segment) ?? 0
-      driveSegment(pose.segment)
+      if (!driveSegment(pose.segment)) state.undriven.push(pose.segment)
     }
     state.segmentElapsed += delta
     camera.position.set(pose.px, pose.py, pose.pz)
@@ -432,6 +498,7 @@ export function BenchRunner({
         live.current,
         anchor?.slug ?? 'none',
         state.count >= CAPACITY,
+        state.undriven,
       )
       window.__eternitiesBench = result
       live.current.onComplete?.(result)
@@ -457,6 +524,7 @@ function summarise(
   quality: { qualityTier: string; qualityChanges: number },
   anchor: string,
   saturated: boolean,
+  undriven: readonly string[],
 ): BenchResult {
   const overall = summariseRange(frames, cpu)
 
@@ -494,6 +562,7 @@ function summarise(
     anchorPlane: anchor,
     segments: perSegment,
     saturated,
+    undrivenSegments: [...undriven],
     ...overall,
     // PRD 7.2: 60 fps target, 50 fps ceiling; p95 frame time 16.7 ms target, 33 ms ceiling. The
     // fps target allows one frame of slack, because a vsync-locked 60 Hz display samples at 59.9x.

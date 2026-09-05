@@ -48,6 +48,8 @@ This is a fact about local tooling, not about the product: production is HTTPS (
 
 **No engine differed on the GPU self-check.** Metal through ANGLE, Gecko and WebKit agree with the CPU motion mirror to well under half the tolerance, at both float16 and float32. PRD risk 6 anticipated float16 attribute and data-texture precision trouble; on this machine there is none to report.
 
+**The self-check counts above are a sample, not an expectation.** The `N/720 located` figures and the mean/max pixel deltas vary from run to run on an unchanged tree — a re-run of this same head moved Chrome 422→427 and 421→429, WebKit 426→431 and 422→428, and Firefox’s max from 1.41 px to 2 px (DEC-667 N7). The star field is in motion and the sampling window follows it, so the population differs between runs. What is asserted is the **tolerance** — every located star within 3 px of where the CPU mirror predicts — not any particular count. Read a changed number here as a new sample, and a *failed* column as the regression.
+
 ## Reading this
 
 The **GPU self-check** columns are the load-bearing ones. PRD risk 6 names float16 attributes, data-texture precision and Safari WebGL2 quirks; each is a claim about a driver, and the self-check of PRD 8.5.7 is the only thing in this repo that puts the CPU motion mirror on one side of a comparison and a real rasteriser on the other. CI proves the routes on SwiftShader and cannot speak to any of it.

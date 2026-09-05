@@ -831,6 +831,16 @@ function report(results, meta) {
       'machine there is none to report.',
   )
   lines.push('')
+  lines.push(
+    '**The self-check counts above are a sample, not an expectation.** The `N/720 located` figures ' +
+      'and the mean/max pixel deltas vary from run to run on an unchanged tree — a re-run of this ' +
+      'same head moved Chrome 422→427 and 421→429, WebKit 426→431 and 422→428, and Firefox’s max ' +
+      'from 1.41 px to 2 px (DEC-667 N7). The star field is in motion and the sampling window ' +
+      'follows it, so the population differs between runs. What is asserted is the **tolerance** — ' +
+      'every located star within 3 px of where the CPU mirror predicts — not any particular count. ' +
+      'Read a changed number here as a new sample, and a *failed* column as the regression.',
+  )
+  lines.push('')
   lines.push('## Reading this')
   lines.push('')
   lines.push(

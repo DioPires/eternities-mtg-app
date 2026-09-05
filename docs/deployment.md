@@ -21,7 +21,17 @@ node scripts/write-vercel-json.mjs          # write
 node scripts/write-vercel-json.mjs --check  # what CI runs
 ```
 
-## 2. Connecting the project (owner action, one time)
+## 2. Connecting the project — **done, not an outstanding action**
+
+The project is connected. The production host is **`https://eternities-mtg-app.vercel.app`**, and
+Vercel creates a **Production** deployment on every merge to `main` — six of them on 2026-09-05
+alone, going back to at least `ce03ea7`. Verified live on 2026-09-05: the site serves `main`'s
+production hash `d5ee9661aaffafa3`, applies the PRD 7.6.1 CSP, answers `/plane/dominaria` with `200`
+through the SPA rewrite, and sends `max-age=31536000, immutable` on `/data/**`.
+
+Nothing in the list below needs doing. It is kept as the record of the settings the project carries,
+and as the recipe if it is ever recreated. **Do not cite this section as evidence that the deploy is
+still an owner gate — it is not.**
 
 1. Vercel → **Add New… → Project** → import `DioPires/eternities-mtg-app`.
 2. **Root Directory: `web`.** This is the only setting that is not in the repository, and it is the
@@ -65,8 +75,10 @@ fetched at build time, or a Vercel build command that materialises the directory
 
 ## 5. Refresh
 
-**The flow is `docs/refresh-runbook.md`** — rehearsed end to end on 2026-09-05 and written from that
-run. Owner: Simulation Engineer, roughly once per set release (PRD 4.10.1).
+**The flow is `docs/refresh-runbook.md`** — rehearsed through step 5 on 2026-09-05 and written from
+that run. Step 6 (merge, deploy, rollback) is marked NOT REHEARSED in the runbook itself, because
+the refresh owner does not merge their own refresh. Owner: Simulation Engineer, roughly once per set
+release (PRD 4.10.1).
 
 Phase 0's part is that `datasets.json` and the build-time injection make switching the active data
 directory a one-line change:

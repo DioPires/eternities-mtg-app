@@ -796,18 +796,20 @@ export function SceneView({
           cameraRef.current = camera as PerspectiveCamera
           rendererRef.current = gl
         }}
-        // The tier the scene *starts* at, which is tier 0 unless `?quality=` pinned another.
+        // **Only the presence of this prop matters. Its value is inert** — measured, three ways
+        // (DEC-667 N1): hard-wired to tier 0's cap, and again at `dpr={0.5}` and `dpr={3}`, every
+        // `?quality=` pin still lands its own pixel ratio, and the per-pin ladder of drawing-buffer
+        // and bloom sizes is identical in all three builds. `StarScene`'s mount-time
+        // `setDpr(min(tier.pixelRatioCap, devicePixelRatio))` wins every time.
         //
-        // This prop is an authority, not a starting hint: R3F applies it from an effect in this
-        // component, and a parent's effect runs after its children's, so it lands on top of the
-        // `setDpr(min(tier.pixelRatioCap, devicePixelRatio))` that `StarScene` runs on mount. It
-        // has to name the pinned tier or a pinned run renders at tier 0's ratio — latent until
-        // `?quality=` existed, because tier 0 was the only tier a scene could start at.
+        // What passing *a* number buys is that R3F stops managing dpr from its own resize path.
+        // Drop the prop entirely and that path re-establishes `devicePixelRatio`, making the cap a
+        // race — `e2e/quality.spec.ts` went red on 2 of 3 runs — which is PRD 7.1.3's ceiling
+        // failing intermittently. That is the whole reason it is here.
         //
-        // Dropping the prop instead does not work: R3F then re-establishes `devicePixelRatio` from
-        // its own resize path and the cap becomes a race, which is PRD 7.1.3's ceiling failing
-        // intermittently. Two writers that agree is the correct shape here; `e2e/quality.spec.ts`
-        // records what that costs the check.
+        // It still names the pinned tier, so a reader sees the value that is in force rather than
+        // one chosen to look arbitrary. But do not infer that the pin is *delivered* here: it is
+        // not, and `quality.spec.ts` records that a wrong tier in this prop survives the check.
         dpr={QUALITY_TIERS[pinnedTier ?? 0]!.pixelRatioCap}
         style={{ background: SKY_COLOUR }}
       >

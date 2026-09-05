@@ -10,11 +10,15 @@ diffs (`node scripts/write-vercel-json.mjs --check`).
 
 **Outcome: two changes made, five findings recorded and deliberately not acted on.**
 
+**Phase 6 update (2026-09-05, DEC-674): F5 is now closed — `style-src-attr 'unsafe-inline'` has
+been dropped.** Its precondition — Phase 3's card tier reachable from the shell route — is met.
+The policy block below and §1 show what ships today; F5 carries the re-check that justified it.
+
 ## The policy as it now ships
 
 ```
 default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none';
-form-action 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline';
+form-action 'self'; script-src 'self'; style-src 'self';
 font-src 'self'; img-src 'self' data: blob: https://*.scryfall.io;
 connect-src 'self' https://*.scryfall.io; worker-src 'self' blob:; manifest-src 'self';
 upgrade-insecure-requests
@@ -39,15 +43,24 @@ style-src 'self'; style-src-attr 'unsafe-inline'
 block is refused**. That is the shape an XSS payload takes when it wants to restyle the page,
 overlay a fake control, or hide something — and it is now blocked.
 
-The attribute relaxation stays, scoped to attributes, where the payload surface is one element's
-own box rather than the document.
+The attribute relaxation stayed at the time, scoped to attributes, where the payload surface is one
+element's own box rather than the document.
 
-**It is retained conservatively, not because anything needs it.** The original justification here
+**It was retained conservatively, not because anything needed it.** The original justification here
 was that "React and drei write `style` attributes, and the label overlay writes a `transform` on
 every label on every frame (PRD 7.3.3)". That reasoning does not hold — `style-src-attr` governs
 only a literal `style` **attribute** being applied, and every inline style this app produces goes
-through the CSSOM instead, which no CSP directive governs. See F5 below, which records what is
-actually true and hands the drop to Phase 6.
+through the CSSOM instead, which no CSP directive governs. F5 below records what is actually true
+and handed the drop to Phase 6.
+
+**Phase 6 completed that half.** `style-src-attr` is gone, so the shipped directive is now just:
+
+```
+style-src 'self'
+```
+
+which governs **both** halves — an injected `<style>` element and an injected `style` attribute are
+each refused. See F5.
 
 The dev server still gets `'unsafe-inline'` on `style-src`, because Vite injects CSS as `<style>`
 elements so HMR can swap them. The built site ships one `<link>` and gets the strict policy.
@@ -118,7 +131,7 @@ is correct in advance if one is ever added. No change.
   browser check in `verify-browser.mjs` is the substitute, and it fails the build rather than
   filing a report nobody reads.
 
-### F5 — `style-src-attr 'unsafe-inline'` is very likely droppable
+### F5 — `style-src-attr 'unsafe-inline'` is very likely droppable — **DROPPED in Phase 6**
 
 Raised by the Phase 5 review (DEC-632) against §1's original rationale, and it is right.
 
@@ -127,10 +140,11 @@ not apply to CSSOM writes. Everything this app does is a CSSOM write:
 
 - `labels/PlaneLabels.tsx` sets `node.style.transform`, `node.style.opacity` and
   `node.style.fontSize` — property assignments, not attributes, so no directive governs them;
-- the three `style={{ background: SKY_COLOUR }}` props in `App.tsx`, `Phase2aScene.tsx` and
-  `EternitiesScene.tsx` are React style objects, which React applies through the CSSOM as well;
+- the `style={{ background: SKY_COLOUR }}` props — two of them since the Phase 3 fold, in
+  `Phase2aScene.tsx` and `EternitiesScene.tsx` — are React style objects, which React applies
+  through the CSSOM as well;
 - `index.html` contains no literal `style=`, and nothing in the tree uses
-  `dangerouslySetInnerHTML`.
+  `dangerouslySetInnerHTML`, `innerHTML` or `setAttribute('style', …)`.
 
 The label overlay named in the old rationale is also mounted **only in the scene**, never on the
 shipped shell route. Phase 3 folded Phase 2b's harness into `EternitiesScene` and deleted it, so
@@ -142,11 +156,45 @@ the built site served under `style-src 'self'` alone, all 82 labels received the
 transform, with zero `securitypolicyviolation` events and zero console errors on both the shell
 root and the overlay route.
 
-**Not dropped in this phase, on purpose.** Phase 3 (DEC-590) is mid-flight and will add the card
+**Not dropped in Phase 5, on purpose.** Phase 3 (DEC-590) was mid-flight and would add the card
 tier — the one part of the product not exercised by that experiment. Removing a directive on the
 strength of routes that do not yet include the largest new consumer is how a policy change gets
-reverted in a hurry. The same Phase 6 pre-launch re-check as F1 and F2 owns it: once the card tier
-has landed, re-run the experiment on the full shell and drop the directive if it stays clean.
+reverted in a hurry. The same Phase 6 pre-launch re-check as F1 and F2 owned it: once the card tier
+had landed, re-run the experiment on the full shell and drop the directive if it stayed clean.
+
+#### Resolution — 2026-09-05, Phase 6 (DEC-674)
+
+**The precondition is met and the directive is dropped.** Phase 3's card tier has landed, and the
+fold means the *shell* route now reaches both the card tier and the label overlay — so the gap in
+the DEC-632 experiment (an overlay route that was not the shipped one) is closed by the product's
+own shape rather than argued around.
+
+Re-run on the built site under the new header, real Chrome, production dataset
+(`d5ee9661aaffafa3`), ANGLE Metal on an M5 Pro:
+
+- `node scripts/verify-browser.mjs --dataset production` — **green, zero
+  `securitypolicyviolation` events and zero console errors**, walking PRD section 6 end to end in
+  the shell: the multiverse, a plane, the thumbnail sheet, a focused card with 72 planets, the
+  planet hover and pick path, a double-faced flip, `Esc` back out, and Phase 2a's harness. That
+  walk covers every route the old experiment could not.
+
+An experiment that only reports "nothing broke" cannot tell a tightened policy from an unenforced
+one, so the drop was also **A/B'd against the header it replaces**, rewriting the response header by
+request interception and injecting the shape the directive governs — a literal `style` attribute:
+
+| header served | injected `style="…"` | `securitypolicyviolation` | CSSOM write |
+|---|---|---|---|
+| **what ships now** (`style-src 'self'`, no `style-src-attr`) | **refused** | `style-src-attr <- inline` | applied |
+| old (`style-src-attr 'unsafe-inline'`) | applied | none | applied |
+
+So the removal is a real tightening, not a no-op: `style-src 'self'` now governs attributes as well
+as elements, and an injected `style="…"` is refused where it previously was not. The app's own
+inline styling is untouched, because all of it is CSSOM — the control column, which stays `applied`
+under both headers, is what proves the two are different mechanisms rather than the probe being
+inert.
+
+`verify-browser.mjs` now asserts `style-src-attr` is **absent**, so re-adding the relaxation has to
+argue with a failing check rather than sliding back in.
 
 Note that this is not a regression. The policy as it ships is a **strict improvement** on the old
 `style-src 'self' 'unsafe-inline'`, which permitted injected `<style>` elements. F5 is the

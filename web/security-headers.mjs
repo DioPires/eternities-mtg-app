@@ -40,23 +40,28 @@ export function contentSecurityPolicy(options = {}) {
      * landed, the built site has exactly one stylesheet and it arrives as a `<link>`, so the
      * element half buys nothing and the two are split.
      *
-     * `style-src-elem` inherits `style-src`, which is now `'self'` alone: an injected `<style>`
-     * block — the shape an XSS payload takes when it wants to restyle or overlay the page — is
-     * refused. `style-src-attr` keeps the relaxation, scoped to attributes, where the payload
-     * surface is one element's own box rather than the document.
+     * `style-src-elem` inherits `style-src`, which is `'self'` alone: an injected `<style>` block —
+     * the shape an XSS payload takes when it wants to restyle or overlay the page — is refused.
      *
-     * The attribute relaxation is kept **conservatively, not because anything needs it**, and
-     * dropping it is a Phase 6 item (csp-audit.md F5). `style-src-attr` governs only a literal
-     * `style` *attribute* being applied; every inline style this app writes — the label overlay's
-     * per-frame `node.style.transform` of PRD 7.3.3 included — goes through the CSSOM, which no
-     * CSP directive governs. Removing the directive was tested clean in review (DEC-632); it is
-     * held until Phase 3's card tier lands, because that is the one route the test did not cover.
+     * **`style-src-attr 'unsafe-inline'` is gone as of Phase 6** (csp-audit.md F5). It was kept
+     * conservatively, not because anything needed it, pending the one route the DEC-632 experiment
+     * could not cover: Phase 3's card tier. That has landed, and the fold put the label overlay on
+     * the shell route as well, so the re-check ran on the whole product and came back clean.
+     *
+     * Nothing here writes a literal `style` *attribute*, which is the only thing the directive ever
+     * governed. The label overlay's per-frame `node.style.transform` (PRD 7.3.3) and the two
+     * `style={{ background }}` props React applies are CSSOM writes, which no CSP directive
+     * reaches; there is no `setAttribute('style', …)`, no `innerHTML`, no
+     * `dangerouslySetInnerHTML`, and no literal `style=` in the built `index.html`.
+     *
+     * With the directive absent, `style-src 'self'` governs attributes too — so an injected
+     * `style="…"` is now refused as well as an injected `<style>`.
      *
      * `verify-browser.mjs` asserts the built site loads clean under exactly this policy, so a
-     * future dependency that injects a `<style>` fails the check rather than the user's page.
+     * future dependency that injects a `<style>` — or a `style` attribute — fails the check rather
+     * than the user's page.
      */
     'style-src': ["'self'"],
-    'style-src-attr': ["'unsafe-inline'"],
     // PRD 7.6.1: fonts are self-hosted.
     'font-src': ["'self'"],
     'img-src': ["'self'", 'data:', 'blob:', SCRYFALL_IMAGE_ORIGINS],

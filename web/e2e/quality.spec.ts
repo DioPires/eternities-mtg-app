@@ -27,13 +27,17 @@
  *
  * **What the first rung's assertion does not cover, measured.** Mutation testing says rungs 2 and
  * 3 are covered — breaking the bloom's `resolutionScale` or the atlas's capacity turns this red —
- * and rung 1 is covered only against a wholesale failure. Two writers set the pixel ratio: the
- * `Canvas` `dpr` prop, which R3F applies from a parent effect, and `StarScene`'s `setDpr`, which
- * runs on mount and on every tier change. `EternitiesScene` explains why both have to exist. A pin
- * never produces a tier *change*, so mutating the `setDpr` inside `quality.subscribe` alone is not
- * caught here: nothing calls it. Covering that path needs a runtime tier change rather than a pin,
- * which `?quality=` deliberately is not. `starfield.test.ts` covers the monitor's stepping; what is
- * uncovered is the wire from a step to `setDpr`, and it is one line.
+ * and rung 1 is covered only against a wholesale failure. The pixel ratio has one writer that
+ * decides it — `StarScene`'s `setDpr`, on mount and on every tier change — and one that merely has
+ * to *exist*: the `Canvas` `dpr` prop, whose value is inert and whose presence is what stops R3F
+ * managing dpr from its own resize path. `EternitiesScene` records that measurement. So rung 1 is
+ * covered against the prop being **removed** (red on 2 of 3 runs) and is *not* covered against it
+ * naming the wrong tier, which survives (DEC-667 N1).
+ *
+ * A pin never produces a tier *change*, so mutating the `setDpr` inside `quality.subscribe` alone
+ * is not caught here either: nothing calls it. Covering that path needs a runtime tier change
+ * rather than a pin, which `?quality=` deliberately is not. `starfield.test.ts` covers the
+ * monitor's stepping; what is uncovered is the wire from a step to `setDpr`, and it is one line.
  *
  * **Why there is no HUD here.** `?probe=1` selects Phase 3's harness (`App.tsx`'s
  * `sceneRequested`), because the probe seam is that scene's. The harness is the shipped scene plus

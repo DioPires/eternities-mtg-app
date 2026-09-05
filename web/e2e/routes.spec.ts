@@ -106,6 +106,105 @@ async function expectCanvasRenders(page: Page): Promise<void> {
   expect(state.height, 'the drawing buffer has no height').toBeGreaterThan(0)
 }
 
+/**
+ * How many of the multiverse's plane labels the overlay is actually showing.
+ *
+ * `PlaneLabels` writes `opacity` on every label every frame — `0` for the ones the solver dropped,
+ * the solved value for the rest — so this counts what a viewer would see. It is read from the
+ * inline style rather than from `getComputedStyle` because that is where the value is written
+ * (PRD 7.3.3 keeps the overlay off the layout path).
+ */
+async function visiblePlaneLabels(page: Page): Promise<number> {
+  return page
+    .locator('.labels .label')
+    .evaluateAll(
+      (nodes) =>
+        nodes.filter((node) => Number((node as HTMLElement).style.opacity || '0') > 0.01).length,
+    )
+}
+
+/**
+ * The shell's navigation is the *scene's* navigation (PRD 5.4.15, and the whole point of the fold).
+ *
+ * Every other test in this file passes with `host.attach(scene.api)` deleted, and so does the whole
+ * unit suite: the host keeps forwarding to the navigation stub, and the stub implements the entire
+ * contract without moving a camera. The breadcrumb resolves, the URL tracks, the canvas gets its
+ * context and `stars.bin` completes — over a scene sitting at the multiverse, untouched (DEC-667
+ * B2).
+ *
+ * The discriminator has to be something only the scene's own camera can produce. PRD 5.4.15 —
+ * "at plane level and below, the multiverse's plane labels are gone" — is that, and it is a shipped
+ * requirement rather than an internal wire: `PlaneLabels` fades them on the *scene rig's* level,
+ * which only changes if the rig was told to fly. Measured on production, 1920×1080:
+ *
+ * | | `/` | `/plane/<slug>` |
+ * |---|---|---|
+ * | attached (shipped) | 67 of 86 labels shown | **0 of 90** |
+ * | `host.attach` deleted | 66 of 86 | **66 of 86** |
+ *
+ * Both legs are asserted, and that pairing is load-bearing: "no labels at plane level" alone would
+ * also pass if the overlay stopped rendering altogether, which is a different defect and not one
+ * this test should call navigation.
+ *
+ * Deliberately not a screenshot difference — the field is in motion on every frame (PRD 5.3.13,
+ * 5.3.15), so pixels differ between two captures of the same route.
+ */
+test('the shell drives the scene: plane labels are gone at plane level', async ({ page }) => {
+  await page.goto('/')
+  await waitForScene(page)
+  await expect
+    .poll(() => visiblePlaneLabels(page), {
+      message: 'the multiverse shows no plane labels at all, so the check below proves nothing',
+    })
+    .toBeGreaterThan(0)
+
+  await page.goto(`/plane/${targets.plane.slug}`)
+  await waitForScene(page)
+  await expect
+    .poll(() => visiblePlaneLabels(page), {
+      message:
+        'plane labels are still lit at plane level — the scene never left the multiverse, so the ' +
+        'shell is driving the navigation stub rather than the scene (is `host.attach` still there?)',
+    })
+    .toBe(0)
+})
+
+/**
+ * One loader, not one per consumer (PRD 7.2's 3 MB `stars.bin` row).
+ *
+ * The fold left `app/dataset.ts` as the only thing that fetches the dataset, and `startDatasetLoad`
+ * is gone from `src/` entirely. Nothing asserted it (DEC-667 N2): if a second fetch ever
+ * reappeared, `stars.bin` would transfer twice — the artefact the intro waits on and the largest
+ * row in the budget — and every existing gate would stay green, because `check-budget.mjs` counts
+ * bytes on disk, not requests.
+ *
+ * Exactly-once rather than at-most-twice on purpose. A legitimate re-request only happens after a
+ * failure, and the `problems` fixture already fails the test on that, so the two rules agree.
+ */
+test('the dataset is fetched once, not once per consumer', async ({ page }) => {
+  const requested: string[] = []
+  page.on('request', (request) => {
+    const { pathname } = new URL(request.url())
+    if (pathname.includes('/data/')) requested.push(pathname)
+  })
+
+  await page.goto('/')
+  await waitForScene(page)
+
+  const counts = new Map<string, number>()
+  for (const pathname of requested) counts.set(pathname, (counts.get(pathname) ?? 0) + 1)
+
+  expect(
+    [...counts].filter(([, n]) => n > 1),
+    'a dataset artefact was transferred more than once — is there a second loader?',
+  ).toEqual([])
+  // Guards the guard: with no requests at all the check above passes vacuously.
+  expect(
+    requested.filter((pathname) => pathname.endsWith('stars.bin')),
+    'stars.bin was never requested, so the count above proves nothing',
+  ).toHaveLength(1)
+})
+
 test('/ renders and the breadcrumb reads Multiverse', async ({ page }) => {
   await page.goto('/')
   await waitForScene(page)
