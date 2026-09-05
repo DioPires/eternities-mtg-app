@@ -6,10 +6,15 @@
  * order, moving focus, restoring it on close — is driven in a real browser by
  * `scripts/verify-browser.mjs`, which is the only place a focus trap can honestly be tested.
  *
- * The case worth having a test for is `current === -1`: focus outside the dialog. It happens on
- * every scrim click, because clicking a non-focusable backdrop leaves `<body>` focused, and a trap
- * that mishandles it either throws or silently lets Tab walk out into the HUD the dialog claims is
+ * The case worth having a test for is `current === -1`: the focused element is not in the tab
+ * order. It is reached whenever focus sits on something inside the dialog that `focusablesIn`
+ * excludes — the `tabindex="-1"` container an empty dialog opens on, most of all — and a trap that
+ * mishandles it either throws or silently lets Tab walk out into the HUD the dialog claims is
  * inert.
+ *
+ * It is *not* reached by focus leaving the dialog. `useDialog` binds `keydown` to the dialog
+ * element, and a `keydown` is dispatched at the focused element, so focus out on `<body>` means
+ * this function is never consulted in the first place.
  */
 
 import { describe, expect, it } from 'vitest'
@@ -29,7 +34,7 @@ describe('nextFocusIndex', () => {
     expect(nextFocusIndex(4, 0, true)).toBe(3)
   })
 
-  it('pulls focus back in from outside, entering at the end Tab came from', () => {
+  it('enters the order at the end Tab came from, off an untabbable element', () => {
     expect(nextFocusIndex(4, -1, false)).toBe(0)
     expect(nextFocusIndex(4, -1, true)).toBe(3)
   })

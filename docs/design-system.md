@@ -81,13 +81,19 @@ alpha-blended over pure white.
 
 Against those, with every hover and selection fill stacked on top:
 
-| Token | Worst ratio | Role |
-| --- | --- | --- |
-| `--ink` | 9.4:1 | body copy, titles, selected rows |
-| `--ink-muted` | 4.8:1 | meta, eyebrows, resting controls |
-| `--accent` | 5.3:1 | selection and focus |
-| `--danger` | 5.8:1 | the error toast |
-| `--ink-faint` | 2.8:1 | **non-text only** — separators, the scrollbar thumb |
+| Token | Worst ratio | Where the worst case is | Role |
+| --- | --- | --- | --- |
+| `--ink` | 10.28:1 | `.crumb:hover` on the rail | body copy, titles, selected rows |
+| `--ink-muted` | 6.44:1 | row meta on hover, in the drawer | meta, eyebrows, resting controls |
+| `--accent` | 5.34:1 | `.chip-add-active` | selection and focus |
+| `--danger` | 8.16:1 | `.toast-error` | the error toast |
+| `--ink-faint` | 3.97:1 | on glass | **non-text only** — separators, the scrollbar thumb |
+
+Each figure is the **minimum over every pairing `test/design.test.ts` enumerates** for that token.
+That is the only definition under which the table and the test cannot disagree: move a token and
+the worst case may move to a different row of `TEXT_PAIRS`, so this column is re-derived from that
+list rather than kept by hand. Four of the five were stale until DEC-632 caught them — pre-lift
+figures that were never re-derived after the tokens changed, all four understating real headroom.
 
 `--ink-faint` is deliberately below the text floor. It clears WCAG 1.4.11's 3:1 for non-text
 against its own surface and is allowed exactly one glyph: the breadcrumb's `›`, which is
@@ -103,8 +109,16 @@ Two defects fixed by this pass, both pre-existing:
    failure of 7.5.4 wherever a panel crossed a bloomed core. Fixed by lifting the token to
    `#a6afc6` and taking the drawer to 94%.
 2. A **selected** set or printing row left its year and rarity muted on top of the accent wash:
-   4.25:1. Selection is a state that adds emphasis; it was quietly subtracting legibility from
-   half the row. Selected rows now promote every span to `--ink`.
+   **2.87:1**, on the drawer's panel. Selection is a state that adds emphasis; it was quietly
+   subtracting legibility from half the row. Selected rows now promote every span to `--ink`,
+   which takes the pairing to 11.34:1 on the panel and 12.67:1 on a sheet.
+
+   This figure was first recorded as 4.25:1, which is wrong in the direction that matters: the
+   defect was **worse** than the record claimed, not better. Sweeping every text ink against
+   every surface, fill and base in both the old and the new token set — 336 pairings — produces
+   no 4.25 at all, and the two nearest (4.29 and 4.19) each mix an old value with a new one, so
+   4.25 looks like a figure derived mid-edit. The 2.87 is old `--muted` `#8b93ab` on the old 82%
+   panel under the old `rgb(143 183 255 / 16%)` wash, composited over white — 2.8747 exactly.
 
 The breadcrumb changed shape for the same reason. It was bare text directly on the canvas, where
 the ratio is a property of *where the camera happens to be* rather than of the design — a bloomed
@@ -134,9 +148,16 @@ reality disagree, and a keyboard user tabs through controls their reader says do
 1. **focus moves in** on open — the first tabbable element, or a named one (`.search-input` for
    search, `.sheet-filter` for the plane index, because in both cases that is what the user came
    for and neither is first in the DOM);
-2. **focus stays in** — Tab wraps at both ends, and a scrim click that leaves `<body>` focused is
-   pulled back in;
+2. **focus stays in** — Tab wraps at both ends, and a Tab from something inside the dialog that is
+   not itself tabbable enters the order at an end;
 3. **focus goes home** on close, to the control that opened it.
+
+The pointer path holds too, but not because of the trap: clicking non-focusable content inside a
+sheet drops `document.activeElement` to `<body>`, and a `keydown` there never reaches a listener
+bound to the dialog. It holds because the click sets the spec's *sequential focus navigation
+starting point* inside the dialog, so the browser's own Tab stays there — and from the next Tab
+onwards focus is on a real element and the trap takes over. Verified by hand on three sheets
+during the DEC-632 review.
 
 Esc is deliberately not in that file. `useKeyboardMap` owns it for the whole app so PRD 6.11's
 close ordering — overlay, then hint, then camera — has a single producer.

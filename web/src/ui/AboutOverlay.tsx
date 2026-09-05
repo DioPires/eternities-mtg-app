@@ -10,7 +10,7 @@
  *
  * The notice in `FAN_CONTENT_NOTICE` is Wizards' required wording and is quoted verbatim, with the
  * product name substituted where the policy asks for it. It is a constant rather than inline JSX
- * so that `test/design.test.ts` can assert the four clauses the policy requires are all present —
+ * so that `test/design.test.ts` can assert the five clauses the policy requires are all present —
  * a paraphrase here is a licensing problem, not a copy edit.
  *
  * Reached from the help sheet rather than from a seventh control: PRD 6.3.3 lists exactly six

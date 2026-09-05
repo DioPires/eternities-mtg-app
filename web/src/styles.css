@@ -605,8 +605,10 @@ a:hover {
  * A selected row promotes *all* of its text to `--ink`, meta included.
  *
  * Leaving the year and rarity muted on top of `--fill-accent` was the one pairing in the system
- * that fell under 4.5:1 (4.25 over glass at worst case). Selection is a state that adds emphasis;
- * having it quietly subtract legibility from half the row was backwards anyway.
+ * that fell under 4.5:1 — 2.87:1 at worst case, on the drawer's `--surface-panel`, not on glass:
+ * these three rules live in the drawer and on a sheet, and neither surface is the HUD's glass.
+ * Selection is a state that adds emphasis; having it quietly subtract legibility from half the
+ * row was backwards anyway.
  */
 .set-row-active,
 .printing-row-active,

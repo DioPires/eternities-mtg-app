@@ -8,7 +8,7 @@ constraint applied at the end. It is generated from one place — `web/security-
 served three ways: the dev server, `pnpm preview`, and `web/vercel.json`, which CI regenerates and
 diffs (`node scripts/write-vercel-json.mjs --check`).
 
-**Outcome: two changes made, four findings recorded and deliberately not acted on.**
+**Outcome: two changes made, five findings recorded and deliberately not acted on.**
 
 ## The policy as it now ships
 
@@ -39,9 +39,15 @@ style-src 'self'; style-src-attr 'unsafe-inline'
 block is refused**. That is the shape an XSS payload takes when it wants to restyle the page,
 overlay a fake control, or hide something — and it is now blocked.
 
-The attribute relaxation stays, scoped to attributes, because it is genuinely load-bearing: React
-and drei write `style` attributes, and the label overlay writes a `transform` on every label on
-every frame (PRD 7.3.3). The payload surface there is one element's own box, not the document.
+The attribute relaxation stays, scoped to attributes, where the payload surface is one element's
+own box rather than the document.
+
+**It is retained conservatively, not because anything needs it.** The original justification here
+was that "React and drei write `style` attributes, and the label overlay writes a `transform` on
+every label on every frame (PRD 7.3.3)". That reasoning does not hold — `style-src-attr` governs
+only a literal `style` **attribute** being applied, and every inline style this app produces goes
+through the CSSOM instead, which no CSP directive governs. See F5 below, which records what is
+actually true and hands the drop to Phase 6.
 
 The dev server still gets `'unsafe-inline'` on `style-src`, because Vite injects CSS as `<style>`
 elements so HMR can swap them. The built site ships one `<link>` and gets the strict policy.
@@ -111,6 +117,38 @@ is correct in advance if one is ever added. No change.
   there is no server and no third party, and a reporting endpoint would be both. Declined; the
   browser check in `verify-browser.mjs` is the substitute, and it fails the build rather than
   filing a report nobody reads.
+
+### F5 — `style-src-attr 'unsafe-inline'` is very likely droppable
+
+Raised by the Phase 5 review (DEC-632) against §1's original rationale, and it is right.
+
+`style-src-attr` applies to a literal `style` **attribute** being applied to an element. It does
+not apply to CSSOM writes. Everything this app does is a CSSOM write:
+
+- `labels/PlaneLabels.tsx` sets `node.style.transform`, `node.style.opacity` and
+  `node.style.fontSize` — property assignments, not attributes, so no directive governs them;
+- the three `style={{ background: SKY_COLOUR }}` props in `App.tsx`, `Phase2aScene.tsx` and
+  `Phase2bScene.tsx` are React style objects, which React applies through the CSSOM as well;
+- `index.html` contains no literal `style=`, and nothing in the tree uses
+  `dangerouslySetInnerHTML`.
+
+The label overlay named in the old rationale is also mounted **only in `Phase2bScene`**
+(`?harness=2b`), so it is not on the shipped shell route at all.
+
+The reviewer tested it rather than reasoning about it: with `style-src-attr` removed entirely and
+the built site served under `style-src 'self'` alone, all 82 labels received their `translate3d`
+transform, with zero `securitypolicyviolation` events and zero console errors on both the shell
+root and `?harness=2b`.
+
+**Not dropped in this phase, on purpose.** Phase 3 (DEC-590) is mid-flight and will add the card
+tier — the one part of the product not exercised by that experiment. Removing a directive on the
+strength of routes that do not yet include the largest new consumer is how a policy change gets
+reverted in a hurry. The same Phase 6 pre-launch re-check as F1 and F2 owns it: once the card tier
+has landed, re-run the experiment on the full shell and drop the directive if it stays clean.
+
+Note that this is not a regression. The policy as it ships is a **strict improvement** on the old
+`style-src 'self' 'unsafe-inline'`, which permitted injected `<style>` elements. F5 is the
+observation that the tightening did not go as far as it could have, not that it went too far.
 
 ## Related PRD 7.6 clauses
 

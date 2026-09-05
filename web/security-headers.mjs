@@ -36,15 +36,21 @@ export function contentSecurityPolicy(options = {}) {
     /*
      * Phase 5's CSP audit answered the question Phase 0 left open here — see
      * `docs/csp-audit.md`. The old value was `style-src 'self' 'unsafe-inline'`, which allowed
-     * both inline `<style>` elements and inline `style` attributes. Only the second is actually
-     * needed: React and drei write `style` *attributes* (the label overlay writes a `transform`
-     * on every one, every frame — PRD 7.3.3), and since the design system landed, the built site
-     * has exactly one stylesheet and it arrives as a `<link>`.
+     * both inline `<style>` elements and inline `style` attributes. Since the design system
+     * landed, the built site has exactly one stylesheet and it arrives as a `<link>`, so the
+     * element half buys nothing and the two are split.
      *
-     * So the two are split. `style-src-elem` inherits `style-src`, which is now `'self'` alone:
-     * an injected `<style>` block — the shape an XSS payload takes when it wants to restyle or
-     * overlay the page — is refused. `style-src-attr` keeps the relaxation, scoped to attributes,
-     * where the payload surface is one element's own box rather than the document.
+     * `style-src-elem` inherits `style-src`, which is now `'self'` alone: an injected `<style>`
+     * block — the shape an XSS payload takes when it wants to restyle or overlay the page — is
+     * refused. `style-src-attr` keeps the relaxation, scoped to attributes, where the payload
+     * surface is one element's own box rather than the document.
+     *
+     * The attribute relaxation is kept **conservatively, not because anything needs it**, and
+     * dropping it is a Phase 6 item (csp-audit.md F5). `style-src-attr` governs only a literal
+     * `style` *attribute* being applied; every inline style this app writes — the label overlay's
+     * per-frame `node.style.transform` of PRD 7.3.3 included — goes through the CSSOM, which no
+     * CSP directive governs. Removing the directive was tested clean in review (DEC-632); it is
+     * held until Phase 3's card tier lands, because that is the one route the test did not cover.
      *
      * `verify-browser.mjs` asserts the built site loads clean under exactly this policy, so a
      * future dependency that injects a `<style>` fails the check rather than the user's page.

@@ -10,7 +10,8 @@
  *
  *  1. **focus moves in** when the dialog opens, so the next Tab starts inside it;
  *  2. **focus stays in** — Tab from the last element wraps to the first and Shift+Tab does the
- *     reverse. A click on the scrim, which leaves `document.body` focused, is pulled back in too;
+ *     reverse, and a Tab from something focused inside the dialog but *not* in the tab order
+ *     (the `tabindex="-1"` container of an empty dialog, say) enters the order at an end;
  *  3. **focus goes home** when the dialog closes, to whatever opened it. Without this, dismissing
  *     the search box drops the caret at the top of the document and the user has to tab in from
  *     the beginning of the HUD to reach the control they just used.
@@ -52,9 +53,15 @@ export function focusablesIn(root: HTMLElement): HTMLElement[] {
  * Where Tab should land, given where it is now. Pure, so the wrap-around is unit-testable without
  * a DOM (`test/dialog.test.ts`); the hook below is the thin part that reads and writes the page.
  *
- * `current` is the index of the focused element within `count`, or `-1` when focus has escaped the
- * dialog entirely — a scrim click, say. From outside, Tab enters at the top and Shift+Tab at the
- * bottom, which is what a user pressing either key after clicking the backdrop expects.
+ * `current` is the index of the focused element within `count`, or `-1` when the focused element
+ * is not in the tab order. Then Tab enters at the top and Shift+Tab at the bottom.
+ *
+ * `-1` does *not* mean focus has left the dialog. It cannot: the caller binds `keydown` to the
+ * dialog element, and a `keydown` is dispatched at the focused element, so focus being out on
+ * `<body>` — after a scrim click, say — means the handler never runs at all. (The scrim also
+ * closes the overlay on `pointerdown`, so that case does not arise.) What `-1` really covers is
+ * focus on something inside the dialog that `focusablesIn` excludes: the `tabindex="-1"`
+ * container an empty dialog is focused on, above all.
  */
 export function nextFocusIndex(count: number, current: number, backwards: boolean): number {
   if (count <= 0) return -1

@@ -336,7 +336,7 @@ describe('self-hosted fonts (PRD 7.6.1)', () => {
 })
 
 describe('About view (PRD 4.11)', () => {
-  it('carries all four clauses the Fan Content Policy requires', () => {
+  it('carries all five clauses the Fan Content Policy requires', () => {
     // Paraphrasing any of these is a licensing problem, not a copy edit — hence a test.
     expect(FAN_CONTENT_NOTICE).toContain('unofficial Fan Content permitted under the')
     expect(FAN_CONTENT_NOTICE).toContain('Fan Content Policy')
