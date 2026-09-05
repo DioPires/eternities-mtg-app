@@ -17,7 +17,8 @@
     "test:e2e": "playwright test",
     "check-budget": "node scripts/check-budget.mjs",
     "bench": "node scripts/bench.mjs",
-    "verify-browser": "node scripts/verify-browser.mjs"
+    "verify-browser": "node scripts/verify-browser.mjs",
+    "cross-browser": "node scripts/cross-browser.mjs"
   },
   "dependencies": {
     "@react-three/drei": "9.122.0",
