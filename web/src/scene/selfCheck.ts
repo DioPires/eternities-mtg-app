@@ -82,9 +82,13 @@ export interface SelfCheckResult {
    * `null` when nothing was sampled. `z > 1` is a two-sided test — behind the 0.1 near plane *or*
    * past the harness camera's 6000 far one — and these are the margin on each side, so the
    * `unprojectable === 0` clause of `ok` is checkable against numbers rather than against the
-   * paragraph that argues for it. At the harness camera they measure 285.2-402.0 on
-   * `fixture-small`, 200.5-412.2 on `fixture-scale` and 197.7-405.4 on production: three orders of
-   * magnitude clear at the near end and a factor of 14 at the far one.
+   * paragraph that argues for it. At the harness camera they measure 218.5-395.5 on
+   * `fixture-small`, 188.5-411.3 on `fixture-scale` and 191.1-402.6 on production: three orders of
+   * magnitude clear at the near end and a factor of 14 at the far one. Those are the *per-row*
+   * sampler's spans, re-measured for DEC-665; the file-wide sampler read 285.2-402.0, 200.5-412.2
+   * and 197.7-405.4. What changed is which stars are looked at, not where any star is —
+   * `fixture-small` moved most because its dust row is now sampled across its whole extent rather
+   * than from one contiguous stretch of the file.
    *
    * Both are taken over the *surviving* samples: a sample that trips the clause never reaches the
    * `Math.min`/`Math.max`, so a run that fails on `unprojectable` still reports healthy margins
@@ -112,13 +116,21 @@ export interface SelfCheckResult {
   /**
    * The subset of `unmeasured` that occlusion does not account for: the pick window was empty, or
    * held a star the mirror does not put nearer the eye than the one asked about. This is what
-   * {@link findDarkRows} judges, and the reason it can be judged on a dataset where whole planes
-   * are legitimately 96% occluded. See `DARK_ROW_MIN_SAMPLES`.
+   * {@link darkRowsOf} judges, and the reason it can be judged on a dataset where whole planes are
+   * legitimately 96% occluded. See `DARK_ROW_MIN_SAMPLES`.
    */
   readonly unexplained: number
-  /** `[planeRow, count]` for the unexplained samples, commonest first. The rule's numerator. */
+  /**
+   * `[planeRow, count]` for the unexplained samples, commonest first. The rule's numerator — the
+   * choice of *this* list over the one below is {@link darkRowsOf}'s, and is the whole of DEC-634.
+   */
   readonly unexplainedRows: readonly (readonly [number, number])[]
-  /** `[planeRow, count]` for the unmeasurable samples, commonest first. */
+  /**
+   * `[planeRow, count]` for the unmeasurable samples, commonest first. Reported, never judged: this
+   * is raw darkness, which on a dense dataset is mostly occlusion. It is the column the ladder
+   * tables in `docs/star-renderer.md` are written in and the one that shows production's `dominaria`
+   * going 96% dark, so `verify-browser` prints it beside the numerator rather than instead of it.
+   */
   readonly unmeasuredRows: readonly (readonly [number, number])[]
   /** `[planeRow, count]` for *every* sample taken — the denominator of the line above. */
   readonly sampledRows: readonly (readonly [number, number])[]
@@ -246,7 +258,17 @@ const COINCIDENT_PX = 3
  * A star inside a galaxy core is covered by a nearer sprite and cannot be found in the id buffer
  * at all, so on a dense fixture much of the sample is unmeasurable however many are taken — 14 of
  * 24 on `fixture-scale`. That is a fact about the field, not about the mirror, and the honest
- * response is to sample more and require a real number of hits rather than a share of them.
+ * response is to require a real number of hits rather than a share of them.
+ *
+ * **Sixteen is a legacy figure and DEC-634 did not re-derive it.** It was chosen as a floor over the
+ * file-wide sampler's 64 samples — a quarter of them — and the same 16 now stands over 1832 on
+ * `fixture-scale` and 720 on production, so in relative terms it is some thirty times weaker than
+ * when it was set. It is left alone deliberately rather than rescaled: vacuity is now covered far
+ * better by {@link DARK_ROW_MIN_SAMPLES}, which judges every row of ten stars or more on *why* its
+ * samples went dark, so a run that locates almost nothing fails as dozens of dark rows long before
+ * this clause has an opinion. What is left for an absolute floor is the degenerate case that rule
+ * cannot see — a run that took almost no samples at all — and for that any small number does. If
+ * the dark-row rule is ever removed, this one has to be re-derived rather than kept.
  */
 const MIN_MEASURED = 16
 
@@ -279,12 +301,14 @@ const MIN_MEASURED = 16
  * occluded, a row drawing four or five samples goes entirely dark by chance, as rows 47 and 43 did
  * on a clean build. Under {@link rowSampleIndices} a row's sample count is no longer a draw from
  * the file; it is `min(SAMPLES_PER_ROW, that row's stars)`, and on `fixture-scale` those counts run
- * 24 for 66 rows, then 23, 21, 19, 18, 12 — and then 7, 7, 6. Nothing lands between 7 and 12, so
- * every floor in that gap selects the same 77 rows and the choice is insensitive. What the floor
+ * 24 for 70 rows, then 23, 21, 21, 19, 18, 18, 12 — and then 7, 7, 6, which is all eighty non-empty
+ * rows and sums to the 1832 samples a run takes. Nothing lands between 7 and 12, so every floor in
+ * that gap selects the same 77 rows and the choice is insensitive. What the floor
  * now excludes is not unlucky rows but *small* ones: `lorwyn` (6 stars), `diraden` and `vryn` (7)
  * cannot reach ten samples at any budget without reading the same star twice, and ten reads of one
  * occluded star are ten dark samples establishing exactly what one established. They are reported
- * and never judged. Six further planes hold no stars at all, so the denominator is 77 of 87.
+ * and never judged. Seven further planes hold no stars at all and cannot be sampled by any means, so
+ * the denominator is 77 of 87: 80 non-empty rows, less those 3, against 7 empty ones.
  *
  * *The rate stays 0.9 — but only because the numerator stopped being `unmeasured`.* Sampling every
  * row reaches rows the file-wide sampler never judged, and on a real dataset some of them are
@@ -486,21 +510,47 @@ export function rowSampleIndices(runs: readonly PlaneRowRun[], perRow: number): 
 }
 
 /**
- * The dark-row rule of {@link DARK_ROW_MIN_SAMPLES}, as a function of the two tallies alone.
+ * The dark-row rule of {@link DARK_ROW_MIN_SAMPLES}, as a function of a denominator and a numerator.
  *
  * Separated from `sample` so it can be tested without a GPU: the rule is the whole assertion, and
  * everything around it needs a driver, a fixture and a second of wall clock to exercise.
+ *
+ * *Which* numerator is not decided here — this function judges whatever it is handed, which is what
+ * makes it testable against constructed tallies. The choice is {@link darkRowsOf}'s, and it is the
+ * load-bearing one; see there.
  */
 export function findDarkRows(
   sampledRows: ReadonlyMap<number, number>,
-  // `unexplainedRows`, not `unmeasuredRows`. Passing the latter reinstates the bug DEC-634 found:
-  // production's `dominaria` is 96% occluded on a clean build and fails at any usable rate.
-  unexplainedRows: ReadonlyMap<number, number>,
+  darkRows: ReadonlyMap<number, number>,
 ): readonly (readonly [number, number, number])[] {
   return [...sampledRows.entries()]
-    .map(([row, taken]) => [row, unexplainedRows.get(row) ?? 0, taken] as const)
+    .map(([row, taken]) => [row, darkRows.get(row) ?? 0, taken] as const)
     .filter(([, dark, taken]) => taken >= DARK_ROW_MIN_SAMPLES && dark / taken >= DARK_ROW_RATE)
     .sort((a, b) => b[1] - a[1])
+}
+
+/**
+ * The rule of {@link findDarkRows} applied to a finished run's own tallies: the call site, made
+ * testable.
+ *
+ * `findDarkRows` pins the rule. This pins *which tally the rule is applied to*, which is the whole
+ * of what DEC-634 discovered and was, until DEC-665, the one part of it no test covered. Swapping
+ * `unexplainedRows` for `unmeasuredRows` at the old call site left every test green: the choice was
+ * defended by a comment, and by a `verify-browser --dataset production` run that no CI job performs.
+ * A comment is not a test.
+ *
+ * So the wrong choice is deliberately *expressible* here — `unmeasuredRows` is taken and not used —
+ * and ruled out by the `darkRowsOf` case in `test/selfCheck.test.ts`, whose synthetic `dominaria`
+ * row (24 sampled, 23 unmeasured, 0 unexplained) is empty on one tally and a dark row on the other.
+ * `sample` then calls this with shorthand properties built from identically named locals, so the
+ * decision exists in exactly one place and that place is covered.
+ */
+export function darkRowsOf(
+  rows: Pick<SelfCheckResult, 'sampledRows' | 'unmeasuredRows' | 'unexplainedRows'>,
+): readonly (readonly [number, number, number])[] {
+  // `unexplainedRows`, not `unmeasuredRows`. Reading the latter reinstates the bug DEC-634 found:
+  // production's `dominaria` is 96% occluded on a clean build and fails at any usable rate.
+  return findDarkRows(new Map(rows.sampledRows), new Map(rows.unexplainedRows))
 }
 
 /**
@@ -679,11 +729,15 @@ async function sample(
   // checkable against numbers rather than against an argument — see the clause itself.
   let nearestDepth = Infinity
   let farthestDepth = -Infinity
-  const unmeasuredRows = new Map<number, number>()
+  // Tallied as maps and reported as sorted entry lists. Named apart from the `...Rows` fields they
+  // become so that the assembly below can hand `darkRowsOf` shorthand properties — the numerator
+  // choice is defended by a unit test on that function, and shorthand leaves no second place to
+  // make it. See {@link darkRowsOf}.
+  const unmeasuredByRow = new Map<number, number>()
   let unexplained = 0
-  const unexplainedRows = new Map<number, number>()
-  const unprojectableRows = new Map<number, number>()
-  const sampledRows = new Map<number, number>()
+  const unexplainedByRow = new Map<number, number>()
+  const unprojectableByRow = new Map<number, number>()
+  const sampledByRow = new Map<number, number>()
   let offsetTotal = 0
   let offsetMax = 0
   // Every sample that contributed to `offsetTotal`, which is the occluded ones *and* the misses
@@ -727,7 +781,7 @@ async function sample(
       // Behind the eye or beyond the far plane. The only projection the pick window cannot be
       // aimed at, and therefore the only sample still dropped before the tallies below.
       unprojectable += 1
-      unprojectableRows.set(row, (unprojectableRows.get(row) ?? 0) + 1)
+      unprojectableByRow.set(row, (unprojectableByRow.get(row) ?? 0) + 1)
       continue
     }
     // Recorded, not acted on. An off-screen sample is measured like any other from here down — it
@@ -741,7 +795,7 @@ async function sample(
     checked += 1
     // The denominator for `unmeasuredRows`. Counted here, at the same point the sample enters
     // `checked`, so the two tallies are over exactly the same set of samples.
-    sampledRows.set(row, (sampledRows.get(row) ?? 0) + 1)
+    sampledByRow.set(row, (sampledByRow.get(row) ?? 0) + 1)
     // `pickQueued`, not `pick`: a `PICK_BUSY` here would decode as "some other star" and be scored
     // as a disagreement. The check must compare answers, never the absence of one.
     const picked = await picker.pickQueued(renderer, scene, camera, pixel.x, pixel.y)
@@ -761,7 +815,7 @@ async function sample(
       // neighbourhood; a mirror error is a property of a whole row. `darkRows` below is what turns
       // that difference into a verdict.
       unmeasured += 1
-      unmeasuredRows.set(row, (unmeasuredRows.get(row) ?? 0) + 1)
+      unmeasuredByRow.set(row, (unmeasuredByRow.get(row) ?? 0) + 1)
       // Which of the two causes it was — see {@link DARK_ROW_MIN_SAMPLES}. One sample cannot say
       // whether the star was covered or misplaced, but the pick window can be asked what it held
       // *instead*: if that is a star the mirror puts nearer the eye, the prediction was right and
@@ -779,7 +833,7 @@ async function sample(
           : null
       if (occluder === null || occluder.depth >= pixel.depth) {
         unexplained += 1
-        unexplainedRows.set(row, (unexplainedRows.get(row) ?? 0) + 1)
+        unexplainedByRow.set(row, (unexplainedByRow.get(row) ?? 0) + 1)
       }
       // Not scored as agreement either. An unmeasured sample established nothing about the mirror,
       // and letting it fall through into `agreed`/`occluded` reported coverage the run never had.
@@ -811,9 +865,19 @@ async function sample(
   }
 
   const maxOffsetPx = Math.round(offsetMax * 100) / 100
-  // Rows the check looked at often enough to judge, and located nothing on. Read off the two
-  // tallies above rather than tracked separately, so it cannot disagree with what is reported.
-  const darkRows = findDarkRows(sampledRows, unexplainedRows)
+  const commonestFirst = (
+    counts: ReadonlyMap<number, number>,
+  ): readonly (readonly [number, number])[] => [...counts.entries()].sort((a, b) => b[1] - a[1])
+  const unprojectableRows = commonestFirst(unprojectableByRow)
+  const unmeasuredRows = commonestFirst(unmeasuredByRow)
+  const unexplainedRows = commonestFirst(unexplainedByRow)
+  const sampledRows = commonestFirst(sampledByRow)
+  // Rows the check looked at often enough to judge, and located nothing on. Read off the reported
+  // tallies themselves rather than tracked separately, so it cannot disagree with what is printed —
+  // and through {@link darkRowsOf} rather than {@link findDarkRows} directly, so that the choice of
+  // numerator is made in a function a test can call. Shorthand properties, deliberately: this line
+  // used to be where the choice lived and where a one-word swap went unnoticed by 437 tests.
+  const darkRows = darkRowsOf({ sampledRows, unmeasuredRows, unexplainedRows })
   return {
     checked,
     agreed,
@@ -821,13 +885,13 @@ async function sample(
     occluded,
     unmeasured,
     unprojectable,
-    unprojectableRows: [...unprojectableRows.entries()].sort((a, b) => b[1] - a[1]),
+    unprojectableRows,
     nearestDepth: Number.isFinite(nearestDepth) ? nearestDepth : null,
     farthestDepth: Number.isFinite(farthestDepth) ? farthestDepth : null,
-    unmeasuredRows: [...unmeasuredRows.entries()].sort((a, b) => b[1] - a[1]),
+    unmeasuredRows,
     unexplained,
-    unexplainedRows: [...unexplainedRows.entries()].sort((a, b) => b[1] - a[1]),
-    sampledRows: [...sampledRows.entries()].sort((a, b) => b[1] - a[1]),
+    unexplainedRows,
+    sampledRows,
     darkRows,
     missed,
     meanOffsetPx: offsetSamples > 0 ? Math.round((offsetTotal / offsetSamples) * 100) / 100 : 0,
@@ -896,7 +960,7 @@ async function sample(
     // `0 unprojectable` over 87 planes.
     //
     // Those are bounds rather than measurements, and the measured spans are narrower because no
-    // star sits on the view axis at full extent: 197.7-405.4 on production, 200.5-412.2 on
+    // star sits on the view axis at full extent: 191.1-402.6 on production, 188.5-411.3 on
     // `fixture-scale`, the widest of the three. `nearestDepth` and `farthestDepth` report both
     // margins on every run so the claim is checkable against numbers — but read them knowing they
     // are taken over the surviving samples, so they cannot warn about the samples that trip this
