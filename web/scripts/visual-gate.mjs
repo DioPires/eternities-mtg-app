@@ -42,6 +42,8 @@ import { fileURLToPath } from 'node:url'
 
 import puppeteer from 'puppeteer-core'
 
+import { measureStatusPanel, statusPanelFaults } from './lib/status-panel.mjs'
+
 const WEB_ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const CHROME_CANDIDATES = [
   process.env.CHROME_PATH,
@@ -86,6 +88,9 @@ function readRoster(dataset) {
   return { hash, manifest, planes, realImages: typeof manifest.scryfallBulkUpdatedAt === 'string' }
 }
 
+/** How much stderr the death notice carries. Enough for a vite stack trace, not a whole log. */
+const TAIL_LIMIT = 4000
+
 /**
  * The preview server, plus the two things needed to diagnose it when it dies.
  *
@@ -96,7 +101,8 @@ function readRoster(dataset) {
  * drained and echoed, its tail is kept for the exit message, and the exit itself is announced.
  *
  * `stop()` rather than `child.kill()` at the call site, so the deliberate teardown at the end of a
- * run is not reported as the death this is watching for. Mirrors `verify-browser.mjs`.
+ * run is not reported as the death this is watching for, and it is all the caller gets: the child
+ * itself is not returned, so there is no second way to kill it. Mirrors `verify-browser.mjs`.
  */
 async function startPreview(dataset) {
   const child = spawn('pnpm', ['exec', 'vite', 'preview', '--port', '0', '--strictPort', 'false'], {
@@ -105,12 +111,13 @@ async function startPreview(dataset) {
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   // A rolling tail, so a server that has been chattering for the length of a capture still fits in
-  // the message and the last words are the ones kept.
-  const tail = []
+  // the message and the last words are the ones kept. Bounded in characters rather than chunks: a
+  // chunk has no size limit, so a single vite stack trace arriving whole would have blown the
+  // message out however few of them were kept.
+  let tail = ''
   child.stderr.setEncoding('utf8')
   child.stderr.on('data', (chunk) => {
-    tail.push(chunk)
-    if (tail.length > 20) tail.shift()
+    tail = (tail + chunk).slice(-TAIL_LIMIT)
     process.stderr.write(`  [vite preview] ${chunk.replace(/\n(?=.)/g, '\n  [vite preview] ')}`)
   })
 
@@ -141,13 +148,12 @@ async function startPreview(dataset) {
         `Everything after this point is talking to a dead server, so the next failure is that ` +
         `and not the checkpoint it lands in.` +
         (tail.length > 0
-          ? `\n  Its last output:\n  ${tail.join('').trimEnd().replace(/\n/g, '\n  ')}`
+          ? `\n  Its last output:\n  ${tail.trimEnd().replace(/\n/g, '\n  ')}`
           : ' It said nothing on stderr.'),
     )
   })
 
   return {
-    child,
     url,
     stop: () => {
       stopping = true
@@ -479,33 +485,16 @@ async function capture(args) {
     })
     console.log(`  canvas ${gpu.size} on ${gpu.renderer}`)
 
-    // The readout, measured rather than assumed. `verify-browser.mjs` asserts this now — see
-    // `verifyStatusPanelPaints` there — but a capture run is often the first thing anyone points
-    // at a new build, and a note in `capture.json` says which state the frames were taken beside.
-    const panel = await page.evaluate(() => {
-      const node = document.querySelector('[data-testid="eternities-status"]')
-      if (!node) return null
-      const rect = node.getBoundingClientRect()
-      const style = getComputedStyle(node)
-      return {
-        width: rect.width,
-        height: rect.height,
-        position: style.position,
-        zIndex: style.zIndex,
-        rendered: node.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }),
-        onScreen:
-          rect.right > 0 && rect.bottom > 0 && rect.left < window.innerWidth && rect.top < window.innerHeight,
-      }
-    })
+    // The readout, measured rather than assumed. `verify-browser.mjs` asserts the same four things
+    // — the check is shared, in `lib/status-panel.mjs` — but a capture run is often the first
+    // thing anyone points at a new build, so it carries the same strength here and reports it as a
+    // note in `capture.json` saying which state the frames were taken beside. Every fault, not
+    // just the first: nothing downstream stops on one, so the whole picture is more use.
+    const panel = await measureStatusPanel(page, 'eternities-status')
     if (!panel) {
       notes.push('the ?harness=3 state panel is not in the DOM at all — the sidecars will be empty')
-    } else if (panel.position === 'static' || !panel.rendered || !panel.onScreen) {
-      notes.push(
-        `the ?harness=3 state panel does not paint: ${Math.round(panel.width)}x` +
-          `${Math.round(panel.height)} at position:${panel.position}, rendered ${panel.rendered}, ` +
-          `on screen ${panel.onScreen}. It reads fine through textContent, so only a measurement ` +
-          `catches it. Check the .scene-status rule in styles.css.`,
-      )
+    } else {
+      for (const fault of statusPanelFaults(panel)) notes.push(`?harness=3: ${fault}`)
     }
 
     // Checkpoint 1: the home view, after PRD 6.8.2's intro has flown in and settled, with the

@@ -104,6 +104,12 @@ import { fileURLToPath } from 'node:url'
 
 import puppeteer from 'puppeteer-core'
 
+import {
+  measureStatusPanel,
+  statusPanelFaults,
+  summariseStatusPanel,
+} from './lib/status-panel.mjs'
+
 const WEB_ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const CHROME_CANDIDATES = [
   process.env.CHROME_PATH,
@@ -210,6 +216,9 @@ function readRoster(dataset) {
   return { hash, planes: planes.length, labelled, shards, stars: manifest.counts.stars, realImages }
 }
 
+/** How much stderr the death notice carries. Enough for a vite stack trace, not a whole log. */
+const TAIL_LIMIT = 4000
+
 /**
  * The preview server, plus the two things needed to diagnose it when it dies.
  *
@@ -220,7 +229,8 @@ function readRoster(dataset) {
  * is drained and echoed, its tail is kept for the exit message, and the exit itself is announced.
  *
  * `stop()` rather than `child.kill()` at the call site, so the deliberate teardown at the end of
- * a run is not reported as the death this is watching for.
+ * a run is not reported as the death this is watching for. `stop()` is also all the caller gets:
+ * the child itself is not returned, so there is no second way to kill it.
  */
 async function startPreview(dataset) {
   const child = spawn('pnpm', ['exec', 'vite', 'preview', '--port', '0', '--strictPort', 'false'], {
@@ -229,12 +239,13 @@ async function startPreview(dataset) {
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   // A rolling tail, so a server that has been chattering for ten minutes still fits in the
-  // message and the last words are the ones kept.
-  const tail = []
+  // message and the last words are the ones kept. Bounded in characters rather than chunks: a
+  // chunk has no size limit, so a single vite stack trace arriving whole would have blown the
+  // message out however few of them were kept.
+  let tail = ''
   child.stderr.setEncoding('utf8')
   child.stderr.on('data', (chunk) => {
-    tail.push(chunk)
-    if (tail.length > 20) tail.shift()
+    tail = (tail + chunk).slice(-TAIL_LIMIT)
     process.stderr.write(`  [vite preview] ${chunk.replace(/\n(?=.)/g, '\n  [vite preview] ')}`)
   })
 
@@ -265,13 +276,14 @@ async function startPreview(dataset) {
         `Everything after this point is talking to a dead server, so the next failure is that ` +
         `and not the step it lands in.` +
         (tail.length > 0
-          ? `\n  Its last output:\n  ${tail.join('').trimEnd().replace(/\n/g, '\n  ')}`
+          ? `\n  Its last output:\n  ${tail.trimEnd().replace(/\n/g, '\n  ')}`
           : ' It said nothing on stderr.'),
     )
   })
 
+  // No `child`: `stop()` is the only teardown that suppresses the death notice above, so handing
+  // back the raw kill handle would leave the one mistake `stop()` exists to prevent in reach.
   return {
-    child,
     url,
     stop: () => {
       stopping = true
@@ -382,99 +394,17 @@ const pause = (ms) => new Promise((r) => setTimeout(r, ms))
 /**
  * The development readout is on screen, not merely in the DOM.
  *
- * Every other assertion in this file reads the panel's `textContent`, and `textContent` is happy
- * with a node that never paints. It was: for two phases both scenes asked for `class="overlay"`,
- * Phase 5's stylesheet had no such rule, and the panel laid out `position: static` after a canvas
- * that already fills `.app` — a viewport below the fold, on a `body` with `overflow: hidden`. The
- * whole suite stayed green through it. That is the class of defect a text-only assertion cannot
- * see, so this one is deliberately not about text.
- *
- * Four things are asked, because each catches a different way to be invisible:
- *
- *  - `checkVisibility` for `display: none`, `visibility: hidden`, zero opacity and an unrendered
- *    subtree — the failures that leave a box behind;
- *  - the intersection with the viewport, for the failure that actually happened: a laid-out,
- *    perfectly visible box positioned somewhere nobody can see;
- *  - `position`, because `static` is what put it there, and naming it makes the diagnosis obvious
- *    from the message alone;
- *  - the scroll overflow, for the one invisibility the other three all pass: `max-height` with
- *    `overflow: hidden` (both in the `.scene-status` rule, and the `max-height` deliberately so)
- *    clips the readout's last lines while the box itself paints, at full size, exactly where it
- *    belongs. Nothing above can see a panel that is on screen and truncated.
- *
- * Occlusion is out of scope here: `pointer-events: none` takes the panel out of hit testing on
- * purpose (the harness clicks stars through this corner), so `elementsFromPoint` would report the
- * canvas whatever the panel is doing. The check is geometry and computed style, as PRD 9.3's
- * follow-up asks.
+ * The measurement and the four faults live in `lib/status-panel.mjs`, shared with
+ * `visual-gate.mjs`; see that file for what each one catches and why. All this adds is the
+ * disposition: here a fault fails the run, and only the first is reported, since the list is
+ * ordered so the first explains the rest.
  */
 async function verifyStatusPanelPaints(page, testid, label) {
-  const seen = await page.evaluate((id) => {
-    const node = document.querySelector(`[data-testid="${id}"]`)
-    if (!node) return null
-    const rect = node.getBoundingClientRect()
-    const style = getComputedStyle(node)
-    const width = Math.max(0, Math.min(rect.right, window.innerWidth) - Math.max(rect.left, 0))
-    const height = Math.max(0, Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0))
-    return {
-      rendered: node.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }),
-      box: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-      onScreen: { width, height },
-      position: style.position,
-      viewport: { width: window.innerWidth, height: window.innerHeight },
-      // Content height against the height on offer. Both are integers, and both include the
-      // padding, so they are directly comparable.
-      scroll: { height: node.scrollHeight, client: node.clientHeight },
-    }
-  }, testid)
-
+  const seen = await measureStatusPanel(page, testid)
   check(seen !== null, `${label}: the status panel [data-testid="${testid}"] is not in the DOM`)
-  const where =
-    `${Math.round(seen.box.width)}x${Math.round(seen.box.height)} at ` +
-    `(${Math.round(seen.box.x)}, ${Math.round(seen.box.y)}) in a ` +
-    `${seen.viewport.width}x${seen.viewport.height} viewport, position:${seen.position}`
-  check(seen.rendered, `${label}: the status panel is in the DOM but does not render — ${where}`)
-  check(
-    seen.position !== 'static',
-    `${label}: the status panel is statically positioned, so it lays out after the canvas that ` +
-      `fills .app instead of over it — ${where}. Its textContent still reads, which is why only ` +
-      `this assertion can see it. Check the .scene-status rule in styles.css.`,
-  )
-  // Two floors per axis, and the panel has to clear both:
-  //
-  //  - a tenth of the viewport, so a stray sliver poking in from off screen is not mistaken for a
-  //    panel that can be read;
-  //  - 60% of the panel's own box, because a viewport fraction alone scales with the wrong thing.
-  //    The viewport tenth is 108px at 1080 whatever the panel, and the two panels are not the same
-  //    size: measured on `small`, ?harness=3's is 248px tall and 2a's is 374px. So the flat floor
-  //    is 44% of the one and 29% of the other, and a regression that pushed the tall one 71% off
-  //    the bottom would still leave more than 108px on screen and pass.
-  //
-  // Clamped to the viewport, so a panel bigger than the window is not asked for the impossible.
-  const floor = (side, box) => Math.min(Math.max(side / 10, box * 0.6), side)
-  const floorW = floor(seen.viewport.width, seen.box.width)
-  const floorH = floor(seen.viewport.height, seen.box.height)
-  check(
-    seen.onScreen.width >= floorW && seen.onScreen.height >= floorH,
-    `${label}: the status panel is positioned off screen — only ${Math.round(seen.onScreen.width)}x` +
-      `${Math.round(seen.onScreen.height)} of it is inside the viewport, and this check wants at ` +
-      `least ${Math.round(floorW)}x${Math.round(floorH)} of its own ` +
-      `${Math.round(seen.box.width)}x${Math.round(seen.box.height)} box (${where})`,
-  )
-  // Height only: `.scene-status` clips vertically by design (`max-height` plus `overflow: hidden`)
-  // and the readout grows downwards, so vertical is where content is lost. Horizontally the rule
-  // sets `overflow-wrap: anywhere` on the lines, which wraps rather than overflows.
-  check(
-    seen.scroll.height <= seen.scroll.client,
-    `${label}: the status panel is on screen but its readout is truncated — ${seen.scroll.height}px ` +
-      `of content in ${seen.scroll.client}px of box, so ${seen.scroll.height - seen.scroll.client}px ` +
-      `is clipped by the max-height in the .scene-status rule. The clipped lines still read through ` +
-      `textContent, so only this assertion can see it (${where})`,
-  )
-  console.log(
-    `  the status panel paints: ${where}, ${Math.round(seen.onScreen.width)}x` +
-      `${Math.round(seen.onScreen.height)} of it on screen, ` +
-      `${seen.scroll.height}px of content in ${seen.scroll.client}px of box`,
-  )
+  const faults = statusPanelFaults(seen)
+  check(faults.length === 0, `${label}: ${faults[0]}`)
+  console.log(`  ${summariseStatusPanel(seen)}`)
 }
 
 /** The shell is ready when `sets.bin` has landed, which is what enables the random control. */
