@@ -14,7 +14,7 @@ Thirteen shards changed anyway: 38 cards, 40 printing tuples, **every one of the
 re-scanned. Nothing about the product changed. But "nothing changed" was a conclusion that took a
 script to reach, and eyeballing 351 KB of minified JSON per shard would never have reached it.
 
-So this sorts every difference into one of five buckets, loudest last:
+So this sorts every difference into one of six buckets, loudest last:
 
   * `imageTs` only                  — Scryfall re-stamped an image. Expected, ignorable, noisy.
   * printing added or removed       — a new printing of an existing card. Expected after a release.
@@ -23,6 +23,17 @@ So this sorts every difference into one of five buckets, loudest last:
                                       Rare, and worth reading one by one.
   * a printing changed some other   — same printing id, different set/rarity/collector number. This
     field                             should not happen; if it does, read it before merging.
+  * the card changed plane          — it is in a different shard than it was. This is PRD 9.2.3's
+                                      question, and the one class of change that moves two shard
+                                      files while every byte of the card stays the same. Read it
+                                      against the report's 9.2.3 count, and remember that a run
+                                      whose predecessor is under an older data contract prints no
+                                      9.2.3 number at all — then this line is the only account of
+                                      it that exists.
+
+A card is reported in one bucket, the loudest that applies, except that a non-printing field change
+and a printing change are reported side by side: they answer different questions and the second is
+the one the runbook tells the operator to read.
 
 Exit code is 0 whatever it finds. This is a reading aid for a human review step, not a gate — the
 gates are PRD 9.2's and they live in the report.
@@ -40,12 +51,28 @@ PRINTING_ID = 0
 PRINTING_IMAGE_TS = 3
 
 
-def load_shards(root: Path) -> dict[str, dict]:
-    """Every card in a dataset, by `oracle_id`, with the shard it came from."""
-    cards: dict[str, dict] = {}
+def load_shards(root: Path) -> dict[str, tuple[str, dict]]:
+    """Every card in a dataset, by `oracle_id`, with the shard slug it came from.
+
+    The slug is what makes a plane move visible: a card can move between shards without a single
+    byte of the card itself changing, so the card alone cannot answer PRD 9.2.3's question.
+    """
+    cards: dict[str, tuple[str, dict]] = {}
     for shard in sorted((root / "planes").glob("*.json")):
-        for card in json.loads(shard.read_text())["cards"]:
-            cards[card["u"]] = card
+        payload = json.loads(shard.read_text())
+        # The shard states its own plane; the file name (`<slug>.<n>.json`) is the fallback.
+        slug = payload.get("slug") or shard.name.split(".")[0]
+        for card in payload["cards"]:
+            seen = cards.get(card["u"])
+            if seen is not None:
+                # Last shard wins, as it always has — but say so. A card in two planes at once
+                # would otherwise surface as a plane move that never happened.
+                print(
+                    f"warning: {root.name}: {card.get('n', card['u'])} appears in both "
+                    f"{seen[0]} and {slug}; taking {slug}",
+                    file=sys.stderr,
+                )
+            cards[card["u"]] = (slug, card)
     return cards
 
 
@@ -60,23 +87,33 @@ def classify(old: Path, new: Path) -> int:
     printing_counts: list[tuple[str, int, int]] = []
     field_changes: list[tuple[str, list[str]]] = []
     printing_oddities: list[tuple[str, list, list]] = []
+    plane_moves: list[tuple[str, str, str]] = []
     changed_fields: Counter[str] = Counter()
+    changed_cards: set[str] = set()
     image_ts_printings = 0
 
     for oracle_id in sorted(set(before) & set(after)):
-        a, b = before[oracle_id], after[oracle_id]
-        if a == b:
+        (slug_a, a), (slug_b, b) = before[oracle_id], after[oracle_id]
+        if slug_a == slug_b and a == b:
             continue
+        changed_cards.add(oracle_id)
         name = b.get("n", oracle_id)
+
+        # Loudest bucket, and the only one that can fire on a byte-identical card.
+        if slug_a != slug_b:
+            plane_moves.append((name, slug_a, slug_b))
+            continue
 
         rest_a = {k: v for k, v in a.items() if k != "p"}
         rest_b = {k: v for k, v in b.items() if k != "p"}
-        if rest_a != rest_b:
+        fields_changed = rest_a != rest_b
+        if fields_changed:
             keys = set(rest_a) | set(rest_b)
             differing = sorted(k for k in keys if rest_a.get(k) != rest_b.get(k))
             field_changes.append((name, differing))
             changed_fields.update(differing)
-            continue
+            # Deliberately no `continue`: a field change must not hide a printing change on the
+            # same card, because "printing changed otherwise" is the row the runbook says to read.
 
         pa, pb = a["p"], b["p"]
         if len(pa) != len(pb):
@@ -84,6 +121,7 @@ def classify(old: Path, new: Path) -> int:
             continue
 
         only_stamp = True
+        stamp_printings = 0
         for x, y in zip(pa, pb, strict=True):
             if x == y:
                 continue
@@ -91,11 +129,12 @@ def classify(old: Path, new: Path) -> int:
                 v for i, v in enumerate(x) if i != PRINTING_IMAGE_TS
             ] == [v for i, v in enumerate(y) if i != PRINTING_IMAGE_TS]
             if same_identity:
-                image_ts_printings += 1
+                stamp_printings += 1
             else:
                 only_stamp = False
                 printing_oddities.append((name, x, y))
-        if only_stamp:
+        image_ts_printings += stamp_printings
+        if only_stamp and stamp_printings and not fields_changed:
             image_ts_only.append(name)
 
     print(f"old: {old}")
@@ -103,10 +142,7 @@ def classify(old: Path, new: Path) -> int:
     print()
     print(f"cards added:   {len(added)}")
     print(f"cards removed: {len(removed)}")
-    changed = (
-        len(image_ts_only) + len(printing_counts) + len(field_changes) + len(printing_oddities)
-    )
-    print(f"cards changed: {changed}")
+    print(f"cards changed: {len(changed_cards)}")
     print()
     print(
         f"  image cache-buster only:      {len(image_ts_only):>5} card(s), "
@@ -115,17 +151,20 @@ def classify(old: Path, new: Path) -> int:
     print(f"  printing added or removed:    {len(printing_counts):>5} card(s)")
     print(f"  non-printing field changed:   {len(field_changes):>5} card(s)")
     print(f"  printing changed otherwise:   {len(printing_oddities):>5} card(s)  <-- read these")
+    print(f"  card changed plane:           {len(plane_moves):>5} card(s)  <-- read these")
 
     if added:
         print(f"\ncards added ({len(added)}):")
         for oracle_id in added[:40]:
-            print(f"  + {after[oracle_id].get('n', oracle_id)}")
+            slug, card = after[oracle_id]
+            print(f"  + {card.get('n', oracle_id)} ({slug})")
         if len(added) > 40:
             print(f"  ... and {len(added) - 40} more")
     if removed:
         print(f"\ncards removed ({len(removed)}):")
         for oracle_id in removed[:40]:
-            print(f"  - {before[oracle_id].get('n', oracle_id)}")
+            slug, card = before[oracle_id]
+            print(f"  - {card.get('n', oracle_id)} ({slug})")
         if len(removed) > 40:
             print(f"  ... and {len(removed) - 40} more")
     if printing_counts:
@@ -143,6 +182,12 @@ def classify(old: Path, new: Path) -> int:
         print(f"\nprintings that changed beyond the cache-buster ({len(printing_oddities)}):")
         for name, was, now in printing_oddities[:40]:
             print(f"  {name}\n    old {was}\n    new {now}")
+    if plane_moves:
+        print(f"\ncards that changed plane ({len(plane_moves)}):")
+        for name, was, now in plane_moves[:40]:
+            print(f"  {name}: {was} -> {now}")
+        if len(plane_moves) > 40:
+            print(f"  ... and {len(plane_moves) - 40} more")
 
     return 0
 
