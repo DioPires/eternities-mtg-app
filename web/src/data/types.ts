@@ -3,8 +3,12 @@
  * The Python twin is `pipeline/src/eternities/contract/models.py`.
  */
 
-/** Bumped for any byte-layout, section-id, enum-value or filename change. */
-export const CONTRACT_VERSION = 1
+/**
+ * Bumped for any byte-layout, section-id, enum-value or filename change.
+ * v2 is amendment A3: star-record byte 7 packs the colour identity into the hue class's
+ * spare bits, so a v1 reader of a v2 file sees hue classes as large as 253.
+ */
+export const CONTRACT_VERSION = 2
 
 export const BINARY_HEADER_BYTES = 16
 export const STAR_RECORD_BYTES = 12
@@ -29,6 +33,21 @@ export const HueClass = {
   Colourless: 6,
 } as const
 export type HueClass = (typeof HueClass)[keyof typeof HueClass]
+
+/**
+ * Bit index in the star record's five-bit WUBRG colour identity (PRD 6.6.2, amendment A3).
+ *
+ * Deliberately the same indices as `HueClass`'s five mono values, so a mono-coloured card
+ * satisfies `identity === 1 << hue` and the shader's `uHues` lookup and the filter agree.
+ */
+export const ColourBit = { White: 0, Blue: 1, Black: 2, Red: 3, Green: 4 } as const
+export type ColourBit = (typeof ColourBit)[keyof typeof ColourBit]
+
+/** Byte 7, bits 0-2: the `HueClass`. Seven values, so three bits. */
+export const HUE_CLASS_MASK = 0b0000_0111
+/** Byte 7, bits 3-7: the five-bit WUBRG identity, read after shifting down. */
+export const COLOUR_IDENTITY_SHIFT = 3
+export const COLOUR_IDENTITY_MASK = 0b0001_1111
 
 /** PRD 5.4.9 and 4.8: `special` maps to rare, `bonus` maps to mythic. */
 export const SizeClass = { Common: 0, Uncommon: 1, Rare: 2, Mythic: 3 } as const

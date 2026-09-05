@@ -61,7 +61,7 @@ web/                      Vite, React, TypeScript strict, react-three-fiber, Zus
   public/data/<hash>/     Committed artefacts, immutable, content-hashed.
   scripts/                Budget check, vercel.json generation, browser verification.
   e2e/                    Playwright: PRD 8.9.2's route smoke and 9.1.2's bench smoke, in CI.
-contract/test-vectors/v1/ The shared byte-level test vector. Both languages assert against it.
+contract/test-vectors/v2/ The shared byte-level test vector. Both languages assert against it.
 docs/                     The contract and policy documents above.
 ```
 

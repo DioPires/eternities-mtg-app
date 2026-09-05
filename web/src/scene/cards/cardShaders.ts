@@ -92,7 +92,11 @@ void main() {
 
   vec4 fade = planeTexel(int(aRow + 0.5), PT_FADE_TEXEL);
   vAlpha = crossFade * aFade * fade.x;
-  vRim = uHues[int(aHue + 0.5)];
+  // Masked for the same reason the star shader masks (amendment A3): an unmasked byte 7 would
+  // index uHues by up to 253 rather than by a hue class. aHue comes from the masked hueClassOf
+  // today, so this is defence, not a fix -- but the two shaders read the same value and should
+  // not differ on whether the read is safe by itself or safe by a mask two files away.
+  vRim = uHues[int(aHue + 0.5) & 7];
 
 #ifdef ID_PASS
   float id = aStar + 1.0;

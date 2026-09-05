@@ -23,7 +23,13 @@
 import type { ReactElement } from 'react'
 
 import { useFilters } from '../app/hooks'
-import { printingPageUri, type CardRecord, type PlaneRecord, type PrintingTuple } from '../data'
+import {
+  HueClass,
+  printingPageUri,
+  type CardRecord,
+  type PlaneRecord,
+  type PrintingTuple,
+} from '../data'
 import { HUE_LABEL, RARITY_LABEL, RARITY_OF_CLASS, isFilterActive } from '../filters/types'
 import { useStore } from '../store/store'
 
@@ -34,11 +40,22 @@ const RARITY_CHAR_LABEL: Readonly<Record<string, string>> = {
   m: 'Mythic',
 }
 
-/** PRD 5.4.8's seven hue classes, from the colour identity letters the shard carries. */
-function hueClassOf(colourIdentity: string): number {
-  if (colourIdentity.length === 0) return 6
-  if (colourIdentity.length > 1) return 5
-  return { W: 0, U: 1, B: 2, R: 3, G: 4 }[colourIdentity] ?? 6
+/**
+ * PRD 5.4.8's seven hue classes, from the colour identity letters the shard carries.
+ *
+ * A second implementation of the pipeline's `hue_class_for`, because the shard hands this panel
+ * the letters and not the packed byte. Exported so the shared test vector can pin the two
+ * together: unasserted, a drift here mislabels a card's colour and nothing fails. The duplicate
+ * goes when the exact-colour-filter leg moves this panel onto the record's own `colourIdentity`.
+ */
+export function hueClassOf(colourIdentity: string): HueClass {
+  if (colourIdentity.length === 0) return HueClass.Colourless
+  if (colourIdentity.length > 1) return HueClass.Multicolour
+  return (
+    { W: HueClass.White, U: HueClass.Blue, B: HueClass.Black, R: HueClass.Red, G: HueClass.Green }[
+      colourIdentity
+    ] ?? HueClass.Colourless
+  )
 }
 
 function colourIdentityText(colourIdentity: string): string {

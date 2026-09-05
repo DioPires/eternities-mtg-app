@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from ..contract.binary import decode_sets
+from ..contract.enums import CONTRACT_VERSION
 from ..contract.models import Dataset
 from .assemble import AssemblyStats
 from .verify import Finding
@@ -52,6 +53,13 @@ class ReportInput:
 
     Distinct from ``previous_run is None``, which means there was never a predecessor. Saying
     "first production run" on a rebuild is a false claim about the data, not a missing detail."""
+    previous_run_contract_version: str | None = None
+    """The ``contractVersion`` the predecessor recorded (as JSON text, see ``PreviousRun``) when it
+    is not the one this build speaks, so its artefacts are present but cannot be decoded.
+
+    The third way to reach "no diff", and it is not the same as either of the other two: unlike
+    ``previous_run is None`` there was a predecessor, and unlike ``previous_run_pruned`` its files
+    are still on disk. Only the reader has moved on. The manifest link is unaffected either way."""
 
 
 def recorded_previous_run(directory: Path) -> str | None:
@@ -69,8 +77,25 @@ def recorded_previous_run(directory: Path) -> str | None:
     return str(recorded) if recorded else None
 
 
-def load_previous_planes(data_root: Path, exclude: str) -> tuple[str, dict[str, str]] | None:
-    """Reconstruct ``oracle_id -> plane slug`` from a previous run's committed artefacts.
+@dataclass(frozen=True, slots=True)
+class PreviousRun:
+    """The production run this one follows, and its plane mapping if this build can read it."""
+
+    name: str
+    planes: dict[str, str] | None = None
+    """``oracle_id -> plane slug``, or ``None`` when the artefacts could not be decoded."""
+    contract_version: str | None = None
+    """Set with ``planes = None``: the ``contractVersion`` the predecessor's manifest recorded,
+    as JSON text, because it is not always the integer it should be.
+
+    Carried rather than reduced to a flag so the report can name what it found. ``"null"`` (the
+    key was absent) and ``'"1"'`` (a string where an integer belongs) are both real ways for a
+    predecessor to become unreadable, and both are worth reading in the report rather than
+    flattening into "some other version"."""
+
+
+def load_previous_planes(data_root: Path, exclude: str) -> PreviousRun | None:
+    """Find the previous production run and reconstruct ``oracle_id -> plane slug`` from it.
 
     No sidecar file: ``planes.json`` gives each plane's contiguous star range (data contract §2)
     and ``sets.bin``'s ORACLE_IDS section gives the star order, which is all the mapping needs.
@@ -79,8 +104,13 @@ def load_previous_planes(data_root: Path, exclude: str) -> tuple[str, dict[str, 
     largest directory name. Directory names are content hashes and carry no ordering, so sorting on
     them picks an arbitrary run the moment two production directories co-exist — and 4.9.2's diff
     is only meaningful against the run this one actually follows.
+
+    ``None`` means one thing only: no production run exists to follow. A predecessor written under
+    another contract version still *is* the predecessor, so it is selected like any other and
+    returned with ``planes = None`` — the caller keeps the manifest link and the report says why
+    the diff is missing, rather than both of them claiming this is a first run.
     """
-    production: list[tuple[tuple[str, str, str], Path]] = []
+    production: list[tuple[tuple[str, str, str], Path, Any]] = []
     for directory in data_root.glob("*"):
         if not directory.is_dir() or directory.name == exclude:
             continue
@@ -91,11 +121,17 @@ def load_previous_planes(data_root: Path, exclude: str) -> tuple[str, dict[str, 
         if manifest.get("dataset") != "production":
             continue
         key = (str(manifest.get("asOf", "")), str(manifest.get("generatedAt", "")), directory.name)
-        production.append((key, directory))
+        production.append((key, directory, manifest.get("contractVersion")))
 
     if not production:
         return None
-    directory = max(production)[1]
+    _, directory, version = max(production, key=lambda entry: entry[0])
+    if version != CONTRACT_VERSION:
+        # Selected, but not decoded: `decode_sets` tests the header for strict equality and would
+        # abort the whole run. The 4.9.2 diff is informational, so an unreadable predecessor loses
+        # the diff and nothing else — the run succeeds, `previousRun` still names it, and the
+        # report says the artefacts are there but this build cannot read them.
+        return PreviousRun(directory.name, contract_version=json.dumps(version))
     planes_doc = cast(
         "dict[str, Any]", json.loads((directory / "planes.json").read_text(encoding="utf-8"))
     )
@@ -105,7 +141,7 @@ def load_previous_planes(data_root: Path, exclude: str) -> tuple[str, dict[str, 
         start = int(plane["starOffset"])
         for oracle_id in oracle_ids[start : start + int(plane["starCount"])]:
             mapping[oracle_id] = str(plane["slug"])
-    return directory.name, mapping
+    return PreviousRun(directory.name, planes=mapping)
 
 
 def diff_planes(dataset: Dataset, previous: dict[str, str]) -> list[tuple[str, str, str]]:
@@ -122,14 +158,22 @@ def diff_planes(dataset: Dataset, previous: dict[str, str]) -> list[tuple[str, s
     return sorted(changes)
 
 
-def _plane_change_gate(changes: int, previous_run: str | None, pruned: bool) -> str:
-    """PRD 9.2.3's cell. Three states, because "0" means two very different things."""
+def _plane_change_gate(
+    changes: int, previous_run: str | None, pruned: bool, contract_version: str | None
+) -> str:
+    """PRD 9.2.3's cell. Four states, because "0" means several very different things."""
     if previous_run is None:
         return f"{changes} — no previous production run to compare against"
     if pruned:
         return (
             f"not computed — this run follows `{previous_run}`, whose artefacts 8.8.3 removed "
             "when it was superseded, so there is nothing left to diff against"
+        )
+    if contract_version is not None:
+        return (
+            f"not computed — this run follows `{previous_run}`, whose artefacts are still in the "
+            f"tree but record `contractVersion` {contract_version}; this build speaks "
+            f"{CONTRACT_VERSION} and cannot decode them"
         )
     return f"{changes} (vs run `{previous_run}`)"
 
@@ -270,7 +314,10 @@ def render(data: ReportInput) -> str:
                 [
                     "9.2.3 Cards that changed plane",
                     _plane_change_gate(
-                        len(data.plane_changes), data.previous_run, data.previous_run_pruned
+                        len(data.plane_changes),
+                        data.previous_run,
+                        data.previous_run_pruned,
+                        data.previous_run_contract_version,
                     ),
                 ],
             ],
@@ -378,6 +425,15 @@ def render(data: ReportInput) -> str:
             "PRD 8.8.3 removed that directory when it was superseded — the artefacts the diff "
             "needs are no longer in the tree. Rebuilding an already-superseded run reaches this "
             "state; a refresh of a committed run does not."
+        )
+    elif data.previous_run_contract_version is not None:
+        out.append(
+            f"Not computed. This run follows `{data.previous_run}`, whose artefacts are still in "
+            f"the tree but record `contractVersion` {data.previous_run_contract_version}; this "
+            f"build speaks {CONTRACT_VERSION}, and the binary decoders test the header for strict "
+            "equality rather than guess at an older layout. The predecessor is named in this "
+            "run's manifest all the same, so the chain is intact and the diff resumes on the next "
+            "run written under the current contract."
         )
     elif not data.plane_changes:
         out.append(f"None, against run `{data.previous_run}`.")

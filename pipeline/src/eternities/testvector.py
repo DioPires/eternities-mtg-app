@@ -35,7 +35,9 @@ from .contract.enums import (
     LAYOUTS,
     PlaneKind,
     SizeClass,
+    colour_identity_mask,
     hue_class_for,
+    pack_colour_byte,
     type_mask_for,
 )
 from .contract.images import CARD_BACK_URI, back_image_uri, has_back_image, image_uri, page_uri
@@ -352,6 +354,7 @@ def build_test_vector() -> Dataset:
             z=positions[i][2],
             plane_index=0 if i == 0 else (1 if i < 3 else 2),
             hue=hue_class_for(card.colour_identity),
+            colour_identity=colour_identity_mask(card.colour_identity),
             size=card.rarity,
             brightness=brightness[i],
             twinkle_phase=twinkle[i],
@@ -465,6 +468,7 @@ def vector_summary() -> dict[str, Any]:
                 "z": s.z,
                 "planeIndex": s.plane_index,
                 "hueClass": int(s.hue),
+                "colourIdentity": s.colour_identity,
                 "sizeClass": int(s.size),
                 "brightness": s.brightness,
                 "twinklePhase": s.twinkle_phase,
@@ -478,9 +482,17 @@ def vector_summary() -> dict[str, Any]:
         "files": [a.path for a in artefacts],
         "cardBackUri": CARD_BACK_URI,
         "uris": expected_uris(),
-        "hueClassChecks": [
-            {"colourIdentity": ci, "hueClass": int(hue_class_for(ci))}
-            for ci in ["W", "U", "B", "R", "G", "WU", "WUBRG", ""]
+        # Byte 7 in full: the hue class, the five-bit identity, and the packed byte both sides
+        # must agree on. Every arity is covered, because the packing is only observable at the
+        # byte and a mono-green card (byte 132) is what an unmasked v1 reader gets wrong first.
+        "colourChecks": [
+            {
+                "colourIdentity": ci,
+                "hueClass": int(hue_class_for(ci)),
+                "identityMask": colour_identity_mask(ci),
+                "colourByte": pack_colour_byte(hue_class_for(ci), colour_identity_mask(ci)),
+            }
+            for ci in ["W", "U", "B", "R", "G", "WU", "UR", "BRG", "RGWU", "WUBRG", ""]
         ],
         "typeMaskChecks": [
             {"typeLine": tl, "typeMask": type_mask_for(tl)}

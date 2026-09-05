@@ -1,14 +1,14 @@
-# Eternities — data contract v1
+# Eternities — data contract v2
 
 **Status:** frozen at Phase 0. Any change is a reviewed contract change (implementation plan §2 Phase 0, risk 2).
-**Authority:** PRD `prd_v3.md` §8.3, §7.2, §8.6, §8.7, §8.8, as amended by A1 (implementation-plan.md §8).
+**Authority:** PRD `prd_v3.md` §8.3, §7.2, §8.6, §8.7, §8.8, as amended by A1 and A3 (implementation-plan.md §8).
 **Implementations that must stay in lockstep:**
 
 | Side | Path |
 |---|---|
 | Python encoder | `pipeline/src/eternities/contract/` |
 | TypeScript decoder | `web/src/data/` |
-| Shared byte-level test vector | `contract/test-vectors/v1/` |
+| Shared byte-level test vector | `contract/test-vectors/v2/` |
 
 The test vector is the arbiter. `pipeline/tests/test_test_vector.py` and `web/test/test-vector.test.ts` both assert against the same committed bytes, so a one-sided change fails CI.
 
@@ -42,7 +42,7 @@ web/public/data/<dataHash>/
 |---|---|---|
 | 0 | `uint8[4]` | magic `E T R N` (`0x45 0x54 0x52 0x4E`) |
 | 4 | `uint8` | kind: `1` = stars, `2` = sets |
-| 5 | `uint8` | `contractVersion` = `1` |
+| 5 | `uint8` | `contractVersion` = `2` |
 | 6 | `uint16` | flags (see per-file notes; `0` today) |
 | 8 | `uint32` | `recordCount` |
 | 12 | `uint32` | reserved, `0` |
@@ -54,6 +54,7 @@ web/public/data/<dataHash>/
 | Name | Values |
 |---|---|
 | hue class | `0` W, `1` U, `2` B, `3` R, `4` G, `5` multicolour, `6` colourless |
+| colour identity bit | `0` W, `1` U, `2` B, `3` R, `4` G — a five-bit mask, so `WU` is `0b00011` (PRD 6.6.2, amendment A3). The same indices as the five mono hue classes, so a mono card satisfies `mask == 1 << hueClass`. In the star record it shares byte 7 with the hue class; see §5 |
 | size class (rarity) | `0` common, `1` uncommon, `2` rare, `3` mythic — PRD 4.8: `special` → rare, `bonus` → mythic |
 | card-type bit | `0` creature, `1` instant, `2` sorcery, `3` artifact, `4` enchantment, `5` planeswalker, `6` land, `7` battle (PRD 6.6.2) |
 | plane kind | `dust`, `spiral` (≥ 50 cards), `irregular` (1–49), `empty` (0) — PRD 5.3.6 |
@@ -66,8 +67,8 @@ Loaded first (PRD 8.7.2). Small, human-diffable, the single source of truth for 
 
 ```jsonc
 {
-  "contractVersion": 1,
-  "pipelineVersion": "0.3.0",   // 0.3.0 is the first version in which `previousRun` may appear
+  "contractVersion": 2,
+  "pipelineVersion": "0.4.0",   // 0.3.0 is the first version in which `previousRun` may appear
   "dataset": "production" | "fixture-small" | "fixture-scale",
   "dataHash": "b3f0c1d2e3f40506",
   "asOf": "2026-09-04",                    // PRD 4.9.1 run date
@@ -95,7 +96,7 @@ Loaded first, with `manifest.json`. Drives plane glows, labels, and the per-plan
 
 ```jsonc
 {
-  "contractVersion": 1,
+  "contractVersion": 2,
   "shardSize": 2000,
   "multiverseRadius": 100.0,       // R of PRD 8.6.1
   "discThickness": 15.0,           // 0.15 R
@@ -140,7 +141,7 @@ Header kind `1`, `recordCount` = star count. Flags bit `0` is reserved for a flo
 | 2 | `float16` | `y` | |
 | 4 | `float16` | `z` | |
 | 6 | `uint8` | `planeIndex` | row in `planes.json` and in the `DataTexture` |
-| 7 | `uint8` | `hueClass` | |
+| 7 | `uint8` | `colour` | packed: `hueClass` in bits 0-2, `colourIdentity` in bits 3-7 (amendment A3) |
 | 8 | `uint8` | `sizeClass` | |
 | 9 | `uint8` | `brightness` | quantised log printing count, capped at the plane's 98th percentile (PRD 5.4.10) |
 | 10 | `uint8` | `twinklePhase` | phase = `v / 256 · 2π` |
@@ -148,7 +149,22 @@ Header kind `1`, `recordCount` = star count. Flags bit `0` is reserved for a flo
 
 30 000 records = 360 016 bytes on the wire before compression.
 
-The record is laid out so the whole file is uploaded as **one interleaved WebGL buffer**, stride 12: a `HALF_FLOAT x3` attribute at offset 0, an `UNSIGNED_BYTE x4` attribute at offset 6 (`planeIndex, hueClass, sizeClass, brightness`), and an `UNSIGNED_BYTE x2` attribute at offset 10 (`twinklePhase, typeMask`). No repacking on load. The mutable `filterMask` attribute of PRD 8.5.1 is a separate, CPU-owned buffer.
+### Byte 7 — the packed colour (amendment A3)
+
+| Bits | Field | Values |
+|---|---|---|
+| 0-2 | `hueClass` | PRD 5.4.8's seven classes: W, U, B, R, G, multicolour, colourless |
+| 3-7 | `colourIdentity` | the card's five-bit WUBRG mask (PRD 6.6.2) — `W=1, U=2, B=4, R=8, G=16` |
+
+The record is still **12 bytes**. `hueClass` never exceeded 6 and so only ever needed three of its eight bits; the identity moves into the five that were already being written as zero. Nothing else in the layout moves, the file size is unchanged at 12 bytes per star, and the stride-12 interleaved upload below is untouched.
+
+The identity's bit indices are deliberately the same as `hueClass`'s five mono values, so a mono-coloured card satisfies `identity == 1 << hueClass`. That is what keeps the two halves of the byte from disagreeing about which colour a star is.
+
+Both fields are needed. `hueClass` is what the renderer indexes `uHues` by, and it is the only thing that distinguishes the two meanings of `colourIdentity == 0`: a genuinely colourless card, and a field that was never written. `colourIdentity` is what an exact colour filter needs, because `hueClass` collapses every multicolour card into a single value — the PRD 6.6.2 gap this amendment closes.
+
+**A reader must mask.** Byte 7 now ranges over 0-253, so a consumer that reads it whole gets a hue class of 132 for a mono-green card and indexes `uHues` — a seven-element array — far past its end. Every reader takes the low three bits: `decode.ts`'s `hueClass` accessor, `int(aClass.y + 0.5) & 7` in the star vertex shader, and `starGeometry.hueClassOf` — which reads the record bytes directly rather than through the decoder, and feeds both the focused card's rim colour and the thumbnail glow's `aHue`. That third one is the easy one to miss. This is why the change bumps `contractVersion`: the failure is silent, not loud.
+
+The record is laid out so the whole file is uploaded as **one interleaved WebGL buffer**, stride 12: a `HALF_FLOAT x3` attribute at offset 0, an `UNSIGNED_BYTE x4` attribute at offset 6 (`planeIndex, colour, sizeClass, brightness`), and an `UNSIGNED_BYTE x2` attribute at offset 10 (`twinklePhase, typeMask`). No repacking on load. The mutable `filterMask` attribute of PRD 8.5.1 is a separate, CPU-owned buffer.
 
 `stars.bin` is consumed with a streaming fetch; the draw range grows as records arrive. Because records are plane-ordered, whole planes fade in one after another (PRD 6.8.1, 8.3). A partial read is always a whole number of records plus the 16-byte header; the decoder exposes an incremental reader for this.
 
@@ -180,7 +196,7 @@ Loaded in the background after the first frame, with `sets.bin` (PRD 8.7.5). Cli
 
 ```jsonc
 {
-  "contractVersion": 1,
+  "contractVersion": 2,
   "starCount": 30000,
   "planes": [{ "index": 0, "slug": "…", "name": "…", "cardCount": 6400 }],
   "sets": [{
@@ -201,21 +217,25 @@ Card `oracle_id`s are **not** in `search.json`; they are in `sets.bin` section 1
 
 ## 8. Payload budget
 
-PRD 7.2 budgets the pair `search.json` + `sets.bin` at ≤ 700 KB target / 1.5 MB ceiling, **encoded transferred size**. Both datasets below are measured at brotli quality 11 — the numbers `web/scripts/check-budget.mjs` reports, re-measured against the committed artefacts of `1b06048e8b670c21` (`fixture-scale`: 30 000 stars, 87 planes, 476 sets) and `fe74a34ff803574b` (production: 28 587 stars, 87 planes, 294 sets):
+PRD 7.2 budgets the pair `search.json` + `sets.bin` at ≤ 700 KB target / 1.5 MB ceiling, **encoded transferred size**. Both datasets below are measured at brotli quality 11 — the numbers `web/scripts/check-budget.mjs` reports, re-measured against the committed artefacts of `7bd31529bcc71780` (`fixture-scale`: 30 000 stars, 87 planes, 476 sets) and `d5ee9661aaffafa3` (production: 28 587 stars, 87 planes, 294 sets), both at `contractVersion` 2:
 
 | Artefact | Scale raw | Scale brotli | Production raw | Production brotli |
 |---|---|---|---|---|
 | `manifest.json` | 16.8 KB | 4.7 KB | 16.9 KB | 4.7 KB |
-| `planes.json` | 87.9 KB | 13.4 KB | 69.0 KB | 11.5 KB |
-| `stars.bin` | 351.6 KB | 262.0 KB | 335.0 KB | 229.1 KB |
-| `search.json` | 909.3 KB | 128.8 KB | 578.1 KB | 181.2 KB |
-| `sets.bin` | 666.2 KB | 543.4 KB | 624.0 KB | 487.2 KB |
-| **`search.json` + `sets.bin`** | 1 575.5 KB | **672.2 KB** | 1 202.1 KB | **668.4 KB** |
+| `planes.json` | 87.9 KB | 13.4 KB | 69.0 KB | 11.6 KB |
+| `stars.bin` | 351.6 KB | 261.6 KB | 335.0 KB | 237.6 KB |
+| `search.json` | 909.3 KB | 128.5 KB | 578.1 KB | 181.2 KB |
+| `sets.bin` | 666.2 KB | 543.2 KB | 624.0 KB | 487.2 KB |
+| **`search.json` + `sets.bin`** | 1 575.5 KB | **671.6 KB** | 1 202.0 KB | **668.5 KB** |
 | First frame (`manifest` + `planes`) | 104.7 KB | 18.1 KB | 85.9 KB | 16.2 KB |
-| Before intro (adds `stars.bin`) | 456.3 KB | 280.1 KB | 420.9 KB | 245.3 KB |
-| Largest plane shard | 838.6 KB | 204.6 KB | 1 212.7 KB | 339.9 KB |
+| Before intro (adds `stars.bin`) | 456.3 KB | 279.7 KB | 420.9 KB | 253.9 KB |
+| Largest plane shard | 838.6 KB | 204.7 KB | 1 212.7 KB | 339.8 KB |
 
-**The pair is under its target and not comfortably so.** 672.2 KB is **96%** of the 700 KB target on scale and 668.4 KB is **95%** on production — both inside the ≥ 90% band, so the budget check reports them `[near target]` with a headroom warning (27.8 KB and 31.6 KB), not a bare `ok`. Read the row that way: the target holds today and one more sizeable set is what moves it. Only the 1.5 MB ceiling fails the build; the target is reported, per PRD 9.1.1–2, so a target overshoot is visible without blocking a merge. The first frame, before-intro and A1 shard rows all sit at or under a quarter of their targets.
+**The pair is under its target and not comfortably so.** 671.6 KB is **96%** of the 700 KB target on scale and 668.5 KB is **95%** on production — both inside the ≥ 90% band, so the budget check reports them `[near target]` with a headroom warning (28.4 KB and 31.5 KB), not a bare `ok`. Read the row that way: the target holds today and one more sizeable set is what moves it. Only the 1.5 MB ceiling fails the build; the target is reported, per PRD 9.1.1–2, so a target overshoot is visible without blocking a merge. The first frame, before-intro and A1 shard rows all sit at or under a quarter of their targets.
+
+**What amendment A3 cost.** Nothing raw: `planes.json`, `stars.bin`, `search.json` and `sets.bin` are byte-for-byte what they were at `contractVersion` 1, because the identity went into bits byte 7 was already spending on zeroes. (`manifest.json` necessarily changes — it records the contract version and the hashes of the files above — but its raw size is unmoved at 17 285 bytes, so every raw cell in the table is the number main measured too.) The cost is entirely in compression, and only on `stars.bin` — production goes 229.1 → **237.6 KB** brotli, **+8.5 KB (+3.7%)**, because byte 7 now takes 31 distinct values instead of 7 and the plane-ordered runs it used to compress into are shorter. Scale is flat (262.0 → 261.6 KB): its stars sort by band then hue, so its mono runs — 15% of cards per colour, one identity value each — survive the packing almost intact.
+
+That lands entirely on the **before intro** row, 245.3 → 253.9 KB against a 3 MB target: 8% of it. **The constrained row does not move at all**, because the pair does not include `stars.bin` — production's 668.4 → 668.5 KB is measurement noise on `sets.bin`, not the amendment. So A3 is free in the budget that is actually tight, and 3.7% of one file in a budget with 12× headroom.
 
 `sets.bin` is dominated by `ORACLE_IDS` — one 16-byte UUID per star, 469 KB on scale's 30 000 and 447 KB on production's 28 587, all of it incompressible entropy that no layout choice changes. It is why the ids are 16 raw bytes rather than JSON hex strings, which would cost ≈ 1 MB and break the budget on their own.
 
@@ -238,7 +258,7 @@ Two things to read the table with:
 
 ```jsonc
 {
-  "contractVersion": 1,
+  "contractVersion": 2,
   "slug": "dominaria",
   "shard": 0,
   "shardSize": 2000,
@@ -314,11 +334,34 @@ The card's plane is not repeated in the shard; the URL's plane slug and the `pla
 
 ## 10. Enforcement
 
-- `contract/test-vectors/v1/` holds a hand-checkable dataset: `vector.json` (the inputs and the expected derived URIs) plus the encoded `stars.bin`, `sets.bin`, `manifest.json`, `planes.json`, `search.json`, `planes/*.json`. Python re-encodes it and asserts byte equality; TypeScript decodes it and asserts the values round-trip. Both run in CI.
+- `contract/test-vectors/v2/` holds a hand-checkable dataset: `vector.json` (the inputs and the expected derived URIs) plus the encoded `stars.bin`, `sets.bin`, `manifest.json`, `planes.json`, `search.json`, `planes/*.json`. Python re-encodes it and asserts byte equality; TypeScript decodes it and asserts the values round-trip. Both run in CI. The directory is named for the `contractVersion` it speaks; the v1 vector it replaced is in git history at `888f9f4`.
 - `web/scripts/check-budget.mjs` measures **brotli-encoded** size of the built shell and of the data directory's files, and checks them against the PRD 7.2 table plus the A1 row. Ceilings fail the build; targets are reported, and a row at or above 90% of its target is warned about so the run before the miss is visible.
 - Adding a field is a minor change and bumps `pipelineVersion`. Changing a byte layout, a section id, an enum value, or a filename bumps `contractVersion` and requires a review by the Frontend Engineer and the Interactive Tools Engineer.
 
 ## 11. Change log
+
+### v2, `pipelineVersion` 0.4.0 — colour identity in the star record, 2026-09-05
+
+Amendment A3 (implementation-plan.md §8), on the board's DEC-589 decision. Each star now carries the card's **colour identity**, closing the PRD 6.6.2 gap where selecting one colour admitted every multicolour card because `hueClass` collapses them all into a single value.
+
+**The record is still 12 bytes.** Byte 7 was a `hueClass` that never exceeded 6, so three of its eight bits carried the value and five carried zero; the five-bit WUBRG mask moves into those five. See §5 for the layout. No offset moves, no file grows, and the stride-12 interleaved upload is unchanged.
+
+`contractVersion` goes to **2**, and this one is a genuine break in both directions:
+
+- a **v1 decoder reading a v2 file** takes byte 7 whole and reads mono-green as hue class 132, indexing the seven-element `uHues` past its end;
+- a **v2 decoder reading a v1 file** would read every identity as 0 — colourless — and dim every coloured card under a colour filter.
+
+Both failures are silent, which is exactly the case §10's version rule exists for. Contrast the 0.2.0 entry above, where bumping would have been the *breaking* option: there the change was unobservable to any decoder, here it is observable to all of them. `pipelineVersion` moves 0.3.0 → **0.4.0** for the added field.
+
+Every artefact re-hashes, so all three datasets were regenerated: `fixture-small` `a609e157836c79f0`, `fixture-scale` `7bd31529bcc71780`, production `d5ee9661aaffafa3` (the same 28 587 cards from the pinned 2026-09-04 bulk). The test vector moved from `contract/test-vectors/v1/` to `v2/`.
+
+Three things a reviewer should check rather than take on trust:
+
+1. **Both halves of the byte agree.** The identity's bit indices are the same as `hueClass`'s five mono values, so `identity == 1 << hueClass` for every mono-coloured card. Pinned on both sides — `test_colour_byte_packs_every_identity_arity` and the vector's `colourChecks`, which records the packed byte itself because that is the only place the packing is observable.
+2. **Nothing reads byte 7 unmasked.** Three consumers read it: `decode.ts`'s `hueClass` accessor (`& 0b111`), the star vertex shader (`int(aClass.y + 0.5) & 7`), and `starGeometry.hueClassOf`, which bypasses the decoder and reads the bytes directly — it feeds the focused card's rim colour and the thumbnail glow, and is the one a review is likely to miss. `filters/evaluate.ts` is unchanged and goes through the masked accessor, so **Phase 4 filter behaviour is byte-identical**; exact colour filtering is a separate leg.
+3. **The budget.** Raw sizes are unchanged. `stars.bin` compresses 3.7% worse on production (229.1 → 237.6 KB brotli) because byte 7 now takes 31 values rather than 7. The constrained `search.json` + `sets.bin` row does not move at all — it does not include `stars.bin`. §8 has the table.
+
+One operational note, found by running it. The PRD 4.9.2 run diff loads the previous production run's `sets.bin`, and `decode_header` tests the version for strict equality — so with a v1 dataset on disk the first v2 build **aborted before writing anything**. `report.load_previous_planes` now selects such a predecessor normally but does not decode it, returning it with no plane mapping. The run succeeds and loses **only the diff**: the predecessor is still the predecessor, so `previousRun` names it in the new manifest and the 4.9.2 chain stays unbroken, and 9.2.3 reads *"not computed — this run follows `…`, whose artefacts are still in the tree but record `contractVersion` 1"*. It must not read "no previous production run": that is a false claim about the data, distinct from both the real first run and the pruned-artefacts case of PRD 8.8.3, and `report.py` keeps the three apart as three states. Any future contract bump would have hit this too, which is why the version skip is pinned by tests rather than left to the next bump to rediscover.
 
 ### v1, `pipelineVersion` 0.2.0 — Phase 1 first run, 2026-09-04
 
