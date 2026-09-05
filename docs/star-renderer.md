@@ -86,6 +86,10 @@ scene emits exactly one event per artefact through `web/src/scene/errors.ts` and
 Phase 4 subscribes and shows the toast. A missing `search.json` costs the set facet, not the
 multiverse.
 
+Two failures skip the remaining attempts, because asking again cannot change the answer: an abort,
+which is the failure the caller asked for, and a `ContractError` — bad magic, a contract version
+this build does not speak, the wrong file kind. The backoff is abort-aware for the same reason.
+
 For `stars.bin` the attempt covers the *whole transfer*, body included, and a second attempt asks
 only for the bytes still missing (`Range: bytes=<received>-`). This matters because it is the
 largest artefact in the contract and much the likeliest to fail after its response headers came
@@ -95,6 +99,17 @@ mid-stream, and a body that *stops* mid-stream without rejecting, which the decl
 makes detectable and which otherwise returns a short file as though it were whole. A server that
 ignores `Range` costs bandwidth and nothing else — the duplicated prefix is dropped as it arrives,
 so the draw range and the plane reveals built on it only ever move forward.
+
+Because the reader now outlives an attempt, its header state is assigned as one block, after the
+kind check: a header that fails validation leaves no trace for the next attempt to find. Skipping
+that block would skip the kind check *and* the header-sized allocation with it, which is how a
+`sets.bin` served at the `stars.bin` path could be rejected on one attempt and accepted on three.
+
+One consequence worth knowing: the attempt boundary encloses the consumer callback, which for the
+scene is GPU work. A lost WebGL context therefore costs an attempt and reports as a `stars.bin`
+failure. Correctness survives it — the consumer is handed the whole body view and
+`StarGeometry.append` is monotonic, so records missed by a throwing call are uploaded by the next
+successful one.
 
 ## 5. Picking
 

@@ -12,9 +12,9 @@ import { readFileSync } from 'node:fs'
 
 import { describe, expect, it } from 'vitest'
 
-import { decodeStars, type Stars } from '../src/data/decode'
+import { decodeStars, StarStreamReader, type Stars } from '../src/data/decode'
 import { streamStars } from '../src/data/load'
-import { STAR_RECORD_BYTES, type PlaneRecord } from '../src/data/types'
+import { BINARY_HEADER_BYTES, STAR_RECORD_BYTES, type PlaneRecord } from '../src/data/types'
 import { SceneErrorHub, type SceneDataError } from '../src/scene/errors'
 import { PlaneTable } from '../src/scene/starfield/planeTable'
 import { StarGeometry } from '../src/scene/starfield/starGeometry'
@@ -36,6 +36,10 @@ interface OriginOptions {
   /** Answer 206 starting this far from where it was asked to. Positive is a hole. */
   readonly rangeSkew?: number
   readonly chunkBytes?: number
+  /** What to serve at the `stars.bin` path. The fixture's own `stars.bin` unless overridden. */
+  readonly file?: Uint8Array
+  /** Answer 206, but with no `Content-Range` at all: a partial that will not say where it starts. */
+  readonly omitContentRange?: boolean
 }
 
 interface Origin {
@@ -54,6 +58,7 @@ interface Origin {
 function origin(options: OriginOptions = {}): Origin {
   const requests: (string | null)[] = []
   const chunkBytes = options.chunkBytes ?? 512
+  const file = options.file ?? FILE
   let attempt = 0
 
   const fetchImpl = ((_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -63,8 +68,8 @@ function origin(options: OriginOptions = {}): Origin {
     const asked = /^bytes=(\d+)-$/.exec(range ?? '')
     const partial = asked !== null && options.ignoreRange !== true
     const start = partial ? Number(asked[1]) + (options.rangeSkew ?? 0) : 0
-    const end = Math.min(FILE.byteLength, start + (options.deliver?.[attempt] ?? FILE.byteLength))
-    const short = end < FILE.byteLength
+    const end = Math.min(file.byteLength, start + (options.deliver?.[attempt] ?? file.byteLength))
+    const short = end < file.byteLength
     attempt += 1
 
     const signal = init?.signal
@@ -84,14 +89,14 @@ function origin(options: OriginOptions = {}): Origin {
           return
         }
         const next = Math.min(offset + chunkBytes, end)
-        controller.enqueue(FILE.slice(offset, next))
+        controller.enqueue(file.slice(offset, next))
         offset = next
       },
     })
 
     const headers = new Headers()
-    if (partial) {
-      headers.set('Content-Range', `bytes ${start}-${FILE.byteLength - 1}/${FILE.byteLength}`)
+    if (partial && options.omitContentRange !== true) {
+      headers.set('Content-Range', `bytes ${start}-${file.byteLength - 1}/${file.byteLength}`)
     }
     return Promise.resolve(new Response(body, { status: partial ? 206 : 200, headers }))
   }) as typeof fetch
@@ -176,6 +181,32 @@ describe('streamStars resumes a broken body (PRD 7.4.1)', () => {
     expect(server.requests).toHaveLength(3)
   })
 
+  it('refuses a 206 that will not say where it starts', async () => {
+    // A partial with no usable `Content-Range` cannot be placed, and assuming it begins at the
+    // offset asked for is how a partial response gets spliced into the middle of the file.
+    const server = origin({ deliver: [2000], omitContentRange: true })
+    await expect(
+      streamStars(() => {}, { root: ROOT, baseDelayMs: 0, fetchImpl: server.fetchImpl }),
+    ).rejects.toThrow(/206 response with no usable Content-Range/)
+    expect(server.requests).toHaveLength(3)
+  })
+
+  it('says the header never arrived, rather than reporting 0 of 0 records', async () => {
+    // `0 of 0` reads as an empty file. Before the header lands there is no record count to be
+    // short of, and the honest report is that the body died inside the header itself.
+    const server = origin({ deliver: [8], ending: 'truncate', chunkBytes: 8 })
+    await expect(
+      streamStars(() => {}, {
+        root: ROOT,
+        baseDelayMs: 0,
+        attempts: 1,
+        fetchImpl: server.fetchImpl,
+      }),
+    ).rejects.toThrow(
+      new RegExp(`ended after 8 bytes, before its ${BINARY_HEADER_BYTES}-byte header`),
+    )
+  })
+
   it('treats a body that ends early without erroring as a failure, not a short file', async () => {
     // The quiet version: `read()` reports `done`, the file is simply missing its tail, and the old
     // loader returned it as though it were whole — planes past the cut never appearing and nothing
@@ -224,6 +255,28 @@ describe('streamStars resumes a broken body (PRD 7.4.1)', () => {
     expect(server.requests).toEqual([null, 'bytes=1000-', 'bytes=2000-'])
   })
 
+  it('does not sit out the backoff when the abort lands during it', async () => {
+    const server = origin({ deliver: [1000, 1000, 1000] })
+    const controller = new AbortController()
+
+    // Half a minute of backoff, aborted the instant the first attempt fails. A wait with nothing
+    // wired to the signal notices only when the *next* `fetchOnce` rejects, so it would serve the
+    // full 30 s first; the elapsed bound below is what tells the two apart.
+    const started = performance.now()
+    await expect(
+      streamStars(() => {}, {
+        root: ROOT,
+        baseDelayMs: 30_000,
+        fetchImpl: server.fetchImpl,
+        signal: controller.signal,
+        onRetry: () => controller.abort(),
+      }),
+    ).rejects.toThrow(/connection reset/)
+
+    expect(performance.now() - started).toBeLessThan(2_000)
+    expect(server.requests).toHaveLength(1)
+  })
+
   it('does not retry an abort — that failure was asked for', async () => {
     const server = origin()
     const controller = new AbortController()
@@ -243,6 +296,64 @@ describe('streamStars resumes a broken body (PRD 7.4.1)', () => {
     ).rejects.toThrow(/aborted/)
 
     expect(server.requests).toHaveLength(1)
+  })
+})
+
+describe('a retried load still enforces the contract (DEC-636 B1)', () => {
+  /** A well-formed file of the *other* kind, served at the `stars.bin` path. */
+  const SETS: Uint8Array = new Uint8Array(readFileSync(fixturePath('small', 'sets.bin')))
+
+  // The reader now survives across attempts, and it used to record the header before checking the
+  // kind. So attempt 1 threw with `header` already assigned, and attempt 2 found it non-null and
+  // skipped the whole block — kind check and header-sized allocation together. A `sets.bin` at the
+  // `stars.bin` path was rejected when it got one attempt and *accepted* when it got three.
+  for (const attempts of [1, 2, 3, 5]) {
+    it(`rejects a sets.bin served as stars.bin with attempts: ${attempts}`, async () => {
+      const server = origin({ file: SETS })
+
+      await expect(
+        streamStars(() => {}, {
+          root: ROOT,
+          baseDelayMs: 0,
+          attempts,
+          fetchImpl: server.fetchImpl,
+        }),
+      ).rejects.toThrow(/expected a stars file, got kind 2/)
+
+      // And exactly once: the bytes cannot become a stars file by being asked for again, so the
+      // backoff and the re-transfers are spent on nothing (N4).
+      expect(server.requests).toEqual([null])
+    })
+  }
+
+  it('leaves nothing behind on the reader when it rejects a header', () => {
+    // The narrow half of the fix, tested without the retry policy in front of it: even a caller
+    // that pushes on past the throw must reach the same verdict rather than a half-built reader.
+    const reader = new StarStreamReader()
+    expect(() => reader.push(SETS.slice(0, 512))).toThrow(/expected a stars file, got kind 2/)
+    expect(() => reader.push(SETS.slice(512, 1024))).toThrow(/expected a stars file, got kind 2/)
+    expect(reader.completeRecords).toBe(0)
+    expect(reader.expectedRecords).toBe(0)
+    expect(reader.done).toBe(false)
+  })
+
+  it('allocates one backing buffer for a healthy stream, resume included', async () => {
+    // The second consequence of the same hole: a reader that skipped the allocation fell back to
+    // merging the chunk list on every `body()` — the quadratic path DEC-614 M5 removed. One
+    // distinct backing buffer across the whole load is what says the fast path is live.
+    const server = origin({ deliver: [2000] })
+    const backing = new Set<ArrayBufferLike>()
+
+    const stars = await streamStars(
+      (reader) => {
+        const body = reader.body()
+        if (body.byteLength > 0) backing.add(body.buffer)
+      },
+      { root: ROOT, baseDelayMs: 0, fetchImpl: server.fetchImpl },
+    )
+
+    expect(stars.count).toBe(REFERENCE.count)
+    expect(backing.size).toBe(1)
   })
 })
 
