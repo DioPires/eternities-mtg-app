@@ -224,8 +224,12 @@ export class StarStreamReader {
         Math.max(Math.min(declared, BINARY_HEADER_BYTES + MAX_EAGER_BODY_BYTES), this.received),
       )
       sized.set(joined, 0)
-      // The three together, after the last thing that can throw: header, buffer and the chunk list
-      // they replace are one state, and no attempt may ever observe part of it.
+      // Header and buffer together, after the last thing that can throw: they are one state, and
+      // no attempt may ever observe half of it. The chunk list is not part of that state — the
+      // push above already banked the bytes and the count, and a throw here leaves them on the
+      // reader. That is harmless, and load-bearing: the rejected bytes stay put, so an attempt
+      // that re-delivers only part 1 of the same wrong file re-joins it and rejects it again
+      // rather than finding an empty reader and starting over.
       this.header = header
       this.buffer = sized
       this.chunks = []
