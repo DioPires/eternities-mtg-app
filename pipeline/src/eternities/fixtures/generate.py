@@ -48,7 +48,8 @@ NAMESPACE: Final = uuid.UUID("6e7d1f4a-2c3b-4a5e-9d80-1f2a3b4c5d6e")
 """Fixed namespace so every fixture id is reproducible from its key alone."""
 
 MULTIVERSE_RADIUS: Final = 130.0
-"""R of PRD 8.6.1. Sized so 82 planes plus the PRD 5.3.3 anti-overlap margin actually pack."""
+"""R of PRD 8.6.1. Sized so the named Appendix A planes plus the PRD 5.3.3 anti-overlap margin
+actually pack."""
 
 BLIND_ETERNITIES_SHARE: Final = 0.22
 """PRD 9.2.2 expects 20-25% in the real data; the fixtures sit in that range on purpose."""

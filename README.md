@@ -20,6 +20,9 @@ In order of authority. Read the first two before changing anything.
 | [`docs/camera-and-labels.md`](docs/camera-and-labels.md) | The Phase 2b camera rig, labels and plane-detail loading. |
 | [`docs/scryfall-policy.md`](docs/scryfall-policy.md) | Scryfall CORS and terms verification. Verdict: PASS. |
 | [`docs/deployment.md`](docs/deployment.md) | Vercel setup and the headers. |
+| [`docs/app-shell.md`](docs/app-shell.md) | The Phase 4 UI shell: where state lives, the seams for 2a/2b/3/5, and the calls the PRD left open. |
+| [`docs/design-system.md`](docs/design-system.md) | The Phase 5 visual system, the contrast proof, and the accessibility checklist. |
+| [`docs/csp-audit.md`](docs/csp-audit.md) | The Phase 5 security-header audit: what changed, what was flagged and left alone. |
 
 Both contracts are freeze points. Changing a byte layout, an enum value, a filename or a method
 signature is a reviewed contract change, not an ordinary commit.
@@ -45,8 +48,16 @@ web/                      Vite, React, TypeScript strict, react-three-fiber, Zus
   src/camera/             The camera rig: tethered orbit, fly-to, attract mode (Phase 2b).
   src/labels/             Plane and chronology-band labels, and the CPU projection they use.
   src/plane-detail/       Plane shards fetched and parsed in a worker (amendment A1).
-  src/scene/              The hello-scene: sky and background starfield.
-  src/harness/            Phase 2b's demo shell. Deleted when 2a and 4 land.
+  src/scene/              The hello-scene, the star field, and the GPU self-check.
+  src/bench/              The in-page bench harness `scripts/bench.mjs` drives.
+  src/router/             PRD 6.7's URL: the source of truth for focus and filters.
+  src/store/              PRD 8.4.2's transient view state, and the persisted settings.
+  src/filters/            PRD 6.6's facets: the dimming mask and the exact count.
+  src/search/             PRD 6.5's client-side fuzzy index over search.json.
+  src/app/                Cold start, dataset loading, and the shell's hooks.
+  src/ui/                 HUD, drawers, overlays, toasts, WebGL2 fallback.
+  src/harness/            Phase 2a's and 2b's demo scenes, behind `?harness=`. Deleted when
+                          Phase 3 folds them into the shell's scene.
   public/data/<hash>/     Committed artefacts, immutable, content-hashed.
   scripts/                Budget check, vercel.json generation, browser verification.
 contract/test-vectors/v1/ The shared byte-level test vector. Both languages assert against it.
@@ -144,10 +155,17 @@ directory is deleted.
 
 ## Where things stand
 
-Phases 0 (scaffold and contracts), 1 (data pipeline) and 2b (camera, navigation, labels) are
-complete: the navigation contract now has a real implementation, and `web/test/navigation.test.ts`
-runs the same suite over both it and the stub. Phases 2a and 4 run in parallel from here — see
+Phases 0 (scaffold and contracts), 1 (data pipeline), 2a (star field), 2b (camera, navigation,
+labels) and 4 (app shell and UI) are complete. The navigation contract has a real implementation,
+and `web/test/navigation.test.ts` runs the same suite over both it and the stub.
+
+What is *not* joined up yet is the scene. The shell — [`docs/app-shell.md`](docs/app-shell.md) — is
+still built against the Phase 0 navigation stub over the hello-scene, and the star field and the
+camera rig are still two separate harness scenes reached with `?harness=2a` and `?harness=2b`.
+Folding all three into one scene, by swapping `createNavigation()` for the rig, is Phase 3. See
 `implementation-plan.md` §3.
 
-`node web/scripts/verify-browser.mjs --dataset scale` drives a real browser through the intro, a
-fly-to the Blind Eternities, its worker-parsed shards and Esc back out, under the production CSP.
+`node web/scripts/verify-browser.mjs --dataset all` drives a real browser through all three: PRD
+section 6's interaction requirements on the shell, a fly-to the Blind Eternities with its
+worker-parsed shards and Esc back out on 2b, and the GPU self-check on 2a — under the production
+CSP.

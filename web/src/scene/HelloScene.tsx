@@ -17,11 +17,12 @@ import {
   type Points as ThreePoints,
 } from 'three'
 
-/** PRD 5.3.18: near-black, never pure black. */
-export const SKY_COLOUR = '#05060a'
+import { MULTIVERSE_PERIOD_S, SKY_COLOUR } from './tuning'
 
-/** PRD 5.3.13: the whole multiverse rotates about its vertical axis, 20-minute period. */
-const MULTIVERSE_PERIOD_S = 20 * 60
+// Both constants moved to Phase 2a's `tuning.ts`, which is the one place a number the star-field
+// shaders compile in can live. Re-exported here because the Phase 2b harness imports the sky
+// colour from this module.
+export { SKY_COLOUR }
 
 interface LayerSpec {
   readonly count: number
