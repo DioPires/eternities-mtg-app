@@ -28,8 +28,8 @@
  * than a share of them. But `unmeasured` is *also* what a mirror error too large to fit the search
  * window looks like, which made it an escape hatch for the worst version of the very bug this
  * exists to catch: see `DARK_ROW_MIN_SAMPLES`, which tells the two apart by how they distribute
- * across plane rows — and which also states the hole that rule does *not* close, an error big
- * enough to project the row off screen. And the resolution is the pixel grid: see `COINCIDENT_PX`
+ * across plane rows — and which also states the limit that rule still has, a row too thinly sampled
+ * to judge. And the resolution is the pixel grid: see `COINCIDENT_PX`
  * for what size of disagreement this does and does not catch, which was measured by injection
  * rather than assumed. What the check buys is bounded from below by injection and stated in
  * `docs/star-renderer.md`; neither that statement nor this one is a claim to be exhaustive.
@@ -78,13 +78,21 @@ export interface SelfCheckResult {
   /** `[planeRow, count]` for the unprojectable samples, commonest first. */
   readonly unprojectableRows: readonly (readonly [number, number])[]
   /**
-   * View-space depth of the sampled star that came closest to the eye, in world units, or `null`
-   * when nothing was sampled. This is the margin the `unprojectable === 0` clause of `ok` rests
-   * on: that clause is only safe while the check runs from a camera outside the field, and this
-   * number is how a reader checks that rather than taking the comment's word for it. At the home
-   * view it sits far in front of the 0.1 near plane and nowhere near the 8000 far one.
+   * View-space depth of the sampled stars closest to and furthest from the eye, in world units, or
+   * `null` when nothing was sampled. `z > 1` is a two-sided test — behind the 0.1 near plane *or*
+   * past the 8000 far one — and these are the margin on each side, so the `unprojectable === 0`
+   * clause of `ok` is checkable against numbers rather than against the paragraph that argues for
+   * it. At the home view they measure 285.2-402.0 on `fixture-small`, 200.5-412.2 on
+   * `fixture-scale` and 197.7-405.4 on production: three orders of magnitude clear at the near end
+   * and a factor of 19 at the far one.
+   *
+   * Both are taken over the *surviving* samples: a sample that trips the clause never reaches the
+   * `Math.min`/`Math.max`, so a run that fails on `unprojectable` still reports healthy margins
+   * here. These are the margin of the run that passed, not a diagnosis of the one that failed —
+   * `unprojectableRows` is what says where a failure came from.
    */
   readonly nearestDepth: number | null
+  readonly farthestDepth: number | null
   /**
    * Measured samples where the picker returned a *different* star that the mirror also places on
    * the same pixel. Inside a galaxy's core several stars share a pixel and the id pass depth-sorts
@@ -194,8 +202,9 @@ const world = new Vector3()
  * The qualification is load-bearing and is why this constant is not the whole story. Beyond about
  * half the 11 px search window the star is not in its own window to be measured, so this bound
  * goes blind exactly as the error grows past it. {@link DARK_ROW_MIN_SAMPLES} is what catches it
- * there — up to the point the row projects off screen entirely, which nothing here catches. See
- * that constant for the reproduction and for why the remaining hole is deferred rather than closed.
+ * there, off screen included: a row displaced clean out of the viewport is measured rather than
+ * skipped, so that rule keeps working past the size of error this bound stops seeing. See that
+ * constant for the reproduction and for the one limit the rule does still have.
  */
 const COINCIDENT_PX = 3
 
@@ -245,39 +254,34 @@ const MIN_MEASURED = 16
  * event. It is 0.9 rather than 1.0 so that one measurable star on an otherwise displaced row does
  * not buy the whole row an exemption.
  *
- * Two things this does not do. The list is **not** offered as exhaustive — each of them was found
- * by pushing an injection further than the round before it had thought to, and the next one would
- * be found the same way.
+ * One thing this rule does not do, and one it used to not do. The list is **not** offered as
+ * exhaustive — each entry was found by pushing an injection further than the round before it had
+ * thought to, and the next one would be found the same way.
  *
- * It does not judge a thinly sampled row. Sixty-four samples over `fixture-scale`'s 87 planes leave
- * most rows with one sample each, and the only row there that clears the floor is row 0 — which is
- * the Blind Eternities dust, the row PRD 8.5.7's failure is named after and the one Phase 2b's
- * tether frames. The draw-range fix deferred to Phase 2b is what removes that one.
+ * It does not judge a thinly sampled row, and that one is still open. Sixty-four samples over
+ * `fixture-scale`'s 87 planes leave most rows with one sample each, and the only row there that
+ * clears the floor is row 0 — which is the Blind Eternities dust, the row PRD 8.5.7's failure is
+ * named after and the one Phase 2b's tether frames. Production is barely better: 87 real planes put
+ * two rows over the floor (`19x14 0x12`). The draw-range fix, DEC-634, is what removes this one.
  *
- * And it does not see an error large enough to project the row off screen, because such a row never
- * reaches either tally. `mirrorPixel` decides "off screen" from the mirror's *own* projected
- * position and returns `null` before `checked += 1` and before `sampledRows`, so the row leaves the
- * numerator and the denominator at once and `findDarkRows` cannot judge a row it never saw. The
- * ladder above continues, on `fixture-small`:
+ * It used to miss an error large enough to project the row off screen, and no longer does. Nothing
+ * in this constant or in `findDarkRows` changed to fix it — the fix is upstream, in `mirrorPixel`,
+ * which stopped returning `null` for a projection outside NDC. An off-screen sample now enters
+ * `checked` and `sampledRows` like any other, gets a pick window aimed at it, and is judged by the
+ * rule below unchanged. On `fixture-small` the rung that used to pass green, `py += 400` into row
+ * 0, now fails naming row 0 dark 15 of 15 while reporting `15 off screen`; the control that
+ * displaces the same row in the *plane table* — mirror and shader agreeing, the row genuinely out
+ * of frame — reports the identical `15 off screen` and passes, located 15 of 15. Opposite verdicts
+ * on the same count, decided by measurement rather than by a rule about frustums, which is why the
+ * discriminator the earlier analysis went looking for turned out to be unnecessary rather than
+ * merely deferred. See `mirrorPixel` for the mechanism, and `docs/star-renderer.md`
+ * § "The off-screen hole, and how it was closed" for the ladder, the control and the caveats on
+ * reproducing them.
  *
- *     py += 60     35/64 measured   rows `4x27 3x17 0x15 1x5`      fail, names row 0
- *     py += 400    35/49 measured   rows `4x27 3x17 1x5`           **pass, exit 0** — row 0 is gone
- *
- * The 15 dust samples are reported as `15 off screen`, `measured` stays above {@link MIN_MEASURED},
- * and the run prints `OK`. So sensitivity is monotone from 3 up to about 60 world units and blind
- * again past roughly 400 — which is not an exotic regime for this failure: a sign flip, a wrong
- * radius scale or a stale plane-table row lands there rather than at 4 px.
- *
- * That hole is left open deliberately rather than overlooked. The obvious gate — this same
- * concentration rule applied to `offScreen` — would fail a plane row that is *legitimately* outside
- * the view frustum, which is 100% off screen for reasons that have nothing to do with the mirror.
- * Both fixtures report `0 off screen` at this camera, so today the gate would be free, but that is
- * not a property of the real 89-shard dataset. Telling the two apart needs a discriminator and
- * therefore a design decision — `planeWorldPosition` already has the plane centre, and "centre on
- * screen, every sampled star off screen" is the bug's signature, but that path shares drift and
- * home with the mirror and so would not catch an error injected there. It is deferred to Phase 2b
- * alongside the draw-range work. `docs/star-renderer.md` states both limits rather than papering
- * over them.
+ * The one projection that still escapes this rule is `z > 1` — behind the eye or past the far plane
+ * — which no lateral view offset can aim a window at. Those samples are dropped before both
+ * tallies, so they are not left to `findDarkRows` at all: they are counted as `unprojectable` and
+ * `ok` requires zero of them. See that clause in `sample` for what makes a flat zero safe.
  */
 const DARK_ROW_MIN_SAMPLES = 10
 const DARK_ROW_RATE = 0.9
@@ -386,8 +390,12 @@ export function pixelForNdc(
   depth = 0,
 ): MirrorPixel | null {
   // A perspective divide by a w at or near zero, which `Vector3.project` does not guard. Rare
-  // enough to be theoretical, but a NaN offset would reach `setViewOffset` and poison the
-  // projection matrix for every sample after it rather than failing this one.
+  // enough to be theoretical, but a NaN offset would reach `setViewOffset` and make that pick
+  // meaningless: the window is aimed nowhere, the star is not in it, and the sample is scored as
+  // unmeasured — the mirror's own degenerate arithmetic reported as a dark star. The damage stops
+  // there rather than spreading, because `IdPicker.read` restores the view offset in a `finally`
+  // (`picking/idPicker.ts`), so the poisoned projection matrix dies with the pick. Rejecting it
+  // here costs the same one sample and puts it in the bucket that names the real cause.
   if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return null
   // Behind the eye or beyond the far plane, which are one test because a point behind the eye
   // divides by a negative w and lands past the far plane in NDC rather than in front of the near
@@ -464,10 +472,12 @@ async function sample(
   let checked = 0
   let unmeasured = 0
   let unprojectable = 0
-  // The margin the `unprojectable` clause of `ok` rests on: the closest any sampled star came to
-  // the eye, in world units. Reported so the clause is checkable against a number rather than
-  // against an argument — see the clause itself for what it does with it.
+  // The margins the `unprojectable` clause of `ok` rests on, in world units: the closest any
+  // sampled star came to the 0.1 near plane and the furthest any got towards the 8000 far one. The
+  // clause is two-sided, so a single margin would only argue for half of it. Reported so it is
+  // checkable against numbers rather than against an argument — see the clause itself.
   let nearestDepth = Infinity
+  let farthestDepth = -Infinity
   const unmeasuredRows = new Map<number, number>()
   const unprojectableRows = new Map<number, number>()
   const sampledRows = new Map<number, number>()
@@ -519,6 +529,7 @@ async function sample(
     // run was off screen, not so anything can branch on it.
     if (!pixel.onScreen) offScreen += 1
     nearestDepth = Math.min(nearestDepth, pixel.depth)
+    farthestDepth = Math.max(farthestDepth, pixel.depth)
 
     checked += 1
     // The denominator for `unmeasuredRows`. Counted here, at the same point the sample enters
@@ -586,6 +597,7 @@ async function sample(
     unprojectable,
     unprojectableRows: [...unprojectableRows.entries()].sort((a, b) => b[1] - a[1]),
     nearestDepth: Number.isFinite(nearestDepth) ? nearestDepth : null,
+    farthestDepth: Number.isFinite(farthestDepth) ? farthestDepth : null,
     unmeasuredRows: [...unmeasuredRows.entries()].sort((a, b) => b[1] - a[1]),
     sampledRows: [...sampledRows.entries()].sort((a, b) => b[1] - a[1]),
     darkRows,
@@ -617,18 +629,40 @@ async function sample(
     // its floor of 10. Dropping a sample does not just lose that sample; it can drag the row it
     // came from under the floor and take the other seven down with it.
     //
-    // Requiring zero is a real assertion here rather than a formality, because at the camera this
-    // check runs from the eye sits outside the multiverse looking in: `?selfcheck=1` measures at
-    // the home view, ~247 units out against a multiverse radius of 130, so every star is in front
-    // of the eye by a wide margin and nothing approaches the 8000 far plane. `nearestDepth` reports
-    // that margin so the claim is checkable against a number rather than against this paragraph.
+    // Requiring zero is a real assertion here rather than a formality, and two separate facts are
+    // what make it safe — one about the camera, one about the data. Both have to hold, because a
+    // sample lands behind the eye either by the eye moving towards it or by the star being placed
+    // out past the eye.
     //
-    // What would break it is running the check from a camera *inside* the field, where stars
-    // behind the eye are ordinary and this clause would fire on a correct mirror. It is a flat
-    // zero rather than a rate because that regime does not exist today, and it should be replaced
-    // rather than loosened if it ever does — the replacement is a comparison against the shader,
-    // not a threshold: a star the mirror puts behind the eye that the id buffer still shows on
-    // screen is a contradiction no legitimate camera produces.
+    // The camera: `?selfcheck=1` measures at the home view, ~247 units out, the eye outside the
+    // multiverse looking in. The data: `MULTIVERSE_RADIUS = 130.0`
+    // (`pipeline/src/eternities/pipeline/assemble.py`) bounds where the pipeline may place a plane
+    // centre, and `pipeline/src/eternities/fixtures/layout.py` places the fixture centres inside
+    // the same radius, so nothing any dataset can emit reaches round behind that eye or out
+    // towards the 8000 far plane. That invariant, not the camera alone, is why production comes
+    // back `0 unprojectable` over 87 planes. `nearestDepth` and `farthestDepth` report both
+    // margins on every run so the claim is checkable against numbers — but read them knowing they
+    // are taken over the surviving samples, so they cannot warn about the samples that trip this
+    // clause. A failing run still prints a healthy nearest.
+    //
+    // What would break the camera half is running the check from *inside* the field, where stars
+    // behind the eye are ordinary and this clause fires on a correct mirror. The near plane is the
+    // same regime by a quieter route: `pixelForNdc` accepts `z < -1` as measurable — correctly,
+    // since it is in front of the eye and a window can be aimed at it — but the shader clips it at
+    // the 0.1 near plane and never draws it, so the sample is measured, comes back unlocatable,
+    // and a correct mirror reads as a dark row rather than as an unprojectable one. Inside the
+    // field both clauses go wrong at once, and only one of them says so.
+    //
+    // What would break the data half is a plane legitimately placed far enough out. Measured: the
+    // plane-table control at `home + 4000` — mirror and shader in perfect agreement, the data
+    // simply saying the plane is up there — fails with 15 unprojectable and a message that calls
+    // it a mirror error, which it is not. The same control at `home + 400` passes, so the boundary
+    // sits between the two, three orders of magnitude outside what `MULTIVERSE_RADIUS` allows.
+    //
+    // It is a flat zero rather than a rate because neither regime exists today, and it should be
+    // replaced rather than loosened if either arrives — the replacement is a comparison against
+    // the shader, not a threshold: a star the mirror puts behind the eye that the id buffer still
+    // shows on screen is a contradiction no legitimate camera produces.
     ok:
       missed.length === 0 &&
       offsetSamples >= MIN_MEASURED &&

@@ -246,12 +246,19 @@ before the sample entered `checked` and before the `sampledRows` tally, so a row
 of NDC left the numerator and the denominator at once — and the dark-row rule cannot judge a row it
 never saw. Continuing the ladder above on `fixture-small`, with the injection scoped to row 0:
 
-| injected into row 0 | measured | samples per plane row | before | now |
+| injected into row 0 | measured (±1) | samples per plane row | before | now |
 | --- | --- | --- | --- | --- |
 | `py += 60` | 34/64 | `4x27 3x17 0x15 1x5` | **fail** — row 0 dark | **fail** — row 0 dark |
 | `py += 400` | 32/64 | `4x27 3x17 0x15 1x5` | **pass, exit 0** | **fail** — row 0 dark |
 | `py += 4000` | 34/49 | `4x27 3x17 1x5` — row 0 absent | **pass, exit 0** | **fail** — 15 unprojectable |
 | `pz += 400` | 34/57 | `4x27 3x17 0x8 1x5` — row 0 thinned | **pass, exit 0** | **fail** — 7 unprojectable |
+
+Read the `measured` column as approximate: it varies by about one across machines and between runs
+on the same machine, because whether a given star is occluded by a nearer sprite comes down to pixel
+quantisation at the 2 px self-check sprite. An independent reproduction on the same commit read 33
+on three of these four rungs. Nothing in the argument rests on it — the verdicts and the samples per
+plane row are what carry it, and those reproduce exactly. `measured` is here only to show that the
+denominator does not collapse, which is what would make a green run vacuous.
 
 The fix is not a heuristic that tries to tell a displaced row from a distant one. It is that an
 off-screen projection **still yields a pixel, and the sample is measured like any other**. `IdPicker`
@@ -283,14 +290,43 @@ dark, and `findDarkRows` still will not judge the row because 8 is under its flo
 sample does not only lose that sample — it can drag the row it came from under the floor and take
 the rest down with it.
 
-Requiring a flat zero is safe only because this check runs from outside the field looking in. The
-clean runs report the nearest sampled star **285.2 units** in front of the eye on `fixture-small`
-and **200.5** on `fixture-scale` — three orders of magnitude clear of the 0.1 near plane and nowhere
-near the 8000 far one, against a 3 px tolerance that fails at a few world units. `nearestDepth` is
-printed on every run, green ones included, so that margin is a number to watch rather than an
-argument to trust. A camera *inside* the
-field would make stars behind the eye ordinary and this clause would fire on a correct mirror; if
-that regime ever arrives the clause should be replaced rather than loosened, and the replacement is
+Requiring a flat zero is safe because of two facts, one about the camera and one about the data. The
+camera runs from outside the field looking in, ~247 units out at the home view. The data cannot
+reach round behind it: `MULTIVERSE_RADIUS = 130.0` in `pipeline/src/eternities/pipeline/assemble.py`
+bounds where a plane centre may be placed, and `fixtures/layout.py` places the fixture centres
+inside the same radius. That invariant, not the camera alone, is why the real 87-plane production
+dataset also comes back `0 unprojectable`.
+
+Both margins are printed on every run, green ones included, so the clause is a pair of numbers to
+watch rather than an argument to trust. Clean runs report sampled stars **285.2–402.0** units in
+front of the eye on `fixture-small`, **200.5–412.2** on `fixture-scale` and **197.7–405.4** on the
+87-plane production dataset — three orders of magnitude clear of the 0.1 near plane and a factor of
+19 clear of the 8000 far one, against a 3 px tolerance that fails at a few world units. Note the far
+figure is the *widest* of the three and barely moves between datasets: it is set by the home
+camera's distance plus the multiverse radius, not by how many planes there are, which is the shape
+you would expect if the radius invariant is what bounds it. Read them knowing they are a min and a max
+over the samples that *survived*: a run that fails on `unprojectable` still prints a healthy near
+margin, because the samples that tripped the clause never reached the `Math.min`. They are the
+margin of a passing run, not a diagnosis of a failing one — `unprojectableRows` is what says where a
+failure came from.
+
+Two regimes would break the clause, and the second is the reason the radius above is worth naming.
+
+A camera *inside* the field makes stars behind the eye ordinary, and this clause would fire on a
+correct mirror. The near plane is the same regime by a quieter route: `pixelForNdc` accepts `z < -1`
+as measurable, correctly — it is in front of the eye and a window can be aimed at it — but the
+shader clips it at the 0.1 near plane and never draws it, so the sample is measured, comes back
+unlocatable, and a correct mirror reads as a *dark row* rather than as an unprojectable one. Inside
+the field both clauses go wrong at once and only one of them says so.
+
+Data that legitimately places a plane far enough out fails the same way with the mirror and the
+shader in perfect agreement. The plane-table control at `home + 4000` does it: 15 unprojectable, and
+the message used to call it a mirror error. The same control at `home + 400` passes, so the
+false-positive boundary sits between the two — three orders of magnitude outside what
+`MULTIVERSE_RADIUS` allows, which is why no dataset the pipeline can emit reaches it. The failure
+message now names both causes.
+
+If either regime arrives the clause should be replaced rather than loosened, and the replacement is
 a comparison against the shader — a star the mirror puts behind the eye that the id buffer still
 shows on screen is a contradiction no legitimate camera produces.
 
@@ -298,10 +334,26 @@ Sensitivity is now monotone from 3 world units upward with no blind band above i
 went blind again past roughly 400 — not an exotic regime for this failure, since a sign flip, a
 wrong radius scale or a stale plane-table row lands there rather than at 4 px.
 
-Reproducing the ladder needs one caveat: the shell, navigation and card-tier checks are downstream
-of the same motion mirror and catch these injections too, so on an unmodified `verify-browser` they
-fire *first* and abort before the star self-check is reached — `py += 400` dies at PRD 5.6.1's card
-framing. Isolating the check under test means skipping the verify steps before `verifyStarField`.
+The two scripts that produce these tables are committed: `web/scripts/selfcheck-ladder.sh` injects
+into the CPU mirror alone, `web/scripts/selfcheck-control.sh` into the plane table that backs both
+sides. They take the injection as an argument, derive the repo root from their own location, and
+restore every file they touch. That is deliberate rather than tidy-mindedness — `unprojectable`,
+`unprojectableRows`, the depth margins and the `ok` composition live in `sample()`, which needs a
+real GPU and therefore has no unit test, so these scripts are the only regression proof those four
+have. Delete the `unprojectable === 0` clause and CI stays green; run the ladder and it does not.
+
+Reproducing needs three caveats, each of which has cost someone a cycle:
+
+- The shell, navigation and card-tier checks are downstream of the same motion mirror and catch
+  these injections too, so on an unmodified `verify-browser` they fire *first* and abort before the
+  star self-check is reached — `py += 400` dies at PRD 5.6.1's card framing. Isolating the check
+  under test means skipping the verify steps before `verifyStarField`, which both scripts do.
+- Write a plane-table injection as an assignment, not `d[...] += 400`. `noUncheckedIndexedAccess`
+  types a `Float32Array` index as `number | undefined`, so a compound assignment fails `tsc` and the
+  script reports `BUILD FAILED` rather than anything about the check.
+- Running the "before" column against `origin/main` means restoring that commit's `selfCheck.ts`,
+  `verify-browser.mjs` *and* `test/selfCheck.test.ts`. Reverting only the first two fails
+  `tsc --build`, because the current test imports `pixelForNdc`.
 
 The `--use-angle=metal` flag that gets `verify-browser` onto a real driver is **macOS-specific**. On
 Linux CI it would be wrong, and the `SOFTWARE_RENDERER` regex would then be the only thing between

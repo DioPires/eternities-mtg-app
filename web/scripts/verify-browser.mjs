@@ -1763,13 +1763,17 @@ async function verifyStarField(page, url, allowSoftware, problems) {
   )
   // The one bucket still dropped before `checked` and `sampledRows`, so the one place the
   // absorption DEC-625 closed could re-open. Printed on every run, including green ones, because
-  // a number that only appears on failure cannot be watched drifting upwards.
+  // a number that only appears on failure cannot be watched drifting upwards. Both margins, not
+  // just the near one: `z > 1` is behind the eye *or* past the far plane, and a one-sided number
+  // argues for one side of a two-sided test.
+  const depths = (d) => (d === null ? 'n/a' : d.toFixed(1))
   console.log(
     `    ${selfCheck.unprojectable} unprojectable (behind the eye or past the far plane)` +
       (selfCheck.unprojectableRows.length > 0
         ? ` (plane rows ${selfCheck.unprojectableRows.map(([row, n]) => `${row}x${n}`).join(' ')})`
         : '') +
-      `; nearest sampled star ${selfCheck.nearestDepth === null ? 'n/a' : `${selfCheck.nearestDepth.toFixed(1)} units`} in front of the eye`,
+      `; sampled stars ${depths(selfCheck.nearestDepth)}-${depths(selfCheck.farthestDepth)} units ` +
+      `in front of the eye (near plane 0.1, far plane 8000)`,
   )
   if (selfCheck.canvasBytes < 5000) {
     problems.push(`the canvas looks empty (${selfCheck.canvasBytes}-byte PNG) — nothing drew`)
@@ -1816,17 +1820,26 @@ async function verifyStarField(page, url, allowSoftware, problems) {
     // describe: these samples never reached `checked` or `sampledRows`, so the dark-row rule has
     // no row to name and the "located only N of M" fallback below would report a shortfall in the
     // wrong denominator — it would say the run measured too little, when what happened is that
-    // the mirror put stars behind the eye and the run quietly stopped counting them.
+    // stars ended up behind the eye and the run quietly stopped counting them.
+    //
+    // The message names both causes rather than only the mirror. A plane the *data* places far
+    // enough out trips this clause with the mirror and the shader in perfect agreement — a plane
+    // table displaced to `home + 4000` does it — and `MULTIVERSE_RADIUS = 130.0` is the invariant
+    // that keeps a real dataset from reaching there, not anything in this check.
     const unprojectable =
       selfCheck.unprojectable > 0
-        ? `the CPU motion mirror put ${selfCheck.unprojectable} sampled stars behind the eye or ` +
-          `past the far plane` +
+        ? `${selfCheck.unprojectable} sampled stars projected behind the eye or past the far plane` +
           (selfCheck.unprojectableRows.length > 0
             ? ` (plane ${selfCheck.unprojectableRows.length === 1 ? 'row' : 'rows'} ` +
               `${selfCheck.unprojectableRows.map(([row, n]) => `${row}x${n}`).join(' ')})`
             : '') +
-          ` — at this camera every star is ${selfCheck.nearestDepth === null ? 'well' : `at least ${selfCheck.nearestDepth.toFixed(1)} units`} in front of the eye, so that is a ` +
-          `mirror error, and it is the one kind of sample no pick window can be aimed at`
+          ` — these are the one kind of sample no pick window can be aimed at, so they are dropped ` +
+          `before the tallies and this is the only place they can be reported. Either the CPU ` +
+          `motion mirror is wrong about those rows, or the plane table puts them outside the ` +
+          `130-unit multiverse radius the datasets are built to; check the rows above against the ` +
+          `plane table before assuming the mirror. The ` +
+          `${selfCheck.nearestDepth === null ? 'depth range' : `${selfCheck.nearestDepth.toFixed(1)}-unit near margin`} ` +
+          `printed above is over the samples that survived and says nothing about these`
         : ''
 
     if (selfCheck.missed.length > 0) {
