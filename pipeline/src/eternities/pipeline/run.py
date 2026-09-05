@@ -124,16 +124,11 @@ def build(
 
     emit("emit: artefacts (PRD 8.3) + report (PRD 4.9.2)")
     previous = report.load_previous_planes(data_root, exclude="")
-    # The manifest records which run the 4.9.2 diff below was taken against, because 8.8.3 deletes
-    # that directory in the same commit and the report names it in prose only.
-    #
-    # Two candidates, because a *re-run* in an already-pruned tree finds only the directory it is
-    # about to overwrite. Read that directory's own record before the write replaces it: it is the
-    # predecessor the first build established, and using it keeps the re-run byte-identical (4.9.1)
-    # instead of dropping the field and claiming to be a first run.
+    # Read the predecessor's own record *before* the write replaces it — on a re-run in a pruned
+    # tree that directory is this run's own. `manifest_chain` explains what the pair is for.
     carried = report.recorded_previous_run(data_root / previous.name) if previous else None
     data_dir = write_dataset(
-        dataset, data_root, previous_runs=[previous.name if previous else None, carried]
+        dataset, data_root, previous_runs=report.manifest_chain(previous, carried)
     )
 
     plane_changes: list[tuple[str, str, str]] = []
@@ -143,8 +138,8 @@ def build(
     if previous is not None and previous.name != data_dir.name:
         previous_run = previous.name
         if previous.planes is None:
-            # A predecessor this build cannot decode is still the predecessor: it is named above in
-            # `previous_runs`, so the manifest chain holds, and only the diff is lost.
+            # A predecessor this build cannot decode is still the predecessor: `manifest_chain`
+            # named it regardless, so the manifest chain holds, and only the diff is lost.
             previous_run_contract_version = previous.contract_version
         else:
             plane_changes = report.diff_planes(dataset, previous.planes)
