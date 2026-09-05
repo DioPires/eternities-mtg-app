@@ -72,6 +72,13 @@ function colourIdentityText(colourIdentity: number): string {
  * sentence — "Blue, Red · renders Multicolour" — rather than only the two halves (DEC-650 N5).
  *
  * No hooks and no fetching: the identity arrives as the same five bits the filter evaluates.
+ *
+ * The N5 split was described as leaving the markup byte-identical; the exact boundary of that claim
+ * (DEC-654 M3) is `renderToStaticMarkup`, which is identical old and new. `renderToString` is not:
+ * the old `<span>` held `{' '}` as a separate child from `· renders `, so it emitted two `<!-- -->`
+ * text separators where this one emits one. Nothing renders this on a server — the app is a
+ * client-rendered SPA with no SSR and no hydration — so the difference reaches no user, and the DOM
+ * React builds in the browser is the same either way.
  */
 export function ColourIdentityLine({
   colourIdentity,

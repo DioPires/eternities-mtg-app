@@ -171,7 +171,14 @@ describe('PRD 6.6.2 colour match', () => {
  * `index * STAR_RECORD_BYTES + <offset>`, `decode.ts`'s local `at(i, <offset>)`, and a hard-coded
  * stride, `records[i * 12 + 7]`. The third was added for DEC-650 N1, where a reviewer's mutant slid
  * past the first two. It is still a tripwire for mistakes of a shape that has happened, not a
- * proof: an offset assembled at runtime, or a stride reached through an alias, would not be seen.
+ * proof. Three gaps, named so a later reader does not mistake a pass for a guarantee:
+ *
+ *  - an offset assembled at runtime, or a stride reached through an alias, is not seen;
+ *  - the stride pattern wants a *bare identifier* between `[` and `*`, so a literal index
+ *    (`records[2 * 12 + 7]`) or a parenthesised one (`records[(i) * 12 + 7]`) walks past it. Both
+ *    are pinned as blind spots below, so widening the pattern later shows up as a failing test
+ *    rather than as a paragraph nobody reread (DEC-654 M1).
+ *
  * Rule 1 is the wider net, and offsets the scan cannot resolve statically are pinned below rather
  * than waved through.
  *
@@ -232,21 +239,20 @@ interface Site {
  * masks. Built from `STAR_RECORD_BYTES` rather than a literal `12`, so a stride change to the
  * contract cannot leave a stale number here. No legitimate site hard-codes the stride, so the pass
  * state for this pattern over `web/src` is zero matches.
+ *
+ * Built once rather than per scanned line: `String.prototype.matchAll` iterates a *clone* and leaves
+ * the original's `lastIndex` at 0, so sharing these `/g` regexes across lines cannot carry state
+ * between them. Nothing here depends on a fresh object (DEC-654 M4).
  */
-function patterns(): RegExp[] {
-  return [
-    /\bSTAR_RECORD_BYTES\s*\+([^;\]),]*)/g,
-    /\bat\(\s*[A-Za-z_$][\w$]*\s*,([^)]*)\)/g,
-    new RegExp(
-      String.raw`\b\w+\s*\[\s*[A-Za-z_$][\w$]*\s*\*\s*${STAR_RECORD_BYTES}\s*\+([^\]]*)\]`,
-      'g',
-    ),
-  ]
-}
+const PATTERNS: readonly RegExp[] = [
+  /\bSTAR_RECORD_BYTES\s*\+([^;\]),]*)/g,
+  /\bat\(\s*[A-Za-z_$][\w$]*\s*,([^)]*)\)/g,
+  new RegExp(String.raw`\b\w+\s*\[\s*[A-Za-z_$][\w$]*\s*\*\s*${STAR_RECORD_BYTES}\s*\+([^\]]*)\]`, 'g'),
+]
 
 function scanLine(file: string, line: string, index: number): Site[] {
   const sites: Site[] = []
-  for (const pattern of patterns()) {
+  for (const pattern of PATTERNS) {
     for (const match of line.matchAll(pattern)) {
       sites.push({ file, line: index + 1, text: line.trim(), offset: resolveOffset(match[1]!) })
     }
@@ -313,6 +319,17 @@ describe('byte 7 has exactly one reader (tripwire)', () => {
         .flatMap((line, index) => (stride.test(line) ? scanLine(path, line, index) : [])),
     )
     expect(strided.map((s) => `${s.file}:${s.line} ${s.text}`)).toEqual([])
+  })
+
+  it('does not see a literal or parenthesised index, which is the documented blind spot', () => {
+    // DEC-654 M1. The stride pattern wants a bare identifier where `i` goes, so these two shapes
+    // read byte 7 raw and the scan returns nothing. Asserted rather than only described, so that
+    // widening the pattern later fails here and the honesty paragraph above gets updated with it.
+    expect(scanLine('scene/mutant.ts', '  const hue = records[2 * 12 + 7] & 7', 0)).toEqual([])
+    expect(scanLine('scene/mutant.ts', '  const hue = records[(i) * 12 + 7] & 7', 0)).toEqual([])
+    // Rule 1 does not catch them either — they write none of the mask tokens. This is a real gap,
+    // not a covered one, and the bare-identifier form above is what is actually policed.
+    expect(scanLine('scene/mutant.ts', '  const hue = records[i * 12 + 7] & 7', 0)).toHaveLength(1)
   })
 
   it('pins the offsets it cannot resolve statically', () => {

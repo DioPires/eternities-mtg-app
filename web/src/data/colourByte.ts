@@ -123,7 +123,16 @@ export function colourIdentityLetterList(colourIdentity: number): ColourLetter[]
   return COLOUR_LETTERS.filter((letter) => (colourIdentity & (1 << COLOUR_LETTER_BIT[letter])) !== 0)
 }
 
-/** The identity mask back to letters, in WUBRG order. */
+/**
+ * The identity mask back to letters, in WUBRG order.
+ *
+ * Test-only since DEC-650 N2 moved `CardPanel` onto the list form: nothing under `web/src` calls
+ * this, and it is kept deliberately rather than by oversight (DEC-654 M2). It is the documented
+ * twin of the pipeline's `colour_identity_mask` inverse — the string is the form the shard's `ci`
+ * field is written in — and `colour-byte.test.ts` round-trips it against
+ * {@link colourIdentityBits} for all 32 masks, which is what pins WUBRG order for both directions.
+ * Delete it only alongside that round-trip.
+ */
 export function colourIdentityLetters(colourIdentity: number): string {
   return colourIdentityLetterList(colourIdentity).join('')
 }
