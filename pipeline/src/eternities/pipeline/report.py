@@ -322,14 +322,18 @@ def render(data: ReportInput) -> str:
             ["Gate", "Result"],
             [
                 ["9.2.1 Unmapped sets", "**0** — enforced; the run fails otherwise (4.6.4)"],
+                # 9.2.2 is reported, not enforced (PRD 9.2), and prd_v3.md 9.2.2 records 17.42%
+                # as the baseline the board accepted — below the 20-25% that document first
+                # expected, which it calls a better starting point than predicted rather than a
+                # defect. So the row records the number against the accepted baseline and
+                # classifies nothing; it used to append "**outside** the 20-25% range", which read
+                # as a standing defect on every production run. If the board ever re-baselines,
+                # prd_v3.md 9.2.2 and this string move together. (DEC-675)
                 [
                     "9.2.2 Blind Eternities share",
                     f"**{share:.2%}** ({blind.star_count:,} of {star_count:,} cards) — "
-                    + (
-                        "inside the 20-25% range PRD 9.2.2 expected"
-                        if 0.20 <= share <= 0.25
-                        else "**outside** the 20-25% range PRD 9.2.2 expected"
-                    ),
+                    "reported, not gated; PRD 9.2.2 records 17.42% (2026-09-04) as the "
+                    "board-accepted baseline",
                 ],
                 [
                     "9.2.3 Cards that changed plane",

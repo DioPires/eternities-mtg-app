@@ -101,8 +101,8 @@ def _card(index: int, code: str) -> CardInput:
     )
 
 
-def _report_input(data_root: Path) -> ReportInput:
-    codes = ["lea", "rav", "mh1", "dmr"]
+def _report_input(data_root: Path, codes: list[str] | None = None) -> ReportInput:
+    codes = ["lea", "rav", "mh1", "dmr"] if codes is None else codes
     cards = [_card(i, codes[i % len(codes)]) for i in range(12)]
     dataset, stats = build_dataset(
         cards,
@@ -204,6 +204,35 @@ def test_the_blind_eternities_share_is_the_number_the_gate_is_read_from(report_t
     """
     assert "**25.00%** (3 of 12 cards)" in report_text
     assert "**Baseline: 25.00%.**" in report_text
+
+
+def test_the_9_2_2_row_records_the_baseline_rather_than_classifying_the_share(
+    report_text: str, tmp_path: Path
+):
+    """DEC-675. 9.2.2 is reported, not enforced, and 17.42% is the baseline the board accepted.
+
+    The row used to append "inside"/"**outside** the 20-25% range PRD 9.2.2 expected", so every
+    production run read as a standing defect: prd_v3.md 9.2.2 records 17.42% as the accepted
+    baseline and derives the curation target from it, and calls the gap to the originally expected
+    20-25% a better starting point than predicted.
+
+    A second report whose share sits *below* the old band is what pins this. Asserting only that
+    the fixture's own row is clean would not: the fixture is at 25.00%, so it took the "inside"
+    branch, and restoring just the "**outside**" branch would survive. With either branch back,
+    these two rows differ.
+    """
+
+    def gate_row(text: str) -> str:
+        return next(line for line in text.splitlines() if line.startswith("| 9.2.2 "))
+
+    sparse = render(_report_input(tmp_path, codes=["lea", "rav", "lea", "dmr", "mh1"]))
+    dense_row, sparse_row = gate_row(report_text), gate_row(sparse)
+
+    assert "**25.00%** (3 of 12 cards)" in dense_row
+    assert "**16.67%** (2 of 12 cards)" in sparse_row
+    assert dense_row.split("cards) — ", 1)[1] == sparse_row.split("cards) — ", 1)[1]
+    assert "17.42%" in dense_row
+    assert "20-25%" not in dense_row
 
 
 def test_a_reconstructed_bulk_uri_says_so_on_the_row(report_text: str, tmp_path: Path):
