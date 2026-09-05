@@ -20,9 +20,9 @@ Produced by `pnpm cross-browser`. Re-run it and overwrite this file; do not edit
 
 | Engine | Shell + deep link (8.9.2) | GPU self-check, float16 (8.5.7) | float32 fallback (risk 6) | Touch (6.1.5) | WebGL2 fallback (7.1.2) | Console + network |
 |---|---|---|---|---|---|---|
-| Chrome | pass — 1920×1080 buffer on ANGLE (Apple, ANGLE Metal Renderer: Apple M5 Pro, Unspecified Version) | pass — 35/64 located, mean 0.38px, max 1.41px (tol 3px) | pass — 35/64 located, mean 0.38px, max 1.41px (tol 3px) | pass — pinch raised nothing, `touch-action: none` | pass — plain explanation, 0 canvases | clean; 0 load(s) cancelled by navigation |
-| Firefox | pass — 1920×1080 buffer on Apple M1, or similar | pass — 34/64 located, mean 0.41px, max 1.41px (tol 3px) | pass — 34/64 located, mean 0.48px, max 2.24px (tol 3px) | n/a — no constructible `Touch` on this desktop engine; `touch-action: none` verified | pass — plain explanation, 0 canvases | clean; 0 load(s) cancelled by navigation |
-| WebKit | pass — 1920×1080 buffer on Apple GPU | pass — 33/64 located, mean 0.35px, max 1.41px (tol 3px) | pass — 33/64 located, mean 0.35px, max 1.41px (tol 3px) | n/a — no constructible `Touch` on this desktop engine; `touch-action: none` verified | pass — plain explanation, 0 canvases | clean; 1 load(s) cancelled by navigation |
+| Chrome | pass — 1920×1080 buffer on ANGLE (Apple, ANGLE Metal Renderer: Apple M5 Pro, Unspecified Version) | pass — 422/720 located, mean 0.32px, max 1.41px (tol 3px) | pass — 421/720 located, mean 0.33px, max 1.41px (tol 3px) | pass — pinch raised nothing, `touch-action: none` | pass — plain explanation, 0 canvases | clean; 0 load(s) cancelled by navigation |
+| Firefox | pass — 1920×1080 buffer on Apple M1, or similar | pass — 426/720 located, mean 0.32px, max 1.41px (tol 3px) | pass — 427/720 located, mean 0.32px, max 1.41px (tol 3px) | n/a — no constructible `Touch` on this desktop engine; `touch-action: none` verified | pass — plain explanation, 0 canvases | clean; 0 load(s) cancelled by navigation |
+| WebKit | pass — 1920×1080 buffer on Apple GPU | pass — 426/720 located, mean 0.33px, max 1.41px (tol 3px) | pass — 422/720 located, mean 0.32px, max 1.41px (tol 3px) | n/a — no constructible `Touch` on this desktop engine; `touch-action: none` verified | pass — plain explanation, 0 canvases | clean; 1 load(s) cancelled by navigation |
 | Safari | — | — | — | — | — | — |
 
 ## PRD 7.1.2 support matrix, tested or not
