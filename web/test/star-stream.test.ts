@@ -255,13 +255,16 @@ describe('streamStars resumes a broken body (PRD 7.4.1)', () => {
     expect(server.requests).toEqual([null, 'bytes=1000-', 'bytes=2000-'])
   })
 
-  it('does not sit out the backoff when the abort lands during it', async () => {
+  it('does not sit out the backoff when the abort lands before the wait', async () => {
     const server = origin({ deliver: [1000, 1000, 1000] })
     const controller = new AbortController()
 
     // Half a minute of backoff, aborted the instant the first attempt fails. A wait with nothing
     // wired to the signal notices only when the *next* `fetchOnce` rejects, so it would serve the
     // full 30 s first; the elapsed bound below is what tells the two apart.
+    //
+    // `onRetry` runs *before* `sleep`, so this lands on the `aborted` early-out. The sibling below
+    // covers the other branch, and neither stands in for the other.
     const started = performance.now()
     await expect(
       streamStars(() => {}, {
@@ -274,6 +277,36 @@ describe('streamStars resumes a broken body (PRD 7.4.1)', () => {
     ).rejects.toThrow(/connection reset/)
 
     expect(performance.now() - started).toBeLessThan(2_000)
+    expect(server.requests).toHaveLength(1)
+  })
+
+  it('does not sit out the backoff when the abort lands during the wait', async () => {
+    const server = origin({ deliver: [1000, 1000, 1000] })
+    const controller = new AbortController()
+
+    // Deferring the abort by one macrotask is what moves it off the early-out and onto the
+    // listener: `sleep` is called synchronously as `onRetry` returns, so its timer is set and its
+    // `abort` listener registered before any timer callback can run. The signal is therefore live
+    // when the wait begins and fires while it is under way — the one path the early-out cannot
+    // see, since a signal that has already fired never fires again.
+    //
+    // Delete the `addEventListener` line in `sleep` and nothing wakes the wait: the 30 s runs in
+    // full and this fails.
+    const started = performance.now()
+    await expect(
+      streamStars(() => {}, {
+        root: ROOT,
+        baseDelayMs: 30_000,
+        fetchImpl: server.fetchImpl,
+        signal: controller.signal,
+        onRetry: () => {
+          setTimeout(() => controller.abort(), 0)
+        },
+      }),
+    ).rejects.toThrow(/connection reset/)
+
+    expect(performance.now() - started).toBeLessThan(2_000)
+    // Woken rather than timed out, so no second attempt was ever started.
     expect(server.requests).toHaveLength(1)
   })
 
