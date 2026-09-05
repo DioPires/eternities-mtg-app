@@ -254,6 +254,104 @@ def test_cache_buster_bucket_excludes_a_card_whose_fields_also_moved(
     assert found["changed"] == 1
 
 
+def test_plane_move_does_not_exclude_a_card_from_the_cache_buster_bucket(
+    tmp_path: Path, capsys: Any
+) -> None:
+    """DEC-681 N1, the behaviour behind the module docstring's corrected sentence.
+
+    The `card(s)` figure on the cache-buster row is filtered by the card's own contents — a field
+    change, a printing-count change or a printing anomaly keeps it out. A plane move is not about
+    the card's contents, so it does not: a card that moved shard and was only re-stamped is a real
+    cache-buster card *and* a real plane move, and is counted in both rows.
+
+    Before DEC-678 removed the plane-move `continue` this could not happen, which is why the
+    docstring said "sole symptom" and why that stopped being true.
+    """
+    old = write_dataset(tmp_path / "old", {"alara": [card()], "abyss": []})
+    restamped = card(p=[["printing-1", 7, "c", 1783999999, "1"]])
+    new = write_dataset(tmp_path / "new", {"alara": [], "abyss": [restamped]})
+
+    found, out = buckets(capsys, old, new)
+
+    assert found["plane"] == 1
+    assert found["cache_buster"] == 1
+    assert re.search(r"image cache-buster only:\s+1 card\(s\), 1 printing tuple\(s\)", out)
+    # One card with two symptoms, counted once overall and reported in both rows.
+    assert found["changed"] == 1
+    assert [found[k] for k in ("field", "printing_other", "printing_count")] == [0, 0, 0]
+    # `main` prints the module docstring as its usage text, so the stale claim was operator-facing.
+    # This only blocks the exact sentence that was reviewed and found false; a fresh wording that
+    # is false in some new way is on the reader, not on this assertion.
+    assert "*sole* symptom" not in classifier.__doc__
+
+
+def test_cache_buster_bucket_excludes_a_card_with_a_printing_anomaly(
+    tmp_path: Path, capsys: Any
+) -> None:
+    """DEC-681 N2: the `only_stamp` conjunct, the one of the three that had no test.
+
+    Two printings on one card: the first is re-stamped, the second changes its set. That single
+    anomaly is enough to disqualify the card from "cache-buster only" even though the other tuple
+    really is cache-buster churn — so the row reads `0 card(s), 1 printing tuple(s)` beside a
+    `printing changed otherwise` of 1. Without `only_stamp` the card would be advertised as
+    ignorable noise on the same line that the anomaly is reported on.
+    """
+    was = card(p=[["printing-1", 7, "c", 1783903215, "1"], ["printing-2", 8, "u", 1783903215, "2"]])
+    # First tuple: cache-buster only. Second: same printing id, different set — a real anomaly.
+    now = card(
+        p=[["printing-1", 7, "c", 1783999999, "1"], ["printing-2", 99, "u", 1783903215, "2"]]
+    )
+    old = write_dataset(tmp_path / "old", {"alara": [was]})
+    new = write_dataset(tmp_path / "new", {"alara": [now]})
+
+    found, out = buckets(capsys, old, new)
+
+    assert found["printing_other"] == 1
+    assert found["cache_buster"] == 0
+    # The re-stamped tuple is still counted, on the row whose card count excludes it.
+    assert re.search(r"image cache-buster only:\s+0 card\(s\), 1 printing tuple\(s\)", out)
+    # Nothing else fired: this is `only_stamp` doing the work, not one of the other two conjuncts.
+    assert [found[k] for k in ("changed", "field", "printing_count", "plane")] == [1, 0, 0, 0]
+
+
+def test_duplicate_count_is_oracle_ids_not_warning_lines(tmp_path: Path, capsys: Any) -> None:
+    """DEC-681 N3. One duplicate, two datasets, one id — the header has to say 1.
+
+    `classify` collects from both `load_shards` calls into one list, so a duplicate that persists
+    across a refresh (the likeliest real one: nobody fixes the appendix between the two runs)
+    produces two lines. Counting lines makes that read identically to two different ids being
+    duplicated, and the header's own label says it counts ids.
+    """
+    shards = {"alara": [card()], "amonkhet": [card()]}
+    old = write_dataset(tmp_path / "old", shards)
+    new = write_dataset(tmp_path / "new", shards)
+
+    _, out = buckets(capsys, old, new)
+
+    assert "duplicate oracle ids (1) — each can fake a plane move above" in out
+    # Both lines still print: the count is de-duplicated, the evidence is not. Each names its own
+    # dataset, so an operator can tell which run to go and look at.
+    assert "warning: old: Test Card appears in both alara and amonkhet" in out
+    assert "warning: new: Test Card appears in both alara and amonkhet" in out
+
+
+def test_two_duplicated_ids_count_as_two(tmp_path: Path, capsys: Any) -> None:
+    """The other half of DEC-681 N3: de-duplicating must not collapse distinct ids to one.
+
+    Without this, a header hard-wired to 1 — or one counting `len(set(messages))` on lines that
+    happen to share a dataset — passes the test above.
+    """
+    other = card("card-2", "Other Card")
+    both = write_dataset(tmp_path / "old", {"alara": [card(), other], "amonkhet": [card(), other]})
+    new = write_dataset(tmp_path / "new", {"alara": [card(), other]})
+
+    _, out = buckets(capsys, both, new)
+
+    assert "duplicate oracle ids (2) — each can fake a plane move above" in out
+    assert "Test Card appears in both alara and amonkhet" in out
+    assert "Other Card appears in both alara and amonkhet" in out
+
+
 def test_shard_without_a_slug_falls_back_to_the_file_name(tmp_path: Path) -> None:
     """DEC-673 N4: the `<slug>.<n>.json` fallback, which no real dataset has ever exercised.
 

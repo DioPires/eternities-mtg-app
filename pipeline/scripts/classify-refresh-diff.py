@@ -40,8 +40,10 @@ rows sum to more than it, by design.
 
 The one thing that is still a count of a different population: the `printing tuple(s)` figure on the
 cache-buster row counts every cache-buster tuple in the diff, including tuples on cards that landed
-in a louder bucket, while the `card(s)` figure beside it counts only cards whose *sole* symptom was
-cache-buster churn.
+in a louder bucket, while the `card(s)` figure beside it excludes any card that also had a field
+change, a printing-count change or a printing anomaly. A plane move does not exclude a card from
+that figure: a card that moved shard and was re-stamped is counted in both rows, because the move
+says nothing about whether the card's own contents changed by more than a cache-buster.
 
 Exit code is 0 whatever it finds. This is a reading aid for a human review step, not a gate — the
 gates are PRD 9.2's and they live in the report.
@@ -59,7 +61,9 @@ PRINTING_ID = 0
 PRINTING_IMAGE_TS = 3
 
 
-def load_shards(root: Path, duplicates: list[str] | None = None) -> dict[str, tuple[str, dict]]:
+def load_shards(
+    root: Path, duplicates: list[tuple[str, str]] | None = None
+) -> dict[str, tuple[str, dict]]:
     """Every card in a dataset, by `oracle_id`, with the shard slug it came from.
 
     The slug is what makes a plane move visible: a card can move between shards without a single
@@ -70,7 +74,10 @@ def load_shards(root: Path, duplicates: list[str] | None = None) -> dict[str, tu
     warning therefore goes to **stdout**, not stderr: the runbook has the operator paste the
     classifier output into the pull request, and on stderr the warning was dropped by any redirect
     while the phantom move it disqualifies went through (DEC-673 N5). Pass `duplicates` to collect
-    the messages instead, which is how `classify` reprints them beside that row.
+    `(oracle_id, message)` pairs instead, which is how `classify` reprints them beside that row.
+    The oracle id rides along because `classify` calls this once per dataset onto one shared list,
+    so a duplicate that persists across a refresh contributes two messages for one id and only the
+    id can tell the header how many ids there really are (DEC-681 N3).
     """
     cards: dict[str, tuple[str, dict]] = {}
     for shard in sorted((root / "planes").glob("*.json")):
@@ -89,13 +96,13 @@ def load_shards(root: Path, duplicates: list[str] | None = None) -> dict[str, tu
                 if duplicates is None:
                     print(message)
                 else:
-                    duplicates.append(message)
+                    duplicates.append((card["u"], message))
             cards[card["u"]] = (slug, card)
     return cards
 
 
 def classify(old: Path, new: Path) -> int:
-    duplicates: list[str] = []
+    duplicates: list[tuple[str, str]] = []
     before = load_shards(old, duplicates)
     after = load_shards(new, duplicates)
 
@@ -220,8 +227,13 @@ def classify(old: Path, new: Path) -> int:
         # Immediately after the plane-move rows, because that is the list these disqualify: a
         # duplicated card gets its slug from whichever shard sorts last, which can fabricate a
         # move above. Read these before believing that list (DEC-673 N5).
-        print(f"\nduplicate oracle ids ({len(duplicates)}) — each can fake a plane move above:")
-        for message in duplicates:
+        # Count ids, not lines. Both datasets append to one list, so the likeliest real case — a
+        # duplicate that survives the refresh — is two lines about one id, and a bare line count
+        # reads the same as two genuinely different ids (DEC-681 N3). Every line still prints; it
+        # is only the headline that had to stop counting them.
+        distinct = {oracle_id for oracle_id, _ in duplicates}
+        print(f"\nduplicate oracle ids ({len(distinct)}) — each can fake a plane move above:")
+        for _, message in duplicates:
             print(f"  {message}")
 
     return 0
