@@ -1967,10 +1967,7 @@ async function verifyStarField(page, url, allowSoftware, problems) {
       `${selfCheck.checked} sampled stars a mean of ${selfCheck.meanOffsetPx}px ` +
       `(max ${selfCheck.maxOffsetPx}px, tolerance ${selfCheck.tolerancePx}px) from the pixel ` +
       `the mirror predicted; ${selfCheck.unmeasured} not in window, of which ` +
-      `${selfCheck.unexplained} not explained by a nearer star` +
-      (selfCheck.unexplainedRows.length > 0
-        ? ` (plane rows ${selfCheck.unexplainedRows.map(([row, n]) => `${row}x${n}`).join(' ')})`
-        : ''),
+      `${selfCheck.unexplained} not explained by a nearer star`,
   )
   console.log(
     `    of those ${selfCheck.measured} the pointer would have selected ${selfCheck.agreed} ` +
@@ -1978,8 +1975,18 @@ async function verifyStarField(page, url, allowSoftware, problems) {
       `${selfCheck.positionMode} positions, buffer ${selfCheck.buffer.join('x')}, ` +
       `${selfCheck.spriteFloorPx}px pick sprite)`,
   )
+  const byRow = (entries) => entries.map(([row, n]) => `${row}x${n}`).join(' ')
+  console.log(`    samples per plane row: ` + byRow(selfCheck.sampledRows))
+  // Both numerators, not just the one the verdict reads. `unexplained` is what `darkRowsOf` judges
+  // and is the right thing for a pass/fail; `unmeasured` is raw darkness, which is the column the
+  // ladder tables in `docs/star-renderer.md` are written in and the number that shows production's
+  // `dominaria` going 96% dark on a clean build. Printing only the verdict's tally left the other
+  // reproducible solely through `selfcheck-measure.mjs`, so a doc table could not be checked against
+  // a plain run. Empty lists print as `none` rather than vanishing: an absent line reads as an
+  // omission, and on a green run "none unexplained" is the result worth seeing.
+  console.log(`    dark samples per plane row: ` + (byRow(selfCheck.unmeasuredRows) || 'none'))
   console.log(
-    `    samples per plane row: ` + selfCheck.sampledRows.map(([row, n]) => `${row}x${n}`).join(' '),
+    `    of those, unexplained by a nearer star: ` + (byRow(selfCheck.unexplainedRows) || 'none'),
   )
   // The one bucket still dropped before `checked` and `sampledRows`, so the one place the
   // absorption DEC-625 closed could re-open. Printed on every run, including green ones, because

@@ -189,7 +189,11 @@ real bug in it looks like.
 The check picks at a 2 px sprite rather than the production 7 px (`SELF_CHECK_PICK_MIN_PX`), because
 an inflated sprite is 7 px of some *nearer* star covering the one being measured. Stars it cannot
 locate at all are counted as `unmeasured` rather than judged, and the run must locate a floor of 16
-before its verdict counts, so it cannot pass vacuously.
+before its verdict counts, so it cannot pass vacuously. That floor is a legacy figure: 16 was a
+quarter of the old file-wide sampler's 64 samples and is now 0.9% of `fixture-scale`'s 1832, so in
+relative terms it barely bites. It has deliberately not been rescaled — vacuity is covered far
+better by the dark-row rule below, which judges every row of ten stars or more, and all an absolute
+floor is still for is the degenerate run that took almost no samples at all.
 
 `unmeasured` has two causes and they are indistinguishable from a single sample: a nearer sprite
 covered the star inside a galaxy core, or the mirror put it more than half a pick window out and it
@@ -200,14 +204,26 @@ of the error**. Injecting a uniform offset into the dust row of `fixture-small` 
 | injected into row 0 | mean | max | unmeasured rows | verdict |
 | --- | --- | --- | --- | --- |
 | none | 0.25 px | 1.0 | `3x6 4x6 1x3 0x1` | pass |
-| `py += 2` | 1.49 px | 5.1 | `3x6 4x5 0x3 1x3` | **fail** — 21 stars past tolerance |
+| `py += 2` | 1.49–1.51 px | 5.1 | `3x6 4x5 0x3 1x3` | **fail** — 21 stars past tolerance |
 | `py += 3` | 0.41 px | 1.41 | `0x24` `3x6 4x4 1x3` | **fail** — row 0 dark |
 | `py += 4` | 0.34 px | 1.0 | `0x24` `3x7 4x6 1x3` | **fail** — row 0 dark |
 | `py += 6` | 0.35 px | 1.0 | `0x24` `3x6 4x6 1x3` | **fail** — row 0 dark |
 
-Note that `py += 2` now fails on its 21 individually out-of-tolerance stars alone: at 24 samples a
-row its mean is 1.49 px, a hair under the 1.5 px drift clause that used to catch it as well. The
-clause that fails it is the one that should, but the margin is thinner than it reads.
+The `unmeasured rows` column is the `dark samples per plane row` line of a `verify-browser` run, and
+the line under it splits out the part the verdict actually reads. Both are printed on every run,
+green ones included: raw darkness is the number these tables are written in and the one that shows
+production's `dominaria` going 96% dark, while `unexplained` is what decides pass or fail, and a run
+that printed only the second could not be checked against the first.
+
+Note that `py += 2` now fails on its 21 individually out-of-tolerance stars alone. At 24 samples a
+row its mean lands on either side of the 1.5 px drift clause that used to catch it as well —
+measured 1.49 px on one run and 1.51 px on another — so that clause fires about as often as not and
+is no longer what carries the rung. The clause that fails it is the one that should, and it got
+*stronger* when the sampler changed: 21 of row 0's 24 samples are individually past tolerance where
+the file-wide sampler produced one, because it drew the row from a single contiguous stretch and
+kept missing the stars where 2 world units exceed 3 px. Failing on 21 independent violations is a
+better gate than failing on a mean sitting 1% from its threshold. Do not read the mean here as a
+margin that was nearly lost; read it as a clause that no longer matters for this rung.
 
 Before the dark-row rule, the last three passed — with a *better* mean than the clean run, because
 all 24 dust samples left their windows at once and were dropped from the average. So the third
@@ -238,8 +254,9 @@ The two constants are set against that quantity, on all three datasets:
 | **unexplained** | **1 of 24** — anywhere, any dataset | **20 to 24 of 24** |
 
 The floor of 10 no longer separates lucky rows from real ones: with a per-row budget
-`fixture-scale`'s rows draw 24, 23, 21, 19, 18, 12, then 7, 7, 6, and nothing lands in between, so
-any floor in that gap selects the same 77 rows. What it excludes now is *small* rows — three planes
+`fixture-scale`'s eighty non-empty rows draw 24 (seventy of them), 23, 21, 21, 19, 18, 18, 12, then
+7, 7, 6 — 1832 samples in all — and nothing lands between 7 and 12, so any floor in that gap selects
+the same 77 rows. What it excludes now is *small* rows — three planes
 hold fewer than ten stars and cannot reach it at any budget without reading the same star twice. The
 rate is 0.5 because that is the middle of the empty gap in the table above; it is not near 1.0
 because occlusion explains some of a *displaced* row's samples too. The ladder's smallest rung,
@@ -268,9 +285,10 @@ and fourth bullets above can be stated at all.
 budgetary and will not be closed by sampling harder: `lorwyn` holds 6 stars, `diraden` and `vryn` 7,
 so no budget reaches a floor of 10 on them without reading the same star twice — and ten reads of
 one occluded star are ten dark samples establishing exactly what one established, which would fail a
-clean fixture rather than catch anything. Six further `fixture-scale` planes hold no stars at all
-and cannot be sampled by any means. So the denominator is 77 of 87, and the ten rows outside it are
-named in the `samples per plane row` line of every run.
+clean fixture rather than catch anything. Seven further `fixture-scale` planes hold no stars at all
+and cannot be sampled by any means. So the denominator is 77 of 87 — 80 non-empty rows less those
+three, against 7 empty ones — and the ten rows outside it are named in the `samples per plane row`
+line of every run.
 
 ### The thin-sampling hole, and how it was closed
 
@@ -295,7 +313,10 @@ touched at all — row 44 drew **zero** of its 64 samples, and 24 of the new sam
 
 The cost is wall-clock, and it is not small: 1832 samples and about 32 s on `fixture-scale` against
 64 samples and about a second, per dataset, on every `verify-browser` run. The check is diagnostic
-and runs only under `?selfcheck=1`, so this is CI time rather than anything a user waits for.
+and runs only under `?selfcheck=1`, so this is local-gate time rather than anything a user waits
+for — and it is not CI time either: no workflow in `.github/workflows/` runs `verify-browser` at
+all, because the check needs a real GPU. Everything the check asserts is asserted on the machine of
+whoever runs the gate before a merge.
 `?perrow=N` overrides the budget without a rebuild, which is how the constants above were
 re-derived and how they should be re-derived again if the fixtures change.
 
@@ -390,15 +411,17 @@ is the Blind Eternities dust row, which PRD 8.3 gives the identity transform and
 production dataset also comes back `0 unprojectable`.
 
 Both margins are printed on every run, green ones included, so the clause is a pair of numbers to
-watch rather than an argument to trust. Clean runs report sampled stars **285.2–402.0** units in
-front of the eye on `fixture-small`, **200.5–412.2** on `fixture-scale` and **197.7–405.4** on the
+watch rather than an argument to trust. Clean runs report sampled stars **218.5–395.5** units in
+front of the eye on `fixture-small`, **188.5–411.3** on `fixture-scale` and **191.1–402.6** on the
 87-plane production dataset — all inside the 144.2–456.2 band above, three orders of magnitude clear
 of the 0.1 near plane and a factor of 14 clear of the harness camera's 6000 far one, against a 3 px
 tolerance that fails at a few world units. The measured spans are narrower than the bound because no
-star sits on the view axis at full extent. Note the far figure is the *widest* of the three and
-barely moves between datasets: it is set by the camera's distance plus the star-offset bound, not by
-how many planes there are, which is the shape you would expect if that bound is what limits it. Read
-them knowing they are a min and a max
+star sits on the view axis at full extent. They are the per-row sampler's, re-measured after it
+landed; the file-wide sampler read 285.2–402.0, 200.5–412.2 and 197.7–405.4, and the shift is a
+change in which stars are looked at rather than in where any star is. Note the far figure is the
+*widest* of the three and barely moves between datasets: it is set by the camera's distance plus the
+star-offset bound, not by how many planes there are, which is the shape you would expect if that
+bound is what limits it. Read them knowing they are a min and a max
 over the samples that *survived*: a run that fails on `unprojectable` still prints a healthy near
 margin, because the samples that tripped the clause never reached the `Math.min`. They are the
 margin of a passing run, not a diagnosis of a failing one — `unprojectableRows` is what says where a
