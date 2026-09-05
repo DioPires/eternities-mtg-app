@@ -20,6 +20,7 @@ from eternities.pipeline.records import (
     parse_detail,
 )
 from eternities.pipeline.stages import (
+    CardExclusionResult,
     PrintingFilterResult,
     UnmappedSetError,
     assign_planes,
@@ -39,6 +40,20 @@ def _filter(
 ) -> PrintingFilterResult:
     sets = sets or {"tst": scry_set()}
     return filter_printings(rows, sets, apx or appendices(), as_of)
+
+
+def _exclude(
+    rows: list[RawPrinting],
+    included: list[RawPrinting],
+    apx: Appendices,
+    sets: dict[str, ScrySet] | None = None,
+) -> CardExclusionResult:
+    """4.4 needs the sets table for the same parent walk 4.3.1 uses; most rules do not exercise it.
+
+    An empty table is not a shortcut: `governing_set_row` with no set to climb from resolves to the
+    printing's own Appendix B row, which is what every test here that passes `None` is asserting.
+    """
+    return exclude_cards(rows, included, apx, sets or {})
 
 
 # --- PRD 4.3 printing inclusion ---------------------------------------------------------------
@@ -126,6 +141,26 @@ def test_a_child_of_a_universes_beyond_set_drops_through_its_parents_row():
     assert result.dropped_via_parent == {"pza": "tmt"}, (
         "an inherited drop must be reported, not silent"
     )
+    assert result.parent_rule_only == {"pza": 1}, "nothing else in 4.3 catches this printing"
+
+
+def test_a_child_caught_by_another_rule_is_not_counted_as_load_bearing():
+    """The parent-drop table is long and almost entirely over-determined.
+
+    A Universes Beyond release's token set is dropped by 4.3.2 whichever Appendix B row is
+    consulted, so listing it beside `pza` invites the reader to think the walk is doing dozens of
+    sets' worth of work. `parent_rule_only` counts only the printings that no other 4.3 rule would
+    have caught, and the report prints that number rather than asserting one in prose.
+    """
+    apx = appendices(sets=[set_entry("tmt", universes_beyond=True)])
+    sets = {
+        "tmt": scry_set("tmt"),
+        "ttmt": scry_set("ttmt", set_type="token", parent_set_code="tmt"),
+    }
+    result = _filter([printing(set_code="ttmt")], sets=sets, apx=apx)
+    assert result.kept == []
+    assert result.dropped_via_parent == {"ttmt": "tmt"}
+    assert result.parent_rule_only == {}, "4.3.2 would have dropped it anyway"
 
 
 def test_the_parent_walk_climbs_more_than_one_level():
@@ -209,21 +244,21 @@ def test_a_set_released_on_the_run_date_is_in():
 
 def test_a_card_with_no_included_printing_is_excluded():
     rows = [printing(promo=True)]
-    result = exclude_cards(rows, [], appendices())
+    result = _exclude(rows, [], appendices())
     assert result.included == set()
     assert result.excluded_by_rule["4.4.1 no included printing"] == 1
 
 
 def test_content_warning_excludes_regardless_of_printings():
     rows = [printing(content_warning=True)]
-    result = exclude_cards(rows, rows, appendices())
+    result = _exclude(rows, rows, appendices())
     assert result.included == set()
     assert result.excluded_by_rule["4.4.2 content_warning"] == 1
 
 
 def test_meld_results_are_not_cards_of_their_own():
     rows = [printing(oracle_id="brisela", is_meld_result=True)]
-    result = exclude_cards(rows, rows, appendices())
+    result = _exclude(rows, rows, appendices())
     assert result.excluded_by_rule["4.4.6 meld result"] == 1
 
 
@@ -247,7 +282,7 @@ def test_universes_beyond_origin_uses_the_earliest_printing_not_any_printing():
     ]
     rows = sol_ring + one_ring
     included = [rows[0], rows[3]]  # what 4.3 would leave: the in-universe printings
-    result = exclude_cards(rows, included, apx)
+    result = _exclude(rows, included, apx)
     assert "sol-ring" in result.included
     assert "one-ring" not in result.included
     assert result.excluded_by_rule["4.4.3 Universes Beyond origin"] == 1
@@ -256,7 +291,7 @@ def test_universes_beyond_origin_uses_the_earliest_printing_not_any_printing():
 def test_a_triangle_stamped_earliest_printing_marks_a_universes_beyond_card():
     rows = [printing(oracle_id="ub", security_stamp="triangle", set_code="mix")]
     apx = appendices(sets=[set_entry("mix")])
-    result = exclude_cards(rows, rows, apx)
+    result = _exclude(rows, rows, apx)
     assert result.included == set()
 
 
@@ -264,7 +299,7 @@ def test_a_flavor_named_triangle_printing_does_not_condemn_the_card():
     """4.4.3's stamp clause spares flavour-named printings: those are skins on in-universe cards."""
     rows = [printing(oracle_id="ikoria", security_stamp="triangle", flavor_name="Godzilla")]
     apx = appendices(sets=[set_entry("tst")])
-    assert exclude_cards(rows, rows, apx).included == {"ikoria"}
+    assert _exclude(rows, rows, apx).included == {"ikoria"}
 
 
 def test_universes_within_exemption_overrides_the_origin_test():
@@ -276,8 +311,33 @@ def test_universes_within_exemption_overrides_the_origin_test():
         printing(oracle_id="within", set_code="ltr", released_at="2023-06-23"),
         printing(oracle_id="within", set_code="slx", released_at="2024-03-01"),
     ]
-    result = exclude_cards(rows, [rows[1]], apx)
+    result = _exclude(rows, [rows[1]], apx)
     assert result.included == {"within"}
+
+
+def test_universes_beyond_origin_follows_the_parent_chain_like_4_3_1_does():
+    """4.4.3 reads Appendix B through `governing_set_row`, not the earliest printing's own row.
+
+    Appendix B rows a product, so a Universes Beyond release's children — promos, art series,
+    bonus sheets — carry no row. Reading 4.4.3 as "own row only" made this file read one appendix
+    two different ways, which is the shape the `pza` leak had in 4.3.1.
+
+    The stamp clause is deliberately absent here: an unstamped printing in an unrowed child set is
+    exactly the case the own-row reading gets wrong and the walk gets right.
+    """
+    apx = appendices(sets=[set_entry("ltr", universes_beyond=True), set_entry("plst")])
+    sets = {
+        "ltr": scry_set("ltr"),
+        "pltr": scry_set("pltr", parent_set_code="ltr"),
+        "plst": scry_set("plst"),
+    }
+    rows = [
+        printing(oracle_id="one-ring", set_code="pltr", released_at="2023-06-23"),
+        printing(oracle_id="one-ring", set_code="plst", released_at="2024-01-01"),
+    ]
+    result = _exclude(rows, [rows[1]], apx, sets)
+    assert result.included == set()
+    assert result.excluded_by_rule["4.4.3 Universes Beyond origin"] == 1
 
 
 def test_basic_lands_are_included():
@@ -294,7 +354,7 @@ def test_basic_lands_are_included():
     apx = appendices(sets=[set_entry("lea"), set_entry("ogw")])
     sets = {"lea": scry_set("lea"), "ogw": scry_set("ogw")}
     assert len(_filter(rows, sets=sets, apx=apx).kept) == 2
-    assert exclude_cards(rows, rows, apx).included == {"island", "wastes"}
+    assert _exclude(rows, rows, apx).included == {"island", "wastes"}
 
 
 def test_fiora_conspiracies_are_included():
@@ -309,7 +369,7 @@ def test_fiora_conspiracies_are_included():
     sets = {"cns": scry_set("cns", name="Conspiracy", set_type="draft_innovation")}
     result = _filter(rows, sets=sets, apx=apx)
     assert len(result.kept) == 1
-    assert exclude_cards(rows, result.kept, apx).included == {"backup-plan"}
+    assert _exclude(rows, result.kept, apx, sets).included == {"backup-plan"}
     assert assign_planes(
         choose_first_printings(result.kept, {"backup-plan"}, sets), sets, apx
     ).by_oracle_id == {"backup-plan": "fiora"}
@@ -396,6 +456,42 @@ def test_a_child_set_inherits_its_parents_plane_and_the_inheritance_is_reported(
     result = assign_planes({"card-1": printing(set_code="dmr")}, sets, apx)
     assert result.by_oracle_id == {"card-1": "dominaria"}
     assert result.via_parent == {"dmr": "dom"}
+
+
+def test_a_grandchild_set_inherits_through_the_whole_parent_chain():
+    """4.6 rule 3 is a walk, not a single hop.
+
+    A one-level lookup — which is what this did — fails a grandchild under 4.6.4 instead of
+    inheriting, and leaves 4.6 reading "parent" differently from 4.3.1 and the stamp check, which
+    both use `governing_set_row`. The reported inheritance names the ancestor that actually
+    supplied the row, not the immediate parent, so the report says where the plane came from.
+    """
+    apx = appendices(sets=[set_entry("dom", plane="dominaria")])
+    sets = {
+        "dom": scry_set("dom"),
+        "dmr": scry_set("dmr", parent_set_code="dom"),
+        "pdmr": scry_set("pdmr", parent_set_code="dmr"),
+    }
+    result = assign_planes({"card-1": printing(set_code="pdmr")}, sets, apx)
+    assert result.by_oracle_id == {"card-1": "dominaria"}
+    assert result.via_parent == {"pdmr": "dom"}
+
+
+def test_the_nearest_appendix_row_wins_over_a_further_ancestor():
+    """`governing_set_row`'s tie-break, read through 4.6: a child of an in-universe line is
+    in-universe whatever sits further up the chain."""
+    apx = appendices(
+        sets=[set_entry("old", plane="dominaria"), set_entry("mid", plane="ravnica")],
+        planes=["blind-eternities", "dominaria", "ravnica"],
+    )
+    sets = {
+        "old": scry_set("old"),
+        "mid": scry_set("mid", parent_set_code="old"),
+        "new": scry_set("new", parent_set_code="mid"),
+    }
+    result = assign_planes({"card-1": printing(set_code="new")}, sets, apx)
+    assert result.by_oracle_id == {"card-1": "ravnica"}
+    assert result.via_parent == {"new": "mid"}
 
 
 def test_an_unmapped_set_fails_the_run_and_names_itself():

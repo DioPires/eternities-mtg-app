@@ -127,7 +127,9 @@ A printing is excluded if any of the following hold:
 
 ### 4.5 First printing
 
-1. A card's **first printing** is its included printing with the earliest set release date; ties break by set type priority (`expansion`, `core` first, then all others) and then by set code.
+1. A card's **first printing** is its included printing with the earliest release date **of that printing**; ties break by set type priority (`expansion`, `core` first, then all others) and then by set code.
+
+   *Amended after the first pipeline run (2026-09-04).* This rule read "earliest **set** release date", which is wrong for rolling products. The List (`plst`) carries one set date of 2020-09-26 and keeps adding printings for years, so the set-date reading made The List the first printing of 706 cards that had plainly been printed elsewhere first — Academy Manufactor before Modern Horizons 2, A Killer Among Us before Murders at Karlov Manor — and would have moved every one of them onto the wrong plane. Scryfall sets `released_at` per printing, and it equals the set's date for every ordinary set, so the two readings differ only where the set date is a fiction. Tie-breaks are unchanged, and chronology bands (5.4.2) are unaffected: a band is a position in the plane's set list, not a date comparison.
 2. The first printing determines the card's plane (4.6), chronology band (5.4.2), star size (rarity), and representative image at every level.
 
 ### 4.6 Plane assignment
@@ -596,7 +598,9 @@ No analytics, no error tracking, no cookies, no accounts. Settings and the hint 
 ### 9.2 Data quality gates (reviewed per pipeline run)
 
 1. Unmapped sets: zero, enforced (4.6.4).
-2. Blind Eternities share of included cards: reported every run. The first run records the baseline (expected in the 20–25% range, since core sets, Modern Horizons, Commander products, Jumpstart, and the D&D sets all land there); the target is then set as that baseline minus what curating the three highest-contributing sets (11.9) recovers. The report always lists the top contributing sets so curation effort goes where it pays.
+2. Blind Eternities share of included cards: reported every run. The target is the recorded baseline minus what curating the three highest-contributing sets (11.9) recovers. The report always lists the top contributing sets so curation effort goes where it pays.
+
+   **Baseline: 17.42%** — 4,980 of 28,587 cards, measured on the 2026-09-04 dataset and accepted by the board as the working baseline. It sits **below** the 20–25% this document expected, which is a better starting point than predicted rather than a defect: the expectation was reasoned from core sets, Modern Horizons, Commander products, Jumpstart and the D&D sets all landing in the dust, and they do. The gap is not explained here; if a later run moves the number materially, the explanation is owed then. The top three contributors at the baseline are Commander Legends: Battle for Baldur's Gate (345), March of the Machine (272) and Adventures in the Forgotten Realms (257) — 874 cards, 17.6% of the dust, which is what 11.9's curation target is measured against.
 3. Cards whose plane changed since the last run: listed, each expected to trace to an appendix or override edit.
 4. Planes with zero cards: listed, so roster errors (a plane that should have cards) stand out.
 
@@ -648,24 +652,26 @@ A feature is done when its requirements in sections 4–8 are implemented, the a
 
 Decisions deliberately left open, each with its default so work is never blocked.
 
-1. **Roster completeness.** Kandoka, Foldaria, Clamhattan, and Horsehead Nebula appear in the MTG wiki's planar-type category but were not canon-checked for this document. Default: absent until Claude Code's diff (Appendix A preamble) confirms them.
+1. **Roster completeness.** ~~Kandoka, Foldaria, Clamhattan, and Horsehead Nebula appear in the MTG wiki's planar-type category but were not canon-checked for this document.~~ **Resolved 2026-09-04:** the first run's roster diff found all four in the category and the board added them to Appendix A as zero-card planes. The diff runs every build, so roster drift (risk 4) stays visible.
 2. **Portal (`por`).** Setting is unclear; may belong on Dominaria. Default: Blind Eternities.
 3. **Reality Fracture.** On release, decide between Blind Eternities and an `echoverse` roster entry for the Echoverse. Default: Blind Eternities, revisited when the row is added.
 4. **`security_stamp: triangle`.** Confirm against Scryfall documentation that the triangle stamp reliably marks Universes Beyond printings before relying on 4.3.5.
 5. **Scryfall image terms.** Confirm hotlinking, rate limits, and the required attribution wording before first release (risk 1).
-6. **Blind Eternities target.** 9.2.2 now records a baseline on the first run and derives the target from it; the number itself is unknown until then (expected 20–25%).
+6. **Blind Eternities target.** **Baseline resolved 2026-09-04 at 17.42%** (9.2.2), below the expected 20–25%. The target derived from it — baseline minus what curating the top three sets recovers — is still open and belongs with the 11.9 curation work.
 7. **Performance ceilings.** The 7.2 ceilings are commitments; the targets are aspirations. Confirm both after the first `/bench` run on the reference machine.
 8. **Set search behaviour.** Selecting a set from search flies to its plane and adds a set filter chip (6.5.4). Alternative: fly only. Default: fly and filter.
 9. **Override priority.** Which Blind Eternities sets to curate first with per-card overrides. Default order: March of the Machine, Aetherdrift, Magic Origins, core sets, Modern Horizons.
-10. **2026 set codes marked "verify" in Appendix B.** Resolved by the first pipeline run.
+10. **2026 set codes marked "verify" in Appendix B.** **Resolved 2026-09-04:** fifteen codes confirmed against Scryfall, one corrected (`tlc` → `tle`, and it is an Eternal set, not a Commander one). Sixteen sets the appendix omitted were added under 4.10.2 and ratified; see B.2.
 11. **Visual tunables.** Rarity size ratio, brightness percentile cap, twinkle amplitude, shear amplitude and period, bloom threshold, spin periods. All have defaults in section 5; the visual review (9.3) decides where they land.
-12. **Universes Within identity.** Whether `slx` cards share an `oracle_id` with their Secret Lair originals (4.4.5). Resolved by the first pipeline run; the fixture in 9.1.5 locks the result.
+12. **Universes Within identity.** **Resolved 2026-09-04: they do share.** All 30 `slx` `oracle_id`s also appear on a Secret Lair or Universes Beyond printing, so 4.4.5's exemption is load-bearing — without it those cards would be excluded as Universes Beyond by origin. The 9.1.5 fixture locks the result.
 
 ## Appendix A — Plane list
 
 Canonical roster. Slugs are permanent once published (deep links). Display names may change. Sources: the MTG wiki plane category and a February 2026 compiled list of 82 named planes; verified September 2026. Universes Beyond worlds, the *Un*-iverse, and MagicCon convention "planes" are deliberately absent.
 
-Before first release, Claude Code should diff this list against the current MTG wiki plane category and propose additions; names seen there but not confirmed in time for this document include Kandoka, Foldaria, Clamhattan, and Horsehead Nebula, which need a canon check (some are likely *Un*-iverse or convention planes).
+The roster diff against the MTG wiki plane category runs on every pipeline build and is reported (implementation plan §2). The first run (2026-09-04) confirmed all four of open question 1's candidates — Kandoka, Foldaria, Clamhattan and Horsehead Nebula — present in the category, and the board ratified them onto the roster on the same day. They carry no cards: no set is mapped to them in Appendix B, so each renders as a small dim glow per 5.3.6, exactly as the other zero-card entries do. Adding them re-hashes the dataset, because plane count drives plane placement (8.6).
+
+The remaining 29 wiki entries the diff reports are Universes Beyond settings, convention "planes" or non-canon, which 2.2 keeps out.
 
 | Slug | Display name | Notes |
 |---|---|---|
@@ -685,6 +691,7 @@ Before first release, Claude Code should diff this list against the current MTG 
 | `bloomburrow` | Bloomburrow | |
 | `cabralin` | Cabralin | |
 | `capenna` | Capenna | New Capenna |
+| `clamhattan` | Clamhattan | Ratified from the wiki roster diff, 2026-09-04 (open question 1); no set maps here yet |
 | `cridhe` | Cridhe | |
 | `diraden` | Diraden | |
 | `dominaria` | Dominaria | |
@@ -696,10 +703,12 @@ Before first release, Claude Code should diff this list against the current MTG 
 | `ergamon` | Ergamon | |
 | `fabacin` | Fabacin | |
 | `fiora` | Fiora | Paliano |
+| `foldaria` | Foldaria | Ratified from the wiki roster diff, 2026-09-04 (open question 1); no set maps here yet |
 | `gargantikar` | Gargantikar | |
 | `gastal` | Gastal | |
 | `gobakhan` | Gobakhan | |
 | `hell` | Hell | |
+| `horsehead-nebula` | Horsehead Nebula | Ratified from the wiki roster diff, 2026-09-04 (open question 1); no set maps here yet |
 | `ikoria` | Ikoria | |
 | `ilcae` | Ilcae | |
 | `innistrad` | Innistrad | |
@@ -708,6 +717,7 @@ Before first release, Claude Code should diff this list against the current MTG 
 | `ixalan` | Ixalan | |
 | `kaldheim` | Kaldheim | |
 | `kamigawa` | Kamigawa | |
+| `kandoka` | Kandoka | Ratified from the wiki roster diff, 2026-09-04 (open question 1); no set maps here yet |
 | `karsus` | Karsus | |
 | `kephalai` | Kephalai | |
 | `kinshala` | Kinshala | |
@@ -1009,6 +1019,28 @@ Dungeons & Dragons crossovers (Wizards-owned, not branded Universes Beyond, not 
 Universes Within (in-universe reworks of Universes Beyond cards, sold as Secret Lair; exempt from B.4):
 - `slx` Universes Within · 2022-01 · `blind-eternities` · **verify** code and Scryfall set name
 
+**First-run additions, ratified 2026-09-04.** Sixteen sets that are some card's first printing and that this appendix omitted. The first run failed on each per 4.6.4 — the rule working as designed — and they were added under 4.10.2. Two kinds; the second maps to a real plane rather than the dust, and is listed here for provenance, not because the Blind Eternities claims it.
+
+Reprint-branded products with no single setting, which still carry first printings:
+- `8ed` Eighth Edition · 2003-07 · `blind-eternities`
+- `ema` Eternal Masters · 2016-06 · `blind-eternities`
+- `plst` The List · 2020-09 · `blind-eternities` (a rolling product: its printings carry their own dates, which is what the 4.5.1 amendment turns on)
+- `2x2` Double Masters 2022 · 2022-07 · `blind-eternities`
+- `cmm` Commander Masters · 2023-08 · `blind-eternities`
+- `mb2` Mystery Booster 2 · 2024-08 · `blind-eternities`
+- `slz` The Zeta Set · 2026-09 · `blind-eternities`
+
+Single-plane preview products, mapped to the plane they previewed. Each row names the card that establishes the mapping:
+- `drb` From the Vault: Dragons · 2008-08 · `alara` (Hellkite Overlord, a Shards of Alara preview)
+- `v10` From the Vault: Relics · 2010-08 · `new-phyrexia` (Sword of Body and Mind, a Scars of Mirrodin preview)
+- `ddf` Duel Decks: Elspeth vs. Tezzeret · 2010-09 · `new-phyrexia` (Contagion Clasp, Kemba's Skyguard)
+- `v11` From the Vault: Legends · 2011-08 · `innistrad` (Mikaeus, the Lunarch)
+- `ddj` Duel Decks: Izzet vs. Golgari · 2012-09 · `ravnica` (Return to Ravnica previews, including Jarad — locked by a 9.1.5 fixture)
+- `ddl` Duel Decks: Heroes vs. Monsters · 2013-09 · `theros` (Polukranos, Anax and Cymede)
+- `ddn` Duel Decks: Speed vs. Cunning · 2014-09 · `tarkir` (Zurgo, Jeskai Elder, Mardu Heart-Piercer)
+- `ddp` Duel Decks: Zendikar vs. Eldrazi · 2015-08 · `zendikar` (Oblivion Sower, Retreat to Kazandu)
+- `ddq` Duel Decks: Blessed vs. Cursed · 2016-02 · `innistrad` (Mindwrack Demon, Topplegeist)
+
 Not yet listed: Reality Fracture and the Foundations Commander decks (October 2026). Rule 4.3.8 keeps their preview cards out until release; add rows then, and decide whether the Echoverse warrants its own roster entry at that point.
 
 ### B.3 Excluded — Universes Beyond
@@ -1026,13 +1058,16 @@ Flag `universes_beyond`. The flag drives both the card-level test (4.4.3: a card
 - `fin` Final Fantasy · 2025-06
 - `fic` Final Fantasy Commander · 2025-06
 - `fca` Final Fantasy: Through the Ages · 2025-06
-- `spm` Marvel's Spider-Man · 2025-09 (plus its Commander set · **verify code**)
+- `mar` Marvel Universe · 2025-09
+- `spm` Marvel's Spider-Man · 2025-09 · `spe` Marvel's Spider-Man Eternal (this document said "plus its Commander set"; Scryfall's companion set is `spe`, an *Eternal* set)
 - `tla` Avatar: The Last Airbender · 2025-11
-- `tlc` Avatar: The Last Airbender Commander · 2025-11
-- Teenage Mutant Ninja Turtles (main and Commander) · 2026-03 · **verify codes**
-- Marvel Super Heroes (main and Commander) · 2026-06 · **verify codes**
-- `hob` The Hobbit (plus Commander) · 2026-08 · **verify codes**
-- Star Trek (main and Commander) · 2026-11 · **verify codes**
+- `tle` Avatar: The Last Airbender Eternal · 2025-11 — *corrected 2026-09-04*: this document said `tlc` "Avatar: The Last Airbender Commander". Scryfall has no `tlc`; the set is `tle`, and it is an *Eternal* set, not a Commander one.
+- `tmt` Teenage Mutant Ninja Turtles · 2026-03 · `tmc` Teenage Mutant Ninja Turtles Eternal
+- `msh` Marvel Super Heroes · 2026-06 · `msc` Marvel Super Heroes Commander
+- `hob` The Hobbit · 2026-08 · `hoc` The Hobbit Eternal
+- `trk` Star Trek · 2026-11 · `trc` Star Trek Commander
+
+The **verify** marks in this appendix are discharged. The first run (2026-09-04) confirmed all fifteen marked codes against Scryfall and corrected the one above — `ecc` (B.1), `slx` (B.2), and `hob`, `hoc`, `mar`, `msc`, `msh`, `soc`, `sos`, `spe`, `spm`, `tmc`, `tmt`, `trc`, `trk` here — which is what open question 10 asked for. The pipeline re-checks them on every run and fails loudly on a mismatch (4.6.4), so the marks are not needed to keep the list honest.
 
 Universes Beyond cards sold through Secret Lair are covered by B.4.
 

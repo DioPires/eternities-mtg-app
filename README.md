@@ -96,7 +96,7 @@ waits on the pipeline and bench numbers mean something from the first shader com
 | Fixture | Contents | Purpose |
 |---|---|---|
 | `fixture-small` | 4 planes + the Blind Eternities, 500 cards, one dust shard | Semantic and decoder tests |
-| `fixture-scale` | all 83 Appendix A roster entries, 30 000 stars, 4 dust shards | Performance, label collision, budget |
+| `fixture-scale` | all 87 Appendix A roster entries, 30 000 stars, 4 dust shards | Performance, label collision, budget |
 
 Both draw colour identity from the proportions of the real Phase 1 dataset — mono colours ~15%
 each, multicolour a 16.5% minority, colourless 8.5% — so a plane's five arms carry the stars and
@@ -107,7 +107,10 @@ The real dataset is committed alongside them:
 
 | Dataset | Contents |
 |---|---|
-| `production` | 28 587 cards across 83 planes, 89 plane shards, from the Scryfall bulk file of 2026-09-04 |
+| `production` | 28 587 cards across 87 planes, 93 plane shards, from the Scryfall bulk file of 2026-09-04 |
+
+`fixture-scale` is generated *from* `pipeline/data/appendix_a.json`, so a roster change re-hashes it
+along with the production dataset. `fixture-small` names its five planes explicitly and does not move.
 
 `web/datasets.json` says which one the build points at — `active` is the production dataset.
 `ETERNITIES_DATASET=scale pnpm build` overrides it with a fixture name or a raw hash.
@@ -136,6 +139,19 @@ Two rules stop a run rather than guess, both by design:
 
 Determinism (PRD 4.9.1): the same bulk file, appendices and `--as-of` produce byte-identical
 artefacts *and* an identical manifest, so a refresh reviews as a diff.
+
+To hold the *first* of those three still, pin the cache key:
+
+```sh
+uv run eternities build --as-of 2026-09-04 --bulk-updated-at 2026-09-04T09:05:32.308+00:00
+```
+
+Scryfall republishes `default_cards` several times a day, so an unpinned re-run of an
+appendix-only change quietly folds in a different card file and the 4.9.2 plane diff stops
+separating the edit from the day's churn. Pinning makes no network call at all and fails if the
+cache does not hold that key — it never falls back to today's file. `manifest.json` records the run
+this one followed (`previousRun`), so the committed report stays reproducible after the superseded
+directory is deleted.
 
 ## Where things stand
 

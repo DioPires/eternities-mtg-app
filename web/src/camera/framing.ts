@@ -78,7 +78,7 @@ export function levelOfTether(kind: TetherKind): Level {
 
 /**
  * Distance limits and framing per level, all derived from data rather than hand-tuned per plane —
- * the roster is 83 rows on fixture-scale and will not be curated by hand.
+ * the roster is the whole of Appendix A and will not be curated by hand.
  */
 export class Framing {
   readonly multiverseRadius: number
@@ -206,7 +206,8 @@ export function copyTether(out: Tether, source: Readonly<Tether>): Tether {
  * fly-to therefore bulges its distance-from-tether outwards by a sine hump, and this returns how
  * big that hump has to be for the whole path to clear every plane's exclusion sphere.
  *
- * Computed once per flight, over ~83 spheres × 12 samples. Nothing here runs per frame.
+ * Computed once per flight, over one sphere per roster plane × 12 samples. Nothing here runs
+ * per frame.
  */
 export function clearanceBulge(
   from: Readonly<MutVec3>,

@@ -111,6 +111,7 @@ def _cmd_build(args: argparse.Namespace) -> int:
     from .pipeline import UnmappedSetError
     from .pipeline import build as run_pipeline
     from .pipeline.records import UnknownEnumError
+    from .pipeline.scryfall import PinnedBulkMissingError
 
     data_root = Path(args.out).resolve()
     try:
@@ -121,10 +122,12 @@ def _cmd_build(args: argparse.Namespace) -> int:
             cache_dir=Path(args.cache).resolve(),
             dataset_name=str(args.dataset),
             roster_diff=not args.no_roster_diff,
+            bulk_updated_at=args.bulk_updated_at,
         )
-    except (UnknownEnumError, UnmappedSetError) as error:
-        # PRD 7.7.2 and 4.6.4 are the two rules that stop a run rather than guess. Neither is a
-        # crash to be read from a traceback: the message names what to add and where.
+    except (UnknownEnumError, UnmappedSetError, PinnedBulkMissingError) as error:
+        # PRD 7.7.2, 4.6.4 and the pinned cache key are the rules that stop a run rather than
+        # guess. None is a crash to be read from a traceback: the message names what to add
+        # and where.
         print(f"\nbuild failed — {error}", file=sys.stderr)
         return 1
 
@@ -173,6 +176,14 @@ def main(argv: list[str] | None = None) -> int:
         metavar="YYYY-MM-DD",
         help="run date (PRD 4.9.1). Fixes which sets have shipped (4.3.8) and is recorded in the "
         "manifest; the same date and inputs give byte-identical artefacts. Default: today.",
+    )
+    build_cmd.add_argument(
+        "--bulk-updated-at",
+        default=None,
+        metavar="TIMESTAMP",
+        help="pin the Scryfall bulk cache key, e.g. 2026-09-04T09:05:32.308+00:00. Reuses the "
+        "cached file with that `updated_at` and makes no network call, so an appendix-only "
+        "re-run is not silently fed a newer card file (PRD 4.9.1). Fails if the cache lacks it.",
     )
     build_cmd.add_argument("--out", default=str(WEB_DATA_ROOT), help="data root directory")
     build_cmd.add_argument("--reports", default=str(REPORTS_DIR), help="report directory")

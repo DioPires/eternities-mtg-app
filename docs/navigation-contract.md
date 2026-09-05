@@ -60,7 +60,7 @@ Three deliberate shapes, against PRD 6.2.1's four "focus kinds":
 `levelOf(focus)` gives the camera-distance band. PRD 5.1.3: levels are distances, not views.
 
 **The `planeIndex` cap.** A star record's `planeIndex` is a `uint8` (data contract §5), so the
-roster is capped at 256 planes. Appendix A has 83 and the encoder fails loudly rather than
+roster is capped at 256 planes. Appendix A has 87 and the encoder fails loudly rather than
 truncating. Recorded here because it is a contract limit that is not otherwise written down.
 
 ## 2. Flights
@@ -230,7 +230,7 @@ contract (§2) and not just of the stub.
 
 **Phase 2b closed the acceptance test this section asked for.** The suite is parameterised: all 27
 checks run against the Phase 0 stub *and* against `createSceneNavigation()`, which flies a real
-camera over fixture-scale's 83-plane roster. The swap is therefore a swap. Running it against the
+camera over fixture-scale's whole Appendix A roster. The swap is therefore a swap. Running it against the
 rig immediately found a rule the stub could not have exercised — a real transport reports its own
 cancellation back, and `failCardResolution` was settling that flight `'cancelled'` a moment before
 settling it `'failed'` (see `PendingFlight.stale` in `machine.ts`).

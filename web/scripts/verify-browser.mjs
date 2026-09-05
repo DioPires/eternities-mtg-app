@@ -59,7 +59,7 @@
  * no console error and no failed request.
  *
  * The roster-dependent thresholds are read from the fixture rather than hard-coded, because
- * `--dataset all` runs this against `fixture-small`'s 5 planes as well as `fixture-scale`'s 83.
+ * `--dataset all` runs this against `fixture-small`'s 5 planes as well as `fixture-scale`'s 87.
  *
  * Uses `puppeteer-core` against the browser already on the machine — nothing is downloaded. CI
  * runs the Node-side suites; this is the local gate the implementation plan §6 asks for, and it

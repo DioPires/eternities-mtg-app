@@ -1,10 +1,10 @@
 /**
  * The label rules (PRD 5.3.8–12, 5.4.5), exercised against fixture-scale's real roster.
  *
- * The implementation plan asks for the collision rules "exercised against fixture-scale's 82
- * planes", and PRD 9.3's home-view criterion is "no label overlaps another". Both are checked here
+ * The implementation plan asks for the collision rules "exercised against fixture-scale's whole
+ * roster", and PRD 9.3's home-view criterion is "no label overlaps another". Both are checked here
  * on the actual home view — the multiverse framed at 30° elevation, every plane projected — rather
- * than on a hand-made arrangement that would prove nothing about 83 real positions.
+ * than on a hand-made arrangement that would prove nothing about the roster's real positions.
  */
 
 import { describe, expect, it } from 'vitest'
@@ -16,6 +16,8 @@ import { BLIND_ETERNITIES_SLUG } from '../src/data/types'
 import {
   BAND_MIN_WIDTH_PX,
   createPlacement,
+  LABEL_GAP_PX,
+  labelHalfExtents,
   layoutLabels,
   MAX_FONT_PX,
   MIN_FONT_PX,
@@ -84,17 +86,59 @@ describe('plane labels at the home view (PRD 5.3.8-12, 9.3)', () => {
     expect(count).toBeGreaterThan(40)
   })
 
+  it('sizes a label box by whether it carries a count line (PRD 5.3.12)', () => {
+    // The geometry the overlap check below rests on, asserted instead of assumed.
+    //
+    // A zero-card plane shows no count, so its label is one line and its box is a little over half
+    // as tall. The overlap check used to re-derive the box itself and treat every label as two
+    // lines. At 83 planes nothing ever landed in the difference; at 87 it reported `karsus
+    // overlaps vatraquaz` for two labels 27.5 px apart with 23.5 px of box between them.
+    const withCount = labelHalfExtents('Karsus', '212 cards', 16)
+    const withoutCount = labelHalfExtents('Karsus', null, 16)
+    expect(withCount.halfHeight).toBeCloseTo((16 * 2.15) / 2)
+    expect(withoutCount.halfHeight).toBeCloseTo((16 * 1.3) / 2)
+    // Width takes the wider of the two lines, so a long count can outgrow a short name.
+    expect(labelHalfExtents('Ir', '30000 cards', 16).halfWidth).toBeGreaterThan(
+      labelHalfExtents('Ir', null, 16).halfWidth,
+    )
+  })
+
   it('never overlaps two visible labels (PRD 5.3.10, 9.3)', () => {
-    // The one criterion PRD 9.3 states as a flat rule rather than a judgement.
+    // The one criterion PRD 9.3 states as a flat rule rather than a judgement, measured against
+    // the boxes the layout actually reserves.
+    //
+    // Not circular: `layoutLabels` checks each candidate only against the boxes reserved *before*
+    // it, so a fault in the shift loop, in the reservation count, or in the fade rules leaves two
+    // visible labels overlapping in the finished arrangement. This walks every pair to find that.
+    //
+    // What it does *not* cover, stated so a green run is not over-read. Two holes, both real:
+    //
+    // 1. It measures with `labelHalfExtents` and `LABEL_GAP_PX`, the same estimator `overlaps()`
+    //    uses. So it catches bookkeeping and cannot catch the estimator itself being wrong about
+    //    the real DOM. That direction is pinned only by the 5.3.12 geometry test above, which is
+    //    the one place the box shape is asserted rather than reused.
+    // 2. A faded label is not a pair here at all — `boxesOf` keeps only what is visible — so the
+    //    solver could hide a genuine collision by fading one side and this would still read clear.
+    //
+    // Hole 2 is bounded rather than left open: the assertion below caps how much of the roster may
+    // vanish from the check. It is a ratio, not a count, so it neither goes stale on the next
+    // roster change nor silently widens. The escape it closes is a fade rule that starts dropping
+    // labels wholesale; a fade of one awkward pair is under it, which is the intended behaviour.
     const visible = boxesOf(out, count)
-    expect(visible.length).toBeGreaterThan(20)
+    expect(
+      visible.length / candidates.length,
+      `only ${visible.length} of ${candidates.length} labels are visible — the overlap check ` +
+        'below cannot see the rest, so too many faded means it is proving less than it looks',
+    ).toBeGreaterThan(0.7)
     for (let i = 0; i < visible.length; i += 1) {
       for (let j = i + 1; j < visible.length; j += 1) {
         const a = visible[i]!
         const b = visible[j]!
-        const halfW = (a.text.length * a.fontPx * 0.58 + b.text.length * b.fontPx * 0.58) / 2
-        const halfH = (a.fontPx * 2.15 + b.fontPx * 2.15) / 2
-        const clear = Math.abs(a.x - b.x) >= halfW || Math.abs(a.y - b.y) >= halfH
+        const ea = labelHalfExtents(a.text, a.sub, a.fontPx)
+        const eb = labelHalfExtents(b.text, b.sub, b.fontPx)
+        const clear =
+          Math.abs(a.x - b.x) >= ea.halfWidth + eb.halfWidth + LABEL_GAP_PX ||
+          Math.abs(a.y - b.y) >= ea.halfHeight + eb.halfHeight + LABEL_GAP_PX
         expect(clear, `${a.key} overlaps ${b.key}`).toBe(true)
       }
     }

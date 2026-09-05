@@ -2570,7 +2570,8 @@
       "notes": "",
       "prdSection": "B.3",
       "prdVerify": false,
-      "correctedFrom": "tlc"
+      "correctedFrom": "tlc",
+      "prdRatified": "2026-09-04"
     },
     {
       "code": "tmc",

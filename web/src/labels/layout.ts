@@ -7,8 +7,8 @@
  *
  * Two constraints shape it:
  *
- * - **PRD 7.3.2 forbids allocation in the frame path**, and this runs every frame over all 83 rows
- *   of fixture-scale. So the solver writes into a caller-owned array of reusable records and
+ * - **PRD 7.3.2 forbids allocation in the frame path**, and this runs every frame over every
+ *   roster row of fixture-scale. So the solver writes into a caller-owned array of reusable records and
  *   returns how many it filled; nothing is allocated after the first frame.
  * - **PRD 7.3.3 forbids layout-triggering style changes**, which rules out measuring the real DOM
  *   boxes. Widths are estimated from the text and the font size instead. The estimate is
@@ -122,8 +122,35 @@ function estimateWidth(text: string, sub: string | null, fontPx: number): number
   return Math.max(main, subWidth) + 10
 }
 
+/**
+ * One line, or two.
+ *
+ * PRD 5.3.12 gives a zero-card plane no count, so its label is a single line and its box is a
+ * little over half as tall. Anything re-deriving label geometry has to honour that or it will see
+ * collisions that are not there — a roster is mostly zero-card planes.
+ */
 function estimateHeight(sub: string | null, fontPx: number): number {
   return sub === null ? fontPx * 1.3 : fontPx * 2.15
+}
+
+/**
+ * The collision box this module reserves for a label, and the clearance it insists on around it.
+ *
+ * Exported so a test can check the *arrangement* against the geometry actually used, rather than
+ * re-deriving the geometry and drifting from it. The estimates themselves are asserted directly in
+ * `test/labels.test.ts`; this is the one place they are defined.
+ */
+export const LABEL_GAP_PX = GAP_PX
+
+export function labelHalfExtents(
+  text: string,
+  sub: string | null,
+  fontPx: number,
+): { halfWidth: number; halfHeight: number } {
+  return {
+    halfWidth: estimateWidth(text, sub, fontPx) / 2,
+    halfHeight: estimateHeight(sub, fontPx) / 2,
+  }
 }
 
 interface Box {

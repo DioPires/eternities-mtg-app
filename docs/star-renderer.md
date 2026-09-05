@@ -65,8 +65,9 @@ texel 5  tint.r   tint.g   tint.b    (spare)
 
 Read with `texelFetch`, so there is no filtering and no half-texel arithmetic to get wrong.
 
-The whole per-frame CPU cost of the field's motion is this table: ~83 angle integrations and two
-easings into a preallocated array, uploaded in one call (PRD 8.5.3's "~80 floats per frame").
+The whole per-frame CPU cost of the field's motion is this table: one angle integration per plane
+and two easings into a preallocated array, uploaded in one call (PRD 8.5.3's "~80 floats per
+frame").
 
 ## 4. Loading, fading, failing
 
@@ -120,8 +121,8 @@ click anywhere on a plane and you get the plane, unless you clicked a star.
   *same vertex shader* with `ID_PASS` defined — which is why it is exact. The sub-window comes from
   `camera.setViewOffset` and an 11×11 render target rather than a full-size target plus a scissor:
   identical projection, 484 bytes of readback instead of 8 MB of VRAM.
-- **Planes: a CPU sphere raycast** against ~83 bounding spheres whose centres come from the same
-  motion mirror. Allocation-free; it runs on pointer move.
+- **Planes: a CPU sphere raycast** against one bounding sphere per plane, whose centres come from
+  the same motion mirror. Allocation-free; it runs on pointer move.
 
 The readback is `readRenderTargetPixelsAsync`, and the renderer, camera and scene state are restored
 **before** awaiting the fence. `readPixels` into the pixel buffer happens synchronously, so the
@@ -227,10 +228,10 @@ every entry on it was found by injecting a larger error than the round before ha
 and that is the only method that has found any of them.
 
 *A row too thinly sampled to judge can be displaced without failing.* Sixty-four samples over
-`fixture-scale`'s 83 planes leave most rows with one sample, and row 0 is the only one there that
+`fixture-scale`'s 87 planes leave most rows with one sample, and row 0 is the only one there that
 clears the floor — that is the Blind Eternities dust, the row PRD 8.5.7 is named after and the one
 Phase 2b's tether frames, so the coverage is aimed at the right place, but it is coverage of one row
-and not of 83. An error scattered across rows rather than confined to one would likewise reduce
+and not of 87. An error scattered across rows rather than confined to one would likewise reduce
 coverage rather than fail. The deferred draw-range fix closes this one.
 
 *An error large enough to push the row off screen is absorbed, and the run passes green.*

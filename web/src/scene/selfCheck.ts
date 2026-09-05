@@ -199,8 +199,8 @@ const MIN_MEASURED = 16
  * per plane row, so an error in it moves every star on that row together and takes the whole row
  * out at once. A row that went all but entirely dark is therefore the signature of the bug and not
  * of the field — provided enough of it was sampled to tell the difference, which is what the floor
- * below is for. Rows sampled fewer times than that are reported but not judged; on an 83-plane fixture
- * most rows draw one sample and can never be either.
+ * below is for. Rows sampled fewer times than that are reported but not judged; on an 87-plane
+ * fixture most rows draw one sample and can never be either.
  *
  * Both numbers are set from measurement, and the floor is the load-bearing one. A first attempt
  * used four samples and failed the *clean* `fixture-scale` run: rows 47 and 43 drew five and four
@@ -221,7 +221,7 @@ const MIN_MEASURED = 16
  * by pushing an injection further than the round before it had thought to, and the next one would
  * be found the same way.
  *
- * It does not judge a thinly sampled row. Sixty-four samples over `fixture-scale`'s 83 planes leave
+ * It does not judge a thinly sampled row. Sixty-four samples over `fixture-scale`'s 87 planes leave
  * most rows with one sample each, and the only row there that clears the floor is row 0 — which is
  * the Blind Eternities dust, the row PRD 8.5.7's failure is named after and the one Phase 2b's
  * tether frames. The draw-range fix deferred to Phase 2b is what removes that one.
