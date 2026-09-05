@@ -243,6 +243,17 @@ export class StarStreamReader {
     this.buffer = grown
   }
 
+  /**
+   * Bytes received so far, header included.
+   *
+   * This is the resume point of PRD 7.4.1's retry: a stream that dies part-way asks for
+   * `bytes=<this>-` rather than starting the largest artefact in the contract over. Byte-exact on
+   * purpose — it may land in the middle of a record, and the next chunk simply continues it.
+   */
+  get receivedBytes(): number {
+    return this.received
+  }
+
   /** Whole records received so far. Safe to use as a draw range. */
   get completeRecords(): number {
     if (this.header === null) return 0
