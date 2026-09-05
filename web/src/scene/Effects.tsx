@@ -12,7 +12,7 @@
  */
 
 import { Bloom, EffectComposer, SelectiveBloom, Vignette } from '@react-three/postprocessing'
-import { type ReactElement } from 'react'
+import { type ComponentProps, type MutableRefObject, type ReactElement } from 'react'
 import { Object3D } from 'three'
 
 import {
@@ -48,7 +48,30 @@ export interface EffectsProps {
    * pass. Neither belongs in a fix leg. Left as a known miss against the target.
    */
   readonly bloomSelection?: readonly Object3D[]
+  /**
+   * The live bloom effect, for the `?probe=1` seam only.
+   *
+   * PRD 9.1.4's forced-degradation check has to show that the *render target* shrank, not that the
+   * `resolutionScale` prop was passed — `resolution.width` is a number the composer computed, and
+   * a bug that dropped the prop on the floor would leave it unmoved. Nothing in the render path
+   * reads this.
+   */
+  readonly bloomRef?: MutableRefObject<BloomProbe | null>
 }
+
+/** Just enough of the bloom effect for {@link EffectsProps.bloomRef}. */
+export interface BloomProbe {
+  readonly resolution: { readonly width: number; readonly height: number }
+}
+
+/**
+ * Both wrappers hand back an effect whose `resolution` is what we want, but neither ref type says
+ * so: `Bloom`'s is `LegacyRef<typeof BloomEffect>` — the class, not an instance — and
+ * `SelectiveBloom`'s is the narrower `SelectiveBloomEffect`. Casting to each component's own ref
+ * type keeps the lie local and named rather than spreading `BloomEffect` through the probe.
+ */
+type BloomRef = ComponentProps<typeof Bloom>['ref']
+type SelectiveBloomRef = ComponentProps<typeof SelectiveBloom>['ref']
 
 /**
  * What `SelectiveBloom`'s `lights` prop gets, because this scene has no lights at all.
@@ -65,13 +88,14 @@ export interface EffectsProps {
  */
 const NO_LIGHTS: Object3D[] = [new Object3D()]
 
-export function Effects({ bloomScale, bloomSelection }: EffectsProps): ReactElement {
+export function Effects({ bloomScale, bloomSelection, bloomRef }: EffectsProps): ReactElement {
   const bloom =
     bloomSelection && bloomSelection.length > 0 ? (
       <SelectiveBloom
         // Keyed on the selection as well: `SelectiveBloomEffect` takes its selection at
         // construction, and the field's objects are built once `planes.json` lands.
         key={`selective-bloom-${bloomScale}-${bloomSelection.length}`}
+        ref={bloomRef as unknown as SelectiveBloomRef}
         selection={bloomSelection as Object3D[]}
         lights={NO_LIGHTS}
         intensity={BLOOM_INTENSITY}
@@ -83,6 +107,7 @@ export function Effects({ bloomScale, bloomSelection }: EffectsProps): ReactElem
     ) : (
       <Bloom
         key={`bloom-${bloomScale}`}
+        ref={bloomRef as unknown as BloomRef}
         intensity={BLOOM_INTENSITY}
         luminanceThreshold={BLOOM_THRESHOLD}
         luminanceSmoothing={BLOOM_SMOOTHING}

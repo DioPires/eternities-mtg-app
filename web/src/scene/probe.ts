@@ -55,6 +55,32 @@ export interface ProbeState {
     readonly withinTarget: boolean
     readonly withinCeiling: boolean
   }
+  /**
+   * What the quality ladder has actually done to the frame, for PRD 9.1.4's forced-degradation
+   * check (`?quality=N`, see `scene/quality/adaptiveQuality`).
+   *
+   * Every field below `tier` is read back off a live object — the renderer, the bloom's render
+   * target, the atlas, the geometry, the shader uniform — rather than off `QUALITY_TIERS`. That is
+   * the whole point: a tier the scene *reports* proves nothing, and until Phase 6 no caller had ever
+   * pinned one, so no rung of the ladder had been watched landing. `starsDrawn` and `motion` are
+   * here for the other half of PRD 8.5.11 — that geometry and motion never degrade.
+   */
+  readonly quality: {
+    readonly tier: string
+    readonly tierIndex: number
+    /** The tier `?quality=` pinned, or `null` when the ladder is free to move. */
+    readonly pinned: number | null
+    /** `WebGLRenderer.getPixelRatio()`, which the ladder's first rung caps. */
+    readonly pixelRatio: number
+    readonly drawingBuffer: { readonly width: number; readonly height: number }
+    /** The bloom's render-target size. `null` before the composer has sized it. */
+    readonly bloom: { readonly width: number; readonly height: number } | null
+    /** The atlas's live capacity, after `CardTier.setCapacity`. */
+    readonly thumbnailCapacity: number
+    readonly starsDrawn: number
+    /** The `uMotion` uniform the star shader reads. */
+    readonly motion: number
+  }
   readonly card: ProbeCardState | null
   /**
    * How far the focused card is drawn from the point the camera is looking at, in world units.

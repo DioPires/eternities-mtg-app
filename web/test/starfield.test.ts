@@ -22,7 +22,12 @@ import {
   type PlaneRecord,
 } from '../src/data/types'
 import { SceneErrorHub } from '../src/scene/errors'
-import { QualityMonitor, QUALITY_TIERS } from '../src/scene/quality/adaptiveQuality'
+import {
+  QualityMonitor,
+  QUALITY_TIERS,
+  pinnedQualityOptions,
+  pinnedQualityTier,
+} from '../src/scene/quality/adaptiveQuality'
 import {
   CURL_EPSILON,
   FLOATS_PER_PLANE,
@@ -500,6 +505,39 @@ describe('adaptive quality (PRD 8.5.11)', () => {
     monitor.setTier(99)
     expect(monitor.index).toBe(QUALITY_TIERS.length - 1)
     expect(seen).toEqual([2, QUALITY_TIERS.length - 1])
+  })
+
+  it('holds a pinned tier against frames fast enough to restore it (PRD 9.1.4)', () => {
+    // The reference machine runs the bench at ~2.9 ms p95. `setTier` alone would be undone within
+    // `restoreWindowS`, and the forced-degradation check would then be looking at tier 0 output.
+    const monitor = new QualityMonitor(pinnedQualityOptions(2))
+    expect(monitor.index).toBe(2)
+
+    feed(monitor, 3, 60)
+    expect(monitor.index).toBe(2)
+    // Nor does trouble move it the other way.
+    feed(monitor, 40, 20)
+    expect(monitor.index).toBe(2)
+    // And an explicit set cannot escape the pin either.
+    monitor.setTier(0)
+    expect(monitor.index).toBe(2)
+  })
+
+  it('leaves the ladder free when nothing is pinned', () => {
+    const monitor = new QualityMonitor(pinnedQualityOptions(null))
+    expect(monitor.index).toBe(0)
+    feed(monitor, 30, 4)
+    expect(monitor.index).toBeGreaterThan(0)
+  })
+
+  it('reads the pin off the URL, and ignores anything that is not a tier', () => {
+    expect(pinnedQualityTier('?quality=0')).toBe(0)
+    expect(pinnedQualityTier('?quality=3')).toBe(3)
+    // Out of the ladder, negative, fractional, empty, absent, or a word: all ignored, so a typo
+    // degrades nothing rather than degrading to the floor.
+    for (const search of ['?quality=4', '?quality=-1', '?quality=1.5', '?quality=', '', '?q=2', '?quality=full']) {
+      expect(pinnedQualityTier(search)).toBeNull()
+    }
   })
 })
 

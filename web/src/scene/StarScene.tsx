@@ -25,7 +25,12 @@ import {
   samePick,
   type PickResult,
 } from './picking/scenePicker'
-import { QualityMonitor, type QualityTier } from './quality/adaptiveQuality'
+import {
+  QualityMonitor,
+  pinnedQualityOptions,
+  pinnedQualityTier,
+  type QualityTier,
+} from './quality/adaptiveQuality'
 import { runSelfCheck, selfCheckRequested } from './selfCheck'
 import { starWorldPosition } from './starfield/motion'
 import { SKY_COLOUR } from './tuning'
@@ -88,7 +93,7 @@ export function StarScene({
   const background = useMemo(() => createBackground(), [])
   const idPicker = useMemo(() => new IdPicker(), [])
   const planePicker = useMemo(() => new PlanePicker(), [])
-  const quality = useMemo(() => new QualityMonitor(), [])
+  const quality = useMemo(() => new QualityMonitor(pinnedQualityOptions(pinnedQualityTier())), [])
 
   // Callbacks live in a ref so that a caller passing inline arrows — which every React caller
   // eventually does — cannot re-subscribe pointer listeners or reset the pixel ratio on a render.

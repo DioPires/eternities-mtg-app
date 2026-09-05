@@ -46,7 +46,14 @@ import {
   useState,
   type ReactElement,
 } from 'react'
-import { NoToneMapping, Vector3, type PerspectiveCamera } from 'three'
+import {
+  NoToneMapping,
+  Vector2,
+  Vector3,
+  type PerspectiveCamera,
+  type ShaderMaterial,
+  type WebGLRenderer,
+} from 'three'
 
 import {
   BenchRunner,
@@ -74,11 +81,11 @@ import { createPlaneDetailLoader } from '../plane-detail/client'
 import { CameraReadout } from './CameraReadout'
 import { CardTier, type CardTierHandle, type PlaneCards, type PlanetLabelState } from './cards/CardTier'
 import { formatMb, gpuMemoryReport } from './cards/gpuMemory'
-import { Effects } from './Effects'
+import { Effects, type BloomProbe } from './Effects'
 import { sceneErrors, type SceneDataError } from './errors'
 import type { PickResult } from './picking/scenePicker'
 import { probeRequested, type Probe, type ProbeState } from './probe'
-import { QUALITY_TIERS, type QualityTier } from './quality/adaptiveQuality'
+import { QUALITY_TIERS, pinnedQualityTier, type QualityTier } from './quality/adaptiveQuality'
 import { StarScene, type StarSceneHandle } from './StarScene'
 import type { PlaneTable } from './starfield/planeTable'
 import { SKY_COLOUR } from './tuning'
@@ -205,8 +212,12 @@ export function SceneView({
   bench = null,
 }: SceneViewProps): ReactElement {
   const [snapshot, setSnapshot] = useState<NavigationSnapshot | null>(null)
+  // `?quality=N` starts the scene at tier N and holds it there (PRD 9.1.4). The monitor inside
+  // `StarScene` is pinned to the same tier, so it never announces a change and this stays the
+  // tier for the run — which is why the initial value has to be right rather than corrected later.
+  const pinnedTier = useMemo(() => pinnedQualityTier(), [])
   const [tier, setTier] = useState<{ tier: QualityTier; changes: number }>({
-    tier: QUALITY_TIERS[0]!,
+    tier: QUALITY_TIERS[pinnedTier ?? 0]!,
     changes: 0,
   })
   const [hover, setHover] = useState<PickResult>(null)
@@ -215,6 +226,8 @@ export function SceneView({
   const [focusedStar, setFocusedStar] = useState(-1)
   // Read by the `?probe=1` seam, which must not be reinstalled on every focus change.
   const focusedStarRef = useRef(-1)
+  /** The current tier, for the probe's `state()` — which must not re-install on a tier change. */
+  const tierRef = useRef<QualityTier>(QUALITY_TIERS[pinnedTier ?? 0]!)
   const focusedSlugRef = useRef<string | null>(null)
   const [cardVersion, setCardVersion] = useState(0)
   const [gpu, setGpu] = useState({ atlas: 0, card: 0 })
@@ -225,7 +238,11 @@ export function SceneView({
   const labelState = useRef<PlanetLabelState>({ visible: false, x: 0, y: 0, printing: -1 }).current
   const anchorScratch = useRef(new Vector3()).current
   const probeScreen = useRef(new Vector3()).current
+  const probeBuffer = useRef(new Vector2()).current
   const cameraRef = useRef<PerspectiveCamera | null>(null)
+  // Both for the `?probe=1` quality block only; see `ProbeState.quality`.
+  const rendererRef = useRef<WebGLRenderer | null>(null)
+  const bloomRef = useRef<BloomProbe | null>(null)
 
   /**
    * The focused plane's cards, by global star index.
@@ -304,6 +321,7 @@ export function SceneView({
   }, [scene, data.resources])
 
   focusedStarRef.current = focusedStar
+  tierRef.current = tier.tier
   const focus = snapshot?.focus
   const focusedSlug =
     focus === undefined
@@ -506,6 +524,29 @@ export function SceneView({
     if (!probeRequested() || !data.planes || !data.resources) return
     const planes = data.planes
     const geometry = data.resources.geometry
+    // The uniform the star shader actually samples, not the `motion` argument passed to `update`.
+    const motionUniform = (data.resources.field.points.material as ShaderMaterial).uniforms[
+      'uMotion'
+    ]
+
+    // Read back off the live objects, never off QUALITY_TIERS. See `ProbeState.quality`.
+    const qualityState = (): ProbeState['quality'] => {
+      const renderer = rendererRef.current
+      const buffer = renderer?.getDrawingBufferSize(probeBuffer)
+      const bloom = bloomRef.current?.resolution
+      return {
+        tier: tierRef.current.label,
+        tierIndex: QUALITY_TIERS.indexOf(tierRef.current),
+        pinned: pinnedTier,
+        pixelRatio: renderer?.getPixelRatio() ?? 0,
+        drawingBuffer: { width: buffer?.x ?? 0, height: buffer?.y ?? 0 },
+        // Zero until the composer has sized it, which is not the same as "no bloom".
+        bloom: bloom && bloom.width > 0 ? { width: bloom.width, height: bloom.height } : null,
+        thumbnailCapacity: cardTier.current?.stats.capacity ?? 0,
+        starsDrawn: geometry.drawCount,
+        motion: typeof motionUniform?.value === 'number' ? motionUniform.value : -1,
+      }
+    }
 
     const state = (): ProbeState => {
       const built = sceneRef.current
@@ -558,6 +599,7 @@ export function SceneView({
           withinTarget: memoryNow.withinTarget,
           withinCeiling: memoryNow.withinCeiling,
         },
+        quality: qualityState(),
         card:
           record && cardState && cardState.visible
             ? {
@@ -752,8 +794,12 @@ export function SceneView({
         onCreated={({ gl, camera }) => {
           gl.toneMapping = NoToneMapping
           cameraRef.current = camera as PerspectiveCamera
+          rendererRef.current = gl
         }}
-        dpr={QUALITY_TIERS[0]!.pixelRatioCap}
+        // The canvas's starting ratio only. `StarScene` owns it from its first effect onwards, and
+        // caps it by `devicePixelRatio` as this prop does not — so this must not track `tier`, or a
+        // step down would re-raise the ratio behind the monitor's back.
+        dpr={QUALITY_TIERS[pinnedTier ?? 0]!.pixelRatioCap}
         style={{ background: SKY_COLOUR }}
       >
         <StarScene
@@ -800,7 +846,11 @@ export function SceneView({
             />
           </>
         )}
-        <Effects bloomScale={tier.tier.bloomScale} bloomSelection={bloomSelection} />
+        <Effects
+          bloomScale={tier.tier.bloomScale}
+          bloomSelection={bloomSelection}
+          bloomRef={bloomRef}
+        />
       </Canvas>
 
       {scene && data.planes && (

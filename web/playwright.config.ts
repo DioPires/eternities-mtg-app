@@ -1,7 +1,8 @@
 /**
- * PRD 8.9.2's route smoke and PRD 9.1.2's bench smoke, in a real browser, in CI.
+ * PRD 8.9.2's route smoke, PRD 9.1.2's bench smoke and PRD 9.1.4's forced-degradation check, in a
+ * real browser, in CI.
  *
- * These are the two checks the PRD asks Playwright for and nothing else. They run against the
+ * These are the three checks the PRD asks a scripted browser for and nothing else. They run against the
  * **built** site served by `vite preview`, not the dev server, for the same reason
  * `scripts/verify-browser.mjs` does: preview sends the production PRD 7.6.1 headers, and a route
  * smoke that passes only under the dev server's relaxed policy has not smoked the product.

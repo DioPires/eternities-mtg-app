@@ -53,6 +53,13 @@ export interface QualityMonitorOptions {
   readonly outlierMs?: number
   /** Highest tier the monitor may use. Phase 6's forced-degradation check pins this. */
   readonly maxTier?: number
+  /**
+   * Lowest tier the monitor may use. Setting it equal to `maxTier` pins the ladder, which is what
+   * PRD 9.1.4's forced degradation needs: on the reference machine the p90 sits far under
+   * `restoreMs`, so a tier that is merely *set* climbs back to `full` within `restoreWindowS` and
+   * there is nothing left to look at. See {@link pinnedQualityTier}.
+   */
+  readonly minTier?: number
 }
 
 const DEFAULTS = {
@@ -67,8 +74,34 @@ const DEFAULTS = {
 /** Frames held in the rolling window. 4 s at 120 fps, which covers the longest window above. */
 const WINDOW = 512
 
+/** Round a tier index to an integer inside the ladder. Everything that sets a tier goes through it. */
+function inLadder(index: number): number {
+  if (!Number.isFinite(index)) return 0
+  return Math.max(0, Math.min(QUALITY_TIERS.length - 1, Math.round(index)))
+}
+
+/**
+ * `?quality=N` pins the ladder at tier N for PRD 9.1.4's forced-degradation check, and `?quality=`
+ * anything else is ignored so a typo degrades nothing.
+ *
+ * Pinning, not nudging: see {@link QualityMonitorOptions.minTier}.
+ */
+export function pinnedQualityTier(
+  search = typeof location === 'undefined' ? '' : location.search,
+): number | null {
+  const value = new URLSearchParams(search).get('quality')
+  if (value === null || !/^\d+$/.test(value)) return null
+  const index = Number(value)
+  return index < QUALITY_TIERS.length ? index : null
+}
+
+/** The monitor options that pin a tier, or `{}` when nothing is pinned. */
+export function pinnedQualityOptions(pin: number | null): QualityMonitorOptions {
+  return pin === null ? {} : { minTier: pin, maxTier: pin }
+}
+
 export class QualityMonitor {
-  private readonly options: Required<Omit<QualityMonitorOptions, 'maxTier'>> & { maxTier: number }
+  private readonly options: Required<QualityMonitorOptions>
   /** Ring buffer of frame times, in milliseconds. Never grows, never allocates (PRD 7.3.2). */
   private readonly samples = new Float32Array(WINDOW)
   private readonly scratch = new Float32Array(WINDOW)
@@ -80,11 +113,18 @@ export class QualityMonitor {
   private readonly listeners = new Set<(tier: QualityTier, index: number) => void>()
 
   constructor(options: QualityMonitorOptions = {}) {
+    // Bound both ends into the ladder first, then let `minTier` win a contradiction: a caller that
+    // pins a tier has asked for that tier, and silently handing back a better one would make the
+    // forced-degradation check pass against undegraded output.
+    const minTier = inLadder(options.minTier ?? 0)
+    const maxTier = Math.max(inLadder(options.maxTier ?? QUALITY_TIERS.length - 1), minTier)
     this.options = {
       ...DEFAULTS,
-      maxTier: QUALITY_TIERS.length - 1,
       ...Object.fromEntries(Object.entries(options).filter(([, v]) => v !== undefined)),
-    } as Required<Omit<QualityMonitorOptions, 'maxTier'>> & { maxTier: number }
+      minTier,
+      maxTier,
+    } as Required<QualityMonitorOptions>
+    this.tierIndex = minTier
   }
 
   get tier(): QualityTier {
@@ -104,7 +144,7 @@ export class QualityMonitor {
 
   /** Pin the tier, for the forced-degradation verification of PRD 8.5.11 (Phase 6). */
   setTier(index: number): void {
-    const clamped = Math.max(0, Math.min(this.options.maxTier, index))
+    const clamped = this.clamp(index)
     if (clamped === this.tierIndex) return
     this.tierIndex = clamped
     this.reset()
@@ -138,7 +178,7 @@ export class QualityMonitor {
     }
 
     const restoreFrames = this.framesFor(this.options.restoreWindowS, frameMs)
-    if (this.tierIndex > 0 && this.count >= restoreFrames) {
+    if (this.tierIndex > this.options.minTier && this.count >= restoreFrames) {
       if (this.percentile(restoreFrames, 0.9) < this.options.restoreMs) {
         return this.step(-1)
       }
@@ -161,8 +201,12 @@ export class QualityMonitor {
     return view[Math.min(n - 1, Math.floor(quantile * n))]!
   }
 
+  private clamp(index: number): number {
+    return Math.max(this.options.minTier, Math.min(this.options.maxTier, index))
+  }
+
   private step(direction: 1 | -1): QualityTier {
-    this.tierIndex = Math.max(0, Math.min(this.options.maxTier, this.tierIndex + direction))
+    this.tierIndex = this.clamp(this.tierIndex + direction)
     this.cooldown = this.options.cooldownS
     this.reset()
     for (const listener of this.listeners) listener(this.tier, this.tierIndex)
