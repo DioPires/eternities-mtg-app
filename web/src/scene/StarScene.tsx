@@ -18,7 +18,13 @@ import { Vector2, Vector3, type PerspectiveCamera } from 'three'
 
 import { advanceBackground, createBackground } from './background'
 import { IdPicker, isPerspective } from './picking/idPicker'
-import { PlanePicker, resolvePick, type PickResult } from './picking/scenePicker'
+import {
+  PlanePicker,
+  pickedStarIndex,
+  resolvePick,
+  samePick,
+  type PickResult,
+} from './picking/scenePicker'
 import { QualityMonitor, type QualityTier } from './quality/adaptiveQuality'
 import { runSelfCheck, selfCheckRequested } from './selfCheck'
 import { starWorldPosition } from './starfield/motion'
@@ -100,7 +106,8 @@ export function StarScene({
     downX: 0,
     downY: 0,
   }).current
-  const hovered = useRef(-1)
+  /** The last pick reported to `onHover`, whatever its kind. See {@link samePick}. */
+  const hovered = useRef<PickResult>(null)
   const focused = useRef(-1)
   const lastFrame = useRef(0)
 
@@ -221,9 +228,13 @@ export function StarScene({
       result = resolved
     }
 
-    const hoverIndex = result?.kind === 'star' ? result.index : -1
-    if (hoverIndex !== hovered.current) {
-      hovered.current = hoverIndex
+    const hoverIndex = pickedStarIndex(result)
+    // On the *pick*, not on its star index: a planet and a plane both have index -1 as far as the
+    // star field is concerned, and collapsing them onto one another is what silenced PRD 5.6.9's
+    // planet hover entirely. `setHovered` still takes the star index, because the highlight it
+    // drives belongs to the star field and a planet is not one of its stars.
+    if (!samePick(result, hovered.current)) {
+      hovered.current = result
       resources.field.setHovered(hoverIndex)
       callbacks.current.onHover?.(result)
     }

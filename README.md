@@ -156,16 +156,24 @@ directory is deleted.
 ## Where things stand
 
 Phases 0 (scaffold and contracts), 1 (data pipeline), 2a (star field), 2b (camera, navigation,
-labels) and 4 (app shell and UI) are complete. The navigation contract has a real implementation,
-and `web/test/navigation.test.ts` runs the same suite over both it and the stub.
+labels), 3 (card tier), 4 (app shell and UI) and 5 (design polish) are complete. The navigation
+contract has a real implementation, and `web/test/navigation.test.ts` runs the same suite over both
+it and the stub.
 
-What is *not* joined up yet is the scene. The shell — [`docs/app-shell.md`](docs/app-shell.md) — is
-still built against the Phase 0 navigation stub over the hello-scene, and the star field and the
-camera rig are still two separate harness scenes reached with `?harness=2a` and `?harness=2b`.
-Folding all three into one scene, by swapping `createNavigation()` for the rig, is Phase 3. See
-`implementation-plan.md` §3.
+Phase 3 folded 2a's star field and 2b's camera rig into one scene —
+`web/src/scene/EternitiesScene.tsx`, reached with `?harness=3` — and added the card tier on top of
+it: thumbnails, the focused card and its planets, one canvas with one camera and one picker. Phase
+2b's harness, its projection picker and the hello-scene proxies are gone.
 
-`node web/scripts/verify-browser.mjs --dataset all` drives a real browser through all three: PRD
-section 6's interaction requirements on the shell, a fly-to the Blind Eternities with its
-worker-parsed shards and Esc back out on 2b, and the GPU self-check on 2a — under the production
-CSP.
+What is *not* joined up yet is that scene and the shell. The shell —
+[`docs/app-shell.md`](docs/app-shell.md) — is still built against the Phase 0 navigation stub over
+the hello-scene, because the folded scene builds its own navigation from the dataset once it loads
+and the shell's services are created once, outside React, before any data exists. Bridging those
+two lifetimes, and PRD 9.1.2's real `/bench` route with it, is Phase 6. See `implementation-plan.md`
+§3.
+
+`node web/scripts/verify-browser.mjs --dataset all` drives a real browser through all of them: PRD
+section 6's interaction requirements and Phase 5's accessibility checklist on the shell, a fly-to
+the Blind Eternities with its worker-parsed shards and Esc back out on the scene, the card tier
+through the `?probe=1` seam, and the GPU self-check on 2a — under the production CSP. Add
+`--dataset production` for the run where the Scryfall images actually arrive.

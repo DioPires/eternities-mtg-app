@@ -1150,6 +1150,35 @@ kbd {
   font-size: 0.72em;
 }
 
+/*
+ * PRD 5.6.9's planet hover label: set name and year, beside the planet under the pointer.
+ *
+ * Deliberately *not* `.label`: the plane-label solver of PRD 5.3.8-12 owns that class and counts
+ * its nodes, and a hover label is not a candidate in its collision layout. It shares the compositor
+ * rules, because it is written every frame by the same kind of `transform`-only update.
+ */
+.planet-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: var(--space-1) var(--space-2);
+  transform: translate3d(-50%, -160%, 0);
+  border-radius: var(--radius-sm);
+  /*
+   * Unlike `.label` this one *does* have a surface, so it takes the glass rather than carrying its
+   * contrast on the shadow alone: it is read against whatever art crop the planet is showing, which
+   * is the one backdrop in the scene with no contrast guarantee at all. The shadow stays for the
+   * same reason it is on `.label` — PRD 5.3.20's "bloom never washes out a label" applies to a
+   * label sitting on top of a bloomed planet at least as much as to one over a star.
+   */
+  background: var(--surface-glass);
+  white-space: nowrap;
+  font-size: 0.85em;
+  opacity: 0;
+  text-shadow: var(--shadow-label);
+  will-change: transform, opacity;
+}
+
 /* PRD 5.4.5: set labels sit at low priority beneath star labels, and read as quieter. */
 .label-band .label-name {
   color: var(--ink-muted);

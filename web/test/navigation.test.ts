@@ -13,10 +13,11 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { distance, vec } from '../src/camera/vec'
+import { distance, set, vec } from '../src/camera/vec'
+import { BLIND_ETERNITIES_SLUG } from '../src/data/types'
 import { levelOf, runNavigationDemo, type Focus, type NavigationApi } from '../src/navigation'
 import { createNavigationStub } from '../src/navigation/stub'
-import { createSceneNavigation } from '../src/navigation/scene'
+import { createSceneNavigation, type StarSource } from '../src/navigation/scene'
 
 import { loadFixturePlanes } from './fixtures'
 
@@ -582,6 +583,89 @@ describe('the scene transport', () => {
       scene.rig.framing.multiverseRadius * 0.1,
     )
     scene.api.dispose()
+  })
+
+  /**
+   * Phase 3's Blind Eternities fix, which shipped without a guard.
+   *
+   * A dust card clicked in the scene arrives with a `starIndex` and — depending on how the focus was
+   * built — with no `anchor`. The card tether used to reach for the anchor first on this plane, find
+   * none, return `null`, and drop the whole flight back to `planeTether`: the dust's own plane-level
+   * tether, ~25 units out instead of ~2.2, with the card a tenth of the size it should be. The star
+   * position is available the whole time, and it is also the more accurate of the two.
+   */
+  describe('a Blind Eternities card focused from the scene (PRD 6.2.3, 5.3.4)', () => {
+    const dustRow = scenePlanes.planes.findIndex((p) => p.slug === BLIND_ETERNITIES_SLUG)
+    /** A `stars.bin` that can place exactly one star, on the dust row. */
+    const stars: StarSource = {
+      starLocal: (index, out) => {
+        if (index !== 11) return null
+        set(out, 40, 0, 10)
+        return dustRow
+      },
+    }
+
+    /** Fly to a dust card and drive frames until the flight settles. */
+    const settle = (target: {
+      planeSlug: string
+      oracleId: string
+      starIndex?: number
+      anchor?: readonly [number, number, number]
+    }): ReturnType<typeof createSceneNavigation> => {
+      const scene = createSceneNavigation(scenePlanes, { drive: 'manual', stars })
+      scene.api.flyToCard(target)
+      let frames = 0
+      while (scene.api.snapshot().flight !== null && frames < 120 * 10) {
+        scene.update(1 / 120)
+        frames += 1
+      }
+      return scene
+    }
+
+    it('tethers to the card from its starIndex alone, with no anchor', () => {
+      expect(dustRow).toBeGreaterThanOrEqual(0)
+      const scene = settle({
+        planeSlug: BLIND_ETERNITIES_SLUG,
+        oracleId: 'x',
+        starIndex: 11,
+      })
+      expect(scene.rig.currentTether.kind).toBe('card')
+      expect(levelOf(scene.api.snapshot().focus)).toBe('card')
+      expect(scene.rig.currentTether.planeIndex).toBe(dustRow)
+      // The star's own local position, not the plane centre: this is what the anchor-only branch
+      // could not supply and what the fall-back to `planeTether` threw away.
+      expect(scene.rig.currentTether.local.x).toBeCloseTo(40, 9)
+      expect(scene.rig.currentTether.local.z).toBeCloseTo(10, 9)
+      // ~2.2 units out, not the dust plane's ~25. One number for "the card fills the frame".
+      expect(scene.rig.currentTether.frameDistance).toBeLessThan(4)
+      scene.api.dispose()
+    })
+
+    it('prefers the star position to a stale anchor when it has both', () => {
+      const scene = settle({
+        planeSlug: BLIND_ETERNITIES_SLUG,
+        oracleId: 'x',
+        starIndex: 11,
+        // `worldToPlaneLocal` cannot invert PRD 8.6.3's curl, so an anchor round-tripped through it
+        // lands a little off the dust it points at. The star position is exact.
+        anchor: [0, 0, 0],
+      })
+      expect(scene.rig.currentTether.kind).toBe('card')
+      expect(scene.rig.currentTether.local.x).toBeCloseTo(40, 9)
+      scene.api.dispose()
+    })
+
+    it('still falls back to the anchor when stars.bin cannot place the star yet (PRD 6.7.1)', () => {
+      const scene = settle({
+        planeSlug: BLIND_ETERNITIES_SLUG,
+        oracleId: 'x',
+        // Not 11: this star index is one `starLocal` cannot resolve, which is the cold-start state.
+        starIndex: 12,
+        anchor: [40, 0, 10],
+      })
+      expect(scene.rig.currentTether.kind).toBe('card')
+      scene.api.dispose()
+    })
   })
 
   it('scales the two-stage card fly-to with distance under the 3.5 s cap (PRD 6.2.3, 5.7.3)', () => {

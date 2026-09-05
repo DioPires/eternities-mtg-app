@@ -170,11 +170,26 @@ export class Framing {
   }
 }
 
-/** Resolve a tether to its world point at the current instant. */
+/**
+ * Resolve a tether to its world point at the current instant.
+ *
+ * **A card tether resolves through the star transform, not the plane transform**, and the two are
+ * not the same: `planeLocalToWorld` carries the spin, the tilt, the radius, the drift and the
+ * multiverse rotation, but not PRD 5.4.13's bounded shear or PRD 8.6.3's dust turbulence, because
+ * neither is a rigid motion of the plane — each is a function of the individual star. For every
+ * other tether kind the local point is the origin, where that distinction cannot show. For a card
+ * it is a star's own local position, and the shader draws that star *with* the shear: at a 10°
+ * bound on a plane of radius 20 the two points are up to three world units apart, against a card
+ * 0.63 wide. Phase 3's first browser run put the focused card off screen and 0.75 units nearer the
+ * camera than the rig thought it was; this is why.
+ */
 export function tetherPosition(out: MutVec3, tether: Readonly<Tether>, motion: SceneMotion): MutVec3 {
   if (tether.planeIndex < 0) return set(out, 0, 0, 0)
   const plane = motion.planes[tether.planeIndex]
   if (!plane) return set(out, 0, 0, 0)
+  if (tether.kind === 'card') {
+    return motion.starPosition(out, plane, tether.local.x, tether.local.y, tether.local.z)
+  }
   return motion.planeLocalToWorld(out, plane, tether.local)
 }
 

@@ -1,29 +1,38 @@
 /**
- * The app: Phase 4's shell, and the two phase harnesses it routes around.
+ * The app: Phase 4's shell, and the scenes it routes around.
  *
  * The default route is the shell of PRD 8.4.3-4 — one R3F canvas and one HTML overlay. Everything
  * it does is composition; the behaviour lives in `./app/boot` (the cold start), `./app/hooks` (the
  * URL, the store and the keyboard) and `./ui/*` (the surfaces).
  *
- * The scene inside the shell's canvas is still Phase 0's hello-scene. Phase 2a's star field and
- * Phase 2b's camera rig drop in here without the shell changing, because the shell only ever talks
- * to the scene through the navigation contract — `createNavigation()` in `./app/services` is the
- * single seam, and it still returns the Phase 0 stub. Swapping it for Phase 2b's real rig, and
- * folding Phase 2a's field into that same scene, is one job and it is Phase 3's (DEC-590).
+ * Phase 3 did half of the integration this file used to anticipate. `scene/EternitiesScene` is now
+ * one scene — the star field, the camera rig, the labels, the thumbnails, the focused card and its
+ * planets, in one canvas with one camera and one picker — so Phase 2b's harness, its projection
+ * picker and `harness/PlaneProxies` are gone, and `?harness=3` reaches what `?harness=2b` used to.
  *
- * Until then the two phase harnesses are still two separate scenes, and both stay reachable so
- * both phases' exit criteria stay checkable exactly as they were reviewed:
+ * The half still outstanding is mounting that scene *inside* the shell. The shell reaches the scene
+ * only through the navigation contract, and `createNavigation()` in `./app/services` still returns
+ * the Phase 0 stub; the folded scene builds its own navigation from the dataset once that dataset
+ * has loaded, on a lifetime the shell's services — created once, outside React, in `main.tsx` — do
+ * not have. Bridging the two is a design job rather than a re-parenting, and doing it inside this
+ * merge would silently re-point every PRD section 6 assertion (search, random, back/forward) at
+ * behaviour no review has seen. So the shell's canvas is still Phase 0's hello-scene, and the join
+ * is Phase 6's, alongside PRD 9.1.2's real `/bench` route.
+ *
+ * Until then every scene stays reachable, so every phase's exit criteria stay checkable exactly as
+ * they were reviewed:
  *
  *   - `?bench`, `?hold` and `?selfcheck` — the three flags `bench.mjs` and `verify-browser.mjs`
  *     drive the star field with — get Phase 2a's harness, and `?harness=2a` gets it by hand;
- *   - `?harness=2b` gets Phase 2b's harness: the navigation contract driving the real camera rig
- *     over the real roster;
+ *   - `?harness=3` gets Phase 3's scene, and `?probe=1` gets it too: the seam that flag opens
+ *     (`scene/probe.ts`) is that scene's, and it is what `verify-browser.mjs` drives the card tier
+ *     through;
  *   - everything else gets the shell.
  *
- * The harness flags bypass the shell entirely rather than rendering inside it. Each harness owns
- * its own canvas, its own camera and — in 2b's case — its own navigation instance, so nesting one
- * inside the shell would put two navigation implementations on screen at once: the HUD reading the
- * stub while the camera obeyed the rig. That is precisely the integration Phase 3 owns.
+ * These flags bypass the shell entirely rather than rendering inside it. Each owns its own canvas,
+ * its own camera and — in Phase 3's case — its own navigation instance, so nesting one inside the
+ * shell would put two navigation implementations on screen at once: the HUD reading the stub while
+ * the camera obeyed the rig. That is precisely the join described above.
  */
 
 import { Canvas } from '@react-three/fiber'
@@ -42,8 +51,9 @@ import {
 } from './app/hooks'
 import { benchHold, benchRequested } from './bench/BenchRunner'
 import { Phase2aScene } from './harness/Phase2aScene'
-import { Phase2bScene } from './harness/Phase2bScene'
+import { EternitiesScene } from './scene/EternitiesScene'
 import { HelloScene, SKY_COLOUR } from './scene/HelloScene'
+import { probeRequested } from './scene/probe'
 import { selfCheckRequested } from './scene/selfCheck'
 import { useStore } from './store/store'
 import { AboutOverlay } from './ui/AboutOverlay'
@@ -58,14 +68,16 @@ import { SettingsOverlay } from './ui/SettingsOverlay'
 import { Toasts } from './ui/Toasts'
 
 /**
- * Which harness the URL asks for, if any. The bench and self-check flags imply 2a because that is
- * the scene they measure; `?harness=` names either one directly.
+ * Which scene the URL asks for, if any. The bench and self-check flags imply 2a because that is the
+ * scene they measure, and `?probe=1` implies 3 because the probe seam is that scene's; `?harness=`
+ * names either one directly.
  */
-function harnessRequested(): '2a' | '2b' | null {
+function sceneRequested(): '2a' | '3' | null {
   const search = typeof location === 'undefined' ? '' : location.search
   if (benchRequested(search) || benchHold(search) !== null || selfCheckRequested(search)) return '2a'
+  if (probeRequested(search)) return '3'
   const named = new URLSearchParams(search).get('harness')
-  return named === '2a' || named === '2b' ? named : null
+  return named === '2a' || named === '3' ? named : null
 }
 
 function Overlays(): ReactElement | null {
@@ -138,11 +150,11 @@ function AppShell(): ReactElement {
 }
 
 export function App(): ReactElement {
-  switch (harnessRequested()) {
+  switch (sceneRequested()) {
     case '2a':
       return <Phase2aScene />
-    case '2b':
-      return <Phase2bScene />
+    case '3':
+      return <EternitiesScene />
     case null:
       return <AppShell />
   }
