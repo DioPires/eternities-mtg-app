@@ -1,0 +1,67 @@
+{
+  "contractVersion": 2,
+  "pipelineVersion": "0.4.0",
+  "dataset": "test-vector",
+  "dataHash": "9258d89015fd17b0",
+  "asOf": "2026-09-04",
+  "generatedAt": "2026-09-04T00:00:00Z",
+  "scryfallBulkUpdatedAt": "2026-09-03T09:00:00Z",
+  "starRecordBytes": 12,
+  "shardSize": 2000,
+  "counts": {
+    "planes": 4,
+    "stars": 10,
+    "sets": 4,
+    "printings": 13,
+    "blindEternitiesStars": 1,
+    "blindEternitiesShare": 0.1
+  },
+  "planeShards": {
+    "blind-eternities": 1,
+    "dominaria": 1,
+    "ravnica": 1,
+    "segovia": 1
+  },
+  "files": [
+    {
+      "path": "planes.json",
+      "bytes": 2478,
+      "sha256": "00298de47edb5d9a7160f3c72b24918c4b724d9094c5532d17021b15131a273b"
+    },
+    {
+      "path": "planes/blind-eternities.0.json",
+      "bytes": 309,
+      "sha256": "be9a74eecd4629b97ec206602746daa0fc628bcd1a4ae4afbfe930d5a5a470c8"
+    },
+    {
+      "path": "planes/dominaria.0.json",
+      "bytes": 727,
+      "sha256": "5f678256cf56cd7d48687e6029286d7124eeefedc3d649b8cd6fc371eaf05490"
+    },
+    {
+      "path": "planes/ravnica.0.json",
+      "bytes": 2594,
+      "sha256": "f9af41b0afe69af91dc2fddacb1390285124aa27634e525edd331806dd35255f"
+    },
+    {
+      "path": "planes/segovia.0.json",
+      "bytes": 92,
+      "sha256": "ae02765488c2bbfc16fe15282b5cd65e0944a0d25c83749d8b703c1fe7a2106d"
+    },
+    {
+      "path": "search.json",
+      "bytes": 1016,
+      "sha256": "d5c249d03cb31cf7d64d02530857109d369ee3420fb2c6c812844a026562668d"
+    },
+    {
+      "path": "sets.bin",
+      "bytes": 280,
+      "sha256": "f767ea6f396b5ccadf9ae319123566b394e6798405e1b6924ead2b5c80ea0e98"
+    },
+    {
+      "path": "stars.bin",
+      "bytes": 136,
+      "sha256": "ea0657e79bd5c00ff9a39dbd819aa97fae02a6aa65dda9705cbcfa12fe835946"
+    }
+  ]
+}

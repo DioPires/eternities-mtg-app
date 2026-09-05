@@ -234,7 +234,7 @@ export const STAR_VERTEX_SHADER = /* glsl */ `
 ${DEFINE_BLOCK}
 ${MOTION_GLSL}
 
-attribute vec3 aClass;   // planeIndex, hueClass, sizeClass  (0-255)
+attribute vec3 aClass;   // planeIndex, colour byte, sizeClass  (0-255)
 attribute vec3 aStyle;   // brightness, twinklePhase, typeMask (0-255)
 attribute float aFilter; // PRD 8.5.1's uint8 filter mask, normalised: 1 passes, 0 fails
 
@@ -290,7 +290,11 @@ void main() {
   float focus = mix(1.0, DUST_FOCUS_GAIN, fade.y);
   float hover = (uHoverIndex >= 0.0 && abs(float(gl_VertexID) - uHoverIndex) < 0.5) ? HOVER_GAIN : 1.0;
 
-  vColour = uHues[int(aClass.y + 0.5)] * (brightness * twinkle * dim * fade.x * focus * hover);
+  // Byte 7 is packed (amendment A3): hue class in bits 0-2, colour identity in bits 3-7. Take
+  // the low three bits, or a mono-green star (byte 132) indexes uHues far past its seventh
+  // element. mod() rather than a bitwise and, because this compiles as GLSL ES 1.00.
+  int hue = int(mod(aClass.y + 0.5, 8.0));
+  vColour = uHues[hue] * (brightness * twinkle * dim * fade.x * focus * hover);
 #endif
 }
 `

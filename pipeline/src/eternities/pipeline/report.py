@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from ..contract.binary import decode_sets
+from ..contract.enums import CONTRACT_VERSION
 from ..contract.models import Dataset
 from .assemble import AssemblyStats
 from .verify import Finding
@@ -89,6 +90,12 @@ def load_previous_planes(data_root: Path, exclude: str) -> tuple[str, dict[str, 
             continue
         manifest = cast("dict[str, Any]", json.loads(manifest_path.read_text(encoding="utf-8")))
         if manifest.get("dataset") != "production":
+            continue
+        # A predecessor written under a different contract version cannot be read by this build:
+        # `decode_sets` tests the header for strict equality and would abort the whole run. The
+        # 4.9.2 diff is informational, so an unreadable predecessor is treated as no predecessor —
+        # the run succeeds, `previousRun` is absent, and the report says the diff was skipped.
+        if manifest.get("contractVersion") != CONTRACT_VERSION:
             continue
         key = (str(manifest.get("asOf", "")), str(manifest.get("generatedAt", "")), directory.name)
         production.append((key, directory))

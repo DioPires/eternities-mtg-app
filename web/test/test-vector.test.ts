@@ -12,8 +12,12 @@ import { describe, expect, it } from 'vitest'
 
 import {
   CARD_LAYOUTS,
+  COLOUR_IDENTITY_MASK,
+  COLOUR_IDENTITY_SHIFT,
   CONTRACT_VERSION,
   ContractError,
+  HUE_CLASS_MASK,
+  HueClass,
   SHARD_SIZE,
   StarStreamReader,
   cardBackImageUri,
@@ -34,7 +38,7 @@ import {
   type SearchFile,
 } from '../src/data'
 
-const VECTOR_DIR = resolve(__dirname, '../../contract/test-vectors/v1')
+const VECTOR_DIR = resolve(__dirname, '../../contract/test-vectors/v2')
 
 interface VectorStar {
   index: number
@@ -43,6 +47,7 @@ interface VectorStar {
   z: number
   planeIndex: number
   hueClass: number
+  colourIdentity: number
   sizeClass: number
   brightness: number
   twinklePhase: number
@@ -74,7 +79,12 @@ interface Vector {
   files: string[]
   cardBackUri: string
   uris: VectorUri[]
-  hueClassChecks: Array<{ colourIdentity: string; hueClass: number }>
+  colourChecks: Array<{
+    colourIdentity: string
+    hueClass: number
+    identityMask: number
+    colourByte: number
+  }>
   typeMaskChecks: Array<{ typeLine: string; typeMask: number }>
   backImageChecks: Array<{ layout: CardLayout; hasBackImage: boolean }>
   shardIndexChecks: Array<{ localIndex: number; shard: number }>
@@ -107,11 +117,43 @@ describe('shared contract test vector', () => {
       expect(stars.z(i)).toBe(expected.z)
       expect(stars.planeIndex(i)).toBe(expected.planeIndex)
       expect(stars.hueClass(i)).toBe(expected.hueClass)
+      expect(stars.colourIdentity(i)).toBe(expected.colourIdentity)
       expect(stars.sizeClass(i)).toBe(expected.sizeClass)
       expect(stars.brightness(i)).toBe(expected.brightness)
       expect(stars.twinklePhase(i)).toBe(expected.twinklePhase)
       expect(stars.typeMask(i)).toBe(expected.typeMask)
     }
+  })
+
+  it('unpacks byte 7 the way the encoder packed it', () => {
+    // Amendment A3: hue class in bits 0-2, five-bit WUBRG identity in bits 3-7. Both sides pin
+    // the byte itself, because that is the only place the packing is observable.
+    for (const check of vector.colourChecks) {
+      expect(check.colourByte).toBe(check.hueClass | (check.identityMask << 3))
+      expect(check.colourByte & HUE_CLASS_MASK).toBe(check.hueClass)
+      expect((check.colourByte >> COLOUR_IDENTITY_SHIFT) & COLOUR_IDENTITY_MASK).toBe(
+        check.identityMask,
+      )
+    }
+    // A mono-coloured card sets exactly the bit its hue class names, so the shader's uHues
+    // lookup and the 6.6.2 identity mask can never disagree about which colour a star is.
+    for (const check of vector.colourChecks.filter((c) => c.colourIdentity.length === 1)) {
+      expect(check.identityMask).toBe(1 << check.hueClass)
+    }
+  })
+
+  it('reads a v1-range hue class out of every packed byte', () => {
+    // The regression this guards: an unmasked reader sees mono-green as hue 132 and indexes
+    // uHues[7] past its end. Every star must decode to a hue in 0-6 whatever its identity is.
+    const stars = decodeStars(bytes('stars.bin'))
+    for (let i = 0; i < stars.count; i += 1) {
+      expect(stars.hueClass(i)).toBeLessThanOrEqual(HueClass.Colourless)
+      expect(stars.colourIdentity(i)).toBeLessThanOrEqual(COLOUR_IDENTITY_MASK)
+    }
+    // ...and the vector really does carry a byte that would break an unmasked reader.
+    expect(Math.max(...vector.stars.map((s) => s.hueClass | (s.colourIdentity << 3)))).toBeGreaterThan(
+      HueClass.Colourless,
+    )
   })
 
   it('exposes stars.bin as one interleaved buffer with no repacking', () => {

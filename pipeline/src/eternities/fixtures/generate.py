@@ -27,6 +27,7 @@ from ..contract.enums import (
     CardType,
     HueClass,
     SizeClass,
+    colour_identity_mask,
     hue_class_for,
     type_mask_for,
 )
@@ -401,6 +402,7 @@ def build(spec: FixtureSpec) -> Dataset:
                     z=pos[2],
                     plane_index=index,
                     hue=row.hue,
+                    colour_identity=colour_identity_mask(row.card.colour_identity),
                     size=row.card.rarity,
                     brightness=layout.brightness_for(len(row.card.printings), cap),
                     twinkle_phase=rng.integer(0, 255, row.card.oracle_id, "twinkle"),

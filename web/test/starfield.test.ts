@@ -10,7 +10,16 @@
 import { describe, expect, it } from 'vitest'
 
 import { StarStreamReader } from '../src/data/decode'
-import { BINARY_HEADER_BYTES, STAR_RECORD_BYTES, type PlaneRecord } from '../src/data/types'
+import {
+  BINARY_HEADER_BYTES,
+  COLOUR_IDENTITY_MASK,
+  COLOUR_IDENTITY_SHIFT,
+  CONTRACT_VERSION,
+  HUE_CLASS_MASK,
+  HueClass,
+  STAR_RECORD_BYTES,
+  type PlaneRecord,
+} from '../src/data/types'
 import { SceneErrorHub } from '../src/scene/errors'
 import { QualityMonitor, QUALITY_TIERS } from '../src/scene/quality/adaptiveQuality'
 import {
@@ -27,6 +36,7 @@ import {
   starWorldPosition,
 } from '../src/scene/starfield/motion'
 import { PlaneTable } from '../src/scene/starfield/planeTable'
+import { STAR_VERTEX_SHADER } from '../src/scene/starfield/shaders'
 import { StarGeometry, resolvePositionMode } from '../src/scene/starfield/starGeometry'
 import { SHEAR_RADIAL_PHASE, TWINKLE_AMPLITUDE } from '../src/scene/tuning'
 
@@ -344,7 +354,7 @@ describe('stream reader body view (PRD 8.7.3)', () => {
     const header = new Uint8Array(BINARY_HEADER_BYTES)
     header.set([0x45, 0x54, 0x52, 0x4e], 0) // 'ETRN'
     header[4] = 1 // kind: stars
-    header[5] = 1 // contract version
+    header[5] = CONTRACT_VERSION
     new DataView(header.buffer).setUint32(8, 3, true)
 
     const reader = new StarStreamReader()
@@ -372,7 +382,7 @@ describe('stream reader body view (PRD 8.7.3)', () => {
     const header = new Uint8Array(BINARY_HEADER_BYTES)
     header.set([0x45, 0x54, 0x52, 0x4e], 0) // 'ETRN'
     header[4] = 1 // kind: stars
-    header[5] = 1 // contract version
+    header[5] = CONTRACT_VERSION
     new DataView(header.buffer).setUint32(8, records, true)
     return header
   }
@@ -537,5 +547,39 @@ describe('plane table layout', () => {
     expect(PT_SPIN_ANGLE).toBe(11)
     expect(Math.floor(PT_SPIN_ANGLE / 4)).toBe(2)
     expect(PT_SPIN_ANGLE % 4).toBe(3)
+  })
+})
+
+/**
+ * The star vertex shader reads the hue class out of the packed colour byte (contract §5,
+ * amendment A3) with `int(mod(aClass.y + 0.5, 8.0))`, because it compiles as GLSL ES 1.00 and
+ * cannot use a bitwise `and`. Nothing else covers that expression, so pin it here: it must agree
+ * with `& 0b111` for every byte the encoder can emit, and `uHues` has only seven elements.
+ */
+describe('packed colour byte (contract §5, amendment A3)', () => {
+  it('recovers the hue class from every byte the encoder can emit', () => {
+    const shaderHue = (byte: number) => Math.trunc((byte + 0.5) % 8)
+    for (let byte = 0; byte < 256; byte += 1) {
+      expect(shaderHue(byte)).toBe(byte & HUE_CLASS_MASK)
+    }
+  })
+
+  it('never indexes uHues past its seventh element for a real record', () => {
+    const shaderHue = (byte: number) => Math.trunc((byte + 0.5) % 8)
+    for (let hue = 0; hue <= HueClass.Colourless; hue += 1) {
+      for (let identity = 0; identity <= COLOUR_IDENTITY_MASK; identity += 1) {
+        const byte = hue | (identity << COLOUR_IDENTITY_SHIFT)
+        expect(shaderHue(byte)).toBe(hue)
+        expect(shaderHue(byte)).toBeLessThanOrEqual(HueClass.Colourless)
+      }
+    }
+    // The unmasked read this guards against: mono-green is byte 132, not hue class 4.
+    expect(HueClass.Green | (1 << (HueClass.Green + COLOUR_IDENTITY_SHIFT))).toBe(132)
+  })
+
+  it('keeps the mask the shader hard-codes in step with the contract', () => {
+    expect(HUE_CLASS_MASK).toBe(0b111)
+    expect(COLOUR_IDENTITY_SHIFT).toBe(3)
+    expect(STAR_VERTEX_SHADER).toContain('int(mod(aClass.y + 0.5, 8.0))')
   })
 })

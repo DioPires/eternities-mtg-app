@@ -1,7 +1,7 @@
 /**
  * The TypeScript half of the data contract: decoders for `stars.bin` and `sets.bin`.
  * The Python twin is `pipeline/src/eternities/contract/binary.py`, and both sides assert against
- * `contract/test-vectors/v1`. See `docs/data-contract.md` §2, §5, §6.
+ * `contract/test-vectors/v2`. See `docs/data-contract.md` §2, §5, §6.
  *
  * Design constraints, both from PRD 7.3.2 (no allocations in the per-frame path):
  *  - decoding creates typed-array *views* over the received buffer wherever it can, no copies;
@@ -12,7 +12,10 @@ import {
   BINARY_HEADER_BYTES,
   BINARY_MAGIC,
   BinaryKind,
+  COLOUR_IDENTITY_MASK,
+  COLOUR_IDENTITY_SHIFT,
   CONTRACT_VERSION,
+  HUE_CLASS_MASK,
   SetsSection,
   SHARD_SIZE,
   STAR_RECORD_BYTES,
@@ -78,7 +81,15 @@ export interface Stars {
   y(index: StarIndex): number
   z(index: StarIndex): number
   planeIndex(index: StarIndex): number
+  /** PRD 5.4.8, bits 0-2 of byte 7. Always 0-6, whatever the identity bits above it hold. */
   hueClass(index: StarIndex): number
+  /**
+   * PRD 6.6.2, bits 3-7 of byte 7: the card's five-bit WUBRG colour identity (amendment A3).
+   *
+   * 0 is colourless. It is also what a card with no colours set reads as, which is the same
+   * thing here — but pair it with {@link hueClass} if a caller needs to tell the two apart.
+   */
+  colourIdentity(index: StarIndex): number
   sizeClass(index: StarIndex): number
   brightness(index: StarIndex): number
   twinklePhase(index: StarIndex): number
@@ -119,7 +130,8 @@ function makeStars(buffer: ArrayBuffer, count: number, flags: number): Stars {
     y: (i) => coordinate(i, 1),
     z: (i) => coordinate(i, 2),
     planeIndex: (i) => view.getUint8(at(i, 6)),
-    hueClass: (i) => view.getUint8(at(i, 7)),
+    hueClass: (i) => view.getUint8(at(i, 7)) & HUE_CLASS_MASK,
+    colourIdentity: (i) => (view.getUint8(at(i, 7)) >> COLOUR_IDENTITY_SHIFT) & COLOUR_IDENTITY_MASK,
     sizeClass: (i) => view.getUint8(at(i, 8)),
     brightness: (i) => view.getUint8(at(i, 9)),
     twinklePhase: (i) => view.getUint8(at(i, 10)),
