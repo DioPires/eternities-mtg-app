@@ -52,6 +52,7 @@
  *
  *   node scripts/visual-gate.mjs [--dataset production] [--out DIR] [--no-build]
  *                                [--target shell|scene] [--only home,planes,dust,attract,...]
+ *                                [--pin-quality N]
  */
 
 import { spawn } from 'node:child_process'
@@ -104,6 +105,7 @@ function parseArgs(argv) {
     build: true,
     target: 'shell',
     only: null,
+    pinQuality: null,
   }
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--dataset') args.dataset = argv[++i]
@@ -111,6 +113,7 @@ function parseArgs(argv) {
     else if (argv[i] === '--no-build') args.build = false
     else if (argv[i] === '--target') args.target = argv[++i]
     else if (argv[i] === '--only') args.only = argv[++i].split(',').map((s) => s.trim())
+    else if (argv[i] === '--pin-quality') args.pinQuality = Number(argv[++i])
   }
   if (args.target !== 'shell' && args.target !== 'scene') {
     throw new Error(`--target must be shell or scene, not ${args.target}`)
@@ -787,7 +790,13 @@ async function capture(args) {
     })
 
     // ---- the page under review -------------------------------------------------------------
-    const entry = `${url}/${isShell ? '?probe=shell' : '?probe=1'}`
+    // `?quality=N` pins PRD 8.5.11's ladder at tier N for the whole run (`pinnedQualityOptions`
+    // sets both ends, so it cannot climb back either). Worth having for the shimmer stages: a
+    // `page.screenshot()` every ~150 ms stalls the render loop, the ladder reads those stalls as a
+    // slow machine and steps down a rung, and the frames judged for aliasing would then be of a
+    // degraded renderer rather than the one that ships. Unpinned, this machine sits at `full`.
+    const pin = args.pinQuality === null ? '' : `&quality=${args.pinQuality}`
+    const entry = `${url}/${isShell ? '?probe=shell' : '?probe=1'}${pin}`
     console.log(
       isShell
         ? '\nthe default route, ?probe=shell — the shipped composition (checkpoints 1, 2, 6, 7)'
@@ -1161,6 +1170,7 @@ async function capture(args) {
           canvas: gpu.size,
           renderer: gpu.renderer,
           viewport: VIEWPORT,
+          pinnedQualityTier: args.pinQuality,
           stages: args.only ?? STAGES,
           checkpoint2: { largest, mid, small },
           labelsVisible: labels?.visible ?? null,
