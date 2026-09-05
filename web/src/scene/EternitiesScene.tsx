@@ -216,6 +216,17 @@ export function SceneView({
   // `StarScene` is pinned to the same tier, so it never announces a change and this stays the
   // tier for the run — which is why the initial value has to be right rather than corrected later.
   const pinnedTier = useMemo(() => pinnedQualityTier(), [])
+  /**
+   * Whether the URL asked for the `./probe` seam — read **once**, at the first render.
+   *
+   * The effect that installs it re-runs when `planes.json` and the GPU resources land, a second or
+   * two after mount, and under the shell that is long enough for the URL to have changed: PRD 6.7's
+   * router owns the address bar and canonicalises it on boot, so `?probe=shell` is gone by the time
+   * the effect runs again and a `location.search` read there says the seam was never asked for. The
+   * harness has no router, which is why `?probe=1` never showed this. Latched for the same reason
+   * `pinnedTier` is: a flag the page was *opened* with is not a value that may change under it.
+   */
+  const probeWanted = useMemo(() => probeRequested(), [])
   const [tier, setTier] = useState<{ tier: QualityTier; changes: number }>({
     tier: QUALITY_TIERS[pinnedTier ?? 0]!,
     changes: 0,
@@ -521,7 +532,7 @@ export function SceneView({
   // The `?probe=1` seam of `./probe`. Installed only when the URL asks, and it calls the same
   // `focusStar` the pointer does rather than a second implementation of it.
   useEffect(() => {
-    if (!probeRequested() || !data.planes || !data.resources) return
+    if (!probeWanted || !data.planes || !data.resources) return
     const planes = data.planes
     const geometry = data.resources.geometry
     // The uniform the star shader actually samples, not the `motion` argument passed to `update`.
@@ -788,7 +799,7 @@ export function SceneView({
           // against. It cost PRD 9.3's checkpoint images their credibility once already — they
           // showed a card mid-fly-to while the probe reported it dead centre. Preserving on every
           // frame is a full-buffer copy nobody is paying for in production.
-          preserveDrawingBuffer: probeRequested(),
+          preserveDrawingBuffer: probeWanted,
         }}
         flat
         onCreated={({ gl, camera }) => {

@@ -29,7 +29,9 @@
  *   - `?harness=3` gets Phase 3's scene with its readout panel, and `?probe=1` gets it too: the
  *     seam that flag opens (`scene/probe.ts`) is that scene's, and it is what `verify-browser.mjs`
  *     drives the card tier through;
- *   - everything else gets the shell.
+ *   - everything else gets the shell — including `?probe=shell`, which installs that same seam
+ *     *here*, because PRD 9.3's visual review is of the shipped composition and since Phase 6 the
+ *     scene on its own is no longer that (`scripts/visual-gate.mjs`).
  *
  * These all bypass the shell rather than rendering inside it. Each owns its own camera, and the
  * bench and the self-check drive that camera themselves, which they cannot do in a scene where the
@@ -53,7 +55,7 @@ import {
 import { BenchScene, benchRouteRequested } from './bench/BenchScene'
 import { Phase2aScene } from './harness/Phase2aScene'
 import { EternitiesScene, SceneView } from './scene/EternitiesScene'
-import { probeRequested } from './scene/probe'
+import { probeTarget } from './scene/probe'
 import { selfCheckRequested } from './scene/selfCheck'
 import { useSceneData } from './scene/useSceneData'
 import { useStore } from './store/store'
@@ -81,7 +83,11 @@ function sceneRequested(): 'bench' | '2a' | '3' | null {
   // The GPU self-check still needs Phase 2a's harness: it holds the field still and reads pixels
   // back, which it cannot do in a scene where a rig or a bench is flying the camera.
   if (selfCheckRequested(search)) return '2a'
-  if (probeRequested(search)) return '3'
+  // `?probe=1` is Phase 3's scene; `?probe=shell` keeps the shell and lets `SceneView` install the
+  // same seam inside it, which is how `scripts/visual-gate.mjs` captures PRD 9.3 against the
+  // shipped composition rather than against the scene on its own. See `scene/probe.ts`.
+  const probe = probeTarget(search)
+  if (probe !== null) return probe === 'shell' ? null : '3'
   const named = new URLSearchParams(search).get('harness')
   return named === '2a' || named === '3' ? named : null
 }

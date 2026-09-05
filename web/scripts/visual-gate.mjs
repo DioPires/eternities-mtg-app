@@ -12,26 +12,46 @@
  *
  * What it drives, and why that page and not another:
  *
- *   - **`?harness=3`** for checkpoints 1, 2, 6 and 7. Phase 3 folded Phase 2a's star field into
- *     Phase 2b's camera rig, so this is the only page where the criteria on spiral arms, labels
- *     and bloom are judgeable at all. Phase 4 took the default route with the Phase 0 hello-scene
- *     still on its canvas (see `App.tsx`), so the shell is *not* where the scene is.
- *   - **the default route** for one shot of the shell, so the review sees the HUD that ships
- *     around the scene once Phase 6 joins the two.
+ *   - **the default route, with `?probe=shell`** for checkpoints 1, 2, 6 and 7. This is the whole
+ *     point of the gate: 9.3 judges what ships, and since Phase 6 what ships is the scene *inside*
+ *     the shell — one canvas with the HUD, the drawer and the toasts over it. Gate #1 (DEC-630) and
+ *     the capture the owner accepted on DEC-592 were both taken on `?probe=1`, which is Phase 3's
+ *     scene on its own, so neither judged the composite. `?probe=shell` keeps the shell and lets
+ *     `SceneView` install the same seam in it (`src/scene/probe.ts`) — the product's own click
+ *     handlers, driven from a script, on the page the user gets.
+ *   - **`?probe=1`** (`--target scene`) still reaches Phase 3's scene, so a capture can be compared
+ *     against the ones the earlier reviews were judged on.
  *   - **`?harness=2a`** for the star field on its own, under the development orbit control.
  *
  * Frames come from `page.screenshot()` and not from the canvas, because half of what 9.3 asks the
- * owner to judge is not in the canvas: PRD 5.3.8's plane names are HTML billboards over it, and
- * "no label overlaps another at the home view" is a question about the composite. The state readout
- * is hidden for every frame and captured beside it as text, as the state the frame was taken in —
- * see `withPanelHidden`.
+ * owner to judge is not in the canvas: PRD 5.3.8's plane names are HTML billboards over it, "no
+ * label overlaps another at the home view" is a question about the composite, and on the shipped
+ * composition the HUD is in the frame too. The scene state each frame was taken in is written
+ * beside it as text — from the readout panel on `--target scene`, and from the probe on the shell,
+ * which mounts `SceneView` with no panel at all.
  *
  * The recordings are APNG, assembled here from a CDP screencast. There is no ffmpeg on the machine
  * and none is worth adding for this: every frame Chrome pushes is already a PNG, and an APNG is
  * those frames' `IDAT`s re-emitted as `fdAT`s behind an `acTL`. Chrome, Safari, Firefox and macOS
  * Preview all play one.
  *
+ * **Two criteria need more than a still, and gate #1 could not judge either.**
+ *
+ *   - *"No aliasing shimmer on stars during slow camera moves."* Gate #1 judged this on half-size
+ *     recordings, which is the one resolution that hides it: downscaling averages the single-pixel
+ *     stars whose flicker is the artefact. So the shimmer recordings are cast at the **drawing
+ *     buffer's own resolution** — `scale: 1` — and written whole. An APNG of a star field at that
+ *     size runs to tens of megabytes, so a thinned copy is written beside each one for anywhere
+ *     with an attachment limit, and the thinning sums each dropped frame's delay into its survivor
+ *     so playback speed is unchanged. Judge the full one.
+ *   - *"Thumbnail cross-fades and image fade-ins are never noticed as events."* Gate #1 reported
+ *     `0 drawn / 0 of 512 cells` at every plane level, so there was nothing to judge: PRD 5.5.1's
+ *     band is crossed on the way **into a card**, not at plane level, and no capture went there.
+ *     `--crossfade` flies plane → card and back with the probe sampled throughout, so the band is
+ *     crossed in both directions and `crossfade.json` says by how much.
+ *
  *   node scripts/visual-gate.mjs [--dataset production] [--out DIR] [--no-build]
+ *                                [--target shell|scene] [--only home,planes,dust,attract,...]
  */
 
 import { spawn } from 'node:child_process'
@@ -57,12 +77,46 @@ const BLIND_ETERNITIES_SLUG = 'blind-eternities'
 /** The CSS viewport. 1.5 is `QUALITY_TIERS[0].pixelRatioCap`, so the shot is the canvas 1:1. */
 const VIEWPORT = { width: 1440, height: 900, deviceScaleFactor: 1.5 }
 
+/**
+ * How large a thinned recording may be, in bytes.
+ *
+ * Nothing in the renderer cares; this is the limit of the place the frames end up. Paperclip
+ * refuses an attachment over 10 MB outright, so the thinned copy aims under it with room for the
+ * multipart envelope. The full-resolution original is written whole beside it and is what the
+ * shimmer criterion is judged on.
+ */
+const ATTACHMENT_BUDGET_BYTES = 9_500_000
+
+/**
+ * Every stage, in the order `capture` runs them. `--only` names a subset.
+ *
+ * `attract` is second and not last, which looks wrong until you remember what triggers it on the
+ * shipped composition: PRD 5.3.22's 45 s idle timer, cancelled by any input at all (5.3.23). Every
+ * stage after it uses the wheel or the pointer, so reaching attract from the end of the run would
+ * mean sitting still for another 45 s and hoping nothing else touched the page.
+ */
+const STAGES = ['home', 'attract', 'planes', 'crossfade', 'shimmer', 'dust', 'starfield']
+
 function parseArgs(argv) {
-  const args = { dataset: 'production', out: resolve(WEB_ROOT, 'visual-gate'), build: true }
+  const args = {
+    dataset: 'production',
+    out: resolve(WEB_ROOT, 'visual-gate'),
+    build: true,
+    target: 'shell',
+    only: null,
+  }
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--dataset') args.dataset = argv[++i]
     else if (argv[i] === '--out') args.out = resolve(argv[++i])
     else if (argv[i] === '--no-build') args.build = false
+    else if (argv[i] === '--target') args.target = argv[++i]
+    else if (argv[i] === '--only') args.only = argv[++i].split(',').map((s) => s.trim())
+  }
+  if (args.target !== 'shell' && args.target !== 'scene') {
+    throw new Error(`--target must be shell or scene, not ${args.target}`)
+  }
+  for (const stage of args.only ?? []) {
+    if (!STAGES.includes(stage)) throw new Error(`--only: unknown stage ${stage}. Known: ${STAGES.join(', ')}`)
   }
   return args
 }
@@ -263,6 +317,26 @@ function apng(frames) {
 }
 
 /**
+ * Drop frames until the APNG fits `budget`, summing each dropped frame's delay into the frame
+ * before it.
+ *
+ * Playback speed is therefore unchanged — which is only true because every frame here is a full
+ * frame with `dispose: none` and `blend: source`, so any subset of them is still a valid animation
+ * of the same length. Returns the frames, not the bytes, so the caller can report what it lost.
+ */
+function thinToBudget(frames, budget) {
+  let kept = frames
+  while (kept.length > 2 && apng(kept).length > budget) {
+    const next = []
+    for (let i = 0; i < kept.length; i += 1) {
+      if (i % 2 === 0) next.push({ png: kept[i].png, delayMs: kept[i].delayMs + (kept[i + 1]?.delayMs ?? 0) })
+    }
+    kept = next
+  }
+  return kept
+}
+
+/**
  * Record the page for `seconds` while `during()` runs, and write an APNG.
  *
  * `Page.startScreencast` pushes a PNG per compositor frame, which at 60 Hz is far more than a
@@ -270,12 +344,17 @@ function apng(frames) {
  * each is the real wall-clock gap to the next — a dropped frame lengthens its predecessor rather
  * than speeding the playback up.
  *
+ * `scale` is the fraction of the *device* frame each PNG carries: 0.5 for a recording of a move,
+ * where the subject is the motion, and 1 for the shimmer criterion, where the subject is what
+ * happens to single-pixel stars and any downscale averages exactly that away. At 1 the file is
+ * written whole and a thinned copy is written beside it; see `ATTACHMENT_BUDGET_BYTES`.
+ *
  * The readout is hidden for the whole cast, for the reason `shoot` hides it for a still: a
  * recording of motion is not improved by a column of changing numbers pinned over it.
  */
 const record = (page, path, options) => withPanelHidden(page, () => recordFrames(page, path, options))
 
-async function recordFrames(page, path, { seconds, fps = 8, during }) {
+async function recordFrames(page, path, { seconds, fps = 8, during, scale = 0.5 }) {
   const client = await page.createCDPSession()
   const kept = []
   let lastKeptAt = 0
@@ -294,13 +373,15 @@ async function recordFrames(page, path, { seconds, fps = 8, during }) {
     }
   })
 
-  // Half the viewport's width. A star field of single-pixel stars compresses badly, so a full-size
-  // PNG per frame runs to ~800 KB and a ten-second cast to over 100 MB — too large to attach and
-  // no more legible for it. The stills carry the pixel-level criteria; a recording carries motion.
+  // A star field of single-pixel stars compresses badly, so a device-resolution PNG per frame runs
+  // to ~800 KB and a ten-second cast to over 100 MB. At `scale: 0.5` the subject is the motion and
+  // half size costs nothing; at `scale: 1` the subject is the pixels themselves and the size is the
+  // price of the criterion.
+  const device = { width: VIEWPORT.width * VIEWPORT.deviceScaleFactor, height: VIEWPORT.height * VIEWPORT.deviceScaleFactor }
   await client.send('Page.startScreencast', {
     format: 'png',
-    maxWidth: Math.round(VIEWPORT.width / 2),
-    maxHeight: Math.round(VIEWPORT.height / 2),
+    maxWidth: Math.round(device.width * scale),
+    maxHeight: Math.round(device.height * scale),
     everyNthFrame: 1,
   })
   const work = during ? during() : new Promise((ok) => setTimeout(ok, seconds * 1000))
@@ -326,10 +407,23 @@ async function recordFrames(page, path, { seconds, fps = 8, during }) {
   }))
   const bytes = apng(frames)
   writeFileSync(path, bytes)
-  console.log(
+  let line =
     `  recorded ${frames.length} frames (${counts.size > 1 ? `${kept.length - usable.length} odd-sized dropped, ` : ''}` +
-      `${modal.split(':')[0]}) -> ${path.split('/').pop()} ${(bytes.length / 1e6).toFixed(1)} MB`,
-  )
+    `${modal.split(':')[0]}) -> ${path.split('/').pop()} ${(bytes.length / 1e6).toFixed(1)} MB`
+
+  // The original is the record; the thinned copy exists only so the same recording can be attached
+  // somewhere with a size limit. Written beside it rather than in place of it, so the criterion is
+  // never judged on the reduced one by accident — that is the mistake gate #1 made.
+  let thinned = null
+  if (bytes.length > ATTACHMENT_BUDGET_BYTES) {
+    const reduced = thinToBudget(frames, ATTACHMENT_BUDGET_BYTES)
+    thinned = path.replace(/\.png$/, '-thinned.png')
+    const reducedBytes = apng(reduced)
+    writeFileSync(thinned, reducedBytes)
+    line += `\n  + ${thinned.split('/').pop()} ${(reducedBytes.length / 1e6).toFixed(1)} MB (${reduced.length} of ${frames.length} frames, same duration)`
+  }
+  console.log(line)
+  return { path, thinned, frames: frames.length, bytes: bytes.length, size: modal.split(':')[0] }
 }
 
 // --------------------------------------------------------------------------------------------
@@ -338,6 +432,78 @@ async function recordFrames(page, path, { seconds, fps = 8, during }) {
 
 const status = (page) =>
   page.evaluate(() => document.querySelector('[data-testid="eternities-status"]')?.textContent ?? '')
+
+/** The probe's own view of the scene. `null` before the seam is installed. */
+const probeState = (page) => page.evaluate(() => window.__eternitiesProbe?.state() ?? null)
+
+/**
+ * The scene state a frame was taken in, as text, from whichever source this page has.
+ *
+ * `--target scene` has Phase 3's readout panel and the sidecars are what it says, unchanged from
+ * gate #1 so the two captures can be read side by side. The shell mounts `SceneView` with
+ * `chrome: false` and has no panel, so the same fields are formatted out of `ProbeState` — the
+ * object the panel itself renders from.
+ */
+async function stateText(page) {
+  const panel = (await status(page))
+    .replace(/^.*?flip\s*/s, '')
+    .split(/(?=focus:|flight:|camera:|stars:|detail:|thumbnails:|card:|gpu:|hover:)/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join('\n')
+  if (panel.length > 0) return panel
+
+  const state = await probeState(page)
+  if (state === null) return '(no readout panel and no probe on this page)'
+  const t = state.thumbnails
+  const lines = [
+    `focus: ${state.level}${state.planeSlug === null ? '' : ` (${state.planeSlug})`}`,
+    `flight: ${state.flying ? 'flying' : 'idle'}`,
+    `camera: d ${state.cameraDistance.toFixed(1)}`,
+    `detail: ${state.cardsLoaded} cards loaded`,
+    `thumbnails: ${t.drawn} drawn / ${t.cells} of ${t.capacity} cells · ${t.loaded} loaded, ${t.requested} requested, ${t.failed} failed`,
+    `images: ${state.images.completed} completed, ${state.images.inFlight} in flight, ${state.images.waiting} waiting, ${state.images.failed} failed`,
+    `quality: ${state.quality.tier} · dpr ${state.quality.pixelRatio} · ${state.quality.drawingBuffer.width}x${state.quality.drawingBuffer.height} · ${state.quality.starsDrawn} stars drawn`,
+    `gpu: ${(state.gpu.totalBytes / 1e6).toFixed(1)} MB of ${(state.gpu.targetBytes / 1e6).toFixed(0)} MB target`,
+  ]
+  if (state.card !== null) {
+    lines.push(
+      `card: ${state.card.name} · ${state.card.printings} printings · ${state.card.planets} planets` +
+        `${state.card.canFlip ? ` · ${state.card.flipped ? 'flipped' : 'front'}` : ''}`,
+    )
+  }
+  return lines.join('\n')
+}
+
+/**
+ * Poll until `predicate` holds of the probe state, or throw.
+ *
+ * Polled through `evaluate` rather than `page.waitForFunction`, which injects a function the CSP
+ * refuses on any build carrying PRD 7.6.1's real headers — the same reason `cross-browser.mjs`
+ * polls. `describe` is what the timeout message says it was waiting for.
+ */
+async function waitForProbe(page, describe, predicate, timeout = 60_000) {
+  const deadline = Date.now() + timeout
+  let last = null
+  for (;;) {
+    // The predicate stays in node and only the state crosses. Nothing is compiled in the page, and
+    // the state is a plain object, so this works identically under any CSP.
+    const state = await probeState(page)
+    last = { ok: state !== null && predicate(state), state }
+    if (last.ok) return last.state
+    if (Date.now() > deadline) {
+      throw new Error(
+        `timed out after ${(timeout / 1000).toFixed(0)}s waiting for ${describe}` +
+          (last.state === null
+            ? ' (the probe is not installed on this page)'
+            : ` — last: focus ${last.state.level}${last.state.planeSlug ? ` ${last.state.planeSlug}` : ''}, ` +
+              `${last.state.flying ? 'flying' : 'idle'}, d ${last.state.cameraDistance.toFixed(1)}, ` +
+              `${last.state.cardsLoaded} cards, ${last.state.thumbnails.drawn} thumbnails`),
+      )
+    }
+    await sleep(250)
+  }
+}
 
 const waitForStatus = (page, pattern, timeout = 60_000) =>
   page.waitForFunction(
@@ -390,12 +556,7 @@ async function withPanelHidden(page, capture) {
 async function shoot(page, dir, name) {
   await settle(page, 2)
   await withPanelHidden(page, () => page.screenshot({ path: resolve(dir, `${name}.png`) }))
-  const text = (await status(page))
-    .replace(/^.*?flip\s*/s, '')
-    .split(/(?=focus:|flight:|camera:|stars:|detail:|thumbnails:|card:|gpu:|hover:)/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .join('\n')
+  const text = await stateText(page)
   writeFileSync(resolve(dir, `${name}.txt`), `${text}\n`)
   console.log(`  ${name}.png — ${/camera: [^\n]*/.exec(text)?.[0] ?? ''}`)
 }
@@ -414,24 +575,140 @@ const settle = (page, frames) =>
 
 const sleep = (ms) => new Promise((ok) => setTimeout(ok, ms))
 
+/** The centre of the largest canvas, in CSS pixels — where a pointer gesture should start. */
+const canvasCentre = (page) =>
+  page.evaluate(() => {
+    const canvas = [...document.querySelectorAll('canvas')].sort((a, b) => b.width * b.height - a.width * a.height)[0]
+    const r = canvas.getBoundingClientRect()
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 }
+  })
+
+/**
+ * `notches` wheel events over the canvas, `gapMs` apart.
+ *
+ * The gap is the tunable: at 120 ms this is a zoom, and at 700 ms it is the "slow camera move" 9.3's
+ * shimmer criterion asks about — the rig eases between notches, so a long gap leaves it moving
+ * slowly and continuously rather than in steps.
+ */
+async function wheel(page, notches, deltaY, gapMs) {
+  const centre = await canvasCentre(page)
+  await page.mouse.move(centre.x, centre.y)
+  for (let i = 0; i < notches; i += 1) {
+    await page.mouse.wheel({ deltaY })
+    await sleep(gapMs)
+  }
+}
+
+/** Drag across the canvas — PRD 6.1's orbit, through the pointer rather than through an API. */
+async function drag(page, dx, dy) {
+  const centre = await canvasCentre(page)
+  await page.mouse.move(centre.x, centre.y)
+  await page.mouse.down()
+  const steps = 24
+  for (let i = 1; i <= steps; i += 1) {
+    await page.mouse.move(centre.x + (dx * i) / steps, centre.y + (dy * i) / steps)
+    await sleep(16)
+  }
+  await page.mouse.up()
+}
+
 /** Fly to a plane through the product's own click handler and wait for the rig to settle there. */
 async function flyToPlane(page, slug) {
   const ok = await page.evaluate((s) => window.__eternitiesProbe.focusPlane(s), slug)
   if (!ok) throw new Error(`focusPlane(${slug}) was refused`)
-  await waitForStatus(page, new RegExp(`focus: plane \\(${slug}\\)`), 30_000)
-  await waitForStatus(page, /flight: idle/, 60_000)
+  await waitForProbe(page, `the rig to settle on ${slug}`, (s) => s.planeSlug === slug && !s.flying, 60_000)
   // PRD 8.7.6: the plane's shards land after the camera does. Give the thumbnail tier its first
   // pass too, so the frame is the settled plane level and not the moment of arrival.
-  await waitForStatus(page, new RegExp(`detail: ${slug} `), 60_000)
+  await waitForProbe(page, `${slug}'s shards`, (s) => s.cardsLoaded > 0, 60_000)
   await sleep(4000)
+}
+
+/**
+ * Sample the probe every `intervalMs` for `seconds`, and return the timeline.
+ *
+ * The cross-fade criterion is the one thing in 9.3 that a frame cannot answer on its own: "never
+ * noticed as *events*" is a claim about a transition, and the transition is a number moving. So the
+ * recording is taken beside a record of what the tier was doing while it ran.
+ */
+async function sampleProbe(page, seconds, intervalMs = 100) {
+  const started = Date.now()
+  const timeline = []
+  while (Date.now() - started < seconds * 1000) {
+    const state = await probeState(page)
+    if (state !== null) {
+      timeline.push({
+        t: Math.round(Date.now() - started),
+        level: state.level,
+        flying: state.flying,
+        d: Number(state.cameraDistance.toFixed(2)),
+        eye: Number(state.cardEyeDistance.toFixed(2)),
+        drawn: state.thumbnails.drawn,
+        cells: state.thumbnails.cells,
+        loaded: state.thumbnails.loaded,
+        requested: state.thumbnails.requested,
+        images: state.images.completed,
+      })
+    }
+    await sleep(intervalMs)
+  }
+  return timeline
+}
+
+/** Run `work` and sample the probe at the same time, so the timeline covers the whole of it. */
+async function withSampling(page, seconds, work) {
+  const [timeline] = await Promise.all([sampleProbe(page, seconds), work()])
+  return timeline
+}
+
+/**
+ * Is the HUD in the tree?
+ *
+ * Two questions in one, and both are 9.3's. Before attract it is the check that this capture is of
+ * the shipped composition at all and not of the scene alone; during attract it is PRD 5.3.22's
+ * "the HUD hides entirely", which `Hud` implements by returning null.
+ */
+const hudPresent = (page) => page.evaluate(() => document.querySelector('.hud') !== null)
+
+/**
+ * Dismiss PRD 6.8.3's first-visit card, and say whether it was there.
+ *
+ * It mounts only after the intro flight settles, so a click sent earlier silently does nothing and
+ * the card then photobombs every later frame. Waited for rather than raced: the checkpoint frames
+ * are of the product at rest, and this card is not part of that.
+ */
+async function dismissHint(page) {
+  const deadline = Date.now() + 20_000
+  for (;;) {
+    const clicked = await page.evaluate(() => {
+      const hint = document.querySelector('.hint')
+      const button = hint?.querySelector('button')
+      if (!button) return false
+      button.click()
+      return true
+    })
+    if (clicked) {
+      await settle(page, 2)
+      return true
+    }
+    if (Date.now() > deadline) return false
+    await sleep(500)
+  }
 }
 
 async function capture(args) {
   const roster = readRoster(args.dataset)
+  const isShell = args.target === 'shell'
+  const wanted = (stage) => args.only === null || args.only.includes(stage)
   console.log(
     `dataset ${args.dataset} (${roster.hash}): ${roster.planes.length} planes, ` +
       `${roster.manifest.counts.stars} stars, ${roster.realImages ? 'real' : 'synthetic'} Scryfall ids`,
   )
+  if (!roster.realImages) {
+    console.log(
+      '  ! this dataset carries synthetic Scryfall ids, so every card image 404s and the\n' +
+        '    cross-fade criterion has nothing to fade *to*. Use --dataset production.',
+    )
+  }
   if (args.build) {
     execFileSync('pnpm', ['build'], {
       cwd: WEB_ROOT,
@@ -456,6 +733,8 @@ async function capture(args) {
   })
 
   const notes = []
+  const recordings = []
+  const summary = {}
   try {
     const page = await browser.newPage()
     await page.setViewport(VIEWPORT)
@@ -463,10 +742,14 @@ async function capture(args) {
       if (message.type() === 'error') notes.push(`console: ${message.text().slice(0, 200)}`)
     })
 
-    // ---- the scene ------------------------------------------------------------------------
-    console.log('\n?harness=3 — the folded scene (checkpoints 1, 2, 6, 7)')
-    // `?probe=1` implies harness 3 and installs the seam that names the planes by card count.
-    await page.goto(`${url}/?probe=1`, { waitUntil: 'load', timeout: 60_000 })
+    // ---- the page under review -------------------------------------------------------------
+    const entry = `${url}/${isShell ? '?probe=shell' : '?probe=1'}`
+    console.log(
+      isShell
+        ? '\nthe default route, ?probe=shell — the shipped composition (checkpoints 1, 2, 6, 7)'
+        : "\n?probe=1 — Phase 3's scene on its own (checkpoints 1, 2, 6, 7)",
+    )
+    await page.goto(entry, { waitUntil: 'load', timeout: 60_000 })
     await page.waitForFunction(() => window.__eternitiesProbe !== undefined, { timeout: 60_000 })
     // R3F sizes the drawing buffer from a resize observer, which fires after `load`; reading before
     // it does reports the 300x150 HTML default and says nothing about the renderer.
@@ -486,65 +769,146 @@ async function capture(args) {
     })
     console.log(`  canvas ${gpu.size} on ${gpu.renderer}`)
 
+    // Which composition this is, measured rather than assumed. A gate that quietly captured the
+    // scene alone would look exactly like this one and answer a different question — which is what
+    // happened to gate #1 — so the frames are labelled by what was actually in the tree.
+    const hudAtStart = await hudPresent(page)
+    console.log(`  HUD in the tree: ${hudAtStart}`)
+    if (isShell && !hudAtStart) {
+      notes.push(
+        'the HUD is not in the tree on the default route — these frames are NOT the shipped composition',
+      )
+    }
+    if (!isShell && hudAtStart) notes.push('the HUD is in the tree on ?probe=1, which routes past the shell')
+
     // The readout, measured rather than assumed. `verify-browser.mjs` asserts the same four things
     // — the check is shared, in `lib/status-panel.mjs` — but a capture run is often the first
     // thing anyone points at a new build, so it carries the same strength here and reports it as a
     // note in `capture.json` saying which state the frames were taken beside. Every fault, not
     // just the first: nothing downstream stops on one, so the whole picture is more use.
     const panel = await measureStatusPanel(page, 'eternities-status')
-    if (!panel) {
-      notes.push('the ?harness=3 state panel is not in the DOM at all — the sidecars will be empty')
+    if (isShell) {
+      // The shell mounts `SceneView` with `chrome: false`, so the panel should not exist here at
+      // all and the sidecars come from the probe. If one turns up, the frames have a debug column
+      // over them and the composition is not what ships.
+      if (panel) notes.push('the shell is rendering the scene readout panel, which it should not')
+    } else if (!panel) {
+      notes.push('the ?probe=1 state panel is not in the DOM at all — the sidecars will be empty')
     } else {
-      for (const fault of statusPanelFaults(panel)) notes.push(`?harness=3: ${fault}`)
+      for (const fault of statusPanelFaults(panel)) notes.push(`?probe=1: ${fault}`)
     }
 
-    // Checkpoint 1: the home view, after PRD 6.8.2's intro has flown in and settled, with the
-    // whole field streamed. A frame taken while `stars: … (streaming)` is a frame of a partial
-    // multiverse, and 9.3's spiral-arm criterion would be judged against missing stars.
-    await waitForStatus(page, /focus: multiverse/)
-    await waitForStatus(page, /flight: idle/)
-    await waitForStatus(page, /\(complete\)/, 180_000)
-    await page.waitForFunction(
-      () => [...document.querySelectorAll('.label')].filter((n) => Number.parseFloat(n.style.opacity || '0') > 0.05).length >= 10,
-      { timeout: 60_000 },
-    )
-    await sleep(3000)
-    await shoot(page, args.out, '1-home-view')
-
-    const labels = await page.evaluate(() => {
-      const visible = [...document.querySelectorAll('.label')].filter(
-        (n) => Number.parseFloat(n.style.opacity || '0') > 0.05,
+    // ---- checkpoint 1: the home view -------------------------------------------------------
+    let labels = null
+    let overlaps = []
+    if (wanted('home')) {
+      console.log('\ncheckpoint 1 — the home view after the intro')
+      // A frame taken while the field is still streaming is a frame of a partial multiverse, and
+      // 9.3's spiral-arm criterion would be judged against missing stars. `starsDrawn` is the
+      // geometry's own draw count, read off the live object.
+      await waitForProbe(page, 'the intro to settle at the multiverse', (s) => s.focus === 'multiverse' && !s.flying, 120_000)
+      await waitForProbe(
+        page,
+        `all ${roster.manifest.counts.stars} stars to stream in`,
+        (s) => s.quality.starsDrawn >= roster.manifest.counts.stars,
+        180_000,
       )
-      return {
-        visible: visible.length,
-        total: document.querySelectorAll('.label').length,
-        boxes: visible.map((n) => {
-          const r = n.getBoundingClientRect()
-          return { text: n.textContent, x: r.x, y: r.y, w: r.width, h: r.height }
-        }),
+      await page.waitForFunction(
+        () => [...document.querySelectorAll('.label')].filter((n) => Number.parseFloat(n.style.opacity || '0') > 0.05).length >= 10,
+        { timeout: 60_000 },
+      )
+
+      // PRD 6.8.3's first-visit card is part of the shipped composition and part of nothing 9.3
+      // asks about, so it is dismissed the way a user dismisses it — and only after the intro has
+      // settled, because that is when it mounts.
+      if (isShell) {
+        const dismissed = await dismissHint(page)
+        summary.firstVisitHint = dismissed ? 'shown after the intro, dismissed' : 'never appeared'
+        if (!dismissed) notes.push('PRD 6.8.3\'s first-visit card never appeared within 20 s of the intro settling')
       }
-    })
-    // 9.3: "no label overlaps another at the home view" — measured, so the owner is judging a
-    // claim rather than squinting at 87 billboards.
-    const overlaps = []
-    for (let i = 0; i < labels.boxes.length; i += 1) {
-      for (let j = i + 1; j < labels.boxes.length; j += 1) {
-        const a = labels.boxes[i]
-        const b = labels.boxes[j]
-        const dx = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)
-        const dy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y)
-        if (dx > 0 && dy > 0) overlaps.push(`${a.text} / ${b.text} (${Math.round(dx)}x${Math.round(dy)} px)`)
+
+      await sleep(3000)
+      await shoot(page, args.out, '1-home-view')
+
+      labels = await page.evaluate(() => {
+        const visible = [...document.querySelectorAll('.label')].filter(
+          (n) => Number.parseFloat(n.style.opacity || '0') > 0.05,
+        )
+        return {
+          visible: visible.length,
+          total: document.querySelectorAll('.label').length,
+          boxes: visible.map((n) => {
+            const r = n.getBoundingClientRect()
+            return { text: n.textContent, x: r.x, y: r.y, w: r.width, h: r.height }
+          }),
+        }
+      })
+      // 9.3: "no label overlaps another at the home view" — measured, so the owner is judging a
+      // claim rather than squinting at 87 billboards.
+      for (let i = 0; i < labels.boxes.length; i += 1) {
+        for (let j = i + 1; j < labels.boxes.length; j += 1) {
+          const a = labels.boxes[i]
+          const b = labels.boxes[j]
+          const dx = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)
+          const dy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y)
+          if (dx > 0 && dy > 0) overlaps.push(`${a.text} / ${b.text} (${Math.round(dx)}x${Math.round(dy)} px)`)
+        }
       }
+      console.log(`  labels: ${labels.visible} of ${labels.total} visible, ${overlaps.length} overlapping pair(s)`)
+      if (overlaps.length > 0) notes.push(`label overlaps at the home view: ${overlaps.join('; ')}`)
+
+      // A recording of the home view holding still: 9.3's "motion is perceptible within 3 s of
+      // arriving at any level" is a claim about a still camera over a moving field.
+      recordings.push(await record(page, resolve(args.out, 'r1-home-view-motion.png'), { seconds: 6 }))
     }
-    console.log(`  labels: ${labels.visible} of ${labels.total} visible, ${overlaps.length} overlapping pair(s)`)
-    if (overlaps.length > 0) notes.push(`label overlaps at the home view: ${overlaps.join('; ')}`)
 
-    // A recording of the home view holding still: 9.3's "motion is perceptible within 3 s of
-    // arriving at any level" is a claim about a still camera over a moving field.
-    await record(page, resolve(args.out, 'r1-home-view-motion.png'), { seconds: 6 })
+    // ---- checkpoint 7: attract mode --------------------------------------------------------
+    // Before the plane flights, because on the shipped composition attract is not a key: it is PRD
+    // 5.3.22's 45 s idle timer, and the only way to reach it is to send the page no input at all.
+    // Everything below this stage uses the wheel, which would re-arm it. Nothing here dispatches
+    // an input event: `evaluate` does not, and a CDP screencast does not.
+    if (wanted('attract')) {
+      console.log('\ncheckpoint 7 — attract mode')
+      if (isShell) {
+        const idleFrom = Date.now()
+        for (;;) {
+          if (!(await hudPresent(page))) break
+          if (Date.now() - idleFrom > 120_000) throw new Error('attract mode did not start within 120 s of idle')
+          await sleep(1000)
+        }
+        const idleS = (Date.now() - idleFrom) / 1000
+        summary.attract = { entered: 'by PRD 5.3.22\'s idle timer', afterIdleS: Number(idleS.toFixed(1)), hudHidden: true }
+        console.log(`  attract started after ${idleS.toFixed(0)} s of idle; the HUD left the tree (PRD 5.3.22)`)
+      } else {
+        // The harness binds `a` to `enterAttract`; the shell's idle timer is Phase 4's and is not
+        // wired into that page.
+        await page.keyboard.press('Escape')
+        await waitForProbe(page, 'the multiverse', (s) => s.focus === 'multiverse' && !s.flying, 60_000)
+        await page.keyboard.press('a')
+        await waitForStatus(page, /attract true/, 15_000)
+        summary.attract = { entered: 'by the harness key', afterIdleS: 0, hudHidden: false }
+      }
+      await sleep(8000) // into the middle of the first leg, not at its start
+      await shoot(page, args.out, '7a-attract-mid-drift')
+      recordings.push(await record(page, resolve(args.out, 'r3-attract-drift.png'), { seconds: 12 }))
 
-    // Checkpoint 2: three planes by card count. The dust is excluded — it is checkpoint 6, and it
-    // is not a plane in the sense this checkpoint means.
+      // 9.3 criterion 5, at the resolution that can answer it. The attract drift is the slowest
+      // camera move the product makes, so it is the best case the criterion has, and it is
+      // uninterruptible by anything this script does. `scale: 1` is the drawing buffer 1:1 — gate
+      // #1 judged this on half-size frames, which average away the single-pixel stars that shimmer.
+      console.log('  criterion 5 — the slow drift at the drawing buffer\'s own resolution')
+      recordings.push(
+        await record(page, resolve(args.out, '5a-shimmer-attract-native.png'), { seconds: 5, fps: 10, scale: 1 }),
+      )
+      await shoot(page, args.out, '7b-attract-later')
+
+      // PRD 5.3.23: any input cancels attract. Deliberate, so the stages below start from rest.
+      await page.keyboard.press('Escape')
+      await sleep(1500)
+      if (isShell && !(await hudPresent(page))) notes.push('the HUD did not come back after attract was cancelled')
+    }
+
+    // ---- checkpoint 2: three planes by card count ------------------------------------------
     const planes = (await page.evaluate(() => window.__eternitiesProbe.planes())).filter(
       (plane) => plane.slug !== BLIND_ETERNITIES_SLUG,
     )
@@ -553,84 +917,186 @@ async function capture(args) {
     const mid = planes[Math.floor(planes.length / 2)]
     const small = planes.filter((plane) => plane.cardCount < 50 && plane.cardCount > 0).at(0)
     if (!small) throw new Error('no plane under 50 cards in this roster')
-    console.log(`  largest ${named(largest)} · mid ${named(mid)} · under 50 ${named(small)}`)
+    console.log(`\ncheckpoint 2 — largest ${named(largest)} · mid ${named(mid)} · under 50 ${named(small)}`)
 
-    // The flight out to the largest plane, recorded: PRD 5.7's tether and 9.3's "motion is
-    // perceptible" are both about the move, not about either end of it.
-    await record(page, resolve(args.out, 'r2-flight-to-plane.png'), {
-      seconds: 9,
-      during: () => flyToPlane(page, largest.slug),
-    })
-    await shoot(page, args.out, `2a-plane-largest-${largest.slug}`)
+    if (wanted('planes')) {
+      // The flight out to the largest plane, recorded: PRD 5.7's tether and 9.3's "motion is
+      // perceptible" are both about the move, not about either end of it.
+      recordings.push(
+        await record(page, resolve(args.out, 'r2-flight-to-plane.png'), {
+          seconds: 9,
+          during: () => flyToPlane(page, largest.slug),
+        }),
+      )
+      await shoot(page, args.out, `2a-plane-largest-${largest.slug}`)
 
-    // 9.3 asks whether "spiral arms are legible for every plane with ≥ 200 cards", and the answer
-    // depends on how far out the rig settles — which PRD 5.7's tether decides, not the reviewer.
-    // So the arrival frame above is joined by two closer ones, and the sidecars carry the distance
-    // each was taken at. A criterion that passes at one distance and fails at another is a
-    // tunable, and PRD open question 11 is what this gate is meant to settle.
-    for (const [index, notches] of [6, 6].entries()) {
-      const box = await page.evaluate(() => {
-        const canvas = [...document.querySelectorAll('canvas')].sort((a, b) => b.width * b.height - a.width * a.height)[0]
-        const r = canvas.getBoundingClientRect()
-        return { x: r.x + r.width / 2, y: r.y + r.height / 2 }
-      })
-      await page.mouse.move(box.x, box.y)
-      for (let i = 0; i < notches; i += 1) {
-        await page.mouse.wheel({ deltaY: -120 })
-        await sleep(120)
+      // 9.3 asks whether "spiral arms are legible for every plane with ≥ 200 cards", and the answer
+      // depends on how far out the rig settles — which PRD 5.7's tether decides, not the reviewer.
+      // So the arrival frame above is joined by two closer ones, and the sidecars carry the distance
+      // each was taken at. A criterion that passes at one distance and fails at another is a
+      // tunable, and PRD open question 11 is what this gate is meant to settle.
+      for (const [index, notches] of [6, 6].entries()) {
+        await wheel(page, notches, -120, 120)
+        await sleep(3000)
+        await shoot(page, args.out, `2a-plane-largest-${largest.slug}-closer-${index + 1}`)
       }
-      await sleep(3000)
-      await shoot(page, args.out, `2a-plane-largest-${largest.slug}-closer-${index + 1}`)
+
+      await flyToPlane(page, mid.slug)
+      await shoot(page, args.out, `2b-plane-mid-${mid.slug}`)
+
+      await flyToPlane(page, small.slug)
+      await shoot(page, args.out, `2c-plane-under-50-${small.slug}`)
     }
 
-    await flyToPlane(page, mid.slug)
-    await shoot(page, args.out, `2b-plane-mid-${mid.slug}`)
+    // ---- criterion 6: the star → thumbnail cross-fade ---------------------------------------
+    if (wanted('crossfade')) {
+      console.log('\ncriterion 6 — the star → thumbnail cross-fade (PRD 5.5.1)')
+      await flyToPlane(page, largest.slug)
+      const atPlane = await probeState(page)
+      console.log(
+        `  at ${largest.slug}, plane level: d ${atPlane.cameraDistance.toFixed(1)}, ` +
+          `thumbnails ${atPlane.thumbnails.drawn} drawn / ${atPlane.thumbnails.cells} of ${atPlane.thumbnails.capacity} cells`,
+      )
 
-    await flyToPlane(page, small.slug)
-    await shoot(page, args.out, `2c-plane-under-50-${small.slug}`)
+      // The band is crossed on the way *into* a card, not at plane level — which is exactly what
+      // gate #1 could not reach, and why it reported `0 drawn / 0 of 512 cells` at every plane it
+      // captured and passed the criterion untested. Recorded at the drawing buffer's own
+      // resolution, because "never noticed as an event" is a question about what a single fade
+      // looks like and a half-size frame softens every edge in it.
+      let inward = []
+      recordings.push(
+        await record(page, resolve(args.out, 'r4-crossfade-into-card.png'), {
+          seconds: 14,
+          fps: 10,
+          scale: 1,
+          during: async () => {
+            const flight = (async () => {
+              const star = await page.evaluate(() => window.__eternitiesProbe.focusCard({}))
+              if (star < 0) throw new Error(`focusCard() found no card on ${largest.slug}`)
+              summary.crossfadeStar = star
+              await waitForProbe(page, 'the card to be framed', (s) => s.card !== null && !s.flying, 60_000)
+            })()
+            inward = await withSampling(page, 14, () => flight)
+          },
+        }),
+      )
+      await sleep(3000)
+      await shoot(page, args.out, '3-card-sheet-thumbnails')
+      const atCard = await probeState(page)
+      console.log(
+        `  at the card: d ${atCard.cameraDistance.toFixed(1)}, eye ${atCard.cardEyeDistance.toFixed(2)}, ` +
+          `thumbnails ${atCard.thumbnails.drawn} drawn / ${atCard.thumbnails.cells} of ${atCard.thumbnails.capacity} cells, ` +
+          `${atCard.thumbnails.loaded} images loaded`,
+      )
 
-    // Checkpoint 6: the Blind Eternities. PRD 5.3.4 leaves the dust unlabelled, so this is the one
-    // plane level with no billboard of its own.
-    await flyToPlane(page, BLIND_ETERNITIES_SLUG)
-    await shoot(page, args.out, '6-blind-eternities')
+      // And back out, because a fade that is invisible on the way in can still be an event on the
+      // way out — the tier unloads on a grace timer (PRD 5.5.4) rather than on the same curve.
+      let outward = []
+      recordings.push(
+        await record(page, resolve(args.out, 'r5-crossfade-back-out.png'), {
+          seconds: 10,
+          fps: 10,
+          scale: 1,
+          during: async () => {
+            const back = (async () => {
+              await page.keyboard.press('Escape')
+              await waitForProbe(page, 'the plane again', (s) => s.card === null && !s.flying, 60_000)
+            })()
+            outward = await withSampling(page, 10, () => back)
+          },
+        }),
+      )
+      await shoot(page, args.out, '3b-back-at-plane-level')
 
-    // Checkpoint 7: attract mode, mid-drift. The harness binds `a` to `enterAttract`; the shell's
-    // 45 s idle timer (PRD 5.3.22) is Phase 4's and is not wired into this page. Nothing is typed
-    // after this, because PRD 5.3.23 makes any input cancel it.
-    await page.keyboard.press('Escape')
-    await waitForStatus(page, /focus: multiverse/, 30_000)
-    await waitForStatus(page, /flight: idle/, 60_000)
-    await page.keyboard.press('a')
-    await waitForStatus(page, /attract true/, 15_000)
-    await sleep(8000) // into the middle of the first leg, not at its start
-    await shoot(page, args.out, '7a-attract-mid-drift')
-    await record(page, resolve(args.out, 'r3-attract-drift.png'), { seconds: 12 })
-    await shoot(page, args.out, '7b-attract-later')
-    console.log(`  ${(await status(page)).match(/flight: [^\n·]*/)?.[0] ?? ''}`.trim())
+      const peak = (rows) => rows.reduce((best, row) => Math.max(best, row.drawn), 0)
+      const firstDrawn = inward.find((row) => row.drawn > 0) ?? null
+      const lastDrawn = [...outward].reverse().find((row) => row.drawn > 0) ?? null
+      summary.crossfade = {
+        plane: largest.slug,
+        cards: largest.cardCount,
+        band: { fadeStartPx: 14, fadeFullPx: 24, source: 'src/scene/tuning.ts' },
+        atPlaneLevel: { d: Number(atPlane.cameraDistance.toFixed(2)), drawn: atPlane.thumbnails.drawn },
+        atCardLevel: {
+          d: Number(atCard.cameraDistance.toFixed(2)),
+          eye: Number(atCard.cardEyeDistance.toFixed(2)),
+          drawn: atCard.thumbnails.drawn,
+          cells: atCard.thumbnails.cells,
+          loaded: atCard.thumbnails.loaded,
+          requested: atCard.thumbnails.requested,
+          failed: atCard.thumbnails.failed,
+        },
+        crossedInward: firstDrawn !== null,
+        firstDrawnAt: firstDrawn,
+        peakDrawnInward: peak(inward),
+        lastDrawnOnTheWayOut: lastDrawn,
+        samplingIntervalMs: 100,
+      }
+      writeFileSync(
+        resolve(args.out, 'crossfade.json'),
+        `${JSON.stringify({ ...summary.crossfade, inward, outward }, null, 2)}\n`,
+      )
+      if (!firstDrawn) {
+        notes.push(
+          'the thumbnail tier never drew a cell on the way into a card — criterion 6 is untested again',
+        )
+      }
+      console.log(
+        `  crossfade.json — ${firstDrawn ? `first cell drawn ${firstDrawn.t} ms in at d ${firstDrawn.d}` : 'NO CELL EVER DREW'}` +
+          `, peak ${peak(inward)} cells`,
+      )
+    }
 
-    // ---- the star field on its own --------------------------------------------------------
-    console.log('\n?harness=2a — the star field under the development orbit control')
-    await page.goto(`${url}/?harness=2a`, { waitUntil: 'load', timeout: 60_000 })
-    await page.waitForFunction(
-      () => [...document.querySelectorAll('canvas')].some((c) => c.width > 300 && c.height > 150),
-      { timeout: 60_000 },
-    )
-    await sleep(12_000)
-    // `Phase2aScene` renders the same readout under `phase0-status`, and it paints now too.
-    await withPanelHidden(page, () => page.screenshot({ path: resolve(args.out, '8-star-field-2a.png') }))
-    console.log('  8-star-field-2a.png')
+    // ---- criterion 5: a slow camera move at plane level -------------------------------------
+    if (wanted('shimmer')) {
+      console.log('\ncriterion 5 — a slow zoom at plane level, at the drawing buffer\'s own resolution')
+      await flyToPlane(page, mid.slug)
+      recordings.push(
+        await record(page, resolve(args.out, '5b-shimmer-slow-zoom-native.png'), {
+          seconds: 9,
+          fps: 10,
+          scale: 1,
+          during: () => wheel(page, 12, -120, 700),
+        }),
+      )
+      await shoot(page, args.out, '5c-after-the-slow-zoom')
+    }
 
-    // ---- the shell ------------------------------------------------------------------------
-    console.log('\nthe default route — Phase 4\'s shell')
-    await page.goto(`${url}/`, { waitUntil: 'load', timeout: 60_000 })
-    await sleep(6000)
-    await page.screenshot({ path: resolve(args.out, '9-app-shell.png') })
-    console.log('  9-app-shell.png')
+    // ---- checkpoint 6: the Blind Eternities -------------------------------------------------
+    if (wanted('dust')) {
+      console.log('\ncheckpoint 6 — the Blind Eternities')
+      // PRD 5.3.4 leaves the dust unlabelled, so this is the one plane level with no billboard.
+      await flyToPlane(page, BLIND_ETERNITIES_SLUG)
+      await shoot(page, args.out, '6-blind-eternities')
+      // Gate #1's owner question (c) was about the *framing* here, so the frame is joined by one
+      // taken a third of a turn around it: whether the dust composes to the top-left is a question
+      // about where the rig sits, and one viewpoint cannot tell a framing from a coincidence.
+      await drag(page, 380, 0)
+      await sleep(2500)
+      await shoot(page, args.out, '6b-blind-eternities-orbited')
+    }
+
+    // ---- the star field on its own ----------------------------------------------------------
+    if (wanted('starfield')) {
+      console.log('\n?harness=2a — the star field under the development orbit control')
+      await page.goto(`${url}/?harness=2a`, { waitUntil: 'load', timeout: 60_000 })
+      await page.waitForFunction(
+        () => [...document.querySelectorAll('canvas')].some((c) => c.width > 300 && c.height > 150),
+        { timeout: 60_000 },
+      )
+      await sleep(12_000)
+      // `Phase2aScene` renders the same readout under `phase0-status`, and it paints now too.
+      await withPanelHidden(page, () => page.screenshot({ path: resolve(args.out, '8-star-field-2a.png') }))
+      console.log('  8-star-field-2a.png')
+    }
 
     writeFileSync(
       resolve(args.out, 'capture.json'),
       `${JSON.stringify(
         {
+          target: args.target,
+          composition: isShell ? 'the shipped composition: the default route, scene and HUD together' : "Phase 3's scene alone",
+          entry: entry.replace(url, ''),
+          hudInTheTree: hudAtStart,
           dataset: args.dataset,
           hash: roster.hash,
           stars: roster.manifest.counts.stars,
@@ -638,10 +1104,13 @@ async function capture(args) {
           canvas: gpu.size,
           renderer: gpu.renderer,
           viewport: VIEWPORT,
+          stages: args.only ?? STAGES,
           checkpoint2: { largest, mid, small },
-          labelsVisible: labels.visible,
-          labelsTotal: labels.total,
+          labelsVisible: labels?.visible ?? null,
+          labelsTotal: labels?.total ?? null,
           labelOverlaps: overlaps,
+          recordings,
+          ...summary,
           notes,
         },
         null,
