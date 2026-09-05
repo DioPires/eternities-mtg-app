@@ -45,7 +45,7 @@
 | Gate | Result |
 |---|---|
 | 9.2.1 Unmapped sets | **0** — enforced; the run fails otherwise (4.6.4) |
-| 9.2.2 Blind Eternities share | **25.00%** (3 of 12 cards) — inside the 20-25% range PRD 9.2.2 expected |
+| 9.2.2 Blind Eternities share | **25.00%** (3 of 12 cards) — reported, not gated; PRD 9.2.2 records 17.42% (2026-09-04) as the board-accepted baseline |
 | 9.2.3 Cards that changed plane | 1 (vs run `0123456789abcdef`) |
 
 ### Blind Eternities baseline (PRD 9.2.2)
