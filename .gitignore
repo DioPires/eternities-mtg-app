@@ -3,6 +3,12 @@ node_modules/
 web/dist/
 *.tsbuildinfo
 
+# Playwright output (PRD 8.9.2's route smoke). The report and the traces are per-run diagnostics;
+# CI uploads them as an artefact instead.
+web/playwright-report/
+web/test-results/
+web/blob-report/
+
 # Python
 .venv/
 __pycache__/

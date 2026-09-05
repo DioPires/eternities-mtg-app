@@ -149,3 +149,51 @@ jobs:
       # The real dataset is what ships. The fixtures approximate it; only this row is binding.
       - name: production
         run: node scripts/check-budget.mjs --dataset "$(node -p "require('./datasets.json').production")"
+
+  # PRD 8.9.2's route smoke and PRD 9.1.2's bench smoke, in a real browser.
+  #
+  # Runs against the same `web-dist` artefact the budget job measures, rather than building again:
+  # a smoke test of a different build than the one whose bytes were counted proves less than it
+  # looks like it does.
+  #
+  # A cloud runner has no representative GPU, which PRD 9.1.2 says in as many words. Chromium is
+  # launched onto SwiftShader deliberately (`playwright.config.ts`) so WebGL2 exists at all, and
+  # nothing in `e2e/` asserts a frame budget. PRD 7.2's ceilings are enforced by `pnpm bench` on the
+  # reference machine; `web/bench/baseline-2026-09-05.json` is that record.
+  smoke:
+    name: route + bench smoke (PRD 8.9.2, 9.1.2)
+    runs-on: ubuntu-latest
+    needs: web
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+      # `--with-deps` because a bare runner is missing the shared libraries Chromium links against.
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Playwright smoke
+        run: pnpm test:e2e
+      # Only on failure: the trace and the screenshot are what make a headless WebGL failure
+      # diagnosable at all, and uploading them on every green run is 100 MB of nothing.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            web/playwright-report
+            web/test-results
+          retention-days: 7

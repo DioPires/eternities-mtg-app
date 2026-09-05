@@ -14,6 +14,7 @@
     "typecheck": "tsc --build --force",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "check-budget": "node scripts/check-budget.mjs",
     "bench": "node scripts/bench.mjs",
     "verify-browser": "node scripts/verify-browser.mjs"

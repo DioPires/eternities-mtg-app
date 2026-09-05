@@ -41,4 +41,11 @@ export default tseslint.config(
     files: ['test/**/*.ts', 'scripts/**/*', '*.config.ts'],
     languageOptions: { globals: globals.node },
   },
+  {
+    // The Playwright specs run in Node, but their `evaluate` callbacks are serialised and run in
+    // the page exactly as `verify-browser.mjs`'s are — so both global sets are legitimately in
+    // scope in one file.
+    files: ['e2e/**/*.ts'],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
+  },
 )
