@@ -2,7 +2,7 @@
  * The per-plane parameter table of PRD 8.5.2: one row of a float `DataTexture` per plane, holding
  * everything the vertex shader needs to place and move that plane's stars.
  *
- * Why a texture and not uniforms: 83 planes × 24 floats is 1,992 floats, well past the uniform
+ * Why a texture and not uniforms: 87 planes × 24 floats is 2,088 floats, well past the uniform
  * array limits the PRD's weakest supported GPU has to offer, and the whole table uploads in one
  * call per frame.
  *
@@ -191,8 +191,8 @@ export class PlaneTable {
   }
 
   /**
-   * The entire per-frame CPU cost of the star field's motion: ~83 angle integrations and two
-   * easings, into a preallocated array. No allocation (PRD 7.3.2).
+   * The entire per-frame CPU cost of the star field's motion: one angle integration per plane and
+   * two easings, into a preallocated array. No allocation (PRD 7.3.2).
    *
    * `motion` is 0 under reduced motion (PRD 5.9). It freezes every angle where it stands rather
    * than resetting it, so toggling the setting mid-session never makes the field jump.

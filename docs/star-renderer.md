@@ -65,8 +65,9 @@ texel 5  tint.r   tint.g   tint.b    (spare)
 
 Read with `texelFetch`, so there is no filtering and no half-texel arithmetic to get wrong.
 
-The whole per-frame CPU cost of the field's motion is this table: ~83 angle integrations and two
-easings into a preallocated array, uploaded in one call (PRD 8.5.3's "~80 floats per frame").
+The whole per-frame CPU cost of the field's motion is this table: one angle integration per plane
+and two easings into a preallocated array, uploaded in one call (PRD 8.5.3's "~80 floats per
+frame").
 
 ## 4. Loading, fading, failing
 
@@ -81,10 +82,35 @@ Records are plane-ordered and `planes.json` carries `starOffset`/`starCount`, so
 complete" is a comparison against a moving cursor, not a scan. A partially arrived plane is inside
 the draw range at fade 0 — invisible until every one of its stars has landed.
 
-**Failure** (PRD 7.4.1): Phase 0's loader retries three times with exponential backoff. After that
-the scene emits exactly one event per artefact through `web/src/scene/errors.ts` and keeps
-rendering. Phase 4 subscribes and shows the toast. A missing `search.json` costs the set facet, not
-the multiverse.
+**Failure** (PRD 7.4.1): the loader retries three times with exponential backoff. After that the
+scene emits exactly one event per artefact through `web/src/scene/errors.ts` and keeps rendering.
+Phase 4 subscribes and shows the toast. A missing `search.json` costs the set facet, not the
+multiverse.
+
+Two failures skip the remaining attempts, because asking again cannot change the answer: an abort,
+which is the failure the caller asked for, and a `ContractError` — bad magic, a contract version
+this build does not speak, the wrong file kind. The backoff is abort-aware for the same reason.
+
+For `stars.bin` the attempt covers the *whole transfer*, body included, and a second attempt asks
+only for the bytes still missing (`Range: bytes=<received>-`). This matters because it is the
+largest artefact in the contract and much the likeliest to fail after its response headers came
+back fine — a failure that used to get no retries at all, the retry having sat around the response
+while the rejection came out of `read()`. Two endings are treated alike: a body that rejects
+mid-stream, and a body that *stops* mid-stream without rejecting, which the declared record count
+makes detectable and which otherwise returns a short file as though it were whole. A server that
+ignores `Range` costs bandwidth and nothing else — the duplicated prefix is dropped as it arrives,
+so the draw range and the plane reveals built on it only ever move forward.
+
+Because the reader now outlives an attempt, its header state is assigned as one block, after the
+kind check: a header that fails validation leaves no trace for the next attempt to find. Skipping
+that block would skip the kind check *and* the header-sized allocation with it, which is how a
+`sets.bin` served at the `stars.bin` path could be rejected on one attempt and accepted on three.
+
+One consequence worth knowing: the attempt boundary encloses the consumer callback, which for the
+scene is GPU work. A lost WebGL context therefore costs an attempt and reports as a `stars.bin`
+failure. Correctness survives it — the consumer is handed the whole body view and
+`StarGeometry.append` is monotonic, so records missed by a throwing call are uploaded by the next
+successful one.
 
 ## 5. Picking
 
@@ -95,8 +121,8 @@ click anywhere on a plane and you get the plane, unless you clicked a star.
   *same vertex shader* with `ID_PASS` defined — which is why it is exact. The sub-window comes from
   `camera.setViewOffset` and an 11×11 render target rather than a full-size target plus a scissor:
   identical projection, 484 bytes of readback instead of 8 MB of VRAM.
-- **Planes: a CPU sphere raycast** against ~83 bounding spheres whose centres come from the same
-  motion mirror. Allocation-free; it runs on pointer move.
+- **Planes: a CPU sphere raycast** against one bounding sphere per plane, whose centres come from
+  the same motion mirror. Allocation-free; it runs on pointer move.
 
 The readback is `readRenderTargetPixelsAsync`, and the renderer, camera and scene state are restored
 **before** awaiting the fence. `readPixels` into the pixel buffer happens synchronously, so the
@@ -202,10 +228,10 @@ every entry on it was found by injecting a larger error than the round before ha
 and that is the only method that has found any of them.
 
 *A row too thinly sampled to judge can be displaced without failing.* Sixty-four samples over
-`fixture-scale`'s 83 planes leave most rows with one sample, and row 0 is the only one there that
+`fixture-scale`'s 87 planes leave most rows with one sample, and row 0 is the only one there that
 clears the floor — that is the Blind Eternities dust, the row PRD 8.5.7 is named after and the one
 Phase 2b's tether frames, so the coverage is aimed at the right place, but it is coverage of one row
-and not of 83. An error scattered across rows rather than confined to one would likewise reduce
+and not of 87. An error scattered across rows rather than confined to one would likewise reduce
 coverage rather than fail. The deferred draw-range fix closes this one.
 
 *An error large enough to push the row off screen is absorbed, and the run passes green.*

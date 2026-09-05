@@ -11,6 +11,7 @@ import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import {
+  CARD_LAYOUTS,
   CONTRACT_VERSION,
   ContractError,
   SHARD_SIZE,
@@ -204,7 +205,16 @@ describe('shared contract test vector', () => {
   it('agrees with the pipeline on which layouts have a back image (contract §9)', () => {
     // Every Scryfall layout, both sides. This is what stops one language quietly deciding that,
     // say, `adventure` has a back image while the other says it does not.
-    expect(vector.backImageChecks.length).toBeGreaterThan(20)
+    //
+    // Membership, not a count, is the load-bearing assertion. `vector.json` arrives through an
+    // `as Vector` cast, so the union is erased by the time it reaches here: a layout Python knows
+    // and TypeScript does not would satisfy every check below, because `hasBackImage` answers
+    // `false` for an unknown string and Python answers `false` for a layout with no back image.
+    // Comparing the two lists as sets closes that in both directions. The bound this replaces
+    // (`length > 20`, against 26 members) closed neither.
+    expect([...vector.backImageChecks].map((check) => check.layout).sort()).toEqual(
+      [...CARD_LAYOUTS].sort(),
+    )
     for (const check of vector.backImageChecks) {
       expect(hasBackImage(check.layout)).toBe(check.hasBackImage)
     }

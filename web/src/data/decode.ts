@@ -200,9 +200,15 @@ export class StarStreamReader {
       // 2a moves shard parsing off the main thread) does not, and `.buffer` alone would silently
       // decode whatever bytes happen to sit at the start of the backing store.
       const joined = this.join()
-      this.header = decodeHeader(joined.buffer as ArrayBuffer, joined.byteOffset)
-      if (this.header.kind !== BinaryKind.Stars) {
-        throw new ContractError(`expected a stars file, got kind ${this.header.kind}`)
+      // Into a local, and assigned to the reader only once the whole block has succeeded. A
+      // reader used to be thrown away with the failed load, so recording the header before
+      // validating its kind cost nothing; PRD 7.4.1's retry keeps the reader across attempts, and
+      // a half-assigned header is one the next attempt finds already set and skips — taking the
+      // kind check and the header-sized allocation with it, and handing a `sets.bin` served at
+      // this path to the renderer as the multiverse.
+      const header = decodeHeader(joined.buffer as ArrayBuffer, joined.byteOffset)
+      if (header.kind !== BinaryKind.Stars) {
+        throw new ContractError(`expected a stars file, got kind ${header.kind}`)
       }
       // The header knows the length, so from here every chunk is written straight into place —
       // but `recordCount` is an unvalidated uint32 off the wire, and the streaming path has no
@@ -213,11 +219,18 @@ export class StarStreamReader {
       // `grow` take it from there: a real file under the cap still allocates exactly once, which
       // is the whole point of allocating from the header, and a claim of four billion records
       // costs nothing until the bytes turn up.
-      const declared = BINARY_HEADER_BYTES + this.header.recordCount * STAR_RECORD_BYTES
+      const declared = BINARY_HEADER_BYTES + header.recordCount * STAR_RECORD_BYTES
       const sized = new Uint8Array(
         Math.max(Math.min(declared, BINARY_HEADER_BYTES + MAX_EAGER_BODY_BYTES), this.received),
       )
       sized.set(joined, 0)
+      // Header and buffer together, after the last thing that can throw: they are one state, and
+      // no attempt may ever observe half of it. The chunk list is not part of that state — the
+      // push above already banked the bytes and the count, and a throw here leaves them on the
+      // reader. That is harmless, and load-bearing: the rejected bytes stay put, so an attempt
+      // that re-delivers only part 1 of the same wrong file re-joins it and rejects it again
+      // rather than finding an empty reader and starting over.
+      this.header = header
       this.buffer = sized
       this.chunks = []
     }
@@ -243,6 +256,17 @@ export class StarStreamReader {
     this.buffer = grown
   }
 
+  /**
+   * Bytes received so far, header included.
+   *
+   * This is the resume point of PRD 7.4.1's retry: a stream that dies part-way asks for
+   * `bytes=<this>-` rather than starting the largest artefact in the contract over. Byte-exact on
+   * purpose — it may land in the middle of a record, and the next chunk simply continues it.
+   */
+  get receivedBytes(): number {
+    return this.received
+  }
+
   /** Whole records received so far. Safe to use as a draw range. */
   get completeRecords(): number {
     if (this.header === null) return 0
@@ -252,6 +276,16 @@ export class StarStreamReader {
 
   get expectedRecords(): number {
     return this.header?.recordCount ?? 0
+  }
+
+  /**
+   * Whether the 16-byte header has arrived and been accepted.
+   *
+   * Only for reporting: `expectedRecords` is 0 both for a file that declares no stars and for a
+   * stream that died inside its own header, and the two want different words.
+   */
+  get hasHeader(): boolean {
+    return this.header !== null
   }
 
   get done(): boolean {

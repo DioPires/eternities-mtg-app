@@ -93,6 +93,9 @@ def set_entry(
     plane: str | None = "dominaria",
     universes_beyond: bool = False,
     excluded: bool = False,
+    prd_name: str | None = None,
+    corrected_from: str | None = None,
+    prd_ratified: str | None = None,
 ) -> SetEntry:
     return SetEntry(
         code=code,
@@ -103,9 +106,10 @@ def set_entry(
         notes="",
         prd_section="B.1",
         prd_verify=False,
-        prd_name=f"Set {code}",
+        prd_name=prd_name if prd_name is not None else f"Set {code}",
         prd_date="2000-01",
-        corrected_from=None,
+        corrected_from=corrected_from,
+        prd_ratified=prd_ratified,
     )
 
 

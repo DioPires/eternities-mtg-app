@@ -7,7 +7,7 @@
  * Since Phase 2b (DEC-588) the suite is parameterised. docs/navigation-contract.md §5 named the
  * acceptance test for the swap: "Phase 2b's implementation should pass the same suite against the
  * real rig." So it does — the same 27 checks run against the Phase 0 stub *and* against
- * `createSceneNavigation`, which flies an actual camera over fixture-scale's 83-plane roster. A
+ * `createSceneNavigation`, which flies an actual camera over fixture-scale's Appendix A roster. A
  * rule the rig quietly broke would fail here rather than in Phase 4's integration.
  */
 

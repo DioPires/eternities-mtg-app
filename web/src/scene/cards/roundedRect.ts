@@ -49,8 +49,12 @@ function outline(width: number, height: number, radius: number): Float32Array {
  * `ImageBitmap`, and an `ImageBitmap` is the one texture source whose `flipY` is not reliably
  * applied on upload — so the row the sampler calls `v = 0` is the image's *top*, not its bottom.
  * Mapping `v` upwards, as `PlaneGeometry` does for an ordinary image, put the card's title along
- * its bottom edge on Chrome/Metal. The atlas path in `./atlas` does not have this problem because
- * it blits through a render target, where three's own quad and the flip agree with each other.
+ * its bottom edge on Chrome/Metal. The atlas path in `./atlas` has exactly the same problem, from
+ * exactly the same cause, and answers it in the same place: `blitGeometry()` flips the blit quad's
+ * `v` rather than trusting `Texture.flipY`. Fixing it at decode time instead — asking
+ * `createImageBitmap` for `imageOrientation: 'flipY'` — would be one change for both, and it is a
+ * trap: the queue feeds this path *and* the atlas, so a decode-time flip would correct the sheet
+ * and invert the card, which already compensates here.
  *
  * `scripts/verify-browser.mjs --shots` writes the front and the back of a focused card, which is
  * PRD 9.3's checkpoint 4 and also what would catch this moving again.

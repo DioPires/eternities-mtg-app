@@ -82,6 +82,11 @@
       "notes": "New Capenna"
     },
     {
+      "slug": "clamhattan",
+      "displayName": "Clamhattan",
+      "notes": "Ratified from the wiki roster diff, 2026-09-04 (open question 1); no set maps here yet"
+    },
+    {
       "slug": "cridhe",
       "displayName": "Cridhe",
       "notes": ""
@@ -137,6 +142,11 @@
       "notes": "Paliano"
     },
     {
+      "slug": "foldaria",
+      "displayName": "Foldaria",
+      "notes": "Ratified from the wiki roster diff, 2026-09-04 (open question 1); no set maps here yet"
+    },
+    {
       "slug": "gargantikar",
       "displayName": "Gargantikar",
       "notes": ""
@@ -155,6 +165,11 @@
       "slug": "hell",
       "displayName": "Hell",
       "notes": ""
+    },
+    {
+      "slug": "horsehead-nebula",
+      "displayName": "Horsehead Nebula",
+      "notes": "Ratified from the wiki roster diff, 2026-09-04 (open question 1); no set maps here yet"
     },
     {
       "slug": "ikoria",
@@ -195,6 +210,11 @@
       "slug": "kamigawa",
       "displayName": "Kamigawa",
       "notes": ""
+    },
+    {
+      "slug": "kandoka",
+      "displayName": "Kandoka",
+      "notes": "Ratified from the wiki roster diff, 2026-09-04 (open question 1); no set maps here yet"
     },
     {
       "slug": "karsus",

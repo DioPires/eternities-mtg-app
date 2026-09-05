@@ -188,7 +188,11 @@ export class ImageQueue {
         entry.settle(DROPPED)
         continue
       }
-      // Strictly less, on a descending scan, so a tie goes to the earliest entry queued.
+      // Strictly less, on a descending scan, so a tie goes to the entry queued *latest*: the scan
+      // meets the newest entry first and an equal priority does not displace it. PRD 5.5.3 asks
+      // for nearest-first and nothing more — ties are unspecified, and the header above is explicit
+      // that this is a priority queue rather than a FIFO — so this is an artifact of the scan
+      // direction rather than a policy. `<=` would make ties FIFO if that is ever wanted.
       if (priority < bestPriority) {
         bestPriority = priority
         best = entry

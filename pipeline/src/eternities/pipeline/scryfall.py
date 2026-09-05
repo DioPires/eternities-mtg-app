@@ -35,6 +35,27 @@ class BulkSource:
     download_uri: str
     path: Path
     sets_path: Path
+    uri_reconstructed: bool = False
+    """True when ``download_uri`` is the local cache path, not the upstream URI.
+
+    A pinned run against a cache entry downloaded before the sidecar existed has no record of
+    where the file came from, and falls back to the path on disk. The run stays possible — that
+    is the point of the fallback — but the report must not print a cache filename under a heading
+    that promises an upstream one, so the row is marked instead of quietly meaning something else.
+    """
+
+
+class PinnedBulkMissingError(RuntimeError):
+    """``--bulk-updated-at`` named a bulk file this cache does not hold (PRD 4.9.1)."""
+
+
+def _stamp(updated_at: str) -> str:
+    """Cache-key form of Scryfall's ``updated_at``: the timestamp with its punctuation removed."""
+    return updated_at.replace(":", "").replace("-", "").replace("+", "").replace(".", "")
+
+
+def _meta_path(cache_dir: Path, bulk_type: str, stamp: str) -> Path:
+    return cache_dir / f"{bulk_type}-{stamp}.meta.json"
 
 
 def _request(uri: str) -> bytes:
@@ -65,15 +86,30 @@ def _bulk_entry(bulk_type: str) -> dict[str, Any]:
     raise RuntimeError(f"Scryfall bulk data has no {bulk_type!r} entry")
 
 
-def fetch(cache_dir: Path = DEFAULT_CACHE, *, bulk_type: str = "default_cards") -> BulkSource:
+def fetch(
+    cache_dir: Path = DEFAULT_CACHE,
+    *,
+    bulk_type: str = "default_cards",
+    pinned_updated_at: str | None = None,
+) -> BulkSource:
     """Download the bulk card file and the set list, or reuse the cached copies.
 
     Cache keys are Scryfall's ``updated_at`` for the bulk file, so a refresh is a new file and an
     unchanged upstream is a no-op (PRD 8.2.1).
+
+    ``pinned_updated_at`` names a cached key instead of asking upstream which one is current. That
+    is what makes 4.9.1's determinism claim checkable *later*: Scryfall republishes
+    ``default_cards`` several times a day, so an unpinned re-run of an appendix-only change would
+    silently fold in a different card file and the plane diff would stop meaning anything. Pinning
+    touches the network not at all — a run that cannot be served from the cache fails rather than
+    quietly falling back to today's file.
     """
+    if pinned_updated_at is not None:
+        return _pinned(cache_dir, bulk_type, pinned_updated_at)
+
     entry = _bulk_entry(bulk_type)
     updated_at = str(entry["updated_at"])
-    stamp = updated_at.replace(":", "").replace("-", "").replace("+", "").replace(".", "")
+    stamp = _stamp(updated_at)
 
     uri = str(entry.get("jsonl_download_uri") or entry["download_uri"])
     suffix = ".jsonl.gz" if "jsonl" in uri else ".json.gz" if uri.endswith(".gz") else ".json"
@@ -86,7 +122,49 @@ def fetch(cache_dir: Path = DEFAULT_CACHE, *, bulk_type: str = "default_cards") 
         sets_path.parent.mkdir(parents=True, exist_ok=True)
         sets_path.write_bytes(_fetch_all_sets())
 
+    # The upstream URI is not recoverable from the cache key — Scryfall's file name drops the
+    # sub-second part the key keeps — so record it beside the download. Without it a pinned re-run
+    # could not reproduce the report's "Scryfall bulk file" row.
+    _meta_path(cache_dir, bulk_type, stamp).write_text(
+        json.dumps({"updatedAt": updated_at, "downloadUri": uri}, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
     return BulkSource(updated_at=updated_at, download_uri=uri, path=cards_path, sets_path=sets_path)
+
+
+def _pinned(cache_dir: Path, bulk_type: str, updated_at: str) -> BulkSource:
+    """Serve one exact cache key, or fail naming what is missing and what is there."""
+    stamp = _stamp(updated_at)
+    candidates = sorted(cache_dir.glob(f"{bulk_type}-{stamp}.*json*"))
+    cards = [p for p in candidates if not p.name.endswith(".meta.json")]
+    sets_path = cache_dir / f"sets-{stamp}.json"
+    if not cards or not sets_path.exists():
+        held = (
+            sorted(p.name for p in cache_dir.glob(f"{bulk_type}-*")) if cache_dir.exists() else []
+        )
+        raise PinnedBulkMissingError(
+            f"--bulk-updated-at {updated_at!r} needs {bulk_type}-{stamp}.* and sets-{stamp}.json "
+            f"in {cache_dir}; it holds {held or 'nothing'}. Re-run without the flag to download, "
+            "or point --cache at the machine that has them."
+        )
+
+    meta_path = _meta_path(cache_dir, bulk_type, stamp)
+    uri = str(cards[0])
+    reconstructed = True
+    if meta_path.exists():
+        meta = cast("dict[str, Any]", json.loads(meta_path.read_text(encoding="utf-8")))
+        recorded = meta.get("downloadUri")
+        if recorded is not None:
+            uri = str(recorded)
+            reconstructed = False
+    return BulkSource(
+        updated_at=updated_at,
+        download_uri=uri,
+        path=cards[0],
+        sets_path=sets_path,
+        uri_reconstructed=reconstructed,
+    )
 
 
 def _fetch_all_sets() -> bytes:

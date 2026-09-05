@@ -10,10 +10,10 @@
  *
  * The React part runs once: one `<div>` per plane, created when `planes.json` lands and never
  * re-rendered. Every frame after that writes `transform` and `opacity` straight onto the DOM nodes
- * through refs — PRD 7.3.3 forbids layout-triggering style changes per frame, and re-rendering 83
- * React elements at 60 fps would be exactly that. Both of those are composited; `fontSize` is the
- * one style here that is not, so it is written only when it changes. `will-change: transform` keeps
- * the nodes on their own compositor layers.
+ * through refs — PRD 7.3.3 forbids layout-triggering style changes per frame, and re-rendering one
+ * React element per roster plane at 60 fps would be exactly that. Both of those are composited;
+ * `fontSize` is the one style here that is not, so it is written only when it changes.
+ * `will-change: transform` keeps the nodes on their own compositor layers.
  *
  * The chronology-band labels of PRD 5.4.5 share the layer and the same collision solver, at lower
  * priority, so a band label can never displace a plane name.
@@ -102,7 +102,7 @@ export function PlaneLabels({
   const candidates = useMemo(() => labelled.map(candidateFor), [labelled])
 
   // The band labels of PRD 5.4.5, for the focused plane only — no other plane's bands are legible
-  // from plane level, and 83 planes' worth of set names would be a wall of text.
+  // from plane level, and the whole roster's worth of set names would be a wall of text.
   const bandCandidates = useMemo<MutableCandidate[]>(() => {
     const plane = labelled.find((p) => p.slug === focusedPlaneSlug)
     if (!plane) return []

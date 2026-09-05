@@ -1,5 +1,5 @@
 /**
- * The camera rig's behavioural checks, against fixture-scale's 83-plane roster.
+ * The camera rig's behavioural checks, against fixture-scale's Appendix A roster.
  *
  * PRD 9.1.3 is the headline — "the motion function is run at simulated 30, 60 and 120 fps for a
  * fixed elapsed time and must yield identical positions within float tolerance" — and it is a real

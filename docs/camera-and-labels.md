@@ -104,7 +104,7 @@ geometry." Two mechanisms, in order of preference:
 
 1. **A clearance bulge, computed once per flight.** The eased distance-from-tether gets a
    `sin(π·u)` hump sized so the whole path clears every plane's exclusion sphere (`1.3 × radius` —
-   the disc plus the margin PRD 5.3.3 already reserves for drift). Sampled over ~83 spheres × 12
+   the disc plus the margin PRD 5.3.3 already reserves for drift). Sampled over the whole roster's spheres × 12
    points at flight start; nothing per frame.
 2. **A per-frame projection**, as the safety net. A camera inside an exclusion sphere is pushed out
    along the surface normal. It is a continuous projection of a continuously moving point, so the

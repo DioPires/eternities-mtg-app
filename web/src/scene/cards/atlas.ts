@@ -292,10 +292,18 @@ export class ThumbnailAtlas {
     renderer.setScissor(x / ratio, y / ratio, ATLAS_CELL_WIDTH / ratio, ATLAS_CELL_HEIGHT / ratio)
     renderer.setScissorTest(true)
     renderer.render(this.blitScene, this.blitCamera)
-    // Restored before the render target is put back, not after: `setRenderTarget` recomputes the GL
-    // viewport from whichever frame applies to the target it is binding, so it has to be the last
-    // word. The other order leaves the atlas's cell rectangle in GL state when the previous target
-    // is not the default framebuffer.
+    // Restored before the render target is put back, not after: `setRenderTarget` sets the GL
+    // viewport itself from whichever frame applies to the target it is binding, so it has to be the
+    // last word.
+    //
+    // The other order is wrong in both directions, and the damaging one is the non-default target.
+    // Binding a non-null target applies that target's own viewport to GL verbatim; a trailing
+    // `setViewport(saved)` then overwrites it with the *caller's screen* rectangle and leaves it
+    // there, so the next thing drawn into that target is scissored to a rectangle belonging to the
+    // canvas. Binding the default framebuffer instead recomputes GL from the saved viewport — which
+    // at that moment is still this cell — so the cell rectangle is on screen only until the
+    // trailing `setViewport` corrects it, one statement later. Transient rather than harmless, and
+    // no reason to rely on it.
     renderer.setScissorTest(previousScissorTest)
     renderer.setViewport(this.savedViewport)
     renderer.setScissor(this.savedScissor)
