@@ -16,7 +16,10 @@ import {
   HueClass,
   SizeClass,
   STAR_RECORD_BYTES,
+  colourIdentityBits,
   decodeStars,
+  hueClassFromIdentity,
+  packColourByte,
   type SetsSidecar,
   type Stars,
 } from '../src/data'
@@ -24,7 +27,15 @@ import { evaluateFilters, starMatches } from '../src/filters/evaluate'
 import { EMPTY_FILTERS, type FilterState } from '../src/filters/types'
 
 interface StarSpec {
-  readonly hue: number
+  /**
+   * The card's colour identity, as the letters a shard carries.
+   *
+   * Byte 7's hue class is *derived* from it here, exactly as the pipeline derives it, rather than
+   * given alongside it. A spec that set the two independently could describe a record the encoder
+   * cannot produce — a gold star with an empty identity, say — and a filter test that passes on an
+   * impossible record proves nothing about the filter.
+   */
+  readonly ci: string
   readonly size: number
   readonly types: number
   readonly plane?: number
@@ -44,7 +55,8 @@ function buildStars(specs: readonly StarSpec[]): Stars {
     const at = BINARY_HEADER_BYTES + index * STAR_RECORD_BYTES
     // Positions stay zero: nothing in PRD 6.6 reads them.
     view.setUint8(at + 6, spec.plane ?? 0)
-    view.setUint8(at + 7, spec.hue)
+    const identity = colourIdentityBits(spec.ci)
+    view.setUint8(at + 7, packColourByte(hueClassFromIdentity(identity), identity))
     view.setUint8(at + 8, spec.size)
     view.setUint8(at + 9, 200)
     view.setUint8(at + 10, 0)
@@ -61,18 +73,18 @@ const INSTANT = 1 << CardTypeBit.Instant
  * Six stars covering every rule in PRD 6.6.2-3:
  *   0 mono-white common creature
  *   1 mono-blue rare instant
- *   2 multicolour mythic creature
+ *   2 Azorius (WU) mythic creature — gold, and its identity is *not* red
  *   3 colourless uncommon land
  *   4 mono-red rare creature+land
  *   5 conspiracy: no type bits at all
  */
 const STARS = buildStars([
-  { hue: HueClass.White, size: SizeClass.Common, types: CREATURE },
-  { hue: HueClass.Blue, size: SizeClass.Rare, types: INSTANT },
-  { hue: HueClass.Multicolour, size: SizeClass.Mythic, types: CREATURE },
-  { hue: HueClass.Colourless, size: SizeClass.Uncommon, types: LAND },
-  { hue: HueClass.Red, size: SizeClass.Rare, types: CREATURE | LAND },
-  { hue: HueClass.Black, size: SizeClass.Common, types: 0 },
+  { ci: 'W', size: SizeClass.Common, types: CREATURE },
+  { ci: 'U', size: SizeClass.Rare, types: INSTANT },
+  { ci: 'WU', size: SizeClass.Mythic, types: CREATURE },
+  { ci: '', size: SizeClass.Uncommon, types: LAND },
+  { ci: 'R', size: SizeClass.Rare, types: CREATURE | LAND },
+  { ci: 'B', size: SizeClass.Common, types: 0 },
 ])
 
 function filters(patch: Partial<FilterState>): FilterState {
@@ -97,22 +109,76 @@ describe('no filter', () => {
 })
 
 describe('colour identity (PRD 6.6.2)', () => {
-  it('matches the selected hue class', () => {
+  it('matches every card whose identity contains the selected colour', () => {
+    // Star 1 is mono-blue, star 2 is Azorius. Both identities intersect `U`.
     expect(matched(filters({ colours: ['U'] }))).toEqual([1, 2])
   })
 
-  it('admits multicolour under any coloured selection, because the star record stores a class', () => {
-    // Documented approximation — see `allowedHues` in src/filters/evaluate.ts. Star 2 is gold and
-    // has no stored identity, so it stays lit rather than being hidden from a colour it may have.
-    expect(matched(filters({ colours: ['R'] }))).toEqual([2, 4])
+  it('excludes a multicolour card from a colour its identity does not contain', () => {
+    // The defect the board closed on 2026-09-04. Against the hue *class* the Azorius star 2 was
+    // "multicolour", which every coloured selection admitted, so a red-only filter lit it. Against
+    // the identity, `R` is simply not one of its two bits.
+    expect(matched(filters({ colours: ['R'] }))).toEqual([4])
   })
 
   it('colourless matches only the empty identity, never multicolour', () => {
     expect(matched(filters({ colours: ['C'] }))).toEqual([3])
   })
 
+  it('never matches an empty identity against a coloured selection', () => {
+    // The other direction of 6.6.2's "matches only empty identity": zero intersects nothing, so
+    // star 3 stays dark under every WUBRG chip and under all five at once.
+    for (const colour of ['W', 'U', 'B', 'R', 'G'] as const) {
+      expect(matched(filters({ colours: [colour] }))).not.toContain(3)
+    }
+    expect(matched(filters({ colours: ['W', 'U', 'B', 'R', 'G'] }))).not.toContain(3)
+  })
+
   it('ORs within the facet', () => {
+    // `W` takes the mono-white star and the Azorius one; `C` takes the colourless land. The gold
+    // star arrives on its white bit, not on a multicolour exemption.
     expect(matched(filters({ colours: ['W', 'C'] }))).toEqual([0, 2, 3])
+  })
+
+  it('counts a multicolour card once when the selection covers both its colours', () => {
+    // Union, not per-colour tallies: star 2 intersects both chips and is still one match.
+    const result = evaluateFilters(STARS, filters({ colours: ['W', 'U'] }), {
+      setIds: [],
+      sets: null,
+    })
+    expect(result.matching).toBe(3)
+    expect(matched(filters({ colours: ['W', 'U'] }))).toEqual([0, 1, 2])
+  })
+
+  it('is exact for every arity the encoder can produce (PRD 6.6.2, amendment A3)', () => {
+    // One star per non-empty identity, plus the empty one: 32 rows. For each of the five chips,
+    // the set the filter lights must be exactly the set whose identity has that bit — which is
+    // what "intersects" means, stated without reference to the implementation.
+    const all = Array.from({ length: 32 }, (_, mask) => mask)
+    const stars = buildStars(
+      all.map((mask) => ({
+        ci: ['W', 'U', 'B', 'R', 'G'].filter((_, bit) => (mask & (1 << bit)) !== 0).join(''),
+        size: SizeClass.Common,
+        types: CREATURE,
+      })),
+    )
+    const run = (state: FilterState): number[] => {
+      const result = evaluateFilters(stars, state, { setIds: [], sets: null })
+      return all.filter((i) => result.mask[i] === 1)
+    }
+    ;(['W', 'U', 'B', 'R', 'G'] as const).forEach((colour, bit) => {
+      expect(run(filters({ colours: [colour] }))).toEqual(
+        all.filter((mask) => (mask & (1 << bit)) !== 0),
+      )
+    })
+    // 16 of the 32 identities contain white or blue; only mask 0 is colourless.
+    expect(run(filters({ colours: ['W', 'U'] }))).toHaveLength(24)
+    expect(run(filters({ colours: ['C'] }))).toEqual([0])
+    // Sanity on the fixture itself: it really does carry gold cards, so the rows above are not
+    // all mono and the exclusion has something to exclude.
+    expect(all.filter((mask) => hueClassFromIdentity(mask) === HueClass.Multicolour)).toHaveLength(
+      26,
+    )
   })
 })
 

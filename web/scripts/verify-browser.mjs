@@ -468,7 +468,73 @@ async function verifyShell(page, url, log) {
   check(deep.sets > 0, 'the plane panel listed no sets (PRD 6.4 plane panel item 3)')
   log(`  deep link: ${deep.crumb} · chips ${deep.chips.join(', ')} · ${deep.count} · ${deep.sets} sets`)
 
+  // --- 2b. a single colour excludes a multicolour card (PRD 6.6.2) -----------------------
+  // The exact defect the board closed on 2026-09-04. Until contract v2 the colour facet evaluated
+  // against the star record's *hue class*, so "multicolour" was one value and every coloured chip
+  // admitted all of it — an Azorius card stayed lit under a red-only filter. Byte 7 now carries the
+  // five-bit WUBRG identity (amendment A3) and the filter intersects against that.
+  //
+  // The expected count is computed here from `stars.bin` itself rather than hard-coded: the two
+  // fixtures and the real dataset have different rosters, and a number that only holds on one of
+  // them is not a check. The old semantics are computed alongside it, so the assertion fails both
+  // when the filter over-matches and when the dataset has no multicolour card to exclude — which
+  // would make the whole step vacuous.
+  const colours = await page.evaluate(async () => {
+    const base = document.querySelector('meta[name="eternities:data"]')?.getAttribute('content')
+    const bytes = new Uint8Array(await (await fetch(`${base}stars.bin`)).arrayBuffer())
+    // Contract §6: 16-byte header, then 12-byte records. Byte 7 packs the hue class in bits 0-2
+    // and the colour identity in bits 3-7.
+    const HEADER = 16
+    const RECORD = 12
+    const MULTICOLOUR = 5
+    const total = (bytes.byteLength - HEADER) / RECORD
+    const rows = ['W', 'U', 'B', 'R', 'G'].map((letter, bit) => ({
+      letter,
+      bit,
+      identity: 0,
+      hue: 0,
+    }))
+    for (let i = 0; i < total; i += 1) {
+      const byte = bytes[HEADER + i * RECORD + 7]
+      const hue = byte & 7
+      const identity = (byte >> 3) & 31
+      for (const row of rows) {
+        if ((identity & (1 << row.bit)) !== 0) row.identity += 1
+        // What the hue-class filter used to match: this class, plus all of multicolour.
+        if (hue === row.bit || hue === MULTICOLOUR) row.hue += 1
+      }
+    }
+    // The colour with the most gold cards to exclude, so the check bites as hard as the data allows.
+    rows.sort((a, b) => b.hue - b.identity - (a.hue - a.identity))
+    return { total, best: rows[0] }
+  })
+  check(
+    colours.best.hue > colours.best.identity,
+    `no colour in this dataset has a multicolour card to exclude — PRD 6.6.2's fix is untestable here`,
+  )
+  await page.goto(`${url}/?c=${colours.best.letter}`, { waitUntil: 'networkidle0' })
+  await waitForDataset(page)
+  const exact = await page.evaluate(() => document.querySelector('.chip-count')?.textContent ?? '')
+  const exactCounts = /^([\d,]+) of ([\d,]+)/.exec(exact)
+  const exactMatched = Number(exactCounts?.[1]?.replace(/,/g, '') ?? -1)
+  check(
+    Number(exactCounts?.[2]?.replace(/,/g, '') ?? -1) === colours.total,
+    `the chip row counted against ${exact}, not the ${colours.total} stars in stars.bin`,
+  )
+  check(
+    exactMatched === colours.best.identity,
+    `?c=${colours.best.letter} matched ${exactMatched} cards; PRD 6.6.2's identity intersection is ` +
+      `${colours.best.identity}. The old hue-class semantics gave ${colours.best.hue}.`,
+  )
+  log(
+    `  exact colour: ?c=${colours.best.letter} → ${exactMatched} of ${colours.total}, ` +
+      `${colours.best.hue - colours.best.identity} multicolour cards excluded (PRD 6.6.2)`,
+  )
+
   // --- 3. plane panel set click adds a chip (PRD 6.4.3) ----------------------------------
+  await page.goto(`${url}/plane/${roster.plane.slug}?c=W,U&r=rare`, { waitUntil: 'networkidle0' })
+  await waitForDataset(page)
+  await page.waitForSelector('.set-list .set-row', { timeout: 15_000 })
   await page.click('.set-list .set-row')
   await page.waitForFunction(() => location.search.includes('s='), { timeout: 5000 })
   log(`  set click → ${await route(page)}`)
@@ -1761,6 +1827,20 @@ async function verifyStarField(page, url, allowSoftware, problems) {
   console.log(
     `    samples per plane row: ` + selfCheck.sampledRows.map(([row, n]) => `${row}x${n}`).join(' '),
   )
+  // The one bucket still dropped before `checked` and `sampledRows`, so the one place the
+  // absorption DEC-625 closed could re-open. Printed on every run, including green ones, because
+  // a number that only appears on failure cannot be watched drifting upwards. Both margins, not
+  // just the near one: `z > 1` is behind the eye *or* past the far plane, and a one-sided number
+  // argues for one side of a two-sided test.
+  const depths = (d) => (d === null ? 'n/a' : d.toFixed(1))
+  console.log(
+    `    ${selfCheck.unprojectable} unprojectable (behind the eye or past the far plane)` +
+      (selfCheck.unprojectableRows.length > 0
+        ? ` (plane rows ${selfCheck.unprojectableRows.map(([row, n]) => `${row}x${n}`).join(' ')})`
+        : '') +
+      `; sampled stars ${depths(selfCheck.nearestDepth)}-${depths(selfCheck.farthestDepth)} units ` +
+      `in front of the eye (near plane 0.1, far plane 8000)`,
+  )
   if (selfCheck.canvasBytes < 5000) {
     problems.push(`the canvas looks empty (${selfCheck.canvasBytes}-byte PNG) — nothing drew`)
   } else {
@@ -1802,14 +1882,46 @@ async function verifyStarField(page, url, allowSoftware, problems) {
           `measure looks like, not what occlusion looks like`
         : ''
 
+    // The other half of the off-screen fix, and the one failure the messages above cannot
+    // describe: these samples never reached `checked` or `sampledRows`, so the dark-row rule has
+    // no row to name and the "located only N of M" fallback below would report a shortfall in the
+    // wrong denominator — it would say the run measured too little, when what happened is that
+    // stars ended up behind the eye and the run quietly stopped counting them.
+    //
+    // The message names both causes rather than only the mirror. A plane the *data* places far
+    // enough out trips this clause with the mirror and the shader in perfect agreement — a plane
+    // table displaced to `home + 4000` does it — and `MULTIVERSE_RADIUS = 130.0` is the invariant
+    // that keeps a real dataset from reaching there, not anything in this check.
+    const unprojectable =
+      selfCheck.unprojectable > 0
+        ? `${selfCheck.unprojectable} sampled stars projected behind the eye or past the far plane` +
+          (selfCheck.unprojectableRows.length > 0
+            ? ` (plane ${selfCheck.unprojectableRows.length === 1 ? 'row' : 'rows'} ` +
+              `${selfCheck.unprojectableRows.map(([row, n]) => `${row}x${n}`).join(' ')})`
+            : '') +
+          ` — these are the one kind of sample no pick window can be aimed at, so they are dropped ` +
+          `before the tallies and this is the only place they can be reported. Either the CPU ` +
+          `motion mirror is wrong about those rows, or the plane table puts them outside the ` +
+          `130-unit multiverse radius the datasets are built to; check the rows above against the ` +
+          `plane table before assuming the mirror. The ` +
+          `${selfCheck.nearestDepth === null ? 'depth range' : `${selfCheck.nearestDepth.toFixed(1)}-unit near margin`} ` +
+          `printed above is over the samples that survived and says nothing about these`
+        : ''
+
     if (selfCheck.missed.length > 0) {
       throw new Error(
         `the CPU motion mirror disagrees with the vertex shader for ${selfCheck.missed.length} ` +
           `stars — PRD 8.5.7's camera tether would frame the wrong point` +
-          (darkRows === '' ? '' : `. And in the same run, ${darkRows}`),
+          (darkRows === '' ? '' : `. And in the same run, ${darkRows}`) +
+          (unprojectable === '' ? '' : `. And in the same run, ${unprojectable}`),
       )
     }
-    if (darkRows !== '') throw new Error(darkRows)
+    if (darkRows !== '') {
+      throw new Error(
+        darkRows + (unprojectable === '' ? '' : `. And in the same run, ${unprojectable}`),
+      )
+    }
+    if (unprojectable !== '') throw new Error(unprojectable)
     throw new Error(
       `the self-check located only ${selfCheck.measured} of ${selfCheck.checked} sampled stars ` +
         `in their own pick window — too few to establish PRD 8.5.7 either way`,

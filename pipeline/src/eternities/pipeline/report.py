@@ -144,6 +144,26 @@ def load_previous_planes(data_root: Path, exclude: str) -> PreviousRun | None:
     return PreviousRun(directory.name, planes=mapping)
 
 
+def manifest_chain(previous: PreviousRun | None, carried: str | None) -> list[str | None]:
+    """The candidate predecessors ``write_dataset`` records in the manifest, in priority order.
+
+    The manifest records which run the 4.9.2 diff was taken against, because 8.8.3 deletes that
+    directory in the same commit and the report names it in prose only. There are two candidates
+    because a *re-run* in an already-pruned tree finds only the directory it is about to overwrite:
+    ``carried`` is what that directory's own manifest recorded (``recorded_previous_run``), which is
+    the predecessor the first build established, and using it keeps the re-run byte-identical
+    (4.9.1) instead of dropping the field and claiming to be a first run.
+
+    ``previous`` contributes its **name**, never its ``planes``. That is the whole content of this
+    function and it is DEC-647 B1: a predecessor this build cannot decode is still the predecessor,
+    so the chain holds and only the diff is lost. Gating the name on ``planes is not None`` puts
+    "First production run" into the report of a third run and silently drops the link — which is
+    why the composition lives here, in one place a test can hold, rather than inline at the one
+    call site in ``run.build``.
+    """
+    return [previous.name if previous else None, carried]
+
+
 def diff_planes(dataset: Dataset, previous: dict[str, str]) -> list[tuple[str, str, str]]:
     """PRD 4.9.2: cards whose plane changed since the last run."""
     current: dict[str, tuple[str, str]] = {}

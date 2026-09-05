@@ -119,22 +119,35 @@ required notices. It opens from the help sheet rather than a seventh cluster con
 These four are the review surface. Each is a place where two requirements met and something had to
 give.
 
-### 4.1 Colour identity is approximated, because the star record cannot express it
+### 4.1 Colour identity was approximated — closed by contract v2
+
+**The decision this section records has been overtaken. The gap is closed; the compromise is kept
+here because its shape is why the data contract changed.**
 
 PRD 6.6.2 asks for "the card's identity intersects the selected colours". PRD 6.6.5 requires colour
-to evaluate **against the star record** so it is live from the first frame. But the star record
-(PRD 8.3) stores a *hue class* — W, U, B, R, G, multicolour, colourless — and PRD 5.4.8 is explicit
-that this is a class and not a colour set: "every multicolour card is gold … the star record stores
-a class, not a colour." No loaded artefact carries a multicolour card's actual identity.
+to evaluate **against the star record** so it is live from the first frame. Through Phase 4 the star
+record (PRD 8.3) stored a *hue class* — W, U, B, R, G, multicolour, colourless — and PRD 5.4.8 is
+explicit that this is a class and not a colour set: "every multicolour card is gold … the star record
+stores a class, not a colour." No loaded artefact carried a multicolour card's actual identity.
 
-So selecting any of W/U/B/R/G admits that hue class **and** the multicolour class. An Azorius card
-stays lit under a red-only filter. That over-matches, and it is the safe direction: every card whose
-identity really does intersect the selection is shown, and none is hidden. The alternative — gold
-never matching a single-colour selection — would hide cards PRD 6.6.2 says must match, which is the
-failure a user would actually notice. `C` is exact, per PRD 6.6.2's "matches only empty identity".
+So Phase 4 shipped an over-match: selecting any of W/U/B/R/G admitted that hue class **and** the
+whole multicolour class, and an Azorius card stayed lit under a red-only filter. That was the safe
+direction — every card whose identity really did intersect the selection was shown, and none was
+hidden — but it was not what 6.6.2 asks for, and closing it needed a colour-identity field in the
+star record, which was a data-contract change and not Phase 4's to make. Flagged to the board with
+the Phase 4 hand-back.
 
-**Closing the gap needs a colour-identity field in the star record**, which is a data-contract change
-and not Phase 4's to make. Flagged to the board with the Phase 4 hand-back.
+**The board closed it on 2026-09-04** (DEC-589, amendment A3). The card's five-bit WUBRG identity
+now packs into the spare bits of the star record's byte 7 — the record stays 12 bytes and every raw
+artefact size is unchanged — and contract v2 shipped it. The colour facet intersects the selected
+letters against `stars.colourIdentity`, which is 6.6.2 verbatim and still reads the star record, so
+6.6.5 holds too. `C` stays a flag rather than a sixth bit: an empty identity intersects nothing, and
+"matches only empty identity" is not a mask test.
+
+Both sides of it are asserted. `test/filters.test.ts` runs all 32 identities past all five chips;
+the browser walk loads `?c=<letter>` against the real `stars.bin`, computes the expected count from
+the file's own bytes **and** the superseded hue-class count beside it, so the step fails if the
+filter over-matches again and also if the dataset stops carrying a multicolour card to exclude.
 
 ### 4.2 A filter change replaces, a focus change pushes
 

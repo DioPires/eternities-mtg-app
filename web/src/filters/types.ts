@@ -6,10 +6,16 @@
  * (`./evaluate`) and the chips (`../ui/FilterChips`) all read the same vocabulary.
  */
 
-import { CardTypeBit, HueClass, SizeClass } from '../data'
+import { CardTypeBit, COLOUR_LETTERS, HueClass, SizeClass } from '../data'
 
-/** PRD 6.7.2's `c` parameter: colour letters plus `C` for colourless. */
-export const FILTER_COLOURS = ['W', 'U', 'B', 'R', 'G', 'C'] as const
+/**
+ * PRD 6.7.2's `c` parameter: colour letters plus `C` for colourless.
+ *
+ * Spread from `COLOUR_LETTERS` rather than written out again, so `Exclude<FilterColour, 'C'>` is
+ * exactly `COLOUR_LETTER_BIT`'s key set and a sixth letter cannot be added on one side only.
+ * `colour-byte.test.ts` pins that equivalence at the type level (DEC-650 N4).
+ */
+export const FILTER_COLOURS = [...COLOUR_LETTERS, 'C'] as const
 export type FilterColour = (typeof FILTER_COLOURS)[number]
 
 /** PRD 6.6.2's eight filterable types, in star-record bit order. */
@@ -78,14 +84,14 @@ export const RARITY_CLASS: Readonly<Record<FilterRarity, number>> = {
   mythic: SizeClass.Mythic,
 }
 
-export const COLOUR_HUE: Readonly<Record<FilterColour, number>> = {
-  W: HueClass.White,
-  U: HueClass.Blue,
-  B: HueClass.Black,
-  R: HueClass.Red,
-  G: HueClass.Green,
-  C: HueClass.Colourless,
-}
+/**
+ * There is deliberately no `FilterColour → HueClass` table here any more.
+ *
+ * PRD 6.6.2's colour facet evaluates against the star record's five-bit colour identity, not its
+ * hue class (`../data/colourByte`, amendment A3). A second letter mapping kept "for reference" is
+ * how the two drift back apart, so `COLOUR_LETTER_BIT` is now the only one. `HUE_LABEL` below
+ * stays, because PRD 7.5.3 names the *rendered* class in the panels and that is a different job.
+ */
 
 export const COLOUR_LABEL: Readonly<Record<FilterColour, string>> = {
   W: 'White',
@@ -114,8 +120,13 @@ export const RARITY_LABEL: Readonly<Record<FilterRarity, string>> = {
   mythic: 'Mythic',
 }
 
-/** PRD 7.5.3: the star encoding is spelled out as text in the panels, never colour alone. */
-export const HUE_LABEL: Readonly<Record<number, string>> = {
+/**
+ * PRD 7.5.3: the star encoding is spelled out as text in the panels, never colour alone.
+ *
+ * Keyed by `HueClass`, not by `number`: all seven classes are present, so a lookup on a value
+ * `hueClassFromIdentity` returned is total and the panel needs no fallback behind it.
+ */
+export const HUE_LABEL: Readonly<Record<HueClass, string>> = {
   [HueClass.White]: 'White',
   [HueClass.Blue]: 'Blue',
   [HueClass.Black]: 'Black',

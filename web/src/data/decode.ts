@@ -8,14 +8,12 @@
  *  - `stars.bin` is uploaded to the GPU as one interleaved buffer, so nothing is repacked.
  */
 
+import { colourByteOf, colourIdentityFromColourByte, hueClassFromColourByte } from './colourByte'
 import {
   BINARY_HEADER_BYTES,
   BINARY_MAGIC,
   BinaryKind,
-  COLOUR_IDENTITY_MASK,
-  COLOUR_IDENTITY_SHIFT,
   CONTRACT_VERSION,
-  HUE_CLASS_MASK,
   SetsSection,
   SHARD_SIZE,
   STAR_RECORD_BYTES,
@@ -130,8 +128,10 @@ function makeStars(buffer: ArrayBuffer, count: number, flags: number): Stars {
     y: (i) => coordinate(i, 1),
     z: (i) => coordinate(i, 2),
     planeIndex: (i) => view.getUint8(at(i, 6)),
-    hueClass: (i) => view.getUint8(at(i, 7)) & HUE_CLASS_MASK,
-    colourIdentity: (i) => (view.getUint8(at(i, 7)) >> COLOUR_IDENTITY_SHIFT) & COLOUR_IDENTITY_MASK,
+    // Byte 7 goes through `colourByte`, never read here: it packs two fields and a reader that
+    // masks for itself is exactly what failed in PR #10 (see that module's header).
+    hueClass: (i) => hueClassFromColourByte(colourByteOf(interleaved, i)),
+    colourIdentity: (i) => colourIdentityFromColourByte(colourByteOf(interleaved, i)),
     sizeClass: (i) => view.getUint8(at(i, 8)),
     brightness: (i) => view.getUint8(at(i, 9)),
     twinklePhase: (i) => view.getUint8(at(i, 10)),
