@@ -22,14 +22,19 @@
  *    separately. The table is now the single clock and `MotionSync` mirrors it into the rig every
  *    frame, before the rig reads a tether. See `camera/motion.ts`.
  *
- * What is deliberately *not* folded in is Phase 2a's bench and GPU self-check harness. Both drive
- * the camera themselves — the bench flies a scripted path, the self-check holds the field still and
- * reads pixels back — so they cannot share a scene with a rig that is also flying it, and the
- * committed bench baseline was measured against that harness. `App` still routes `?bench`, `?hold`
- * and `?selfcheck` there, and PRD 9.1.2's real `/bench` route is Phase 6's.
+ * What is deliberately *not* folded in is Phase 2a's GPU self-check harness. It holds the field
+ * still and reads pixels back, which it cannot do in a scene where the rig is also flying the
+ * camera; `App` still routes `?selfcheck` there.
  *
- * The overlay here is the two or three controls needed to fly the scene and read its state, exactly
- * as the two harnesses were. PRD section 6's HUD, panels and search are Phase 4's (DEC-589).
+ * **Phase 6 split this file in two.** `SceneView` is the scene with nothing around it, and it is
+ * what the shell mounts inside its own `.app` — the join that Phase 3 recorded and Phase 4 deferred.
+ * `EternitiesScene` is the Phase 3 harness: the same `SceneView` plus its own load, its own intro
+ * and the readout panel that Phase 3's exit criteria and `scripts/verify-browser.mjs` assert
+ * against. Three things differ between the two, all of them named on `SceneViewProps`: who loads
+ * the data, who starts PRD 6.8.2's intro, and who owns the keyboard.
+ *
+ * The bench rejoined here too. PRD 9.1.2's `/bench` drives this scene through `bench/benchDrive`
+ * rather than Phase 2a's harness, so the numbers are the shipped renderer's.
  */
 
 import { Canvas, useFrame } from '@react-three/fiber'
@@ -54,6 +59,7 @@ import {
   type PlaneShardFile,
 } from '../data'
 import { PlaneLabels } from '../labels/PlaneLabels'
+import type { NavigationHost } from '../navigation/host'
 import { createSceneNavigation, type SceneNavigation } from '../navigation/scene'
 import type { NavigationSnapshot } from '../navigation/types'
 import { createPlaneDetailLoader } from '../plane-detail/client'
@@ -70,7 +76,7 @@ import { StarScene, type StarSceneHandle } from './StarScene'
 import type { PlaneTable } from './starfield/planeTable'
 import { SKY_COLOUR } from './tuning'
 import { useReducedMotion } from './useReducedMotion'
-import { useSceneData } from './useSceneData'
+import { useSceneData, type SceneDataState } from './useSceneData'
 
 const FOV = 55
 
@@ -142,10 +148,44 @@ function PlanetHoverLabel({
   return <div ref={node} className="planet-label" data-testid="planet-label" />
 }
 
-export function EternitiesScene(): ReactElement {
-  const data = useSceneData()
-  const reducedMotion = useReducedMotion()
+export interface SceneViewProps {
+  /**
+   * The load, hoisted out so the shell can own it. There is exactly one loader on the page
+   * (`app/dataset.ts` explains why), and whoever mounts this scene is it.
+   */
+  readonly data: SceneDataState
+  /**
+   * PRD 5.9. Passed in rather than read here, because the two callers resolve it from different
+   * authorities: the harness from the OS and `?motion=`, the shell from PRD 6.10.1's settings
+   * toggle layered over both.
+   */
+  readonly reducedMotion: boolean
+  /**
+   * Where to publish the real navigation once `planes.json` has built it.
+   *
+   * With a host, the shell is driving: it owns PRD 6.8.2's intro (`app/boot.ts` sequences it against
+   * the deep link, which this scene cannot see), it owns the keyboard map (PRD 6.11), and it owns
+   * the chrome. Without one, this scene is the whole application — the Phase 3 harness — and owns
+   * all three itself.
+   */
+  readonly host?: NavigationHost | null
+  /**
+   * Render the harness readout and bind its shortcuts. True for `?harness=3` and `?probe=1`, whose
+   * assertions read that panel; false in the shell, where PRD section 6's HUD is the real one.
+   */
+  readonly chrome?: boolean
+}
 
+/**
+ * The scene, with nothing around it. Mounted by the shell (inside its `.app`) and by the Phase 3
+ * harness (which supplies its own).
+ */
+export function SceneView({
+  data,
+  reducedMotion,
+  host = null,
+  chrome = true,
+}: SceneViewProps): ReactElement {
   const [snapshot, setSnapshot] = useState<NavigationSnapshot | null>(null)
   const [tier, setTier] = useState<{ tier: QualityTier; changes: number }>({
     tier: QUALITY_TIERS[0]!,
@@ -189,11 +229,18 @@ export function EternitiesScene(): ReactElement {
   // The scene is built once `planes.json` lands and lives for the session (PRD 8.7.2).
   const sceneRef = useRef<SceneNavigation | null>(null)
   const reducedAtBuild = useRef(reducedMotion)
+  const hostRef = useRef(host)
+  hostRef.current = host
   const scene = useMemo(() => {
     if (!data.planes) return null
     const built = createSceneNavigation(data.planes, {
       drive: 'manual',
       reducedMotion: reducedAtBuild.current,
+      // Under the shell the host has been answering for the page since before the first paint. It
+      // starts at the multiverse and `boot()` has not moved it — the deep link reaches the scene
+      // through `playIntro`, not through the initial focus — but carrying it across is what makes
+      // the swap a swap rather than a reset, and it is one field.
+      ...(hostRef.current ? { initialFocus: hostRef.current.snapshot().focus } : {}),
     })
     sceneRef.current = built
     return built
@@ -201,14 +248,24 @@ export function EternitiesScene(): ReactElement {
 
   useEffect(() => () => sceneRef.current?.api.dispose(), [])
 
+  // The moment the rig exists, the shell's navigation becomes it. Everything the shell has bound —
+  // the router binding from `boot()`, the HUD's snapshot subscription — is re-pointed by the host
+  // without re-registering. See `navigation/host.ts`.
+  useEffect(() => {
+    if (!scene || !host) return
+    host.attach(scene.api)
+  }, [scene, host])
+
   useEffect(() => {
     if (!scene) return
     const unsubscribe = scene.api.subscribe(setSnapshot)
     setSnapshot(scene.api.snapshot())
-    // PRD 6.8.2: the intro plays once per session. With no router yet (Phase 4) the target is home.
-    scene.api.playIntro({ kind: 'multiverse' }, { reason: 'intro' })
+    // PRD 6.8.2: the intro plays once per session. Under the shell `app/boot.ts` starts it, because
+    // it is the only place that knows the deep link the intro has to aim at and the second stage
+    // that follows it. Standalone, the target is home.
+    if (!host) scene.api.playIntro({ kind: 'multiverse' }, { reason: 'intro' })
     return unsubscribe
-  }, [scene])
+  }, [scene, host])
 
   useEffect(() => {
     scene?.api.setReducedMotion(reducedMotion)
@@ -398,7 +455,11 @@ export function EternitiesScene(): ReactElement {
     }
   }, [])
 
+  // The harness's own shortcuts. Not bound under the shell: PRD 6.11's map is `useKeyboardMap`,
+  // and two listeners on `window` for the same key would run Esc twice — once up the focus chain
+  // and once through the router.
   useEffect(() => {
+    if (!chrome) return
     const onKeyDown = (event: KeyboardEvent): void => {
       const built = sceneRef.current
       if (!built) return
@@ -419,7 +480,7 @@ export function EternitiesScene(): ReactElement {
     return () => {
       window.removeEventListener('keydown', onKeyDown)
     }
-  }, [])
+  }, [chrome])
 
   // The `?probe=1` seam of `./probe`. Installed only when the URL asks, and it calls the same
   // `focusStar` the pointer does rather than a second implementation of it.
@@ -597,8 +658,8 @@ export function EternitiesScene(): ReactElement {
   const focusedCard = focusedStar >= 0 ? cardsRef.current.get(focusedStar) : undefined
   const memory = gpuMemoryReport(gpu.atlas, gpu.card)
 
-  return (
-    <div className="app">
+  const body = (
+    <>
       <Canvas
         camera={{ position: [0, 150, 260], fov: FOV, near: 0.1, far: 8000 }}
         gl={{
@@ -664,6 +725,14 @@ export function EternitiesScene(): ReactElement {
       <div className="labels">
         <PlanetHoverLabel state={labelState} text={setName} />
       </div>
+    </>
+  )
+
+  if (!chrome) return body
+
+  return (
+    <div className="app">
+      {body}
 
       <div className="overlay" data-testid="eternities-status">
         <h1>Eternities</h1>
@@ -730,4 +799,20 @@ export function EternitiesScene(): ReactElement {
       </div>
     </div>
   )
+}
+
+/**
+ * The Phase 3 harness: the scene as its own application, with its own load, its own reduced-motion
+ * resolution, its own intro and its own readout panel.
+ *
+ * `App` routes `?harness=3` and `?probe=1` here, and that is the whole reason it still exists —
+ * Phase 3's exit criteria and `scripts/verify-browser.mjs` were both signed off against this panel,
+ * and re-pointing them at the shell's HUD inside the same change that first mounts the shell's HUD
+ * would leave nothing standing still to compare against. It is the same {@link SceneView} the shell
+ * renders; only the surroundings differ.
+ */
+export function EternitiesScene(): ReactElement {
+  const data = useSceneData()
+  const reducedMotion = useReducedMotion()
+  return <SceneView data={data} reducedMotion={reducedMotion} />
 }

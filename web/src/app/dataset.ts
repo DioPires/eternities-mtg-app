@@ -1,44 +1,38 @@
 /**
- * PRD 8.7's loading order, driven once per page load and written into the store.
+ * The dataset, as the shell sees it: one mirror from the scene's load into the Zustand store.
  *
- *   manifest.json + planes.json  →  first frame
- *   stars.bin                    →  streamed, draw range grows (PRD 6.8.1)
- *   search.json + sets.bin       →  after the first frame (PRD 6.5.5, 7.2)
- *   planes/<slug>.<n>.json       →  on card focus (`./cardDetail`)
+ * **This module used to fetch.** Through Phase 5 it ran PRD 8.7's loading order itself — manifest,
+ * planes, `stars.bin`, then `search.json` and `sets.bin` — while `scene/useSceneData.ts` ran the
+ * very same order for the scene's GPU resources. Nothing noticed, because the two never ran on the
+ * same page: `App` routed the shell and the scene to different URLs. Phase 6 mounts the scene
+ * *inside* the shell, and at that point two loaders means two of every transfer, `stars.bin`
+ * included — the row PRD 7.2 budgets at 3 MB before the intro and the one artefact the intro waits
+ * on (PRD 8.7.4). Doubling it is not a rounding error, it is the budget.
  *
- * PRD 7.4.1 is the reliability contract: the loader in `../data/load` already retries with
- * exponential backoff three times; this reports the final failure **once**, through the store's
- * toast queue, and leaves everything that does not depend on the missing artefact working.
+ * So there is one loader now, and it is the scene's, because only the scene's can be one: the star
+ * records have to reach a GPU buffer as they arrive (PRD 8.7.3's growing draw range), and a loader
+ * that decodes into an array first cannot do that without holding the whole file twice. What the
+ * shell needs on top is all derived — indices, a search index, the decoded snapshot the filter mask
+ * walks — so it is derived here, from the state the scene already publishes.
  *
- * Idempotent and module-scoped, because `StrictMode` double-invokes effects and a second
- * `stars.bin` stream would double the biggest transfer on the page.
+ * The direction matters: the scene knows nothing about the store, and this file knows nothing about
+ * fetching. `useSceneData` returns plain data; `useMirrorSceneData` copies it across. Either half
+ * can be tested without the other, and the Phase 2a and Phase 3 harnesses keep working unchanged
+ * because they simply do not mount the mirror.
  *
- * **Phase 2a seam.** When the star renderer takes over `stars.bin` it should call
- * {@link reportDataError} for its own exhausted retries rather than growing a second toast path.
+ * PRD 7.4.1's "reports once via a non-blocking toast" is the other half of the same seam. The
+ * retrying is in `data/load.ts`; the one-event-per-artefact rule is in `scene/errors.ts`; turning
+ * that event into the toast the user sees is {@link useSceneErrorToasts}, here, because the toast
+ * queue is the store's.
  */
 
-import {
-  loadManifest,
-  loadPlanes,
-  loadSearch,
-  loadSets,
-  streamStars,
-  type PlaneRecord,
-  type SearchSetRecord,
-} from '../data'
+import { useEffect, useMemo } from 'react'
+
+import type { PlaneRecord, PlanesFile, SearchFile, SearchSetRecord } from '../data'
+import { sceneErrors } from '../scene/errors'
+import type { SceneDataState } from '../scene/useSceneData'
 import { buildSearchIndex } from '../search'
 import { useStore } from '../store/store'
-
-let started = false
-
-/** PRD 7.4.1's non-blocking report. Shared with Phase 2a's streaming loader. */
-export function reportDataError(artefact: string, error: unknown): void {
-  const detail = error instanceof Error ? error.message : String(error)
-  console.warn(`[eternities] ${artefact} failed to load: ${detail}`)
-  useStore
-    .getState()
-    .pushToast(`Could not load ${artefact}. Some of the multiverse may be missing.`, 'error', null)
-}
 
 function indexPlanes(planes: readonly PlaneRecord[]): {
   planeBySlug: Map<string, PlaneRecord>
@@ -66,82 +60,86 @@ function indexSets(sets: readonly SearchSetRecord[]): {
   return { setByCode, setById }
 }
 
-/** Resolves after the browser has actually painted, which is what PRD 6.5.5 means by "after". */
-function afterFirstFrame(): Promise<void> {
-  if (typeof requestAnimationFrame !== 'function') return Promise.resolve()
-  return new Promise((resolve) => {
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => resolve())
-    })
-  })
-}
+/**
+ * Copy the scene's load into the store, deriving the indices the shell reads by key.
+ *
+ * Split into four effects rather than one, and that is not tidiness. Each artefact arrives at its
+ * own time and each has its own derivation cost — `buildSearchIndex` walks every card name — so a
+ * single effect keyed on the whole `data` object would rebuild all of it on every one of the ~87
+ * `drawable` ticks that PRD 8.7.3's per-plane reveal produces. Keyed individually, each derivation
+ * runs exactly once.
+ *
+ * `patchData` is a plain `set()`, so writing the same values again is cheap but not free: Zustand
+ * notifies unconditionally. The effect dependencies are what keep the writes to one per artefact.
+ */
+export function useMirrorSceneData(data: SceneDataState): void {
+  const patchData = useStore((state) => state.patchData)
 
-async function loadFirstFrameArtefacts(): Promise<void> {
-  const store = useStore.getState()
-  const [manifest, planesFile] = await Promise.all([loadManifest(), loadPlanes()])
-  store.patchData({ manifest, planes: planesFile, ...indexPlanes(planesFile.planes) })
-}
+  const { manifest, planes, stars, search, sets, drawable } = data
 
-async function loadStars(): Promise<void> {
-  const store = useStore.getState()
-  // The draw range changes on every chunk; the HUD does not need to re-render that often, and
-  // PRD 7.3.3 forbids layout work per frame. One publish per animation frame is plenty.
-  let pendingProgress = 0
-  let scheduled = false
-  const publish = (): void => {
-    scheduled = false
-    useStore.getState().patchData({ starsDrawable: pendingProgress })
-  }
-  const stars = await streamStars((reader) => {
-    pendingProgress = reader.completeRecords
-    if (scheduled) return
-    scheduled = true
-    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(publish)
-    else publish()
-  })
-  store.patchData({ stars, starsDrawable: stars.count })
-}
+  const planeIndices = useMemo(
+    () => (planes === null ? null : indexPlanes(planes.planes)),
+    [planes],
+  )
+  const setIndices = useMemo(
+    () => (search === null ? null : indexSets(search.sets)),
+    [search],
+  )
+  const searchIndex = useMemo(() => (search === null ? null : buildSearchIndex(search)), [search])
 
-async function loadSearchArtefacts(): Promise<void> {
-  await afterFirstFrame()
-  const [searchFile, sets] = await Promise.all([loadSearch(), loadSets()])
-  useStore.getState().patchData({
-    searchFile,
-    searchIndex: buildSearchIndex(searchFile),
-    sets,
-    ...indexSets(searchFile.sets),
-  })
+  useEffect(() => {
+    if (manifest === null) return
+    patchData({ manifest })
+  }, [manifest, patchData])
+
+  useEffect(() => {
+    if (planes === null || planeIndices === null) return
+    patchData({ planes, ...planeIndices })
+  }, [planes, planeIndices, patchData])
+
+  // PRD 6.8.1: the shell shows the growing draw range instead of a spinner. This is the one write
+  // that repeats, once per plane revealed, which is what makes it worth its own effect.
+  useEffect(() => {
+    patchData({ starsDrawable: drawable })
+  }, [drawable, patchData])
+
+  // `boot()` starts PRD 6.8.2's intro off this becoming non-null, so it is written last of the
+  // first-load artefacts and only on a complete transfer (PRD 8.7.4).
+  useEffect(() => {
+    if (stars === null) return
+    patchData({ stars, starsDrawable: stars.count })
+  }, [stars, patchData])
+
+  useEffect(() => {
+    if (search === null || setIndices === null || searchIndex === null) return
+    patchData({ searchFile: search, searchIndex, ...setIndices })
+  }, [search, setIndices, searchIndex, patchData])
+
+  useEffect(() => {
+    if (sets === null) return
+    patchData({ sets })
+  }, [sets, patchData])
 }
 
 /**
- * Kick off the whole load. Returns a promise that settles when everything that is going to arrive
- * has arrived — nothing awaits it in the app, but the browser check does.
+ * PRD 7.4.1's non-blocking report, from the scene's hub to the store's toast queue.
+ *
+ * `timeoutMs: null` keeps it on screen: a missing artefact does not fix itself, and the user needs
+ * to be able to read why part of the multiverse is not there. `SceneErrorHub` already enforces one
+ * event per artefact, so there is no de-duplication to do here.
  */
-export function startDatasetLoad(): Promise<void> {
-  if (started) return Promise.resolve()
-  started = true
-
-  // `planes.json` gates nothing else here, but a failure to load it is the one that makes the
-  // page useless, so it is reported first and loudly.
-  const first = loadFirstFrameArtefacts().catch((error: unknown) => {
-    reportDataError('the plane roster', error)
-  })
-
-  const stars = first.then(() =>
-    loadStars().catch((error: unknown) => {
-      reportDataError('the star positions', error)
-    }),
+export function useSceneErrorToasts(): void {
+  const pushToast = useStore((state) => state.pushToast)
+  useEffect(
+    () =>
+      sceneErrors.subscribe((error) => {
+        pushToast(error.message, 'error', null)
+      }),
+    [pushToast],
   )
-  const search = first.then(() =>
-    loadSearchArtefacts().catch((error: unknown) => {
-      reportDataError('the search index', error)
-    }),
-  )
-
-  return Promise.all([stars, search]).then(() => undefined)
 }
 
-/** Test seam. Never called by the app. */
-export function resetDatasetLoadForTests(): void {
-  started = false
-}
+/** Re-exported for the tests that assert the shell's derived indices without a scene. */
+export { indexPlanes, indexSets }
+
+export type { PlanesFile, SearchFile }

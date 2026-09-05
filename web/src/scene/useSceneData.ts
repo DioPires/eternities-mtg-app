@@ -16,7 +16,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import type { SetsSidecar } from '../data/decode'
+import type { SetsSidecar, Stars } from '../data/decode'
 import { loadManifest, loadPlaneShard, loadPlanes, loadSearch, loadSets } from '../data/load'
 import { BLIND_ETERNITIES_SLUG, type Manifest, type PlanesFile, type SearchFile } from '../data/types'
 import { sceneErrors } from './errors'
@@ -41,6 +41,13 @@ export interface SceneDataState {
   readonly drawable: number
   readonly expected: number
   readonly starsComplete: boolean
+  /**
+   * The decoded `stars.bin`, once the transfer completed. The scene itself never reads it — the
+   * geometry owns those bytes on the GPU — but PRD 6.6.5's filter mask and PRD 6.3.2's count are
+   * built per record on the CPU, and this is how the shell gets them without a second transfer of
+   * the largest artefact on the page. `null` while streaming, and after a failed transfer.
+   */
+  readonly stars: Stars | null
   readonly search: SearchFile | null
   readonly sets: SetsSidecar | null
   /** Human-readable progress, and the Phase 0 contract check it inherited. */
@@ -55,6 +62,7 @@ const INITIAL: SceneDataState = {
   drawable: 0,
   expected: 0,
   starsComplete: false,
+  stars: null,
   search: null,
   sets: null,
   report: [],
@@ -129,7 +137,7 @@ export function useSceneData(): SceneDataState {
         patch({ search, sets })
       })
 
-      await streamStarsIntoScene(geometry, table, planes.planes, sceneErrors, {
+      const stars = await streamStarsIntoScene(geometry, table, planes.planes, sceneErrors, {
         signal,
         onPlaneComplete: () => {
           patch({ drawable: geometry.drawCount })
@@ -139,7 +147,7 @@ export function useSceneData(): SceneDataState {
         `stars.bin: ${geometry.drawCount} of ${manifest.counts.stars} records drawable, ` +
           `${planes.planes.filter((p) => (table.planes[p.index]?.fade ?? 0) > 0).length} planes revealed`,
       )
-      patch({ drawable: geometry.drawCount, starsComplete: true })
+      patch({ drawable: geometry.drawCount, starsComplete: true, stars })
 
       await background
 
