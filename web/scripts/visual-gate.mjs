@@ -22,9 +22,9 @@
  *
  * Frames come from `page.screenshot()` and not from the canvas, because half of what 9.3 asks the
  * owner to judge is not in the canvas: PRD 5.3.8's plane names are HTML billboards over it, and
- * "no label overlaps another at the home view" is a question about the composite. The debug overlay
- * is hidden for the clean frame and captured once, separately, as the state the frames were taken
- * in.
+ * "no label overlaps another at the home view" is a question about the composite. The state readout
+ * is hidden for every frame and captured beside it as text, as the state the frame was taken in —
+ * see `withPanelHidden`.
  *
  * The recordings are APNG, assembled here from a CDP screencast. There is no ffmpeg on the machine
  * and none is worth adding for this: every frame Chrome pushes is already a PNG, and an APNG is
@@ -217,8 +217,13 @@ function apng(frames) {
  * review needs and more than an APNG should carry, so frames are kept at `fps` and the delay of
  * each is the real wall-clock gap to the next — a dropped frame lengthens its predecessor rather
  * than speeding the playback up.
+ *
+ * The readout is hidden for the whole cast, for the reason `shoot` hides it for a still: a
+ * recording of motion is not improved by a column of changing numbers pinned over it.
  */
-async function record(page, path, { seconds, fps = 8, during }) {
+const record = (page, path, options) => withPanelHidden(page, () => recordFrames(page, path, options))
+
+async function recordFrames(page, path, { seconds, fps = 8, during }) {
   const client = await page.createCDPSession()
   const kept = []
   let lastKeptAt = 0
@@ -293,17 +298,45 @@ const waitForStatus = (page, pattern, timeout = 60_000) =>
   )
 
 /**
- * A frame, and beside it the scene state it was taken in, as text.
+ * Run `capture` with the development state readout out of frame, then put it back.
  *
- * The state goes in a sidecar rather than into the frame because on `main` the harness's own
- * readout does not paint: `EternitiesScene` still renders `<div className="overlay">`, and Phase
- * 5's stylesheet — which replaced the harness's — has no `.overlay` rule, so the panel is in the
- * DOM (which is why every `verify-browser` assertion still reads it) and invisible on screen. It
- * is reported as a note; reading `textContent` is what a capture should do regardless.
+ * This used to be free, and silently: the panel had no stylesheet rule, so it laid out below the
+ * fold and no frame ever contained it. The fix that makes it paint (`.scene-status`) therefore
+ * lands it in the middle of every checkpoint — 9.3's frames are meant to show the scene, not a
+ * debug column over it — so the hiding this file always claimed to do now has to be real.
+ *
+ * `visibility`, not `display`, so the panel keeps its box and nothing reflows around the capture.
+ * It is written through CSSOM rather than as a `style` attribute because the production policy
+ * still carries `style-src-attr 'unsafe-inline'` only until Phase 6's pre-launch tightening (the
+ * CSP audit's F5) — CSSOM is outside CSP's reach either way, so the capture survives that change.
+ * `textContent` reads the same hidden or not, which is why the sidecar is written from a hidden
+ * panel without a second thought.
  */
+async function withPanelHidden(page, capture) {
+  const toggle = (hidden) =>
+    page.evaluate((hide) => {
+      for (const id of ['eternities-status', 'phase0-status']) {
+        const node = document.querySelector(`[data-testid="${id}"]`)
+        if (!node) continue
+        if (hide) node.style.setProperty('visibility', 'hidden', 'important')
+        else node.style.removeProperty('visibility')
+      }
+    }, hidden)
+
+  await toggle(true)
+  // One frame for the compositor to drop it, or the shot is of the frame before the hide.
+  await settle(page, 1)
+  try {
+    return await capture()
+  } finally {
+    await toggle(false)
+  }
+}
+
+/** A frame with the readout out of it, and beside it the scene state it was taken in, as text. */
 async function shoot(page, dir, name) {
   await settle(page, 2)
-  await page.screenshot({ path: resolve(dir, `${name}.png`) })
+  await withPanelHidden(page, () => page.screenshot({ path: resolve(dir, `${name}.png`) }))
   const text = (await status(page))
     .replace(/^.*?flip\s*/s, '')
     .split(/(?=focus:|flight:|camera:|stars:|detail:|thumbnails:|card:|gpu:|hover:)/)
@@ -313,14 +346,6 @@ async function shoot(page, dir, name) {
   writeFileSync(resolve(dir, `${name}.txt`), `${text}\n`)
   console.log(`  ${name}.png — ${/camera: [^\n]*/.exec(text)?.[0] ?? ''}`)
 }
-
-/** The rig's current distance to its tether, off the harness readout. */
-const distance = async (page) =>
-  Number.parseFloat(
-    (await page.evaluate(() => document.querySelector('[data-testid="camera"]')?.textContent ?? '')).split(
-      '· d ',
-    )[1] ?? 'NaN',
-  )
 
 /** Wait `frames` animation frames, so what is captured is what the page has finished drawing. */
 const settle = (page, frames) =>
@@ -408,19 +433,32 @@ async function capture(args) {
     })
     console.log(`  canvas ${gpu.size} on ${gpu.renderer}`)
 
-    // The harness's own readout, checked rather than assumed: see `shoot`.
+    // The readout, measured rather than assumed. `verify-browser.mjs` asserts this now — see
+    // `verifyStatusPanelPaints` there — but a capture run is often the first thing anyone points
+    // at a new build, and a note in `capture.json` says which state the frames were taken beside.
     const panel = await page.evaluate(() => {
       const node = document.querySelector('[data-testid="eternities-status"]')
       if (!node) return null
       const rect = node.getBoundingClientRect()
       const style = getComputedStyle(node)
-      return { width: rect.width, height: rect.height, position: style.position, zIndex: style.zIndex }
+      return {
+        width: rect.width,
+        height: rect.height,
+        position: style.position,
+        zIndex: style.zIndex,
+        rendered: node.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }),
+        onScreen:
+          rect.right > 0 && rect.bottom > 0 && rect.left < window.innerWidth && rect.top < window.innerHeight,
+      }
     })
-    if (panel && panel.position === 'static') {
+    if (!panel) {
+      notes.push('the ?harness=3 state panel is not in the DOM at all — the sidecars will be empty')
+    } else if (panel.position === 'static' || !panel.rendered || !panel.onScreen) {
       notes.push(
-        `the ?harness=3 state panel does not paint: <div class="overlay"> is ${Math.round(panel.width)}x` +
-          `${Math.round(panel.height)} at position:${panel.position}, under the absolutely positioned ` +
-          `canvas. Phase 5's stylesheet has no .overlay rule. Text-only assertions cannot see this.`,
+        `the ?harness=3 state panel does not paint: ${Math.round(panel.width)}x` +
+          `${Math.round(panel.height)} at position:${panel.position}, rendered ${panel.rendered}, ` +
+          `on screen ${panel.onScreen}. It reads fine through textContent, so only a measurement ` +
+          `catches it. Check the .scene-status rule in styles.css.`,
       )
     }
 
@@ -542,7 +580,8 @@ async function capture(args) {
       { timeout: 60_000 },
     )
     await sleep(12_000)
-    await page.screenshot({ path: resolve(args.out, '8-star-field-2a.png') })
+    // `Phase2aScene` renders the same readout under `phase0-status`, and it paints now too.
+    await withPanelHidden(page, () => page.screenshot({ path: resolve(args.out, '8-star-field-2a.png') }))
     console.log('  8-star-field-2a.png')
 
     // ---- the shell ------------------------------------------------------------------------
