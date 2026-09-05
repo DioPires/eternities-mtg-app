@@ -72,7 +72,8 @@ def classify(old: Path, new: Path) -> int:
         rest_a = {k: v for k, v in a.items() if k != "p"}
         rest_b = {k: v for k, v in b.items() if k != "p"}
         if rest_a != rest_b:
-            differing = sorted(k for k in set(rest_a) | set(rest_b) if rest_a.get(k) != rest_b.get(k))
+            keys = set(rest_a) | set(rest_b)
+            differing = sorted(k for k in keys if rest_a.get(k) != rest_b.get(k))
             field_changes.append((name, differing))
             changed_fields.update(differing)
             continue
@@ -83,14 +84,12 @@ def classify(old: Path, new: Path) -> int:
             continue
 
         only_stamp = True
-        for x, y in zip(pa, pb):
+        for x, y in zip(pa, pb, strict=True):
             if x == y:
                 continue
-            same_identity = (
-                x[PRINTING_ID] == y[PRINTING_ID]
-                and [v for i, v in enumerate(x) if i != PRINTING_IMAGE_TS]
-                == [v for i, v in enumerate(y) if i != PRINTING_IMAGE_TS]
-            )
+            same_identity = x[PRINTING_ID] == y[PRINTING_ID] and [
+                v for i, v in enumerate(x) if i != PRINTING_IMAGE_TS
+            ] == [v for i, v in enumerate(y) if i != PRINTING_IMAGE_TS]
             if same_identity:
                 image_ts_printings += 1
             else:
@@ -104,9 +103,15 @@ def classify(old: Path, new: Path) -> int:
     print()
     print(f"cards added:   {len(added)}")
     print(f"cards removed: {len(removed)}")
-    print(f"cards changed: {len(image_ts_only) + len(printing_counts) + len(field_changes) + len(printing_oddities)}")
+    changed = (
+        len(image_ts_only) + len(printing_counts) + len(field_changes) + len(printing_oddities)
+    )
+    print(f"cards changed: {changed}")
     print()
-    print(f"  image cache-buster only:      {len(image_ts_only):>5} card(s), {image_ts_printings} printing tuple(s)")
+    print(
+        f"  image cache-buster only:      {len(image_ts_only):>5} card(s), "
+        f"{image_ts_printings} printing tuple(s)"
+    )
     print(f"  printing added or removed:    {len(printing_counts):>5} card(s)")
     print(f"  non-printing field changed:   {len(field_changes):>5} card(s)")
     print(f"  printing changed otherwise:   {len(printing_oddities):>5} card(s)  <-- read these")
@@ -128,7 +133,10 @@ def classify(old: Path, new: Path) -> int:
         for name, was, now in printing_counts[:40]:
             print(f"  {name}: {was} -> {now}")
     if field_changes:
-        print(f"\nnon-printing fields changed ({len(field_changes)}), by field: {dict(changed_fields)}")
+        print(
+            f"\nnon-printing fields changed ({len(field_changes)}), "
+            f"by field: {dict(changed_fields)}"
+        )
         for name, fields in field_changes[:40]:
             print(f"  {name}: {', '.join(fields)}")
     if printing_oddities:
