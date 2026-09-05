@@ -216,6 +216,15 @@ export function BenchRunner({
     /** Time spent in the current segment, which bounds the settle above. */
     segmentElapsed: 0,
     segmentSeconds: BENCH_PATH[0]?.seconds ?? 0,
+    /**
+     * Read once during warm-up rather than at teardown. `rendererName` is a synchronous round trip
+     * to the GPU process, which cannot answer until the command buffer has drained — and uncapped
+     * that buffer is hundreds of frames deep, so the same call cost 343 ms at the end of a run
+     * (DEC-645). It is the same mechanism as the three.js shader-link stall that issue is about;
+     * here it was the bench's own, and it produced a ~400 ms long-animation-frame that looked like
+     * the scene's. During warm-up the queue is shallow and the answer is immediate.
+     */
+    renderer: 'unknown',
   }).current
   const frameMs = useMemo(() => new Float32Array(CAPACITY), [])
   const cpuMs = useMemo(() => new Float32Array(CAPACITY), [])
@@ -343,6 +352,7 @@ export function BenchRunner({
 
   useEffect(() => {
     if (hold !== null || !ready || state.running || state.finished) return
+    state.renderer = rendererName(gl.domElement)
     const timer = window.setTimeout(() => {
       state.elapsed = 0
       state.count = 0
@@ -351,7 +361,7 @@ export function BenchRunner({
     return () => {
       window.clearTimeout(timer)
     }
-  }, [ready, hold, state])
+  }, [ready, hold, state, gl])
 
   useFrame((_, delta) => {
     if (hold !== null) {
@@ -417,6 +427,7 @@ export function BenchRunner({
         segmentIds.subarray(0, state.count),
         context,
         gl.domElement,
+        state.renderer,
         gl.getPixelRatio(),
         live.current,
         anchor?.slug ?? 'none',
@@ -441,6 +452,7 @@ function summarise(
   segments: Uint8Array,
   context: BenchContext,
   canvas: HTMLCanvasElement,
+  renderer: string,
   dpr: number,
   quality: { qualityTier: string; qualityChanges: number },
   anchor: string,
@@ -475,7 +487,7 @@ function summarise(
       height: Math.round(canvas.clientHeight),
       dpr,
     },
-    renderer: rendererName(canvas),
+    renderer,
     durationS: BENCH_DURATION_S,
     qualityTier: quality.qualityTier,
     qualityChanges: quality.qualityChanges,
