@@ -24,6 +24,7 @@ import { useFilters, useNavigateTo, useSearchResults } from '../app/hooks'
 import { planeOfStarIndex } from '../app/boot'
 import { hitKey, type SearchHit } from '../search'
 import { useStore } from '../store/store'
+import { useDialog } from './dialog'
 
 const NUMBER = new Intl.NumberFormat('en-GB')
 
@@ -38,8 +39,16 @@ function GroupLabel({ children }: { readonly children: string }): ReactElement {
 export function SearchOverlay(): ReactElement {
   const [query, setQuery] = useState('')
   const [cursor, setCursor] = useState(0)
-  const inputRef = useRef<HTMLInputElement | null>(null)
   const listRef = useRef<HTMLUListElement | null>(null)
+  /*
+   * The input is the whole point of this dialog, so it is what opens focused — and it is not the
+   * first tabbable element in the sheet, so the selector is explicit rather than the default.
+   *
+   * The results are `role="option"` rows driven by `aria-activedescendant`, so the input is also
+   * the *only* tabbable thing in here: Tab has nowhere to go and the trap holds focus on it,
+   * which is exactly right for a combobox.
+   */
+  const dialog = useDialog<HTMLDivElement>('.search-input')
 
   const setOverlay = useStore((state) => state.setOverlay)
   const planes = useStore((state) => state.planes)
@@ -51,10 +60,6 @@ export function SearchOverlay(): ReactElement {
   const results = useSearchResults(query)
   const flat = results.flat
   const ready = searchIndex !== null
-
-  useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
 
   useEffect(() => {
     setCursor(0)
@@ -173,9 +178,8 @@ export function SearchOverlay(): ReactElement {
         if (event.target === event.currentTarget) close()
       }}
     >
-      <div className="search-box" role="dialog" aria-modal="true" aria-label="Search">
+      <div className="search-box" role="dialog" aria-modal="true" aria-label="Search" ref={dialog}>
         <input
-          ref={inputRef}
           type="search"
           className="search-input"
           value={query}

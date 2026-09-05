@@ -74,7 +74,18 @@ function resolveDataDir(dataset) {
   return { hash, dir: join(WEB_ROOT, 'public', 'data', hash) }
 }
 
-/** The built shell: index.html plus every JS and CSS asset it can pull in before the first frame. */
+/**
+ * The built shell: index.html plus every JS, CSS and font asset it can pull in before the first
+ * frame.
+ *
+ * Fonts count from Phase 5, when the site stopped using the system stack (PRD 7.6.1). A self-
+ * hosted face is transferred before the first *readable* text, so leaving the row out would have
+ * moved bytes off the budget simply by moving them into a `.woff2`.
+ *
+ * They are counted conservatively: both subsets are added, even though `unicode-range` means a
+ * session that never renders a `latin-ext` glyph never fetches the second file. Over-counting
+ * against a ceiling is safe; under-counting is not.
+ */
 function shellSize(distDir) {
   let total = 0
   const walk = (dir) => {
@@ -85,7 +96,7 @@ function shellSize(distDir) {
         walk(path)
         continue
       }
-      if (/\.(js|css|html)$/.test(entry.name)) total += encodedSize(path)
+      if (/\.(js|css|html|woff2)$/.test(entry.name)) total += encodedSize(path)
     }
   }
   try {

@@ -13,6 +13,7 @@ import { useMemo, useState, type ReactElement } from 'react'
 
 import { useNavigateTo } from '../app/hooks'
 import { useStore } from '../store/store'
+import { useDialog } from './dialog'
 
 const NUMBER = new Intl.NumberFormat('en-GB')
 
@@ -21,6 +22,9 @@ export function PlaneIndexOverlay(): ReactElement {
   const setOverlay = useStore((state) => state.setOverlay)
   const go = useNavigateTo()
   const [query, setQuery] = useState('')
+  // The roster can be hundreds of rows; opening on the filter box means the keyboard route into
+  // it is "type a few letters", not "hold Tab".
+  const dialog = useDialog<HTMLDivElement>('.sheet-filter')
 
   const rows = useMemo(() => {
     const all = [...(planes?.planes ?? [])].sort((a, b) =>
@@ -39,7 +43,7 @@ export function PlaneIndexOverlay(): ReactElement {
         if (event.target === event.currentTarget) setOverlay(null)
       }}
     >
-      <div className="sheet" role="dialog" aria-modal="true" aria-label="Plane index">
+      <div className="sheet" role="dialog" aria-modal="true" aria-label="Plane index" ref={dialog}>
         <header className="sheet-head">
           <h2>Planes</h2>
           <input

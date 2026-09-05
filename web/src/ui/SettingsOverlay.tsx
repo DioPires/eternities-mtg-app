@@ -12,6 +12,7 @@ import type { ReactElement } from 'react'
 
 import { useStore, reducedMotionOf } from '../store/store'
 import type { BloomSetting, ReducedMotionSetting } from '../store/settings'
+import { useDialog } from './dialog'
 
 const REDUCED_MOTION_OPTIONS: ReadonlyArray<{ value: ReducedMotionSetting; label: string }> = [
   { value: 'os', label: 'Follow the system' },
@@ -32,6 +33,7 @@ export function SettingsOverlay(): ReactElement {
   const setOverlay = useStore((state) => state.setOverlay)
   const setHintVisible = useStore((state) => state.setHintVisible)
   const resolved = reducedMotionOf({ settings, osReducedMotion })
+  const dialog = useDialog<HTMLDivElement>()
 
   return (
     <div
@@ -40,7 +42,7 @@ export function SettingsOverlay(): ReactElement {
         if (event.target === event.currentTarget) setOverlay(null)
       }}
     >
-      <div className="sheet" role="dialog" aria-modal="true" aria-label="Settings">
+      <div className="sheet" role="dialog" aria-modal="true" aria-label="Settings" ref={dialog}>
         <header className="sheet-head">
           <h2>Settings</h2>
         </header>
