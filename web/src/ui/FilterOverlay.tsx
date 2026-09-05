@@ -25,6 +25,7 @@ import {
   TYPE_LABEL,
 } from '../filters/types'
 import { useStore } from '../store/store'
+import { useDialog } from './dialog'
 
 const NUMBER = new Intl.NumberFormat('en-GB')
 
@@ -56,6 +57,7 @@ export function FilterOverlay(): ReactElement {
   const sets = useStore((state) => state.sets)
   const planeBySlug = useStore((state) => state.planeBySlug)
   const { focus } = useNavSnapshot()
+  const dialog = useDialog<HTMLDivElement>()
 
   const focusedSlug =
     focus.kind === 'plane' ? focus.slug : focus.kind === 'card' ? focus.planeSlug : null
@@ -88,7 +90,13 @@ export function FilterOverlay(): ReactElement {
         if (event.target === event.currentTarget) setOverlay(null)
       }}
     >
-      <div className="sheet sheet-filters" role="dialog" aria-modal="true" aria-label="Filters">
+      <div
+        className="sheet sheet-filters"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Filters"
+        ref={dialog}
+      >
         <header className="sheet-head">
           <h2>Filters</h2>
           <p className="muted">Any value within a facet, all facets together.</p>

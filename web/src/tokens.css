@@ -1,0 +1,166 @@
+/*
+ * The design system's token layer — Phase 5 (implementation-plan.md §2).
+ *
+ * Every colour, size, radius, shadow and duration in the product is named here and nowhere else.
+ * `styles.css` may only reference these; a literal colour in `styles.css` is a bug, because the
+ * accessibility guarantee below is proved against *these* values and a literal escapes the proof.
+ *
+ * ## The contrast guarantee, and why it is stated in terms of backdrops
+ *
+ * PRD 7.5.4 asks for 4.5:1 "against the sky". The sky is `--sky`, and against it everything here
+ * passes comfortably. But the panels are translucent and sit over a *starfield*, so the real
+ * backdrop under a panel is the sky only in the quiet case: a bloomed star core under the drawer
+ * is close to white, and that is the case PRD risk 7 ("bloom versus legibility") is about.
+ *
+ * So the tokens are tuned against the **worst-case composite**: the surface alpha-blended over
+ * pure white. That is strictly harder than the PRD's wording and it is what `test/design.test.ts`
+ * asserts, pair by pair, from this file. The surface alphas are load-bearing, not decorative —
+ * lowering one lowers the composite's contrast, and the test fails.
+ *
+ *   surface        alpha   worst-case composite   used for
+ *   --surface-glass 0.88   rgb(37 39 46)          HUD chrome: chips, cluster, hint
+ *   --surface-panel 0.94   rgb(22 25 32)          the drawer, which is a reading surface
+ *   --surface-sheet 1.00   #0c0f19                modal sheets, which need no glass at all
+ *
+ * The drawer is deliberately less transparent than the HUD. It is the one surface a user *reads*
+ * paragraphs on, and glass costs legibility exactly where the PRD spends its risk budget.
+ *
+ * ## Fonts (PRD 7.6.1)
+ *
+ * Inter, self-hosted, SIL OFL 1.1 (`./fonts/Inter-OFL.txt`). Two subsets, split by `unicode-range`
+ * so `latin-ext` is only fetched when a glyph actually needs it — the shipped dataset's names live
+ * entirely inside `latin` plus U+2013, so in practice that second file is never transferred.
+ * Vite fingerprints both into `/assets/`, which `vercel.json` serves immutable.
+ */
+
+/* Variable weight axis 100–900: one file serves every weight the system uses. */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./fonts/inter-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
+    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./fonts/inter-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308,
+    U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113,
+    U+2C60-2C7F, U+A720-A7FF;
+}
+
+:root {
+  color-scheme: dark;
+
+  /* ---------------------------------------------------------------- surfaces */
+
+  /* Must equal `SKY_COLOUR` in `src/scene/tuning.ts`; `test/design.test.ts` checks that it does. */
+  --sky: #05060a;
+  /* The colour both glass surfaces are mixed from. Their difference is alpha, not hue. */
+  --surface-base: 7 10 18;
+  --surface-glass: rgb(var(--surface-base) / 88%);
+  --surface-panel: rgb(var(--surface-base) / 94%);
+  --surface-sheet: #0c0f19;
+  /* Hover and selection fills. Both are stated as overlays so they work on all three surfaces. */
+  --fill-hover: rgb(255 255 255 / 8%);
+  --fill-active: rgb(255 255 255 / 12%);
+  --fill-accent: rgb(147 184 255 / 16%);
+  --fill-danger: rgb(255 171 153 / 14%);
+  --fill-input: rgb(255 255 255 / 5%);
+  /* The modal scrim. Dark enough that the sheet reads as the only live surface. */
+  --scrim: rgb(3 4 8 / 62%);
+
+  /* -------------------------------------------------------------------- ink */
+
+  /* Every value below clears 4.5:1 on every surface *and* on every fill above it, worst case. */
+  --ink: #eef1fa;
+  --ink-muted: #a6afc6;
+  /* Non-text only: separators, decorative glyphs, the quiet half of a two-tone icon. */
+  --ink-faint: #7c8499;
+  /* Disabled controls, which WCAG 1.4.3 exempts — kept perceivable anyway, not invisible. */
+  --ink-disabled: #626b81;
+  --accent: #93b8ff;
+  --danger: #ffab99;
+
+  /* ------------------------------------------------------------------ lines */
+
+  /* A separator: decorative, so no contrast floor applies. */
+  --line: rgb(255 255 255 / 14%);
+  /* The boundary of a control that has no other edge — an input, a resting chip. Held at 3:1. */
+  --line-strong: rgb(255 255 255 / 36%);
+  --line-accent: rgb(147 184 255 / 60%);
+
+  /* ------------------------------------------------------------------- type */
+
+  --font-ui: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* A 1.2 ratio from 0.75rem. Small enough steps that the HUD and a sheet feel like one voice. */
+  --text-xs: 0.6875rem; /* eyebrow / facet labels, always uppercase and tracked */
+  --text-sm: 0.8125rem; /* meta: counts, years, rarities */
+  --text-md: 0.875rem; /* body */
+  --text-lg: 1rem; /* panel and sheet titles */
+  --text-xl: 1.1875rem; /* the one display size: plane name, hint lead */
+  --leading-tight: 1.25;
+  --leading-body: 1.55;
+  --tracking-eyebrow: 0.1em;
+  --tracking-tight: -0.011em; /* Inter wants a little negative tracking above ~1rem */
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-strong: 600;
+
+  /* ------------------------------------------------------------------ space */
+
+  /* A 4px grid. Everything in `styles.css` steps through these, so rhythm is a token, not a habit. */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --hud-gap: var(--space-4);
+
+  /* ----------------------------------------------------------------- shape */
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  /* ------------------------------------------------------------- elevation */
+
+  /* Three steps only, and they map to the three surfaces. */
+  --shadow-glass: 0 2px 10px rgb(0 0 0 / 35%);
+  --shadow-panel: 0 12px 34px rgb(0 0 0 / 45%);
+  --shadow-sheet: 0 24px 68px rgb(0 0 0 / 60%);
+  /* A label has no surface under it, so its legibility over a bloomed star is carried by a shadow
+     rather than by a backdrop: a tight dark core for edge definition, a wide halo for the bloom. */
+  --shadow-label: 0 1px 2px rgb(0 0 0 / 90%), 0 0 10px rgb(0 0 0 / 70%);
+  /* Applied to glass surfaces. An enhancement only: the alphas above already carry the contrast
+     guarantee, so a browser without `backdrop-filter` loses the look and keeps the legibility. */
+  --blur-glass: blur(14px) saturate(1.1);
+
+  /* ---------------------------------------------------------------- motion */
+
+  /* PRD 7.3.3 and 5.9. The reduced-motion block in `styles.css` collapses all three to zero. */
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* ------------------------------------------------------------------ focus */
+
+  /*
+   * PRD 7.5.2's visible focus state, as a three-band sandwich rather than a single ring.
+   *
+   * A single accent ring is only 1.99:1 against a bloomed white star, and the HUD floats over
+   * exactly that. Wrapping the accent band in `--sky` on both sides means one of the two edges
+   * always has contrast: dark-on-white is 20:1, accent-on-dark is 10:1. Whatever is behind the
+   * control, the indicator is visible.
+   */
+  --focus-ring: 0 0 0 1px var(--sky), 0 0 0 3px var(--accent), 0 0 0 4px var(--sky);
+}

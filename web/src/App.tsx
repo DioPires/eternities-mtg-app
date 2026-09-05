@@ -46,6 +46,7 @@ import { Phase2bScene } from './harness/Phase2bScene'
 import { HelloScene, SKY_COLOUR } from './scene/HelloScene'
 import { selfCheckRequested } from './scene/selfCheck'
 import { useStore } from './store/store'
+import { AboutOverlay } from './ui/AboutOverlay'
 import { Drawer } from './ui/Drawer'
 import { FilterOverlay } from './ui/FilterOverlay'
 import { FirstVisitHint } from './ui/FirstVisitHint'
@@ -80,6 +81,8 @@ function Overlays(): ReactElement | null {
       return <HelpOverlay />
     case 'filters':
       return <FilterOverlay />
+    case 'about':
+      return <AboutOverlay />
     case null:
       return null
   }

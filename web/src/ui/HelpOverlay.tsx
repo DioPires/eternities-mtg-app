@@ -10,6 +10,7 @@
 import type { ReactElement } from 'react'
 
 import { useStore } from '../store/store'
+import { useDialog } from './dialog'
 
 const KEYS: ReadonlyArray<readonly [string, string]> = [
   ['/', 'Search'],
@@ -27,6 +28,7 @@ const POINTER: ReadonlyArray<readonly [string, string]> = [
 
 export function HelpOverlay(): ReactElement {
   const setOverlay = useStore((state) => state.setOverlay)
+  const dialog = useDialog<HTMLDivElement>()
   return (
     <div
       className="overlay-scrim overlay-scrim-top"
@@ -34,7 +36,7 @@ export function HelpOverlay(): ReactElement {
         if (event.target === event.currentTarget) setOverlay(null)
       }}
     >
-      <div className="sheet" role="dialog" aria-modal="true" aria-label="Help">
+      <div className="sheet" role="dialog" aria-modal="true" aria-label="Help" ref={dialog}>
         <header className="sheet-head">
           <h2>Getting around</h2>
         </header>
@@ -66,6 +68,17 @@ export function HelpOverlay(): ReactElement {
         </p>
 
         <footer className="sheet-foot">
+          {/* PRD 4.11's About view. Reached from here rather than from a seventh cluster control,
+              because PRD 6.3.3's list of six is closed. */}
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => {
+              setOverlay('about')
+            }}
+          >
+            About &amp; credits
+          </button>
           <button
             type="button"
             className="link-button"
