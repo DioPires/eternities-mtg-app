@@ -1839,7 +1839,7 @@ async function verifyStarField(page, url, allowSoftware, problems) {
         ? ` (plane rows ${selfCheck.unprojectableRows.map(([row, n]) => `${row}x${n}`).join(' ')})`
         : '') +
       `; sampled stars ${depths(selfCheck.nearestDepth)}-${depths(selfCheck.farthestDepth)} units ` +
-      `in front of the eye (near plane 0.1, far plane 8000)`,
+      `in front of the eye (near plane 0.1, far plane 6000)`,
   )
   if (selfCheck.canvasBytes < 5000) {
     problems.push(`the canvas looks empty (${selfCheck.canvasBytes}-byte PNG) — nothing drew`)
@@ -1892,6 +1892,13 @@ async function verifyStarField(page, url, allowSoftware, problems) {
     // enough out trips this clause with the mirror and the shader in perfect agreement — a plane
     // table displaced to `home + 4000` does it — and `MULTIVERSE_RADIUS = 130.0` is the invariant
     // that keeps a real dataset from reaching there, not anything in this check.
+    //
+    // MANUAL LINK: the `130` in the message below is that constant, written out by hand. It lives
+    // in `pipeline/src/eternities/pipeline/assemble.py` and is mirrored in
+    // `pipeline/src/eternities/fixtures/generate.py`; both carry a comment pointing back here. A
+    // cross-language export for one number in one diagnostic string is not worth the machinery, so
+    // if the radius ever changes, change it here too — a stale figure here misdirects the reader of
+    // a failure rather than failing anything, which is exactly the kind of wrong that survives.
     const unprojectable =
       selfCheck.unprojectable > 0
         ? `${selfCheck.unprojectable} sampled stars projected behind the eye or past the far plane` +
