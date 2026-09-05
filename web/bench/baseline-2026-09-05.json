@@ -1,0 +1,261 @@
+{
+  "note": "The reference-machine baseline for the shipped product. This is what closes PRD open question 7 (\"confirm both after the first /bench run on the reference machine\"), and it is the first bench run that measures the application rather than a harness: PRD 9.1.2's /bench route now flies the shipped scene — star field, camera rig, plane labels, thumbnail tier, focused card and its planets — over the production dataset, at the 87-plane roster. baseline-2026-09-04.json is superseded, not regressed against: it measured Phase 2a's harness (no card tier, no thumbnails, no labels, no rig) on a shorter six-segment path at 83 planes, so no segment in it has a counterpart here. `vsync` is the protocol run and the one PRD 7.2 is judged on; `uncapped` adds --disable-gpu-vsync to show the real headroom, because a 120 Hz panel reports 8.3 ms whether the frame cost 2 ms or 8.",
+  "verdict": "PRD 7.2 target (60 fps, p95 <= 16.7 ms) MET and ceiling (50 fps, p95 <= 33 ms) MET, on both runs. Steady-state cost is 2.9 ms at p95 uncapped against a 16.7 ms target — about 5.7x headroom — so the ceilings in PRD 7.2 are confirmed as commitments this machine keeps comfortably, and the targets are met rather than merely approached. Open question 7 is answered: both rows stand as written.",
+  "caveats": [
+    "Worst-frame times are not steady state and are the honest reservation on the numbers above. Every spike sits on a focus boundary, where a plane's shards are fetched and parsed (PRD 8.7.6) and the thumbnail atlas is uploaded. The worst single frame recorded was 373.8 ms, in the uncapped run's `sheet` segment. PRD 7.3.4 says no level-of-detail transition may pop, and a third of a second is a visible freeze, so this is logged as a real defect rather than measurement noise. p50 and p95 are unaffected, which is exactly why a percentile-only report would have hidden it.",
+    "CPU time per frame is reported by the star field (StarScene.onFrame), so it is a floor rather than the whole scene's cost: the card tier's per-frame work is not in it. Both runs report 0.0-0.1 ms against a 2 ms target, so the conclusion does not turn on the gap, but the figure should not be quoted as the complete render-loop cost.",
+    "GPU memory for thumbnails, planets and card images (PRD 7.2) is not in this file. It is measured through the ?probe=1 seam by scripts/verify-browser.mjs, which reports it against the 96 MB target and 160 MB ceiling."
+  ],
+  "recordedAt": "2026-09-05",
+  "issue": "DEC-592",
+  "supersedes": "baseline-2026-09-04.json",
+  "path": "bench/benchPath.ts, nine segments, 39 s: home, approach, plane, small-plane, sheet, card, dust, sweep, home-return",
+  "machine": {
+    "description": "Apple Silicon MacBook, the development machine this team runs on (implementation-plan.md section 6)",
+    "gpu": "ANGLE (Apple, ANGLE Metal Renderer: Apple M5 Pro, Unspecified Version)",
+    "display": "ProMotion, 120 Hz refresh",
+    "browser": "Google Chrome, headed, 1920x1080 viewport, devicePixelRatio 2 capped to 1.5 by quality tier 0"
+  },
+  "runs": {
+    "vsync": {
+      "headless": false,
+      "uncapped": false,
+      "dataset": "production",
+      "stars": 28587,
+      "planes": 87,
+      "positionMode": "float16",
+      "viewport": {
+        "width": 1920,
+        "height": 1080,
+        "dpr": 1.5
+      },
+      "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M5 Pro, Unspecified Version)",
+      "durationS": 39,
+      "qualityTier": "full",
+      "qualityChanges": 0,
+      "anchorPlane": "dominaria",
+      "segments": [
+        {
+          "segment": "home",
+          "frames": 473,
+          "fps": 119.99,
+          "frameMsP50": 8.3,
+          "frameMsP95": 9.5,
+          "frameMsMax": 10.6,
+          "cpuMsP50": 0,
+          "cpuMsP95": 0.1
+        },
+        {
+          "segment": "approach",
+          "frames": 595,
+          "fps": 119.96,
+          "frameMsP50": 8.3,
+          "frameMsP95": 9.7,
+          "frameMsMax": 10.5,
+          "cpuMsP50": 0,
+          "cpuMsP95": 0.1
+        },
+        {
+          "segment": "plane",
+          "frames": 474,
+          "fps": 120.01,
+          "frameMsP50": 8.3,
+          "frameMsP95": 9.5,
+          "frameMsMax": 11,
+          "cpuMsP50": 0,
+          "cpuMsP95": 0.1
+        },
+        {
+          "segment": "small-plane",
+          "frames": 462,
+          "fps": 117.19,
+          "frameMsP50": 8.3,
+          "frameMsP95": 9.8,
+          "frameMsMax": 45.4,
+          "cpuMsP50": 0,
+          "cpuMsP95": 0.1
+        },
+        {
+          "segment": "sheet",
+          "frames": 467,
+          "fps": 118.22,
+          "frameMsP50": 8.3,
+          "frameMsP95": 9.9,
+          "frameMsMax": 31.8,
+          "cpuMsP50": 0,
+          "cpuMsP95": 0.1
+        },
+        {
+          "segment": "card",
+          "frames": 474,
+          "fps": 120.02,
+          "frameMsP50": 8.3,
+          "frameMsP95": 9.7,
+          "frameMsMax": 10.3,
+          "cpuMsP50": 0,
+          "cpuMsP95": 0.1
+        },
+        {
+          "segment": "dust",
+          "frames": 474,
+          "fps": 120.01,
+          "frameMsP50": 8.3,
+          "frameMsP95": 9.5,
+          "frameMsMax": 10.8,
+          "cpuMsP50": 0,
+          "cpuMsP95": 0.1
+        },
+        {
+          "segment": "sweep",
+          "frames": 712,
+          "fps": 119.98,
+          "frameMsP50": 8.3,
+          "frameMsP95": 9.4,
+          "frameMsMax": 10.7,
+          "cpuMsP50": 0,
+          "cpuMsP95": 0.1
+        },
+        {
+          "segment": "home-return",
+          "frames": 475,
+          "fps": 120,
+          "frameMsP50": 8.3,
+          "frameMsP95": 9.3,
+          "frameMsMax": 10.5,
+          "cpuMsP50": 0,
+          "cpuMsP95": 0.1
+        }
+      ],
+      "saturated": false,
+      "frames": 4606,
+      "fps": 119.52,
+      "frameMsP50": 8.3,
+      "frameMsP95": 9.6,
+      "frameMsMax": 45.4,
+      "cpuMsP50": 0,
+      "cpuMsP95": 0.1,
+      "meetsTarget": true,
+      "meetsCeiling": true
+    },
+    "uncapped": {
+      "headless": false,
+      "uncapped": true,
+      "dataset": "production",
+      "stars": 28587,
+      "planes": 87,
+      "positionMode": "float16",
+      "viewport": {
+        "width": 1920,
+        "height": 1080,
+        "dpr": 1.5
+      },
+      "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M5 Pro, Unspecified Version)",
+      "durationS": 39,
+      "qualityTier": "full",
+      "qualityChanges": 0,
+      "anchorPlane": "dominaria",
+      "segments": [
+        {
+          "segment": "home",
+          "frames": 2764,
+          "fps": 692.82,
+          "frameMsP50": 1.1,
+          "frameMsP95": 2.8,
+          "frameMsMax": 11.9,
+          "cpuMsP50": 0,
+          "cpuMsP95": 0
+        },
+        {
+          "segment": "approach",
+          "frames": 3320,
+          "fps": 665.65,
+          "frameMsP50": 1.6,
+          "frameMsP95": 2.9,
+          "frameMsMax": 11.6,
+          "cpuMsP50": 0,
+          "cpuMsP95": 0
+        },
+        {
+          "segment": "plane",
+          "frames": 2694,
+          "fps": 675.09,
+          "frameMsP50": 1.2,
+          "frameMsP95": 2.9,
+          "frameMsMax": 10.8,
+          "cpuMsP50": 0,
+          "cpuMsP95": 0
+        },
+        {
+          "segment": "small-plane",
+          "frames": 2681,
+          "fps": 672.45,
+          "frameMsP50": 1.2,
+          "frameMsP95": 2.8,
+          "frameMsMax": 15.6,
+          "cpuMsP50": 0,
+          "cpuMsP95": 0
+        },
+        {
+          "segment": "sheet",
+          "frames": 2519,
+          "fps": 631.45,
+          "frameMsP50": 0.5,
+          "frameMsP95": 2.9,
+          "frameMsMax": 373.8,
+          "cpuMsP50": 0,
+          "cpuMsP95": 0
+        },
+        {
+          "segment": "card",
+          "frames": 2441,
+          "fps": 668.44,
+          "frameMsP50": 1.2,
+          "frameMsP95": 2.8,
+          "frameMsMax": 27.1,
+          "cpuMsP50": 0,
+          "cpuMsP95": 0
+        },
+        {
+          "segment": "dust",
+          "frames": 2702,
+          "fps": 677.43,
+          "frameMsP50": 0.7,
+          "frameMsP95": 2.9,
+          "frameMsMax": 18.2,
+          "cpuMsP50": 0,
+          "cpuMsP95": 0
+        },
+        {
+          "segment": "sweep",
+          "frames": 3975,
+          "fps": 664.86,
+          "frameMsP50": 1,
+          "frameMsP95": 2.8,
+          "frameMsMax": 19.5,
+          "cpuMsP50": 0,
+          "cpuMsP95": 0
+        },
+        {
+          "segment": "home-return",
+          "frames": 2639,
+          "fps": 660.87,
+          "frameMsP50": 1.2,
+          "frameMsP95": 2.8,
+          "frameMsMax": 21,
+          "cpuMsP50": 0,
+          "cpuMsP95": 0
+        }
+      ],
+      "saturated": false,
+      "frames": 25735,
+      "fps": 667.47,
+      "frameMsP50": 1.1,
+      "frameMsP95": 2.9,
+      "frameMsMax": 373.8,
+      "cpuMsP50": 0,
+      "cpuMsP95": 0,
+      "meetsTarget": true,
+      "meetsCeiling": true
+    }
+  }
+}
