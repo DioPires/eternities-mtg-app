@@ -1880,8 +1880,8 @@ async function verify(dataset, allowSoftware, shots) {
       throw new Error(`browser reported problems:\n  - ${problems.join('\n  - ')}`)
     }
     console.log(
-      `  OK — ${dataset} drives PRD section 6 in the shell, and both harnesses hold, ` +
-        `under the production CSP`,
+      `  OK — ${dataset} drives PRD section 6 in the shell, and the scene, the card tier and ` +
+        `Phase 2a's harness all hold, under the production CSP`,
     )
   } finally {
     await browser.close()
