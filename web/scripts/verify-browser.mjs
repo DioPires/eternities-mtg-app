@@ -1813,9 +1813,10 @@ async function verifyStarField(page, url, allowSoftware, problems) {
     `  id-buffer picking vs CPU motion mirror: the shader drew ${selfCheck.measured}/` +
       `${selfCheck.checked} sampled stars a mean of ${selfCheck.meanOffsetPx}px ` +
       `(max ${selfCheck.maxOffsetPx}px, tolerance ${selfCheck.tolerancePx}px) from the pixel ` +
-      `the mirror predicted; ${selfCheck.unmeasured} not in window` +
-      (selfCheck.unmeasuredRows.length > 0
-        ? ` (plane rows ${selfCheck.unmeasuredRows.map(([row, n]) => `${row}x${n}`).join(' ')})`
+      `the mirror predicted; ${selfCheck.unmeasured} not in window, of which ` +
+      `${selfCheck.unexplained} not explained by a nearer star` +
+      (selfCheck.unexplainedRows.length > 0
+        ? ` (plane rows ${selfCheck.unexplainedRows.map(([row, n]) => `${row}x${n}`).join(' ')})`
         : ''),
   )
   console.log(
@@ -1877,7 +1878,7 @@ async function verifyStarField(page, url, allowSoftware, problems) {
       selfCheck.darkRows.length > 0
         ? `the self-check could not locate the stars of plane ` +
           `${selfCheck.darkRows.length === 1 ? 'row' : 'rows'} ` +
-          `${selfCheck.darkRows.map(([row, dark, n]) => `${row} (${dark} of ${n} samples missing from their own pick window)`).join(', ')} ` +
+          `${selfCheck.darkRows.map(([row, dark, n]) => `${row} (${dark} of ${n} samples missing from their own pick window with nothing nearer to explain it)`).join(', ')} ` +
           `— a whole well-sampled row going dark is what a motion-mirror error too large to ` +
           `measure looks like, not what occlusion looks like`
         : ''

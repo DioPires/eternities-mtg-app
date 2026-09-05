@@ -199,20 +199,52 @@ of the error**. Injecting a uniform offset into the dust row of `fixture-small` 
 
 | injected into row 0 | mean | max | unmeasured rows | verdict |
 | --- | --- | --- | --- | --- |
-| none | 0.29 px | 1.0 | `4x8 3x7 1x1` | pass |
-| `py += 2` | 1.65 px | 5.1 | `4x8 3x7 0x1 1x1` | **fail** — mean, and one star past tolerance |
-| `py += 3` | 0.47 px | 1.41 | `0x15` `3x7 4x7` | **fail** — row 0 dark |
-| `py += 4` | 0.47 px | 1.0 | `0x15` `3x7 4x7 1x1` | **fail** — row 0 dark |
-| `py += 6` | 0.44 px | 1.41 | `0x15` `3x7 4x7` | **fail** — row 0 dark |
+| none | 0.25 px | 1.0 | `3x6 4x6 1x3 0x1` | pass |
+| `py += 2` | 1.49 px | 5.1 | `3x6 4x5 0x3 1x3` | **fail** — 21 stars past tolerance |
+| `py += 3` | 0.41 px | 1.41 | `0x24` `3x6 4x4 1x3` | **fail** — row 0 dark |
+| `py += 4` | 0.34 px | 1.0 | `0x24` `3x7 4x6 1x3` | **fail** — row 0 dark |
+| `py += 6` | 0.35 px | 1.0 | `0x24` `3x6 4x6 1x3` | **fail** — row 0 dark |
+
+Note that `py += 2` now fails on its 21 individually out-of-tolerance stars alone: at 24 samples a
+row its mean is 1.49 px, a hair under the 1.5 px drift clause that used to catch it as well. The
+clause that fails it is the one that should, but the margin is thinner than it reads.
 
 Before the dark-row rule, the last three passed — with a *better* mean than the clean run, because
-all 15 dust samples left their windows at once and were dropped from the average. So the third
-clause: no plane row sampled at least 10 times may come back 90% unlocatable. What separates the two
-causes is not the sample but the distribution. Occlusion is a property of one star's neighbourhood
-and strikes scattered stars; the mirror is written per plane row, so an error in it moves the whole
-row together. The floor of 10 is measured, not chosen — on `fixture-scale` 37 of 64 samples are
-occluded, and at that base rate rows drawing four or five samples come back *entirely* dark in a
-clean run (rows 47 and 43 do). Judged rows sit at 0.0–0.41 clean against 1.0 injected.
+all 24 dust samples left their windows at once and were dropped from the average. So the third
+clause: **of a plane row's samples, at least ten of them, no more than half may go dark without a
+nearer star to account for it.**
+
+Two things do the separating, and the second one is newer than the rule. The first is distribution:
+occlusion is a property of one star's neighbourhood and strikes scattered stars, while the mirror is
+written per plane row, so an error in it moves the whole row together. The second is *why* a sample
+went dark. A dark sample is one the picker could not find in its own window, and the window can be
+asked what it held instead — if that is a star the mirror puts nearer the eye, the prediction was
+right and something in front won the depth test. That sample is explained, and only the unexplained
+ones count against the row.
+
+That second test is not a refinement; without it the rule does not survive the real dataset. Once
+every row is sampled (the section after next), production's row 19 — `dominaria`, 6266 stars, 21.9%
+of the field — reads **23 of 24 samples dark on a clean build**, three runs out of three. On raw
+darkness there is no threshold that passes that row and still catches a displaced one: 0.9 and 0.95
+both fail it, and 1.0 sits one sample from failing while excusing any row that leaves a straggler.
+Asking *why* collapses the problem — clean `dominaria` has **0** unexplained samples, and the same
+row with a 400-unit mirror error has 24.
+
+The two constants are set against that quantity, on all three datasets:
+
+| | clean, worst row | injected row |
+| --- | --- | --- |
+| dark (`unmeasured`) | 23 of 24 — production row 19 | 24 of 24 |
+| **unexplained** | **1 of 24** — anywhere, any dataset | **20 to 24 of 24** |
+
+The floor of 10 no longer separates lucky rows from real ones: with a per-row budget
+`fixture-scale`'s rows draw 24, 23, 21, 19, 18, 12, then 7, 7, 6, and nothing lands in between, so
+any floor in that gap selects the same 77 rows. What it excludes now is *small* rows — three planes
+hold fewer than ten stars and cannot reach it at any budget without reading the same star twice. The
+rate is 0.5 because that is the middle of the empty gap in the table above; it is not near 1.0
+because occlusion explains some of a *displaced* row's samples too. The ladder's smallest rung,
+`py += 3`, reads 20 of 24 unexplained, and a rate of 0.9 let it pass green until the ladder was
+re-run against it.
 
 Measured on Metal, both fixtures: worst disagreement **1.0–1.41 px**, mean 0.21 px on
 `fixture-scale` and 0.29–0.33 px on `fixture-small`, against a 3 px tolerance. So what the check
@@ -220,23 +252,52 @@ buys, stated to match what it actually asserts:
 
 - no star it located was drawn 3 px or more from where the mirror puts it;
 - no systematic drift above about 1.5 px mean across everything it located;
-- no well-sampled plane row was displaced far enough to vanish from its own pick windows —
-  on screen or off it, since an off-screen row is measured rather than skipped (see below);
+- no plane row holding ten or more stars went dark in a way occlusion does not account for — on
+  screen or off it, since an off-screen row is measured rather than skipped (see below) — checked on
+  77 of `fixture-scale`'s 87 rows and all 30 of production's, not on one of them;
 - no sampled star was put behind the eye or past the far plane, the one projection that cannot be
   measured at all.
 
 And what it still does not buy. **This list is what is known, not a claim that it is complete** —
 every entry on it was found by injecting a larger error than the round before had thought to try,
-and that is the only method that has found any of them. One entry is left; the section after it
-records a second that has since been closed, and is kept because the way it was closed is the
-reason the third and fourth bullets above can be stated at all.
+and that is the only method that has found any of them. The two sections that follow record entries
+that have since been closed, and are kept because the way each was closed is the reason the third
+and fourth bullets above can be stated at all.
 
-*A row too thinly sampled to judge can be displaced without failing.* Sixty-four samples over
-`fixture-scale`'s 87 planes leave most rows with one sample, and row 0 is the only one there that
-clears the floor — that is the Blind Eternities dust, the row PRD 8.5.7 is named after and the one
-Phase 2b's tether frames, so the coverage is aimed at the right place, but it is coverage of one row
-and not of 87. An error scattered across rows rather than confined to one would likewise reduce
-coverage rather than fail. The deferred draw-range fix closes this one.
+*A row with fewer than ten stars is reported and never judged.* This one is structural rather than
+budgetary and will not be closed by sampling harder: `lorwyn` holds 6 stars, `diraden` and `vryn` 7,
+so no budget reaches a floor of 10 on them without reading the same star twice — and ten reads of
+one occluded star are ten dark samples establishing exactly what one established, which would fail a
+clean fixture rather than catch anything. Six further `fixture-scale` planes hold no stars at all
+and cannot be sampled by any means. So the denominator is 77 of 87, and the ten rows outside it are
+named in the `samples per plane row` line of every run.
+
+### The thin-sampling hole, and how it was closed
+
+*A row too thinly sampled to judge could be displaced without failing.* The sampler walked
+`floor((s / 64) * drawCount)` — even over the file, which is even over the *stars*, so a row's share
+of the samples was its share of the stars rather than a share of the rows. On `fixture-scale` that
+put row 0 on fifteen samples, the next rows on seven, five, four and two, and left **exactly one row
+of eighty** above the floor. That row is the Blind Eternities dust, the one PRD 8.5.7 is named after
+and the one Phase 2b's tether frames, so the coverage was aimed at the right place — but it was
+coverage of one row and not of 87, and an error scattered across rows reduced coverage rather than
+failing. Production was barely better at two rows (`19x14 0x12`).
+
+`rowSampleIndices` samples per row instead: `SAMPLES_PER_ROW` stars from every non-empty row,
+stratified within the row and interleaved across rows. Judged rows on `fixture-scale` go from 1 to
+77. The rung that shows the difference is an injection confined to a row the old sampler never
+touched at all — row 44 drew **zero** of its 64 samples, and 24 of the new sampler's:
+
+| `if (row === 44) py += 400`, `fixture-scale` | before (file-wide) | now (per row) |
+| --- | --- | --- |
+| samples on row 44 | 0 | 24 |
+| verdict | **pass, exit 0** | **fail** — row 44 dark 24 of 24 |
+
+The cost is wall-clock, and it is not small: 1832 samples and about 32 s on `fixture-scale` against
+64 samples and about a second, per dataset, on every `verify-browser` run. The check is diagnostic
+and runs only under `?selfcheck=1`, so this is CI time rather than anything a user waits for.
+`?perrow=N` overrides the budget without a rebuild, which is how the constants above were
+re-derived and how they should be re-derived again if the fixtures change.
 
 ### The off-screen hole, and how it was closed
 
@@ -246,12 +307,24 @@ before the sample entered `checked` and before the `sampledRows` tally, so a row
 of NDC left the numerator and the denominator at once — and the dark-row rule cannot judge a row it
 never saw. Continuing the ladder above on `fixture-small`, with the injection scoped to row 0:
 
+Re-measured under the per-row sampler (DEC-634), which is why the counts below are larger than the
+`before` column was written against — that column's verdicts are what it asserts, and they are
+unchanged. Row 0 now draws 24 samples rather than 15:
+
 | injected into row 0 | measured (±1) | samples per plane row | before | now |
 | --- | --- | --- | --- | --- |
-| `py += 60` | 34/64 | `4x27 3x17 0x15 1x5` | **fail** — row 0 dark | **fail** — row 0 dark |
-| `py += 400` | 32/64 | `4x27 3x17 0x15 1x5` | **pass, exit 0** | **fail** — row 0 dark |
-| `py += 4000` | 34/49 | `4x27 3x17 1x5` — row 0 absent | **pass, exit 0** | **fail** — 15 unprojectable |
-| `pz += 400` | 34/57 | `4x27 3x17 0x8 1x5` — row 0 thinned | **pass, exit 0** | **fail** — 7 unprojectable |
+| `py += 60` | 56/96 | `0x24 1x24 3x24 4x24` | **fail** — row 0 dark | **fail** — row 0 dark 24/24 |
+| `py += 400` | 56/96 | `0x24 1x24 3x24 4x24` | **pass, exit 0** | **fail** — row 0 dark 24/24 |
+| `py += 4000` | 56/72 | `1x24 3x24 4x24` — row 0 absent | **pass, exit 0** | **fail** — 24 unprojectable |
+| `pz += 400` | 56/82 | `0x10 1x24 3x24 4x24` — row 0 thinned | **pass, exit 0** | **fail** — row 0 dark 10/10 *and* 14 unprojectable |
+
+`pz += 400` is the rung the new sampler changed most, and it is worth reading closely. 14 of row 0's
+24 samples project past the far plane and are dropped before both tallies, leaving 10 — which is
+exactly `DARK_ROW_MIN_SAMPLES`, so the row is judged, goes 10 of 10 dark, and the run now fails on
+the dark-row rule *and* the unprojectable clause at once. Under the file-wide sampler the same
+injection left row 0 with 8 samples, under the floor and therefore unjudged, so only the
+unprojectable clause fired. The floor is load-bearing in both directions here: one sample fewer and
+this rung would report half of what it found.
 
 Read the `measured` column as approximate: it varies by about one across machines and between runs
 on the same machine, because whether a given star is occluded by a nearer sprite comes down to pixel
@@ -273,13 +346,13 @@ rest unchanged. `offScreen` is reported and **never judged**; nothing branches o
 That is what makes the discriminator the earlier analysis went looking for unnecessary. The control
 displaces row 0's home in the *plane table*, which backs the mirror and the GLSL twin alike, so the
 row is genuinely and correctly 400 units off screen — the case a concentration rule on `offScreen`
-would have failed. Both cases report exactly `15 off screen`; the verdicts are opposite, and they
+would have failed. Both cases report exactly `24 off screen`; the verdicts are opposite, and they
 are opposite on measurement rather than on a rule about frustums:
 
 | row 0, 400 units up | off screen | row 0 located | verdict |
 | --- | --- | --- | --- |
-| mirror only (`py += 400`) | 15 | 0 of 15 | **fail** — row 0 dark, named |
-| mirror *and* shader (plane table `home + 400`) | 15 | 15 of 15 | **pass, exit 0** |
+| mirror only (`py += 400`) | 24 | 0 of 24 | **fail** — row 0 dark, named |
+| mirror *and* shader (plane table `home + 400`) | 24 | 24 of 24 | **pass, exit 0** |
 
 The one projection left that no view offset can reach is `z > 1` — behind the eye, or past the far
 plane — since shifting the frustum sideways never puts the eye behind itself. Those samples are
@@ -341,7 +414,7 @@ unlocatable, and a correct mirror reads as a *dark row* rather than as an unproj
 the field both clauses go wrong at once and only one of them says so.
 
 Data that legitimately places a plane far enough out fails the same way with the mirror and the
-shader in perfect agreement. The plane-table control at `home + 4000` does it: 15 unprojectable, and
+shader in perfect agreement. The plane-table control at `home + 4000` does it: 24 unprojectable, and
 the message used to call it a mirror error. The same control at `home + 400` passes, so the
 false-positive boundary sits between the two — a factor of 30 beyond the 130 a centre is allowed,
 which is why no dataset the pipeline can emit reaches it. The failure message now names both

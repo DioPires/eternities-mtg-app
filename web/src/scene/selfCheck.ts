@@ -27,9 +27,9 @@
  * about the fixture, so the run samples widely and demands a floor of real measurements rather
  * than a share of them. But `unmeasured` is *also* what a mirror error too large to fit the search
  * window looks like, which made it an escape hatch for the worst version of the very bug this
- * exists to catch: see `DARK_ROW_MIN_SAMPLES`, which tells the two apart by how they distribute
- * across plane rows — and which also states the limit that rule still has, a row too thinly sampled
- * to judge. And the resolution is the pixel grid: see `COINCIDENT_PX`
+ * exists to catch: see `DARK_ROW_MIN_SAMPLES`, which tells the two apart both by what the pick
+ * window held instead and by how they distribute across plane rows — and which also states the
+ * limit that rule still has, a row of fewer than ten stars. And the resolution is the pixel grid: see `COINCIDENT_PX`
  * for what size of disagreement this does and does not catch, which was measured by injection
  * rather than assumed. What the check buys is bounded from below by injection and stated in
  * `docs/star-renderer.md`; neither that statement nor this one is a claim to be exhaustive.
@@ -109,6 +109,15 @@ export interface SelfCheckResult {
    * one well-sampled plane row has found a mirror error too large to measure. See `ok`.
    */
   readonly unmeasured: number
+  /**
+   * The subset of `unmeasured` that occlusion does not account for: the pick window was empty, or
+   * held a star the mirror does not put nearer the eye than the one asked about. This is what
+   * {@link findDarkRows} judges, and the reason it can be judged on a dataset where whole planes
+   * are legitimately 96% occluded. See `DARK_ROW_MIN_SAMPLES`.
+   */
+  readonly unexplained: number
+  /** `[planeRow, count]` for the unexplained samples, commonest first. The rule's numerator. */
+  readonly unexplainedRows: readonly (readonly [number, number])[]
   /** `[planeRow, count]` for the unmeasurable samples, commonest first. */
   readonly unmeasuredRows: readonly (readonly [number, number])[]
   /** `[planeRow, count]` for *every* sample taken — the denominator of the line above. */
@@ -177,7 +186,30 @@ export function selfCheckRequested(
   return value !== null && value !== '0'
 }
 
+/**
+ * `?perrow=N`, the per-row sample budget, or `null` to use {@link SAMPLES_PER_ROW}.
+ *
+ * The floor and rate in `findDarkRows` are only meaningful against a particular budget, so the
+ * budget has to be movable without a rebuild — otherwise re-deriving them means recompiling the
+ * bundle once per candidate value, and nobody re-checks them again. `scripts/selfcheck-measure.mjs`
+ * sweeps this. Diagnostic only: it is read on the `?selfcheck=1` path, which is the only path that
+ * runs the check at all.
+ *
+ * Rejects anything that is not a positive integer rather than letting it become `NaN`, which would
+ * make `Math.min(perRow, total)` produce `NaN` and silently sample nothing.
+ */
+export function samplesPerRowRequested(
+  search = typeof location === 'undefined' ? '' : location.search,
+): number | null {
+  const raw = new URLSearchParams(search).get('perrow')
+  if (raw === null) return null
+  const value = Number(raw)
+  return Number.isInteger(value) && value > 0 ? value : null
+}
+
 const world = new Vector3()
+/** Scratch for the occluder projection in `sample`; see the dark-sample branch there. */
+const occluderPixel = new Vector3()
 
 /**
  * How far the shader may draw a star from the pixel the mirror predicted, in device pixels.
@@ -239,39 +271,79 @@ const MIN_MEASURED = 16
  * below is for. Rows sampled fewer times than that are reported but not judged; on an 87-plane
  * fixture most rows draw one sample and can never be either.
  *
- * Both numbers are set from measurement, and the floor is the load-bearing one. A first attempt
- * used four samples and failed the *clean* `fixture-scale` run: rows 47 and 43 drew five and four
- * samples and every one of them was occluded. With 37 of 64 samples unmeasurable on that fixture,
- * a run of four or five dark in a row is ordinary luck, not evidence. Ten is above every row that
- * behaved that way — the largest was seven — and below the rows that carry a real sample:
+ * Both numbers are set from measurement, and DEC-634 re-derived them against the per-row sampler.
+ * **Neither moved. What moved is the numerator they are applied to**, and that is the whole of the
+ * story — so read this as the record of a rule that had to change shape, not a pair of tuned knobs.
  *
- *     fixture-small, clean    row 4: 8/27 dark    row 3: 7/17    row 0: 0/15    row 1: 1/5
- *     fixture-scale, clean    row 0: 1/15 dark    row 67: 5/7    row 47: 5/5    row 43: 4/4
- *     fixture-small, py += 3 injected into row 0  row 0: 15/15 dark
+ * *The floor stays 10, for a new reason.* Its old job was to outrank luck: at 37 of 64 samples
+ * occluded, a row drawing four or five samples goes entirely dark by chance, as rows 47 and 43 did
+ * on a clean build. Under {@link rowSampleIndices} a row's sample count is no longer a draw from
+ * the file; it is `min(SAMPLES_PER_ROW, that row's stars)`, and on `fixture-scale` those counts run
+ * 24 for 66 rows, then 23, 21, 19, 18, 12 — and then 7, 7, 6. Nothing lands between 7 and 12, so
+ * every floor in that gap selects the same 77 rows and the choice is insensitive. What the floor
+ * now excludes is not unlucky rows but *small* ones: `lorwyn` (6 stars), `diraden` and `vryn` (7)
+ * cannot reach ten samples at any budget without reading the same star twice, and ten reads of one
+ * occluded star are ten dark samples establishing exactly what one established. They are reported
+ * and never judged. Six further planes hold no stars at all, so the denominator is 77 of 87.
  *
- * So the judged rows sit at 0.0–0.41 clean against 1.0 injected, and 0.9 divides them with two
- * orders of magnitude of room: reaching it from a 0.41 base rate over 17 samples is a 1-in-10⁶
- * event. It is 0.9 rather than 1.0 so that one measurable star on an otherwise displaced row does
- * not buy the whole row an exemption.
+ * *The rate stays 0.9 — but only because the numerator stopped being `unmeasured`.* Sampling every
+ * row reaches rows the file-wide sampler never judged, and on a real dataset some of them are
+ * legitimately almost entirely occluded. Measured on Metal, clean, three runs each:
+ *
+ *     production   row 19 `dominaria`  23/24 23/24 23/24 dark   0.958
+ *     production   row 67 `ravnica`    22/24 21/24 21/24        0.917
+ *     production   rows 2, 60, 85      21/24                    0.875
+ *     fixture-scale row 42             20/24 on all five runs   0.833
+ *
+ * `dominaria` holds 6266 stars, 21.9% of the production field, and at a 2 px pick sprite almost
+ * every one of them is behind a nearer one. So on `unmeasured` there is **no threshold that works**:
+ * 0.9 and 0.95 both fail that row on a clean build, and 1.0 sits one sample away from failing while
+ * letting a single straggler exempt a genuinely displaced row. Raising the budget cannot separate
+ * 0.958 from 1.0 either. The old constants hid this because the old sampler judged `dominaria` on
+ * 14 samples drawn from one stretch of the file; sampling the row evenly is what revealed it.
+ *
+ * The fix is not a number. A dark sample now records *why* it was dark — see the branch in `sample`
+ * — by asking what the pick window held instead, and only samples that occlusion does not account
+ * for reach {@link SelfCheckResult.unexplainedRows}, which is what this rule reads. That quantity
+ * is density-independent, and the separation is total rather than marginal:
+ *
+ *     production, clean            row 19: 23/24 dark, **0** unexplained; 1 unexplained in the run
+ *     production, `py += 400`      row 19: 24/24 dark, **24** unexplained
+ *     fixture-scale, clean         4 unexplained across 80 rows, 1122 of 1126 dark samples occluded
+ *     fixture-scale, `py += 400`   row 44: 24/24 dark, **24** unexplained
+ *
+ * *So the rate moves from 0.9 to 0.5, and the numerator change is what demands it.* Against
+ * `unmeasured`, 0.9 meant "this row went essentially entirely dark". Against `unexplained` that
+ * reading is wrong, because occlusion keeps some of a *displaced* row's samples explained too. The
+ * smallest rung on the ladder, `py += 3` into `fixture-small`'s row 0, moves the row a few pixels,
+ * and four of its 24 samples then find a genuinely nearer star at the predicted pixel. That rung
+ * reads 20 of 24 unexplained — 0.833, under 0.9 — so a rate carried across unexamined would have
+ * let the ladder's *smallest* injection pass green. Re-running the ladder is what caught it, which
+ * is the only way any entry on that list has ever been caught.
+ *
+ * What the measurements show is a gap with nothing in it. Clean rows reach at most 1 unexplained
+ * sample of 24 (0.042), across all three datasets and every run measured; injected rows read 0.833
+ * to 1.0. The rate goes in the middle of that gap rather than at either edge, so neither more
+ * occlusion coincidence on a displaced row nor more noise on a clean one moves a verdict. Its old
+ * job — denying a displaced row its exemption for one measurable straggler — is still done, with an
+ * order of magnitude more room than 0.9 ever had.
  *
  * One thing this rule does not do, and one it used to not do. The list is **not** offered as
  * exhaustive — each entry was found by pushing an injection further than the round before it had
  * thought to, and the next one would be found the same way.
  *
- * It does not judge a thinly sampled row, and that one is still open. Sixty-four samples over
- * `fixture-scale`'s 87 planes leave most rows with one sample each, and the only row there that
- * clears the floor is row 0 — which is the Blind Eternities dust, the row PRD 8.5.7's failure is
- * named after and the one Phase 2b's tether frames. Production is barely better: 87 real planes put
- * two rows over the floor (`19x14 0x12`). The draw-range fix, DEC-634, is what removes this one.
+ * It does not judge a row with fewer than ten stars, and it never can — see the floor above. What
+ * it no longer does is fail to judge a row merely because the *file* was sampled evenly: that was
+ * DEC-634's hole, and closing it took the judged count on `fixture-scale` from 1 row to 77.
  *
  * It used to miss an error large enough to project the row off screen, and no longer does. Nothing
  * in this constant or in `findDarkRows` changed to fix it — the fix is upstream, in `mirrorPixel`,
  * which stopped returning `null` for a projection outside NDC. An off-screen sample now enters
  * `checked` and `sampledRows` like any other, gets a pick window aimed at it, and is judged by the
  * rule below unchanged. On `fixture-small` the rung that used to pass green, `py += 400` into row
- * 0, now fails naming row 0 dark 15 of 15 while reporting `15 off screen`; the control that
+ * 0, now fails naming row 0 dark 24 of 24 while reporting `24 off screen`; the control that
  * displaces the same row in the *plane table* — mirror and shader agreeing, the row genuinely out
- * of frame — reports the identical `15 off screen` and passes, located 15 of 15. Opposite verdicts
+ * of frame — reports the identical `24 off screen` and passes, located 24 of 24. Opposite verdicts
  * on the same count, decided by measurement rather than by a rule about frustums, which is why the
  * discriminator the earlier analysis went looking for turned out to be unnecessary rather than
  * merely deferred. See `mirrorPixel` for the mechanism, and `docs/star-renderer.md`
@@ -284,7 +356,134 @@ const MIN_MEASURED = 16
  * `ok` requires zero of them. See that clause in `sample` for what makes a flat zero safe.
  */
 const DARK_ROW_MIN_SAMPLES = 10
-const DARK_ROW_RATE = 0.9
+const DARK_ROW_RATE = 0.5
+
+/**
+ * How many stars to sample from each non-empty plane row.
+ *
+ * Twenty-four, measured. The budget buys two things and costs one, and the trade is linear.
+ *
+ * It buys rows: 24 is above the floor of 10 with room, so every plane holding ten or more stars is
+ * judged — 77 of 87 on `fixture-scale`, 30 of 30 on production. It also buys resolution in the
+ * rule's numerator: at 24 samples the gap between a clean row (at most 1 unexplained) and an
+ * injected one (20 to 24) is wide enough for {@link DARK_ROW_RATE} to sit in the middle of it. At a
+ * budget of 10 that gap is four samples wide and the rate has nowhere safe to stand.
+ *
+ * It costs wall-clock, one frame and one readback per sample: 1832 samples and 32.0 s on
+ * `fixture-scale`, 720 and 13.5 s on production, against the old file-wide sampler's 64 samples and
+ * about a second — per dataset, on every `verify-browser` run. Going to 40 would cost 2911 samples
+ * and 50.0 s to judge the same 77 rows. The check is diagnostic and runs only under `?selfcheck=1`,
+ * so this is a local gate's wall-clock, not anything a user waits for.
+ *
+ * `?perrow=N` overrides it without a rebuild; see {@link samplesPerRowRequested}. Rows holding
+ * fewer than this many stars contribute all of them and no more — never the same star twice.
+ */
+const SAMPLES_PER_ROW = 24
+
+/**
+ * A maximal run of consecutive star indices belonging to one plane row.
+ *
+ * The pipeline writes `stars.bin` plane by plane, so in practice every row is exactly one run and
+ * this is a `[start, start + count)` range per row. That is a property of the encoder rather than
+ * anything enforced here, so what {@link planeRowRuns} returns is runs and {@link rowSampleIndices}
+ * groups them by row — a row split into two runs is sampled across both rather than half of it
+ * becoming invisible. Measured contiguous on all three datasets: `fixture-small` 4 non-empty rows,
+ * `fixture-scale` 80 of 87, production 30 of 87.
+ */
+export interface PlaneRowRun {
+  readonly row: number
+  readonly start: number
+  readonly count: number
+}
+
+/**
+ * The row layout of the uploaded records, in one pass over the row byte.
+ *
+ * Takes the accessor rather than the `StarGeometry` so the sampler can be exercised without a GPU,
+ * a fixture or a WebGL context — the same reason `findDarkRows` and `pixelForNdc` are separate
+ * functions. One pass over ~30k records, once per run of the check.
+ */
+export function planeRowRuns(
+  rowOf: (index: number) => number,
+  drawCount: number,
+): readonly PlaneRowRun[] {
+  const runs: { row: number; start: number; count: number }[] = []
+  let current: { row: number; start: number; count: number } | null = null
+  for (let index = 0; index < drawCount; index += 1) {
+    const row = rowOf(index)
+    if (current !== null && current.row === row) current.count += 1
+    else {
+      current = { row, start: index, count: 1 }
+      runs.push(current)
+    }
+  }
+  return runs
+}
+
+/**
+ * Which stars to sample: up to `perRow` from every non-empty plane row, round-robin across rows.
+ *
+ * This is the change DEC-634 is about. The old sampler walked `floor((s / 64) * drawCount)` — even
+ * over the *file*, which is even over the stars and therefore wildly uneven over the rows, since a
+ * row's share of the samples is its share of the stars. On `fixture-scale` that gave row 0 fifteen
+ * samples and left most of the other 79 non-empty rows with one, and `findDarkRows` can only judge
+ * a row it sampled at least {@link DARK_ROW_MIN_SAMPLES} times. So the rule that catches the PRD
+ * 8.5.7 catastrophe was being applied to one row out of eighty, and an error scattered across rows
+ * made the check *less* likely to fail rather than more.
+ *
+ * Even over rows instead. Two details are not free choices:
+ *
+ * A row's picks are centred in their strata — `floor((j + 0.5) * total / take)` rather than
+ * `floor(j * total / take)` — so they are not pinned to the row's first star. Every row would
+ * otherwise contribute its index 0 on every run, and one fixed star per row is a worse estimator of
+ * that row than a spread of them.
+ *
+ * `take` is `min(perRow, total)`, so a row of six stars contributes six samples rather than six
+ * copies of a smaller set. Sampling a row with replacement to reach a fixed floor would defeat the
+ * floor's own purpose: ten reads of one occluded star are ten dark samples that establish exactly
+ * what one established, and a clean fixture would report a dark row. Rows under the floor stay
+ * unjudged — see {@link DARK_ROW_MIN_SAMPLES} for which rows those now are.
+ */
+export function rowSampleIndices(runs: readonly PlaneRowRun[], perRow: number): readonly number[] {
+  const rows = new Map<number, { total: number; runs: PlaneRowRun[] }>()
+  for (const run of runs) {
+    const entry = rows.get(run.row) ?? { total: 0, runs: [] }
+    entry.total += run.count
+    entry.runs.push(run)
+    rows.set(run.row, entry)
+  }
+
+  const perRowPicks: number[][] = []
+  for (const entry of rows.values()) {
+    const take = Math.min(perRow, entry.total)
+    const picks: number[] = []
+    for (let j = 0; j < take; j += 1) {
+      // A position within the row's own stars, which the loop below turns into a file index by
+      // walking that row's runs. With one run per row — every dataset today — it is `start + it`.
+      let position = Math.min(Math.floor(((j + 0.5) * entry.total) / take), entry.total - 1)
+      for (const run of entry.runs) {
+        if (position < run.count) {
+          picks.push(run.start + position)
+          break
+        }
+        position -= run.count
+      }
+    }
+    perRowPicks.push(picks)
+  }
+
+  // Round-robin rather than row after row. Every sample costs a frame, so the check runs for
+  // seconds; interleaving means a run cut short by a reload has spread what it managed across all
+  // the rows rather than having finished the first few. Nothing else depends on the order.
+  const out: number[] = []
+  const deepest = perRowPicks.reduce((max, picks) => Math.max(max, picks.length), 0)
+  for (let j = 0; j < deepest; j += 1) {
+    for (const picks of perRowPicks) {
+      if (j < picks.length) out.push(picks[j]!)
+    }
+  }
+  return out
+}
 
 /**
  * The dark-row rule of {@link DARK_ROW_MIN_SAMPLES}, as a function of the two tallies alone.
@@ -294,10 +493,12 @@ const DARK_ROW_RATE = 0.9
  */
 export function findDarkRows(
   sampledRows: ReadonlyMap<number, number>,
-  unmeasuredRows: ReadonlyMap<number, number>,
+  // `unexplainedRows`, not `unmeasuredRows`. Passing the latter reinstates the bug DEC-634 found:
+  // production's `dominaria` is 96% occluded on a clean build and fails at any usable rate.
+  unexplainedRows: ReadonlyMap<number, number>,
 ): readonly (readonly [number, number, number])[] {
   return [...sampledRows.entries()]
-    .map(([row, taken]) => [row, unmeasuredRows.get(row) ?? 0, taken] as const)
+    .map(([row, taken]) => [row, unexplainedRows.get(row) ?? 0, taken] as const)
     .filter(([, dark, taken]) => taken >= DARK_ROW_MIN_SAMPLES && dark / taken >= DARK_ROW_RATE)
     .sort((a, b) => b[1] - a[1])
 }
@@ -424,11 +625,11 @@ export async function runSelfCheck(
   geometry: StarGeometry,
   field: StarField,
   reducedMotion: boolean,
-  // 64, not 24. A star in a galaxy core is covered by a nearer sprite and cannot be measured
-  // through the id buffer at all — on `fixture-scale` that is over half the samples — so the
-  // sample count has to be large enough that what survives is still a real sample. One frame and
-  // one readback each, so this costs about a second, once, under `?selfcheck=1`.
-  sampleCount = 64,
+  // Per plane row, not per file. See {@link rowSampleIndices} for why the budget is expressed this
+  // way and {@link DARK_ROW_MIN_SAMPLES} for where the number comes from. One frame and one
+  // readback each, so on `fixture-scale`'s 80 non-empty rows this costs about twelve seconds, once,
+  // under `?selfcheck=1`.
+  samplesPerRow = SAMPLES_PER_ROW,
 ): Promise<SelfCheckResult> {
   // Narrow the pick sprite for the duration, so what comes back is about position rather than
   // about how far a neighbour's inflated sprite reaches. Restored in the `finally` below — leaving
@@ -444,7 +645,7 @@ export async function runSelfCheck(
       table,
       geometry,
       reducedMotion,
-      sampleCount,
+      samplesPerRow,
       spriteFloorPx,
     )
   } finally {
@@ -460,12 +661,11 @@ async function sample(
   table: PlaneTable,
   geometry: StarGeometry,
   reducedMotion: boolean,
-  sampleCount: number,
+  samplesPerRow: number,
   // Passed rather than read back from the constant, so the result reports the floor the run
   // actually picked at rather than the one it was supposed to use.
   spriteFloorPx: number,
 ): Promise<SelfCheckResult> {
-  const total = geometry.drawCount
   const missed: SelfCheckResult['missed'][number][] = []
   let agreed = 0
   let offScreen = 0
@@ -480,6 +680,8 @@ async function sample(
   let nearestDepth = Infinity
   let farthestDepth = -Infinity
   const unmeasuredRows = new Map<number, number>()
+  let unexplained = 0
+  const unexplainedRows = new Map<number, number>()
   const unprojectableRows = new Map<number, number>()
   const sampledRows = new Map<number, number>()
   let offsetTotal = 0
@@ -496,10 +698,14 @@ async function sample(
   await new Promise((frame) => requestAnimationFrame(() => frame(null)))
   const canvasBytes = renderer.domElement.toDataURL('image/png').length
 
-  for (let sample = 0; sample < sampleCount; sample += 1) {
-    // Spread across the file, so dust (the curl-noise branch) and disc stars are both covered.
-    const index = Math.floor((sample / sampleCount) * total)
-    if (index >= total) continue
+  // Even over plane rows, not over the file: the whole of DEC-634. Built once, before the first
+  // frame, from the row byte of the records already uploaded.
+  const indices = rowSampleIndices(
+    planeRowRuns((index) => geometry.planeRowOf(index), geometry.drawCount),
+    samplesPerRow,
+  )
+
+  for (const index of indices) {
     if (!geometry.passesFilter(index)) continue
     const row = geometry.planeRowOf(index)
     // The plane has to have faded in, or the pick pass discards it (PRD 5.8.3's rule, reused).
@@ -556,6 +762,25 @@ async function sample(
       // that difference into a verdict.
       unmeasured += 1
       unmeasuredRows.set(row, (unmeasuredRows.get(row) ?? 0) + 1)
+      // Which of the two causes it was — see {@link DARK_ROW_MIN_SAMPLES}. One sample cannot say
+      // whether the star was covered or misplaced, but the pick window can be asked what it held
+      // *instead*: if that is a star the mirror puts nearer the eye, the prediction was right and
+      // something in front of it won the depth test. That is occlusion, and it explains this
+      // sample. An empty window, or one holding a star no nearer than this one, explains nothing —
+      // which is what a star that simply is not there leaves behind.
+      //
+      // `picked`'s depth comes from the same mirror, which is what makes this usable here and
+      // useless as a measurement: an error the two stars share cancels. So it only decides which
+      // tally a dark sample joins and never scores agreement. The offset comparison above remains
+      // the only thing putting the CPU on one side and the GPU on the other.
+      const occluder =
+        picked >= 0
+          ? mirrorPixel(picked, table, geometry, camera, motion, width, height, occluderPixel)
+          : null
+      if (occluder === null || occluder.depth >= pixel.depth) {
+        unexplained += 1
+        unexplainedRows.set(row, (unexplainedRows.get(row) ?? 0) + 1)
+      }
       // Not scored as agreement either. An unmeasured sample established nothing about the mirror,
       // and letting it fall through into `agreed`/`occluded` reported coverage the run never had.
       continue
@@ -588,7 +813,7 @@ async function sample(
   const maxOffsetPx = Math.round(offsetMax * 100) / 100
   // Rows the check looked at often enough to judge, and located nothing on. Read off the two
   // tallies above rather than tracked separately, so it cannot disagree with what is reported.
-  const darkRows = findDarkRows(sampledRows, unmeasuredRows)
+  const darkRows = findDarkRows(sampledRows, unexplainedRows)
   return {
     checked,
     agreed,
@@ -600,6 +825,8 @@ async function sample(
     nearestDepth: Number.isFinite(nearestDepth) ? nearestDepth : null,
     farthestDepth: Number.isFinite(farthestDepth) ? farthestDepth : null,
     unmeasuredRows: [...unmeasuredRows.entries()].sort((a, b) => b[1] - a[1]),
+    unexplained,
+    unexplainedRows: [...unexplainedRows.entries()].sort((a, b) => b[1] - a[1]),
     sampledRows: [...sampledRows.entries()].sort((a, b) => b[1] - a[1]),
     darkRows,
     missed,
@@ -625,10 +852,17 @@ async function sample(
     // pixel to aim at, and such a sample is still dropped before both tallies — which absorbs an
     // error in two ways, both measured on `fixture-small` and both green before this clause.
     // `py += 4000` takes row 0 out of `sampledRows` entirely, the same disappearance the lateral
-    // fix closes. `pz += 400` is quieter and worse: it thins row 0 from 15 samples to 8, all 8
-    // come back dark, and the row still escapes `findDarkRows` — which does not judge a row below
-    // its floor of 10. Dropping a sample does not just lose that sample; it can drag the row it
-    // came from under the floor and take the other seven down with it.
+    // fix closes. `pz += 400` is quieter: it thins the row instead of removing it. Under the
+    // file-wide sampler that was the worse of the two — row 0 fell from 15 samples to 8, all 8 came
+    // back dark, and the row escaped `findDarkRows`, which does not judge below its floor of 10.
+    // Dropping a sample does not just lose that sample; it can drag the row it came from under the
+    // floor and take the others down with it.
+    //
+    // Per-row sampling (DEC-634) does not remove that mechanism, it just moves where it bites: the
+    // same rung now thins row 0 from 24 to 10, which is the floor exactly, so the row is judged,
+    // goes 10 of 10 unexplained, and the run fails on this clause and the dark-row rule together.
+    // One sample fewer and only this clause would fire. That margin is not a safety property of
+    // anything — it is where this fixture's arithmetic happens to land.
     //
     // Requiring zero is a real assertion here rather than a formality, and two separate facts are
     // what make it safe — one about the camera, one about the data. Both have to hold, because a
@@ -678,7 +912,7 @@ async function sample(
     //
     // What would break the data half is a plane legitimately placed far enough out. Measured: the
     // plane-table control at `home + 4000` — mirror and shader in perfect agreement, the data
-    // simply saying the plane is up there — fails with 15 unprojectable. The message used to call
+    // simply saying the plane is up there — fails with 24 unprojectable. The message used to call
     // that a mirror error; it now names both causes. The same control at `home + 400` passes, so
     // the boundary sits between the two, a factor of 30 beyond the 130 a centre is allowed.
     //

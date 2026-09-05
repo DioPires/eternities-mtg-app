@@ -11,13 +11,13 @@
 #
 #   web/scripts/selfcheck-control.sh \
 #     'if (record.index === 0) d[base + PT_HOME + 1] = record.home[1] + 400' 'home + 400'
-#       -> pass, exit 0, `15 off screen`, row 0 located 15 of 15. Compare `py += 400` on the ladder,
-#          which reports the identical `15 off screen` and fails. Opposite verdicts on the same
+#       -> pass, exit 0, `24 off screen`, row 0 located 24 of 24. Compare `py += 400` on the ladder,
+#          which reports the identical `24 off screen` and fails. Opposite verdicts on the same
 #          count is the proof that nothing branches on frustums.
 #
 #   web/scripts/selfcheck-control.sh \
 #     'if (record.index === 0) d[base + PT_HOME + 1] = record.home[1] + 4000' 'home + 4000'
-#       -> FAILS, with 15 unprojectable and a message naming both possible causes. This is the
+#       -> FAILS, with 24 unprojectable and a message naming both possible causes. This is the
 #          false-positive boundary of the `unprojectable === 0` clause, and it sits a factor of 30
 #          beyond the 130 `MULTIVERSE_RADIUS` allows a centre, so no real dataset can reach it. See
 #          the clause in `selfCheck.ts`.
