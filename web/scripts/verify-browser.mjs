@@ -210,12 +210,36 @@ function readRoster(dataset) {
   return { hash, planes: planes.length, labelled, shards, stars: manifest.counts.stars, realImages }
 }
 
+/**
+ * The preview server, plus the two things needed to diagnose it when it dies.
+ *
+ * `stdio` has always piped stderr and nothing has ever read it, so the server's own diagnostics
+ * went nowhere and a mid-run exit was invisible at the layer that caused it: the run carried on
+ * against a dead port and surfaced as an opaque puppeteer error at whatever step came next. That
+ * reads exactly like a regression in the step, which is the expensive way to be wrong. So stderr
+ * is drained and echoed, its tail is kept for the exit message, and the exit itself is announced.
+ *
+ * `stop()` rather than `child.kill()` at the call site, so the deliberate teardown at the end of
+ * a run is not reported as the death this is watching for.
+ */
 async function startPreview(dataset) {
   const child = spawn('pnpm', ['exec', 'vite', 'preview', '--port', '0', '--strictPort', 'false'], {
     cwd: WEB_ROOT,
     env: { ...process.env, ETERNITIES_DATASET: dataset },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
+  // A rolling tail, so a server that has been chattering for ten minutes still fits in the
+  // message and the last words are the ones kept.
+  const tail = []
+  child.stderr.setEncoding('utf8')
+  child.stderr.on('data', (chunk) => {
+    tail.push(chunk)
+    if (tail.length > 20) tail.shift()
+    process.stderr.write(`  [vite preview] ${chunk.replace(/\n(?=.)/g, '\n  [vite preview] ')}`)
+  })
+
+  let started = false
+  let stopping = false
   const url = await new Promise((resolvePromise, rejectPromise) => {
     const timer = setTimeout(() => rejectPromise(new Error('vite preview did not start')), 30_000)
     child.stdout.setEncoding('utf8')
@@ -223,15 +247,37 @@ async function startPreview(dataset) {
       const match = /(http:\/\/localhost:\d+)/.exec(chunk)
       if (match) {
         clearTimeout(timer)
+        started = true
         resolvePromise(match[1])
       }
     })
-    child.on('exit', (code) => {
+    child.on('exit', (code, signal) => {
+      if (started) return
       clearTimeout(timer)
-      rejectPromise(new Error(`vite preview exited with ${code}`))
+      rejectPromise(new Error(`vite preview exited with ${code}${signal ? ` (${signal})` : ''}`))
     })
   })
-  return { child, url }
+
+  child.on('exit', (code, signal) => {
+    if (stopping) return
+    console.error(
+      `\n  vite preview exited mid-run (code ${code}${signal ? `, signal ${signal}` : ''}). ` +
+        `Everything after this point is talking to a dead server, so the next failure is that ` +
+        `and not the step it lands in.` +
+        (tail.length > 0
+          ? `\n  Its last output:\n  ${tail.join('').trimEnd().replace(/\n/g, '\n  ')}`
+          : ' It said nothing on stderr.'),
+    )
+  })
+
+  return {
+    child,
+    url,
+    stop: () => {
+      stopping = true
+      child.kill('SIGTERM')
+    },
+  }
 }
 
 /**
@@ -343,14 +389,18 @@ const pause = (ms) => new Promise((r) => setTimeout(r, ms))
  * whole suite stayed green through it. That is the class of defect a text-only assertion cannot
  * see, so this one is deliberately not about text.
  *
- * Three things are asked, because each catches a different way to be invisible:
+ * Four things are asked, because each catches a different way to be invisible:
  *
  *  - `checkVisibility` for `display: none`, `visibility: hidden`, zero opacity and an unrendered
  *    subtree — the failures that leave a box behind;
  *  - the intersection with the viewport, for the failure that actually happened: a laid-out,
  *    perfectly visible box positioned somewhere nobody can see;
  *  - `position`, because `static` is what put it there, and naming it makes the diagnosis obvious
- *    from the message alone.
+ *    from the message alone;
+ *  - the scroll overflow, for the one invisibility the other three all pass: `max-height` with
+ *    `overflow: hidden` (both in the `.scene-status` rule, and the `max-height` deliberately so)
+ *    clips the readout's last lines while the box itself paints, at full size, exactly where it
+ *    belongs. Nothing above can see a panel that is on screen and truncated.
  *
  * Occlusion is out of scope here: `pointer-events: none` takes the panel out of hit testing on
  * purpose (the harness clicks stars through this corner), so `elementsFromPoint` would report the
@@ -371,6 +421,9 @@ async function verifyStatusPanelPaints(page, testid, label) {
       onScreen: { width, height },
       position: style.position,
       viewport: { width: window.innerWidth, height: window.innerHeight },
+      // Content height against the height on offer. Both are integers, and both include the
+      // padding, so they are directly comparable.
+      scroll: { height: node.scrollHeight, client: node.clientHeight },
     }
   }, testid)
 
@@ -386,18 +439,41 @@ async function verifyStatusPanelPaints(page, testid, label) {
       `fills .app instead of over it — ${where}. Its textContent still reads, which is why only ` +
       `this assertion can see it. Check the .scene-status rule in styles.css.`,
   )
-  // A tenth of the viewport in each axis: enough that a stray sliver poking in from off screen is
-  // not mistaken for a panel that can be read, and far below anything the real rule produces.
-  const floorW = seen.viewport.width / 10
-  const floorH = seen.viewport.height / 10
+  // Two floors per axis, and the panel has to clear both:
+  //
+  //  - a tenth of the viewport, so a stray sliver poking in from off screen is not mistaken for a
+  //    panel that can be read;
+  //  - 60% of the panel's own box, because a viewport fraction alone scales with the wrong thing.
+  //    The viewport tenth is 108px at 1080 whatever the panel, and the two panels are not the same
+  //    size: measured on `small`, ?harness=3's is 248px tall and 2a's is 374px. So the flat floor
+  //    is 44% of the one and 29% of the other, and a regression that pushed the tall one 71% off
+  //    the bottom would still leave more than 108px on screen and pass.
+  //
+  // Clamped to the viewport, so a panel bigger than the window is not asked for the impossible.
+  const floor = (side, box) => Math.min(Math.max(side / 10, box * 0.6), side)
+  const floorW = floor(seen.viewport.width, seen.box.width)
+  const floorH = floor(seen.viewport.height, seen.box.height)
   check(
     seen.onScreen.width >= floorW && seen.onScreen.height >= floorH,
     `${label}: the status panel is positioned off screen — only ${Math.round(seen.onScreen.width)}x` +
-      `${Math.round(seen.onScreen.height)} of it is inside the viewport (${where})`,
+      `${Math.round(seen.onScreen.height)} of it is inside the viewport, and this check wants at ` +
+      `least ${Math.round(floorW)}x${Math.round(floorH)} of its own ` +
+      `${Math.round(seen.box.width)}x${Math.round(seen.box.height)} box (${where})`,
+  )
+  // Height only: `.scene-status` clips vertically by design (`max-height` plus `overflow: hidden`)
+  // and the readout grows downwards, so vertical is where content is lost. Horizontally the rule
+  // sets `overflow-wrap: anywhere` on the lines, which wraps rather than overflows.
+  check(
+    seen.scroll.height <= seen.scroll.client,
+    `${label}: the status panel is on screen but its readout is truncated — ${seen.scroll.height}px ` +
+      `of content in ${seen.scroll.client}px of box, so ${seen.scroll.height - seen.scroll.client}px ` +
+      `is clipped by the max-height in the .scene-status rule. The clipped lines still read through ` +
+      `textContent, so only this assertion can see it (${where})`,
   )
   console.log(
     `  the status panel paints: ${where}, ${Math.round(seen.onScreen.width)}x` +
-      `${Math.round(seen.onScreen.height)} of it on screen`,
+      `${Math.round(seen.onScreen.height)} of it on screen, ` +
+      `${seen.scroll.height}px of content in ${seen.scroll.client}px of box`,
   )
 }
 
@@ -1869,11 +1945,13 @@ async function verifyStarField(page, url, allowSoftware, problems) {
   // the end and the per-plane fade-in of PRD 6.8.1 fired for each one.
   await page.waitForFunction(
     () =>
-      /\(complete\)/.test(document.querySelector('[data-testid="scene-status"]')?.textContent ?? ''),
+      /\(complete\)/.test(
+        document.querySelector('[data-testid="phase0-scene-state"]')?.textContent ?? '',
+      ),
     { timeout: 120_000 },
   )
   const scene = await page.evaluate(
-    () => document.querySelector('[data-testid="scene-status"]')?.textContent ?? '',
+    () => document.querySelector('[data-testid="phase0-scene-state"]')?.textContent ?? '',
   )
   console.log(`  scene: ${scene.replace(/\s+/g, ' ').trim().slice(0, 160)}`)
 
@@ -2034,7 +2112,7 @@ async function verify(dataset, allowSoftware, shots) {
     stdio: 'inherit',
   })
 
-  const { child, url } = await startPreview(dataset)
+  const { url, stop } = await startPreview(dataset)
   // The same launch `bench.mjs` uses. This check is cited as the mitigation for PRD risk 6 and for
   // driver variance, and it cannot say anything about driver variance from a software rasteriser:
   // the GPU self-check has to run on a GPU. `--enable-unsafe-swiftshader` stays only so that a
@@ -2087,7 +2165,7 @@ async function verify(dataset, allowSoftware, shots) {
     )
   } finally {
     await browser.close()
-    child.kill('SIGTERM')
+    stop()
   }
 }
 

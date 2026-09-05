@@ -86,12 +86,36 @@ function readRoster(dataset) {
   return { hash, manifest, planes, realImages: typeof manifest.scryfallBulkUpdatedAt === 'string' }
 }
 
+/**
+ * The preview server, plus the two things needed to diagnose it when it dies.
+ *
+ * `stdio` has always piped stderr and nothing has ever read it, so the server's own diagnostics
+ * went nowhere and a mid-run exit was invisible at the layer that caused it: a capture carried on
+ * against a dead port and surfaced as an opaque puppeteer error at whatever step came next. A gate
+ * run is long and the steps are far apart, so that misreads as a regression in the step. Stderr is
+ * drained and echoed, its tail is kept for the exit message, and the exit itself is announced.
+ *
+ * `stop()` rather than `child.kill()` at the call site, so the deliberate teardown at the end of a
+ * run is not reported as the death this is watching for. Mirrors `verify-browser.mjs`.
+ */
 async function startPreview(dataset) {
   const child = spawn('pnpm', ['exec', 'vite', 'preview', '--port', '0', '--strictPort', 'false'], {
     cwd: WEB_ROOT,
     env: { ...process.env, ETERNITIES_DATASET: dataset },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
+  // A rolling tail, so a server that has been chattering for the length of a capture still fits in
+  // the message and the last words are the ones kept.
+  const tail = []
+  child.stderr.setEncoding('utf8')
+  child.stderr.on('data', (chunk) => {
+    tail.push(chunk)
+    if (tail.length > 20) tail.shift()
+    process.stderr.write(`  [vite preview] ${chunk.replace(/\n(?=.)/g, '\n  [vite preview] ')}`)
+  })
+
+  let started = false
+  let stopping = false
   const url = await new Promise((ok, fail) => {
     const timer = setTimeout(() => fail(new Error('vite preview did not start')), 30_000)
     child.stdout.setEncoding('utf8')
@@ -99,15 +123,37 @@ async function startPreview(dataset) {
       const match = /(http:\/\/localhost:\d+)/.exec(chunk)
       if (match) {
         clearTimeout(timer)
+        started = true
         ok(match[1])
       }
     })
-    child.on('exit', (code) => {
+    child.on('exit', (code, signal) => {
+      if (started) return
       clearTimeout(timer)
-      fail(new Error(`vite preview exited with ${code}`))
+      fail(new Error(`vite preview exited with ${code}${signal ? ` (${signal})` : ''}`))
     })
   })
-  return { child, url }
+
+  child.on('exit', (code, signal) => {
+    if (stopping) return
+    console.error(
+      `\n  vite preview exited mid-run (code ${code}${signal ? `, signal ${signal}` : ''}). ` +
+        `Everything after this point is talking to a dead server, so the next failure is that ` +
+        `and not the checkpoint it lands in.` +
+        (tail.length > 0
+          ? `\n  Its last output:\n  ${tail.join('').trimEnd().replace(/\n/g, '\n  ')}`
+          : ' It said nothing on stderr.'),
+    )
+  })
+
+  return {
+    child,
+    url,
+    stop: () => {
+      stopping = true
+      child.kill('SIGTERM')
+    },
+  }
 }
 
 // --------------------------------------------------------------------------------------------
@@ -388,7 +434,7 @@ async function capture(args) {
   }
   mkdirSync(args.out, { recursive: true })
 
-  const { child, url } = await startPreview(args.dataset)
+  const { url, stop } = await startPreview(args.dataset)
   const browser = await puppeteer.launch({
     executablePath: findChrome(),
     headless: true,
@@ -616,7 +662,7 @@ async function capture(args) {
     if (notes.length > 0) console.log(`notes:\n  - ${notes.join('\n  - ')}`)
   } finally {
     await browser.close()
-    child.kill('SIGTERM')
+    stop()
   }
 }
 

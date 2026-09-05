@@ -161,7 +161,9 @@ export function Phase2aScene(): ReactElement {
           </ul>
         )}
         <h2>Scene</h2>
-        <ul data-testid="scene-status">
+        {/* Not `scene-status`: that reads like the panel, and the panel is the `.scene-status`
+            element two levels up. This is the Scene section's list inside it. */}
+        <ul data-testid="phase0-scene-state">
           <li>
             drawable: {data.drawable} / {data.expected}
             {data.starsComplete ? ' (complete)' : ' (streaming)'}
