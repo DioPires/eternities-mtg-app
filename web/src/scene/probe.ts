@@ -97,6 +97,17 @@ export interface Probe {
   activatePrinting: (index: number) => boolean
   /** Star indices the thumbnail tier is currently drawing. */
   thumbnailStars: () => number[]
+  /**
+   * Where a planet of the focused card is, as a fraction of the viewport. `null` if there is no
+   * such planet or it is behind the camera.
+   *
+   * Deliberately **not** an assertion seam. It exists so the browser check can aim a real pointer
+   * at a real planet: everything it then asserts — the hover label, the active printing — is read
+   * back out of the DOM, having gone through the id buffer and the pick path the user's pointer
+   * uses. PRD 5.6.9's hover shipped broken precisely because every planet assertion went through
+   * `activatePrinting`, which bypasses the picker entirely.
+   */
+  planetScreen: (index: number) => { x: number; y: number } | null
 }
 
 declare global {

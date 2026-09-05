@@ -32,6 +32,7 @@ import {
   Scene,
   Texture,
   UnsignedByteType,
+  Vector4,
   WebGLRenderTarget,
   type WebGLRenderer,
 } from 'three'
@@ -64,6 +65,29 @@ export interface AtlasCellUv {
 }
 
 /**
+ * The blit quad: a unit plane whose `v` runs **top-down**.
+ *
+ * `UNPACK_FLIP_Y_WEBGL` does not apply to an `ImageBitmap` source — the WebGL spec fixes a bitmap's
+ * orientation at creation, so `Texture.flipY` is inert here whatever it is set to. Row 0 of the
+ * upload is therefore the image's *top* row, and `t = 0` samples it.
+ *
+ * A render target's texels run bottom-up, and the ortho camera below puts the quad's `+y` at the
+ * top of the viewport. So the quad's top vertex has to carry `t = 0` for the image's top row to
+ * land at the top of the cell — which is the opposite of `PlaneGeometry`'s default.
+ *
+ * Left as the default, every thumbnail in the sheet drew upside down. It was invisible until the
+ * viewport bug in {@link ThumbnailAtlas.upload} was fixed, because until then the blit rectangle
+ * was 1.5× its cell and no thumbnail sampled the pixels it had written anyway.
+ */
+function blitGeometry(): PlaneGeometry {
+  const geometry = new PlaneGeometry(1, 1)
+  const uv = geometry.getAttribute('uv')
+  for (let i = 0; i < uv.count; i += 1) uv.setY(i, 1 - uv.getY(i))
+  uv.needsUpdate = true
+  return geometry
+}
+
+/**
  * The atlas and its LRU. Knows nothing about fetching — {@link ThumbnailLoader} owns that — so the
  * eviction rule and the fetch policy can be read, and tested, apart.
  */
@@ -79,6 +103,9 @@ export class ThumbnailAtlas {
   private readonly blitCamera = new OrthographicCamera(-0.5, 0.5, 0.5, -0.5, 0, 1)
   private readonly blitMaterial = new MeshBasicMaterial({ depthTest: false, depthWrite: false })
   private readonly blitMesh: Mesh
+  /** Scratch for the caller's viewport and scissor, saved across a blit. See {@link upload}. */
+  private readonly savedViewport = new Vector4()
+  private readonly savedScissor = new Vector4()
 
   constructor(capacity: number) {
     this.capacityValue = Math.min(capacity, ATLAS_CELLS)
@@ -99,7 +126,7 @@ export class ThumbnailAtlas {
       this.cells.push({ key: -1, lastSeen: 0, loaded: false })
     }
 
-    this.blitMesh = new Mesh(new PlaneGeometry(1, 1), this.blitMaterial)
+    this.blitMesh = new Mesh(blitGeometry(), this.blitMaterial)
     this.blitMesh.frustumCulled = false
     this.blitScene.add(this.blitMesh)
   }
@@ -226,10 +253,11 @@ export class ThumbnailAtlas {
     // Not a mistake: Scryfall's bytes are sRGB and the atlas stores them that way, so three must
     // not decode on the way in. See the file header.
     texture.colorSpace = NoColorSpace
-    // Left at three's default. The blit quad's `v` runs bottom-up and so does the render target's,
-    // so flipping on upload is what puts the image's bottom row at the bottom of the cell — and the
-    // thumbnail quad then samples it the right way up without a second flip anywhere.
-    texture.flipY = true
+    // Explicitly off, and it would be off in effect either way: `UNPACK_FLIP_Y_WEBGL` does not
+    // apply to an `ImageBitmap`, whose orientation the WebGL spec fixes at creation. Saying `true`
+    // here reads as a flip that is not happening — which is how the sheet came to draw upside down.
+    // The orientation is handled once, in `blitGeometry`, where it is visible.
+    texture.flipY = false
     texture.generateMipmaps = false
     texture.minFilter = LinearFilter
     texture.magFilter = LinearFilter
@@ -242,19 +270,36 @@ export class ThumbnailAtlas {
 
     const previousTarget = renderer.getRenderTarget()
     const previousScissorTest = renderer.getScissorTest()
+    // `setViewport`/`setScissor` take **CSS** pixels and multiply by the pixel ratio on the way to
+    // GL; `getViewport`/`getScissor` hand back the same CSS-pixel rectangle. So the caller's frame
+    // is saved and restored in those units, and the cell rectangle — which is in atlas texels, and
+    // an atlas has no pixel ratio — is divided by the ratio going in so that three's multiply
+    // lands it back on the exact texels {@link cellUv} maps.
+    //
+    // Getting either half of that wrong is not a small error. Passing drawing-buffer pixels to the
+    // restore leaves a viewport 1.5× the buffer for the rest of the session, and every subsequent
+    // frame of the *whole scene* draws scaled about the bottom-left corner; passing them to the
+    // blit scales the cell rectangle into its neighbours, so cells overlap and thumbnails sample
+    // each other. Both shipped, and `verify-browser`'s viewport assertion is there to keep them
+    // from coming back.
+    const ratio = renderer.getPixelRatio()
+    renderer.getViewport(this.savedViewport)
+    renderer.getScissor(this.savedScissor)
     renderer.setRenderTarget(this.target)
     // Viewport *and* scissor: the viewport places the quad, the scissor guarantees that a driver
     // rounding the quad's edges outwards cannot touch a neighbouring cell.
-    renderer.setViewport(x, y, ATLAS_CELL_WIDTH, ATLAS_CELL_HEIGHT)
-    renderer.setScissor(x, y, ATLAS_CELL_WIDTH, ATLAS_CELL_HEIGHT)
+    renderer.setViewport(x / ratio, y / ratio, ATLAS_CELL_WIDTH / ratio, ATLAS_CELL_HEIGHT / ratio)
+    renderer.setScissor(x / ratio, y / ratio, ATLAS_CELL_WIDTH / ratio, ATLAS_CELL_HEIGHT / ratio)
     renderer.setScissorTest(true)
     renderer.render(this.blitScene, this.blitCamera)
+    // Restored before the render target is put back, not after: `setRenderTarget` recomputes the GL
+    // viewport from whichever frame applies to the target it is binding, so it has to be the last
+    // word. The other order leaves the atlas's cell rectangle in GL state when the previous target
+    // is not the default framebuffer.
     renderer.setScissorTest(previousScissorTest)
+    renderer.setViewport(this.savedViewport)
+    renderer.setScissor(this.savedScissor)
     renderer.setRenderTarget(previousTarget)
-    // Restore the full-frame viewport; `setRenderTarget` alone does not, and the next frame would
-    // otherwise draw the whole scene into a 128 × 178 corner.
-    renderer.setViewport(0, 0, renderer.domElement.width, renderer.domElement.height)
-    renderer.setScissor(0, 0, renderer.domElement.width, renderer.domElement.height)
 
     this.blitMaterial.map = null
     texture.dispose()

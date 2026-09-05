@@ -250,6 +250,16 @@ export class ThumbnailTier {
    * `plane` is the focused plane, or `null` at multiverse level — where nothing is near enough to
    * be a card and the whole tier costs one comparison. `focusedStar` is the star that has grown
    * into the focused card, so the selector can keep the sheet from standing in front of it.
+   *
+   * **Known deviation from PRD 5.5.1 (recorded, not fixed — DEC-638/N4).** The PRD keys the
+   * cross-fade on a star's *drawn size*, which is a property of the star and not of what is
+   * focused; this tier draws thumbnails only for the focused plane. The two agree in practice
+   * because PRD 5.7.1's per-level distance limits keep every other plane far enough away that no
+   * star of it reaches the 24 px threshold — the narrowing is unreachable on the production
+   * roster. It is still narrower than the PRD promises, and a future change to those limits, to
+   * plane spacing, or to the threshold could separate them. Widening it means running the selector
+   * over every plane's cards rather than one plane's, which is a different cost model than the one
+   * PRD 7.2's budgets were measured against, so it is not a change to make inside a fix leg.
    */
   update(
     dt: number,

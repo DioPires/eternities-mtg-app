@@ -10,9 +10,16 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import type { BufferGeometry, Vector4, WebGLRenderer } from 'three'
 
 import { ATLAS_BYTES, ATLAS_CELLS, ATLAS_COLUMNS, ThumbnailAtlas } from '../src/scene/cards/atlas'
-import { stepSpring, worstCaseCardBytes, PLANET_ID_BASE } from '../src/scene/cards/focusedCard'
+import {
+  FocusedCard,
+  stepSpring,
+  worstCaseCardBytes,
+  PLANET_ID_BASE,
+} from '../src/scene/cards/focusedCard'
+import type { CardRecord, PrintingTuple } from '../src/data/types'
 import {
   GPU_CEILING_BYTES,
   GPU_TARGET_BYTES,
@@ -23,7 +30,12 @@ import {
 } from '../src/scene/cards/gpuMemory'
 import { ImageQueue } from '../src/scene/cards/imageQueue'
 import { planetLayout, planetPosition } from '../src/scene/cards/planets'
-import { resolvePick } from '../src/scene/picking/scenePicker'
+import {
+  pickedStarIndex,
+  resolvePick,
+  samePick,
+  type PickResult,
+} from '../src/scene/picking/scenePicker'
 import { PICK_BUSY, PICK_MISS } from '../src/scene/picking/idPicker'
 import { cardEdgeGeometry, cardFaceGeometry } from '../src/scene/cards/roundedRect'
 import {
@@ -146,6 +158,186 @@ describe('PRD 5.5.4 thumbnail LRU', () => {
   })
 })
 
+/**
+ * The atlas blit's frame handling, which shipped inverted.
+ *
+ * `WebGLRenderer.setViewport`/`setScissor` take **CSS** pixels and multiply by the pixel ratio on
+ * the way to GL; `getViewport`/`getScissor` hand the same CSS-pixel rectangle back. The blit passed
+ * drawing-buffer pixels to both, so at a pixel ratio of 1.5 it wrote a 192 × 267 rectangle into a
+ * 128 × 178 cell — overlapping its neighbours — and then left a 4320 × 2430 viewport on a
+ * 2880 × 1620 buffer for the rest of the session, which drew the *whole scene* scaled about the
+ * bottom-left corner from the first thumbnail on.
+ *
+ * The fake renderer below is three's own arithmetic, and the assertions are in GL pixels: what the
+ * driver is actually handed.
+ */
+describe('PRD 8.5.8 atlas blit frame', () => {
+  /** Just enough `WebGLRenderer` for `upload`, applying three's CSS-pixel → GL-pixel rule. */
+  function fakeRenderer(pixelRatio: number, cssWidth: number, cssHeight: number) {
+    const viewport = { x: 0, y: 0, width: cssWidth, height: cssHeight }
+    const scissor = { ...viewport }
+    let target: unknown = null
+    let scissorTest = false
+    const glRects: Array<{ target: unknown; x: number; y: number; width: number; height: number }> =
+      []
+    const toGl = (r: typeof viewport) => ({
+      x: Math.round(r.x * pixelRatio),
+      y: Math.round(r.y * pixelRatio),
+      width: Math.round(r.width * pixelRatio),
+      height: Math.round(r.height * pixelRatio),
+    })
+    const renderer = {
+      getPixelRatio: () => pixelRatio,
+      // In drawing-buffer pixels, as the real canvas is. Present so that reaching for it — which is
+      // what the bug did — produces a wrong *measurement* here rather than a missing property.
+      domElement: { width: cssWidth * pixelRatio, height: cssHeight * pixelRatio },
+      getRenderTarget: () => target,
+      setRenderTarget: (next: unknown) => {
+        target = next
+      },
+      getScissorTest: () => scissorTest,
+      setScissorTest: (next: boolean) => {
+        scissorTest = next
+      },
+      getViewport: (out: { set: (x: number, y: number, z: number, w: number) => void }) => {
+        out.set(viewport.x, viewport.y, viewport.width, viewport.height)
+        return out
+      },
+      getScissor: (out: { set: (x: number, y: number, z: number, w: number) => void }) => {
+        out.set(scissor.x, scissor.y, scissor.width, scissor.height)
+        return out
+      },
+      setViewport: (x: number | Vector4, y?: number, w?: number, h?: number) => {
+        if (typeof x === 'number') {
+          viewport.x = x
+          viewport.y = y!
+          viewport.width = w!
+          viewport.height = h!
+        } else {
+          viewport.x = x.x
+          viewport.y = x.y
+          viewport.width = x.z
+          viewport.height = x.w
+        }
+      },
+      setScissor: (x: number | Vector4, y?: number, w?: number, h?: number) => {
+        if (typeof x === 'number') {
+          scissor.x = x
+          scissor.y = y!
+          scissor.width = w!
+          scissor.height = h!
+        } else {
+          scissor.x = x.x
+          scissor.y = x.y
+          scissor.width = x.z
+          scissor.height = x.w
+        }
+      },
+      render: () => {
+        glRects.push({ target, ...toGl(viewport) })
+      },
+    }
+    return {
+      renderer: renderer as unknown as WebGLRenderer,
+      glRects,
+      glViewport: () => toGl(viewport),
+      glScissor: () => toGl(scissor),
+      renderTarget: () => target,
+      scissorTest: () => scissorTest,
+    }
+  }
+
+  const bitmap = (): ImageBitmap =>
+    ({ width: 128, height: 178, close: () => {} }) as unknown as ImageBitmap
+
+  it('blits into the cell rectangle `cellUv` maps, at a fractional pixel ratio', () => {
+    const atlas = new ThumbnailAtlas(ATLAS_CELLS)
+    // 1.5 is the default quality tier's `pixelRatioCap`, which is where this was found.
+    const fake = fakeRenderer(1.5, 1920, 1080)
+
+    // Slot 0 and its right-hand neighbour, which the 1.5× rect used to run into.
+    atlas.claim(0, 0)
+    atlas.claim(1, 0)
+    expect(atlas.upload(fake.renderer, 0, bitmap())).toBe(true)
+    expect(atlas.upload(fake.renderer, 1, bitmap())).toBe(true)
+
+    expect(fake.glRects).toHaveLength(2)
+    expect(fake.glRects[0]).toMatchObject({
+      x: 0,
+      y: 0,
+      width: ATLAS_CELL_WIDTH,
+      height: ATLAS_CELL_HEIGHT,
+    })
+    expect(fake.glRects[1]).toMatchObject({
+      x: ATLAS_CELL_WIDTH,
+      y: 0,
+      width: ATLAS_CELL_WIDTH,
+      height: ATLAS_CELL_HEIGHT,
+    })
+    // The cells abut and do not overlap, in GL pixels.
+    expect(fake.glRects[0]!.x + fake.glRects[0]!.width).toBe(fake.glRects[1]!.x)
+    // Both were drawn into the atlas, not into the default framebuffer.
+    expect(fake.glRects[0]!.target).toBe(atlas.target)
+    atlas.dispose()
+  })
+
+  it('writes the image the right way up: the top row goes to the top of the cell', () => {
+    // `UNPACK_FLIP_Y_WEBGL` is inert for an `ImageBitmap`, so texel row 0 is the image's *top* row
+    // and `t = 0` samples it. A render target's texels run bottom-up and the ortho blit camera puts
+    // the quad's `+y` at the top of the viewport, so the quad's top vertex must carry `t = 0`.
+    // `PlaneGeometry`'s default is the opposite, and with it every thumbnail drew upside down.
+    const atlas = new ThumbnailAtlas(4)
+    const mesh = (atlas as unknown as { blitMesh: { geometry: BufferGeometry } }).blitMesh
+    const position = mesh.geometry.getAttribute('position')
+    const uv = mesh.geometry.getAttribute('uv')
+    let checked = 0
+    for (let i = 0; i < position.count; i += 1) {
+      // Quad top → image top → t = 0. Quad bottom → image bottom → t = 1.
+      expect(uv.getY(i)).toBeCloseTo(position.getY(i) > 0 ? 0 : 1, 9)
+      // `u` is untouched: a horizontal flip would mirror every thumbnail.
+      expect(uv.getX(i)).toBeCloseTo(position.getX(i) > 0 ? 1 : 0, 9)
+      checked += 1
+    }
+    expect(checked).toBe(4)
+    atlas.dispose()
+  })
+
+  it('gives the caller back the exact frame it had, and its render target', () => {
+    const atlas = new ThumbnailAtlas(ATLAS_CELLS)
+    const fake = fakeRenderer(1.5, 1920, 1080)
+    atlas.claim(7, 0)
+    atlas.upload(fake.renderer, 7, bitmap())
+
+    // 1920 × 1080 CSS at 1.5 is a 2880 × 1620 drawing buffer. The viewport left behind has to be
+    // that, and not the 4320 × 2430 that passing drawing-buffer pixels to the restore produced.
+    expect(fake.glViewport()).toEqual({ x: 0, y: 0, width: 2880, height: 1620 })
+    expect(fake.glScissor()).toEqual({ x: 0, y: 0, width: 2880, height: 1620 })
+    expect(fake.renderTarget()).toBeNull()
+    expect(fake.scissorTest()).toBe(false)
+    atlas.dispose()
+  })
+
+  it('leaves a caller who was already rendering somewhere else exactly as it found them', () => {
+    const atlas = new ThumbnailAtlas(ATLAS_CELLS)
+    const fake = fakeRenderer(2, 800, 600)
+    // Something mid-pass: a half-frame viewport, a scissor, the test on, another target bound.
+    const otherTarget = {}
+    fake.renderer.setViewport(10, 20, 400, 300)
+    fake.renderer.setScissor(11, 21, 401, 301)
+    fake.renderer.setScissorTest(true)
+    fake.renderer.setRenderTarget(otherTarget as never)
+
+    atlas.claim(40, 0)
+    atlas.upload(fake.renderer, 40, bitmap())
+
+    expect(fake.glViewport()).toEqual({ x: 20, y: 40, width: 800, height: 600 })
+    expect(fake.glScissor()).toEqual({ x: 22, y: 42, width: 802, height: 602 })
+    expect(fake.scissorTest()).toBe(true)
+    expect(fake.renderTarget()).toBe(otherTarget)
+    atlas.dispose()
+  })
+})
+
 /** `upload` needs a renderer; the flag it sets is what the LRU reads, so set it directly. */
 function markLoaded(atlas: ThumbnailAtlas, slot: number): void {
   const cells = (atlas as unknown as { cells: Array<{ loaded: boolean }> }).cells
@@ -247,6 +439,48 @@ describe('PRD 7.2 image concurrency', () => {
     expect(await dropped).toEqual({ ok: false, reason: 'dropped' })
     expect(started).not.toContain('gone')
     expect(harness.queue.stats.failed).toBe(0)
+    harness.queue.dispose()
+  })
+
+  // The two below are the same defect from either side, and neither is exotic: `priority()` returns
+  // null whenever a cell was evicted or a card drifted out of the cross-fade band, so a dropped
+  // entry sitting in front of a live one is the ordinary case on a moving camera. The test above
+  // has only the dropped entry waiting, which is why it never caught either.
+  it('drops an entry in front of the nearest one without dequeuing its neighbour (PRD 5.5.3)', async () => {
+    const started: string[] = []
+    const harness = queue({ concurrency: 1, onFetch: (url) => started.push(url) })
+
+    void harness.queue.request({ key: 'a', url: 'a', priority: () => 0 })
+    // Ordered so that the drop is at a lower index than the winner. A scan that records the
+    // winner's *index* has that index shifted down by the splice, onto 'far'.
+    void harness.queue.request({ key: 'dropme', url: 'dropme', priority: () => null })
+    void harness.queue.request({ key: 'near', url: 'near', priority: () => 1 })
+    void harness.queue.request({ key: 'far', url: 'far', priority: () => 5 })
+    await Promise.resolve()
+    expect(started).toEqual(['a'])
+
+    harness.release('a')
+    for (let i = 0; i < 10; i += 1) await Promise.resolve()
+    expect(started[1]).toBe('near')
+    harness.queue.dispose()
+  })
+
+  it('does not stall the pump when the nearest entry is the last one (PRD 5.5.3)', async () => {
+    const started: string[] = []
+    const harness = queue({ concurrency: 1, onFetch: (url) => started.push(url) })
+
+    void harness.queue.request({ key: 'a', url: 'a', priority: () => 0 })
+    void harness.queue.request({ key: 'dropme', url: 'dropme', priority: () => null })
+    // Last in the queue, so a shifted index runs off the end: `splice` returns nothing, the pump
+    // reads it as "nothing waiting" and stops — with 'keep' still waiting and a slot free.
+    void harness.queue.request({ key: 'keep', url: 'keep', priority: () => 1 })
+    await Promise.resolve()
+    expect(started).toEqual(['a'])
+
+    harness.release('a')
+    for (let i = 0; i < 10; i += 1) await Promise.resolve()
+    expect(started).toContain('keep')
+    expect(harness.queue.stats.waiting).toBe(0)
     harness.queue.dispose()
   })
 
@@ -452,6 +686,141 @@ describe('PRD 8.5.6 picking with the card tier in the buffer', () => {
   it('still falls through to the plane raycast on a miss, and refuses to guess when busy', () => {
     expect(resolvePick(PICK_MISS, 100, planeRow, () => 7)).toEqual({ kind: 'plane', index: 7 })
     expect(resolvePick(PICK_BUSY, 100, planeRow, () => 7)).toBeUndefined()
+  })
+})
+
+/**
+ * PRD 5.6.9's four promises about the hover label, as the change detection that has to hold for any
+ * of them to fire. `StarScene` reports a hover only when the pick changed, and it used to decide
+ * that on the star index alone — under which a planet, a plane and empty space are all `-1`.
+ */
+describe('PRD 5.6.9 hover change detection', () => {
+  /** Exactly `StarScene`'s loop: what a run of picks reports to `onHover`. */
+  function reported(picks: PickResult[]): PickResult[] {
+    let previous: PickResult = null
+    const out: PickResult[] = []
+    for (const pick of picks) {
+      if (samePick(pick, previous)) continue
+      previous = pick
+      out.push(pick)
+    }
+    return out
+  }
+
+  const planet = (index: number): PickResult => ({ kind: 'planet', index })
+  const star = (index: number): PickResult => ({ kind: 'star', index, planeIndex: 0 })
+
+  it('reports a planet arrived at from empty space', () => {
+    expect(reported([null, planet(0)])).toEqual([planet(0)])
+  })
+
+  it('reports the move from one planet to the next', () => {
+    expect(reported([planet(0), planet(1)])).toEqual([planet(0), planet(1)])
+  })
+
+  it('reports leaving a planet, so the label can clear', () => {
+    expect(reported([planet(0), null])).toEqual([planet(0), null])
+  })
+
+  it('does not report the same planet twice while the pointer rests on it', () => {
+    expect(reported([planet(3), planet(3), planet(3)])).toEqual([planet(3)])
+  })
+
+  it('never conflates a planet with the star or plane of the same index', () => {
+    expect(samePick(planet(4), star(4))).toBe(false)
+    expect(samePick(planet(4), { kind: 'plane', index: 4 })).toBe(false)
+    expect(samePick(planet(4), planet(4))).toBe(true)
+    // Empty space is its own state, and only equal to itself.
+    expect(samePick(null, null)).toBe(true)
+    expect(samePick(null, planet(0))).toBe(false)
+  })
+
+  it('gives the star field a star index only for a star', () => {
+    expect(pickedStarIndex(star(9))).toBe(9)
+    expect(pickedStarIndex(planet(9))).toBe(-1)
+    expect(pickedStarIndex({ kind: 'plane', index: 9 })).toBe(-1)
+    expect(pickedStarIndex(null)).toBe(-1)
+  })
+})
+
+/**
+ * One of Phase 3's five integration fixes, which shipped without a guard.
+ *
+ * `three` uploads a texture lazily, on the first frame that draws it, so an `ImageBitmap` closed as
+ * soon as the `Texture` wrapping it exists is a texture with nothing in it — a flat grey card,
+ * which is what the first browser run showed. The card therefore holds the bitmap until it has been
+ * handed a renderer to force the upload with. The ordering is the whole fix, so the ordering is
+ * what this asserts.
+ */
+describe('PRD 5.6.2 decoded image lifetime', () => {
+  const printing: PrintingTuple = ['0aeebaf5-8c7d-4636-9e82-8c27447861f7', 1, '1', 1700000000, '1']
+  const record: CardRecord = {
+    u: 'o-1' as CardRecord['u'],
+    n: 'Test Card',
+    m: '{1}',
+    t: 'Instant',
+    o: '',
+    b: null,
+    ci: 'U',
+    r: 0 as CardRecord['r'],
+    l: 'normal',
+    p: [printing],
+  }
+
+  it('closes a bitmap only after the renderer has been asked to upload its texture', async () => {
+    const events: string[] = []
+    const queue = new ImageQueue({
+      fetchImpl: (() =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+          blob: () => Promise.resolve({} as Blob),
+        })) as unknown as typeof fetch,
+      decode: () =>
+        Promise.resolve({
+          width: 1,
+          height: 1,
+          close: () => events.push('close'),
+        } as unknown as ImageBitmap),
+    })
+    const card = new FocusedCard(queue)
+    card.show(record, 0, 0)
+    for (let i = 0; i < 60; i += 1) await Promise.resolve()
+
+    // Both faces have decoded. Nothing is closed yet: no renderer has seen them.
+    expect(events).toEqual([])
+
+    card.flushUploads({ initTexture: () => events.push('init') })
+    // Two faces, and every close is preceded by its own upload.
+    expect(events).toEqual(['init', 'close', 'init', 'close'])
+
+    // And a second flush has nothing left to hold.
+    card.flushUploads({ initTexture: () => events.push('init') })
+    expect(events).toHaveLength(4)
+
+    card.dispose()
+    queue.dispose()
+  })
+
+  it('closes a held bitmap on dispose rather than leaking it', async () => {
+    const events: string[] = []
+    const queue = new ImageQueue({
+      fetchImpl: (() =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+          blob: () => Promise.resolve({} as Blob),
+        })) as unknown as typeof fetch,
+      decode: () =>
+        Promise.resolve({ width: 1, height: 1, close: () => events.push('close') } as unknown as ImageBitmap),
+    })
+    const card = new FocusedCard(queue)
+    card.show(record, 0, 0)
+    for (let i = 0; i < 60; i += 1) await Promise.resolve()
+    expect(events).toEqual([])
+    card.dispose()
+    expect(events).toEqual(['close', 'close'])
+    queue.dispose()
   })
 })
 

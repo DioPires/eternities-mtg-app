@@ -318,10 +318,15 @@ export class FocusedCard {
     }
   }
 
+  /** The printing a planet stands for (PRD 5.6.9). `null` when there is no such planet. */
+  printingOfPlanet(index: number): number | null {
+    const slot = this.layout.slots[index]
+    return slot ? slot.printing : null
+  }
+
   /** The label a hovered planet wants (PRD 5.6.9). `null` when nothing is hovered. */
   hoveredPlanetPrinting(): number | null {
-    const slot = this.layout.slots[this.hoveredPlanet]
-    return slot ? slot.printing : null
+    return this.printingOfPlanet(this.hoveredPlanet)
   }
 
   /** World position of a planet, for the overlay's label projection. */
@@ -330,11 +335,6 @@ export class FocusedCard {
     if (!planet) return false
     planet.mesh.getWorldPosition(out)
     return true
-  }
-
-  /** Decode a pick id into a planet index, or -1. */
-  static planetIdToIndex(id: number): number {
-    return id >= PLANET_ID_BASE ? id - PLANET_ID_BASE : -1
   }
 
   /**

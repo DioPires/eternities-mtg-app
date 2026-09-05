@@ -58,6 +58,27 @@ export function resolvePick(
 }
 
 /**
+ * Whether two picks are the same thing under the pointer — the whole of hover's change detection.
+ *
+ * It has to compare the **kind** as well as the index, and that is not a nicety. Phase 3 put three
+ * kinds in this buffer and the scene deduplicated on the star index alone, mapping everything else
+ * to `-1`: a planet and a plane and empty space were one state, so `onHover` fired for a planet
+ * only if the previous pick happened to be a star. PRD 5.6.9's hover label then never appeared on
+ * arrival from empty space, never changed between two planets, and never cleared on leaving — and
+ * because the click path reads the label's planet, clicking one activated whatever printing the
+ * stale label still named.
+ */
+export function samePick(a: PickResult, b: PickResult): boolean {
+  if (a === null || b === null) return a === b
+  return a.kind === b.kind && a.index === b.index
+}
+
+/** The star index a pick names, or -1. Only a star has one; a thumbnail arrives *as* its star. */
+export function pickedStarIndex(pick: PickResult): number {
+  return pick?.kind === 'star' ? pick.index : -1
+}
+
+/**
  * How much bigger than its visual radius a plane's pick sphere is. A galaxy's outer stars are
  * faint, and a click just past them should still read as "that plane" rather than as empty space.
  */

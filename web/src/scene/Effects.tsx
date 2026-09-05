@@ -13,7 +13,7 @@
 
 import { Bloom, EffectComposer, SelectiveBloom, Vignette } from '@react-three/postprocessing'
 import { type ReactElement } from 'react'
-import type { Object3D } from 'three'
+import { Object3D } from 'three'
 
 import {
   BLOOM_INTENSITY,
@@ -38,9 +38,32 @@ export interface EffectsProps {
    * So when the card tier is in the scene, the *field* is what blooms and the cards are not. Left
    * undefined the bloom is global, which is what Phase 2a's harness — and the bench baseline
    * measured against it — has always had.
+   *
+   * **What it costs, recorded (DEC-638/N7).** `SelectiveBloomEffect` renders the scene a second
+   * time each frame to build its mask, and the star field — 28,587 instanced points on the
+   * production roster — is in that second pass. Card level measures p95 18.3–18.4 ms against PRD
+   * 7.2's 16.7 ms target; the 33 ms ceiling is met with room, and 60 fps is held. This is the
+   * plausible contributor, and it is not cheap to remove: the alternatives are a luminance-only
+   * global bloom, which is the washed-out card PRD 9.3 names, or a hand-written two-camera mask
+   * pass. Neither belongs in a fix leg. Left as a known miss against the target.
    */
   readonly bloomSelection?: readonly Object3D[]
 }
+
+/**
+ * What `SelectiveBloom`'s `lights` prop gets, because this scene has no lights at all.
+ *
+ * The prop exists so that a *lit* selected object is not black in the bloom's mask pass: the
+ * wrapper enables the selection layer on each light it is given. Every material here is a shader of
+ * its own or `MeshBasicMaterial`, so there is nothing to light and nothing to enable — but the
+ * wrapper warns `SelectiveBloom requires lights to work.` on every mount when the array is empty,
+ * and a console line that is false is worse than no line.
+ *
+ * One detached `Object3D`, never added to the scene and never rendered. Enabling a layer on it is
+ * the whole of what the wrapper does with it. Module-level so its identity is stable — the wrapper
+ * keys an effect on the array.
+ */
+const NO_LIGHTS: Object3D[] = [new Object3D()]
 
 export function Effects({ bloomScale, bloomSelection }: EffectsProps): ReactElement {
   const bloom =
@@ -50,6 +73,7 @@ export function Effects({ bloomScale, bloomSelection }: EffectsProps): ReactElem
         // construction, and the field's objects are built once `planes.json` lands.
         key={`selective-bloom-${bloomScale}-${bloomSelection.length}`}
         selection={bloomSelection as Object3D[]}
+        lights={NO_LIGHTS}
         intensity={BLOOM_INTENSITY}
         luminanceThreshold={BLOOM_THRESHOLD}
         luminanceSmoothing={BLOOM_SMOOTHING}

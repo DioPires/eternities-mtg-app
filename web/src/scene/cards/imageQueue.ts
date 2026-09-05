@@ -171,25 +171,33 @@ export class ImageQueue {
    * runs at most six times per completion, off the frame path.
    */
   private takeNearest(): Waiting | null {
-    let bestIndex = -1
+    let best: Waiting | null = null
     let bestPriority = Infinity
+    // Descending so that a drop cannot disturb an index the scan has yet to visit. What it *does*
+    // disturb is the index of anything already visited — the best entry included — so the winner is
+    // held by reference and looked up once the scan is over. Recording its index instead was a real
+    // bug: every later drop shifted the recorded index down by one, so the queue dequeued a
+    // neighbour of the nearest request rather than the nearest one, and when the best entry was
+    // last the final splice ran off the end, returned `undefined`, and stalled the pump with work
+    // still queued.
     for (let i = this.waiting.length - 1; i >= 0; i -= 1) {
-      const priority = this.waiting[i]!.request.priority()
+      const entry = this.waiting[i]!
+      const priority = entry.request.priority()
       if (priority === null) {
-        const [dropped] = this.waiting.splice(i, 1)
-        dropped?.settle(DROPPED)
+        this.waiting.splice(i, 1)
+        entry.settle(DROPPED)
         continue
       }
+      // Strictly less, on a descending scan, so a tie goes to the earliest entry queued.
       if (priority < bestPriority) {
         bestPriority = priority
-        bestIndex = i
+        best = entry
       }
     }
-    if (bestIndex < 0) return null
-    // The splice above only ever removes entries at or after `i`, and it settles them, so the
-    // index recorded for the best entry is still the best entry's.
-    const [taken] = this.waiting.splice(bestIndex, 1)
-    return taken ?? null
+    if (best === null) return null
+    const index = this.waiting.indexOf(best)
+    if (index >= 0) this.waiting.splice(index, 1)
+    return best
   }
 
   private async run(entry: Waiting): Promise<void> {

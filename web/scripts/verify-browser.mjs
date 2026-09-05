@@ -435,6 +435,139 @@ async function shoot(page, path) {
   writeFileSync(path, Buffer.from(data.split(',')[1], 'base64'))
 }
 
+const mb = (bytes) => `${(bytes / 1024 / 1024).toFixed(1)} MB`
+
+/** PRD 7.2's GPU memory line, against whatever is focused when it is called. */
+async function checkGpuMemory(state, what, problems) {
+  const memory = (await state()).gpu
+  console.log(
+    `  GPU memory with ${what} focused: ${mb(memory.totalBytes)} (atlas ` +
+      `${mb(memory.atlasBytes)}, card ${mb(memory.cardBytes)}) against a ` +
+      `${mb(memory.targetBytes)} target / ${mb(memory.ceilingBytes)} ceiling`,
+  )
+  if (!memory.withinCeiling) {
+    throw new Error(
+      `PRD 7.2: ${mb(memory.totalBytes)} exceeds the ${mb(memory.ceilingBytes)} ceiling`,
+    )
+  }
+  if (!memory.withinTarget) {
+    problems.push(`PRD 7.2: ${mb(memory.totalBytes)} is over the ${mb(memory.targetBytes)} target`)
+  }
+  return memory
+}
+
+/** The HUD's hover line, which is what PRD 5.6.9's label is driven from. */
+const readHover = (page) =>
+  page.evaluate(() => document.querySelector('[data-testid="hover"]')?.textContent ?? '')
+
+/** The canvas's CSS box, for turning a viewport fraction into a page coordinate. */
+const canvasBox = (page) =>
+  page.evaluate(() => {
+    const canvas = Array.from(document.querySelectorAll('canvas')).sort(
+      (a, b) => b.width * b.height - a.width * a.height,
+    )[0]
+    const rect = canvas.getBoundingClientRect()
+    return { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
+  })
+
+/**
+ * PRD 5.6.9's planet hover and planet click, driven with a **real pointer**.
+ *
+ * Everything else about the planets in this file goes through `probe.activatePrinting()`, which
+ * calls the card directly. That is how a picker that never reported a planet at all shipped: the
+ * hover callback was deduplicated on the star index, a planet has none, and so the whole of PRD
+ * 5.6.9 — the label on arrival, the label between two planets, the label clearing on leave, and the
+ * click that reads the hovered printing — was dead in a way no assertion here could see.
+ *
+ * So the probe is used only to *aim*: it says where a planet is, the mouse is moved there, and
+ * every assertion is read back out of the DOM, having gone through the id buffer and the same pick
+ * path a user's pointer takes.
+ */
+async function verifyPlanetPointer(page, card, problems) {
+  if (card.planets < 2) {
+    console.log('  one planet or none on this card; PRD 5.6.9 pointer hover not exercised here')
+    return
+  }
+
+  const box = await canvasBox(page)
+  /** Move the pointer onto planet `index` and wait for the HUD to report it. Returns the HUD line. */
+  const hoverPlanet = async (index) => {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      // Re-read each attempt: PRD 5.6.7's ring turns once a minute, so the target drifts.
+      const at = await page.evaluate((i) => window.__eternitiesProbe.planetScreen(i), index)
+      if (!at) return null
+      await page.mouse.move(box.left + at.x * box.width, box.top + at.y * box.height)
+      await new Promise((r) => setTimeout(r, 100))
+      const hud = await readHover(page)
+      if (hud.includes(`planet ${index}`)) return hud
+    }
+    return null
+  }
+
+  // Arriving from empty space. The pointer starts in the corner, which is sky.
+  await page.mouse.move(box.left + 4, box.top + 4)
+  await new Promise((r) => setTimeout(r, 200))
+  const first = await hoverPlanet(0)
+  if (!first) {
+    throw new Error(
+      'PRD 5.6.9: the pointer was moved onto planet 0 and the hover never reported a planet',
+    )
+  }
+  console.log(`  pointer onto planet 0 from empty space: HUD reads "${first.trim()}"`)
+
+  // Planet to planet: the label has to follow, not keep the first one.
+  const second = await hoverPlanet(1)
+  if (!second) {
+    throw new Error('PRD 5.6.9: moving from planet 0 to planet 1 did not change the hover')
+  }
+  console.log(`  pointer onto planet 1: HUD reads "${second.trim()}"`)
+
+  // PRD 5.6.9: clicking a planet activates *that* planet's printing. Read back through the probe
+  // only after the click itself has gone through the picker.
+  //
+  // Confirmed under the pointer immediately before pressing: the ring turns, and a click that lands
+  // a pixel off the planet is a click on empty space, which flies the camera to a plane and takes
+  // the rest of this function with it.
+  const before = await page.evaluate(() => window.__eternitiesProbe.state().card.activePrinting)
+  const stillThere = (await readHover(page)).includes('planet 1')
+  if (!stillThere) {
+    problems.push('PRD 5.6.9: planet 1 drifted out from under the pointer before the click')
+  } else {
+    await page.mouse.down()
+    await page.mouse.up()
+    await new Promise((r) => setTimeout(r, 300))
+    const level = await page.evaluate(() => window.__eternitiesProbe.state().level)
+    if (level !== 'card') {
+      throw new Error(
+        `PRD 5.6.9: clicking a planet left the card and went to ${level} — the click did not ` +
+          'resolve as a planet',
+      )
+    }
+    const after = await page.evaluate(() => window.__eternitiesProbe.state().card.activePrinting)
+    if (after === before) {
+      problems.push(
+        `PRD 5.6.9: clicking planet 1 left the active printing at ${before}; a click on a planet ` +
+          'should activate its printing',
+      )
+    } else {
+      console.log(`  clicking planet 1 activated printing ${after} (was ${before})`)
+    }
+  }
+
+  // Leaving: the label must clear, or it hangs over empty sky.
+  await page.mouse.move(box.left + 4, box.top + 4)
+  let cleared = ''
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    await new Promise((r) => setTimeout(r, 100))
+    cleared = await readHover(page)
+    if (!cleared.includes('planet ')) break
+  }
+  if (cleared.includes('planet ')) {
+    throw new Error(`PRD 5.6.9: leaving the planets left the hover reading "${cleared.trim()}"`)
+  }
+  console.log(`  pointer back to empty space: HUD reads "${cleared.trim()}"`)
+}
+
 async function verifyCardTier(page, url, imagesLoad, shots, problems) {
   console.log('  -- Phase 3: thumbnails, card, planets --')
   await page.goto(`${url}/?probe=1`, { waitUntil: 'load', timeout: 60_000 })
@@ -572,6 +705,43 @@ async function verifyCardTier(page, url, imagesLoad, shots, problems) {
     }
     const stars = await page.evaluate(() => window.__eternitiesProbe.thumbnailStars())
     console.log(`    e.g. star ${stars.slice(0, 5).join(', ')}`)
+
+    // The atlas blit is the only thing in the app that touches the renderer's viewport, and it only
+    // runs once a real image lands — which is why the fixtures, whose images all 404, are blind to
+    // this whole class of bug and why the assertion lives inside this branch.
+    //
+    // It shipped wrong once and nothing else here could see it: `setViewport` takes CSS pixels and
+    // the blit passed drawing-buffer pixels, so the restore left a viewport 1.5× the buffer and
+    // every frame after the first thumbnail drew the scene scaled about the bottom-left corner.
+    // Every card-level assertion above is made against scene *state*, which was right the whole
+    // time — the probe said 50%/50% while the renderer drew the card at 74%, 27%.
+    const frame = await page.evaluate(() => {
+      const canvas = Array.from(document.querySelectorAll('canvas')).sort(
+        (a, b) => b.width * b.height - a.width * a.height,
+      )[0]
+      const gl = canvas.getContext('webgl2')
+      const viewport = Array.from(gl.getParameter(gl.VIEWPORT))
+      return {
+        buffer: [gl.drawingBufferWidth, gl.drawingBufferHeight],
+        viewport,
+      }
+    })
+    console.log(
+      `  GL viewport ${frame.viewport.join(', ')} against a ${frame.buffer.join('x')} drawing buffer`,
+    )
+    if (
+      frame.viewport[0] !== 0 ||
+      frame.viewport[1] !== 0 ||
+      frame.viewport[2] !== frame.buffer[0] ||
+      frame.viewport[3] !== frame.buffer[1]
+    ) {
+      throw new Error(
+        `the GL viewport is ${frame.viewport.join(', ')} on a ${frame.buffer.join('x')} drawing ` +
+          `buffer after ${loaded.thumbnails.loaded} thumbnail blit(s): the scene is not drawing to ` +
+          `the frame it thinks it is`,
+      )
+    }
+
     // PRD 9.3 checkpoint 3: the card-sheet tier with thumbnails loaded.
     if (shots) await shoot(page, resolve(shots, '3-card-sheet.png'))
   } else {
@@ -590,7 +760,16 @@ async function verifyCardTier(page, url, imagesLoad, shots, problems) {
     console.log(`  every image 404d (synthetic ids) and the star glow stayed: ${t.failed} failures, 0 drawn`)
   }
 
-  // PRD 5.6.9: activate a printing. On a one-printing card there is nothing to activate.
+  // PRD 7.2's GPU memory line, measured **here** — on the most-printings card of the largest plane,
+  // with its art crops uploaded and the atlas full. That is the worst case the deliverable names,
+  // and it is only the worst case while this card is the focused one. Read at the end of the run
+  // instead, it lands on the double-faced card, which has no planets and so counts none of the 72
+  // art crops: a number that is true and about nothing.
+  await checkGpuMemory(state, `${card.name}, ${card.planets} planet(s)`, problems)
+
+  await verifyPlanetPointer(page, card, problems)
+
+  // The same act through the programmatic seam, which is what the search panel and a deep link use.
   if (card.planets > 1) {
     const activated = await page.evaluate(() => window.__eternitiesProbe.activatePrinting(1))
     if (!activated) throw new Error('PRD 5.6.9: activating a printing did not take')
@@ -598,7 +777,7 @@ async function verifyCardTier(page, url, imagesLoad, shots, problems) {
     if (after.card.activePrinting !== 1) {
       throw new Error(`PRD 5.6.9: active printing is ${after.card.activePrinting}, expected 1`)
     }
-    console.log(`  printing 1 activated (PRD 5.6.9)`)
+    console.log(`  printing 1 activated through the programmatic seam (PRD 5.6.9)`)
   }
 
   // PRD 5.6.5 and PRD 9.3 checkpoint 4: a double-faced card, flipped.
@@ -643,21 +822,6 @@ async function verifyCardTier(page, url, imagesLoad, shots, problems) {
   }
   if (frames.p95 > 33) {
     problems.push(`PRD 7.2: p95 ${frames.p95} ms at card level is over the 33 ms ceiling`)
-  }
-
-  // PRD 7.2's GPU memory line, measured on what is actually uploaded.
-  const memory = (await state()).gpu
-  const mb = (bytes) => `${(bytes / 1024 / 1024).toFixed(1)} MB`
-  console.log(
-    `  GPU memory: ${mb(memory.totalBytes)} (atlas ${mb(memory.atlasBytes)}, card ` +
-      `${mb(memory.cardBytes)}) against a ${mb(memory.targetBytes)} target / ` +
-      `${mb(memory.ceilingBytes)} ceiling`,
-  )
-  if (!memory.withinCeiling) {
-    throw new Error(`PRD 7.2: ${mb(memory.totalBytes)} exceeds the ${mb(memory.ceilingBytes)} ceiling`)
-  }
-  if (!memory.withinTarget) {
-    problems.push(`PRD 7.2: ${mb(memory.totalBytes)} is over the ${mb(memory.targetBytes)} target`)
   }
 
   // PRD 6.1.3: Esc leaves the card, and the card object goes with it.

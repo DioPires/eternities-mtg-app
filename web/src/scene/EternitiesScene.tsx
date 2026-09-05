@@ -348,9 +348,14 @@ export function EternitiesScene(): ReactElement {
       if (pick.kind === 'planet') {
         // PRD 5.6.9: clicking a planet swaps the front and marks it active. It is not a navigation:
         // "the active printing is view state, changes no route" (navigation contract, `Focus`).
+        //
+        // Resolved from the *clicked* planet, not from whichever one the hover label last named.
+        // The click carries its own id out of the same id buffer, and reaching for the hover state
+        // instead made the click depend on a hover having been reported first — which, before the
+        // dedupe fix in `StarScene`, it very often had not been.
         const slot = cardTier.current?.card
         if (slot) {
-          const printing = slot.hoveredPlanetPrinting()
+          const printing = slot.printingOfPlanet(pick.index)
           if (printing !== null) slot.setActivePrinting(printing)
         }
         return
@@ -555,6 +560,15 @@ export function EternitiesScene(): ReactElement {
         return handle.activePrinting === index
       },
       thumbnailStars: () => [...(cardTier.current?.drawnStars ?? [])],
+      planetScreen: (index) => {
+        const handle = cardTier.current?.card
+        const camera = cameraRef.current
+        if (!handle?.visible || !camera) return null
+        if (!handle.planetWorldPosition(index, probeScreen)) return null
+        probeScreen.project(camera)
+        if (probeScreen.z >= 1) return null
+        return { x: (probeScreen.x + 1) / 2, y: (1 - probeScreen.y) / 2 }
+      },
     }
     window.__eternitiesProbe = probe
     return () => {
