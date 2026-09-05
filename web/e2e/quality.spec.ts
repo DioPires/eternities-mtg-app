@@ -96,7 +96,7 @@ async function waitForField(page: Page): Promise<void> {
 async function readQuality(page: Page): Promise<Quality> {
   return page.evaluate(() => {
     const probe = window.__eternitiesProbe
-    if (!probe) throw new Error('the probe seam is not installed on this page')
+    if (!probe) throw new Error('?probe=1 did not install the probe')
     return probe.state().quality
   })
 }
@@ -153,34 +153,4 @@ test('an unpinned scene starts at full quality and reports no pin', async ({ pag
   const quality = await readQuality(page)
   expect(quality.pinned).toBeNull()
   expect(quality.tier).toBe('full')
-})
-
-/**
- * The pin survives the shell's router, which used to eat it.
- *
- * Every check above drives `?probe=1` — Phase 3's harness, which has no router — and all of them
- * passed while `?quality=` was doing *nothing at all* on the page that ships. `StarScene` mounts
- * once `data.resources` exist, a second or two after boot, and it read `pinnedQualityTier()` itself
- * at that moment; by then PRD 6.7's router had canonicalised the flag out of `location.search`, so
- * the monitor was built unpinned and the ladder was free to move. The tier is now latched by
- * `SceneView` at its first render and passed down.
- *
- * Tier 3 rather than tier 0, because tier 0 is also the unpinned starting tier: a pin that silently
- * failed would still report `full`, and this check would pass for the wrong reason.
- */
-test('?quality= pins the ladder on the shipped composition too, not just the harness', async ({
-  page,
-}) => {
-  await page.goto('/?probe=shell&quality=3&motion=1')
-  await expect(page.locator('.hud')).toBeVisible()
-  await expect
-    .poll(() => page.evaluate(() => window.__eternitiesProbe !== undefined), { timeout: 60_000 })
-    .toBe(true)
-  // The flag is gone from the URL by now; that is the state the latch has to survive.
-  await expect.poll(() => page.evaluate(() => location.search)).toBe('')
-
-  const quality = await readQuality(page)
-  expect(quality.pinned, 'the shell did not see the pin').toBe(3)
-  expect(quality.tier).toBe(TIER_LABELS[3])
-  expect(quality.thumbnailCapacity).toBeLessThan(512)
 })

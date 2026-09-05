@@ -831,7 +831,6 @@ export function SceneView({
           onHover={setHover}
           onSelect={onSelect}
           onQualityChange={onQualityChange}
-          pinnedTier={pinnedTier}
           // PRD 7.2's "CPU time per frame in the render loop", reported by the scene rather than
           // guessed at from outside. It covers the star field's own frame work; the card tier's is
           // not in it, so the figure is a floor on a card segment, not the whole cost.

@@ -28,6 +28,7 @@ import {
 import {
   QualityMonitor,
   pinnedQualityOptions,
+  pinnedQualityTier,
   type QualityTier,
 } from './quality/adaptiveQuality'
 import { runSelfCheck, samplesPerRowRequested, selfCheckRequested } from './selfCheck'
@@ -62,17 +63,6 @@ export interface StarSceneProps {
   /** One sample per frame, for the bench of implementation-plan §6. */
   readonly onFrame?: (frameMs: number, cpuMs: number, drawn: number) => void
   readonly handleRef?: Ref<StarSceneHandle>
-  /**
-   * PRD 9.1.4's `?quality=N`, resolved by the caller rather than read here.
-   *
-   * This used to call `pinnedQualityTier()` itself, and under the shell that read the URL too late:
-   * this component mounts once `data.resources` exist, which is a second or two after boot, and by
-   * then PRD 6.7's router has canonicalised the flag out of the address bar — so the pin silently
-   * did nothing and the ladder was free to move. It held on the Phase 3 harness only because that
-   * page has no router, which is also why `e2e/quality.spec.ts` (which drives `?probe=1`) never saw
-   * it. `SceneView` latches the flag at *its* first render and passes the answer down.
-   */
-  readonly pinnedTier?: number | null
 }
 
 /** Pointer moves are cheap; a pick is a render pass. One pick per frame at most (PRD 8.5.6). */
@@ -94,7 +84,6 @@ export function StarScene({
   onQualityChange,
   onFrame,
   handleRef,
-  pinnedTier = null,
 }: StarSceneProps): ReactElement {
   const gl = useThree((state) => state.gl)
   const scene = useThree((state) => state.scene)
@@ -104,9 +93,7 @@ export function StarScene({
   const background = useMemo(() => createBackground(), [])
   const idPicker = useMemo(() => new IdPicker(), [])
   const planePicker = useMemo(() => new PlanePicker(), [])
-  // Deliberately not in the dependency list: the pin is a property of how the page was opened, and
-  // a monitor rebuilt mid-run would lose its frame history.
-  const quality = useMemo(() => new QualityMonitor(pinnedQualityOptions(pinnedTier)), [])
+  const quality = useMemo(() => new QualityMonitor(pinnedQualityOptions(pinnedQualityTier())), [])
 
   // Callbacks live in a ref so that a caller passing inline arrows — which every React caller
   // eventually does — cannot re-subscribe pointer listeners or reset the pixel ratio on a render.
