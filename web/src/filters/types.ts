@@ -78,14 +78,14 @@ export const RARITY_CLASS: Readonly<Record<FilterRarity, number>> = {
   mythic: SizeClass.Mythic,
 }
 
-export const COLOUR_HUE: Readonly<Record<FilterColour, number>> = {
-  W: HueClass.White,
-  U: HueClass.Blue,
-  B: HueClass.Black,
-  R: HueClass.Red,
-  G: HueClass.Green,
-  C: HueClass.Colourless,
-}
+/**
+ * There is deliberately no `FilterColour → HueClass` table here any more.
+ *
+ * PRD 6.6.2's colour facet evaluates against the star record's five-bit colour identity, not its
+ * hue class (`../data/colourByte`, amendment A3). A second letter mapping kept "for reference" is
+ * how the two drift back apart, so `COLOUR_LETTER_BIT` is now the only one. `HUE_LABEL` below
+ * stays, because PRD 7.5.3 names the *rendered* class in the panels and that is a different job.
+ */
 
 export const COLOUR_LABEL: Readonly<Record<FilterColour, string>> = {
   W: 'White',

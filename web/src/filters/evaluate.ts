@@ -14,15 +14,14 @@
  * GPU and a fresh 30 KB allocation per keystroke on the chip row is free to avoid.
  */
 
-import { matchesTypeMask, type SetsSidecar, type Stars } from '../data'
-import { HueClass } from '../data'
 import {
-  COLOUR_HUE,
-  RARITY_CLASS,
-  TYPE_BIT,
-  isFilterActive,
-  type FilterState,
-} from './types'
+  COLOUR_LETTER_BIT,
+  matchesColourIdentity,
+  matchesTypeMask,
+  type SetsSidecar,
+  type Stars,
+} from '../data'
+import { RARITY_CLASS, TYPE_BIT, isFilterActive, type FilterState } from './types'
 
 export interface FilterResolution {
   /** Set ids for the selected set codes. Empty until `search.json` resolves the codes. */
@@ -47,35 +46,36 @@ export interface FilterEvaluation {
 }
 
 /**
- * Allowed hue classes for a colour selection.
+ * The colour selection, resolved to what PRD 6.6.2 actually tests against.
  *
- * **A documented approximation, forced by the data contract.** PRD 6.6.2 asks for "the card's
- * identity intersects the selected colours", but the star record (PRD 8.3) stores a single `hue
- * class` — W, U, B, R, G, multicolour, colourless — and not the identity itself, and PRD 6.6.5
- * *requires* colour to evaluate against the star record so it is live from the first frame. There
- * is no field anywhere in the loaded artefacts that carries a multicolour card's actual identity.
+ * **Exact, since contract v2.** 6.6.2 asks for "colour identity matches when the card's identity
+ * intersects the selected colours", and 6.6.5 requires colour to evaluate against the star record
+ * so it is live from the first frame. Amendment A3 put the five-bit WUBRG identity in the star
+ * record's byte 7, so both hold at once and this is a plain intersection test.
  *
- * So: selecting any of W/U/B/R/G admits that hue class **and** the multicolour class. That
- * over-matches — an Azorius card stays lit under a red-only filter — and it is the safe direction:
- * every card whose identity really does intersect the selection is shown, and none is hidden.
- * The alternative (multicolour never matches a single-colour selection) would hide cards PRD 6.6.2
- * says must match, which is the failure the user would actually notice.
+ * Until then the record carried only a *hue class* — W, U, B, R, G, multicolour, colourless — and
+ * this function admitted the multicolour class under any coloured selection, so an Azorius card
+ * stayed lit under a red-only filter. That over-match is the PRD 6.6.2 gap the board closed on
+ * 2026-09-04; `stars.colourIdentity` is what closes it. See `docs/app-shell.md` §4.1.
  *
- * `C` is exact: PRD 6.6.2's "colourless is an explicit option that matches only empty identity".
- *
- * Recorded for the board in the Phase 4 hand-back: closing the gap means a colour-identity field
- * in the star record, which is a data-contract change and not Phase 4's to make.
+ * `colourless` stays a flag rather than a sixth bit: PRD 6.6.2's `C` "matches only empty identity",
+ * and an empty identity intersects nothing, so no bitmask test can express it.
  */
-function allowedHues(colours: FilterState['colours']): number {
-  if (colours.length === 0) return 0
+interface ColourSelection {
+  /** Union of the selected WUBRG bits — OR within a facet (PRD 6.6.2). */
+  readonly bits: number
+  readonly colourless: boolean
+  readonly active: boolean
+}
+
+function selectedColours(colours: FilterState['colours']): ColourSelection {
   let bits = 0
-  let anyColoured = false
+  let colourless = false
   for (const colour of colours) {
-    bits |= 1 << COLOUR_HUE[colour]
-    if (colour !== 'C') anyColoured = true
+    if (colour === 'C') colourless = true
+    else bits |= 1 << COLOUR_LETTER_BIT[colour]!
   }
-  if (anyColoured) bits |= 1 << HueClass.Multicolour
-  return bits
+  return { bits, colourless, active: colours.length > 0 }
 }
 
 function allowedSizes(rarities: FilterState['rarities']): number {
@@ -121,14 +121,16 @@ export function evaluateFilters(
     return { mask, matching: 0, total, setsApplied }
   }
 
-  const hueBits = allowedHues(filters.colours)
+  const colours = selectedColours(filters.colours)
   const sizeBits = allowedSizes(filters.rarities)
   const typeBits = selectedTypeBits(filters.types)
   const setCount = setIds.length
 
   let matching = 0
   for (let i = 0; i < total; i += 1) {
-    let ok = hueBits === 0 || (hueBits & (1 << stars.hueClass(i))) !== 0
+    let ok =
+      !colours.active ||
+      matchesColourIdentity(stars.colourIdentity(i), colours.bits, colours.colourless)
     if (ok && sizeBits !== 0) ok = (sizeBits & (1 << stars.sizeClass(i))) !== 0
     // PRD 6.6.2: a conspiracy carries no type bits, so it matches only while no type facet is
     // active and dims under any type filter. `matchesTypeMask` is exactly that rule.
