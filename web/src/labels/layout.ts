@@ -7,8 +7,8 @@
  *
  * Two constraints shape it:
  *
- * - **PRD 7.3.2 forbids allocation in the frame path**, and this runs every frame over all 83 rows
- *   of fixture-scale. So the solver writes into a caller-owned array of reusable records and
+ * - **PRD 7.3.2 forbids allocation in the frame path**, and this runs every frame over every
+ *   roster row of fixture-scale. So the solver writes into a caller-owned array of reusable records and
  *   returns how many it filled; nothing is allocated after the first frame.
  * - **PRD 7.3.3 forbids layout-triggering style changes**, which rules out measuring the real DOM
  *   boxes. Widths are estimated from the text and the font size instead. The estimate is

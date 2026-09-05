@@ -3,7 +3,7 @@
 Three datasets are exercised, and the second one is here for a specific reason.
 
 * ``synthetic`` — 5 planes and 240 cards. Small enough to read.
-* ``dense`` — the whole Appendix A roster (83 planes) at 30 000 cards, production's shape.
+* ``dense`` — the whole Appendix A roster at 30 000 cards, production's shape.
 * the committed production dataset — read from bytes, so it only moves after a rebuild.
 
 Both of the first two go through the real :func:`~eternities.pipeline.assemble.build_dataset`,

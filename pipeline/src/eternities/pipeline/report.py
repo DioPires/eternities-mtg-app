@@ -37,6 +37,8 @@ class ReportInput:
     cards_excluded: Counter[str]
     via_parent: dict[str, str]
     via_override: list[str]
+    bulk_uri_reconstructed: bool = False
+    """See ``BulkSource.uri_reconstructed``: the URI is a local cache path, so say so on the row."""
     dropped_via_parent: dict[str, str] = field(default_factory=dict)
     """PRD 4.3.1 read through 4.6.3: set code -> the ancestor whose row dropped it."""
     parent_rule_only: dict[str, int] = field(default_factory=dict)
@@ -193,7 +195,16 @@ def render(data: ReportInput) -> str:
                 ["Data hash", f"`{data.data_dir.name}`"],
                 ["Run date (`--as-of`)", data.as_of],
                 ["Scryfall bulk `updated_at`", data.bulk_updated_at],
-                ["Scryfall bulk file", f"`{data.bulk_uri.rsplit('/', 1)[-1]}`"],
+                [
+                    "Scryfall bulk file",
+                    f"`{data.bulk_uri.rsplit('/', 1)[-1]}`"
+                    + (
+                        " — cache filename; this entry predates the URI sidecar, so the upstream "
+                        "name is not recoverable"
+                        if data.bulk_uri_reconstructed
+                        else ""
+                    ),
+                ],
                 ["Pipeline version", str(manifest["pipelineVersion"])],
                 ["Contract version", str(manifest["contractVersion"])],
             ],

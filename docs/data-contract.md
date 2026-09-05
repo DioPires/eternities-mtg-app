@@ -67,7 +67,7 @@ Loaded first (PRD 8.7.2). Small, human-diffable, the single source of truth for 
 ```jsonc
 {
   "contractVersion": 1,
-  "pipelineVersion": "0.1.0",
+  "pipelineVersion": "0.3.0",   // 0.3.0 is the first version in which `previousRun` may appear
   "dataset": "production" | "fixture-small" | "fixture-scale",
   "dataHash": "b3f0c1d2e3f40506",
   "asOf": "2026-09-04",                    // PRD 4.9.1 run date
@@ -201,26 +201,28 @@ Card `oracle_id`s are **not** in `search.json`; they are in `sets.bin` section 1
 
 ## 8. Payload budget
 
-PRD 7.2 budgets the pair `search.json` + `sets.bin` at ≤ 700 KB target / 1.5 MB ceiling, **encoded transferred size**. Measured on `fixture-scale` (30 000 stars, 87 planes, ~1 100 sets), brotli quality 11 — the numbers `web/scripts/check-budget.mjs` reports:
+PRD 7.2 budgets the pair `search.json` + `sets.bin` at ≤ 700 KB target / 1.5 MB ceiling, **encoded transferred size**. Both datasets below are measured at brotli quality 11 — the numbers `web/scripts/check-budget.mjs` reports, re-measured against the committed artefacts of `1b06048e8b670c21` (`fixture-scale`: 30 000 stars, 87 planes, 476 sets) and `fe74a34ff803574b` (production: 28 587 stars, 87 planes, 294 sets):
 
-| Artefact | Raw | Brotli |
-|---|---|---|
-| `manifest.json` | 16.1 KB | 4.5 KB |
-| `planes.json` | 84.2 KB | 12.7 KB |
-| `stars.bin` | 351.6 KB | 249.1 KB |
-| `search.json` | 885.7 KB | 127.1 KB |
-| `sets.bin` | 666.6 KB | 543.6 KB |
-| **`search.json` + `sets.bin`** | 1 552 KB | **670.8 KB** — under the 700 KB target |
-| First frame (`manifest` + `planes`) | 100 KB | 17.2 KB — target 500 KB |
-| Before intro (adds `stars.bin`) | 452 KB | 266.3 KB — target 3 MB |
-| Largest plane shard | 749 KB | 203.8 KB — A1 target 1.5 MB |
+| Artefact | Scale raw | Scale brotli | Production raw | Production brotli |
+|---|---|---|---|---|
+| `manifest.json` | 16.8 KB | 4.7 KB | 16.9 KB | 4.7 KB |
+| `planes.json` | 87.9 KB | 13.4 KB | 69.0 KB | 11.5 KB |
+| `stars.bin` | 351.6 KB | 262.0 KB | 335.0 KB | 229.1 KB |
+| `search.json` | 909.3 KB | 128.8 KB | 578.1 KB | 181.2 KB |
+| `sets.bin` | 666.2 KB | 543.4 KB | 624.0 KB | 487.2 KB |
+| **`search.json` + `sets.bin`** | 1 575.5 KB | **672.2 KB** | 1 202.1 KB | **668.4 KB** |
+| First frame (`manifest` + `planes`) | 104.7 KB | 18.1 KB | 85.9 KB | 16.2 KB |
+| Before intro (adds `stars.bin`) | 456.3 KB | 280.1 KB | 420.9 KB | 245.3 KB |
+| Largest plane shard | 838.6 KB | 204.6 KB | 1 212.7 KB | 339.9 KB |
 
-`sets.bin` is dominated by `ORACLE_IDS` — 30 000 UUIDs are 480 KB of incompressible entropy, and no layout choice changes that. It is why the ids are 16 raw bytes rather than JSON hex strings, which would cost ≈ 1 MB and break the budget on their own.
+**The pair is under its target and not comfortably so.** 672.2 KB is **96%** of the 700 KB target on scale and 668.4 KB is **95%** on production — both inside the ≥ 90% band, so the budget check reports them `[near target]` with a headroom warning (27.8 KB and 31.6 KB), not a bare `ok`. Read the row that way: the target holds today and one more sizeable set is what moves it. Only the 1.5 MB ceiling fails the build; the target is reported, per PRD 9.1.1–2, so a target overshoot is visible without blocking a merge. The first frame, before-intro and A1 shard rows all sit at or under a quarter of their targets.
 
-Two caveats to read the table honestly:
+`sets.bin` is dominated by `ORACLE_IDS` — one 16-byte UUID per star, 469 KB on scale's 30 000 and 447 KB on production's 28 587, all of it incompressible entropy that no layout choice changes. It is why the ids are 16 raw bytes rather than JSON hex strings, which would cost ≈ 1 MB and break the budget on their own.
 
-1. `fixture-scale`'s card names are drawn from a 16×16 synthetic vocabulary, so they compress better than real Magic card names will. Expect `search.json` to grow by roughly 60–100 KB brotli on the first real run, which puts the pair near the 700 KB target rather than comfortably under it. The budget check (§10) **fails on the ceiling and reports against the target**, matching PRD 9.1.1–2, so a target overshoot is visible without blocking a merge.
-2. If the first real run overshoots the target and the owner wants it back, the documented lever is: truncate `ORACLE_IDS` to the leading 8 bytes and keep the full id only in the plane detail shards, which a card focus always loads first. That saves 234 KiB ≈ 240 KB. It is *not* done now, because it makes the star → `oracle_id` direction depend on a shard fetch, and PRD 8.3 asks for a `star index ↔ oracle_id` table. Taking the lever is a contract change.
+Two things to read the table with:
+
+1. The two columns are close on the pair and far apart on its halves, which is not a coincidence. `fixture-scale`'s card names come from a 16×16 synthetic vocabulary, so its `search.json` compresses about 3× better per byte than real Magic card names do — production's `search.json` is *smaller raw* (578 KB against 909 KB) and *larger brotli* (181 KB against 129 KB). Scale pays that back on `sets.bin`, having 1 413 more stars to carry ids for. So scale remains a fair proxy for the pair as a whole, and is not a proxy for `search.json` alone.
+2. If a later run overshoots the target and the owner wants it back, the documented lever is: truncate `ORACLE_IDS` to the leading 8 bytes and keep the full id only in the plane detail shards, which a card focus always loads first. That saves 234 KiB ≈ 240 KB. It is *not* done now, because it makes the star → `oracle_id` direction depend on a shard fetch, and PRD 8.3 asks for a `star index ↔ oracle_id` table. Taking the lever is a contract change.
 
    The collision probability if it is ever taken is **≈ 3.9 × 10⁻¹⁰** at 30 000 ids, not the 2 × 10⁻¹¹ this document carried before. Oracle ids are UUIDv4 (Sol Ring is `6ad8011d-3471-…`, byte 6 = `0x43`), and the leading 8 bytes contain the 4 fixed version bits, so a truncated id holds **60** random bits rather than 64 — a factor of 16 the earlier number missed. Still negligible against a 30 000-row table, so the lever stays sound; the number is now the right one.
 
@@ -331,12 +333,14 @@ Two values were **added** to the `l` layout union (§9). Both came from the firs
 
 What makes the addition safe is that a decoder never enumerates this union at runtime: its only consumer is the `BACK_IMAGE_LAYOUTS` allowlist behind `hasBackImage`, so a v1 decoder meeting a layout it has never heard of answers "no back image" — the correct answer for both new members, verified against the committed artefacts. It is **not** that the new values go unobserved; `prepare` does reach a shard, 46 cards of it in `planes/arcavios.0.json` of the production dataset. The distinction is load-bearing for the *next* addition: a future layout that does have a back image would be read wrongly by an un-widened decoder, silently, and must bump `contractVersion`.
 
-**§10 review: complete.** Signed off independently from the web-decoder side and the tools/consumer side, both measuring compatibility rather than arguing it: the Phase 0 decoder was run verbatim over all 89 production shards and 28,587 cards and agreed with the Phase 1 decoder on every card and printing. Note that bumping to 2 would have been the breaking option — `assertContractVersion` and `decodeHeader` test strict equality, so every deployed v1 decoder would throw on `stars.bin` and all 89 shards for a change no consumer can observe.
+**§10 review: complete.** Signed off independently from the web-decoder side and the tools/consumer side, both measuring compatibility rather than arguing it: the Phase 0 decoder was run verbatim over all 89 production shards of the 2026-09-04 first-run dataset and its 28,587 cards, and agreed with the Phase 1 decoder on every card and printing. (That count is the historical record of what was measured; the roster amendment below re-shards the same 28,587 cards into 93.) Note that bumping to 2 would have been the breaking option — `assertContractVersion` and `decodeHeader` test strict equality, so every deployed v1 decoder would throw on `stars.bin` and all 93 shards of the current dataset for a change no consumer can observe.
 
 The union is closed over three sources that must agree: `LAYOUTS` in `contract/enums.py`, `CardLayout` in `data/types.ts`, and `backImageChecks` in the test vector, which pins `hasBackImage` for every member on both sides.
 
-### v1, `pipelineVersion` 0.2.0 — Appendix A roster amendment, 2026-09-04
+### v1, `pipelineVersion` 0.3.0 — Appendix A roster amendment, 2026-09-04
 
 Four zero-card planes joined the PRD Appendix A roster (Kandoka, Foldaria, Clamhattan, Horsehead Nebula). That changes the plane count and every plane's layout position, so the dataset re-hashes, but **no contract surface moved**: no format, field, enum or filename changed.
 
-`manifest.json` may now carry one optional key, **`previousRun`** (§3): the `dataHash` of the run whose plane assignments this run's 4.9.2 diff was taken against. It is absent when there is no predecessor — every fixture, and a first production run — so every already-committed manifest is still byte-identical to what the encoder produces today. Decoders ignore it; it exists so the committed run report stays reproducible after 8.8.3 deletes the superseded directory in the same commit.
+`manifest.json` may now carry one optional key, **`previousRun`** (§3): the `dataHash` of the run whose plane assignments this run's 4.9.2 diff was taken against. It is absent when there is no predecessor — every fixture, and a first production run. Decoders ignore it; it exists so the committed run report stays reproducible after 8.8.3 deletes the superseded directory in the same commit.
+
+Adding that key is a field addition, so `pipelineVersion` moves 0.2.0 → **0.3.0** per the §10 rule, and every manifest is regenerated at the new version — including the ones that do not carry `previousRun`, because the version names the encoder, not the key set of one file. `contractVersion` stays **1**. The bump is hash-neutral: `manifest.json` is excluded from `dataHash` (§3), so no directory is renamed and no fixture hash moves. Reconciling two manifests by `pipelineVersion` is therefore sound again — 0.2.0 means "no `previousRun` key exists", 0.3.0 means "the key may be present or absent by the rule above".

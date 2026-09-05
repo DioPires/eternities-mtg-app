@@ -1,6 +1,6 @@
 {
   "contractVersion": 1,
-  "pipelineVersion": "0.2.0",
+  "pipelineVersion": "0.3.0",
   "dataset": "production",
   "dataHash": "fe74a34ff803574b",
   "asOf": "2026-09-04",

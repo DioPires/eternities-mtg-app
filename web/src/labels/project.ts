@@ -3,8 +3,8 @@
  *
  * "Labels are positioned each frame by CPU-side projection of plane centres (~80 points), never by
  * per-star work." This is that projection, written out rather than delegated to three.js for two
- * reasons: it has to run in Node so the collision rules can be tested against fixture-scale's 83
- * planes without a GPU, and PRD 7.3.2 forbids the per-frame `Vector3` allocation the convenient
+ * reasons: it has to run in Node so the collision rules can be tested against fixture-scale's whole
+ * roster without a GPU, and PRD 7.3.2 forbids the per-frame `Vector3` allocation the convenient
  * spelling would cost.
  *
  * The overlay component feeds it the R3F camera's own position, target and fov, so there is one

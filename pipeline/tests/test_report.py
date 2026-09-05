@@ -203,6 +203,27 @@ def test_the_blind_eternities_share_is_the_number_the_gate_is_read_from(report_t
     assert "**Baseline: 25.00%.**" in report_text
 
 
+def test_a_reconstructed_bulk_uri_says_so_on_the_row(report_text: str, tmp_path: Path):
+    """The "Scryfall bulk file" row promises an upstream file name.
+
+    When the pinned cache entry predates the URI sidecar there is no upstream name to print, and
+    the fallback puts a local path in its place — whose last segment is the *cache* filename, which
+    differs from the upstream one only in punctuation. Unmarked, the row reads as if it meant what
+    it says. Marked, it stays a run someone can reproduce and a claim someone can check.
+    """
+    assert f"`{BULK_URI.rsplit('/', 1)[-1]}`" in report_text
+    assert "cache filename" not in report_text
+
+    data = _report_input(tmp_path)
+    data.bulk_uri = str(tmp_path / "default_cards-20260904T0905323080000.jsonl.gz")
+    data.bulk_uri_reconstructed = True
+    text = render(data)
+
+    assert "`default_cards-20260904T0905323080000.jsonl.gz`" in text
+    assert "cache filename" in text
+    assert "predates the URI sidecar" in text
+
+
 def test_an_absent_section_says_so_rather_than_vanishing(tmp_path: Path):
     """Every optional section renders a "None" line, so a gap is visible in the diff."""
     data = _report_input(tmp_path)

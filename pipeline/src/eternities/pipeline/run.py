@@ -153,6 +153,7 @@ def build(
             as_of=as_of,
             bulk_updated_at=source.updated_at,
             bulk_uri=source.download_uri,
+            bulk_uri_reconstructed=source.uri_reconstructed,
             total_printings=len(all_printings),
             total_oracle_ids=len({p.oracle_id for p in all_printings}),
             printings_dropped=filtered.dropped_by_rule,

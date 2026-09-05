@@ -49,6 +49,14 @@ class SetEntry:
     prd_name: str
     prd_date: str
     corrected_from: str | None
+    prd_ratified: str | None = None
+    """Date the PRD text took this row's correction, or ``None`` while it is still outstanding.
+
+    Only meaningful alongside ``corrected_from``. It exists so the Q10 finding can stop asking for
+    a PRD edit that has already been made, the same way the roster finding stopped re-asking open
+    question 1 — a report whose job is to surface what needs a decision must not carry a settled
+    one. A newly corrected row defaults to ``None``, so the ask reappears for the next correction.
+    """
 
     @property
     def drops_printings(self) -> bool:
@@ -166,6 +174,7 @@ def load_appendices(
             corrected_from=(
                 None if row.get("correctedFrom") is None else str(row["correctedFrom"])
             ),
+            prd_ratified=(None if row.get("prdRatified") is None else str(row["prdRatified"])),
         )
         for row in cast("list[dict[str, Any]]", b["sets"])
     )

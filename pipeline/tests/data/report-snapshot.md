@@ -11,7 +11,7 @@
 | Run date (`--as-of`) | 2026-09-04 |
 | Scryfall bulk `updated_at` | 2026-09-04T09:05:32.308+00:00 |
 | Scryfall bulk file | `default-cards-20260904090532.json` |
-| Pipeline version | 0.2.0 |
+| Pipeline version | 0.3.0 |
 | Contract version | 1 |
 
 ## Counts

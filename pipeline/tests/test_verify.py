@@ -7,12 +7,15 @@ CEO reads the verdict, not the predicate.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from conftest import appendices, printing, scry_set, set_entry
 
 from eternities.pipeline.records import RawPrinting, ScrySet
 from eternities.pipeline.verify import (
     verify_roster,
     verify_security_stamp,
+    verify_set_codes,
     verify_universes_within,
 )
 
@@ -134,3 +137,47 @@ def test_an_unreachable_wiki_is_reported_rather_than_failing_the_build():
     finding = verify_roster(appendices(), None)
     assert finding.verdict.startswith("not run")
     assert finding.action is not None
+
+
+def test_a_ratified_set_correction_stops_asking_for_the_prd_edit():
+    """Q10's half of the same problem the roster finding had.
+
+    ``tlc`` → ``tle`` was corrected in the data file and then ratified into PRD Appendix B. The
+    finding kept telling the CEO "the PRD itself still needs the same edit" in the commit that made
+    the edit, and would have gone on saying it every run after. The correction is still worth
+    printing as provenance; the *ask* is what has to stop.
+    """
+    row = set_entry(
+        "tle",
+        universes_beyond=True,
+        prd_name="Avatar: The Last Airbender Commander",
+        corrected_from="tlc",
+    )
+    sets = {"tle": scry_set("tle", name="Avatar: The Last Airbender Eternal")}
+
+    outstanding = verify_set_codes(appendices(sets=[row]), sets)
+    assert any("tlc → tle" in line for line in outstanding.detail), "provenance still printed"
+    assert outstanding.action is not None
+    assert "tle" in outstanding.action, "the ask names the row that needs the edit"
+
+    ratified = verify_set_codes(appendices(sets=[replace(row, prd_ratified="2026-09-04")]), sets)
+    assert any("tlc → tle" in line for line in ratified.detail), "provenance survives ratification"
+    assert any("ratified into the PRD" in line for line in ratified.detail)
+    assert ratified.action is None, "a ratified correction asks for nothing"
+
+
+def test_an_unratified_correction_still_asks_even_beside_a_ratified_one():
+    """The guard the ratification marker needs: one settled row must not silence the next one."""
+    settled = set_entry(
+        "tle", universes_beyond=True, corrected_from="tlc", prd_ratified="2026-09-04"
+    )
+    fresh = set_entry("new", universes_beyond=True, corrected_from="old")
+    sets = {
+        "tle": scry_set("tle", name="Avatar: The Last Airbender Eternal"),
+        "new": scry_set("new", name="Some Later Set"),
+    }
+
+    finding = verify_set_codes(appendices(sets=[settled, fresh]), sets)
+    assert finding.action is not None
+    assert "new" in finding.action
+    assert "tle" not in finding.action

@@ -110,8 +110,26 @@ describe('plane labels at the home view (PRD 5.3.8-12, 9.3)', () => {
     // Not circular: `layoutLabels` checks each candidate only against the boxes reserved *before*
     // it, so a fault in the shift loop, in the reservation count, or in the fade rules leaves two
     // visible labels overlapping in the finished arrangement. This walks every pair to find that.
+    //
+    // What it does *not* cover, stated so a green run is not over-read. Two holes, both real:
+    //
+    // 1. It measures with `labelHalfExtents` and `LABEL_GAP_PX`, the same estimator `overlaps()`
+    //    uses. So it catches bookkeeping and cannot catch the estimator itself being wrong about
+    //    the real DOM. That direction is pinned only by the 5.3.12 geometry test above, which is
+    //    the one place the box shape is asserted rather than reused.
+    // 2. A faded label is not a pair here at all — `boxesOf` keeps only what is visible — so the
+    //    solver could hide a genuine collision by fading one side and this would still read clear.
+    //
+    // Hole 2 is bounded rather than left open: the assertion below caps how much of the roster may
+    // vanish from the check. It is a ratio, not a count, so it neither goes stale on the next
+    // roster change nor silently widens. The escape it closes is a fade rule that starts dropping
+    // labels wholesale; a fade of one awkward pair is under it, which is the intended behaviour.
     const visible = boxesOf(out, count)
-    expect(visible.length).toBeGreaterThan(20)
+    expect(
+      visible.length / candidates.length,
+      `only ${visible.length} of ${candidates.length} labels are visible — the overlap check ` +
+        'below cannot see the rest, so too many faded means it is proving less than it looks',
+    ).toBeGreaterThan(0.7)
     for (let i = 0; i < visible.length; i += 1) {
       for (let j = i + 1; j < visible.length; j += 1) {
         const a = visible[i]!

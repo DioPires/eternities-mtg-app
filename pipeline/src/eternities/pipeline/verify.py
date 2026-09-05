@@ -156,19 +156,33 @@ def verify_set_codes(appendices: Appendices, sets: dict[str, ScrySet]) -> Findin
     mismatched: list[str] = []
     missing: list[str] = []
     corrected: list[str] = []
+    # Set codes whose PRD edit is still owed. Everything in `missing` and `mismatched` qualifies;
+    # a *corrected* row qualifies only until it is ratified. A ratified correction stays in
+    # `corrected` — it is provenance worth printing — but it must not keep asking for an edit that
+    # is already made, which is the same failure the roster finding had against open question 1.
+    outstanding: set[str] = set()
 
     for row in sorted(rows, key=lambda r: r.code):
         scry = sets.get(row.code)
         if scry is None:
             missing.append(f"{row.code} ({row.prd_name}) — no such set on Scryfall")
+            outstanding.add(row.code)
             continue
         if row.corrected_from is not None:
+            ratified = (
+                f", ratified into the PRD {row.prd_ratified}"
+                if row.prd_ratified is not None
+                else ""
+            )
             corrected.append(
                 f"{row.corrected_from} → {row.code} “{scry.name}” "
-                f"(PRD said “{row.prd_name}”, released {scry.released_at})"
+                f"(PRD said “{row.prd_name}”, released {scry.released_at}{ratified})"
             )
+            if row.prd_ratified is None:
+                outstanding.add(row.code)
         elif scry.name.lower() != row.prd_name.lower() and row.prd_section != "B.3":
             mismatched.append(f"{row.code}: PRD “{row.prd_name}” vs Scryfall “{scry.name}”")
+            outstanding.add(row.code)
         else:
             ok.append(f"{row.code} “{scry.name}” ({scry.released_at}, {scry.set_type})")
 
@@ -190,10 +204,12 @@ def verify_set_codes(appendices: Appendices, sets: dict[str, ScrySet]) -> Findin
         else "resolved with corrections — see below"
     )
     action = (
-        "PRD Appendix B carries codes this run had to correct or fill in. The rows are in "
+        "PRD Appendix B carries codes this run had to correct or fill in and the PRD text has "
+        f"not absorbed yet ({', '.join(sorted(outstanding))}). The rows are in "
         "pipeline/data/appendix_b.json with `correctedFrom`/`prdVerify` provenance; the PRD "
-        "itself still needs the same edit."
-        if corrected or missing or mismatched
+        "itself needs the same edit, after which the row takes a `prdRatified` date and drops "
+        "out of this ask."
+        if outstanding
         else None
     )
     return Finding(

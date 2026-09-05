@@ -1,6 +1,6 @@
 {
   "contractVersion": 1,
-  "pipelineVersion": "0.2.0",
+  "pipelineVersion": "0.3.0",
   "dataset": "fixture-scale",
   "dataHash": "1b06048e8b670c21",
   "asOf": "2026-09-04",

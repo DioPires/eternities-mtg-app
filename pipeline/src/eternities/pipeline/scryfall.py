@@ -35,6 +35,14 @@ class BulkSource:
     download_uri: str
     path: Path
     sets_path: Path
+    uri_reconstructed: bool = False
+    """True when ``download_uri`` is the local cache path, not the upstream URI.
+
+    A pinned run against a cache entry downloaded before the sidecar existed has no record of
+    where the file came from, and falls back to the path on disk. The run stays possible — that
+    is the point of the fallback — but the report must not print a cache filename under a heading
+    that promises an upstream one, so the row is marked instead of quietly meaning something else.
+    """
 
 
 class PinnedBulkMissingError(RuntimeError):
@@ -143,10 +151,20 @@ def _pinned(cache_dir: Path, bulk_type: str, updated_at: str) -> BulkSource:
 
     meta_path = _meta_path(cache_dir, bulk_type, stamp)
     uri = str(cards[0])
+    reconstructed = True
     if meta_path.exists():
         meta = cast("dict[str, Any]", json.loads(meta_path.read_text(encoding="utf-8")))
-        uri = str(meta.get("downloadUri", uri))
-    return BulkSource(updated_at=updated_at, download_uri=uri, path=cards[0], sets_path=sets_path)
+        recorded = meta.get("downloadUri")
+        if recorded is not None:
+            uri = str(recorded)
+            reconstructed = False
+    return BulkSource(
+        updated_at=updated_at,
+        download_uri=uri,
+        path=cards[0],
+        sets_path=sets_path,
+        uri_reconstructed=reconstructed,
+    )
 
 
 def _fetch_all_sets() -> bytes:

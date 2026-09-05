@@ -8,7 +8,8 @@ from typing import Final
 CONTRACT_VERSION: Final = 1
 """Bumped only for a byte-layout, section-id, enum-value or filename change."""
 
-PIPELINE_VERSION: Final = "0.2.0"
+PIPELINE_VERSION: Final = "0.3.0"
+"""Bumped when a field is added, per docs/data-contract.md §10. 0.3.0 adds `previousRun`."""
 
 STAR_RECORD_BYTES: Final = 12
 BINARY_HEADER_BYTES: Final = 16

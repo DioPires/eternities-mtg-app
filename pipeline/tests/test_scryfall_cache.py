@@ -53,6 +53,7 @@ def test_the_pinned_run_reproduces_the_reports_bulk_file_row(tmp_path: Path):
     source = fetch(_cache(tmp_path), pinned_updated_at=UPDATED_AT)
     assert source.download_uri == URI
     assert source.download_uri.rsplit("/", 1)[-1] == "default-cards-20260904090532.jsonl.gz"
+    assert not source.uri_reconstructed
 
 
 def test_a_cache_without_a_sidecar_still_serves_the_pin(tmp_path: Path):
@@ -61,6 +62,11 @@ def test_a_cache_without_a_sidecar_still_serves_the_pin(tmp_path: Path):
     cache = _cache(tmp_path, meta=False)
     source = fetch(cache, pinned_updated_at=UPDATED_AT)
     assert source.download_uri == str(cache / f"default_cards-{STAMP}.jsonl.gz")
+    # The fallback is a local path, not a URI, and the report prints its last path segment under a
+    # heading that promises an upstream file name. Without this flag the row silently reads as the
+    # cache filename `default_cards-<stamp>.jsonl.gz` — plausible, and not what it claims to be.
+    assert source.uri_reconstructed
+    assert source.download_uri.rsplit("/", 1)[-1] != URI.rsplit("/", 1)[-1]
 
 
 def test_a_missing_pin_fails_loudly_rather_than_downloading_todays_file(tmp_path: Path):
