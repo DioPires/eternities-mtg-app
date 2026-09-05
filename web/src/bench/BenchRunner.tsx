@@ -24,6 +24,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef, type ReactElement } from 'react'
 import { Vector3, type PerspectiveCamera } from 'three'
 
+import { BLIND_ETERNITIES_SLUG } from '../data/types'
 import { planeWorldPosition } from '../scene/starfield/motion'
 import type { PlaneTable } from '../scene/starfield/planeTable'
 import {
@@ -32,6 +33,7 @@ import {
   anchorPlane,
   benchPose,
   segmentEndTime,
+  smallPlane,
   type BenchAnchors,
   type BenchPose,
 } from './benchPath'
@@ -89,6 +91,29 @@ declare global {
   }
 }
 
+/**
+ * What the bench needs from the scene it is flying over, beyond the geometry.
+ *
+ * Optional as a whole, and that is the difference between the two callers. Phase 2a's harness has
+ * no navigation and no card tier, so it supplies none of this and the run measures the star field
+ * alone — which is what the Phase 2a baseline was. `/bench` supplies all of it, so the segments PRD
+ * 9.1.2 names actually contain what they are named after: the sheet segment has thumbnails in it
+ * because a plane is focused, and the card segment has a card because one was asked for.
+ *
+ * Without this the card and sheet segments would photograph an empty sky and report a frame time
+ * that no user will ever see.
+ */
+export interface BenchDrive {
+  /** Focus a plane, so its shards load and the thumbnail tier fills (PRD 8.7.6). */
+  readonly focusPlane: (slug: string) => void
+  /** Focus the plane's most-printed card, for PRD 5.6.7's planets. Returns false if none is ready. */
+  readonly focusCard: () => boolean
+  /** PRD 9.1.2's "Esc back to multiverse". */
+  readonly focusMultiverse: () => void
+  /** The focused card's live world position, or false if no card is placed. */
+  readonly cardPosition: (out: Vector3) => boolean
+}
+
 export interface BenchContext {
   readonly dataset: string
   readonly stars: number
@@ -97,6 +122,8 @@ export interface BenchContext {
   readonly multiverseRadius: number
   /** The live plane table, so the path can track a real plane as it drifts and turns. */
   readonly table: PlaneTable
+  /** Present when the bench is flying the shipped scene rather than Phase 2a's harness. */
+  readonly drive?: BenchDrive
 }
 
 export interface BenchRunnerProps {
@@ -172,22 +199,31 @@ export function BenchRunner({
   const target = useRef(new Vector3()).current
   const centre = useRef(new Vector3()).current
 
-  const anchor = useMemo(
-    () => anchorPlane(context.table.planes.map((state) => state.record)),
+  const records = useMemo(
+    () => context.table.planes.map((state) => state.record),
     [context.table],
   )
+  const anchor = useMemo(() => anchorPlane(records), [records])
+  const small = useMemo(() => smallPlane(records), [records])
   const anchors = useRef<BenchAnchors>({
     multiverseRadius: context.multiverseRadius,
     planeRadius: anchor?.radius ?? context.multiverseRadius * 0.1,
     planeX: 0,
     planeY: 0,
     planeZ: 0,
+    smallRadius: small?.radius ?? context.multiverseRadius * 0.02,
+    smallX: 0,
+    smallY: 0,
+    smallZ: 0,
     dustX: 0,
     dustY: 0,
     dustZ: 0,
+    cardX: 0,
+    cardY: 0,
+    cardZ: 0,
   }).current
 
-  /** Re-read the anchor plane's live position. PRD 5.7.4: targets live in the rotating frame. */
+  /** Re-read the live positions. PRD 5.7.4: targets live in the rotating frame. */
   const trackAnchors = (): void => {
     if (anchor) {
       planeWorldPosition(
@@ -207,9 +243,70 @@ export function BenchRunner({
       anchors.dustY = centre.y * 0.45
       anchors.dustZ = centre.z * 0.45
     }
+    if (small) {
+      planeWorldPosition(
+        context.table.raw,
+        small.index,
+        context.table.time,
+        context.table.multiverseAngle,
+        1,
+        centre,
+      )
+      anchors.smallX = centre.x
+      anchors.smallY = centre.y
+      anchors.smallZ = centre.z
+    }
+    // The card is placed by the card tier, so it is read rather than derived. Until one exists the
+    // `card` keyframe resolves about the origin, which is why the runner does not enter that
+    // segment's pose until `focusCard` has answered.
+    if (context.drive?.cardPosition(centre) === true) {
+      anchors.cardX = centre.x
+      anchors.cardY = centre.y
+      anchors.cardZ = centre.z
+    }
   }
   const live = useRef({ onComplete, qualityTier, qualityChanges })
   live.current = { onComplete, qualityTier, qualityChanges }
+
+  /**
+   * Put the scene in the state a segment claims to measure, at the moment the camera enters it.
+   *
+   * The focus changes are `immediate` in effect — nothing tweens, because the bench owns the camera
+   * and the rig is not mounted — so this only changes *what is drawn*, never where the camera is.
+   * That separation is the whole point: the path stays byte-identical between runs while the scene
+   * under it varies exactly as PRD 9.1.2 describes.
+   *
+   * The plane focus is issued a segment *early* where it can be. `sheet` needs the anchor plane's
+   * shards, and those are a fetch and a worker parse away (PRD 8.7.6); asking for them as `approach`
+   * begins gives them the five seconds of the fly-in to arrive, which is the same head start a real
+   * user's fly-to gives them. Asking at the segment boundary instead would measure the loading, not
+   * the drawing.
+   */
+  const driveSegment = (segment: string): void => {
+    const drive = context.drive
+    if (!drive) return
+    switch (segment) {
+      case 'approach':
+      case 'sheet':
+        if (anchor) drive.focusPlane(anchor.slug)
+        break
+      case 'small-plane':
+        if (small) drive.focusPlane(small.slug)
+        break
+      case 'card':
+        drive.focusCard()
+        break
+      case 'dust':
+        drive.focusPlane(BLIND_ETERNITIES_SLUG)
+        break
+      // PRD 9.1.2's "Esc back to multiverse".
+      case 'sweep':
+        drive.focusMultiverse()
+        break
+      default:
+        break
+    }
+  }
 
   useEffect(() => {
     if (hold !== null || !ready || state.running || state.finished) return
@@ -229,6 +326,14 @@ export function BenchRunner({
       // screenshot shows a real frame of a live scene rather than a frozen one.
       const at = segmentEndTime(hold)
       if (at === null) return
+      // The scene has to be in the segment's state too, or PRD 9.3's checkpoint photographs the
+      // right camera pose over the wrong contents — a card-sheet shot with no thumbnails in it.
+      // Once, on the first frame the hold is live, because these are focus changes and repeating
+      // them every frame would restart the shard load.
+      if (ready && state.segment !== hold) {
+        state.segment = hold
+        driveSegment(hold)
+      }
       trackAnchors()
       benchPose(at, anchors, pose)
       camera.position.set(pose.px, pose.py, pose.pz)
@@ -246,6 +351,7 @@ export function BenchRunner({
     if (pose.segment !== state.segment) {
       state.segment = pose.segment
       state.settle = SETTLE_FRAMES
+      driveSegment(pose.segment)
     }
     camera.position.set(pose.px, pose.py, pose.pz)
     target.set(pose.tx, pose.ty, pose.tz)

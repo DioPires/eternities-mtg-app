@@ -48,6 +48,13 @@ import {
 } from 'react'
 import { NoToneMapping, Vector3, type PerspectiveCamera } from 'three'
 
+import {
+  BenchRunner,
+  recordBenchCpu,
+  type BenchContext,
+  type BenchDrive,
+  type BenchResult,
+} from '../bench/BenchRunner'
 import { CameraRigController } from '../camera/CameraRigController'
 import type { SceneMotion } from '../camera/motion'
 import {
@@ -174,6 +181,16 @@ export interface SceneViewProps {
    * assertions read that panel; false in the shell, where PRD section 6's HUD is the real one.
    */
   readonly chrome?: boolean
+  /**
+   * PRD 9.1.2's `/bench`. When present the bench owns the camera — `CameraRigController` is not
+   * mounted, because two things cannot fly one camera — and drives focus from the scripted path so
+   * each segment contains what it is named after. `hold` parks at a segment's end pose instead of
+   * recording, which is how PRD 9.3's checkpoints get a reproducible frame.
+   */
+  readonly bench?: {
+    readonly hold?: string | null
+    readonly onComplete?: (result: BenchResult) => void
+  } | null
 }
 
 /**
@@ -185,6 +202,7 @@ export function SceneView({
   reducedMotion,
   host = null,
   chrome = true,
+  bench = null,
 }: SceneViewProps): ReactElement {
   const [snapshot, setSnapshot] = useState<NavigationSnapshot | null>(null)
   const [tier, setTier] = useState<{ tier: QualityTier; changes: number }>({
@@ -637,6 +655,62 @@ export function SceneView({
     }
   }, [data.planes, data.resources, focusStar, probeScreen])
 
+  /**
+   * What the bench asks of this scene (PRD 9.1.2). Every call reaches the same code a user's click
+   * would — `flyToPlane` is the navigation contract's, `focusCard` is the one `focusStar` above
+   * runs — so a bench segment cannot end up measuring a path that only the bench can take.
+   *
+   * `immediate` throughout: the camera is the bench's for the duration, so a tween here would
+   * change nothing visible and would only make the focus land later than the segment it belongs to.
+   */
+  const benchDrive: BenchDrive = useMemo(
+    () => ({
+      focusPlane: (slug: string) => {
+        sceneRef.current?.api.flyToPlane(slug, { immediate: true, reason: 'programmatic' })
+      },
+      focusMultiverse: () => {
+        sceneRef.current?.api.flyToMultiverse({ immediate: true, reason: 'programmatic' })
+      },
+      focusCard: () => {
+        const geometry = data.resources?.geometry
+        if (!geometry) return false
+        // Most printings first, so PRD 5.6.7's planets have something to draw — the same choice
+        // `probe.focusCard` makes, for the same reason.
+        let best = -1
+        let bestPrintings = -1
+        for (const [star, record] of cardsRef.current) {
+          if (record.p.length > bestPrintings) {
+            bestPrintings = record.p.length
+            best = star
+          }
+        }
+        if (best < 0) return false
+        focusStar(best, geometry.planeRowOf(best))
+        return true
+      },
+      cardPosition: (out: Vector3) => {
+        const slot = cardTier.current?.card
+        if (!slot?.visible) return false
+        out.copy(slot.root.position)
+        return true
+      },
+    }),
+    [data.resources, focusStar],
+  )
+
+  const benchContext: BenchContext | null = useMemo(() => {
+    if (!bench || !data.resources || !data.planes || !data.manifest) return null
+    return {
+      dataset: data.manifest.dataset,
+      stars: data.manifest.counts.stars,
+      planes: data.manifest.counts.planes,
+      positionMode: data.resources.positionMode,
+      multiverseRadius: data.planes.multiverseRadius,
+      table: data.resources.table,
+      drive: benchDrive,
+    }
+  }, [bench, data.resources, data.planes, data.manifest, benchDrive])
+
   const setName = useCallback(
     (printing: number): string => {
       const record = focusedStar >= 0 ? cardsRef.current.get(focusedStar) : undefined
@@ -689,12 +763,29 @@ export function SceneView({
           onHover={setHover}
           onSelect={onSelect}
           onQualityChange={onQualityChange}
+          // PRD 7.2's "CPU time per frame in the render loop", reported by the scene rather than
+          // guessed at from outside. It covers the star field's own frame work; the card tier's is
+          // not in it, so the figure is a floor on a card segment, not the whole cost.
+          {...(bench ? { onFrame: (_ms: number, cpuMs: number) => recordBenchCpu(cpuMs) } : {})}
           handleRef={starScene}
         />
+        {benchContext && (
+          <BenchRunner
+            // The numbers mean nothing until the whole field is drawable (PRD 8.7.3).
+            ready={data.starsComplete}
+            context={benchContext}
+            qualityTier={tier.tier.label}
+            qualityChanges={tier.changes}
+            hold={bench?.hold ?? null}
+            {...(bench?.onComplete ? { onComplete: bench.onComplete } : {})}
+          />
+        )}
         {scene && data.resources && (
           <>
             <MotionSync table={data.resources.table} motion={scene.rig.motion} />
-            <CameraRigController rig={scene.rig} nav={scene.api} />
+            {/* The bench flies the camera itself. Mounting the rig as well would put two writers on
+                one camera and the path would stop being the path. */}
+            {!bench && <CameraRigController rig={scene.rig} nav={scene.api} />}
             <CardTier
               resources={data.resources}
               nav={scene}

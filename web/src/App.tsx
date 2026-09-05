@@ -20,16 +20,20 @@
  * The harnesses stay reachable, so every earlier phase's exit criteria stay checkable exactly as
  * they were reviewed:
  *
- *   - `?bench`, `?hold` and `?selfcheck` — the three flags `bench.mjs` and `verify-browser.mjs`
- *     drive the star field with — get Phase 2a's harness, and `?harness=2a` gets it by hand;
+ *   - `/bench`, and the `?bench` / `?hold` spellings `scripts/bench.mjs` uses, get PRD 9.1.2's
+ *     bench route — which since Phase 6 flies the *shipped* scene rather than Phase 2a's harness,
+ *     so the numbers are the product's;
+ *   - `?selfcheck` still gets Phase 2a's harness, because the GPU self-check holds the field still
+ *     and reads pixels back, which it cannot do while anything is flying the camera. `?harness=2a`
+ *     gets it by hand;
  *   - `?harness=3` gets Phase 3's scene with its readout panel, and `?probe=1` gets it too: the
  *     seam that flag opens (`scene/probe.ts`) is that scene's, and it is what `verify-browser.mjs`
  *     drives the card tier through;
  *   - everything else gets the shell.
  *
- * These flags still bypass the shell rather than rendering inside it. Each owns its own camera, and
- * the bench and the self-check both drive that camera themselves, which they cannot do in a scene
- * where the rig is flying it.
+ * These all bypass the shell rather than rendering inside it. Each owns its own camera, and the
+ * bench and the self-check drive that camera themselves, which they cannot do in a scene where the
+ * rig is flying it.
  */
 
 import { useEffect, type ReactElement } from 'react'
@@ -46,7 +50,7 @@ import {
   useRouter,
   useNavigation,
 } from './app/hooks'
-import { benchHold, benchRequested } from './bench/BenchRunner'
+import { BenchScene, benchRouteRequested } from './bench/BenchScene'
 import { Phase2aScene } from './harness/Phase2aScene'
 import { EternitiesScene, SceneView } from './scene/EternitiesScene'
 import { probeRequested } from './scene/probe'
@@ -69,9 +73,14 @@ import { Toasts } from './ui/Toasts'
  * scene they measure, and `?probe=1` implies 3 because the probe seam is that scene's; `?harness=`
  * names either one directly.
  */
-function sceneRequested(): '2a' | '3' | null {
+function sceneRequested(): 'bench' | '2a' | '3' | null {
   const search = typeof location === 'undefined' ? '' : location.search
-  if (benchRequested(search) || benchHold(search) !== null || selfCheckRequested(search)) return '2a'
+  const pathname = typeof location === 'undefined' ? '' : location.pathname
+  // PRD 9.1.2's route, intercepted before `parseRoute` can call `/bench` an unknown route.
+  if (benchRouteRequested(pathname, search)) return 'bench'
+  // The GPU self-check still needs Phase 2a's harness: it holds the field still and reads pixels
+  // back, which it cannot do in a scene where a rig or a bench is flying the camera.
+  if (selfCheckRequested(search)) return '2a'
   if (probeRequested(search)) return '3'
   const named = new URLSearchParams(search).get('harness')
   return named === '2a' || named === '3' ? named : null
@@ -157,6 +166,8 @@ function AppShell(): ReactElement {
 
 export function App(): ReactElement {
   switch (sceneRequested()) {
+    case 'bench':
+      return <BenchScene />
     case '2a':
       return <Phase2aScene />
     case '3':
