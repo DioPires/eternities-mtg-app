@@ -220,12 +220,16 @@ buys, stated to match what it actually asserts:
 
 - no star it located was drawn 3 px or more from where the mirror puts it;
 - no systematic drift above about 1.5 px mean across everything it located;
-- no well-sampled plane row that still projects on screen was displaced far enough to vanish from
-  its own pick windows.
+- no well-sampled plane row was displaced far enough to vanish from its own pick windows —
+  on screen or off it, since an off-screen row is measured rather than skipped (see below);
+- no sampled star was put behind the eye or past the far plane, the one projection that cannot be
+  measured at all.
 
 And what it still does not buy. **This list is what is known, not a claim that it is complete** —
 every entry on it was found by injecting a larger error than the round before had thought to try,
-and that is the only method that has found any of them.
+and that is the only method that has found any of them. One entry is left; the section after it
+records a second that has since been closed, and is kept because the way it was closed is the
+reason the third and fourth bullets above can be stated at all.
 
 *A row too thinly sampled to judge can be displaced without failing.* Sixty-four samples over
 `fixture-scale`'s 87 planes leave most rows with one sample, and row 0 is the only one there that
@@ -234,30 +238,70 @@ Phase 2b's tether frames, so the coverage is aimed at the right place, but it is
 and not of 87. An error scattered across rows rather than confined to one would likewise reduce
 coverage rather than fail. The deferred draw-range fix closes this one.
 
-*An error large enough to push the row off screen is absorbed, and the run passes green.*
-`mirrorPixel` decides "off screen" from the mirror's **own** projected position and returns `null`
-before the sample enters `checked` and before the `sampledRows` tally, so a row displaced clean out
-of NDC leaves the numerator and the denominator at once — and the dark-row rule cannot judge a row
-it never saw. Continuing the ladder above on `fixture-small`:
+### The off-screen hole, and how it was closed
 
-| injected into row 0 | measured | samples per plane row | verdict |
+*An error large enough to push the row off screen used to be absorbed, and the run passed green.*
+`mirrorPixel` decided "off screen" from the mirror's **own** projected position and returned `null`
+before the sample entered `checked` and before the `sampledRows` tally, so a row displaced clean out
+of NDC left the numerator and the denominator at once — and the dark-row rule cannot judge a row it
+never saw. Continuing the ladder above on `fixture-small`, with the injection scoped to row 0:
+
+| injected into row 0 | measured | samples per plane row | before | now |
+| --- | --- | --- | --- | --- |
+| `py += 60` | 34/64 | `4x27 3x17 0x15 1x5` | **fail** — row 0 dark | **fail** — row 0 dark |
+| `py += 400` | 32/64 | `4x27 3x17 0x15 1x5` | **pass, exit 0** | **fail** — row 0 dark |
+| `py += 4000` | 34/49 | `4x27 3x17 1x5` — row 0 absent | **pass, exit 0** | **fail** — 15 unprojectable |
+| `pz += 400` | 34/57 | `4x27 3x17 0x8 1x5` — row 0 thinned | **pass, exit 0** | **fail** — 7 unprojectable |
+
+The fix is not a heuristic that tries to tell a displaced row from a distant one. It is that an
+off-screen projection **still yields a pixel, and the sample is measured like any other**. `IdPicker`
+aims its 11×11 window with `camera.setViewOffset`, which is arithmetic on the frustum's edges —
+three adds `offsetX * width / fullWidth` to the left edge and does not clamp — so a window can be
+aimed at a pixel outside the viewport and the shader answers the same question there, at the same
+resolution, through the same vertex program. Object culling cannot interfere, because
+`starFieldObjects` already sets `frustumCulled = false` and `boundingSphere = null` on the pick
+points. So an off-screen sample enters `checked` and `sampledRows` and the dark-row rule does the
+rest unchanged. `offScreen` is reported and **never judged**; nothing branches on it.
+
+That is what makes the discriminator the earlier analysis went looking for unnecessary. The control
+displaces row 0's home in the *plane table*, which backs the mirror and the GLSL twin alike, so the
+row is genuinely and correctly 400 units off screen — the case a concentration rule on `offScreen`
+would have failed. Both cases report exactly `15 off screen`; the verdicts are opposite, and they
+are opposite on measurement rather than on a rule about frustums:
+
+| row 0, 400 units up | off screen | row 0 located | verdict |
 | --- | --- | --- | --- |
-| `py += 60` | 35/64 | `4x27 3x17 0x15 1x5` | **fail** — row 0 dark, named |
-| `py += 400` | 35/49 | `4x27 3x17 1x5` — row 0 absent | **pass, exit 0** |
+| mirror only (`py += 400`) | 15 | 0 of 15 | **fail** — row 0 dark, named |
+| mirror *and* shader (plane table `home + 400`) | 15 | 15 of 15 | **pass, exit 0** |
 
-The 15 dust samples are reported as `15 off screen`, `measured` stays above the floor of 16, and the
-run prints `OK — small decodes …`. So sensitivity is monotone from 3 up to about 60 world units and
-goes blind again past roughly 400 — not an exotic regime for this failure, since a sign flip, a
+The one projection left that no view offset can reach is `z > 1` — behind the eye, or past the far
+plane — since shifting the frustum sideways never puts the eye behind itself. Those samples are
+still dropped before both tallies, so they are counted as `unprojectable`, reported per row, and
+`ok` requires zero of them. Both remaining rungs above land there, and the `pz += 400` one shows why
+the count alone is not enough: it takes 7 of row 0's 15 samples out, the other 8 come back entirely
+dark, and `findDarkRows` still will not judge the row because 8 is under its floor of 10. Dropping a
+sample does not only lose that sample — it can drag the row it came from under the floor and take
+the rest down with it.
+
+Requiring a flat zero is safe only because this check runs from outside the field looking in. The
+clean runs report the nearest sampled star **285.2 units** in front of the eye on `fixture-small`
+and **200.5** on `fixture-scale` — three orders of magnitude clear of the 0.1 near plane and nowhere
+near the 8000 far one, against a 3 px tolerance that fails at a few world units. `nearestDepth` is
+printed on every run, green ones included, so that margin is a number to watch rather than an
+argument to trust. A camera *inside* the
+field would make stars behind the eye ordinary and this clause would fire on a correct mirror; if
+that regime ever arrives the clause should be replaced rather than loosened, and the replacement is
+a comparison against the shader — a star the mirror puts behind the eye that the id buffer still
+shows on screen is a contradiction no legitimate camera produces.
+
+Sensitivity is now monotone from 3 world units upward with no blind band above it, where before it
+went blind again past roughly 400 — not an exotic regime for this failure, since a sign flip, a
 wrong radius scale or a stale plane-table row lands there rather than at 4 px.
 
-That second hole is left open on purpose. Applying the same concentration rule to `offScreen` would
-fail a plane row that is *legitimately* outside the view frustum: it is 100% off screen for reasons
-that have nothing to do with the mirror. Both fixtures report `0 off screen` at this camera, so the
-gate would cost nothing today, but that is not a property of the real 89-shard dataset.
-Discriminating the two needs a design decision rather than a threshold — `planeWorldPosition` has
-the plane centre, and "centre on screen, every sampled star off screen" is the bug's signature, but
-that path shares drift and home with the mirror and so would miss an error injected there. It is
-deferred to Phase 2b with the draw-range work.
+Reproducing the ladder needs one caveat: the shell, navigation and card-tier checks are downstream
+of the same motion mirror and catch these injections too, so on an unmodified `verify-browser` they
+fire *first* and abort before the star self-check is reached — `py += 400` dies at PRD 5.6.1's card
+framing. Isolating the check under test means skipping the verify steps before `verifyStarField`.
 
 The `--use-angle=metal` flag that gets `verify-browser` onto a real driver is **macOS-specific**. On
 Linux CI it would be wrong, and the `SOFTWARE_RENDERER` regex would then be the only thing between

@@ -1761,6 +1761,16 @@ async function verifyStarField(page, url, allowSoftware, problems) {
   console.log(
     `    samples per plane row: ` + selfCheck.sampledRows.map(([row, n]) => `${row}x${n}`).join(' '),
   )
+  // The one bucket still dropped before `checked` and `sampledRows`, so the one place the
+  // absorption DEC-625 closed could re-open. Printed on every run, including green ones, because
+  // a number that only appears on failure cannot be watched drifting upwards.
+  console.log(
+    `    ${selfCheck.unprojectable} unprojectable (behind the eye or past the far plane)` +
+      (selfCheck.unprojectableRows.length > 0
+        ? ` (plane rows ${selfCheck.unprojectableRows.map(([row, n]) => `${row}x${n}`).join(' ')})`
+        : '') +
+      `; nearest sampled star ${selfCheck.nearestDepth === null ? 'n/a' : `${selfCheck.nearestDepth.toFixed(1)} units`} in front of the eye`,
+  )
   if (selfCheck.canvasBytes < 5000) {
     problems.push(`the canvas looks empty (${selfCheck.canvasBytes}-byte PNG) — nothing drew`)
   } else {
@@ -1802,14 +1812,37 @@ async function verifyStarField(page, url, allowSoftware, problems) {
           `measure looks like, not what occlusion looks like`
         : ''
 
+    // The other half of the off-screen fix, and the one failure the messages above cannot
+    // describe: these samples never reached `checked` or `sampledRows`, so the dark-row rule has
+    // no row to name and the "located only N of M" fallback below would report a shortfall in the
+    // wrong denominator — it would say the run measured too little, when what happened is that
+    // the mirror put stars behind the eye and the run quietly stopped counting them.
+    const unprojectable =
+      selfCheck.unprojectable > 0
+        ? `the CPU motion mirror put ${selfCheck.unprojectable} sampled stars behind the eye or ` +
+          `past the far plane` +
+          (selfCheck.unprojectableRows.length > 0
+            ? ` (plane ${selfCheck.unprojectableRows.length === 1 ? 'row' : 'rows'} ` +
+              `${selfCheck.unprojectableRows.map(([row, n]) => `${row}x${n}`).join(' ')})`
+            : '') +
+          ` — at this camera every star is ${selfCheck.nearestDepth === null ? 'well' : `at least ${selfCheck.nearestDepth.toFixed(1)} units`} in front of the eye, so that is a ` +
+          `mirror error, and it is the one kind of sample no pick window can be aimed at`
+        : ''
+
     if (selfCheck.missed.length > 0) {
       throw new Error(
         `the CPU motion mirror disagrees with the vertex shader for ${selfCheck.missed.length} ` +
           `stars — PRD 8.5.7's camera tether would frame the wrong point` +
-          (darkRows === '' ? '' : `. And in the same run, ${darkRows}`),
+          (darkRows === '' ? '' : `. And in the same run, ${darkRows}`) +
+          (unprojectable === '' ? '' : `. And in the same run, ${unprojectable}`),
       )
     }
-    if (darkRows !== '') throw new Error(darkRows)
+    if (darkRows !== '') {
+      throw new Error(
+        darkRows + (unprojectable === '' ? '' : `. And in the same run, ${unprojectable}`),
+      )
+    }
+    if (unprojectable !== '') throw new Error(unprojectable)
     throw new Error(
       `the self-check located only ${selfCheck.measured} of ${selfCheck.checked} sampled stars ` +
         `in their own pick window — too few to establish PRD 8.5.7 either way`,

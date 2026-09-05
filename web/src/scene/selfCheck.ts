@@ -56,7 +56,35 @@ export interface SelfCheckResult {
    * samples and reported coverage the run had only over the measured ones.
    */
   readonly agreed: number
+  /**
+   * Samples the mirror projected outside the viewport. **Reported, never judged** — these are a
+   * subset of `checked`, not an alternative to it. The pick window is aimed at the off-screen pixel
+   * and the sample is measured like any other; see `mirrorPixel` for why that is possible and why
+   * it is the whole of the off-screen gate. A row legitimately outside the frustum lands here in
+   * bulk and passes on its measurements; a row displaced off screen by a mirror error lands here in
+   * bulk too and goes dark. Nothing branches on this number, which is exactly the point — a gate
+   * that did would fail the first case to catch the second.
+   */
   readonly offScreen: number
+  /**
+   * Samples whose projection has no pixel to aim at: `z > 1`, meaning behind the eye or beyond the
+   * far plane, plus the theoretical non-finite divide. A view offset shifts the frustum sideways
+   * and never puts the eye behind itself, so unlike an off-screen pixel these cannot be probed, and
+   * they are the one kind of sample still dropped before `checked` and `sampledRows`. Counted and
+   * reported by row so that the absorption the off-screen gate closes cannot re-open here unnoticed
+   * — see {@link SelfCheckResult.unprojectableRows} and the ladder in `docs/star-renderer.md`.
+   */
+  readonly unprojectable: number
+  /** `[planeRow, count]` for the unprojectable samples, commonest first. */
+  readonly unprojectableRows: readonly (readonly [number, number])[]
+  /**
+   * View-space depth of the sampled star that came closest to the eye, in world units, or `null`
+   * when nothing was sampled. This is the margin the `unprojectable === 0` clause of `ok` rests
+   * on: that clause is only safe while the check runs from a camera outside the field, and this
+   * number is how a reader checks that rather than taking the comment's word for it. At the home
+   * view it sits far in front of the 0.1 near plane and nowhere near the 8000 far one.
+   */
+  readonly nearestDepth: number | null
   /**
    * Measured samples where the picker returned a *different* star that the mirror also places on
    * the same pixel. Inside a galaxy's core several stars share a pixel and the id pass depth-sorts
@@ -270,7 +298,34 @@ export function findDarkRows(
     .sort((a, b) => b[1] - a[1])
 }
 
-/** Where the CPU mirror says a star is, in device pixels. `null` when it is off screen. */
+/**
+ * Where the CPU mirror says a star is, in device pixels, and whether that pixel is on screen.
+ *
+ * The pixel is returned whether or not it is on screen, and that is the whole of the off-screen
+ * gate. It used to return `null` for anything outside NDC, which deleted the sample before it
+ * reached `checked` or `sampledRows` — so a mirror error big enough to project a row clean off
+ * screen took the row out of the numerator and the denominator at once, and the dark-row rule
+ * cannot judge a row it never saw. That was the ladder's `py += 400` passing green.
+ *
+ * It can be measured instead of skipped because the pick window is a *view offset*, not a scissor:
+ * `IdPicker` renders an 11×11 sub-rectangle of the full frustum via `camera.setViewOffset`, and
+ * nothing in that arithmetic requires the sub-rectangle to lie inside the viewport — three adds
+ * `offsetX * width / fullWidth` to the frustum's left edge and does not clamp. Aiming the window at
+ * an off-screen pixel therefore asks the shader the same question it is asked on screen, at the
+ * same resolution and through the same vertex program: *did you draw this star here?* Object-level
+ * culling cannot interfere, because `starFieldObjects` already sets `frustumCulled = false` and
+ * `boundingSphere = null` on the pick points.
+ *
+ * That is why there is no concentration rule on `offScreen` and no plane-centre discriminator. A
+ * row legitimately outside the frustum is not *excused* by a heuristic that tries to tell it apart
+ * from a displaced one — it is measured, agrees, and passes on the same evidence as any other row.
+ * A displaced row is not in the window the mirror points at and goes dark exactly as it does on
+ * screen. The distinction the naive gate could not draw is not drawn at all; it stops mattering.
+ *
+ * `null` is left for the one projection that cannot be aimed at: `z > 1` — behind the eye, or
+ * beyond the far plane — which no lateral view offset reaches, since shifting the frustum sideways
+ * never puts the eye behind itself. See `unprojectable`, which is where those samples are counted.
+ */
 function mirrorPixel(
   index: number,
   table: PlaneTable,
@@ -280,7 +335,7 @@ function mirrorPixel(
   width: number,
   height: number,
   out: Vector3,
-): { x: number; y: number; z: number } | null {
+): MirrorPixel | null {
   geometry.localPosition(index, out)
   starWorldPosition(
     table.raw,
@@ -293,9 +348,58 @@ function mirrorPixel(
     motion,
     out,
   )
-  out.project(camera)
-  if (Math.abs(out.x) > 1 || Math.abs(out.y) > 1 || out.z > 1) return null
-  return { x: ((out.x + 1) / 2) * width, y: ((1 - out.y) / 2) * height, z: out.z }
+  // `project` is exactly these two applies. Split so the view-space depth is readable between
+  // them: it is the quantity the `unprojectable` clause is actually about, and NDC z hides it —
+  // with a 0.1 near plane against an 8000 far one, everything from 117 units out to 377 sits
+  // between 0.9983 and 0.9995, so an NDC margin says nothing about how close to the eye a star got.
+  out.applyMatrix4(camera.matrixWorldInverse)
+  const depth = -out.z
+  out.applyMatrix4(camera.projectionMatrix)
+  return pixelForNdc(out.x, out.y, out.z, width, height, depth)
+}
+
+export interface MirrorPixel {
+  /** Device pixels, top-left origin. Outside `[0, width] × [0, height]` when `onScreen` is false. */
+  readonly x: number
+  readonly y: number
+  readonly z: number
+  readonly onScreen: boolean
+  /** View-space depth in world units: how far in front of the eye the mirror puts the star. */
+  readonly depth: number
+}
+
+/**
+ * The off-screen gate's whole decision, as a function of a projected point alone.
+ *
+ * Separated from {@link mirrorPixel} for the reason `findDarkRows` is separated from `sample`: the
+ * rule is the assertion, and everything around it needs a driver, a fixture and a second of wall
+ * clock. What is asserted here is narrow and load-bearing — that a point outside NDC still yields a
+ * pixel, because a pixel is all the pick window needs to be aimed at, and that `z > 1` is the only
+ * projection that yields none.
+ */
+export function pixelForNdc(
+  x: number,
+  y: number,
+  z: number,
+  width: number,
+  height: number,
+  depth = 0,
+): MirrorPixel | null {
+  // A perspective divide by a w at or near zero, which `Vector3.project` does not guard. Rare
+  // enough to be theoretical, but a NaN offset would reach `setViewOffset` and poison the
+  // projection matrix for every sample after it rather than failing this one.
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return null
+  // Behind the eye or beyond the far plane, which are one test because a point behind the eye
+  // divides by a negative w and lands past the far plane in NDC rather than in front of the near
+  // one. Either way no lateral view offset reaches it, so there is no pixel to aim a window at.
+  if (z > 1) return null
+  return {
+    x: ((x + 1) / 2) * width,
+    y: ((1 - y) / 2) * height,
+    z,
+    onScreen: Math.abs(x) <= 1 && Math.abs(y) <= 1,
+    depth,
+  }
 }
 
 /**
@@ -359,7 +463,13 @@ async function sample(
   let occluded = 0
   let checked = 0
   let unmeasured = 0
+  let unprojectable = 0
+  // The margin the `unprojectable` clause of `ok` rests on: the closest any sampled star came to
+  // the eye, in world units. Reported so the clause is checkable against a number rather than
+  // against an argument — see the clause itself for what it does with it.
+  let nearestDepth = Infinity
   const unmeasuredRows = new Map<number, number>()
+  const unprojectableRows = new Map<number, number>()
   const sampledRows = new Map<number, number>()
   let offsetTotal = 0
   let offsetMax = 0
@@ -380,8 +490,9 @@ async function sample(
     const index = Math.floor((sample / sampleCount) * total)
     if (index >= total) continue
     if (!geometry.passesFilter(index)) continue
+    const row = geometry.planeRowOf(index)
     // The plane has to have faded in, or the pick pass discards it (PRD 5.8.3's rule, reused).
-    if ((table.planes[geometry.planeRowOf(index)]?.fade ?? 0) <= 0.5) continue
+    if ((table.planes[row]?.fade ?? 0) <= 0.5) continue
 
     // One pick per animation frame, which is how PRD 8.5.6 says the app picks ("throttled to the
     // frame") and therefore the only regime worth asserting about. Waiting *before* reading the
@@ -396,14 +507,22 @@ async function sample(
 
     const pixel = mirrorPixel(index, table, geometry, camera, motion, width, height, world)
     if (pixel === null) {
-      offScreen += 1
+      // Behind the eye or beyond the far plane. The only projection the pick window cannot be
+      // aimed at, and therefore the only sample still dropped before the tallies below.
+      unprojectable += 1
+      unprojectableRows.set(row, (unprojectableRows.get(row) ?? 0) + 1)
       continue
     }
+    // Recorded, not acted on. An off-screen sample is measured like any other from here down — it
+    // enters `checked` and `sampledRows`, gets a pick window aimed at it, and is judged by the same
+    // offset and the same dark-row rule. This counter exists so a reader can see how much of the
+    // run was off screen, not so anything can branch on it.
+    if (!pixel.onScreen) offScreen += 1
+    nearestDepth = Math.min(nearestDepth, pixel.depth)
 
     checked += 1
     // The denominator for `unmeasuredRows`. Counted here, at the same point the sample enters
     // `checked`, so the two tallies are over exactly the same set of samples.
-    const row = geometry.planeRowOf(index)
     sampledRows.set(row, (sampledRows.get(row) ?? 0) + 1)
     // `pickQueued`, not `pick`: a `PICK_BUSY` here would decode as "some other star" and be scored
     // as a disagreement. The check must compare answers, never the absence of one.
@@ -464,6 +583,9 @@ async function sample(
     offScreen,
     occluded,
     unmeasured,
+    unprojectable,
+    unprojectableRows: [...unprojectableRows.entries()].sort((a, b) => b[1] - a[1]),
+    nearestDepth: Number.isFinite(nearestDepth) ? nearestDepth : null,
     unmeasuredRows: [...unmeasuredRows.entries()].sort((a, b) => b[1] - a[1]),
     sampledRows: [...sampledRows.entries()].sort((a, b) => b[1] - a[1]),
     darkRows,
@@ -476,7 +598,7 @@ async function sample(
     buffer: [renderer.domElement.width, renderer.domElement.height],
     canvasBytes,
     positionMode: geometry.positionMode,
-    // Three clauses, for three ways the mirror can be wrong.
+    // Four clauses, for four ways the mirror can be wrong.
     //
     // Nothing may have missed — the mirror agrees with the shader wherever the two were compared.
     // The run must have located enough stars for that to mean something, or the check passes
@@ -484,6 +606,33 @@ async function sample(
     // floor rather than a fraction, because what fraction is measurable is a property of the
     // fixture's density, not of the mirror. And no plane row may have gone dark, or an error too
     // large to measure passes as an error that was never there — see `DARK_ROW_MIN_SAMPLES`.
-    ok: missed.length === 0 && offsetSamples >= MIN_MEASURED && darkRows.length === 0,
+    //
+    // The fourth is the other half of the off-screen fix. Aiming the pick window off screen makes
+    // a laterally displaced row measurable, but a star the mirror puts *behind the eye* has no
+    // pixel to aim at, and such a sample is still dropped before both tallies — which absorbs an
+    // error in two ways, both measured on `fixture-small` and both green before this clause.
+    // `py += 4000` takes row 0 out of `sampledRows` entirely, the same disappearance the lateral
+    // fix closes. `pz += 400` is quieter and worse: it thins row 0 from 15 samples to 8, all 8
+    // come back dark, and the row still escapes `findDarkRows` — which does not judge a row below
+    // its floor of 10. Dropping a sample does not just lose that sample; it can drag the row it
+    // came from under the floor and take the other seven down with it.
+    //
+    // Requiring zero is a real assertion here rather than a formality, because at the camera this
+    // check runs from the eye sits outside the multiverse looking in: `?selfcheck=1` measures at
+    // the home view, ~247 units out against a multiverse radius of 130, so every star is in front
+    // of the eye by a wide margin and nothing approaches the 8000 far plane. `nearestDepth` reports
+    // that margin so the claim is checkable against a number rather than against this paragraph.
+    //
+    // What would break it is running the check from a camera *inside* the field, where stars
+    // behind the eye are ordinary and this clause would fire on a correct mirror. It is a flat
+    // zero rather than a rate because that regime does not exist today, and it should be replaced
+    // rather than loosened if it ever does — the replacement is a comparison against the shader,
+    // not a threshold: a star the mirror puts behind the eye that the id buffer still shows on
+    // screen is a contradiction no legitimate camera produces.
+    ok:
+      missed.length === 0 &&
+      offsetSamples >= MIN_MEASURED &&
+      darkRows.length === 0 &&
+      unprojectable === 0,
   }
 }
