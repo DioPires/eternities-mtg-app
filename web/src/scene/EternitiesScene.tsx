@@ -665,7 +665,7 @@ export function EternitiesScene(): ReactElement {
         <PlanetHoverLabel state={labelState} text={setName} />
       </div>
 
-      <div className="overlay" data-testid="eternities-status">
+      <div className="scene-status" data-testid="eternities-status">
         <h1>Eternities</h1>
         <p className="muted">
           Drag to orbit · scroll to zoom · click a plane, a star or a thumbnail · Esc to go back ·{' '}
