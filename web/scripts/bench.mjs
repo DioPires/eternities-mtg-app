@@ -143,7 +143,7 @@ async function runOnce(url, args, run) {
     if (args.positions) query.set('positions', args.positions)
     await page.goto(`${url}/?${query.toString()}`, { waitUntil: 'load', timeout: 60_000 })
 
-    // The path is ~31 s plus the load and the warm-up; give it generous headroom.
+    // The path is 39 s plus the load and the warm-up; give it generous headroom.
     await page.waitForFunction(() => window.__eternitiesBench !== undefined, {
       timeout: 180_000,
       polling: 500,
@@ -171,10 +171,22 @@ async function captureShots(url, args, segments, directory) {
       const query = new URLSearchParams({ hold: segment })
       if (args.positions) query.set('positions', args.positions)
       await page.goto(`${url}/?${query.toString()}`, { waitUntil: 'load', timeout: 60_000 })
-      await page.waitForFunction(() => window.__eternitiesHold !== undefined, {
-        timeout: 120_000,
-        polling: 250,
-      })
+      // `__eternitiesHold` says the page established the segment's focus; `__eternitiesHoldError`
+      // says it gave up trying (DEC-667 B1). Photographing on mount is what produced an
+      // empty-multiverse `card` shot, and failing here is the alternative to a plausible-looking
+      // wrong picture.
+      //
+      // For `card` this is a genuine readiness gate — its focus cannot succeed until the anchor
+      // plane's shards arrive, so the wait is real. For every other segment the focus cannot fail,
+      // the flag arrives on the first frame, and the fixed settle below is what actually gives the
+      // contents time to appear (DEC-677 N2). A `sheet` shot's thumbnails depend on that sleep, not
+      // on this wait.
+      await page.waitForFunction(
+        () => window.__eternitiesHold !== undefined || window.__eternitiesHoldError !== undefined,
+        { timeout: 120_000, polling: 250 },
+      )
+      const error = await page.evaluate(() => window.__eternitiesHoldError)
+      if (error) throw new Error(`shot ${segment}: ${error}`)
       // Let every plane finish its fade-in (PRD 6.8.1) before photographing it.
       await new Promise((done) => setTimeout(done, 2000))
       const path = resolve(WEB_ROOT, directory, `${segment}.png`)
@@ -200,6 +212,9 @@ function report(result) {
   line('quality tier', `${result.qualityTier} (${result.qualityChanges} changes)`)
   line('anchor plane', result.anchorPlane)
   if (result.saturated) line('WARNING', 'sample buffer filled; the tail of the path is missing')
+  if (result.undrivenSegments?.length) {
+    line('WARNING', `segments measured without their contents: ${result.undrivenSegments.join(', ')}`)
+  }
   console.log('\n  segment        frames    fps   p50    p95    max   cpu p95')
   for (const segment of result.segments) {
     console.log(
@@ -244,6 +259,18 @@ if (args.out) {
   mkdirSync(dirname(path), { recursive: true })
   writeFileSync(path, `${JSON.stringify(results.length === 1 ? results[0] : results, null, 2)}\n`)
   console.log(`\nwrote ${path}`)
+}
+
+// Before the thresholds, because a run whose `card` segment measured an empty sky can pass them
+// comfortably and is not a baseline (DEC-667 N8). Reported after `--out` is written, so the
+// evidence survives the failure.
+const undriven = results.flatMap((result) => result.undrivenSegments ?? [])
+if (undriven.length > 0) {
+  console.error(
+    `\nbench refused: ${[...new Set(undriven)].join(', ')} did not reach the scene state the ` +
+      'segment is named after, so these numbers are not the product’s',
+  )
+  process.exit(1)
 }
 
 if (!results.every((result) => result.meetsCeiling)) {

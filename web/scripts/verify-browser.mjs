@@ -1169,7 +1169,12 @@ async function verifyAccessibility(page, url, log) {
     /(^|;\s*)style-src 'self'(;|$)/.test(csp),
     `style-src is not the audited value: ${JSON.stringify(/style-src[^;]*/.exec(csp)?.[0] ?? '')}`,
   )
-  check(csp.includes("style-src-attr 'unsafe-inline'"), 'style-src-attr is missing from the policy')
+  // Phase 6 dropped it (csp-audit.md F5). Asserted absent rather than left unmentioned, so that
+  // re-adding the relaxation has to argue with a failing check instead of sliding back in.
+  check(
+    !csp.includes('style-src-attr'),
+    `style-src-attr came back: ${JSON.stringify(/style-src-attr[^;]*/.exec(csp)?.[0] ?? '')}`,
+  )
   check(csp.includes("font-src 'self'"), 'font-src is missing from the policy')
   check(
     (headers['strict-transport-security'] ?? '').includes('max-age='),
@@ -1179,7 +1184,7 @@ async function verifyAccessibility(page, url, log) {
     violations.length === 0,
     `the page violated its own policy:\n  - ${violations.join('\n  - ')}`,
   )
-  log('  CSP: style-src tightened to \'self\', no violations, HSTS present')
+  log("  CSP: style-src 'self' with no style-src-attr relaxation, no violations, HSTS present")
 }
 
 /** PRD 7.1.2, in a page where WebGL2 is genuinely unavailable. */

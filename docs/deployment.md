@@ -21,7 +21,23 @@ node scripts/write-vercel-json.mjs          # write
 node scripts/write-vercel-json.mjs --check  # what CI runs
 ```
 
-## 2. Connecting the project (owner action, one time)
+## 2. Connecting the project — **done, not an outstanding action**
+
+The project is connected. The production host is **`https://eternities-mtg-app.vercel.app`**, and
+Vercel creates a **Production** deployment on every merge to `main`. Stated as the invariant rather
+than as a count, because the count moves with every merge and a number written here is stale by the
+time it is read: **every first-parent commit on `main` has a matching same-SHA Production
+deployment**, all the way back to the first. Re-checked 2026-09-05 across all 27 of them, zero
+misses, by intersecting `git log --first-parent origin/main` with the `deployments` API.
+
+Also verified live on 2026-09-05: the site applies the PRD 7.6.1 CSP, answers `/plane/dominaria`
+with `200` through the SPA rewrite, and sends `max-age=31536000, immutable` on `/data/**`. It served
+`d5ee9661aaffafa3`, which was `main`'s production hash *at that moment* — do not read that hash as a
+current value; §6 of `refresh-runbook.md` has the command that tells you what is live now.
+
+Nothing in the list below needs doing. It is kept as the record of the settings the project carries,
+and as the recipe if it is ever recreated. **Do not cite this section as evidence that the deploy is
+still an owner gate — it is not.**
 
 1. Vercel → **Add New… → Project** → import `DioPires/eternities-mtg-app`.
 2. **Root Directory: `web`.** This is the only setting that is not in the repository, and it is the
@@ -65,7 +81,11 @@ fetched at build time, or a Vercel build command that materialises the directory
 
 ## 5. Refresh
 
-PRD 8.8.3's flow is Phase 1's to exercise and Phase 6's to rehearse and write up as a runbook.
+**The flow is `docs/refresh-runbook.md`** — rehearsed through step 5 on 2026-09-05 and written from
+that run. Step 6 (merge, deploy, rollback) is marked NOT REHEARSED in the runbook itself, because
+the refresh owner does not merge their own refresh. Owner: Simulation Engineer, roughly once per set
+release (PRD 4.10.1).
+
 Phase 0's part is that `datasets.json` and the build-time injection make switching the active data
 directory a one-line change:
 

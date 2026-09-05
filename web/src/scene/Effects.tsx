@@ -12,7 +12,7 @@
  */
 
 import { Bloom, EffectComposer, SelectiveBloom, Vignette } from '@react-three/postprocessing'
-import { type ReactElement } from 'react'
+import { type ComponentProps, type MutableRefObject, type ReactElement } from 'react'
 import { Object3D } from 'three'
 
 import {
@@ -39,16 +39,57 @@ export interface EffectsProps {
    * undefined the bloom is global, which is what Phase 2a's harness — and the bench baseline
    * measured against it — has always had.
    *
-   * **What it costs, recorded (DEC-638/N7).** `SelectiveBloomEffect` renders the scene a second
-   * time each frame to build its mask, and the star field — 28,587 instanced points on the
-   * production roster — is in that second pass. Card level measures p95 18.3–18.4 ms against PRD
-   * 7.2's 16.7 ms target; the 33 ms ceiling is met with room, and 60 fps is held. This is the
-   * plausible contributor, and it is not cheap to remove: the alternatives are a luminance-only
-   * global bloom, which is the washed-out card PRD 9.3 names, or a hand-written two-camera mask
-   * pass. Neither belongs in a fix leg. Left as a known miss against the target.
+   * **What it costs, recorded (DEC-638/N7, corrected in Phase 6 — DEC-667 N6).**
+   * `SelectiveBloomEffect` renders the scene a second time each frame to build its mask, and the
+   * star field — 28,587 instanced points on the production roster — is in that second pass.
+   *
+   * **This is no longer recorded as a known miss against PRD 7.2's target.** The old
+   * "p95 18.3–18.4 ms against a 16.7 ms target" came from `verify-browser.mjs`'s card-level sample
+   * on a **60 Hz vsync**: that run reports p50 16.6 ms at 60.1 fps, so its p50 *is* the refresh
+   * interval and its p95 is one vsync plus jitter. A frame-*interval* percentile on a vsync-locked
+   * run measures the display, not the work — it cannot read below 16.7 ms however cheap the frame
+   * is, so it could never have shown this pass meeting the target.
+   *
+   * Measured where the work is visible instead — `bench/baseline-2026-09-05.json`'s `card`
+   * segment, 1920×1080, dpr 1.5, production roster, this effect active, a real card and its
+   * printings focused:
+   *
+   *   - **uncapped: p50 1.2 ms, p95 2.8 ms** at 668 fps — what the frame actually costs;
+   *   - vsync (120 Hz): p50 8.3 ms, p95 9.7 ms at 120 fps — inside the 16.7 ms target, and the run
+   *     as a whole reports `meetsTarget: true`.
+   *
+   * The two figures were never inconsistent; they answer different questions. 18.4 ms is a 60 Hz
+   * frame interval, 2.8 ms is the work inside it. The second pass is real but small.
+   *
+   * The design note stands, because the alternatives are unchanged and still not cheap: a
+   * luminance-only global bloom, which is the washed-out card PRD 9.3 names, or a hand-written
+   * two-camera mask pass.
    */
   readonly bloomSelection?: readonly Object3D[]
+  /**
+   * The live bloom effect, for the `?probe=1` seam only.
+   *
+   * PRD 9.1.4's forced-degradation check has to show that the *render target* shrank, not that the
+   * `resolutionScale` prop was passed — `resolution.width` is a number the composer computed, and
+   * a bug that dropped the prop on the floor would leave it unmoved. Nothing in the render path
+   * reads this.
+   */
+  readonly bloomRef?: MutableRefObject<BloomProbe | null>
 }
+
+/** Just enough of the bloom effect for {@link EffectsProps.bloomRef}. */
+export interface BloomProbe {
+  readonly resolution: { readonly width: number; readonly height: number }
+}
+
+/**
+ * Both wrappers hand back an effect whose `resolution` is what we want, but neither ref type says
+ * so: `Bloom`'s is `LegacyRef<typeof BloomEffect>` — the class, not an instance — and
+ * `SelectiveBloom`'s is the narrower `SelectiveBloomEffect`. Casting to each component's own ref
+ * type keeps the lie local and named rather than spreading `BloomEffect` through the probe.
+ */
+type BloomRef = ComponentProps<typeof Bloom>['ref']
+type SelectiveBloomRef = ComponentProps<typeof SelectiveBloom>['ref']
 
 /**
  * What `SelectiveBloom`'s `lights` prop gets, because this scene has no lights at all.
@@ -65,13 +106,14 @@ export interface EffectsProps {
  */
 const NO_LIGHTS: Object3D[] = [new Object3D()]
 
-export function Effects({ bloomScale, bloomSelection }: EffectsProps): ReactElement {
+export function Effects({ bloomScale, bloomSelection, bloomRef }: EffectsProps): ReactElement {
   const bloom =
     bloomSelection && bloomSelection.length > 0 ? (
       <SelectiveBloom
         // Keyed on the selection as well: `SelectiveBloomEffect` takes its selection at
         // construction, and the field's objects are built once `planes.json` lands.
         key={`selective-bloom-${bloomScale}-${bloomSelection.length}`}
+        ref={bloomRef as unknown as SelectiveBloomRef}
         selection={bloomSelection as Object3D[]}
         lights={NO_LIGHTS}
         intensity={BLOOM_INTENSITY}
@@ -83,6 +125,7 @@ export function Effects({ bloomScale, bloomSelection }: EffectsProps): ReactElem
     ) : (
       <Bloom
         key={`bloom-${bloomScale}`}
+        ref={bloomRef as unknown as BloomRef}
         intensity={BLOOM_INTENSITY}
         luminanceThreshold={BLOOM_THRESHOLD}
         luminanceSmoothing={BLOOM_SMOOTHING}

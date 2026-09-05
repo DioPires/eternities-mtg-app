@@ -14,9 +14,11 @@
     "typecheck": "tsc --build --force",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "check-budget": "node scripts/check-budget.mjs",
     "bench": "node scripts/bench.mjs",
-    "verify-browser": "node scripts/verify-browser.mjs"
+    "verify-browser": "node scripts/verify-browser.mjs",
+    "cross-browser": "node scripts/cross-browser.mjs"
   },
   "dependencies": {
     "@react-three/drei": "9.122.0",
@@ -30,6 +32,7 @@
   },
   "devDependencies": {
     "@eslint/js": "9.17.0",
+    "@playwright/test": "1.49.1",
     "@types/node": "22.10.2",
     "@types/react": "18.3.17",
     "@types/react-dom": "18.3.5",

@@ -14,18 +14,23 @@
 import { createContext, useContext, useSyncExternalStore, type ReactNode } from 'react'
 
 import {
-  createNavigationStub,
+  createNavigationHost,
   type NavigationApi,
+  type NavigationHost,
   type NavigationSnapshot,
 } from '../navigation'
 import { Router, browserHost, type RouterSnapshot } from '../router/router'
 
 /**
- * Phase 4 builds against the stub; Phase 2b returns the real implementation from here and no call
- * site changes. If a call site has to change, the contract was wrong.
+ * Phase 4 built against the stub; Phase 6 returns the host, and no call site changed. The contract
+ * held.
+ *
+ * The host is not a third implementation — it forwards to the stub until the scene has built the
+ * real rig from `planes.json`, then forwards to that, keeping the shell's listeners across the
+ * swap. See `../navigation/host`.
  */
-export function createNavigation(): NavigationApi {
-  return createNavigationStub()
+export function createNavigation(): NavigationHost {
+  return createNavigationHost()
 }
 
 /**
@@ -38,7 +43,7 @@ export interface NavStore {
   get: () => NavigationSnapshot
 }
 
-export function createNavStore(nav: NavigationApi): NavStore {
+export function createNavStore(nav: Pick<NavigationApi, 'snapshot' | 'subscribe'>): NavStore {
   let current = nav.snapshot()
   const listeners = new Set<() => void>()
   nav.subscribe((snapshot) => {
@@ -57,7 +62,11 @@ export function createNavStore(nav: NavigationApi): NavStore {
 }
 
 export interface Services {
-  readonly nav: NavigationApi
+  /**
+   * Typed as the host rather than as `NavigationApi`, because the scene needs `attach()` and there
+   * is exactly one place it can come from. Every other consumer sees only the contract.
+   */
+  readonly nav: NavigationHost
   readonly navStore: NavStore
   readonly router: Router
 }
@@ -85,7 +94,7 @@ export function useServices(): Services {
   return services
 }
 
-export function useNavigation(): NavigationApi {
+export function useNavigation(): NavigationHost {
   return useServices().nav
 }
 

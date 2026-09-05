@@ -16,6 +16,7 @@ import { describe, expect, it } from 'vitest'
 import { distance, set, vec } from '../src/camera/vec'
 import { BLIND_ETERNITIES_SLUG } from '../src/data/types'
 import { levelOf, runNavigationDemo, type Focus, type NavigationApi } from '../src/navigation'
+import { createNavigationHost } from '../src/navigation/host'
 import { createNavigationStub } from '../src/navigation/stub'
 import { createSceneNavigation, type StarSource } from '../src/navigation/scene'
 
@@ -37,6 +38,25 @@ const IMPLEMENTATIONS: ReadonlyArray<{ readonly name: string; readonly create: (
   {
     name: 'scene rig',
     create: (options = {}) => createSceneNavigation(loadFixturePlanes('scale'), options).api,
+  },
+  /**
+   * Phase 6's host, before anything has attached to it. It is not a fourth state machine — it holds
+   * no focus, no flight and no attract flag — but it is what every caller in the shell actually
+   * holds, so the whole contract runs through the forwarding layer rather than only around it. A
+   * method the host forgot to forward, or forwarded with its arguments dropped, fails here.
+   */
+  { name: 'host, unattached', create: (options = {}) => createNavigationHost(options) },
+  /**
+   * And after the swap. Same suite, same expectations, against a host whose delegate is the real
+   * rig — which is the configuration the shipped app runs in from `planes.json` onward.
+   */
+  {
+    name: 'host, attached to the scene rig',
+    create: (options = {}) => {
+      const host = createNavigationHost(options)
+      host.attach(createSceneNavigation(loadFixturePlanes('scale'), options).api)
+      return host
+    },
   },
 ]
 
@@ -700,5 +720,102 @@ describe('the scene transport', () => {
 
     // PRD 6.2.4: from inside the plane it is one stage, and the cap has nothing to do with it.
     expect(flightMs({ kind: 'plane', slug: 'innistrad' })).toBeLessThan(1400)
+  })
+})
+
+/**
+ * The swap itself — the one thing the parameterised suite above cannot reach, because it holds the
+ * host still while the contract runs.
+ *
+ * These are the four properties `app/boot.ts` depends on. It binds the router to `focuschange` on
+ * the shell's first effect, which is a network round trip before `planes.json` can build a rig; if
+ * any of them did not hold, the address bar would silently stop tracking the camera the moment the
+ * real scene appeared, and PRD 6.7.1 makes the URL the source of truth.
+ */
+describe('the navigation host (Phase 6 join)', () => {
+  const rig = (options: Options = {}): NavigationApi =>
+    createSceneNavigation(loadFixturePlanes('scale'), { instant: true, ...options }).api
+
+  it('reports whether a scene has taken over', () => {
+    const host = createNavigationHost({ instant: true })
+    expect(host.attached()).toBe(false)
+    host.attach(rig())
+    expect(host.attached()).toBe(true)
+    host.dispose()
+  })
+
+  it('keeps event listeners registered before the swap (the router binding)', () => {
+    const host = createNavigationHost({ instant: true })
+    const seen: string[] = []
+    host.on('focuschange', ({ focus }) => {
+      seen.push(focus.kind === 'plane' ? focus.slug : focus.kind)
+    })
+
+    host.flyToPlane('innistrad', { reason: 'user', immediate: true })
+    expect(seen).toEqual(['innistrad'])
+
+    host.attach(rig())
+    // Same listener, never re-registered, now hearing the rig.
+    host.flyToPlane('kaldheim', { reason: 'user', immediate: true })
+    expect(seen).toEqual(['innistrad', 'kaldheim'])
+    host.dispose()
+  })
+
+  it('keeps snapshot subscribers across the swap, and pushes one on attach', () => {
+    const host = createNavigationHost({ instant: true })
+    const snapshots: string[] = []
+    host.subscribe((snapshot) => {
+      snapshots.push(snapshot.level)
+    })
+
+    host.flyToPlane('innistrad', { reason: 'user', immediate: true })
+    const beforeAttach = snapshots.length
+    expect(beforeAttach).toBeGreaterThan(0)
+
+    // `useSyncExternalStore` compares snapshot identity. Without this push the HUD would keep
+    // rendering the stub's last snapshot until something else happened to change.
+    host.attach(rig())
+    expect(snapshots.length).toBeGreaterThan(beforeAttach)
+
+    host.flyToCard(
+      { planeSlug: 'innistrad', oracleId: 'x', starIndex: 0 },
+      { reason: 'user', immediate: true },
+    )
+    expect(snapshots.at(-1)).toBe('card')
+    host.dispose()
+  })
+
+  it('replays reduced motion onto the scene (PRD 5.9, 6.10.2)', () => {
+    // The preference is read from settings before the first render and lands on the stub. The rig
+    // is built minutes later and knows nothing about it.
+    const host = createNavigationHost({ instant: true, reducedMotion: true })
+    expect(host.snapshot().reducedMotion).toBe(true)
+
+    host.attach(rig({ reducedMotion: false }))
+    expect(host.snapshot().reducedMotion).toBe(true)
+    host.dispose()
+  })
+
+  it('settles the stub’s flight rather than leaving it in the air', async () => {
+    const host = createNavigationHost()
+    // An explicit duration, so there is genuinely a flight in progress at the moment of the swap.
+    const flight = host.flyToPlane('innistrad', { reason: 'user', durationMs: 5000 })
+    host.attach(rig())
+    const result = await flight.done
+    expect(['cancelled', 'superseded', 'completed']).toContain(result.status)
+    host.dispose()
+  })
+
+  it('stops forwarding once disposed, and cannot be resurrected', () => {
+    const host = createNavigationHost({ instant: true })
+    const seen: string[] = []
+    host.on('focuschange', ({ focus }) => {
+      seen.push(focus.kind)
+    })
+    host.dispose()
+    // A scene unmounting during a StrictMode double-invoke must not bring a disposed host back.
+    host.attach(rig())
+    expect(host.attached()).toBe(false)
+    expect(seen).toEqual([])
   })
 })

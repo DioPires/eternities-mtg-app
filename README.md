@@ -60,6 +60,7 @@ web/                      Vite, React, TypeScript strict, react-three-fiber, Zus
                           Phase 3 folds them into the shell's scene.
   public/data/<hash>/     Committed artefacts, immutable, content-hashed.
   scripts/                Budget check, vercel.json generation, browser verification.
+  e2e/                    Playwright: PRD 8.9.2's route smoke and 9.1.2's bench smoke, in CI.
 contract/test-vectors/v2/ The shared byte-level test vector. Both languages assert against it.
 docs/                     The contract and policy documents above.
 ```
@@ -82,9 +83,13 @@ pnpm install
 pnpm dev                              # http://localhost:5173, under the CSP
 pnpm typecheck && pnpm lint && pnpm test
 pnpm build && pnpm preview            # preview serves the *production* headers
+pnpm test:e2e                         # Playwright route + bench smoke; needs a build first
 node scripts/check-budget.mjs --dataset scale
 node scripts/verify-browser.mjs --dataset all   # needs a local Chrome
 ```
+
+`pnpm test:e2e` needs Chromium once: `pnpm exec playwright install chromium`. It runs against
+whatever `dist/` holds, so build the dataset you mean to smoke.
 
 Optional, recommended: `uv run --directory pipeline pre-commit install`.
 
@@ -157,23 +162,32 @@ directory is deleted.
 
 Phases 0 (scaffold and contracts), 1 (data pipeline), 2a (star field), 2b (camera, navigation,
 labels), 3 (card tier), 4 (app shell and UI) and 5 (design polish) are complete. The navigation
-contract has a real implementation, and `web/test/navigation.test.ts` runs the same suite over both
-it and the stub.
+contract has a real implementation, and `web/test/navigation.test.ts` runs the same suite over the
+stub, the rig and the forwarding host the shell holds.
 
 Phase 3 folded 2a's star field and 2b's camera rig into one scene —
-`web/src/scene/EternitiesScene.tsx`, reached with `?harness=3` — and added the card tier on top of
-it: thumbnails, the focused card and its planets, one canvas with one camera and one picker. Phase
-2b's harness, its projection picker and the hello-scene proxies are gone.
+`web/src/scene/EternitiesScene.tsx` — and added the card tier on top of it: thumbnails, the focused
+card and its planets, one canvas with one camera and one picker. Phase 2b's harness, its projection
+picker and the hello-scene proxies are gone.
 
-What is *not* joined up yet is that scene and the shell. The shell —
-[`docs/app-shell.md`](docs/app-shell.md) — is still built against the Phase 0 navigation stub over
-the hello-scene, because the folded scene builds its own navigation from the dataset once it loads
-and the shell's services are created once, outside React, before any data exists. Bridging those
-two lifetimes, and PRD 9.1.2's real `/bench` route with it, is Phase 6. See `implementation-plan.md`
-§3.
+**Phase 6 joined that scene to the shell**, so the default route shows the multiverse rather than
+Phase 0's hello-scene. Three seams did it: `src/navigation/host.ts` forwards from the `NavigationApi`
+built before React to the rig built when `planes.json` lands; `src/app/dataset.ts` stopped fetching,
+because the shell and the scene each ran PRD 8.7's loading order and mounting one inside the other
+doubled every transfer including `stars.bin`; and `SceneView` carries the canvas so the Phase 3
+harness (`?harness=3`) keeps working exactly as reviewed. `/bench` flies the shipped scene now, not
+2a's harness, so `web/bench/baseline-2026-09-05.json` measures the product. Phase 6 is in progress —
+the cross-browser pass, the refresh rehearsal and the visual review are outstanding.
 
-`node web/scripts/verify-browser.mjs --dataset all` drives a real browser through all of them: PRD
-section 6's interaction requirements and Phase 5's accessibility checklist on the shell, a fly-to
-the Blind Eternities with its worker-parsed shards and Esc back out on the scene, the card tier
-through the `?probe=1` seam, and the GPU self-check on 2a — under the production CSP. Add
+Two browser checks, with different jobs.
+
+`node web/scripts/verify-browser.mjs --dataset all` is the local gate, on this machine's real GPU:
+PRD section 6's interaction requirements and Phase 5's accessibility checklist on the shell, a
+fly-to the Blind Eternities with its worker-parsed shards and Esc back out on the scene, the card
+tier through the `?probe=1` seam, and the GPU self-check on 2a — under the production CSP. Add
 `--dataset production` for the run where the Scryfall images actually arrive.
+
+`pnpm test:e2e` is the CI gate, on every pull request: PRD 8.9.2's five route kinds and PRD 9.1.2's
+`/bench` run. It is narrower on purpose — a cloud runner has no representative GPU, so it renders
+through SwiftShader and asserts nothing about frame time. PRD 7.2's ceilings are enforced by
+`pnpm bench` on the reference machine.

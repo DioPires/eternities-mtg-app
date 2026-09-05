@@ -23,7 +23,6 @@ import type { RouteWarning } from '../router/route'
 import type { Router } from '../router/router'
 import { createRouterBinding } from '../router/binding'
 import { useStore } from '../store/store'
-import { startDatasetLoad } from './dataset'
 
 /**
  * Which plane a star index belongs to, from `planes.json` alone.
@@ -175,8 +174,12 @@ export function boot(nav: NavigationApi, router: Router): () => void {
     }
   })
 
-  void startDatasetLoad()
-  // The artefacts may already be in the store when a hot reload re-runs this.
+  // Nothing is kicked off here any more. The scene is the one loader (see `./dataset`), it mounts
+  // inside this shell, and its effects run before this one — children commit first — so by the time
+  // `boot` is called the transfer is already in flight. What is left is the ordering above, which
+  // reacts to the store regardless of who fills it, and the catch-up below for the case where an
+  // artefact has already landed: a hot reload re-running this, or a scene that resolved
+  // `planes.json` out of the HTTP cache before the parent effect ran.
   const current = useStore.getState()
   if (current.stars !== null) startIntro()
   if (current.sets !== null && current.planes !== null) resolveDeepLink()

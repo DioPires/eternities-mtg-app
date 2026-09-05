@@ -358,9 +358,10 @@ const waitForStatus = (page, pattern, timeout = 60_000) =>
  * debug column over it — so the hiding this file always claimed to do now has to be real.
  *
  * `visibility`, not `display`, so the panel keeps its box and nothing reflows around the capture.
- * It is written through CSSOM rather than as a `style` attribute because the production policy
- * still carries `style-src-attr 'unsafe-inline'` only until Phase 6's pre-launch tightening (the
- * CSP audit's F5) — CSSOM is outside CSP's reach either way, so the capture survives that change.
+ * It is written through CSSOM rather than as a `style` attribute, and that now matters: Phase 6
+ * dropped `style-src-attr 'unsafe-inline'` (the CSP audit's F5), so `style-src 'self'` governs
+ * attributes too and a literal `style="visibility:hidden"` here would be refused. CSSOM is outside
+ * CSP's reach, so this capture was unaffected by the tightening.
  * `textContent` reads the same hidden or not, which is why the sidecar is written from a hidden
  * panel without a second thought.
  */

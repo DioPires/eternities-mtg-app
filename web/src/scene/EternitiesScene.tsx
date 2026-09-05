@@ -22,14 +22,19 @@
  *    separately. The table is now the single clock and `MotionSync` mirrors it into the rig every
  *    frame, before the rig reads a tether. See `camera/motion.ts`.
  *
- * What is deliberately *not* folded in is Phase 2a's bench and GPU self-check harness. Both drive
- * the camera themselves — the bench flies a scripted path, the self-check holds the field still and
- * reads pixels back — so they cannot share a scene with a rig that is also flying it, and the
- * committed bench baseline was measured against that harness. `App` still routes `?bench`, `?hold`
- * and `?selfcheck` there, and PRD 9.1.2's real `/bench` route is Phase 6's.
+ * What is deliberately *not* folded in is Phase 2a's GPU self-check harness. It holds the field
+ * still and reads pixels back, which it cannot do in a scene where the rig is also flying the
+ * camera; `App` still routes `?selfcheck` there.
  *
- * The overlay here is the two or three controls needed to fly the scene and read its state, exactly
- * as the two harnesses were. PRD section 6's HUD, panels and search are Phase 4's (DEC-589).
+ * **Phase 6 split this file in two.** `SceneView` is the scene with nothing around it, and it is
+ * what the shell mounts inside its own `.app` — the join that Phase 3 recorded and Phase 4 deferred.
+ * `EternitiesScene` is the Phase 3 harness: the same `SceneView` plus its own load, its own intro
+ * and the readout panel that Phase 3's exit criteria and `scripts/verify-browser.mjs` assert
+ * against. Three things differ between the two, all of them named on `SceneViewProps`: who loads
+ * the data, who starts PRD 6.8.2's intro, and who owns the keyboard.
+ *
+ * The bench rejoined here too. PRD 9.1.2's `/bench` drives this scene through `bench/benchDrive`
+ * rather than Phase 2a's harness, so the numbers are the shipped renderer's.
  */
 
 import { Canvas, useFrame } from '@react-three/fiber'
@@ -41,8 +46,22 @@ import {
   useState,
   type ReactElement,
 } from 'react'
-import { NoToneMapping, Vector3, type PerspectiveCamera } from 'three'
+import {
+  NoToneMapping,
+  Vector2,
+  Vector3,
+  type PerspectiveCamera,
+  type ShaderMaterial,
+  type WebGLRenderer,
+} from 'three'
 
+import {
+  BenchRunner,
+  recordBenchCpu,
+  type BenchContext,
+  type BenchDrive,
+  type BenchResult,
+} from '../bench/BenchRunner'
 import { CameraRigController } from '../camera/CameraRigController'
 import type { SceneMotion } from '../camera/motion'
 import {
@@ -54,6 +73,7 @@ import {
   type PlaneShardFile,
 } from '../data'
 import { PlaneLabels } from '../labels/PlaneLabels'
+import type { NavigationHost } from '../navigation/host'
 import { createSceneNavigation, type SceneNavigation } from '../navigation/scene'
 import type { NavigationSnapshot } from '../navigation/types'
 import { createPlaneDetailLoader } from '../plane-detail/client'
@@ -61,16 +81,16 @@ import { createPlaneDetailLoader } from '../plane-detail/client'
 import { CameraReadout } from './CameraReadout'
 import { CardTier, type CardTierHandle, type PlaneCards, type PlanetLabelState } from './cards/CardTier'
 import { formatMb, gpuMemoryReport } from './cards/gpuMemory'
-import { Effects } from './Effects'
+import { Effects, type BloomProbe } from './Effects'
 import { sceneErrors, type SceneDataError } from './errors'
 import type { PickResult } from './picking/scenePicker'
 import { probeRequested, type Probe, type ProbeState } from './probe'
-import { QUALITY_TIERS, type QualityTier } from './quality/adaptiveQuality'
+import { QUALITY_TIERS, pinnedQualityTier, type QualityTier } from './quality/adaptiveQuality'
 import { StarScene, type StarSceneHandle } from './StarScene'
 import type { PlaneTable } from './starfield/planeTable'
 import { SKY_COLOUR } from './tuning'
 import { useReducedMotion } from './useReducedMotion'
-import { useSceneData } from './useSceneData'
+import { useSceneData, type SceneDataState } from './useSceneData'
 
 const FOV = 55
 
@@ -142,13 +162,62 @@ function PlanetHoverLabel({
   return <div ref={node} className="planet-label" data-testid="planet-label" />
 }
 
-export function EternitiesScene(): ReactElement {
-  const data = useSceneData()
-  const reducedMotion = useReducedMotion()
+export interface SceneViewProps {
+  /**
+   * The load, hoisted out so the shell can own it. There is exactly one loader on the page
+   * (`app/dataset.ts` explains why), and whoever mounts this scene is it.
+   */
+  readonly data: SceneDataState
+  /**
+   * PRD 5.9. Passed in rather than read here, because the two callers resolve it from different
+   * authorities: the harness from the OS and `?motion=`, the shell from PRD 6.10.1's settings
+   * toggle layered over both.
+   */
+  readonly reducedMotion: boolean
+  /**
+   * Where to publish the real navigation once `planes.json` has built it.
+   *
+   * With a host, the shell is driving: it owns PRD 6.8.2's intro (`app/boot.ts` sequences it against
+   * the deep link, which this scene cannot see), it owns the keyboard map (PRD 6.11), and it owns
+   * the chrome. Without one, this scene is the whole application — the Phase 3 harness — and owns
+   * all three itself.
+   */
+  readonly host?: NavigationHost | null
+  /**
+   * Render the harness readout and bind its shortcuts. True for `?harness=3` and `?probe=1`, whose
+   * assertions read that panel; false in the shell, where PRD section 6's HUD is the real one.
+   */
+  readonly chrome?: boolean
+  /**
+   * PRD 9.1.2's `/bench`. When present the bench owns the camera — `CameraRigController` is not
+   * mounted, because two things cannot fly one camera — and drives focus from the scripted path so
+   * each segment contains what it is named after. `hold` parks at a segment's end pose instead of
+   * recording, which is how PRD 9.3's checkpoints get a reproducible frame.
+   */
+  readonly bench?: {
+    readonly hold?: string | null
+    readonly onComplete?: (result: BenchResult) => void
+  } | null
+}
 
+/**
+ * The scene, with nothing around it. Mounted by the shell (inside its `.app`) and by the Phase 3
+ * harness (which supplies its own).
+ */
+export function SceneView({
+  data,
+  reducedMotion,
+  host = null,
+  chrome = true,
+  bench = null,
+}: SceneViewProps): ReactElement {
   const [snapshot, setSnapshot] = useState<NavigationSnapshot | null>(null)
+  // `?quality=N` starts the scene at tier N and holds it there (PRD 9.1.4). The monitor inside
+  // `StarScene` is pinned to the same tier, so it never announces a change and this stays the
+  // tier for the run — which is why the initial value has to be right rather than corrected later.
+  const pinnedTier = useMemo(() => pinnedQualityTier(), [])
   const [tier, setTier] = useState<{ tier: QualityTier; changes: number }>({
-    tier: QUALITY_TIERS[0]!,
+    tier: QUALITY_TIERS[pinnedTier ?? 0]!,
     changes: 0,
   })
   const [hover, setHover] = useState<PickResult>(null)
@@ -157,6 +226,8 @@ export function EternitiesScene(): ReactElement {
   const [focusedStar, setFocusedStar] = useState(-1)
   // Read by the `?probe=1` seam, which must not be reinstalled on every focus change.
   const focusedStarRef = useRef(-1)
+  /** The current tier, for the probe's `state()` — which must not re-install on a tier change. */
+  const tierRef = useRef<QualityTier>(QUALITY_TIERS[pinnedTier ?? 0]!)
   const focusedSlugRef = useRef<string | null>(null)
   const [cardVersion, setCardVersion] = useState(0)
   const [gpu, setGpu] = useState({ atlas: 0, card: 0 })
@@ -167,7 +238,11 @@ export function EternitiesScene(): ReactElement {
   const labelState = useRef<PlanetLabelState>({ visible: false, x: 0, y: 0, printing: -1 }).current
   const anchorScratch = useRef(new Vector3()).current
   const probeScreen = useRef(new Vector3()).current
+  const probeBuffer = useRef(new Vector2()).current
   const cameraRef = useRef<PerspectiveCamera | null>(null)
+  // Both for the `?probe=1` quality block only; see `ProbeState.quality`.
+  const rendererRef = useRef<WebGLRenderer | null>(null)
+  const bloomRef = useRef<BloomProbe | null>(null)
 
   /**
    * The focused plane's cards, by global star index.
@@ -189,11 +264,18 @@ export function EternitiesScene(): ReactElement {
   // The scene is built once `planes.json` lands and lives for the session (PRD 8.7.2).
   const sceneRef = useRef<SceneNavigation | null>(null)
   const reducedAtBuild = useRef(reducedMotion)
+  const hostRef = useRef(host)
+  hostRef.current = host
   const scene = useMemo(() => {
     if (!data.planes) return null
     const built = createSceneNavigation(data.planes, {
       drive: 'manual',
       reducedMotion: reducedAtBuild.current,
+      // Under the shell the host has been answering for the page since before the first paint. It
+      // starts at the multiverse and `boot()` has not moved it — the deep link reaches the scene
+      // through `playIntro`, not through the initial focus — but carrying it across is what makes
+      // the swap a swap rather than a reset, and it is one field.
+      ...(hostRef.current ? { initialFocus: hostRef.current.snapshot().focus } : {}),
     })
     sceneRef.current = built
     return built
@@ -201,14 +283,24 @@ export function EternitiesScene(): ReactElement {
 
   useEffect(() => () => sceneRef.current?.api.dispose(), [])
 
+  // The moment the rig exists, the shell's navigation becomes it. Everything the shell has bound —
+  // the router binding from `boot()`, the HUD's snapshot subscription — is re-pointed by the host
+  // without re-registering. See `navigation/host.ts`.
+  useEffect(() => {
+    if (!scene || !host) return
+    host.attach(scene.api)
+  }, [scene, host])
+
   useEffect(() => {
     if (!scene) return
     const unsubscribe = scene.api.subscribe(setSnapshot)
     setSnapshot(scene.api.snapshot())
-    // PRD 6.8.2: the intro plays once per session. With no router yet (Phase 4) the target is home.
-    scene.api.playIntro({ kind: 'multiverse' }, { reason: 'intro' })
+    // PRD 6.8.2: the intro plays once per session. Under the shell `app/boot.ts` starts it, because
+    // it is the only place that knows the deep link the intro has to aim at and the second stage
+    // that follows it. Standalone, the target is home.
+    if (!host) scene.api.playIntro({ kind: 'multiverse' }, { reason: 'intro' })
     return unsubscribe
-  }, [scene])
+  }, [scene, host])
 
   useEffect(() => {
     scene?.api.setReducedMotion(reducedMotion)
@@ -229,6 +321,7 @@ export function EternitiesScene(): ReactElement {
   }, [scene, data.resources])
 
   focusedStarRef.current = focusedStar
+  tierRef.current = tier.tier
   const focus = snapshot?.focus
   const focusedSlug =
     focus === undefined
@@ -398,7 +491,11 @@ export function EternitiesScene(): ReactElement {
     }
   }, [])
 
+  // The harness's own shortcuts. Not bound under the shell: PRD 6.11's map is `useKeyboardMap`,
+  // and two listeners on `window` for the same key would run Esc twice — once up the focus chain
+  // and once through the router.
   useEffect(() => {
+    if (!chrome) return
     const onKeyDown = (event: KeyboardEvent): void => {
       const built = sceneRef.current
       if (!built) return
@@ -419,7 +516,7 @@ export function EternitiesScene(): ReactElement {
     return () => {
       window.removeEventListener('keydown', onKeyDown)
     }
-  }, [])
+  }, [chrome])
 
   // The `?probe=1` seam of `./probe`. Installed only when the URL asks, and it calls the same
   // `focusStar` the pointer does rather than a second implementation of it.
@@ -427,6 +524,29 @@ export function EternitiesScene(): ReactElement {
     if (!probeRequested() || !data.planes || !data.resources) return
     const planes = data.planes
     const geometry = data.resources.geometry
+    // The uniform the star shader actually samples, not the `motion` argument passed to `update`.
+    const motionUniform = (data.resources.field.points.material as ShaderMaterial).uniforms[
+      'uMotion'
+    ]
+
+    // Read back off the live objects, never off QUALITY_TIERS. See `ProbeState.quality`.
+    const qualityState = (): ProbeState['quality'] => {
+      const renderer = rendererRef.current
+      const buffer = renderer?.getDrawingBufferSize(probeBuffer)
+      const bloom = bloomRef.current?.resolution
+      return {
+        tier: tierRef.current.label,
+        tierIndex: QUALITY_TIERS.indexOf(tierRef.current),
+        pinned: pinnedTier,
+        pixelRatio: renderer?.getPixelRatio() ?? 0,
+        drawingBuffer: { width: buffer?.x ?? 0, height: buffer?.y ?? 0 },
+        // Zero until the composer has sized it, which is not the same as "no bloom".
+        bloom: bloom && bloom.width > 0 ? { width: bloom.width, height: bloom.height } : null,
+        thumbnailCapacity: cardTier.current?.stats.capacity ?? 0,
+        starsDrawn: geometry.drawCount,
+        motion: typeof motionUniform?.value === 'number' ? motionUniform.value : -1,
+      }
+    }
 
     const state = (): ProbeState => {
       const built = sceneRef.current
@@ -479,6 +599,7 @@ export function EternitiesScene(): ReactElement {
           withinTarget: memoryNow.withinTarget,
           withinCeiling: memoryNow.withinCeiling,
         },
+        quality: qualityState(),
         card:
           record && cardState && cardState.visible
             ? {
@@ -576,6 +697,62 @@ export function EternitiesScene(): ReactElement {
     }
   }, [data.planes, data.resources, focusStar, probeScreen])
 
+  /**
+   * What the bench asks of this scene (PRD 9.1.2). Every call reaches the same code a user's click
+   * would — `flyToPlane` is the navigation contract's, `focusCard` is the one `focusStar` above
+   * runs — so a bench segment cannot end up measuring a path that only the bench can take.
+   *
+   * `immediate` throughout: the camera is the bench's for the duration, so a tween here would
+   * change nothing visible and would only make the focus land later than the segment it belongs to.
+   */
+  const benchDrive: BenchDrive = useMemo(
+    () => ({
+      focusPlane: (slug: string) => {
+        sceneRef.current?.api.flyToPlane(slug, { immediate: true, reason: 'programmatic' })
+      },
+      focusMultiverse: () => {
+        sceneRef.current?.api.flyToMultiverse({ immediate: true, reason: 'programmatic' })
+      },
+      focusCard: () => {
+        const geometry = data.resources?.geometry
+        if (!geometry) return false
+        // Most printings first, so PRD 5.6.7's planets have something to draw — the same choice
+        // `probe.focusCard` makes, for the same reason.
+        let best = -1
+        let bestPrintings = -1
+        for (const [star, record] of cardsRef.current) {
+          if (record.p.length > bestPrintings) {
+            bestPrintings = record.p.length
+            best = star
+          }
+        }
+        if (best < 0) return false
+        focusStar(best, geometry.planeRowOf(best))
+        return true
+      },
+      cardPosition: (out: Vector3) => {
+        const slot = cardTier.current?.card
+        if (!slot?.visible) return false
+        out.copy(slot.root.position)
+        return true
+      },
+    }),
+    [data.resources, focusStar],
+  )
+
+  const benchContext: BenchContext | null = useMemo(() => {
+    if (!bench || !data.resources || !data.planes || !data.manifest) return null
+    return {
+      dataset: data.manifest.dataset,
+      stars: data.manifest.counts.stars,
+      planes: data.manifest.counts.planes,
+      positionMode: data.resources.positionMode,
+      multiverseRadius: data.planes.multiverseRadius,
+      table: data.resources.table,
+      drive: benchDrive,
+    }
+  }, [bench, data.resources, data.planes, data.manifest, benchDrive])
+
   const setName = useCallback(
     (printing: number): string => {
       const record = focusedStar >= 0 ? cardsRef.current.get(focusedStar) : undefined
@@ -597,8 +774,8 @@ export function EternitiesScene(): ReactElement {
   const focusedCard = focusedStar >= 0 ? cardsRef.current.get(focusedStar) : undefined
   const memory = gpuMemoryReport(gpu.atlas, gpu.card)
 
-  return (
-    <div className="app">
+  const body = (
+    <>
       <Canvas
         camera={{ position: [0, 150, 260], fov: FOV, near: 0.1, far: 8000 }}
         gl={{
@@ -617,8 +794,23 @@ export function EternitiesScene(): ReactElement {
         onCreated={({ gl, camera }) => {
           gl.toneMapping = NoToneMapping
           cameraRef.current = camera as PerspectiveCamera
+          rendererRef.current = gl
         }}
-        dpr={QUALITY_TIERS[0]!.pixelRatioCap}
+        // **Only the presence of this prop matters. Its value is inert** — measured, three ways
+        // (DEC-667 N1): hard-wired to tier 0's cap, and again at `dpr={0.5}` and `dpr={3}`, every
+        // `?quality=` pin still lands its own pixel ratio, and the per-pin ladder of drawing-buffer
+        // and bloom sizes is identical in all three builds. `StarScene`'s mount-time
+        // `setDpr(min(tier.pixelRatioCap, devicePixelRatio))` wins every time.
+        //
+        // What passing *a* number buys is that R3F stops managing dpr from its own resize path.
+        // Drop the prop entirely and that path re-establishes `devicePixelRatio`, making the cap a
+        // race — `e2e/quality.spec.ts` went red on 2 of 3 runs — which is PRD 7.1.3's ceiling
+        // failing intermittently. That is the whole reason it is here.
+        //
+        // It still names the pinned tier, so a reader sees the value that is in force rather than
+        // one chosen to look arbitrary. But do not infer that the pin is *delivered* here: it is
+        // not, and `quality.spec.ts` records that a wrong tier in this prop survives the check.
+        dpr={QUALITY_TIERS[pinnedTier ?? 0]!.pixelRatioCap}
         style={{ background: SKY_COLOUR }}
       >
         <StarScene
@@ -628,12 +820,29 @@ export function EternitiesScene(): ReactElement {
           onHover={setHover}
           onSelect={onSelect}
           onQualityChange={onQualityChange}
+          // PRD 7.2's "CPU time per frame in the render loop", reported by the scene rather than
+          // guessed at from outside. It covers the star field's own frame work; the card tier's is
+          // not in it, so the figure is a floor on a card segment, not the whole cost.
+          {...(bench ? { onFrame: (_ms: number, cpuMs: number) => recordBenchCpu(cpuMs) } : {})}
           handleRef={starScene}
         />
+        {benchContext && (
+          <BenchRunner
+            // The numbers mean nothing until the whole field is drawable (PRD 8.7.3).
+            ready={data.starsComplete}
+            context={benchContext}
+            qualityTier={tier.tier.label}
+            qualityChanges={tier.changes}
+            hold={bench?.hold ?? null}
+            {...(bench?.onComplete ? { onComplete: bench.onComplete } : {})}
+          />
+        )}
         {scene && data.resources && (
           <>
             <MotionSync table={data.resources.table} motion={scene.rig.motion} />
-            <CameraRigController rig={scene.rig} nav={scene.api} />
+            {/* The bench flies the camera itself. Mounting the rig as well would put two writers on
+                one camera and the path would stop being the path. */}
+            {!bench && <CameraRigController rig={scene.rig} nav={scene.api} />}
             <CardTier
               resources={data.resources}
               nav={scene}
@@ -648,7 +857,11 @@ export function EternitiesScene(): ReactElement {
             />
           </>
         )}
-        <Effects bloomScale={tier.tier.bloomScale} bloomSelection={bloomSelection} />
+        <Effects
+          bloomScale={tier.tier.bloomScale}
+          bloomSelection={bloomSelection}
+          bloomRef={bloomRef}
+        />
       </Canvas>
 
       {scene && data.planes && (
@@ -664,6 +877,14 @@ export function EternitiesScene(): ReactElement {
       <div className="labels">
         <PlanetHoverLabel state={labelState} text={setName} />
       </div>
+    </>
+  )
+
+  if (!chrome) return body
+
+  return (
+    <div className="app">
+      {body}
 
       <div className="scene-status" data-testid="eternities-status">
         <h1>Eternities</h1>
@@ -730,4 +951,20 @@ export function EternitiesScene(): ReactElement {
       </div>
     </div>
   )
+}
+
+/**
+ * The Phase 3 harness: the scene as its own application, with its own load, its own reduced-motion
+ * resolution, its own intro and its own readout panel.
+ *
+ * `App` routes `?harness=3` and `?probe=1` here, and that is the whole reason it still exists —
+ * Phase 3's exit criteria and `scripts/verify-browser.mjs` were both signed off against this panel,
+ * and re-pointing them at the shell's HUD inside the same change that first mounts the shell's HUD
+ * would leave nothing standing still to compare against. It is the same {@link SceneView} the shell
+ * renders; only the surroundings differ.
+ */
+export function EternitiesScene(): ReactElement {
+  const data = useSceneData()
+  const reducedMotion = useReducedMotion()
+  return <SceneView data={data} reducedMotion={reducedMotion} />
 }

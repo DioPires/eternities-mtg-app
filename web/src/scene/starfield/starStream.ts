@@ -14,7 +14,7 @@
  * complete" is a comparison, not a scan.
  */
 
-import type { StarStreamReader } from '../../data/decode'
+import type { Stars, StarStreamReader } from '../../data/decode'
 import { streamStars, type RetryOptions } from '../../data/load'
 import type { PlaneRecord } from '../../data/types'
 import type { SceneErrorHub } from '../errors'
@@ -62,6 +62,13 @@ class PlaneCursor {
  * Resolves when the file is complete. Rejects only if the caller aborted; a genuine load failure
  * is reported through `errors` (PRD 7.4.1) and resolves, because a scene with three quarters of
  * the multiverse in it is still a scene.
+ *
+ * Returns the decoded {@link Stars} on a complete transfer, and `null` when the transfer failed and
+ * was reported. The GPU does not need it — `geometry` already holds those bytes — but the CPU does:
+ * PRD 6.6.5's filter evaluation walks the records to build the dimming mask and PRD 6.3.2 counts
+ * what survives, both per record and both on the main thread. Handing the snapshot back is what
+ * lets the shell do that off the *same* transfer instead of fetching the largest artefact in the
+ * contract a second time.
  */
 export async function streamStarsIntoScene(
   geometry: StarGeometry,
@@ -69,7 +76,7 @@ export async function streamStarsIntoScene(
   planes: readonly PlaneRecord[],
   errors: SceneErrorHub,
   options: StarStreamOptions = {},
-): Promise<void> {
+): Promise<Stars | null> {
   const cursor = new PlaneCursor(planes)
   const { onProgress, onPlaneComplete, ...retry } = options
   let attempts = 0
@@ -86,7 +93,7 @@ export async function streamStarsIntoScene(
   }
 
   try {
-    await streamStars(consume, {
+    return await streamStars(consume, {
       ...retry,
       attempts: retry.attempts ?? ATTEMPTS,
       onRetry: (attempt, error) => {
@@ -105,5 +112,6 @@ export async function streamStarsIntoScene(
     // The floor of one is for the throws that happen before any attempt is made: `dataRoot()` with
     // no `<meta>` in the document is the real one. Nothing was retried because nothing was tried.
     errors.report('stars.bin', Math.max(attempts, 1), error)
+    return null
   }
 }
