@@ -6,6 +6,7 @@
   "asOf": "2026-09-04",
   "generatedAt": "2026-09-04T00:00:00Z",
   "scryfallBulkUpdatedAt": "2026-09-04T09:05:32.308+00:00",
+  "previousRun": "fe74a34ff803574b",
   "starRecordBytes": 12,
   "shardSize": 2000,
   "counts": {

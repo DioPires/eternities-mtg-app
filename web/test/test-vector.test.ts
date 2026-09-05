@@ -26,6 +26,10 @@ import {
   float16ToNumber,
   hasBackImage,
   imageUri,
+  loadManifest,
+  loadPlaneShard,
+  loadPlanes,
+  loadSearch,
   pageUri,
   shardIndexFor,
   shardPathFor,
@@ -35,8 +39,11 @@ import {
   type Manifest,
   type PlaneShardFile,
   type PlanesFile,
+  type RetryOptions,
   type SearchFile,
 } from '../src/data'
+import { StarGeometry } from '../src/scene/starfield/starGeometry'
+import { hueClassOf } from '../src/ui/CardPanel'
 
 const VECTOR_DIR = resolve(__dirname, '../../contract/test-vectors/v2')
 
@@ -134,6 +141,10 @@ describe('shared contract test vector', () => {
       expect((check.colourByte >> COLOUR_IDENTITY_SHIFT) & COLOUR_IDENTITY_MASK).toBe(
         check.identityMask,
       )
+      // The other half of the row: the identity *letters* map to the same class the pipeline's
+      // `hue_class_for` gave them. Python pins its side by byte equality; without this the only
+      // TypeScript implementation of that mapping is unasserted. (DEC-647 N2.)
+      expect(hueClassOf(check.colourIdentity)).toBe(check.hueClass)
     }
     // A mono-coloured card sets exactly the bit its hue class names, so the shader's uHues
     // lookup and the 6.6.2 identity mask can never disagree about which colour a star is.
@@ -154,6 +165,24 @@ describe('shared contract test vector', () => {
     expect(Math.max(...vector.stars.map((s) => s.hueClass | (s.colourIdentity << 3)))).toBeGreaterThan(
       HueClass.Colourless,
     )
+  })
+
+  it('reads byte 7 the same way through StarGeometry as through decodeStars', () => {
+    // `StarGeometry`'s two accessors read the record bytes directly, bypassing the decoder — the
+    // exact pattern that made PR #10's `hueClassOf` render mono-green as colourless. Pin them
+    // against the decoder on the vector, which carries every arity 0-5. `colourIdentityOf` has no
+    // caller until the exact-colour-filter leg, so this is the only thing holding it. (DEC-646 N2.)
+    const stars = decodeStars(bytes('stars.bin'))
+    const geometry = new StarGeometry(stars.count)
+    geometry.append(stars.interleaved, stars.count)
+
+    for (let i = 0; i < stars.count; i += 1) {
+      expect(geometry.hueClassOf(i)).toBe(stars.hueClass(i))
+      expect(geometry.colourIdentityOf(i)).toBe(stars.colourIdentity(i))
+    }
+    // Not a tautology only while the vector still holds a byte an unmasked reader would fumble.
+    const identities = Array.from({ length: stars.count }, (_, i) => geometry.colourIdentityOf(i))
+    expect(identities.some((mask) => mask > 0)).toBe(true)
   })
 
   it('exposes stars.bin as one interleaved buffer with no repacking', () => {
@@ -470,5 +499,55 @@ describe('loud failures', () => {
     expect(() => decodeStars(buffer.slice(0, buffer.byteLength - 1).buffer)).toThrow(
       ContractError,
     )
+  })
+
+  // The §11 argument for bumping to v2 is that a v1 file read by a v2 build fails *silently*
+  // without the bump. The code that makes it loud was itself unpinned: `it('is the version this
+  // build speaks')` compares two constants and passes even with the gate at `decode.ts:54` deleted
+  // outright. These four assert the gate, not the constant. (DEC-646 N1.)
+  const PREVIOUS_VERSION = CONTRACT_VERSION - 1
+  /** Binary header (§6): `ETRN`, kind, then the contract version. */
+  const VERSION_BYTE = 5
+
+  it.each([
+    ['stars.bin', decodeStars],
+    ['sets.bin', decodeSets],
+  ] as const)('rejects a stale-contract header in %s', (name, decode) => {
+    const buffer = new Uint8Array(bytes(name))
+    expect(buffer[VERSION_BYTE]).toBe(CONTRACT_VERSION)
+    buffer[VERSION_BYTE] = PREVIOUS_VERSION
+
+    expect(() => decode(buffer.buffer)).toThrow(
+      `contract version ${PREVIOUS_VERSION}, this build speaks ${CONTRACT_VERSION}`,
+    )
+    // The unmutated bytes decode, so the throw is that one byte and not the mutation itself.
+    expect(() => decode(bytes(name))).not.toThrow()
+  })
+
+  // `load.assertContractVersion` gates all four JSON artefacts and had no test on any path.
+  const VECTOR_ROOT = 'https://eternities.test/data/vector/'
+
+  function servingVersion(version: number): RetryOptions {
+    return {
+      root: VECTOR_ROOT,
+      fetchImpl: ((input: RequestInfo | URL) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+        const doc = json<Record<string, unknown>>(url.slice(VECTOR_ROOT.length))
+        return Promise.resolve(Response.json({ ...doc, contractVersion: version }))
+      }) as typeof fetch,
+    }
+  }
+
+  it.each([
+    ['manifest.json', (o: RetryOptions) => loadManifest(o)],
+    ['planes.json', (o: RetryOptions) => loadPlanes(o)],
+    ['search.json', (o: RetryOptions) => loadSearch(o)],
+    ['planes/dominaria.0.json', (o: RetryOptions) => loadPlaneShard('dominaria', 0, o)],
+  ] as const)('rejects a stale-contract %s', async (name, load) => {
+    await expect(load(servingVersion(PREVIOUS_VERSION))).rejects.toThrow(
+      `${name} is contract v${PREVIOUS_VERSION}, this build speaks v${CONTRACT_VERSION}`,
+    )
+    // The same artefact at the current version loads, so the gate is the version and nothing else.
+    await expect(load(servingVersion(CONTRACT_VERSION))).resolves.toBeDefined()
   })
 })

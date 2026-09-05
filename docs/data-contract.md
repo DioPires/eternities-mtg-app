@@ -221,19 +221,19 @@ PRD 7.2 budgets the pair `search.json` + `sets.bin` at ≤ 700 KB target / 1.5 M
 
 | Artefact | Scale raw | Scale brotli | Production raw | Production brotli |
 |---|---|---|---|---|
-| `manifest.json` | 16.8 KB | 4.7 KB | 16.8 KB | 4.7 KB |
+| `manifest.json` | 16.8 KB | 4.7 KB | 16.9 KB | 4.7 KB |
 | `planes.json` | 87.9 KB | 13.4 KB | 69.0 KB | 11.6 KB |
 | `stars.bin` | 351.6 KB | 261.6 KB | 335.0 KB | 237.6 KB |
 | `search.json` | 909.3 KB | 128.5 KB | 578.1 KB | 181.2 KB |
 | `sets.bin` | 666.2 KB | 543.2 KB | 624.0 KB | 487.2 KB |
 | **`search.json` + `sets.bin`** | 1 575.5 KB | **671.6 KB** | 1 202.0 KB | **668.5 KB** |
-| First frame (`manifest` + `planes`) | 104.7 KB | 18.1 KB | 85.8 KB | 16.2 KB |
-| Before intro (adds `stars.bin`) | 456.3 KB | 279.7 KB | 420.8 KB | 253.9 KB |
+| First frame (`manifest` + `planes`) | 104.7 KB | 18.1 KB | 85.9 KB | 16.2 KB |
+| Before intro (adds `stars.bin`) | 456.3 KB | 279.7 KB | 420.9 KB | 253.9 KB |
 | Largest plane shard | 838.6 KB | 204.7 KB | 1 212.7 KB | 339.8 KB |
 
 **The pair is under its target and not comfortably so.** 671.6 KB is **96%** of the 700 KB target on scale and 668.5 KB is **95%** on production — both inside the ≥ 90% band, so the budget check reports them `[near target]` with a headroom warning (28.4 KB and 31.5 KB), not a bare `ok`. Read the row that way: the target holds today and one more sizeable set is what moves it. Only the 1.5 MB ceiling fails the build; the target is reported, per PRD 9.1.1–2, so a target overshoot is visible without blocking a merge. The first frame, before-intro and A1 shard rows all sit at or under a quarter of their targets.
 
-**What amendment A3 cost.** Nothing raw: every raw column above is byte-for-byte what it was at `contractVersion` 1, because the identity went into bits byte 7 was already spending on zeroes. The cost is entirely in compression, and only on `stars.bin` — production goes 229.1 → **237.6 KB** brotli, **+8.5 KB (+3.7%)**, because byte 7 now takes 31 distinct values instead of 7 and the plane-ordered runs it used to compress into are shorter. Scale is flat (262.0 → 261.6 KB): its stars sort by band then hue, so its mono runs — 15% of cards per colour, one identity value each — survive the packing almost intact.
+**What amendment A3 cost.** Nothing raw: `planes.json`, `stars.bin`, `search.json` and `sets.bin` are byte-for-byte what they were at `contractVersion` 1, because the identity went into bits byte 7 was already spending on zeroes. (`manifest.json` necessarily changes — it records the contract version and the hashes of the files above — but its raw size is unmoved at 17 285 bytes, so every raw cell in the table is the number main measured too.) The cost is entirely in compression, and only on `stars.bin` — production goes 229.1 → **237.6 KB** brotli, **+8.5 KB (+3.7%)**, because byte 7 now takes 31 distinct values instead of 7 and the plane-ordered runs it used to compress into are shorter. Scale is flat (262.0 → 261.6 KB): its stars sort by band then hue, so its mono runs — 15% of cards per colour, one identity value each — survive the packing almost intact.
 
 That lands entirely on the **before intro** row, 245.3 → 253.9 KB against a 3 MB target: 8% of it. **The constrained row does not move at all**, because the pair does not include `stars.bin` — production's 668.4 → 668.5 KB is measurement noise on `sets.bin`, not the amendment. So A3 is free in the budget that is actually tight, and 3.7% of one file in a budget with 12× headroom.
 
@@ -361,7 +361,7 @@ Three things a reviewer should check rather than take on trust:
 2. **Nothing reads byte 7 unmasked.** Three consumers read it: `decode.ts`'s `hueClass` accessor (`& 0b111`), the star vertex shader (`int(aClass.y + 0.5) & 7`), and `starGeometry.hueClassOf`, which bypasses the decoder and reads the bytes directly — it feeds the focused card's rim colour and the thumbnail glow, and is the one a review is likely to miss. `filters/evaluate.ts` is unchanged and goes through the masked accessor, so **Phase 4 filter behaviour is byte-identical**; exact colour filtering is a separate leg.
 3. **The budget.** Raw sizes are unchanged. `stars.bin` compresses 3.7% worse on production (229.1 → 237.6 KB brotli) because byte 7 now takes 31 values rather than 7. The constrained `search.json` + `sets.bin` row does not move at all — it does not include `stars.bin`. §8 has the table.
 
-One operational note, found by running it. The PRD 4.9.2 run diff loads the previous production run's `sets.bin`, and `decode_header` tests the version for strict equality — so with a v1 dataset on disk the first v2 build **aborted before writing anything**. `report.load_previous_planes` now skips a predecessor whose manifest declares a different `contractVersion`, the same way it handles having no predecessor at all. The run succeeds, `previousRun` is absent from the manifest, and the report says there was no previous run to compare against. Any future contract bump would have hit this too.
+One operational note, found by running it. The PRD 4.9.2 run diff loads the previous production run's `sets.bin`, and `decode_header` tests the version for strict equality — so with a v1 dataset on disk the first v2 build **aborted before writing anything**. `report.load_previous_planes` now selects such a predecessor normally but does not decode it, returning it with no plane mapping. The run succeeds and loses **only the diff**: the predecessor is still the predecessor, so `previousRun` names it in the new manifest and the 4.9.2 chain stays unbroken, and 9.2.3 reads *"not computed — this run follows `…`, whose artefacts are still in the tree but record `contractVersion` 1"*. It must not read "no previous production run": that is a false claim about the data, distinct from both the real first run and the pruned-artefacts case of PRD 8.8.3, and `report.py` keeps the three apart as three states. Any future contract bump would have hit this too, which is why the version skip is pinned by tests rather than left to the next bump to rediscover.
 
 ### v1, `pipelineVersion` 0.2.0 — Phase 1 first run, 2026-09-04
 

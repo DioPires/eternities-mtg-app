@@ -131,17 +131,23 @@ def build(
     # about to overwrite. Read that directory's own record before the write replaces it: it is the
     # predecessor the first build established, and using it keeps the re-run byte-identical (4.9.1)
     # instead of dropping the field and claiming to be a first run.
-    carried = report.recorded_previous_run(data_root / previous[0]) if previous else None
+    carried = report.recorded_previous_run(data_root / previous.name) if previous else None
     data_dir = write_dataset(
-        dataset, data_root, previous_runs=[previous[0] if previous else None, carried]
+        dataset, data_root, previous_runs=[previous.name if previous else None, carried]
     )
 
     plane_changes: list[tuple[str, str, str]] = []
     previous_run: str | None = None
     previous_run_pruned = False
-    if previous is not None and previous[0] != data_dir.name:
-        previous_run, previous_map = previous
-        plane_changes = report.diff_planes(dataset, previous_map)
+    previous_run_contract_version: str | None = None
+    if previous is not None and previous.name != data_dir.name:
+        previous_run = previous.name
+        if previous.planes is None:
+            # A predecessor this build cannot decode is still the predecessor: it is named above in
+            # `previous_runs`, so the manifest chain holds, and only the diff is lost.
+            previous_run_contract_version = previous.contract_version
+        else:
+            plane_changes = report.diff_planes(dataset, previous.planes)
     elif carried is not None:
         previous_run, previous_run_pruned = carried, True
 
@@ -167,6 +173,7 @@ def build(
             plane_changes=plane_changes,
             previous_run=previous_run,
             previous_run_pruned=previous_run_pruned,
+            previous_run_contract_version=previous_run_contract_version,
         )
     )
     reports_dir.mkdir(parents=True, exist_ok=True)
