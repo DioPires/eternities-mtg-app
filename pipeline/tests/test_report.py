@@ -30,9 +30,11 @@ from eternities.contract.enums import CONTRACT_VERSION
 from eternities.pipeline.assemble import CardInput, build_dataset
 from eternities.pipeline.records import CardDetail, FaceDetail
 from eternities.pipeline.report import (
+    PreviousRun,
     ReportInput,
     diff_planes,
     load_previous_planes,
+    manifest_chain,
     recorded_previous_run,
     render,
 )
@@ -371,6 +373,37 @@ def test_a_predecessor_under_an_older_contract_reads_as_unreadable_not_absent(tm
     assert found.name == only.name
     assert found.planes is None
     assert found.contract_version == str(CONTRACT_VERSION - 1)
+
+
+def test_the_manifest_chain_names_a_predecessor_it_cannot_decode():
+    """DEC-649's mutation, at the line it mutated.
+
+    `load_previous_planes` returning `planes = None` says "the predecessor is there, this build
+    just cannot read it". Reading that as "no predecessor" is DEC-647 B1 — a dropped `previousRun`
+    and "First production run" in the report of a run that was at least the third — and it is one
+    `and previous.planes is not None` away from being true again.
+    """
+    unreadable = PreviousRun("0123456789abcdef", planes=None, contract_version="1")
+
+    assert manifest_chain(unreadable, None) == ["0123456789abcdef", None], (
+        "the name goes in the chain whether or not this build can decode the artefacts"
+    )
+
+
+def test_the_manifest_chain_prefers_the_predecessor_on_disk_over_the_carried_one():
+    """Order is the contract with `encode_artefacts`, which takes the first surviving candidate.
+
+    The run on disk is the one this build actually followed; the carried name is a fallback for
+    the pruned re-run, where the only directory present is this run's own and is rejected there.
+    """
+    found = PreviousRun("aaaaaaaaaaaaaaaa", planes={"card-1": "dominaria"})
+
+    assert manifest_chain(found, "bbbbbbbbbbbbbbbb") == ["aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb"]
+
+
+def test_the_manifest_chain_falls_back_to_the_carried_name_and_then_to_nothing():
+    assert manifest_chain(None, "0123456789abcdef") == [None, "0123456789abcdef"]
+    assert manifest_chain(None, None) == [None, None], "no candidate, and the encoder omits the key"
 
 
 def test_a_same_version_predecessor_is_still_found_and_diffed(tmp_path: Path):

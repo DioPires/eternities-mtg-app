@@ -66,8 +66,26 @@ export function packColourByte(hueClass: number, colourIdentity: number): number
   )
 }
 
-/** Identity bit per Scryfall colour letter. Same indices as `HueClass`'s five mono values. */
-export const COLOUR_LETTER_BIT: Readonly<Record<string, ColourBit>> = {
+/** WUBRG order, which is the order Scryfall writes `color_identity` and the panels read it. */
+export const COLOUR_LETTERS = ['W', 'U', 'B', 'R', 'G'] as const
+
+/**
+ * The five letters as a closed union, and the key set of {@link COLOUR_LETTER_BIT}.
+ *
+ * `../filters/types` derives `FilterColour` by appending `C` to {@link COLOUR_LETTERS}, so
+ * `Exclude<FilterColour, 'C'>` *is* this type — which is the exhaustiveness the filter facet needs
+ * (DEC-650 N4) without the data layer importing the filter vocabulary back the other way.
+ */
+export type ColourLetter = (typeof COLOUR_LETTERS)[number]
+
+/**
+ * Identity bit per Scryfall colour letter. Same indices as `HueClass`'s five mono values.
+ *
+ * Keyed by {@link ColourLetter} rather than by `string`: under a `string` index signature a sixth
+ * facet value typechecked clean at every call site and mapped to `1 << undefined` — the White bit —
+ * silently. The closed key set makes that a compile error instead.
+ */
+export const COLOUR_LETTER_BIT: Readonly<Record<ColourLetter, ColourBit>> = {
   W: ColourBit.White,
   U: ColourBit.Blue,
   B: ColourBit.Black,
@@ -75,8 +93,10 @@ export const COLOUR_LETTER_BIT: Readonly<Record<string, ColourBit>> = {
   G: ColourBit.Green,
 }
 
-/** WUBRG order, which is the order Scryfall writes `color_identity` and the panels read it. */
-export const COLOUR_LETTERS = ['W', 'U', 'B', 'R', 'G'] as const
+/** Whether an arbitrary character is one of the five. The lookup guard the closed key set needs. */
+export function isColourLetter(letter: string): letter is ColourLetter {
+  return Object.hasOwn(COLOUR_LETTER_BIT, letter)
+}
 
 /**
  * A shard's `ci` string to the same five-bit mask the star record carries.
@@ -87,19 +107,34 @@ export const COLOUR_LETTERS = ['W', 'U', 'B', 'R', 'G'] as const
 export function colourIdentityBits(colourIdentity: string): number {
   let bits = 0
   for (const letter of colourIdentity.toUpperCase()) {
-    const bit = COLOUR_LETTER_BIT[letter]
-    if (bit !== undefined) bits |= 1 << bit
+    if (isColourLetter(letter)) bits |= 1 << COLOUR_LETTER_BIT[letter]
   }
   return bits
 }
 
-/** The identity mask back to letters, in WUBRG order. */
+/**
+ * The identity mask back to the letters it holds, in WUBRG order.
+ *
+ * The one bits-to-letters walk in the app. `CardPanel` labels each letter and so needs them typed
+ * rather than as characters of a string, which is why this is the array form and
+ * {@link colourIdentityLetters} is the thin join over it (DEC-650 N2).
+ */
+export function colourIdentityLetterList(colourIdentity: number): ColourLetter[] {
+  return COLOUR_LETTERS.filter((letter) => (colourIdentity & (1 << COLOUR_LETTER_BIT[letter])) !== 0)
+}
+
+/**
+ * The identity mask back to letters, in WUBRG order.
+ *
+ * Test-only since DEC-650 N2 moved `CardPanel` onto the list form: nothing under `web/src` calls
+ * this, and it is kept deliberately rather than by oversight (DEC-654 M2). It is the documented
+ * twin of the pipeline's `colour_identity_mask` inverse — the string is the form the shard's `ci`
+ * field is written in — and `colour-byte.test.ts` round-trips it against
+ * {@link colourIdentityBits} for all 32 masks, which is what pins WUBRG order for both directions.
+ * Delete it only alongside that round-trip.
+ */
 export function colourIdentityLetters(colourIdentity: number): string {
-  let out = ''
-  for (const letter of COLOUR_LETTERS) {
-    if ((colourIdentity & (1 << COLOUR_LETTER_BIT[letter]!)) !== 0) out += letter
-  }
-  return out
+  return colourIdentityLetterList(colourIdentity).join('')
 }
 
 /**

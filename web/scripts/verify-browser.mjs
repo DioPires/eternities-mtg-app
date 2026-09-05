@@ -1827,6 +1827,20 @@ async function verifyStarField(page, url, allowSoftware, problems) {
   console.log(
     `    samples per plane row: ` + selfCheck.sampledRows.map(([row, n]) => `${row}x${n}`).join(' '),
   )
+  // The one bucket still dropped before `checked` and `sampledRows`, so the one place the
+  // absorption DEC-625 closed could re-open. Printed on every run, including green ones, because
+  // a number that only appears on failure cannot be watched drifting upwards. Both margins, not
+  // just the near one: `z > 1` is behind the eye *or* past the far plane, and a one-sided number
+  // argues for one side of a two-sided test.
+  const depths = (d) => (d === null ? 'n/a' : d.toFixed(1))
+  console.log(
+    `    ${selfCheck.unprojectable} unprojectable (behind the eye or past the far plane)` +
+      (selfCheck.unprojectableRows.length > 0
+        ? ` (plane rows ${selfCheck.unprojectableRows.map(([row, n]) => `${row}x${n}`).join(' ')})`
+        : '') +
+      `; sampled stars ${depths(selfCheck.nearestDepth)}-${depths(selfCheck.farthestDepth)} units ` +
+      `in front of the eye (near plane 0.1, far plane 6000)`,
+  )
   if (selfCheck.canvasBytes < 5000) {
     problems.push(`the canvas looks empty (${selfCheck.canvasBytes}-byte PNG) — nothing drew`)
   } else {
@@ -1868,14 +1882,53 @@ async function verifyStarField(page, url, allowSoftware, problems) {
           `measure looks like, not what occlusion looks like`
         : ''
 
+    // The other half of the off-screen fix, and the one failure the messages above cannot
+    // describe: these samples never reached `checked` or `sampledRows`, so the dark-row rule has
+    // no row to name and the "located only N of M" fallback below would report a shortfall in the
+    // wrong denominator — it would say the run measured too little, when what happened is that
+    // stars ended up behind the eye and the run quietly stopped counting them.
+    //
+    // The message names both causes rather than only the mirror. A plane the *data* places far
+    // enough out trips this clause with the mirror and the shader in perfect agreement — a plane
+    // table displaced to `home + 4000` does it — and `MULTIVERSE_RADIUS = 130.0` is the invariant
+    // that keeps a real dataset from reaching there, not anything in this check.
+    //
+    // MANUAL LINK: the `130` in the message below is that constant, written out by hand. It lives
+    // in `pipeline/src/eternities/pipeline/assemble.py` and is mirrored in
+    // `pipeline/src/eternities/fixtures/generate.py`; both carry a comment pointing back here. A
+    // cross-language export for one number in one diagnostic string is not worth the machinery, so
+    // if the radius ever changes, change it here too — a stale figure here misdirects the reader of
+    // a failure rather than failing anything, which is exactly the kind of wrong that survives.
+    const unprojectable =
+      selfCheck.unprojectable > 0
+        ? `${selfCheck.unprojectable} sampled stars projected behind the eye or past the far plane` +
+          (selfCheck.unprojectableRows.length > 0
+            ? ` (plane ${selfCheck.unprojectableRows.length === 1 ? 'row' : 'rows'} ` +
+              `${selfCheck.unprojectableRows.map(([row, n]) => `${row}x${n}`).join(' ')})`
+            : '') +
+          ` — these are the one kind of sample no pick window can be aimed at, so they are dropped ` +
+          `before the tallies and this is the only place they can be reported. Either the CPU ` +
+          `motion mirror is wrong about those rows, or the plane table puts them outside the ` +
+          `130-unit multiverse radius the datasets are built to; check the rows above against the ` +
+          `plane table before assuming the mirror. The ` +
+          `${selfCheck.nearestDepth === null ? 'depth range' : `${selfCheck.nearestDepth.toFixed(1)}-unit near margin`} ` +
+          `printed above is over the samples that survived and says nothing about these`
+        : ''
+
     if (selfCheck.missed.length > 0) {
       throw new Error(
         `the CPU motion mirror disagrees with the vertex shader for ${selfCheck.missed.length} ` +
           `stars — PRD 8.5.7's camera tether would frame the wrong point` +
-          (darkRows === '' ? '' : `. And in the same run, ${darkRows}`),
+          (darkRows === '' ? '' : `. And in the same run, ${darkRows}`) +
+          (unprojectable === '' ? '' : `. And in the same run, ${unprojectable}`),
       )
     }
-    if (darkRows !== '') throw new Error(darkRows)
+    if (darkRows !== '') {
+      throw new Error(
+        darkRows + (unprojectable === '' ? '' : `. And in the same run, ${unprojectable}`),
+      )
+    }
+    if (unprojectable !== '') throw new Error(unprojectable)
     throw new Error(
       `the self-check located only ${selfCheck.measured} of ${selfCheck.checked} sampled stars ` +
         `in their own pick window — too few to establish PRD 8.5.7 either way`,

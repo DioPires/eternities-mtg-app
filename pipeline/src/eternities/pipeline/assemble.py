@@ -36,7 +36,12 @@ from .records import CardDetail, MeldResult, RawPrinting, ScrySet
 
 MULTIVERSE_RADIUS: Final = 130.0
 """R of PRD 8.6.1, sized so the whole Appendix A roster packs with the 5.3.3 anti-overlap margin.
-Identical to ``fixture-scale``, so bench numbers taken against the fixture carry over."""
+Identical to ``fixture-scale``, so bench numbers taken against the fixture carry over.
+
+Manually linked to two places outside this file: ``fixtures/generate.py`` mirrors the value, and
+``web/scripts/verify-browser.mjs`` writes it out as the literal ``130`` in the ``unprojectable``
+failure message (a cross-language export was judged not worth it for one diagnostic string). If this
+changes, change both — a stale figure in that message misdirects whoever reads the failure."""
 
 BRIGHTNESS_PERCENTILE: Final = 0.98
 """PRD 5.4.10: the printing-count cap is the plane's 98th percentile."""
