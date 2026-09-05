@@ -26,13 +26,16 @@
  * is invisible. At 2 the caps come through as themselves.
  *
  * **What the first rung's assertion does not cover, measured.** Mutation testing says rungs 2 and
- * 3 are covered — breaking the bloom's `resolutionScale` or the atlas's capacity turns this red —
- * and rung 1 is covered only against a wholesale failure. The pixel ratio has one writer that
- * decides it — `StarScene`'s `setDpr`, on mount and on every tier change — and one that merely has
- * to *exist*: the `Canvas` `dpr` prop, whose value is inert and whose presence is what stops R3F
- * managing dpr from its own resize path. `EternitiesScene` records that measurement. So rung 1 is
- * covered against the prop being **removed** (red on 2 of 3 runs) and is *not* covered against it
- * naming the wrong tier, which survives (DEC-667 N1).
+ * 3 are covered — breaking the bloom's `resolutionScale` or the atlas's capacity turns this red,
+ * every run. **Rung 1 is not covered, and the word was too generous** (DEC-677 N3). The pixel ratio
+ * has one writer that decides it — `StarScene`'s `setDpr`, on mount and on every tier change — and
+ * one that merely has to *exist*: the `Canvas` `dpr` prop, whose value is inert and whose presence
+ * is what stops R3F managing dpr from its own resize path. `EternitiesScene` records that
+ * measurement. Of the two mutants: the prop naming the **wrong tier** survives outright, and the
+ * prop being **removed** was red on only 2 of 3 runs (DEC-667 N1). A kill that lands two times in
+ * three is a flaky detector, not coverage — a real regression here would ship about a third of the
+ * time, and a green run says nothing. Treat rung 1 as unguarded until something deterministic
+ * replaces this, and do not cite the 2-of-3 result as protection.
  *
  * A pin never produces a tier *change*, so mutating the `setDpr` inside `quality.subscribe` alone
  * is not caught here either: nothing calls it. Covering that path needs a runtime tier change

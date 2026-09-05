@@ -171,10 +171,16 @@ async function captureShots(url, args, segments, directory) {
       const query = new URLSearchParams({ hold: segment })
       if (args.positions) query.set('positions', args.positions)
       await page.goto(`${url}/?${query.toString()}`, { waitUntil: 'load', timeout: 60_000 })
-      // `__eternitiesHold` is a readiness gate, not a mount signal: the page sets it only once the
-      // scene is in the segment's state, and sets `__eternitiesHoldError` instead if it gave up
-      // (DEC-667 B1). Photographing on the first signal is what produced an empty-multiverse `card`
-      // shot; failing here is the alternative to a plausible-looking wrong picture.
+      // `__eternitiesHold` says the page established the segment's focus; `__eternitiesHoldError`
+      // says it gave up trying (DEC-667 B1). Photographing on mount is what produced an
+      // empty-multiverse `card` shot, and failing here is the alternative to a plausible-looking
+      // wrong picture.
+      //
+      // For `card` this is a genuine readiness gate — its focus cannot succeed until the anchor
+      // plane's shards arrive, so the wait is real. For every other segment the focus cannot fail,
+      // the flag arrives on the first frame, and the fixed settle below is what actually gives the
+      // contents time to appear (DEC-677 N2). A `sheet` shot's thumbnails depend on that sleep, not
+      // on this wait.
       await page.waitForFunction(
         () => window.__eternitiesHold !== undefined || window.__eternitiesHoldError !== undefined,
         { timeout: 120_000, polling: 250 },

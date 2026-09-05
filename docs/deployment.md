@@ -24,10 +24,16 @@ node scripts/write-vercel-json.mjs --check  # what CI runs
 ## 2. Connecting the project — **done, not an outstanding action**
 
 The project is connected. The production host is **`https://eternities-mtg-app.vercel.app`**, and
-Vercel creates a **Production** deployment on every merge to `main` — six of them on 2026-09-05
-alone, going back to at least `ce03ea7`. Verified live on 2026-09-05: the site serves `main`'s
-production hash `d5ee9661aaffafa3`, applies the PRD 7.6.1 CSP, answers `/plane/dominaria` with `200`
-through the SPA rewrite, and sends `max-age=31536000, immutable` on `/data/**`.
+Vercel creates a **Production** deployment on every merge to `main`. Stated as the invariant rather
+than as a count, because the count moves with every merge and a number written here is stale by the
+time it is read: **every first-parent commit on `main` has a matching same-SHA Production
+deployment**, all the way back to the first. Re-checked 2026-09-05 across all 27 of them, zero
+misses, by intersecting `git log --first-parent origin/main` with the `deployments` API.
+
+Also verified live on 2026-09-05: the site applies the PRD 7.6.1 CSP, answers `/plane/dominaria`
+with `200` through the SPA rewrite, and sends `max-age=31536000, immutable` on `/data/**`. It served
+`d5ee9661aaffafa3`, which was `main`'s production hash *at that moment* — do not read that hash as a
+current value; §6 of `refresh-runbook.md` has the command that tells you what is live now.
 
 Nothing in the list below needs doing. It is kept as the record of the settings the project carries,
 and as the recipe if it is ever recreated. **Do not cite this section as evidence that the deploy is

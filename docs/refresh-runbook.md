@@ -157,13 +157,20 @@ cards changed: 38
 All thirty-eight were `imageTs` — the cache-buster in Scryfall's image URI, which they re-stamp when
 a card is re-scanned (`docs/data-contract.md`). No product-visible change at all.
 
-**The two numbers on the cache-buster line count different things** (DEC-673 N2). `N card(s)` is
-the cards whose **only** symptom was cache-buster churn; `M printing tuple(s)` is **every**
-cache-buster tuple in the diff, including tuples on cards that also changed in some other way and
-are therefore reported in a louder bucket instead. So `M` can exceed what `N` accounts for, and the
-two agreeing — as they nearly do above, 38 and 40 — is a coincidence of this particular diff, not
-an invariant. Read `N` as "how many cards were pure noise" and `M` as "how much of this diff is
-noise"; do not read `M` as belonging to those `N`.
+**The two numbers on the cache-buster line count different things** (DEC-673 N2, corrected by
+DEC-676). `N card(s)` counts **cards**; `M printing tuple(s)` counts **printing tuples**. That alone
+explains the gap, because one card can be re-stamped on several of its printings: the 38 and 40
+above are 37 cards re-stamped on one printing each plus **Baleful Strix re-stamped on three**. So
+`M >= N` is structural, not a coincidence of this diff.
+
+**`M` is a floor on cache-buster churn, not a total.** The classifier reports each card in its
+loudest bucket, and two of those buckets `continue` out of the loop *before* the per-printing
+comparison ever runs: a card that changed plane, and a card that gained or lost a printing. Any
+cache-buster churn on such a card is never counted, so `M` undercounts the true total whenever
+either of those rows is non-zero. A card with a non-printing field change is the exception — it
+deliberately falls through and does contribute its tuples, which is why that row and this one can
+both be non-zero for the same card. Read `N` as "how many cards were pure noise" and `M` as "at
+least this much of the diff is noise".
 
 **How to read the buckets.** The first two are routine: cache-buster churn is noise, and a new
 printing of an existing card is what a set release looks like. The last three are not. A
@@ -180,9 +187,14 @@ matters most in the one run where 9.2.3 prints no number at all (a contract bump
 this row is the only account of a plane move that exists.
 
 **Consequence worth knowing:** because data directories are committed (PRD 8.1.4), cache-buster
-churn alone puts a full copy of every touched shard into git history on every refresh. That is PRD
-risk 8's growth, arriving for no product reason. Nothing to do about it today; worth watching, and
-worth remembering that amendment A2 rules out Git LFS as the escape hatch (see `docs/deployment.md`).
+churn alone rewrites every touched shard on every refresh, for no product reason — which is what
+made it look like PRD risk 8 arriving early. **It is much cheaper than that reads.** Git packs the
+new shards as deltas against their predecessors, so the 2026-09-05 no-product-change refresh cost
+**4,342 bytes**, not the megabytes a per-shard copy would imply. The decision to leave `imageTs`
+alone, the measurement behind that number and the trigger for revisiting it are recorded in
+[`docs/decisions/imagets-churn.md`](decisions/imagets-churn.md). Read it before treating this
+paragraph as a reason to act. Amendment A2 rules out Git LFS as the escape hatch either way (see
+`docs/deployment.md`).
 
 ---
 
@@ -260,10 +272,20 @@ curl -s https://eternities-mtg-app.vercel.app/ | grep 'eternities:data'
 ```
 
 Run it **before** you hand the pull request over, so you know what the old hash looks like, and again
-after the CEO merges. On 2026-09-05, before the refresh merged, it returned:
+after the CEO merges. On 2026-09-05, before the refresh merged, it returned **two** lines:
 
 ```
+      The build injects <meta name="eternities:data" content="/data/<hash>/"> here, plus preload
     <meta name="eternities:data" content="/data/d5ee9661aaffafa3/" />
+```
+
+The first is a placeholder comment left in `index.html` that names the tag it describes, so it
+matches the grep too. Read the **second** line — the one that is really a `<meta>` element. If you
+would rather not have to, this variant prints the live hash and nothing else, because the
+placeholder spells its hash `<hash>` and so cannot match sixteen hex digits:
+
+```sh
+curl -s https://eternities-mtg-app.vercel.app/ | grep -o 'content="/data/[0-9a-f]\{16\}/"'
 ```
 
 `d5ee9661aaffafa3` is the hash this refresh replaces. When the value changes to the hash in your

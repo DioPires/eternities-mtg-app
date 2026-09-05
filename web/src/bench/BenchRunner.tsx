@@ -118,8 +118,9 @@ export interface BenchResult extends BenchSummary {
   /** True if the sample buffer filled and the tail of the path went unrecorded. */
   readonly saturated: boolean
   /**
-   * Segments whose scene state could not be established — today only `card`, whose focus fails
-   * until the anchor plane's shards have arrived (DEC-667 N8).
+   * Segments whose scene state could not be established. In practice that is `card`, whose focus
+   * fails until the anchor plane's shards have arrived (DEC-667 N8); the plane segments can also
+   * land here, but only on a dataset that offered no plane to aim at (DEC-677 N1).
    *
    * Without this a run whose card never resolved would report a `card` segment measuring an empty
    * sky, with nothing in the result to tell it apart from a good one, and a baseline could be
@@ -136,9 +137,17 @@ declare global {
     __eternitiesBench?: BenchResult
     __eternitiesBenchProgress?: { elapsed: number; total: number; frames: number }
     /**
-     * Set once the camera has been parked at a named segment **and the scene is in that segment's
-     * state**, for a screenshot. `bench.mjs --shots` waits on this, so it is a readiness gate, not
-     * a mount signal: a hold that cannot establish its contents never sets it (DEC-667 B1).
+     * Set once the camera has been parked at a named segment and `driveSegment` has reported that
+     * segment's focus established, for a screenshot. `bench.mjs --shots` waits on this.
+     *
+     * **What that is worth depends on the segment, and only `card` gets a real wait** (DEC-677 N2).
+     * `focusCard` genuinely fails until the anchor plane's shards have arrived, so a `card` hold
+     * retries and this stays undefined meanwhile — that is the gate DEC-667 B1 asked for. Every
+     * other segment issues a focus that cannot fail, so this is set on the first frame and says
+     * nothing about whether the segment's *contents* have loaded. A `sheet` hold signals with
+     * `thumbnails.requested` still at 0; what actually gives its atlas time to fill is the fixed
+     * 2 s sleep in `bench.mjs` after this resolves, not this flag. Do not read a signal here as
+     * "the picture is ready" for anything but `card`.
      */
     __eternitiesHold?: string
     /**
@@ -359,9 +368,12 @@ export function BenchRunner({
    * user's fly-to gives them. Asking at the segment boundary instead would measure the loading, not
    * the drawing.
    *
-   * Returns whether the scene is now in the segment's state. Only `card` can answer `false`: there
-   * is no card to focus until the anchor plane's shards have arrived. Every caller has to act on
-   * that — discarding it is what let `?hold=card` photograph an empty multiverse (DEC-667 B1, N8).
+   * Returns whether the scene is now in the segment's state. `card` answers `false` when the anchor
+   * plane's shards have not arrived and there is no card to focus; the plane segments answer `false`
+   * when the dataset yielded no plane to aim at, which only happens if every plane is dust or
+   * starless. Every caller has to act on that — discarding it is what let `?hold=card` photograph an
+   * empty multiverse (DEC-667 B1, N8). The plane cases used to skip their focus and report success
+   * anyway, which measured whatever the camera happened to be looking at (DEC-677 N1).
    */
   const driveSegment = (segment: string): boolean => {
     const drive = context.drive
@@ -370,10 +382,10 @@ export function BenchRunner({
       case 'approach':
       case 'sheet':
         if (anchor) drive.focusPlane(anchor.slug)
-        return true
+        return anchor !== null
       case 'small-plane':
         if (small) drive.focusPlane(small.slug)
-        return true
+        return small !== null
       case 'card':
         return drive.focusCard()
       case 'dust':
@@ -420,7 +432,11 @@ export function BenchRunner({
       const at = segmentEndTime(hold)
       if (at === null) return
       // The scene has to be in the segment's state too, or PRD 9.3's checkpoint photographs the
-      // right camera pose over the wrong contents — a card-sheet shot with no thumbnails in it.
+      // right camera pose over the wrong contents — the empty multiverse a `card` hold used to
+      // photograph. Note the limit of what this establishes: it drives the segment's *focus*, and
+      // only `card`'s focus can fail, so only `card` is really gated here. A `sheet` hold reports
+      // driven on its first frame with an empty atlas; its thumbnails ride `bench.mjs`'s 2 s sleep
+      // (DEC-677 N2).
       //
       // The prerequisites and the segment's own focus go once, on the first frame the hold is live,
       // because these are focus changes and repeating them every frame would restart the shard
