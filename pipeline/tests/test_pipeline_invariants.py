@@ -396,3 +396,83 @@ def test_committed_production_dataset_holds_the_invariants(production_dir: Path)
             assert worst > float(a["radius"]) + float(b["radius"]), (
                 f"{a['slug']} and {b['slug']} overlap under drift"
             )
+
+
+# --- PRD 8.6.2's arm width, and what changing it is allowed to touch (DEC-683 / DEC-684) --------
+
+
+def test_the_arm_width_base_leaves_a_dark_lane_between_arms():
+    """The regression DEC-683 found: at ``ARM_WIDTH_BASE == 0.5`` the arms tile the disc.
+
+    An arm's full angular width is ``2 * (2*pi/ARMS) * base * scale``, against a spacing of exactly
+    ``2*pi/ARMS``. At base 0.5 and ``scale == 1.0`` those are equal, so there is no gap — and
+    :func:`layout.arm_width_scale` returns exactly 1.0 when a plane's colours are balanced, which
+    is the *large* planes PRD 9.3 criterion 2 governs. The base has to leave room at scale 1.0.
+    """
+    spacing = 2.0 * math.pi / layout.ARMS
+    full_width = 2.0 * spacing * layout.ARM_WIDTH_BASE * layout.arm_width_scale(100, 100.0)
+    assert layout.arm_width_scale(100, 100.0) == 1.0, "balanced colours must give scale 1.0"
+    assert full_width < spacing, (
+        f"arms {math.degrees(full_width):.1f} deg wide at a spacing of "
+        f"{math.degrees(spacing):.1f} deg leave no lane (PRD 9.3 criterion 2)"
+    )
+    lane = math.degrees(spacing - full_width)
+    assert lane >= 15.0, f"only a {lane:.1f} deg lane; too narrow to read at the tether settle"
+
+
+@pytest.mark.parametrize("hue", [layout.HueClass.MULTICOLOUR, layout.HueClass.COLOURLESS])
+def test_the_arm_width_base_does_not_reach_the_bulge_or_the_halo(hue: layout.HueClass):
+    """Those two branches never read the spread, so a re-cut must leave their cards untouched.
+
+    This is the invariant the DEC-684 re-cut was verified against on the production diff, kept here
+    so the next change to the constant does not have to re-derive it from a dataset that no longer
+    exists (8.8.3 deletes the predecessor).
+    """
+    motion = layout.plane_motion("dominaria", 10.0)
+
+    def place(oracle_id: str, width: float) -> tuple[float, float, float]:
+        return layout.card_position(
+            plane_slug="dominaria",
+            oracle_id=oracle_id,
+            hue=hue,
+            band=3,
+            band_count=8,
+            motion=motion,
+            arm_width_scale=width,
+            spiral=True,
+        )
+
+    for oracle_id in ("a" * 36, "b" * 36, "c" * 36):
+        assert place(oracle_id, 0.4) == place(oracle_id, 1.6), (
+            f"{hue.name} moved with the arm width"
+        )
+
+
+def test_the_arm_width_base_moves_x_and_z_but_never_y():
+    """``y`` is drawn from its own rng stream, so an arm re-cut must not disturb the disc thickness.
+
+    Proven non-vacuous by the ``x``/``z`` assertion below it: if the width stopped reaching the arm
+    branch at all, every coordinate would match and the first assertion would fail.
+    """
+    motion = layout.plane_motion("dominaria", 10.0)
+
+    def place(oracle_id: str, band: int, width: float) -> tuple[float, float, float]:
+        return layout.card_position(
+            plane_slug="dominaria",
+            oracle_id=oracle_id,
+            hue=layout.HueClass.RED,
+            band=band,
+            band_count=8,
+            motion=motion,
+            arm_width_scale=width,
+            spiral=True,
+        )
+
+    moved = 0
+    for index in range(200):
+        narrow = place(f"{index:036d}", index % 8, 0.4)
+        wide = place(f"{index:036d}", index % 8, 1.6)
+        assert narrow[1] == wide[1], f"card {index}: y moved with the arm width"
+        if (narrow[0], narrow[2]) != (wide[0], wide[2]):
+            moved += 1
+    assert moved > 150, f"only {moved} of 200 arm cards moved; the width is not reaching the arm"

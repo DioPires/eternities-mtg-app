@@ -2,11 +2,11 @@
   "contractVersion": 2,
   "pipelineVersion": "0.4.0",
   "dataset": "production",
-  "dataHash": "97984b20156c63f0",
-  "asOf": "2026-09-05",
-  "generatedAt": "2026-09-05T00:00:00Z",
+  "dataHash": "6d4779695fde33ea",
+  "asOf": "2026-09-06",
+  "generatedAt": "2026-09-06T00:00:00Z",
   "scryfallBulkUpdatedAt": "2026-09-05T09:05:28.871+00:00",
-  "previousRun": "d5ee9661aaffafa3",
+  "previousRun": "97984b20156c63f0",
   "starRecordBytes": 12,
   "shardSize": 2000,
   "counts": {
@@ -590,7 +590,7 @@
     {
       "path": "stars.bin",
       "bytes": 343060,
-      "sha256": "1c8f1be202704b7296eb42d13b1022b02b3051707f3d2320845ca1e04604ed33"
+      "sha256": "59361d778bbb8e47f64318868777265076b6556683bbbd6c83aa1ffa0c527256"
     }
   ]
 }

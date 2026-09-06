@@ -2,7 +2,7 @@
   "contractVersion": 2,
   "pipelineVersion": "0.4.0",
   "dataset": "fixture-scale",
-  "dataHash": "7bd31529bcc71780",
+  "dataHash": "9d46708448e96fcc",
   "asOf": "2026-09-04",
   "generatedAt": "2026-09-04T00:00:00Z",
   "scryfallBulkUpdatedAt": null,
@@ -584,7 +584,7 @@
     {
       "path": "stars.bin",
       "bytes": 360016,
-      "sha256": "b5aa2e00f49952117499427b60a552c7f42d35458cbd79f14d37380fa1b01617"
+      "sha256": "0338febc1cdd586e7ef056f66243663052bc208fba114c0504e5687af3058623"
     }
   ]
 }

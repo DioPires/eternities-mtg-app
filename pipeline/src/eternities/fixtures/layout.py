@@ -22,6 +22,18 @@ SPIRAL_THRESHOLD: Final = 50
 """PRD 5.3.6: >= 50 cards is a five-arm spiral, 1-49 an irregular cloud, 0 an empty glow."""
 
 ARMS: Final = 5
+
+ARM_WIDTH_BASE: Final = 0.35
+"""An arm's angular half-width as a fraction of the arm *spacing*, before 8.6.2's scaling law.
+
+PRD 8.6.2 fixes the scaling (``sqrt(count_arm / mean_count)``, clamped) but says nothing about the
+base, so this is a visual tunable rather than a spec constant. It was 0.5, which makes an arm's full
+width ``2 * 0.5 * 360/ARMS`` = 72 degrees against a spacing of exactly 72 degrees: at
+``arm_width_scale == 1.0`` the five arms tile the disc with no dark lane at all. Because colour
+balance improves with card count, scale approaches 1.0 exactly on the large planes PRD 9.3
+criterion 2 governs, so the arms were least legible where the criterion asks for most. 0.35 gives a
+50.4-degree arm and a 21.6-degree lane at scale 1.0 (DEC-683/DEC-684)."""
+
 BULGE_SCALE: Final = 0.3
 HALO_MIN: Final = 1.05
 HALO_MAX: Final = 1.2
@@ -210,7 +222,7 @@ def card_position(
     else:
         arm = int(hue)  # W U B R G map to arms 0-4 (PRD 8.6.2).
         r0 = 0.1
-        spread = (2.0 * math.pi / ARMS) * 0.5 * arm_width_scale
+        spread = (2.0 * math.pi / ARMS) * ARM_WIDTH_BASE * arm_width_scale
         jitter_theta = rng.between(-spread, spread, plane_slug, oracle_id, "jt")
         theta = (
             2.0 * math.pi * arm / ARMS + motion.arm_pitch * math.log(max(r, r0) / r0) + jitter_theta
