@@ -249,3 +249,43 @@ test('a filtered route renders, reaches its plane, and shows one chip per facet 
   // PRD 6.3.2: one chip per active facet value, in the canonical order `route.ts` sorts to.
   await expect(page.locator('.chip .chip-label')).toHaveText(['White', 'Blue', 'Rare'])
 })
+
+/**
+ * `?probe=shell` keeps the shell and installs the seam in it — the page PRD 9.3 is judged on.
+ *
+ * `scripts/visual-gate.mjs` captures the visual review against the *shipped composition*, and to do
+ * that it needs two things at once: the HUD around the scene, and the probe to drive it with. The
+ * scene installs the seam wherever it is mounted, so this is one line of routing in `App.tsx` — and
+ * one latch in `SceneView`, which is the part that needs a test.
+ *
+ * The seam is installed from an effect that re-runs when `planes.json` and the GPU resources land,
+ * a second or two after mount. By then PRD 6.7's router has canonicalised the address bar and the
+ * flag is *gone from `location.search`* — so a `probeRequested()` read at effect time says no, and
+ * `window.__eternitiesProbe` never appears. The harness has no router, which is why `?probe=1` never
+ * showed this and why a test that only checks `?probe=1` proves nothing about the shell.
+ *
+ * Both halves are asserted, because either alone is satisfied by the wrong page: the harness has the
+ * probe and no HUD, and a plain `/` has the HUD and no probe.
+ */
+test('?probe=shell gets the probe and the HUD together, after the router rewrites the URL', async ({
+  page,
+}) => {
+  await page.goto('/?probe=shell')
+  await waitForScene(page)
+  await expectCanvasRenders(page)
+
+  // The router has canonicalised the flag away by now. That is the state the latch has to survive,
+  // so it is asserted rather than assumed — without it this test could pass for the wrong reason.
+  await expect.poll(() => page.evaluate(() => location.search)).toBe('')
+
+  await expect
+    .poll(() => page.evaluate(() => window.__eternitiesProbe !== undefined), { timeout: 30_000 })
+    .toBe(true)
+  await expect(page.locator('.hud')).toBeVisible()
+
+  // And it is the shell's scene the seam is holding, not a second one: the probe's own view of the
+  // focus agrees with the breadcrumb the HUD is drawing.
+  const level = await page.evaluate(() => window.__eternitiesProbe?.state().focus ?? null)
+  expect(level).toBe('multiverse')
+  expect(await breadcrumb(page)).toBe('Multiverse')
+})

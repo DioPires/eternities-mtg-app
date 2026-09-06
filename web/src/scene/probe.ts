@@ -142,9 +142,33 @@ declare global {
   }
 }
 
+/**
+ * Which page the seam is asked for on.
+ *
+ * `?probe=1` is Phase 3's scene with its readout panel, which is what `scripts/verify-browser.mjs`
+ * drives the card tier through and what every review up to Phase 6 was captured against.
+ *
+ * `?probe=shell` is the same seam **inside the shipped composition** — the default route, scene and
+ * HUD together. PRD 9.3's review is of what ships, and after Phase 6 joined the scene into the
+ * shell the scene alone is no longer that. The alternative was to drive the shell entirely through
+ * its own chrome, which reaches the checkpoints but cannot measure them: the shell mounts
+ * `SceneView` with `chrome: false`, so there is no readout panel on it, and 9.3's thumbnail
+ * cross-fade criterion is a question about `thumbnails.drawn` crossing PRD 5.5.1's 24 px band —
+ * a number that exists nowhere else. `SceneView` installs the seam wherever it is mounted; only
+ * the routing in `App.tsx` decided which page that was.
+ */
+export type ProbeTarget = 'scene' | 'shell'
+
+export function probeTarget(
+  search: string = typeof location === 'undefined' ? '' : location.search,
+): ProbeTarget | null {
+  const value = new URLSearchParams(search).get('probe')
+  if (value === null || value === '0') return null
+  return value === 'shell' ? 'shell' : 'scene'
+}
+
 export function probeRequested(
   search: string = typeof location === 'undefined' ? '' : location.search,
 ): boolean {
-  const value = new URLSearchParams(search).get('probe')
-  return value !== null && value !== '0'
+  return probeTarget(search) !== null
 }
