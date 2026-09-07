@@ -619,7 +619,7 @@ Claude Code captures a fixed set of checkpoint screenshots and a short screen re
 Criteria the owner judges against, phrased so failures are nameable:
 
 - Motion is perceptible within 3 s of arriving at any level.
-- Spiral arms are legible for every plane with ≥ 200 cards.
+- Spiral arms are legible for every plane with ≥ 2,000 cards (threshold amended from 200 by board decision on DEC-683: the year-band mapping leaves smaller planes too few stars for arms to read at presentation scale, and arm-width tuning cannot add stars).
 - Bloom never washes out a label or the focused card.
 - No label overlaps another at the home view.
 - No aliasing shimmer on stars during slow camera moves.
