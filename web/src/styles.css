@@ -139,6 +139,29 @@ input {
   color: var(--ink-muted);
 }
 
+/*
+ * In the accessibility tree, off the screen. For the `role="status"` region whose text duplicates
+ * something already visible (the load announcement in `Hud.tsx`).
+ *
+ * The clip-rect idiom rather than `display: none`, `visibility: hidden` or a large negative offset:
+ * the first two take the node out of the tree, so a live region built that way announces nothing,
+ * and an element parked thousands of pixels away is a node every layout or paint check has to
+ * special-case (DEC-662 learnt that the hard way). This one stays 1x1 in the flow and paints
+ * nothing.
+ */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* The numeric voice: counts, years and rarities are columns, so they get tabular figures. */
 .hud-loading,
 .chip-count,

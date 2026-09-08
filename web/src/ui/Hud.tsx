@@ -9,7 +9,7 @@
  *    "hidden entirely" and a transparent HUD still eats pointer events.
  */
 
-import type { ReactElement } from 'react'
+import { useEffect, useState, type ReactElement } from 'react'
 
 import { useNavSnapshot } from '../app/hooks'
 import { useStore } from '../store/store'
@@ -19,15 +19,52 @@ import { FilterChips } from './FilterChips'
 
 const NUMBER = new Intl.NumberFormat('en-GB')
 
-/** PRD 6.8.1: "there is never a spinner over a black screen" — so this is a line, not a spinner. */
+/**
+ * PRD 6.8.1: "there is never a spinner over a black screen" — so this is a line, not a spinner.
+ *
+ * **Not a live region.** It used to be, and PRD 8.7.3 reveals the roster plane by plane, so the
+ * count changed ~87 times during a load and a screen reader read out all 87 of them — eighty-seven
+ * interruptions to say the same thing. A progress readout that changes faster than a person can
+ * listen is a `role="status"` misuse, not an accommodation. The number stays on screen for anyone
+ * watching it; the announcement is {@link LoadAnnouncement}'s, once, at the end.
+ */
 function LoadingLine(): ReactElement | null {
   const manifest = useStore((state) => state.manifest)
   const stars = useStore((state) => state.stars)
   const drawable = useStore((state) => state.starsDrawable)
   if (stars !== null || manifest === null) return null
   return (
-    <p className="hud-loading" aria-live="polite">
+    <p className="hud-loading">
       {NUMBER.format(drawable)} of {NUMBER.format(manifest.counts.stars)} stars
+    </p>
+  )
+}
+
+/**
+ * The one announcement: "N stars loaded", when `stars.bin` completes.
+ *
+ * Mounted empty and filled later, rather than mounted with its text — an `aria-live` region has to
+ * be in the accessibility tree *before* its content changes for the change to be announced at all,
+ * so a region that appears already-populated is a region most screen readers say nothing about.
+ * That is also why this sits outside `LoadingLine`, which unmounts at exactly the moment the
+ * announcement is due.
+ *
+ * Visually hidden rather than `display: none`, which would take it out of the tree with the same
+ * result.
+ */
+function LoadAnnouncement(): ReactElement {
+  const manifest = useStore((state) => state.manifest)
+  const stars = useStore((state) => state.stars)
+  const [message, setMessage] = useState('')
+
+  useEffect(() => {
+    if (stars === null || manifest === null) return
+    setMessage(`${NUMBER.format(stars.count)} stars loaded.`)
+  }, [stars, manifest])
+
+  return (
+    <p className="visually-hidden" role="status">
+      {message}
     </p>
   )
 }
@@ -44,6 +81,7 @@ export function Hud(): ReactElement | null {
         <Breadcrumb />
         <FilterChips />
         <LoadingLine />
+        <LoadAnnouncement />
       </header>
       <ControlCluster />
     </div>

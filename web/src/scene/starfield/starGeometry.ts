@@ -30,7 +30,7 @@ import {
   hueClassFromColourByte,
 } from '../../data/colourByte'
 import { float16ToNumber } from '../../data/decode'
-import { STAR_RECORD_BYTES } from '../../data/types'
+import { FILTER_MASK_PASS, STAR_RECORD_BYTES } from '../../data/types'
 
 /**
  * PRD risk 6's named mitigation. `float16` is the default and halves the position buffer;
@@ -100,9 +100,10 @@ export class StarGeometry {
     this.positions = this.positionAttribute.array as Uint16Array | Float32Array
     this.positionAttribute.setUsage(DynamicDrawUsage)
 
-    // PRD 8.5.1's uint8 filter mask. Everything passes until Phase 4 says otherwise; normalised, so
-    // the shader reads 1.0 for a pass and 0.0 for a fail.
-    this.filterAttribute = new BufferAttribute(new Uint8Array(capacity).fill(255), 1, true)
+    // PRD 8.5.1's uint8 filter mask. Everything passes until a filter says otherwise; normalised,
+    // so the shader reads 1.0 for a pass and 0.0 for a fail. `FILTER_MASK_PASS` is the same
+    // constant `filters/evaluate.ts` writes, which is what makes `setFilterMask` a byte copy.
+    this.filterAttribute = new BufferAttribute(new Uint8Array(capacity).fill(FILTER_MASK_PASS), 1, true)
     this.filter = this.filterAttribute.array as Uint8Array
     this.filterAttribute.setUsage(DynamicDrawUsage)
 
@@ -176,7 +177,12 @@ export class StarGeometry {
     this.geometry.setDrawRange(0, to)
   }
 
-  /** PRD 5.8: the active filter, one byte per star. 255 passes, 0 dims. Phase 4 owns the rules. */
+  /**
+   * PRD 5.8: the active filter, one byte per star. {@link FILTER_MASK_PASS} passes, 0 dims.
+   *
+   * The rules are `filters/evaluate.ts`'s and the subscription that brings the result here is
+   * `app/filterMask.ts`. The mask is copied, so the caller may keep reusing its buffer.
+   */
   setFilterMask(mask: Uint8Array, from = 0, count = mask.length): void {
     if (from + count > this.capacity) {
       throw new RangeError(`filter mask [${from}, ${from + count}) exceeds ${this.capacity} stars`)
@@ -186,9 +192,9 @@ export class StarGeometry {
     this.filterAttribute.needsUpdate = true
   }
 
-  /** Everything passes again. Cheaper than handing in a full-length mask of 255s. */
+  /** Everything passes again. Cheaper than handing in a full-length mask of pass bytes. */
   clearFilter(): void {
-    this.filter.fill(255)
+    this.filter.fill(FILTER_MASK_PASS)
     this.filterAttribute.addUpdateRange(0, this.capacity)
     this.filterAttribute.needsUpdate = true
   }

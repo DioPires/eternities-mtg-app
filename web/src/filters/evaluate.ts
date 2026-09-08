@@ -16,6 +16,7 @@
 
 import {
   COLOUR_LETTER_BIT,
+  FILTER_MASK_PASS,
   matchesColourIdentity,
   matchesTypeMask,
   type SetsSidecar,
@@ -31,7 +32,14 @@ export interface FilterResolution {
 }
 
 export interface FilterEvaluation {
-  /** One byte per star: 1 matches, 0 is dimmed. Reused between calls — do not retain a copy. */
+  /**
+   * One byte per star: {@link FILTER_MASK_PASS} matches, 0 is dimmed. Reused between calls — do not
+   * retain a copy.
+   *
+   * The byte value is not free choice. This array is handed to `StarGeometry.setFilterMask`
+   * verbatim (`app/filterMask.ts`) and becomes a **normalised** vertex attribute, so the pass value
+   * has to be the one the shader reads as `1.0`. See {@link FILTER_MASK_PASS}.
+   */
   readonly mask: Uint8Array
   /** Exact number of matching cards (PRD 6.3.2). */
   readonly matching: number
@@ -115,7 +123,7 @@ export function evaluateFilters(
   const setsMatchNothing = setsSelected && setsApplied && setIds.length === 0
 
   if (!isFilterActive(filters)) {
-    mask.fill(1)
+    mask.fill(FILTER_MASK_PASS)
     return { mask, matching: total, total, setsApplied: true }
   }
   if (setsMatchNothing) {
@@ -147,7 +155,7 @@ export function evaluateFilters(
       }
       ok = hit
     }
-    mask[i] = ok ? 1 : 0
+    mask[i] = ok ? FILTER_MASK_PASS : 0
     if (ok) matching += 1
   }
   return { mask, matching, total, setsApplied }

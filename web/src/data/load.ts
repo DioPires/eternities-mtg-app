@@ -25,6 +25,15 @@ export function dataRoot(): string {
   )
 }
 
+/**
+ * PRD 7.4.1's three attempts, named so the *reporters* cannot disagree with the retrier.
+ *
+ * `SceneErrorHub.report` puts this number into the sentence the user reads ("after N attempts"),
+ * and every reporting call site used to spell it `3` by hand. One constant, so raising the policy
+ * cannot leave a toast lying about it.
+ */
+export const LOAD_ATTEMPTS = 3
+
 export interface RetryOptions {
   readonly attempts?: number
   readonly baseDelayMs?: number
@@ -74,7 +83,7 @@ async function withRetries<T>(
   attempt: () => Promise<T>,
   exhausted: () => Error,
 ): Promise<T> {
-  const attempts = options.attempts ?? 3
+  const attempts = options.attempts ?? LOAD_ATTEMPTS
   const base = options.baseDelayMs ?? 250
 
   let lastError: unknown

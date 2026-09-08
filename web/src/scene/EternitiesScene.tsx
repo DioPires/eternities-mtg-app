@@ -78,6 +78,7 @@ import type { NavigationHost } from '../navigation/host'
 import { createSceneNavigation, type SceneNavigation } from '../navigation/scene'
 import type { NavigationSnapshot } from '../navigation/types'
 import { createPlaneDetailLoader } from '../plane-detail/client'
+import { useStore } from '../store/store'
 
 import { CameraReadout } from './CameraReadout'
 import { CardTier, type CardTierHandle, type PlaneCards, type PlanetLabelState } from './cards/CardTier'
@@ -89,7 +90,7 @@ import { probeRequested, type Probe, type ProbeState } from './probe'
 import { QUALITY_TIERS, pinnedQualityTier, type QualityTier } from './quality/adaptiveQuality'
 import { StarScene, type StarSceneHandle } from './StarScene'
 import type { PlaneTable } from './starfield/planeTable'
-import { SKY_COLOUR } from './tuning'
+import { BLOOM_INTENSITY_STEPS, SKY_COLOUR } from './tuning'
 import { useReducedMotion } from './useReducedMotion'
 import { useSceneData, type SceneDataState } from './useSceneData'
 
@@ -280,6 +281,17 @@ export function SceneView({
   bench = null,
 }: SceneViewProps): ReactElement {
   const [snapshot, setSnapshot] = useState<NavigationSnapshot | null>(null)
+  /**
+   * PRD 6.10.1's two scene-facing settings, subscribed one field at a time.
+   *
+   * Both were persisted and read by nothing until now — the labels toggle wrote a store field that
+   * never reached `PlaneLabels`' own `enabled` prop, and the bloom steps never reached the effect.
+   * Selecting the fields rather than the whole `settings` object is what keeps this off the render
+   * path: a hint dismissal or a reduced-motion change must not re-render the component that owns
+   * the `<Canvas>` (review §2.2).
+   */
+  const labelsEnabled = useStore((state) => state.settings.labels)
+  const bloomIntensity = useStore((state) => BLOOM_INTENSITY_STEPS[state.settings.bloom])
   // `?quality=N` starts the scene at tier N and holds it there (PRD 9.1.4). The monitor inside
   // `StarScene` is pinned to the same tier, so it never announces a change and this stays the
   // tier for the run — which is why the initial value has to be right rather than corrected later.
@@ -936,6 +948,7 @@ export function SceneView({
           bloomScale={tier.tier.bloomScale}
           bloomSelection={bloomSelection}
           bloomRef={bloomRef}
+          bloomIntensity={bloomIntensity}
         />
       </Canvas>
 
@@ -945,6 +958,7 @@ export function SceneView({
           rig={scene.rig}
           focusedPlaneSlug={focusedSlug}
           level={snapshot?.level ?? 'multiverse'}
+          enabled={labelsEnabled}
           fov={FOV}
         />
       )}

@@ -17,7 +17,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type { SetsSidecar, Stars } from '../data/decode'
-import { loadManifest, loadPlaneShard, loadPlanes, loadSearch, loadSets } from '../data/load'
+import {
+  LOAD_ATTEMPTS,
+  loadManifest,
+  loadPlaneShard,
+  loadPlanes,
+  loadSearch,
+  loadSets,
+} from '../data/load'
 import { BLIND_ETERNITIES_SLUG, type Manifest, type PlanesFile, type SearchFile } from '../data/types'
 import { sceneErrors } from './errors'
 import { createNebulaTexture } from './starfield/nebulaTexture'
@@ -84,18 +91,51 @@ export function useSceneData(): SceneDataState {
       setState((previous) => ({ ...previous, ...next, report: [...lines] }))
     }
 
+    /**
+     * PRD 7.4.1's "reports once via a non-blocking toast", for the two artefacts that had no
+     * reporter at all.
+     *
+     * `stars.bin` has always reported — `streamStarsIntoScene` takes the hub. `search.json` and
+     * `sets.bin` report in their own `catch` below. `manifest.json` and `planes.json` did not: they
+     * rejected, the rejection fell through to the outer `catch`, and all the user got was a
+     * `FAILED:` line in a report that nothing renders. Those two are the artefacts whose absence
+     * means there is no multiverse at all, so they were the only ones a user could not be told
+     * about.
+     *
+     * Rethrows, because these are still fatal to the load: the report is an addition to the
+     * existing control flow, not a replacement for it. `reportedFailure` is what keeps the outer
+     * catch from adding a second, vaguer toast on top of this one.
+     *
+     * **The `aborted` guard is not defensive, it is load-bearing.** `withRetries` rethrows an abort
+     * on the spot, and under `StrictMode` React mounts, unmounts and remounts, so the first run's
+     * loads reject with an `AbortError` on *every healthy page load* in development. Reporting
+     * those would put "Could not load manifest.json" on screen while the second run was quietly
+     * succeeding — and worse, the hub reports each artefact only once, so the abort would consume
+     * the one report a real failure needed. Same test the outer catch has always made.
+     */
+    let reportedFailure = false
+    const failing =
+      (artefact: string) =>
+      (error: unknown): never => {
+        if (!signal.aborted) {
+          reportedFailure = true
+          sceneErrors.report(artefact, LOAD_ATTEMPTS, error)
+        }
+        throw error
+      }
+
     async function run(): Promise<void> {
       lines.push(`data directory ${dataRootSafe()}`)
       patch({})
 
-      const manifest = await loadManifest({ signal })
+      const manifest = await loadManifest({ signal }).catch(failing('manifest.json'))
       lines.push(
         `manifest: ${manifest.dataset}, contract v${manifest.contractVersion}, ` +
           `${manifest.counts.stars} stars, ${manifest.counts.planes} planes`,
       )
       patch({ manifest })
 
-      const planes = await loadPlanes({ signal })
+      const planes = await loadPlanes({ signal }).catch(failing('planes.json'))
       lines.push(`planes.json: ${planes.planes.length} rows, R = ${planes.multiverseRadius}`)
 
       // PRD 8.7.2: the roster is enough to draw the plane glows, so build the scene now and let
@@ -118,11 +158,11 @@ export function useSceneData(): SceneDataState {
       const background = afterFirstFrame().then(async () => {
         const [search, sets] = await Promise.all([
           loadSearch({ signal }).catch((error: unknown) => {
-            sceneErrors.report('search.json', 3, error)
+            sceneErrors.report('search.json', LOAD_ATTEMPTS, error)
             return null
           }),
           loadSets({ signal }).catch((error: unknown) => {
-            sceneErrors.report('sets.bin', 3, error)
+            sceneErrors.report('sets.bin', LOAD_ATTEMPTS, error)
             return null
           }),
         ])
@@ -168,6 +208,10 @@ export function useSceneData(): SceneDataState {
     void run().catch((error: unknown) => {
       if (signal.aborted) return
       lines.push(`FAILED: ${error instanceof Error ? error.message : String(error)}`)
+      // Anything that got this far without a named artefact — the plane-shard contract check, or a
+      // bug in the sequence itself. Still the user's problem, so it still becomes a toast; named
+      // vaguely because at this point all that is honestly known is that the load stopped.
+      if (!reportedFailure) sceneErrors.report('the multiverse', LOAD_ATTEMPTS, error)
       patch({ ok: false })
     })
 

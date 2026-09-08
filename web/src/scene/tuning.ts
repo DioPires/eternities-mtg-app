@@ -134,6 +134,24 @@ export const BLOOM_THRESHOLD = 0.28
 export const BLOOM_SMOOTHING = 0.45
 export const BLOOM_INTENSITY = 1.15
 
+/**
+ * PRD 6.10.1's "bloom intensity (three steps)", indexed by `Settings.bloom` (0 subtle, 1 default,
+ * 2 strong).
+ *
+ * Step 1 *is* {@link BLOOM_INTENSITY} rather than a number near it, so the default settings state
+ * and the tuned value cannot drift apart: whatever PRD 5.3.20 is tuned to is what a user who never
+ * opens the panel sees. The other two are that value scaled, which keeps the threshold and the
+ * smoothing — the terms PRD 9.3 cares about when it says "bloom never washes out a label or the
+ * focused card" — out of the setting entirely. 1.5× is deliberately the ceiling: it is the most
+ * this can lift a star core while a near-white card frame stays below the wash-out the selection
+ * exists to prevent.
+ */
+export const BLOOM_INTENSITY_STEPS: readonly [number, number, number] = [
+  BLOOM_INTENSITY * 0.6,
+  BLOOM_INTENSITY,
+  BLOOM_INTENSITY * 1.5,
+]
+
 /** PRD 5.3.21: a subtle vignette. No grain, no chromatic aberration. */
 export const VIGNETTE_OFFSET = 0.28
 export const VIGNETTE_DARKNESS = 0.72
