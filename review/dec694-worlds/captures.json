@@ -1,0 +1,345 @@
+{
+  "tool": "scripts/worlds-capture.mjs",
+  "note": "Concept B prototype captures for DEC-694 / review §4.2. dpr is stated per capture; every PNG is at true CSS scale.",
+  "viewport": {
+    "width": 1920,
+    "height": 1080,
+    "dpr": 1
+  },
+  "artThresholdCssPx": 24,
+  "artPoolLayers": 1024,
+  "layout": {
+    "dominaria": {
+      "cards": 6266,
+      "slots": 6266,
+      "exact": 5372,
+      "bandOnly": 694,
+      "displaced": 200,
+      "bare": 0
+    },
+    "rabiah": {
+      "cards": 75,
+      "slots": 78,
+      "exact": 49,
+      "bandOnly": 0,
+      "displaced": 26,
+      "bare": 3
+    }
+  },
+  "system": {
+    "worlds": 27,
+    "moons": 57,
+    "belt": 4980
+  },
+  "captures": [
+    {
+      "view": "system",
+      "file": "system.png",
+      "settled": true,
+      "waitedMs": 1260,
+      "caption": "System view — radius ∝ √N. Every plane at its shipped `home`; empty planes are dark moons; the Blind Eternities is the belt, one arc per set.",
+      "cssViewport": "1920×1080",
+      "dpr": 1,
+      "pngPixels": "1920×1080",
+      "cameraDistance": 362.85,
+      "cameraRadii": 36.38,
+      "cellCssPixels": 1.4,
+      "art": {
+        "resident": 0,
+        "layers": 1024,
+        "inFlight": 0,
+        "wanted": 0,
+        "completed": 0,
+        "failed": 0,
+        "evicted": 0
+      },
+      "cells": {
+        "dominaria": {
+          "drawn": 0,
+          "wanted": 0,
+          "cells": 6266
+        },
+        "rabiah": {
+          "drawn": 0,
+          "wanted": 0,
+          "cells": 75
+        }
+      }
+    },
+    {
+      "view": "dominaria-far",
+      "file": "dominaria-far.png",
+      "settled": true,
+      "waitedMs": 1259,
+      "caption": "Dominaria at 6× radius — 6,266 cells, swatches only. Latitude is colour (gold belt, colourless caps); longitude is time, one meridian slice per set.",
+      "cssViewport": "1920×1080",
+      "dpr": 1,
+      "pngPixels": "1920×1080",
+      "cameraDistance": 59.84,
+      "cameraRadii": 6,
+      "cellCssPixels": 10.1,
+      "art": {
+        "resident": 0,
+        "layers": 1024,
+        "inFlight": 0,
+        "wanted": 0,
+        "completed": 0,
+        "failed": 0,
+        "evicted": 0
+      },
+      "cells": {
+        "dominaria": {
+          "drawn": 0,
+          "wanted": 0,
+          "cells": 6266
+        },
+        "rabiah": {
+          "drawn": 0,
+          "wanted": 0,
+          "cells": 75
+        }
+      }
+    },
+    {
+      "view": "dominaria-frame",
+      "file": "dominaria-frame.png",
+      "settled": true,
+      "waitedMs": 6778,
+      "caption": "Dominaria framed at 3× radius — the mosaic-to-art threshold. Cells at the sub-camera point are crossing 24 px and resolving.",
+      "cssViewport": "1920×1080",
+      "dpr": 1,
+      "pngPixels": "1920×1080",
+      "cameraDistance": 29.92,
+      "cameraRadii": 3,
+      "cellCssPixels": 25.3,
+      "art": {
+        "resident": 333,
+        "layers": 1024,
+        "inFlight": 0,
+        "wanted": 0,
+        "completed": 333,
+        "failed": 0,
+        "evicted": 0
+      },
+      "cells": {
+        "dominaria": {
+          "drawn": 333,
+          "wanted": 333,
+          "cells": 6266
+        },
+        "rabiah": {
+          "drawn": 0,
+          "wanted": 0,
+          "cells": 75
+        }
+      }
+    },
+    {
+      "view": "dominaria-near",
+      "file": "dominaria-near.png",
+      "settled": true,
+      "waitedMs": 11297,
+      "caption": "Dominaria near — cells past the threshold are real `art_crop`, letterboxed and unshaded. The horizon is the same draw call.",
+      "cssViewport": "1920×1080",
+      "dpr": 1,
+      "pngPixels": "1920×1080",
+      "cameraDistance": 13.17,
+      "cameraRadii": 1.32,
+      "cellCssPixels": 158,
+      "art": {
+        "resident": 1024,
+        "layers": 1024,
+        "inFlight": 0,
+        "wanted": 742,
+        "completed": 1087,
+        "failed": 0,
+        "evicted": 63
+      },
+      "cells": {
+        "dominaria": {
+          "drawn": 1024,
+          "wanted": 1766,
+          "cells": 6266
+        },
+        "rabiah": {
+          "drawn": 0,
+          "wanted": 0,
+          "cells": 75
+        }
+      }
+    },
+    {
+      "view": "dominaria-terminator",
+      "file": "dominaria-terminator.png",
+      "settled": true,
+      "waitedMs": 5784,
+      "caption": "Dominaria over the pole — the colourless ice cap, the mono-colour bands mirrored about the equator, and the gold belt on the limb.",
+      "cssViewport": "1920×1080",
+      "dpr": 1,
+      "pngPixels": "1920×1080",
+      "cameraDistance": 20.95,
+      "cameraRadii": 2.1,
+      "cellCssPixels": 46,
+      "art": {
+        "resident": 1024,
+        "layers": 1024,
+        "inFlight": 0,
+        "wanted": 1735,
+        "completed": 1503,
+        "failed": 0,
+        "evicted": 479
+      },
+      "cells": {
+        "dominaria": {
+          "drawn": 1024,
+          "wanted": 2759,
+          "cells": 6266
+        },
+        "rabiah": {
+          "drawn": 0,
+          "wanted": 0,
+          "cells": 75
+        }
+      }
+    },
+    {
+      "view": "rabiah",
+      "file": "rabiah.png",
+      "settled": true,
+      "waitedMs": 2015,
+      "caption": "Rabiah — 75 cards, one set (Arabian Nights, 1993). Its single set owns all 360° of longitude, so a one-set plane looks complete rather than 97% missing.",
+      "cssViewport": "1920×1080",
+      "dpr": 1,
+      "pngPixels": "1920×1080",
+      "cameraDistance": 3.71,
+      "cameraRadii": 3.4,
+      "cellCssPixels": 189.6,
+      "art": {
+        "resident": 1024,
+        "layers": 1024,
+        "inFlight": 0,
+        "wanted": 0,
+        "completed": 1538,
+        "failed": 0,
+        "evicted": 514
+      },
+      "cells": {
+        "dominaria": {
+          "drawn": 0,
+          "wanted": 0,
+          "cells": 6266
+        },
+        "rabiah": {
+          "drawn": 35,
+          "wanted": 35,
+          "cells": 75
+        }
+      }
+    },
+    {
+      "view": "rabiah-near",
+      "file": "rabiah-near.png",
+      "settled": true,
+      "waitedMs": 1260,
+      "caption": "Rabiah near — 13 cells across the equator, so a small plane is a moon with big tiles, not a galaxy with too few stars.",
+      "cssViewport": "1920×1080",
+      "dpr": 1,
+      "pngPixels": "1920×1080",
+      "cameraDistance": 1.64,
+      "cameraRadii": 1.5,
+      "cellCssPixels": 910.1,
+      "art": {
+        "resident": 1024,
+        "layers": 1024,
+        "inFlight": 0,
+        "wanted": 0,
+        "completed": 1539,
+        "failed": 0,
+        "evicted": 515
+      },
+      "cells": {
+        "dominaria": {
+          "drawn": 0,
+          "wanted": 0,
+          "cells": 6266
+        },
+        "rabiah": {
+          "drawn": 33,
+          "wanted": 33,
+          "cells": 75
+        }
+      }
+    },
+    {
+      "view": "tether-far",
+      "file": "tether-far.png",
+      "settled": true,
+      "waitedMs": 1263,
+      "caption": "The tether at system scale — Dominaria (r 9.97) and Rabiah (r 1.09), 220 units apart at their shipped `home` positions. Both anchors are relaxed onto the sub-points.",
+      "cssViewport": "1920×1080",
+      "dpr": 1,
+      "pngPixels": "1920×1080",
+      "cameraDistance": 365.23,
+      "cameraRadii": 36.618,
+      "cellCssPixels": 1.4,
+      "art": {
+        "resident": 1024,
+        "layers": 1024,
+        "inFlight": 0,
+        "wanted": 0,
+        "completed": 1539,
+        "failed": 0,
+        "evicted": 515
+      },
+      "cells": {
+        "dominaria": {
+          "drawn": 0,
+          "wanted": 0,
+          "cells": 6266
+        },
+        "rabiah": {
+          "drawn": 0,
+          "wanted": 0,
+          "cells": 75
+        }
+      }
+    },
+    {
+      "view": "tether-surface",
+      "file": "tether-surface.png",
+      "settled": true,
+      "waitedMs": 5774,
+      "caption": "The tether anchored under the reticle — the near end has slid off the centre onto the surface point the reticle is on, runs across the ground on a great circle, and leaves perpendicular.",
+      "cssViewport": "1920×1080",
+      "dpr": 1,
+      "pngPixels": "1920×1080",
+      "cameraDistance": 21.94,
+      "cameraRadii": 2.2,
+      "cellCssPixels": 42.1,
+      "art": {
+        "resident": 1024,
+        "layers": 1024,
+        "inFlight": 0,
+        "wanted": 1735,
+        "completed": 1949,
+        "failed": 0,
+        "evicted": 925
+      },
+      "cells": {
+        "dominaria": {
+          "drawn": 1024,
+          "wanted": 2759,
+          "cells": 6266
+        },
+        "rabiah": {
+          "drawn": 0,
+          "wanted": 0,
+          "cells": 75
+        }
+      }
+    }
+  ],
+  "notes": [
+    "console: Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ]
+}

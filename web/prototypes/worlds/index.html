@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Eternities — concept B "worlds" prototype (DEC-694)</title>
+    <meta
+      name="description"
+      content="Throwaway prototype for the W2.3 concept decision. Not production code."
+    />
+    <link rel="stylesheet" href="./prototype.css" />
+  </head>
+  <body>
+    <canvas id="stage"></canvas>
+
+    <div id="reticle" aria-hidden="true"></div>
+
+    <div id="hud">
+      <div id="hud-title">concept B — worlds</div>
+      <pre id="hud-body">booting…</pre>
+      <div id="hud-help">
+        drag orbit · wheel dolly · <b>1</b> Dominaria · <b>2</b> Rabiah · <b>3</b> system ·
+        <b>4</b> tether · <b>h</b> hide HUD
+      </div>
+    </div>
+
+    <div id="caption">
+      <span id="caption-text"></span>
+      <span id="caption-credit"
+        >Card images and data via <b>Scryfall</b>. Art © Wizards of the Coast. Artist credit is
+        <i>not</i> in the current data contract (see review §4.4).</span
+      >
+    </div>
+
+    <div id="boot">loading Dominaria and Rabiah…</div>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
