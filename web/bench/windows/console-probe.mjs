@@ -18,6 +18,13 @@
  *                from a console, and this script says so in its own output rather than reporting a
  *                zero that would read like a clean result.
  *
+ * The GPU strings are in the reachable column only because of `gpuFromExistingCanvas`: the probe's
+ * `getContext` wrapper cannot see a context created before it was installed, which is *every*
+ * context on this path, so reading them requires going back to the app's live canvas. Getting that
+ * wrong is not cosmetic — this is the only path Firefox has, Firefox on Windows is the engine most
+ * likely to fall back to a software renderer, and `run.mjs`'s `SOFTWARE_RENDERER` refusal never sees
+ * console-probe output. So the snippet makes that judgement itself and says so in its own console.
+ *
  * `run.mjs` writes `results/console-probe.js` on every run, so the snippet can never drift from the
  * instrumentation the driven runs used. Run `node bench/windows/console-probe.mjs` to write it
  * without doing a measurement pass — the same single location, so `PROCEDURE.md` only ever names
@@ -38,8 +45,9 @@ export const CONSOLE_PROBE_SOURCE = `/* Eternities — Windows measurement kit, 
  *
  * Paste this whole block into the devtools console on the page you are measuring, then follow what
  * it prints. It reports the frame statistics, the self-check, the point-size probe and the GPU
- * strings. It CANNOT report the allocation counter or shader compile timing — those need WebGL
- * wrapped before the page loaded, which a console cannot do. Use run.mjs for those.
+ * strings, and it warns you if this browser turns out to be rendering WebGL in software. It CANNOT
+ * report the allocation counter or shader compile timing — those need WebGL wrapped before the page
+ * loaded, which a console cannot do. Use run.mjs for those.
  */
 (function () {
   var install = ${installGpuProbe.toString()};
@@ -51,6 +59,13 @@ export const CONSOLE_PROBE_SOURCE = `/* Eternities — Windows measurement kit, 
   var selfCheck = window.__eternitiesSelfCheck || null;
   var point = probe.pointSizeProbe([1, 7, 22 * dpr, 33]);
 
+  // The app's context was created long before this snippet was pasted, so the getContext wrapper
+  // never saw it and snapshot().gpu is null. getContext on a canvas that already has a context
+  // returns that context, so the driver strings are readable anyway.
+  var gpu = probe.snapshot().gpu || probe.gpuFromExistingCanvas();
+  var renderer = (gpu && (gpu.renderer || gpu.glRenderer)) || '';
+  var software = /swiftshader|llvmpipe|software|mesa offscreen|basic render/i.test(renderer);
+
   var out = {
     kit: 'windows-measurement-kit console probe',
     note: 'allocation rate and shader compile timing are NOT measurable from a console; ' +
@@ -61,7 +76,8 @@ export const CONSOLE_PROBE_SOURCE = `/* Eternities — Windows measurement kit, 
     viewport: { width: window.innerWidth, height: window.innerHeight },
     screen: { width: screen.width, height: screen.height },
     drawingBuffer: canvas ? { width: canvas.width, height: canvas.height } : null,
-    gpu: probe.snapshot().gpu,
+    gpu: gpu,
+    softwareRenderer: software,
     pointSize: point,
     bench: bench,
     selfCheck: selfCheck && {
@@ -81,6 +97,17 @@ export const CONSOLE_PROBE_SOURCE = `/* Eternities — Windows measurement kit, 
 
   var json = JSON.stringify(out, null, 2);
   console.log(json);
+  if (software) {
+    console.warn(
+      'STOP AND SAY SO: this browser is rendering WebGL in software (' + renderer + '). ' +
+      'The numbers above are not a GPU measurement.'
+    );
+  } else if (!gpu) {
+    console.warn(
+      'Could not read the GPU strings — no canvas with a live WebGL context on this page. ' +
+      'Load ?bench=1&quality=0 or ?selfcheck=1 first, then paste this again.'
+    );
+  }
   if (!bench && !selfCheck) {
     console.warn(
       'Neither window.__eternitiesBench nor window.__eternitiesSelfCheck is set. Load the page ' +

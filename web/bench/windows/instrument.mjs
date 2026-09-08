@@ -18,6 +18,9 @@
  *     `unsafe-eval`, which is why `page.waitForFunction` is unusable against a real build
  *     (`scripts/visual-gate.mjs:528`) and why every read here crosses as data.
  *   - `pointSizeProbe()` — review §9's point-size probe, run on its own context.
+ *   - `gpuFromExistingCanvas()` / `describeContext()` — the driver strings off a context that
+ *     already exists. Only the console path needs these: pasted into devtools, the `getContext`
+ *     wrap happens after the app's context is created, so nothing the wrapper sees ever arrives.
  *
  * **Bytes are estimates and labelled as such.** Allocation *counts* are exact — they are call
  * counts. The byte totals are computed from the arguments of each call against a table of
@@ -88,6 +91,7 @@ export function installGpuProbe() {
     /** Time spent inside the synchronous link-status / info-log reads three.js does at first use. */
     programSyncMs: 0,
     parallelShaderCompile: null,
+    firstDrawAtMs: null,
     firstFrameMs: null,
   }
 
@@ -136,11 +140,33 @@ export function installGpuProbe() {
   //                  further still, the cost lands here.
   //
   // `SHADER_NAME` is read out of the source because three.js emits `#define SHADER_NAME <name>`,
-  // which turns 13 anonymous programs into a named list.
+  // which turns 13 anonymous programs into a named list. For the app's raw `ShaderMaterial`s that
+  // name is empty and the row reads `(unnamed)`; `sourceHash` is what makes those rows attributable
+  // later — see `hashSource`.
   // ---------------------------------------------------------------------------------------------
   let nextProgramId = 1
   const programs = new WeakMap()
   const shaders = new WeakMap()
+
+  /**
+   * A stable content hash of one shader's source: FNV-1a, 32 bits, as hex.
+   *
+   * The point is attribution across machines. `id` is assignment order, and the order is *not*
+   * deterministic — the same page linked 14 programs on one run and 18 on another, so id 7 in the
+   * JSON the owner posts back is not id 7 here. `vertexChars`/`fragmentChars` collide freely. The
+   * source text does not: it comes from the same bundle, so a hash computed on an Iris Xe matches
+   * the hash of the same program computed here. That is what lets a naming scheme landed later be
+   * applied *retroactively* to data already returned, instead of costing a second trip to laptops we
+   * do not own. Collision resistance is irrelevant here — there are ~15 programs.
+   */
+  function hashSource(source) {
+    let hash = 0x811c9dc5
+    for (let i = 0; i < source.length; i += 1) {
+      hash ^= source.charCodeAt(i)
+      hash = (hash + ((hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24))) >>> 0
+    }
+    return hash.toString(16).padStart(8, '0')
+  }
 
   function recordFor(program) {
     if (!program) return null
@@ -154,6 +180,8 @@ export function installGpuProbe() {
         firstDrawMs: null,
         vertexChars: 0,
         fragmentChars: 0,
+        vertexHash: null,
+        fragmentHash: null,
       }
       programs.set(program, record)
       state.programs.push(record)
@@ -270,8 +298,13 @@ export function installGpuProbe() {
         // Vertex or fragment is told apart by the source, not by the shader type enum, which would
         // cost another native call: only a fragment shader declares a precision for floats in the
         // header three.js emits, and only a vertex shader has `gl_Position`.
-        if (source.indexOf('gl_Position') !== -1) record.vertexChars = source.length
-        else record.fragmentChars = source.length
+        if (source.indexOf('gl_Position') !== -1) {
+          record.vertexChars = source.length
+          record.vertexHash = hashSource(source)
+        } else {
+          record.fragmentChars = source.length
+          record.fragmentHash = hashSource(source)
+        }
         if (!record.name) record.name = nameFrom(source)
       }
       return base.apply(this, args)
@@ -311,6 +344,17 @@ export function installGpuProbe() {
       return base.apply(this, args)
     })
     const timeFirstDraw = (base) => function (...args) {
+      // Time to first frame (§9), gated on the first draw call of any kind. The gate is the whole
+      // point: two unconditional rAFs fire on the second frame the *document* paints, which is the
+      // blank page, hundreds of milliseconds before `stars.bin` has even been fetched. The earliest
+      // moment anything of the app's could be on screen is the frame that presents the first draw,
+      // so the timestamp is taken in the rAF *after* the draw that opened this gate.
+      if (state.firstDrawAtMs === null) {
+        state.firstDrawAtMs = Math.round(performance.now())
+        requestAnimationFrame(() => {
+          if (state.firstFrameMs === null) state.firstFrameMs = Math.round(performance.now())
+        })
+      }
       const record = current ? programs.get(current) : null
       if (!record || record.firstDrawMs !== null) return base.apply(this, args)
       const started = performance.now()
@@ -335,44 +379,75 @@ export function installGpuProbe() {
   // ---------------------------------------------------------------------------------------------
   let gpu = null
   const nativeGetContext = HTMLCanvasElement.prototype.getContext
+
+  /** The driver strings and limits off one context. Shared by the wrapper and the console path. */
+  function describeContext(context, kind) {
+    try {
+      const info = context.getExtension('WEBGL_debug_renderer_info')
+      return {
+        kind,
+        vendor: info ? context.getParameter(info.UNMASKED_VENDOR_WEBGL) : null,
+        renderer: info ? context.getParameter(info.UNMASKED_RENDERER_WEBGL) : null,
+        glVendor: context.getParameter(context.VENDOR),
+        glRenderer: context.getParameter(context.RENDERER),
+        version: context.getParameter(context.VERSION),
+        maxTextureSize: context.getParameter(context.MAX_TEXTURE_SIZE),
+        aliasedPointSizeRange: Array.from(
+          context.getParameter(context.ALIASED_POINT_SIZE_RANGE) || [],
+        ),
+      }
+    } catch {
+      return { kind, vendor: null, renderer: null, error: 'driver strings unavailable' }
+    }
+  }
+
   HTMLCanvasElement.prototype.getContext = function (kind, ...rest) {
     const context = nativeGetContext.call(this, kind, ...rest)
     if (context && (kind === 'webgl' || kind === 'webgl2' || kind === 'experimental-webgl')) {
       state.contexts += 1
       if (!gpu) {
+        gpu = describeContext(context, kind)
         try {
-          const info = context.getExtension('WEBGL_debug_renderer_info')
-          gpu = {
-            kind,
-            vendor: info ? context.getParameter(info.UNMASKED_VENDOR_WEBGL) : null,
-            renderer: info ? context.getParameter(info.UNMASKED_RENDERER_WEBGL) : null,
-            glVendor: context.getParameter(context.VENDOR),
-            glRenderer: context.getParameter(context.RENDERER),
-            version: context.getParameter(context.VERSION),
-            maxTextureSize: context.getParameter(context.MAX_TEXTURE_SIZE),
-            aliasedPointSizeRange: Array.from(
-              context.getParameter(context.ALIASED_POINT_SIZE_RANGE) || [],
-            ),
-          }
           // KHR_parallel_shader_compile is the extension that lets an engine link without
           // stalling. Whether ANGLE offers it here is half the answer to §9's compile question.
           state.parallelShaderCompile = context.getExtension('KHR_parallel_shader_compile') !== null
         } catch {
-          gpu = { kind, vendor: null, renderer: null, error: 'driver strings unavailable' }
+          state.parallelShaderCompile = null
         }
       }
     }
     return context
   }
 
-  // Time to first frame, from navigation start. Measured as the first rAF that follows the first
-  // draw call of any kind, which is the earliest moment anything could be on screen.
+  /**
+   * The driver strings off a context that already exists — the console path's only way to get them.
+   *
+   * `gpu` is filled by the `getContext` wrapper, which can only see contexts created *after* the
+   * wrap. Pasted into a devtools console the wrap happens last, so `gpu` would be `null` forever
+   * while the snippet's banner claimed otherwise. `getContext` on a canvas that already has a
+   * context returns **that** context rather than creating one, so the strings are readable after
+   * all; `nativeGetContext` is used so this cannot disturb the allocation counters. Matters most on
+   * Firefox, which is the only engine with no driven path and the one likeliest on Windows to fall
+   * back to a software renderer.
+   */
+  function gpuFromExistingCanvas() {
+    if (gpu) return gpu
+    const canvases = document.querySelectorAll('canvas')
+    for (const canvas of canvases) {
+      for (const kind of ['webgl2', 'webgl']) {
+        let context = null
+        try {
+          context = nativeGetContext.call(canvas, kind)
+        } catch {
+          context = null
+        }
+        if (context) return describeContext(context, kind)
+      }
+    }
+    return null
+  }
+
   const navigationStart = performance.timeOrigin || 0
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      if (state.firstFrameMs === null) state.firstFrameMs = Math.round(performance.now())
-    })
-  })
 
   /**
    * Review §9's point-size probe, on a context of its own so the app's canvas is untouched.
@@ -450,6 +525,9 @@ void main() { fragColor = vec4(1.0); }`))
         timeOrigin: navigationStart,
         gpu,
         contexts: state.contexts,
+        // Both are gated on the first real draw call. `firstDrawAtMs` is when the app first asked
+        // the GPU to draw; `firstFrameMs` is the rAF that presented it. See `timeFirstDraw`.
+        firstDrawAtMs: state.firstDrawAtMs,
         firstFrameMs: state.firstFrameMs,
         parallelShaderCompile: state.parallelShaderCompile,
         textures: {
@@ -472,13 +550,19 @@ void main() { fragColor = vec4(1.0); }`))
         programs: {
           linkProgramCalls: state.linkProgramCalls,
           syncMsTotal: Math.round(state.programSyncMs * 100) / 100,
-          // A copy, so a caller cannot mutate the live records between snapshots.
-          each: state.programs.map((record) => ({ ...record })),
+          // A copy, so a caller cannot mutate the live records between snapshots. `sourceHash` is
+          // the only field here that identifies the *same* program across two machines.
+          each: state.programs.map((record) => ({
+            ...record,
+            sourceHash: `${record.vertexHash ?? '-'}.${record.fragmentHash ?? '-'}`,
+          })),
         },
         unknownFormats: state.unknownFormats.slice(),
       }
     },
     pointSizeProbe,
+    describeContext,
+    gpuFromExistingCanvas,
   }
 }
 
