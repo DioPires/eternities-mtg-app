@@ -124,3 +124,8 @@ judge them — send the files back either way. But these are the ones that matte
 
 Anything else — a failed criterion, a slow number, an ugly picture — is a result, not a problem.
 Send it.
+
+One line that looks alarming but is not: `self-check float32 ... FAILED: the page went away`, followed
+by `self-check float32 (attempt 2)`. The browser occasionally drops the page before it answers; the
+kit relaunches it once and the report records `[took 2 attempts]`. Let it run. Only the **second**
+failure in a row is a real one.

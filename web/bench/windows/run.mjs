@@ -63,6 +63,12 @@
  * A browser that is missing or undrivable never aborts the pass: it is recorded as not run and the
  * others still produce a report. `--keep-going` is about failures of individual runs inside a
  * browser that otherwise works.
+ *
+ * `KIT_FAULT_DETACH=1` in the environment makes the *first* self-check attempt throw the detached
+ * frame error that `PAGE_IS_GONE` is about. It exists because the real fault is a rare flake that
+ * will not reproduce on demand, and a recovery path nobody has ever seen run is not a recovery
+ * path: this is how you check that the retry fires, that it recovers, and that the report says it
+ * happened. Nothing else reads it.
  */
 
 import { execFileSync, spawn } from 'node:child_process'
@@ -269,6 +275,20 @@ async function startPreview() {
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms))
 
 /**
+ * Errors that mean this page will never answer again, so polling on to the deadline is pointless.
+ *
+ * A main-frame swap that puppeteer fails to follow leaves the `Page` pointing at a frame that is
+ * already detached, and *every* later `evaluate` throws the same thing — so a self-check that has
+ * really gone wrong burns its full 600 s timeout before saying so. Observed once on Brave, on the
+ * float32 self-check, on macOS.
+ *
+ * `Execution context was destroyed` is deliberately **not** here: that one is an ordinary
+ * navigation racing a read, and the next poll succeeds. Treating it as fatal would abort healthy
+ * runs.
+ */
+const PAGE_IS_GONE = /detached Frame|Target closed|Session closed|Target crashed/i
+
+/**
  * Poll `read` until `ok` accepts it, or throw.
  *
  * The predicate stays in Node and only data crosses, so nothing is compiled in the page and this
@@ -283,6 +303,11 @@ async function pollFor(read, ok, describe, timeout, onSample) {
       if (onSample) onSample(last)
       if (ok(last)) return last
     } catch (error) {
+      if (PAGE_IS_GONE.test(error.message)) {
+        const gone = new Error(`the page went away while waiting for ${describe}: ${error.message}`)
+        gone.pageIsGone = true
+        throw gone
+      }
       last = `threw ${error.message}`
     }
     if (Date.now() > deadline) {
@@ -490,7 +515,12 @@ async function selfCheckRun(browserProcess, args, positions) {
     if (positions) query.set('positions', positions)
     await page.goto(`${args.url}/?${query}`, { waitUntil: 'load', timeout: 120_000 })
     const result = await pollFor(
-      () => page.evaluate(() => window.__eternitiesSelfCheck ?? null),
+      () => {
+        if (process.env['KIT_FAULT_DETACH'] === '1' && selfCheckAttempts === 1) {
+          throw new Error("Attempted to use detached Frame 'FAULTINJECTED'.")
+        }
+        return page.evaluate(() => window.__eternitiesSelfCheck ?? null)
+      },
       (value) => value !== null,
       `the self-check result (${positions ?? 'float16'})`,
       600_000,
@@ -515,6 +545,46 @@ async function selfCheckRun(browserProcess, args, positions) {
     }
   } finally {
     await page.close().catch(() => {})
+  }
+}
+
+/** How many times a self-check may be launched before its failure is recorded as the result. */
+const SELF_CHECK_ATTEMPTS = 2
+
+/** Which attempt is in flight; read only by the `KIT_FAULT_DETACH` fault injection. */
+let selfCheckAttempts = 0
+
+/**
+ * One self-check, retried on a fresh browser if the page went away rather than answered.
+ *
+ * A self-check is a fresh load that computes its verdict from scratch, so re-running it is free of
+ * consequence — unlike a bench run, which is a timed camera path and must not be silently repeated
+ * until it looks good. The retry is bounded, it fires **only** for `PAGE_IS_GONE` (never for a
+ * tolerance failure, which is the finding §9 is asking for), and the attempt count is recorded, so
+ * a machine that needs the retry every time is visible in the report instead of hidden by it.
+ */
+async function selfCheckWithRetry(browser, args, positions) {
+  const label = positions ?? 'float16'
+  for (let attempt = 1; ; attempt += 1) {
+    selfCheckAttempts = attempt
+    process.stdout.write(`  self-check ${label}${attempt > 1 ? ` (attempt ${attempt})` : ''} ... `)
+    const browserProcess = await launch(browser, args, args.resolutions[0], false)
+    try {
+      const check = await selfCheckRun(browserProcess, args, positions)
+      console.log(
+        `${check.ok ? 'ok' : 'FAILED'} — mode ${check.positionMode}` +
+          `${check.took ? '' : ' (REQUESTED MODE DID NOT TAKE)'}, ` +
+          `${check.missed} missed, max offset ${check.maxOffsetPx} px`,
+      )
+      return attempt > 1 ? { ...check, attempts: attempt } : check
+    } catch (error) {
+      const gone = error.pageIsGone || PAGE_IS_GONE.test(error.message)
+      console.log(`FAILED: ${error.message.split('\n')[0]}`)
+      if (gone && attempt < SELF_CHECK_ATTEMPTS) continue
+      return { requestedPositions: label, attempts: attempt, error: error.message }
+    } finally {
+      await browserProcess.close().catch(() => {})
+    }
   }
 }
 
@@ -563,23 +633,10 @@ async function runBrowser(name, args) {
 
   if (!args.quick) {
     for (const positions of [null, 'float32']) {
-      process.stdout.write(`  self-check ${positions ?? 'float16'} ... `)
-      const browserProcess = await launch(browser, args, args.resolutions[0], false)
-      try {
-        const check = await selfCheckRun(browserProcess, args, positions)
-        selfChecks.push(check)
-        console.log(
-          `${check.ok ? 'ok' : 'FAILED'} — mode ${check.positionMode}` +
-            `${check.took ? '' : ' (REQUESTED MODE DID NOT TAKE)'}, ` +
-            `${check.missed} missed, max offset ${check.maxOffsetPx} px`,
-        )
-      } catch (error) {
-        console.log(`FAILED: ${error.message.split('\n')[0]}`)
-        selfChecks.push({ requestedPositions: positions ?? 'float16', error: error.message })
-        if (!args.keepGoing) throw error
-      } finally {
-        await browserProcess.close().catch(() => {})
-      }
+      const check = await selfCheckWithRetry(browser, args, positions)
+      selfChecks.push(check)
+      if (!check.error) continue
+      if (!args.keepGoing) throw new Error(check.error)
     }
   }
 
@@ -793,12 +850,17 @@ function summarise(report) {
     }
 
     for (const check of engine.selfChecks) {
+      // A retried self-check says so on its own line. A machine where the page keeps going away is
+      // a finding about that machine, and it must not be readable as a clean first-try pass.
+      const retried = check.attempts > 1 ? ` [took ${check.attempts} attempts]` : ''
       if (check.error) {
-        lines.push(`\n  self-check ${check.requestedPositions}: FAILED — ${check.error.split('\n')[0]}`)
+        lines.push(
+          `\n  self-check ${check.requestedPositions}: FAILED${retried} — ${check.error.split('\n')[0]}`,
+        )
         continue
       }
       lines.push(
-        `\n  self-check ${check.requestedPositions}: ${check.ok ? 'ok' : 'FAILED'} — ` +
+        `\n  self-check ${check.requestedPositions}: ${check.ok ? 'ok' : 'FAILED'}${retried} — ` +
           `mode ${check.positionMode}${check.took ? '' : ' (DID NOT TAKE)'}, ` +
           `${check.measured} measured, ${check.agreed} agreed, ${check.occluded} occluded, ` +
           `${check.missed} missed, mean ${check.meanOffsetPx} px, max ${check.maxOffsetPx} px ` +
