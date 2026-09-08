@@ -47,6 +47,16 @@ export interface StarSceneHandle {
   /** Any star's live world position. The mirror is cheap; PRD 8.5.7 only limits *who* calls it. */
   starPosition: (index: number, out: Vector3) => boolean
   readonly focusedIndex: number
+  /**
+   * The frame-interval band the quality monitor is judging against, for the `?probe=1` seam and the
+   * bench (DEC-692 R5). Derived from the display's refresh period, not from a constant, so it is
+   * worth reporting: the same p90 means different things on a 60 Hz and a 120 Hz panel.
+   */
+  readonly qualityThresholds: {
+    readonly refreshMs: number
+    readonly degradeMs: number
+    readonly restoreMs: number
+  }
 }
 
 export interface StarSceneProps {
@@ -88,12 +98,21 @@ export function StarScene({
   const gl = useThree((state) => state.gl)
   const scene = useThree((state) => state.scene)
   const camera = useThree((state) => state.camera)
-  const setDpr = useThree((state) => state.setDpr)
 
   const background = useMemo(() => createBackground(), [])
   const idPicker = useMemo(() => new IdPicker(), [])
   const planePicker = useMemo(() => new PlanePicker(), [])
   const quality = useMemo(() => new QualityMonitor(pinnedQualityOptions(pinnedQualityTier())), [])
+  /**
+   * `?selfcheck=1`, read **once** (DEC-692 R7).
+   *
+   * The frame callback below consults it every frame to decide whether to feed the monitor, and
+   * `selfCheckRequested()` parses `location.search` into a fresh `URLSearchParams` each call — an
+   * allocation per frame on a path whose own header promises none. A flag the page was *opened*
+   * with is not a value that may change under it, which is the same argument `EternitiesScene`
+   * makes for latching `?probe=` and `?quality=`.
+   */
+  const selfCheckWanted = useMemo(() => selfCheckRequested(), [])
 
   // Callbacks live in a ref so that a caller passing inline arrows — which every React caller
   // eventually does — cannot re-subscribe pointer listeners or reset the pixel ratio on a render.
@@ -124,10 +143,18 @@ export function StarScene({
       get focusedIndex() {
         return focused.current
       },
+      get qualityThresholds() {
+        const band = quality.thresholdsMs
+        return {
+          refreshMs: quality.refreshIntervalMs,
+          degradeMs: band.degrade,
+          restoreMs: band.restore,
+        }
+      },
     }),
     // `readStarPosition` closes over refs and `resources`, so the handle is rebuilt only when the
     // scene itself is.
-    [resources],
+    [resources, quality],
   )
 
   function readStarPosition(index: number, out: Vector3): boolean {
@@ -254,16 +281,16 @@ export function StarScene({
     }
   }
 
-  useEffect(() => {
-    const unsubscribe = quality.subscribe((tier, index) => {
-      setDpr(Math.min(tier.pixelRatioCap, window.devicePixelRatio))
-      callbacks.current.onQualityChange?.(tier, index)
-    })
-    // Start at the tier's cap rather than at whatever the canvas defaulted to. PRD 7.1.3: this is
-    // also what bounds the cost of a 4K display.
-    setDpr(Math.min(quality.tier.pixelRatioCap, window.devicePixelRatio))
-    return unsubscribe
-  }, [quality, setDpr])
+  // PRD 7.1.3's pixel-ratio cap is *not* applied here any more (DEC-692 R2). This used to call
+  // `setDpr(min(tier.pixelRatioCap, devicePixelRatio))` on mount and on every tier change, which
+  // made two writers of one number: R3F re-applies the `<Canvas dpr>` prop on every render, so
+  // whichever ran last won and under the free ladder that was the prop, twice a second. The prop is
+  // now a range — `dpr={[0.5, tier.pixelRatioCap]}`, which R3F resolves to exactly the `min` above
+  // — so the cap has one writer and the rung lands. All this effect does is announce the change.
+  useEffect(
+    () => quality.subscribe((tier, index) => callbacks.current.onQualityChange?.(tier, index)),
+    [quality],
+  )
 
   useEffect(
     () => () => {
@@ -276,7 +303,7 @@ export function StarScene({
   // PRD 8.5.6 and 8.5.7, checked against each other on a real GPU. Diagnostic only, and only when
   // the URL asks; `scripts/verify-browser.mjs` is the caller. See `./selfCheck`.
   useEffect(() => {
-    if (!resources || !starsComplete || !selfCheckRequested() || !isPerspective(camera)) return
+    if (!resources || !starsComplete || !selfCheckWanted || !isPerspective(camera)) return
     let cancelled = false
     // One second in, so every plane has finished fading and the field has actually moved.
     const timer = window.setTimeout(() => {
@@ -300,7 +327,7 @@ export function StarScene({
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [resources, starsComplete, gl, scene, camera, idPicker, reducedMotion])
+  }, [resources, starsComplete, selfCheckWanted, gl, scene, camera, idPicker, reducedMotion])
 
   useFrame((_, delta) => {
     const started = performance.now()
@@ -334,7 +361,7 @@ export function StarScene({
     // The self-check compares two implementations of one formula; a quality change mid-run
     // resizes the drawing buffer and rebuilds the effect composer underneath it, which is a
     // different subject. Hold the tier still while it runs.
-    if (!selfCheckRequested()) quality.sample(frameMs)
+    if (!selfCheckWanted) quality.sample(frameMs)
     callbacks.current.onFrame?.(frameMs, cpuMs, resources?.geometry.drawCount ?? 0)
   })
 

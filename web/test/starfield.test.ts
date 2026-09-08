@@ -23,10 +23,13 @@ import {
 } from '../src/data/types'
 import { SceneErrorHub } from '../src/scene/errors'
 import {
+  DEFAULT_REFRESH_MS,
   QualityMonitor,
   QUALITY_TIERS,
+  degradeThresholdMs,
   pinnedQualityOptions,
   pinnedQualityTier,
+  restoreThresholdMs,
 } from '../src/scene/quality/adaptiveQuality'
 import {
   CURL_EPSILON,
@@ -538,6 +541,162 @@ describe('adaptive quality (PRD 8.5.11)', () => {
     for (const search of ['?quality=4', '?quality=-1', '?quality=1.5', '?quality=', '', '?q=2', '?quality=full']) {
       expect(pinnedQualityTier(search)).toBeNull()
     }
+  })
+})
+
+/**
+ * The monitor is fed frame *intervals*, and on a vsync-locked page an interval is a multiple of the
+ * display's refresh period whatever the frame costs. The two absolutes this shipped with therefore
+ * measured the display: 13.5 ms to restore is below a healthy 60 Hz frame, and 20 ms to degrade is
+ * above an unhealthy 120 Hz one. Both directions are pinned here (DEC-692 R5, review R5/§3.2).
+ */
+describe('adaptive quality thresholds follow the display (DEC-692 R5)', () => {
+  const HZ_60 = DEFAULT_REFRESH_MS
+  const HZ_120 = 1000 / 120
+
+  const feed = (monitor: QualityMonitor, ms: number, seconds: number): void => {
+    for (let t = 0; t < (seconds * 1000) / ms; t += 1) monitor.sample(ms)
+  }
+
+  it('keeps the two thresholds ordered at every display period it can learn', () => {
+    // The review's wording — "fine at p90 ≤ one vsync + 0.5 ms, degrade above 1.05 vsync" — crosses
+    // over below a 10 ms period. These must not, or one p90 would both degrade and restore.
+    for (const hz of [60, 75, 90, 100, 120, 144, 240]) {
+      const refresh = 1000 / hz
+      expect(degradeThresholdMs(refresh)).toBeGreaterThan(restoreThresholdMs(refresh))
+      // And a frame that hits the cadence exactly is always "fine".
+      expect(restoreThresholdMs(refresh)).toBeGreaterThan(refresh)
+    }
+  })
+
+  it('restores on a 60 Hz panel, where the 13.5 ms threshold made the ladder one-way', () => {
+    const monitor = new QualityMonitor()
+    expect(monitor.refreshIntervalMs).toBeCloseTo(HZ_60, 6)
+
+    // Every other frame missed: 60 Hz vsync, 30 fps delivered.
+    feed(monitor, HZ_60 * 2, 4)
+    const degraded = monitor.index
+    expect(degraded).toBeGreaterThan(0)
+
+    // Now perfectly healthy *for this panel* — and 16.67 ms is above the old 13.5 ms restore
+    // threshold, so this is the case that could never step back up.
+    feed(monitor, HZ_60, 20)
+    expect(monitor.index).toBeLessThan(degraded)
+
+    // The control: the two absolutes this shipped with, fed exactly the same frames. It degrades
+    // and then cannot come back, which is the defect — so the assertion above is not vacuous.
+    const shipped = new QualityMonitor({ degradeMs: 20, restoreMs: 13.5 })
+    feed(shipped, HZ_60 * 2, 4)
+    expect(shipped.index).toBeGreaterThan(0)
+    feed(shipped, HZ_60, 20)
+    expect(shipped.index).toBeGreaterThan(0)
+  })
+
+  it('reacts when a 120 Hz panel halves, then settles once 60 fps is the sustained cadence', () => {
+    const monitor = new QualityMonitor()
+    // Let it see the panel's own cadence first.
+    feed(monitor, HZ_120, 4)
+    expect(monitor.refreshIntervalMs).toBeCloseTo(HZ_120, 6)
+    expect(monitor.index).toBe(0)
+
+    // Half the refresh rate. Under the shipped absolute this is 16.67 ms against a 20 ms trigger,
+    // so the ladder sat at `full` while the app delivered half the frames the display could show.
+    // Here it steps down, because the band in force is still the 120 Hz one.
+    feed(monitor, HZ_120 * 2, 4)
+    expect(monitor.index).toBeGreaterThan(0)
+
+    // The control, with the shipped absolutes: 16.67 ms never reaches a 20 ms trigger at all.
+    const shipped = new QualityMonitor({ degradeMs: 20, restoreMs: 13.5 })
+    feed(shipped, HZ_120, 4)
+    feed(shipped, HZ_120 * 2, 4)
+    expect(shipped.index).toBe(0)
+
+    // **And then it comes back, which is the honest end of this story.** Once 16.67 ms is the
+    // cadence the page has sustained for a while, the estimate rises to the 60 Hz cap and the band
+    // widens to match, so the monitor stops treating it as trouble. The review wanted this case
+    // caught outright; catching it permanently needs the running-minimum estimate, which the test
+    // below measures doing real harm. 60 fps is the floor the app is judged against, so this errs
+    // towards leaving a machine that meets the floor alone. Asserted rather than left implicit:
+    // the previous version of this test stopped at four seconds and read as though the step down
+    // were permanent, which it is not.
+    feed(monitor, HZ_120 * 2, 30)
+    expect(monitor.index).toBe(0)
+    expect(monitor.refreshIntervalMs).toBeCloseTo(HZ_60, 6)
+  })
+
+  it('does not ratchet down on an adaptive-refresh panel (the measured regression)', () => {
+    // Real rAF intervals from the review machine (Chrome, `--use-angle=metal`, 1920×1080, idle):
+    // min 11.4 ms, median 13.3, p90 13.8 — a panel with no single period, sustaining about 75 Hz.
+    const observed = [11.4, 12.6, 13.1, 13.3, 13.3, 13.4, 13.5, 13.6, 13.8, 13.9]
+    const monitor = new QualityMonitor()
+    for (let i = 0; i < 6000; i += 1) monitor.sample(observed[i % observed.length]!)
+
+    // The cadence, not the fastest frame it ever managed.
+    expect(monitor.refreshIntervalMs).toBeCloseTo(1000 / 75, 6)
+    // A healthy machine is left alone. This is what was red before the estimate stopped being a
+    // running minimum: an idle probe run finished pinned at the bottom `thumbnails` tier.
+    expect(monitor.index).toBe(0)
+    // The p90 of that healthy run has to sit inside the band, or restoring is impossible.
+    expect(monitor.thresholdsMs.restore).toBeGreaterThan(13.9)
+
+    // The control: the period a running minimum would have latched from that 11.4 ms frame. The
+    // band it produces puts `restore` under the p90 of a perfectly healthy run, so a monitor
+    // knocked down once can never climb back — the one-way ladder R5 exists to remove.
+    const latched = new QualityMonitor({ refreshMs: 1000 / 90 })
+    expect(latched.thresholdsMs.restore).toBeLessThan(13.9)
+    latched.setTier(2)
+    for (let i = 0; i < 6000; i += 1) latched.sample(observed[i % observed.length]!)
+    expect(latched.index).toBe(2)
+  })
+
+  it('will not learn a period slower than the 60 fps floor', () => {
+    const monitor = new QualityMonitor()
+    // A 30 Hz panel, or a page in trouble from its first frame — indistinguishable from intervals
+    // alone. The monitor declines to relax, degrades, and that is the safe direction.
+    feed(monitor, 33, 4)
+    expect(monitor.refreshIntervalMs).toBeCloseTo(HZ_60, 6)
+    expect(monitor.index).toBeGreaterThan(0)
+  })
+
+  it('does not degrade a healthy vsync-locked run on its jitter', () => {
+    // The case that caught a first attempt at this: the e2e bench smoke on a SwiftShader runner
+    // throttled to 60 Hz reports p50 16.9 ms and p95 19.1 ms while keeping up. Frame intervals are
+    // not cleanly quantised to the refresh period, so a threshold sitting a millisecond or two
+    // above it walks a machine that is fine all the way down the ladder.
+    const monitor = new QualityMonitor()
+    const jitter = [16.4, 16.7, 17.1, 16.6, 18.2, 16.9, 19.1, 16.5, 17.6, 16.8]
+    for (let i = 0; i < 1200; i += 1) monitor.sample(jitter[i % jitter.length]!)
+    expect(monitor.index).toBe(0)
+
+    // And a tier that was pushed down by real trouble still comes back through that jitter.
+    const recovering = new QualityMonitor()
+    feed(recovering, HZ_60 * 2, 4)
+    expect(recovering.index).toBeGreaterThan(0)
+    for (let i = 0; i < 3000; i += 1) recovering.sample(jitter[i % jitter.length]!)
+    expect(recovering.index).toBe(0)
+  })
+
+  it('cannot be made strict by one anomalously short interval', () => {
+    const monitor = new QualityMonitor()
+    feed(monitor, HZ_120, 2)
+    // A 6 ms rAF callback on a 120 Hz panel. A raw running minimum would take it as the period and
+    // put every threshold below the panel's own 8.33 ms, degrading the ladder to the floor.
+    monitor.sample(6)
+    expect(monitor.refreshIntervalMs).toBeCloseTo(HZ_120, 6)
+    feed(monitor, HZ_120, 6)
+    expect(monitor.index).toBe(0)
+  })
+
+  it('lets a caller state the period, and an absolute threshold still override it', () => {
+    const stated = new QualityMonitor({ refreshMs: HZ_120 })
+    expect(stated.refreshIntervalMs).toBeCloseTo(HZ_120, 6)
+    expect(stated.thresholdsMs.degrade).toBeCloseTo(degradeThresholdMs(HZ_120), 6)
+
+    // The bench and the unit suite measure against a budget of their own choosing.
+    const absolute = new QualityMonitor({ degradeMs: 40, restoreMs: 5 })
+    expect(absolute.thresholdsMs).toEqual({ degrade: 40, restore: 5 })
+    feed(absolute, 30, 4)
+    expect(absolute.index).toBe(0)
   })
 })
 

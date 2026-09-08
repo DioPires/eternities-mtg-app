@@ -16,6 +16,22 @@
  *
  * "Geometry and motion are never degraded" is a structural promise here: nothing in the ladder can
  * reach the star count, the draw range, or `uMotion`.
+ *
+ * **The thresholds are relative to the display, not absolute.** What `sample` is fed is a frame
+ * *interval*, and on a vsync-locked page that interval is a multiple of the display's refresh
+ * period whatever the frame costs — so an absolute threshold measures the monitor rather than the
+ * app. The two absolutes this shipped with (degrade above 20 ms, restore below 13.5 ms) were both
+ * wrong for that reason: on a 60 Hz panel a *healthy* frame reports 16.7 ms, which is above the
+ * restore threshold, so the ladder could only ever descend; and 20 ms is PRD 7.2's 50 fps ceiling,
+ * so 50–59 fps was accepted as fine on that same panel. See {@link refreshIntervalMs} for what
+ * replaces them.
+ *
+ * The review also wanted the converse caught — a 120 Hz panel dropping every second frame is still
+ * only 60 fps. It is **not** caught here, deliberately: the estimate is capped at the 60 Hz period,
+ * so a page sustaining 16.7 ms reads as a 60 Hz panel whatever the panel is. Catching that case
+ * needs the refresh estimate to be a running *minimum*, which was tried and measured doing real
+ * damage on an adaptive-refresh display — see {@link REFRESH_QUANTILE}. 60 fps is the floor the app
+ * is judged against, so the trade lands on not degrading a machine that is meeting it.
  */
 
 export interface QualityTier {
@@ -36,9 +52,20 @@ export const QUALITY_TIERS: readonly QualityTier[] = [
 ]
 
 export interface QualityMonitorOptions {
-  /** Step down when the window's p90 frame time exceeds this. Default 20 ms — PRD 7.2's 50 fps. */
+  /**
+   * The display's refresh interval in milliseconds, when the caller knows it. Setting it stops the
+   * monitor estimating one; capped at 60 Hz's period like every estimate is.
+   *
+   * Left unset the monitor starts at 60 Hz — the floor the app is held to — and re-estimates from
+   * the cadence the frame intervals actually sustain. See {@link refreshIntervalMs}.
+   */
+  readonly refreshMs?: number
+  /**
+   * Absolute step-down threshold, overriding the one derived from the refresh interval. For tests
+   * and for a caller that has measured its own budget; nothing in the app sets it.
+   */
   readonly degradeMs?: number
-  /** Step up when the window's p90 is under this. Default 13.5 ms, comfortably inside 60 fps. */
+  /** Absolute step-up threshold, overriding the derived one. See {@link degradeMs}. */
   readonly restoreMs?: number
   /** Seconds of sustained trouble before stepping down. */
   readonly degradeWindowS?: number
@@ -55,16 +82,14 @@ export interface QualityMonitorOptions {
   readonly maxTier?: number
   /**
    * Lowest tier the monitor may use. Setting it equal to `maxTier` pins the ladder, which is what
-   * PRD 9.1.4's forced degradation needs: on the reference machine the p90 sits far under
-   * `restoreMs`, so a tier that is merely *set* climbs back to `full` within `restoreWindowS` and
-   * there is nothing left to look at. See {@link pinnedQualityTier}.
+   * PRD 9.1.4's forced degradation needs: on the reference machine the p90 sits far under the
+   * restore threshold, so a tier that is merely *set* climbs back to `full` within
+   * `restoreWindowS` and there is nothing left to look at. See {@link pinnedQualityTier}.
    */
   readonly minTier?: number
 }
 
 const DEFAULTS = {
-  degradeMs: 20,
-  restoreMs: 13.5,
   degradeWindowS: 1.5,
   restoreWindowS: 5,
   cooldownS: 2,
@@ -73,6 +98,98 @@ const DEFAULTS = {
 
 /** Frames held in the rolling window. 4 s at 120 fps, which covers the longest window above. */
 const WINDOW = 512
+
+/**
+ * The refresh interval assumed until one is observed or supplied: the owner's 60 fps floor.
+ *
+ * Also the ceiling on the estimate. A panel slower than 60 Hz would make every threshold looser
+ * than the floor the app is judged against, so the monitor declines to learn one — on such a panel
+ * it holds the app to 60 fps and will sit at a lower tier, which is the honest outcome.
+ */
+export const DEFAULT_REFRESH_MS = 1000 / 60
+
+/**
+ * The plausible display periods the estimate snaps to, fastest first: 120, 100, 90, 75, 60 Hz.
+ *
+ * Snapping is what keeps the estimate off the jitter: an observed 8.30 ms reads as the 8.33 ms
+ * period it came from rather than as a period no panel has.
+ */
+const REFRESH_PERIODS_MS = [1000 / 120, 1000 / 100, 1000 / 90, 1000 / 75, DEFAULT_REFRESH_MS]
+
+/**
+ * The quantile of the rolling window taken as the display's cadence, and how often to re-take it.
+ *
+ * **Not the minimum, which is what this replaced and which was wrong on real hardware.** The
+ * argument for a running minimum is seductive — a vsync-locked interval can never be shorter than
+ * the period, so the shortest frame seen bounds it from above and no fast frame can make the
+ * monitor lenient. It fails on an adaptive-refresh panel, where there is no single period.
+ * Measured on the review machine (Chrome, `--use-angle=metal`, 1920×1080): rAF intervals min
+ * 11.4 ms, median 13.3, p90 13.8 — the minimum snaps to the 90 Hz period at 11.11 while the panel
+ * actually sustains 75 Hz, so `restore` lands at 1.2 × 11.11 = 13.33 ms, *below* the p90 of a
+ * perfectly healthy run. The ladder could then descend and never climb back: exactly the one-way
+ * ratchet R5 exists to remove, moved from 60 Hz to 90. It was observed doing it — a probe run
+ * finished pinned at the bottom `thumbnails` tier on an idle machine.
+ *
+ * A low quantile of the window tracks the cadence the browser is *sustaining* instead, and is let
+ * to move in both directions. The direction that would be dangerous — trouble inflating the
+ * estimate until the monitor stops caring — is bounded by {@link DEFAULT_REFRESH_MS}: the loosest
+ * band reachable is the one derived from 60 Hz, which is the floor the app is held to anyway.
+ *
+ * The cost of that bound: a 120 Hz panel locked to exactly 60 fps reads as a 60 Hz panel and is
+ * accepted. The review named that as a case worth catching, and catching it requires the minimum,
+ * which is measurably harmful here. Meeting the 60 fps floor is the stated contract, so this errs
+ * towards not degrading a machine that is meeting it.
+ */
+const REFRESH_QUANTILE = 0.2
+const REFRESH_ESTIMATE_FRAMES = 60
+
+/** Tolerance on the snap, so a 8.30 ms interval reads as the 8.33 ms period it came from. */
+const SNAP_TOLERANCE = 0.98
+
+/**
+ * Both thresholds are multiples of the refresh period, and both sit between "one vsync with
+ * jitter" and "two vsyncs".
+ *
+ * The tempting reading of the review's wording — "fine at p90 ≤ one vsync + 0.5 ms, degrade above
+ * 1.05 vsync" — is wrong twice. It inverts below a 10 ms period (1.05 × 8.33 = 8.75 is *under*
+ * 8.33 + 0.5 = 8.83), so the same p90 would both degrade and restore on a 120 Hz panel. And it
+ * assumes the intervals are cleanly quantised to multiples of the period, which they are not: a
+ * healthy vsync-locked run jitters a couple of milliseconds above the period, and thresholds that
+ * close to it fire on the jitter. Measured: the e2e bench smoke on a SwiftShader runner throttled
+ * to 60 Hz reports p50 16.9 ms and p95 19.1 ms while keeping up, and a 1.05 or a "+1.5 ms" trigger
+ * walked it down all three rungs for nothing.
+ *
+ * So: **1.20 × the period to restore, 1.45 × to degrade.** On 60 Hz that is 20.0 and 24.2 ms, both
+ * clear of the jitter and both well under two refreshes at 33.3; on 120 Hz, 10.0 and 12.1 against
+ * a second refresh at 16.7. Ordered at every period, with a dead band between them so the ladder
+ * settles. What it costs is that up to about a twentieth of the frames may double before the
+ * monitor calls it trouble — the price of not degrading a machine that is in fact fine.
+ */
+const RESTORE_FACTOR = 1.2
+const DEGRADE_FACTOR = 1.45
+
+/**
+ * Round an observed frame interval up to the nearest real display period, and never past 60 Hz.
+ *
+ * The clamp is the safety property: whatever the page reports, the widest band this can produce is
+ * the 60 Hz one. See {@link REFRESH_QUANTILE}.
+ */
+function snapRefresh(observedMs: number): number {
+  for (const period of REFRESH_PERIODS_MS) {
+    if (period >= observedMs * SNAP_TOLERANCE) return period
+  }
+  return DEFAULT_REFRESH_MS
+}
+
+/** Step down above this p90. Exported so the bench and the probe can report the band in force. */
+export function degradeThresholdMs(refreshMs: number): number {
+  return refreshMs * DEGRADE_FACTOR
+}
+
+/** Step up below this p90. */
+export function restoreThresholdMs(refreshMs: number): number {
+  return refreshMs * RESTORE_FACTOR
+}
 
 /** Round a tier index to an integer inside the ladder. Everything that sets a tier goes through it. */
 function inLadder(index: number): number {
@@ -100,8 +217,14 @@ export function pinnedQualityOptions(pin: number | null): QualityMonitorOptions 
   return pin === null ? {} : { minTier: pin, maxTier: pin }
 }
 
+/** Everything the monitor needs a value for; the thresholds are derived, not defaulted. */
+type ResolvedOptions = Required<Omit<QualityMonitorOptions, 'refreshMs' | 'degradeMs' | 'restoreMs'>>
+
 export class QualityMonitor {
-  private readonly options: Required<QualityMonitorOptions>
+  private readonly options: ResolvedOptions
+  /** Set only when the caller supplied an absolute threshold; otherwise the refresh derives it. */
+  private readonly degradeOverrideMs: number | undefined
+  private readonly restoreOverrideMs: number | undefined
   /** Ring buffer of frame times, in milliseconds. Never grows, never allocates (PRD 7.3.2). */
   private readonly samples = new Float32Array(WINDOW)
   private readonly scratch = new Float32Array(WINDOW)
@@ -110,6 +233,11 @@ export class QualityMonitor {
   private elapsed = 0
   private cooldown = 0
   private tierIndex = 0
+  private refreshMs = DEFAULT_REFRESH_MS
+  /** Set when the caller supplied a refresh interval, which then stands and is never estimated. */
+  private readonly refreshFixed: boolean
+  /** Frames since the cadence was last re-taken; the estimate is amortised, not per-frame. */
+  private sinceRefreshEstimate = 0
   private readonly listeners = new Set<(tier: QualityTier, index: number) => void>()
 
   constructor(options: QualityMonitorOptions = {}) {
@@ -120,11 +248,46 @@ export class QualityMonitor {
     const maxTier = Math.max(inLadder(options.maxTier ?? QUALITY_TIERS.length - 1), minTier)
     this.options = {
       ...DEFAULTS,
-      ...Object.fromEntries(Object.entries(options).filter(([, v]) => v !== undefined)),
+      ...Object.fromEntries(
+        Object.entries(options).filter(
+          ([key, value]) =>
+            value !== undefined && key !== 'refreshMs' && key !== 'degradeMs' && key !== 'restoreMs',
+        ),
+      ),
       minTier,
       maxTier,
-    } as Required<QualityMonitorOptions>
+    } as ResolvedOptions
+    this.degradeOverrideMs = options.degradeMs
+    this.restoreOverrideMs = options.restoreMs
+    this.refreshFixed = options.refreshMs !== undefined && options.refreshMs > 0
+    if (this.refreshFixed) {
+      this.refreshMs = Math.min(options.refreshMs!, DEFAULT_REFRESH_MS)
+    }
     this.tierIndex = minTier
+  }
+
+  /**
+   * The refresh interval every threshold is measured against, in milliseconds.
+   *
+   * Starts at {@link DEFAULT_REFRESH_MS} and is re-taken from a low quantile of the rolling window
+   * (see {@link REFRESH_QUANTILE}), snapped to a real refresh rate (see {@link REFRESH_PERIODS_MS})
+   * so jitter cannot move it, and never allowed above the 60 Hz period.
+   *
+   * The blind spot is a page in trouble on a panel faster than 60 Hz: its sustained cadence is the
+   * trouble, so the estimate rises to the 60 Hz cap and the monitor holds the app to 60 fps rather
+   * than to the panel. That is the safe direction, and 60 fps is the floor the app is judged
+   * against in any case.
+   */
+  get refreshIntervalMs(): number {
+    return this.refreshMs
+  }
+
+  /** The p90 band in force, for the bench and the `?probe=1` seam. */
+  get thresholdsMs(): { readonly degrade: number; readonly restore: number } {
+    return {
+      degrade: this.degradeOverrideMs ?? degradeThresholdMs(this.refreshMs),
+      restore: this.restoreOverrideMs ?? restoreThresholdMs(this.refreshMs),
+    }
   }
 
   get tier(): QualityTier {
@@ -165,21 +328,37 @@ export class QualityMonitor {
     if (this.count < WINDOW) this.count += 1
     this.elapsed += frameMs / 1000
 
+    // The display's cadence, re-taken from a low quantile of the window every so often. Deliberately
+    // outside `reset`: it is a property of the monitor the page is on, not evidence about a tier,
+    // so a tier change must not throw it away. See `REFRESH_QUANTILE` for why this is a quantile
+    // rather than the running minimum it replaced.
+    this.sinceRefreshEstimate += 1
+    if (
+      !this.refreshFixed &&
+      this.count >= REFRESH_ESTIMATE_FRAMES &&
+      this.sinceRefreshEstimate >= REFRESH_ESTIMATE_FRAMES
+    ) {
+      this.sinceRefreshEstimate = 0
+      this.refreshMs = snapRefresh(this.percentile(REFRESH_ESTIMATE_FRAMES, REFRESH_QUANTILE))
+    }
+
     if (this.cooldown > 0) {
       this.cooldown -= frameMs / 1000
       return null
     }
 
+    const degrade = this.degradeOverrideMs ?? degradeThresholdMs(this.refreshMs)
     const degradeFrames = this.framesFor(this.options.degradeWindowS, frameMs)
     if (this.tierIndex < this.options.maxTier && this.count >= degradeFrames) {
-      if (this.percentile(degradeFrames, 0.9) > this.options.degradeMs) {
+      if (this.percentile(degradeFrames, 0.9) > degrade) {
         return this.step(1)
       }
     }
 
+    const restore = this.restoreOverrideMs ?? restoreThresholdMs(this.refreshMs)
     const restoreFrames = this.framesFor(this.options.restoreWindowS, frameMs)
     if (this.tierIndex > this.options.minTier && this.count >= restoreFrames) {
-      if (this.percentile(restoreFrames, 0.9) < this.options.restoreMs) {
+      if (this.percentile(restoreFrames, 0.9) < restore) {
         return this.step(-1)
       }
     }

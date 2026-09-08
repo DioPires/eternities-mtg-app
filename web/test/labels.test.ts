@@ -202,6 +202,34 @@ describe('collision priority (PRD 5.3.10)', () => {
     expect(first[0]!.y).toBeCloseTo(second[0]!.y, 9)
   })
 
+  it('holds the tie-break across frames and across a changed candidate set (DEC-692 R7)', () => {
+    // The collation is precomputed per candidate *array* rather than reached through
+    // `localeCompare` per comparison, so two things need pinning: that reusing one array — which is
+    // what the frame path does — keeps giving the same answer, and that a new array with different
+    // keys is not answered out of the previous array's ranks.
+    const roster: LabelCandidate[] = [
+      { ...base, key: 'zendikar', text: 'Zendikar', priority: 100, x: 400, y: 400 },
+      { ...base, key: 'alara', text: 'Alara', priority: 100, x: 402, y: 402 },
+    ]
+    const out: LabelPlacement[] = []
+    for (let frame = 0; frame < 5; frame += 1) {
+      layoutLabels(roster, out, VIEWPORT)
+      expect(out[0]!.key).toBe('alara')
+    }
+
+    // A different set, same shape, whose winner is a key the ranks above have never seen.
+    const other: LabelCandidate[] = [
+      { ...base, key: 'theros', text: 'Theros', priority: 100, x: 400, y: 400 },
+      { ...base, key: 'kaldheim', text: 'Kaldheim', priority: 100, x: 402, y: 402 },
+    ]
+    layoutLabels(other, out, VIEWPORT)
+    expect(out[0]!.key).toBe('kaldheim')
+
+    // And back, to show the switch is not one-way.
+    layoutLabels(roster, out, VIEWPORT)
+    expect(out[0]!.key).toBe('alara')
+  })
+
   it('does not let a faded label push a visible one', () => {
     // PRD 5.4.15 fades every plane label out at plane level, and PRD 5.4.5's band labels share the
     // solver. A box nobody can see must not displace one they can: before DEC-606 the band was
