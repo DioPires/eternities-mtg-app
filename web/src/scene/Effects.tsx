@@ -9,10 +9,34 @@
  * The bloom's resolution is the second rung of PRD 8.5.11's degradation ladder. Changing it
  * remounts the effect, which is the honest way to change a constructor option — and at a two
  * second cooldown between tier changes, a remount is not something a user can provoke often.
+ *
+ * **Why this component is memoised (DEC-692 R1).** `@react-three/postprocessing` treats a render as
+ * a reason to rebuild: `SelectiveBloom` lists its `...props` rest object in the `useMemo` that
+ * constructs `SelectiveBloomEffect`, and a rest object is fresh every render, so an effect with
+ * ~20 render targets — about 150 MB of them at 1.5× on 1080p — is constructed from scratch and the
+ * old one dropped without disposal (`EffectComposer.removePass` does not dispose). `EffectComposer`
+ * itself then keys its pass list on `children`, which is a new element on every render of this
+ * component, so the `EffectPass` is removed and re-added too.
+ *
+ * R3F pushes the children of `<Canvas>` into its own reconciler from a layout effect with no
+ * dependency array, so *any* render of the component that owns the canvas reaches here. Every prop
+ * below is referentially stable across such a render (a number, a `useMemo` array, a ref), so
+ * `memo` is what turns that into a bail-out: the effect is constructed once per tier and per
+ * selection change, which is what the ladder actually asks for. Measured against the live site's
+ * ~308 MB/s of allocation churn — see `SceneStats` in `EternitiesScene.tsx` for the other half.
  */
 
+import { EffectComposerContext } from '@react-three/postprocessing'
 import { Bloom, EffectComposer, SelectiveBloom, Vignette } from '@react-three/postprocessing'
-import { type ComponentProps, type MutableRefObject, type ReactElement } from 'react'
+import { useThree } from '@react-three/fiber'
+import {
+  memo,
+  useContext,
+  useEffect,
+  type ComponentProps,
+  type MutableRefObject,
+  type ReactElement,
+} from 'react'
 import { Object3D } from 'three'
 
 import {
@@ -77,9 +101,25 @@ export interface EffectsProps {
   readonly bloomRef?: MutableRefObject<BloomProbe | null>
 }
 
-/** Just enough of the bloom effect for {@link EffectsProps.bloomRef}. */
+/**
+ * Just enough of the bloom effect for {@link EffectsProps.bloomRef}.
+ *
+ * Two sizes, because they are not the same size and the difference is the whole of defect R3.
+ * `resolution` is what the ladder *asked* for — `resolutionScale` applied to the drawing buffer —
+ * and with `mipmapBlur` on it drives only `BloomEffect.renderTarget`, which nothing samples
+ * (`postprocessing/build/index.js:3676`: the `map` uniform is the mipmap pass's texture when
+ * `mipmapBlur` is set). `mipmapBlurPass` is the chain the frame actually runs, and
+ * `BloomEffect.setSize` sizes it at the *full* drawing buffer whatever the scale says
+ * (`index.js:3896-3899`). Reporting both is what stops `e2e/quality.spec.ts` from reading the
+ * unused number and calling the rung covered.
+ */
 export interface BloomProbe {
+  /** What the ladder asked for. Inert while `mipmapBlur` is on — see above. */
   readonly resolution: { readonly width: number; readonly height: number }
+  /** The chain the composite samples. Its top level is half of what `setSize` was given. */
+  readonly mipmapBlurPass: {
+    readonly texture: { readonly image: { readonly width: number; readonly height: number } }
+  }
 }
 
 /**
@@ -106,7 +146,44 @@ type SelectiveBloomRef = ComponentProps<typeof SelectiveBloom>['ref']
  */
 const NO_LIGHTS: Object3D[] = [new Object3D()]
 
-export function Effects({ bloomScale, bloomSelection, bloomRef }: EffectsProps): ReactElement {
+/**
+ * Resize the composer's own buffers when the pixel ratio moves (DEC-692 R2).
+ *
+ * `EffectComposer`'s wrapper sizes the composer from an effect keyed on R3F's `size`, which is the
+ * canvas in *CSS* pixels and does not change when the ladder changes the pixel ratio. The composer
+ * sizes its input and output buffers — the ones the scene is rendered into — from the *drawing*
+ * buffer, so without this the first rung resizes the canvas and leaves the scene buffer at the
+ * ratio that was in force when the composer mounted. That is the mismatch review §2.2 measured
+ * from the other direction: a 1× scene buffer upscaled into a 1.5× canvas.
+ *
+ * `setSize()` with no arguments re-reads the renderer's current size and drawing buffer, so it is
+ * exactly "resize to whatever is in force now". It runs once per tier change, inside a two-second
+ * cooldown, and never on a plain re-render.
+ *
+ * A leaf rather than an effect in {@link Effects}: this has to re-render when `viewport.dpr` moves,
+ * and `Effects` must not, or the memo above buys nothing.
+ */
+function ComposerSize(): null {
+  const dpr = useThree((state) => state.viewport.dpr)
+  const size = useThree((state) => state.size)
+  const context = useContext(EffectComposerContext)
+  const composer = context?.composer ?? null
+
+  useEffect(() => {
+    if (!composer) return
+    // The same CSS size the wrapper's own effect passes; `setSize` re-reads the *drawing* buffer
+    // itself, which is the part that has moved.
+    composer.setSize(size.width, size.height)
+  }, [composer, dpr, size.width, size.height])
+
+  return null
+}
+
+export const Effects = memo(function Effects({
+  bloomScale,
+  bloomSelection,
+  bloomRef,
+}: EffectsProps): ReactElement {
   const bloom =
     bloomSelection && bloomSelection.length > 0 ? (
       <SelectiveBloom
@@ -144,6 +221,7 @@ export function Effects({ bloomScale, bloomSelection, bloomRef }: EffectsProps):
     >
       {bloom}
       <Vignette offset={VIGNETTE_OFFSET} darkness={VIGNETTE_DARKNESS} />
+      <ComposerSize />
     </EffectComposer>
   )
-}
+})

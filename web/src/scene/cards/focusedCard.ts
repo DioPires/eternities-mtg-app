@@ -348,10 +348,17 @@ export class FocusedCard {
    * a bitmap that arrives just as focus is released still has to be let go of.
    */
   flushUploads(renderer: { initTexture: (texture: Texture) => void }): void {
-    for (const pending of this.pendingUploads.splice(0)) {
-      renderer.initTexture(pending.texture)
-      pending.bitmap.close()
+    // `splice(0)` allocates its result array on every call, and the overwhelmingly common case is
+    // that there is nothing to flush — so the frame path was allocating an empty array per frame
+    // to iterate over nothing (DEC-692 R7). Drain in place instead.
+    const pending = this.pendingUploads
+    if (pending.length === 0) return
+    for (let i = 0; i < pending.length; i += 1) {
+      const upload = pending[i]!
+      renderer.initTexture(upload.texture)
+      upload.bitmap.close()
     }
+    pending.length = 0
   }
 
   update(

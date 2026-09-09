@@ -116,6 +116,17 @@ export function CardTier({
   }).current
   const selectorView: SelectorView = view
   const pointer = useRef({ x: 0, y: 0, inside: false }).current
+  /**
+   * The canvas's CSS size, kept by a `ResizeObserver` rather than measured in the frame callback
+   * (DEC-692 R11).
+   *
+   * PRD 5.6.9's hover label needs it to turn a projected NDC position into a pixel offset, and it
+   * was calling `getBoundingClientRect()` from inside `useFrame` to get it — a forced synchronous
+   * layout, on the frame path, on every frame the pointer was over a planet. The canvas is the only
+   * element whose box matters and it changes only when it is resized, so observing it is both
+   * cheaper and exact.
+   */
+  const canvasBox = useRef({ width: 0, height: 0 }).current
 
   useEffect(() => {
     tier.setCapacity(thumbnailCapacity)
@@ -129,6 +140,21 @@ export function CardTier({
     },
     [tier, card, queue],
   )
+
+  // The canvas's CSS box, for the hover label's projection. `ResizeObserver` fires once on
+  // observation, so the initial size comes from the same path the later ones do.
+  useEffect(() => {
+    const canvas = gl.domElement
+    const observer = new ResizeObserver(() => {
+      const rect = canvas.getBoundingClientRect()
+      canvasBox.width = rect.width
+      canvasBox.height = rect.height
+    })
+    observer.observe(canvas)
+    return () => {
+      observer.disconnect()
+    }
+  }, [gl, canvasBox])
 
   // PRD 5.6.3: the tilt follows the pointer. On the canvas rather than in React, because a pointer
   // move must not cost a render (PRD 7.3.3).
@@ -232,9 +258,8 @@ export function CardTier({
       // PRD 5.6.9's hover label, projected here so the overlay never has to know about three.js.
       if (hoveredPlanet >= 0 && card.planetWorldPosition(hoveredPlanet, projected)) {
         projected.project(perspective)
-        const rect = gl.domElement.getBoundingClientRect()
-        labelState.x = ((projected.x + 1) / 2) * rect.width
-        labelState.y = ((1 - projected.y) / 2) * rect.height
+        labelState.x = ((projected.x + 1) / 2) * canvasBox.width
+        labelState.y = ((1 - projected.y) / 2) * canvasBox.height
         labelState.printing = card.hoveredPlanetPrinting() ?? -1
         labelState.visible = projected.z < 1
       } else {

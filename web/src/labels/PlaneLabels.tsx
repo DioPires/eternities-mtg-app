@@ -88,6 +88,21 @@ export function PlaneLabels({
   // 82 layout invalidations a frame. Writing it only when the rounded value actually changes keeps
   // the frame path to `transform` and `opacity`, which are composited.
   const fontPx = useRef(new Map<string, string>())
+  /**
+   * The last values written to each node, so an unchanged label costs no string (DEC-692 R7).
+   *
+   * `transform` and `opacity` are composited, so writing them unconditionally was cheap for the
+   * browser — but *building* them was not: two `toFixed` calls and a template literal per label per
+   * frame, some 350 short-lived strings a frame on the production roster, on a path whose header
+   * promises no allocation. The quantised numbers are compared instead and the strings built only
+   * when one of them has actually moved: nothing at all while the camera is still, and nothing for
+   * a label the solver has already faded out and left faded.
+   */
+  const written = useRef(
+    new Map<string, { tx: number; ty: number; opacity: number; frame: number }>(),
+  )
+  /** Which frame last placed a label, so the hide pass can tell "dropped" from "moved". */
+  const frameCount = useRef(0)
   const projector = useMemo(() => new Projector(), [])
   const projected = useMemo(() => createProjected(), [])
   const point = useMemo<MutVec3>(() => vec(), [])
@@ -185,22 +200,49 @@ export function PlaneLabels({
       enabled,
     })
 
-    // Two passes over the nodes: hide everything the solver dropped, then place what it kept.
-    // Writing only `transform` and `opacity` keeps this off the layout path (PRD 7.3.3).
-    for (const node of nodes.current.values()) {
-      if (node) node.style.opacity = '0'
-    }
+    // Two passes over the nodes: place what the solver kept, then hide everything it dropped.
+    // (The original order was the other way round, which meant every visible label was written
+    // twice a frame — to 0 and then back — and cost a string each time.) Writing only `transform`
+    // and `opacity` keeps this off the layout path (PRD 7.3.3); writing them only when the
+    // quantised value has moved keeps it off the allocation path too.
+    const frame = (frameCount.current += 1)
     for (let i = 0; i < count; i += 1) {
       const placement = placements[i]!
       const node = nodes.current.get(placement.key)
       if (!node) continue
-      node.style.transform = `translate3d(${placement.x.toFixed(1)}px, ${placement.y.toFixed(1)}px, 0) translate(-50%, -50%)`
-      node.style.opacity = placement.opacity.toFixed(3)
+      // Tenths of a pixel for the transform and thousandths for the opacity — exactly the
+      // precision the strings carry, so two placements that round the same way are one write.
+      const tx = Math.round(placement.x * 10)
+      const ty = Math.round(placement.y * 10)
+      const opacity = Math.round(placement.opacity * 1000)
+      let last = written.current.get(placement.key)
+      if (!last) {
+        last = { tx: Number.NaN, ty: Number.NaN, opacity: Number.NaN, frame }
+        written.current.set(placement.key, last)
+      }
+      last.frame = frame
+      if (last.tx !== tx || last.ty !== ty) {
+        node.style.transform = `translate3d(${(tx / 10).toFixed(1)}px, ${(ty / 10).toFixed(1)}px, 0) translate(-50%, -50%)`
+        last.tx = tx
+        last.ty = ty
+      }
+      if (last.opacity !== opacity) {
+        node.style.opacity = (opacity / 1000).toFixed(3)
+        last.opacity = opacity
+      }
       const font = `${placement.fontPx.toFixed(1)}px`
       if (fontPx.current.get(placement.key) !== font) {
         node.style.fontSize = font
         fontPx.current.set(placement.key, font)
       }
+    }
+    for (const [key, node] of nodes.current) {
+      if (!node) continue
+      const last = written.current.get(key)
+      if (last && (last.frame === frame || last.opacity === 0)) continue
+      node.style.opacity = '0'
+      if (last) last.opacity = 0
+      else written.current.set(key, { tx: Number.NaN, ty: Number.NaN, opacity: 0, frame: 0 })
     }
   }
 
@@ -222,9 +264,10 @@ export function PlaneLabels({
           className={candidate.tier === 'band' ? 'label label-band' : 'label'}
           ref={(node) => {
             nodes.current.set(candidate.key, node)
-            // A fresh node carries no inline font size, so the cached value it would be compared
-            // against is not what is on it.
+            // A fresh node carries no inline styles, so the cached values they would be compared
+            // against are not what is on it.
             fontPx.current.delete(candidate.key)
+            written.current.delete(candidate.key)
           }}
         >
           <span className="label-name">{candidate.text}</span>

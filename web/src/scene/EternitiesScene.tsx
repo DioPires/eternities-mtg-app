@@ -45,6 +45,7 @@ import {
   useRef,
   useState,
   type ReactElement,
+  type RefObject,
 } from 'react'
 import {
   NoToneMapping,
@@ -120,6 +121,73 @@ function MotionSync({ table, motion }: { table: PlaneTable; motion: SceneMotion 
     }
   })
   return null
+}
+
+/**
+ * The harness readout's two live counters, polled off the card tier's handle.
+ *
+ * These used to be `useState` in {@link SceneView}, written by a 500 ms `setInterval` from two
+ * getters that return a fresh object every call. Both writes therefore re-rendered the component
+ * that owns `<Canvas>` twice a second for the whole session, and R3F pushes that component's
+ * children into its own reconciler on every render — which rebuilt `SelectiveBloomEffect` and its
+ * twenty-odd render targets each time and dropped the old ones on the floor, because
+ * `EffectComposer.removePass` does not dispose. Measured on the live site: ~42 texture allocations
+ * and ~308 MB of GPU memory per second, in every phase, for the whole session (DEC-692 R1,
+ * review §2.2).
+ *
+ * A leaf that polls a ref is the same 2 Hz refresh confined to the two `<li>`s that show it.
+ * Nothing above this component re-renders, so nothing near the canvas does either.
+ */
+function SceneStats({ handle }: { handle: RefObject<CardTierHandle | null> }): ReactElement {
+  const [stats, setStats] = useState({
+    atlas: 0,
+    card: 0,
+    drawn: 0,
+    cells: 0,
+    capacity: 0,
+    failed: 0,
+  })
+
+  useEffect(() => {
+    const read = (): void => {
+      const tier = handle.current
+      if (!tier) return
+      const gpu = tier.gpuBytes
+      const thumbnails = tier.stats
+      setStats({
+        atlas: gpu.atlas,
+        card: gpu.card,
+        drawn: thumbnails.drawn,
+        cells: thumbnails.cells,
+        capacity: thumbnails.capacity,
+        failed: thumbnails.failed,
+      })
+    }
+    read()
+    const timer = window.setInterval(read, 500)
+    return () => {
+      window.clearInterval(timer)
+    }
+  }, [handle])
+
+  const memory = gpuMemoryReport(stats.atlas, stats.card)
+  return (
+    <>
+      <li data-testid="thumbnails">
+        thumbnails: {stats.drawn} drawn · {stats.cells} / {stats.capacity} cells · {stats.failed}{' '}
+        failed
+      </li>
+      <li data-testid="gpu">
+        gpu: {formatMb(memory.totalBytes)} of {formatMb(memory.targetBytes)} target (atlas{' '}
+        {formatMb(memory.atlasBytes)}, card {formatMb(memory.cardBytes)}) ·{' '}
+        {memory.withinTarget
+          ? 'within target'
+          : memory.withinCeiling
+            ? 'over target'
+            : 'OVER CEILING'}
+      </li>
+    </>
+  )
 }
 
 /** PRD 5.6.9's hover label: written by the frame loop, read by its own rAF (PRD 7.3.3). */
@@ -241,8 +309,6 @@ export function SceneView({
   const tierRef = useRef<QualityTier>(QUALITY_TIERS[pinnedTier ?? 0]!)
   const focusedSlugRef = useRef<string | null>(null)
   const [cardVersion, setCardVersion] = useState(0)
-  const [gpu, setGpu] = useState({ atlas: 0, card: 0 })
-  const [thumbnails, setThumbnails] = useState({ drawn: 0, cells: 0, capacity: 0, failed: 0 })
 
   const starScene = useRef<StarSceneHandle>(null)
   const cardTier = useRef<CardTierHandle>(null)
@@ -484,24 +550,6 @@ export function SceneView({
     setTier((previous) => ({ tier: next, changes: previous.changes + 1 }))
   }, [])
 
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      const handle = cardTier.current
-      if (!handle) return
-      setGpu(handle.gpuBytes)
-      const stats = handle.stats
-      setThumbnails({
-        drawn: stats.drawn,
-        cells: stats.cells,
-        capacity: stats.capacity,
-        failed: stats.failed,
-      })
-    }, 500)
-    return () => {
-      window.clearInterval(timer)
-    }
-  }, [])
-
   // The harness's own shortcuts. Not bound under the shell: PRD 6.11's map is `useKeyboardMap`,
   // and two listeners on `window` for the same key would run Esc twice — once up the focus chain
   // and once through the router.
@@ -545,6 +593,10 @@ export function SceneView({
       const renderer = rendererRef.current
       const buffer = renderer?.getDrawingBufferSize(probeBuffer)
       const bloom = bloomRef.current?.resolution
+      // The target the composite actually samples, as opposed to the one `resolutionScale` sizes.
+      // See `Effects.BloomProbe`.
+      const blur = bloomRef.current?.mipmapBlurPass.texture.image
+      const band = starScene.current?.qualityThresholds
       return {
         tier: tierRef.current.label,
         tierIndex: QUALITY_TIERS.indexOf(tierRef.current),
@@ -553,9 +605,13 @@ export function SceneView({
         drawingBuffer: { width: buffer?.x ?? 0, height: buffer?.y ?? 0 },
         // Zero until the composer has sized it, which is not the same as "no bloom".
         bloom: bloom && bloom.width > 0 ? { width: bloom.width, height: bloom.height } : null,
+        bloomBlur: blur && blur.width > 0 ? { width: blur.width, height: blur.height } : null,
         thumbnailCapacity: cardTier.current?.stats.capacity ?? 0,
         starsDrawn: geometry.drawCount,
         motion: typeof motionUniform?.value === 'number' ? motionUniform.value : -1,
+        refreshMs: band?.refreshMs ?? 0,
+        degradeMs: band?.degradeMs ?? 0,
+        restoreMs: band?.restoreMs ?? 0,
       }
     }
 
@@ -783,7 +839,6 @@ export function SceneView({
 
   const hoveredPlanet = hover?.kind === 'planet' ? hover.index : -1
   const focusedCard = focusedStar >= 0 ? cardsRef.current.get(focusedStar) : undefined
-  const memory = gpuMemoryReport(gpu.atlas, gpu.card)
 
   const body = (
     <>
@@ -807,21 +862,30 @@ export function SceneView({
           cameraRef.current = camera as PerspectiveCamera
           rendererRef.current = gl
         }}
-        // **Only the presence of this prop matters. Its value is inert** — measured, three ways
-        // (DEC-667 N1): hard-wired to tier 0's cap, and again at `dpr={0.5}` and `dpr={3}`, every
-        // `?quality=` pin still lands its own pixel ratio, and the per-pin ladder of drawing-buffer
-        // and bloom sizes is identical in all three builds. `StarScene`'s mount-time
-        // `setDpr(min(tier.pixelRatioCap, devicePixelRatio))` wins every time.
+        // **This prop is the pixel-ratio rung — the only writer of it (DEC-692 R2).**
         //
-        // What passing *a* number buys is that R3F stops managing dpr from its own resize path.
-        // Drop the prop entirely and that path re-establishes `devicePixelRatio`, making the cap a
-        // race — `e2e/quality.spec.ts` went red on 2 of 3 runs — which is PRD 7.1.3's ceiling
-        // failing intermittently. That is the whole reason it is here.
+        // It used to be a bare number naming tier 0's cap, and a long comment here recorded it as
+        // inert: `StarScene` called `setDpr(min(cap, devicePixelRatio))` on mount and on every tier
+        // change, and under a `?quality=` pin the prop and the pin agree, so every measurement made
+        // through a pin saw the pin win. Under the *free* ladder they do not agree, and R3F re-reads
+        // this prop on every render (`configure()`: `if (dpr && state.viewport.dpr !==
+        // calculateDpr(dpr)) state.setDpr(dpr)`) — so a 2 Hz re-render put 1.5 back twice a second
+        // and the ladder's first rung never landed. Measured on the live site: the canvas stayed at
+        // 2880×1620 through `full → pixel-ratio → bloom` on a `devicePixelRatio` 1 viewport, while
+        // the composer's scene buffer sat at 1920×1080 — a 1× render upscaled through a 1.5× post
+        // chain (review §2.2, §3.2).
         //
-        // It still names the pinned tier, so a reader sees the value that is in force rather than
-        // one chosen to look arbitrary. But do not infer that the pin is *delivered* here: it is
-        // not, and `quality.spec.ts` records that a wrong tier in this prop survives the check.
-        dpr={QUALITY_TIERS[pinnedTier ?? 0]!.pixelRatioCap}
+        // A *range* fixes it at the root rather than racing it: R3F resolves an array as
+        // `min(max(lo, devicePixelRatio), hi)`, which is exactly `min(cap, devicePixelRatio)` for
+        // any display at or above the floor. So `configure()` re-applying it is a no-op, and
+        // binding `hi` to the live tier makes the rung real — the prop is now what delivers it, and
+        // `StarScene` no longer touches dpr at all. `e2e/quality.spec.ts` asserts the exact drawing
+        // buffer each cap produces, so a wrong value here is a deterministic failure rather than
+        // the 2-of-3 flake DEC-667 N1 recorded.
+        //
+        // The 0.5 floor is R3F's own minimum-sane ratio and never binds on real hardware; it is
+        // there because a range needs two ends.
+        dpr={[0.5, tier.tier.pixelRatioCap]}
         style={{ background: SKY_COLOUR }}
       >
         <StarScene
@@ -925,10 +989,7 @@ export function SceneView({
               : `${detail.slug} ${detail.cards} cards over ${detail.shards} shard(s)` +
                 (detail.slug === BLIND_ETERNITIES_SLUG ? ' (sharded, worker-parsed)' : '')}
           </li>
-          <li data-testid="thumbnails">
-            thumbnails: {thumbnails.drawn} drawn · {thumbnails.cells} / {thumbnails.capacity} cells ·{' '}
-            {thumbnails.failed} failed
-          </li>
+          <SceneStats handle={cardTier} />
           <li data-testid="card">
             card:{' '}
             {focusedCard === undefined
@@ -936,11 +997,6 @@ export function SceneView({
               : `${focusedCard.n} · ${cardTier.current?.card.planetCount ?? 0} planet(s)` +
                 ` of ${focusedCard.p.length} printing(s)` +
                 (cardTier.current?.card.canFlip ? ' · flippable' : '')}
-          </li>
-          <li data-testid="gpu">
-            gpu: {formatMb(memory.totalBytes)} of {formatMb(memory.targetBytes)} target (atlas{' '}
-            {formatMb(memory.atlasBytes)}, card {formatMb(memory.cardBytes)}) ·{' '}
-            {memory.withinTarget ? 'within target' : memory.withinCeiling ? 'over target' : 'OVER CEILING'}
           </li>
           <li data-testid="hover">
             hover:{' '}

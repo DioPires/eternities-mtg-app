@@ -73,13 +73,35 @@ export interface ProbeState {
     /** `WebGLRenderer.getPixelRatio()`, which the ladder's first rung caps. */
     readonly pixelRatio: number
     readonly drawingBuffer: { readonly width: number; readonly height: number }
-    /** The bloom's render-target size. `null` before the composer has sized it. */
+    /**
+     * The size the bloom's `resolutionScale` *asked* for. `null` before the composer has sized it.
+     *
+     * Not the size the frame runs at: with `mipmapBlur` on, this drives only a render target
+     * nothing samples. Read {@link bloomBlur} for the real one, and `Effects.BloomProbe` for why
+     * there are two.
+     */
     readonly bloom: { readonly width: number; readonly height: number } | null
+    /**
+     * The top level of the mipmap blur chain — the target the composite actually reads.
+     *
+     * Half the drawing buffer, because `BloomEffect.setSize` hands the mipmap pass the full
+     * drawing buffer and the pass halves it for its first level. So this moves with the
+     * pixel-ratio rung and, until R3 lands, *not* with the bloom rung.
+     */
+    readonly bloomBlur: { readonly width: number; readonly height: number } | null
     /** The atlas's live capacity, after `CardTier.setCapacity`. */
     readonly thumbnailCapacity: number
     readonly starsDrawn: number
     /** The `uMotion` uniform the star shader reads. */
     readonly motion: number
+    /**
+     * The frame-interval band the monitor is judging against, in milliseconds, and the display
+     * period it derived them from (DEC-692 R5). Absolute thresholds measured the monitor rather
+     * than the app; these are what replaced them.
+     */
+    readonly refreshMs: number
+    readonly degradeMs: number
+    readonly restoreMs: number
   }
   readonly card: ProbeCardState | null
   /**

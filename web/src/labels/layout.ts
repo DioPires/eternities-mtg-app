@@ -164,6 +164,33 @@ interface Box {
 const boxes: Box[] = []
 const order: number[] = []
 
+/**
+ * PRD 5.3.10's alphabetical tie-break, precomputed (DEC-692 R7).
+ *
+ * The comparator below runs every frame over every roster row, and reaching `localeCompare` from it
+ * builds a collator per comparison — several hundred a frame at roster scale, for an answer that
+ * cannot change while the candidate set does not. Keys are stable for the life of a candidate
+ * array, so the collation is done once per array and read back as an integer after that.
+ *
+ * Keyed on the array's *identity*, which is what makes the check free: `PlaneLabels` holds one
+ * memoised array across frames and builds a new one when the roster or the focused plane changes,
+ * so a changed key set is always a changed identity. A caller that mutated an array's contents in
+ * place would see stale ranks; `out` is caller-owned on the same terms.
+ */
+let rankedFor: readonly LabelCandidate[] | null = null
+const ranks = new Map<string, number>()
+const rankKeys: string[] = []
+
+function rankCollation(candidates: readonly LabelCandidate[]): void {
+  if (rankedFor === candidates) return
+  rankedFor = candidates
+  rankKeys.length = 0
+  for (let i = 0; i < candidates.length; i += 1) rankKeys.push(candidates[i]!.key)
+  rankKeys.sort((a, b) => a.localeCompare(b))
+  ranks.clear()
+  for (let i = 0; i < rankKeys.length; i += 1) ranks.set(rankKeys[i]!, i)
+}
+
 function boxAt(index: number): Box {
   let box = boxes[index]
   if (!box) {
@@ -208,6 +235,7 @@ export function layoutLabels(
   // Priority order: planes before bands (PRD 5.4.5), then card count descending, then alphabetical
   // — PRD 5.3.10's "priority ties resolve by alphabetical order", which is also what makes the
   // layout stable frame to frame instead of flickering between two equal-count planes.
+  rankCollation(candidates)
   order.length = 0
   for (let i = 0; i < candidates.length; i += 1) order.push(i)
   order.sort((a, b) => {
@@ -215,7 +243,7 @@ export function layoutLabels(
     const cb = candidates[b]!
     if (ca.tier !== cb.tier) return ca.tier === 'plane' ? -1 : 1
     if (ca.priority !== cb.priority) return cb.priority - ca.priority
-    return ca.key.localeCompare(cb.key)
+    return (ranks.get(ca.key) ?? 0) - (ranks.get(cb.key) ?? 0)
   })
 
   let written = 0
