@@ -21,4 +21,3 @@ export {
   type SceneNavigationOptions,
   type StarSource,
 } from './scene'
-export { runNavigationDemo, type DemoLog } from './demo'

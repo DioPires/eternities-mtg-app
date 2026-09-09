@@ -118,7 +118,7 @@ describe('shared contract test vector', () => {
   it('decodes stars.bin to the exact values the encoder recorded', () => {
     const stars = decodeStars(bytes('stars.bin'))
     expect(stars.count).toBe(vector.starCount)
-    expect(stars.float32Positions).toBe(false)
+    expect(stars.flags).toBe(0)
     for (const expected of vector.stars) {
       const i = expected.index
       expect(stars.x(i)).toBe(expected.x)
