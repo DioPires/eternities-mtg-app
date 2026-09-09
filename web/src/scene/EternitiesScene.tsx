@@ -39,6 +39,8 @@
 
 import { Canvas, useFrame } from '@react-three/fiber'
 import {
+  Suspense,
+  lazy,
   useCallback,
   useEffect,
   useMemo,
@@ -56,13 +58,9 @@ import {
   type WebGLRenderer,
 } from 'three'
 
-import {
-  BenchRunner,
-  recordBenchCpu,
-  type BenchContext,
-  type BenchDrive,
-  type BenchResult,
-} from '../bench/BenchRunner'
+import type { BenchContext, BenchDrive, BenchResult } from '../bench/BenchRunner'
+import { recordBenchCpu } from '../bench/cpuSamples'
+
 import { CameraRigController } from '../camera/CameraRigController'
 import type { SceneMotion } from '../camera/motion'
 import {
@@ -230,6 +228,15 @@ function PlanetHoverLabel({
 
   return <div ref={node} className="planet-label" data-testid="planet-label" />
 }
+
+/**
+ * 622 lines that only `benchContext !== null` can reach, so they are not in the product's chunk
+ * (review §5.4 B1). The per-frame `recordBenchCpu` writer stays static in `bench/cpuSamples` —
+ * it is six lines and the runner reads through it, so the split costs no samples.
+ */
+const BenchRunner = lazy(async () => ({
+  default: (await import('../bench/BenchRunner')).BenchRunner,
+}))
 
 export interface SceneViewProps {
   /**
@@ -914,15 +921,17 @@ export function SceneView({
           handleRef={starScene}
         />
         {benchContext && (
-          <BenchRunner
-            // The numbers mean nothing until the whole field is drawable (PRD 8.7.3).
-            ready={data.starsComplete}
-            context={benchContext}
-            qualityTier={tier.tier.label}
-            qualityChanges={tier.changes}
-            hold={bench?.hold ?? null}
-            {...(bench?.onComplete ? { onComplete: bench.onComplete } : {})}
-          />
+          <Suspense fallback={null}>
+            <BenchRunner
+              // The numbers mean nothing until the whole field is drawable (PRD 8.7.3).
+              ready={data.starsComplete}
+              context={benchContext}
+              qualityTier={tier.tier.label}
+              qualityChanges={tier.changes}
+              hold={bench?.hold ?? null}
+              {...(bench?.onComplete ? { onComplete: bench.onComplete } : {})}
+            />
+          </Suspense>
         )}
         {scene && data.resources && (
           <>

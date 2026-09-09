@@ -15,8 +15,8 @@ import { probeRequested, probeTarget } from '../src/scene/probe'
 describe('probeTarget', () => {
   it('does not ask for the seam at all without the flag', () => {
     expect(probeTarget('')).toBeNull()
-    expect(probeTarget('?harness=3')).toBeNull()
-    expect(probeRequested('?harness=3')).toBe(false)
+    expect(probeTarget('?selfcheck=1')).toBeNull()
+    expect(probeRequested('?selfcheck=1')).toBe(false)
   })
 
   it('reads `probe=0` as off, so the flag can be turned off in a URL rather than deleted', () => {
@@ -43,6 +43,6 @@ describe('probeTarget', () => {
 
   it('is not confused by other parameters', () => {
     expect(probeTarget('?dataset=production&probe=shell&quality=0')).toBe('shell')
-    expect(probeTarget('?probe=1&harness=2a')).toBe('scene')
+    expect(probeTarget('?probe=1&selfcheck=1')).toBe('scene')
   })
 })

@@ -191,21 +191,15 @@ declare global {
   }
 }
 
-export function selfCheckRequested(
-  search = typeof location === 'undefined' ? '' : location.search,
-): boolean {
-  const value = new URLSearchParams(search).get('selfcheck')
-  return value !== null && value !== '0'
-}
+export { selfCheckRequested } from './selfCheck.url'
 
 /**
  * `?perrow=N`, the per-row sample budget, or `null` to use {@link SAMPLES_PER_ROW}.
  *
  * The floor and rate in `findDarkRows` are only meaningful against a particular budget, so the
  * budget has to be movable without a rebuild — otherwise re-deriving them means recompiling the
- * bundle once per candidate value, and nobody re-checks them again. `scripts/selfcheck-measure.mjs`
- * sweeps this. Diagnostic only: it is read on the `?selfcheck=1` path, which is the only path that
- * runs the check at all.
+ * bundle once per candidate value, and nobody re-checks them again. Diagnostic only: it is read on
+ * the `?selfcheck=1` path, which is the only path that runs the check at all.
  *
  * Rejects anything that is not a positive integer rather than letting it become `NaN`, which would
  * make `Math.min(perRow, total)` produce `NaN` and silently sample nothing.
@@ -934,7 +928,7 @@ async function sample(
     // out past the eye.
     //
     // The camera: `?selfcheck=1` routes to the Phase 2a harness, and that harness runs its own
-    // fixed dev camera rather than the rig — `[0, 150, 260]` in `harness/Phase2aScene.tsx`, so
+    // fixed dev camera rather than the rig — `[0, 150, 260]` in `harness/SelfCheckScene.tsx`, so
     // 300.2 units out, the eye well outside the multiverse looking in. Not the rig's home framing
     // of `R * 1.9 = 247`; the self-check and the bench live in the harness precisely because they
     // drive the camera themselves.

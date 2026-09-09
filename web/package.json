@@ -21,7 +21,6 @@
     "cross-browser": "node scripts/cross-browser.mjs"
   },
   "dependencies": {
-    "@react-three/drei": "9.122.0",
     "@react-three/fiber": "8.18.0",
     "@react-three/postprocessing": "2.19.1",
     "postprocessing": "6.36.6",
