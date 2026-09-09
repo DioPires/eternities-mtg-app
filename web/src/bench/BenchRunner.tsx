@@ -38,6 +38,7 @@ import {
   type BenchAnchors,
   type BenchPose,
 } from './benchPath'
+import { benchCpuMs } from './cpuSamples'
 
 /**
  * The path is 39 s (`BENCH_DURATION_S`, nine segments). An uncapped run on a fast GPU reaches
@@ -221,15 +222,6 @@ export function benchHold(
   search = typeof location === 'undefined' ? '' : location.search,
 ): string | null {
   return new URLSearchParams(search).get('hold')
-}
-
-/**
- * The scene reports its own per-frame CPU cost here. PRD 7.2's "CPU time per frame in the render
- * loop" is the scene's work, not the whole task, and only the scene knows where that starts.
- */
-let lastCpuMs = 0
-export function recordBenchCpu(ms: number): void {
-  lastCpuMs = ms
 }
 
 export function BenchRunner({
@@ -490,7 +482,7 @@ export function BenchRunner({
       state.settle -= 1
     } else if (state.count < CAPACITY) {
       frameMs[state.count] = delta * 1000
-      cpuMs[state.count] = lastCpuMs
+      cpuMs[state.count] = benchCpuMs()
       segmentIds[state.count] = segmentIndex(state.segment)
       state.count += 1
     }

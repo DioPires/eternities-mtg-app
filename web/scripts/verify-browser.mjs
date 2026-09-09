@@ -36,7 +36,7 @@
  *      (PRD 5.9, 7.5.1).
  *  9f. The audited headers arrive and the page does not violate its own policy (PRD 7.6.1).
  *
- * `?harness=3` — Phase 3's scene, which replaces Phase 2b's harness: one canvas, one camera, one
+ * `?probe=1` — Phase 3's scene, which replaces Phase 2b's harness: one canvas, one camera, one
  * picker, the star field and the camera rig folded together. Phase 4 took the default route, so it
  * sits behind a flag exactly as 2b's harness did:
  *
@@ -57,7 +57,7 @@
  *  17. a printing is activated (PRD 5.6.9) and a double-faced card is flipped (PRD 5.6.5);
  *  18. GPU memory stays inside PRD 7.2's 96 MB target, measured rather than estimated.
  *
- * `?selfcheck=1` — Phase 2a's instrumentation harness, which still owns the bench and the GPU
+ * `?selfcheck=1` — `harness/SelfCheckScene`, the still field the GPU
  * self-check because both drive the camera themselves:
  *
  *  19. the page renders a WebGL2 canvas — the star field of PRD 5.3.18 actually draws;
@@ -1217,14 +1217,14 @@ async function verifyWebGL2Fallback(browser, url, log) {
 /**
  * The scene: the navigation contract driving the real camera rig over the real star field.
  *
- * Behind `?harness=3` since Phase 4 took the default route — the same demotion main applied to
+ * Behind `?probe=1` since Phase 4 took the default route — the same demotion main applied to
  * Phase 2b's harness, which this replaces. Phase 3 folded 2b's rig and 2a's field into one scene,
  * so every assertion 2b's harness answered is answered here, plus the one that says the rig and
  * the field really are the same scene.
  */
 async function verifyNavigation(page, url, roster, problems) {
   console.log('  -- the scene: navigation, labels, plane detail, star field --')
-  const response = await page.goto(`${url}/?harness=3`, { waitUntil: 'load', timeout: 60_000 })
+  const response = await page.goto(`${url}/?probe=1`, { waitUntil: 'load', timeout: 60_000 })
   const csp = response?.headers()['content-security-policy']
   if (!csp) throw new Error('the preview server sent no Content-Security-Policy header')
   if (csp.includes("'unsafe-inline'") && csp.includes('script-src')) {
@@ -1256,7 +1256,7 @@ async function verifyNavigation(page, url, roster, problems) {
   await waitForStatus(/flight: idle/, 30_000)
   // Before anything else reads this panel: it is on screen, and not just in the tree. See
   // `verifyStatusPanelPaints` — every assertion below is a `textContent` read and blind to it.
-  await verifyStatusPanelPaints(page, 'eternities-status', '?harness=3')
+  await verifyStatusPanelPaints(page, 'eternities-status', '?probe=1')
   const homeDistance = await cameraDistance()
   console.log(`  intro settled at the home view, ${homeDistance.toFixed(1)} from the centre`)
   if (!(homeDistance > 0) || homeDistance > 600) {
@@ -1859,7 +1859,7 @@ async function verifyStarField(page, url, allowSoftware, problems) {
   for (const line of report.lines) console.log(`  ${line}`)
   if (!report.ok) throw new Error('the data contract decode report reported a failure')
 
-  // `Phase2aScene` asked for the same missing `.overlay` rule, so it was invisible in the same way
+  // Phase 2a's harness asked for the same missing `.overlay` rule, so it was invisible the same way
   // and for the same reason. It gets the same check.
   await verifyStatusPanelPaints(page, 'phase0-status', '?selfcheck=1')
 

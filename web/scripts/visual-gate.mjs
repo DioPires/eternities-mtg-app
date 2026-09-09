@@ -21,7 +21,6 @@
  *     handlers, driven from a script, on the page the user gets.
  *   - **`?probe=1`** (`--target scene`) still reaches Phase 3's scene, so a capture can be compared
  *     against the ones the earlier reviews were judged on.
- *   - **`?harness=2a`** for the star field on its own, under the development orbit control.
  *
  * Frames come from `page.screenshot()` and not from the canvas, because half of what 9.3 asks the
  * owner to judge is not in the canvas: PRD 5.3.8's plane names are HTML billboards over it, "no
@@ -96,7 +95,7 @@ const ATTACHMENT_BUDGET_BYTES = 9_500_000
  * stage after it uses the wheel or the pointer, so reaching attract from the end of the run would
  * mean sitting still for another 45 s and hoping nothing else touched the page.
  */
-const STAGES = ['home', 'attract', 'planes', 'crossfade', 'shimmer', 'dust', 'starfield']
+const STAGES = ['home', 'attract', 'planes', 'crossfade', 'shimmer', 'dust']
 
 function parseArgs(argv) {
   const args = {
@@ -1141,19 +1140,9 @@ async function capture(args) {
       await shoot(page, args.out, '6b-blind-eternities-orbited')
     }
 
-    // ---- the star field on its own ----------------------------------------------------------
-    if (wanted('starfield')) {
-      console.log('\n?harness=2a — the star field under the development orbit control')
-      await page.goto(`${url}/?harness=2a`, { waitUntil: 'load', timeout: 60_000 })
-      await page.waitForFunction(
-        () => [...document.querySelectorAll('canvas')].some((c) => c.width > 300 && c.height > 150),
-        { timeout: 60_000 },
-      )
-      await sleep(12_000)
-      // `Phase2aScene` renders the same readout under `phase0-status`, and it paints now too.
-      await withPanelHidden(page, () => page.screenshot({ path: resolve(args.out, '8-star-field-2a.png') }))
-      console.log('  8-star-field-2a.png')
-    }
+    // The `starfield` stage went with Phase 2a's harness (review §6.1 group B): it captured the
+    // field under a development orbit control that no longer exists. The field is in every stage
+    // above, at the framings PRD 9.3 actually asks the owner to judge.
 
     writeFileSync(
       resolve(args.out, 'capture.json'),
