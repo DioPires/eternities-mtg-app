@@ -154,9 +154,9 @@ export function createNavigationHost(options: StubOptions = {}): NavigationHost 
     ): Unsubscribe => {
       const set = eventListeners.get(event)
       if (!set) return () => {}
-      set.add(listener as (payload: never) => void)
+      set.add(listener)
       return () => {
-        set.delete(listener as (payload: never) => void)
+        set.delete(listener)
       }
     },
 

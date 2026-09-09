@@ -19,7 +19,7 @@ import {
   Points,
   ShaderMaterial,
   type Texture,
-  type Uniform,
+  Uniform,
 } from 'three'
 
 import { PICK_LAYER } from '../picking/idPicker'
@@ -46,11 +46,6 @@ import {
   STAR_VERTEX_SHADER,
 } from './shaders'
 import type { StarGeometry } from './starGeometry'
-
-/** A uniform entry, shared by reference across the three materials that need the same value. */
-function uniform<T>(value: T): Uniform<T> {
-  return { value } as Uniform<T>
-}
 
 export interface StarField {
   /** The drawn star field (PRD 8.5.1), on the default layer. */
@@ -113,18 +108,18 @@ export function createStarField(
   noise: Texture,
 ): StarField {
   // Shared by reference: one write per frame reaches every material that reads them.
-  const uPlaneTable = uniform(table.texture)
-  const uTime = uniform(0)
-  const uMultiverseAngle = uniform(0)
-  const uMotion = uniform(1)
+  const uPlaneTable = new Uniform(table.texture)
+  const uTime = new Uniform(0)
+  const uMultiverseAngle = new Uniform(0)
+  const uMotion = new Uniform(1)
 
-  const uSizeScale = uniform(1)
-  const uMinPixels = uniform(STAR_MIN_PX)
-  const uMaxPixels = uniform(STAR_MAX_PX)
-  const uPickMinPixels = uniform(PICK_MIN_PX)
-  const uHoverIndex = uniform(-1)
-  const uThumbStartPx = uniform(THUMBNAIL_FADE_START_PX)
-  const uThumbFullPx = uniform(THUMBNAIL_FADE_FULL_PX)
+  const uSizeScale = new Uniform(1)
+  const uMinPixels = new Uniform(STAR_MIN_PX)
+  const uMaxPixels = new Uniform(STAR_MAX_PX)
+  const uPickMinPixels = new Uniform(PICK_MIN_PX)
+  const uHoverIndex = new Uniform(-1)
+  const uThumbStartPx = new Uniform(THUMBNAIL_FADE_START_PX)
+  const uThumbFullPx = new Uniform(THUMBNAIL_FADE_FULL_PX)
   /** `null` means "use `PICK_MIN_PX`". See `setPickSpriteFloorPx`. */
   let pickSpriteFloorPx: number | null = null
 
@@ -155,9 +150,9 @@ export function createStarField(
     uTime,
     uMultiverseAngle,
     uMotion,
-    uHues: uniform(hues),
-    uRaritySize: uniform([...RARITY_SIZE]),
-    uStarDiameter: uniform(STAR_WORLD_DIAMETER),
+    uHues: new Uniform(hues),
+    uRaritySize: new Uniform([...RARITY_SIZE]),
+    uStarDiameter: new Uniform(STAR_WORLD_DIAMETER),
     uSizeScale,
     uMinPixels,
     uMaxPixels,

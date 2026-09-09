@@ -26,6 +26,7 @@ import {
 } from '../filters/types'
 import { useStore } from '../store/store'
 import { CloseIcon, FilterIcon } from './icons'
+import { formatCount } from './format'
 
 interface ChipProps {
   readonly label: string
@@ -46,7 +47,6 @@ function Chip({ label, facet, onRemove, pending = false }: ChipProps): ReactElem
   )
 }
 
-const NUMBER = new Intl.NumberFormat('en-GB')
 
 export function FilterChips(): ReactElement | null {
   const { filters, toggleColour, toggleType, toggleRarity, toggleSet, clearAll } = useFilters()
@@ -119,8 +119,8 @@ export function FilterChips(): ReactElement | null {
             {evaluation === null
               ? 'counting…'
               : evaluation.setsApplied
-                ? `${NUMBER.format(evaluation.matching)} of ${NUMBER.format(evaluation.total)} cards`
-                : `${NUMBER.format(evaluation.matching)} of ${NUMBER.format(evaluation.total)} cards — set filter still loading`}
+                ? `${formatCount(evaluation.matching)} of ${formatCount(evaluation.total)} cards`
+                : `${formatCount(evaluation.matching)} of ${formatCount(evaluation.total)} cards — set filter still loading`}
           </p>
 
           <button type="button" className="chip-clear" onClick={clearAll}>

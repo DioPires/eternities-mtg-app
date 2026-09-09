@@ -21,7 +21,7 @@
 import type { ReactElement } from 'react'
 
 import { useStore } from '../store/store'
-import { useDialog } from './dialog'
+import { Sheet } from './Sheet'
 
 /** Wizards of the Coast Fan Content Policy, required notice, verbatim. */
 export const FAN_CONTENT_NOTICE =
@@ -31,19 +31,29 @@ export const FAN_CONTENT_NOTICE =
 
 export function AboutOverlay(): ReactElement {
   const setOverlay = useStore((state) => state.setOverlay)
-  const dialog = useDialog<HTMLDivElement>()
 
   return (
-    <div
-      className="overlay-scrim overlay-scrim-top"
-      onPointerDown={(event) => {
-        if (event.target === event.currentTarget) setOverlay(null)
-      }}
+    <Sheet
+      label="About"
+      title="About Eternities"
+      footer={
+        /*
+          Back to help rather than straight out. The help sheet is the only way in, and it takes
+          focus on mount — so a keyboard user leaving this view lands somewhere, instead of on
+          `<body>` with the whole HUD to tab through. Esc still closes everything, via
+          `useKeyboardMap`.
+        */
+        <button
+          type="button"
+          className="link-button"
+          onClick={() => {
+            setOverlay('help')
+          }}
+        >
+          Back to help
+        </button>
+      }
     >
-      <div className="sheet" role="dialog" aria-modal="true" aria-label="About" ref={dialog}>
-        <header className="sheet-head">
-          <h2>About Eternities</h2>
-        </header>
 
         <div className="sheet-prose">
           <p>
@@ -92,24 +102,6 @@ export function AboutOverlay(): ReactElement {
           </div>
         </section>
 
-        <footer className="sheet-foot">
-          {/*
-            Back to help rather than straight out. The help sheet is the only way in, and it takes
-            focus on mount — so a keyboard user leaving this view lands somewhere, instead of on
-            `<body>` with the whole HUD to tab through. Esc still closes everything, via
-            `useKeyboardMap`.
-          */}
-          <button
-            type="button"
-            className="link-button"
-            onClick={() => {
-              setOverlay('help')
-            }}
-          >
-            Back to help
-          </button>
-        </footer>
-      </div>
-    </div>
+    </Sheet>
   )
 }

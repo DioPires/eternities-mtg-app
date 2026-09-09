@@ -530,7 +530,7 @@ async function stateText(page) {
  */
 async function waitForProbe(page, describe, predicate, timeout = 60_000) {
   const deadline = Date.now() + timeout
-  let last = null
+  let last
   for (;;) {
     // The predicate stays in node and only the state crosses. Nothing is compiled in the page, and
     // the state is a plain object, so this works identically under any CSP.

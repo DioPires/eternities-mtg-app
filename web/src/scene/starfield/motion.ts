@@ -26,6 +26,7 @@ import {
   DUST_CURL_SPEED,
   SHEAR_RADIAL_PHASE,
 } from '../tuning'
+import { valueNoise3 } from './noise'
 
 /** RGBA texels per plane row of the PRD 8.5.2 `DataTexture`. */
 export const PLANE_TEXELS = 6
@@ -111,52 +112,6 @@ export function shearAngle(table: Float32Array, row: number, radius: number, tim
   )
 }
 
-/**
- * 32-bit integer hash (a Wang-style avalanche). Written with `Math.imul` so it is exactly the
- * `uint` arithmetic the GLSL twin performs — see the file header for why exactness matters.
- */
-function hashU32(x: number, y: number, z: number): number {
-  let h = (Math.imul(x, 747796405) + Math.imul(y, 2891336453) + Math.imul(z, 3266489917)) >>> 0
-  h = (h ^ (h >>> 15)) >>> 0
-  h = Math.imul(h, 2246822519) >>> 0
-  h = (h ^ (h >>> 13)) >>> 0
-  h = Math.imul(h, 3266489917) >>> 0
-  h = (h ^ (h >>> 16)) >>> 0
-  return h
-}
-
-/** The hash as a float in [0, 1), using the top 24 bits so it is exact in float32. */
-function hash01(x: number, y: number, z: number): number {
-  return (hashU32(x, y, z) >>> 8) * (1 / 16777216)
-}
-
-/** Trilinear value noise on the integer lattice, smoothstep-interpolated. Range [0, 1). */
-function valueNoise(x: number, y: number, z: number): number {
-  const ix = Math.floor(x)
-  const iy = Math.floor(y)
-  const iz = Math.floor(z)
-  const fx = x - ix
-  const fy = y - iy
-  const fz = z - iz
-  const ux = fx * fx * (3 - 2 * fx)
-  const uy = fy * fy * (3 - 2 * fy)
-  const uz = fz * fz * (3 - 2 * fz)
-  const c000 = hash01(ix, iy, iz)
-  const c100 = hash01(ix + 1, iy, iz)
-  const c010 = hash01(ix, iy + 1, iz)
-  const c110 = hash01(ix + 1, iy + 1, iz)
-  const c001 = hash01(ix, iy, iz + 1)
-  const c101 = hash01(ix + 1, iy, iz + 1)
-  const c011 = hash01(ix, iy + 1, iz + 1)
-  const c111 = hash01(ix + 1, iy + 1, iz + 1)
-  const x00 = c000 + (c100 - c000) * ux
-  const x10 = c010 + (c110 - c010) * ux
-  const x01 = c001 + (c101 - c001) * ux
-  const x11 = c011 + (c111 - c011) * ux
-  const y0 = x00 + (x10 - x00) * uy
-  const y1 = x01 + (x11 - x01) * uy
-  return y0 + (y1 - y0) * uz
-}
 
 /** The three offset noise fields whose curl becomes the turbulence. */
 const POTENTIAL_OFFSET_X = 0
@@ -170,13 +125,13 @@ const POTENTIAL_OFFSET_Z = 311.7
 export const CURL_EPSILON = 0.35
 
 function potentialX(x: number, y: number, z: number): number {
-  return valueNoise(x + POTENTIAL_OFFSET_X, y + POTENTIAL_OFFSET_X, z + POTENTIAL_OFFSET_X)
+  return valueNoise3(x + POTENTIAL_OFFSET_X, y + POTENTIAL_OFFSET_X, z + POTENTIAL_OFFSET_X)
 }
 function potentialY(x: number, y: number, z: number): number {
-  return valueNoise(x + POTENTIAL_OFFSET_Y, y + POTENTIAL_OFFSET_Y, z + POTENTIAL_OFFSET_Y)
+  return valueNoise3(x + POTENTIAL_OFFSET_Y, y + POTENTIAL_OFFSET_Y, z + POTENTIAL_OFFSET_Y)
 }
 function potentialZ(x: number, y: number, z: number): number {
-  return valueNoise(x + POTENTIAL_OFFSET_Z, y + POTENTIAL_OFFSET_Z, z + POTENTIAL_OFFSET_Z)
+  return valueNoise3(x + POTENTIAL_OFFSET_Z, y + POTENTIAL_OFFSET_Z, z + POTENTIAL_OFFSET_Z)
 }
 
 /**

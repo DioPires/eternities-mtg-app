@@ -25,8 +25,8 @@ import { planeOfStarIndex } from '../app/boot'
 import { hitKey, type SearchHit } from '../search'
 import { useStore } from '../store/store'
 import { useDialog } from './dialog'
+import { formatCount } from './format'
 
-const NUMBER = new Intl.NumberFormat('en-GB')
 
 function GroupLabel({ children }: { readonly children: string }): ReactElement {
   return (
@@ -133,7 +133,7 @@ export function SearchOverlay(): ReactElement {
           {hit.kind === 'plane' ? (
             <>
               <span className="search-name">{hit.name}</span>
-              <span className="search-meta">{NUMBER.format(hit.cardCount)} cards</span>
+              <span className="search-meta">{formatCount(hit.cardCount)} cards</span>
             </>
           ) : hit.kind === 'set' ? (
             <>

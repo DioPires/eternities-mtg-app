@@ -41,7 +41,7 @@ function stubFetch(failing: readonly string[] = []): FetchLog {
     } catch {
       return Promise.resolve(new Response('missing', { status: 404 }))
     }
-  }) as typeof fetch
+  })
   return { urls }
 }
 

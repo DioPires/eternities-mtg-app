@@ -32,8 +32,14 @@ import {
   PlaneKindCode,
 } from './motion'
 
-/** GLSL float literals: `1` is an int in GLSL and would fail to compile where a float is wanted. */
-function glslFloat(value: number): string {
+/**
+ * GLSL float literals: `1` is an int in GLSL and would fail to compile where a float is wanted.
+ *
+ * Exported because `cards/cardShaders.ts` writes `#define`s from the same `tuning.ts` constants,
+ * and two spellings of "how a TypeScript number becomes a GLSL float" is one spelling too many
+ * (review §6.2).
+ */
+export function glslFloat(value: number): string {
   return Number.isInteger(value) ? `${value}.0` : String(value)
 }
 

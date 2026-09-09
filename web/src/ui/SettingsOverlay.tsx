@@ -12,7 +12,7 @@ import type { ReactElement } from 'react'
 
 import { useStore, reducedMotionOf } from '../store/store'
 import type { BloomSetting, ReducedMotionSetting } from '../store/settings'
-import { useDialog } from './dialog'
+import { Sheet } from './Sheet'
 
 const REDUCED_MOTION_OPTIONS: ReadonlyArray<{ value: ReducedMotionSetting; label: string }> = [
   { value: 'os', label: 'Follow the system' },
@@ -33,19 +33,23 @@ export function SettingsOverlay(): ReactElement {
   const setOverlay = useStore((state) => state.setOverlay)
   const setHintVisible = useStore((state) => state.setHintVisible)
   const resolved = reducedMotionOf({ settings, osReducedMotion })
-  const dialog = useDialog<HTMLDivElement>()
 
   return (
-    <div
-      className="overlay-scrim overlay-scrim-top"
-      onPointerDown={(event) => {
-        if (event.target === event.currentTarget) setOverlay(null)
-      }}
+    <Sheet
+      label="Settings"
+      title="Settings"
+      footer={
+        <button
+          type="button"
+          className="link-button"
+          onClick={() => {
+            setOverlay(null)
+          }}
+        >
+          Done
+        </button>
+      }
     >
-      <div className="sheet" role="dialog" aria-modal="true" aria-label="Settings" ref={dialog}>
-        <header className="sheet-head">
-          <h2>Settings</h2>
-        </header>
 
         <fieldset className="setting">
           <legend>Reduced motion</legend>
@@ -125,18 +129,6 @@ export function SettingsOverlay(): ReactElement {
           </button>
         </fieldset>
 
-        <footer className="sheet-foot">
-          <button
-            type="button"
-            className="link-button"
-            onClick={() => {
-              setOverlay(null)
-            }}
-          >
-            Done
-          </button>
-        </footer>
-      </div>
-    </div>
+    </Sheet>
   )
 }

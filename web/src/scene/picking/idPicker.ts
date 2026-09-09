@@ -173,7 +173,7 @@ export class IdPicker {
     // would, and silently dropping it here would be a very quiet bug.
     const previousView = camera.view === null ? null : { ...camera.view }
 
-    let read: Promise<unknown> | null = null
+    let read: Promise<unknown> | null
     try {
       // The sky would otherwise land in the buffer as an opaque colour and decode as a star id.
       scene.background = null
