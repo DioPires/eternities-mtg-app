@@ -371,7 +371,7 @@ def test_the_previous_run_is_the_latest_one_not_the_largest_hash(tmp_path: Path)
     manifest["generatedAt"] = "2020-01-01T00:00:00Z"
     (older / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
 
-    found = load_previous_planes(tmp_path, exclude="")
+    found = load_previous_planes(tmp_path)
     assert found is not None
     assert found.name == only.name, "the lexicographically larger but older directory won"
     assert found.planes is not None
@@ -398,7 +398,7 @@ def test_a_predecessor_under_an_older_contract_reads_as_unreadable_not_absent(tm
     # never reaches for the bytes by removing the file it would have had to read.
     (only / "sets.bin").unlink()
 
-    found = load_previous_planes(tmp_path, exclude="")
+    found = load_previous_planes(tmp_path)
 
     assert found is not None, "an unreadable predecessor is not an absent one"
     assert found.name == only.name
@@ -450,7 +450,7 @@ def test_a_same_version_predecessor_is_still_found_and_diffed(tmp_path: Path):
         == CONTRACT_VERSION
     )
 
-    found = load_previous_planes(tmp_path, exclude="")
+    found = load_previous_planes(tmp_path)
 
     assert found is not None
     assert found.contract_version is None, "the current contract is not a mismatch"

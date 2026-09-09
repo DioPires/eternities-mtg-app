@@ -97,7 +97,7 @@ class PreviousRun:
     flattening into "some other version"."""
 
 
-def load_previous_planes(data_root: Path, exclude: str) -> PreviousRun | None:
+def load_previous_planes(data_root: Path) -> PreviousRun | None:
     """Find the previous production run and reconstruct ``oracle_id -> plane slug`` from it.
 
     No sidecar file: ``planes.json`` gives each plane's contiguous star range (data contract §2)
@@ -115,7 +115,7 @@ def load_previous_planes(data_root: Path, exclude: str) -> PreviousRun | None:
     """
     production: list[tuple[tuple[str, str, str], Path, Any]] = []
     for directory in data_root.glob("*"):
-        if not directory.is_dir() or directory.name == exclude:
+        if not directory.is_dir():
             continue
         manifest_path = directory / "manifest.json"
         if not manifest_path.exists():

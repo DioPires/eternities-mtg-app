@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import struct
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from uuid import UUID
 
 from .enums import (
@@ -218,9 +218,3 @@ def decode_sets(
         per_star.append(list(flat[cursor : cursor + c]))
         cursor += c
     return oracle_ids, per_star
-
-
-def iter_star_offsets(record_count: int) -> Iterable[int]:
-    """Byte offset of each record — the streaming reader's contract (PRD 8.3)."""
-    for i in range(record_count):
-        yield BINARY_HEADER_BYTES + i * STAR_RECORD_BYTES
