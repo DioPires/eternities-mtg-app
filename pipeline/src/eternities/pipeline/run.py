@@ -164,6 +164,7 @@ def build(
             cards_excluded=excluded.excluded_by_rule,
             via_parent=assignment.via_parent,
             via_override=assignment.via_override,
+            unused_overrides=assignment.unused_overrides,
             findings=findings,
             plane_changes=plane_changes,
             previous_run=previous_run,

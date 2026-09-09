@@ -1,5 +1,5 @@
 {
-  "source": "PRD 4.1.5 — curated card-name to plane-slug overrides",
-  "notes": "Starts empty (PRD 4.1.5). Grows as misassignments are noticed; PRD 11.9 orders the curation work. Keys are exact Scryfall front-face card names; values are Appendix A plane slugs.",
-  "overrides": {}
+  "source": "PRD 4.1.5 — curated card-to-plane overrides",
+  "notes": "One record per card, keyed by Scryfall `oracle_id`: a front-face name is not an identifier, so a name key moves every card that answers to it (review finding D1). `name` is an assertion, not data — the run fails when an `oracleId` no longer names the card written beside it. `why` is the curation rationale. `plane` is an Appendix A slug. PRD 11.9 orders the curation work; a record that matches no first printing is listed in the run report rather than applied.",
+  "overrides": []
 }

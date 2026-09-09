@@ -11,6 +11,7 @@ from dataclasses import replace
 
 from conftest import appendices, printing, scry_set, set_entry
 
+from eternities.pipeline.appendices import load_appendices
 from eternities.pipeline.records import RawPrinting, ScrySet
 from eternities.pipeline.verify import (
     verify_roster,
@@ -181,3 +182,76 @@ def test_an_unratified_correction_still_asks_even_beside_a_ratified_one():
     assert finding.action is not None
     assert "new" in finding.action
     assert "tle" not in finding.action
+
+
+# --- review finding D8: a settled `prdVerify` row stops being re-read out ----------------------
+
+
+def test_a_verified_row_collapses_to_a_dated_count_instead_of_a_full_line():
+    """Fifteen confirmed rows were re-printed in full every run, burying the unsettled one.
+
+    Same shape as ``prdRatified`` for corrections and the roster finding for open question 1: the
+    provenance stays, the re-reading stops. The code is still named — a reader must be able to see
+    *which* rows are settled — but not its Scryfall row, release date and set type all over again.
+    """
+    settled = set_entry("tmt", prd_verify=True, prd_verified="2026-09-06")
+    fresh = set_entry("new", prd_verify=True)
+    sets = {
+        "tmt": scry_set("tmt", name="Set tmt", released_at="2026-03-06"),
+        "new": scry_set("new", name="Set new", released_at="2026-09-01", set_type="expansion"),
+    }
+
+    finding = verify_set_codes(appendices(sets=[settled, fresh]), sets)
+
+    assert "confirmed by an earlier run and still matching: 1" in finding.detail
+    assert "  tmt (confirmed 2026-09-06)" in finding.detail
+    assert "confirmed by this run: 1" in finding.detail
+    assert any("new “Set new” (2026-09-01, expansion)" in line for line in finding.detail)
+    assert not any("tmt “Set tmt”" in line for line in finding.detail), (
+        "the settled row's full Scryfall line is what D8 removed"
+    )
+
+
+def test_a_verified_row_that_stops_matching_is_reported_as_a_regression():
+    """The guard that keeps D8 from turning the check off.
+
+    Collapsing a settled row into a count is only safe while the check still runs. A row confirmed
+    in 2026 whose Scryfall name later changes has to come back loudly — that day is the entire
+    reason to keep re-checking something already answered.
+    """
+    row = set_entry("tmt", prd_verify=True, prd_verified="2026-09-06", prd_name="Set tmt")
+    sets = {"tmt": scry_set("tmt", name="Renamed By Wizards")}
+
+    finding = verify_set_codes(appendices(sets=[row]), sets)
+
+    assert finding.verdict.startswith("REGRESSED")
+    assert any("REGRESSED since they were confirmed: 1" in line for line in finding.detail)
+    assert any(
+        "tmt was confirmed 2026-09-06 and now reads “Renamed By Wizards”" in line
+        for line in finding.detail
+    )
+    assert finding.action is not None and "tmt" in finding.action
+
+
+def test_a_verified_row_that_vanishes_from_scryfall_is_also_a_regression():
+    row = set_entry("tmt", prd_verify=True, prd_verified="2026-09-06")
+
+    finding = verify_set_codes(appendices(sets=[row]), {})
+
+    assert finding.verdict.startswith("REGRESSED")
+    assert any("now absent from Scryfall" in line for line in finding.detail)
+
+
+def test_every_verify_marked_appendix_b_row_is_either_dated_or_still_open():
+    """The committed file, not a fixture: D8's fix is only closed if the 15 rows carry the date.
+
+    Read as a rule rather than a count so adding a new `prdVerify` row is legal — it simply has no
+    `prdVerified` until a run confirms it — while a *silently* re-listed settled row is not.
+    """
+    apx = load_appendices()
+    verify_rows = [s for s in apx.sets if s.prd_verify]
+    assert len(verify_rows) == 15, "open question 10 marked 15 rows"
+    assert [s.code for s in verify_rows if s.prd_verified is None] == [], (
+        "these rows were confirmed on 2026-09-06 and must not be re-read out every run"
+    )
+    assert {s.prd_verified for s in verify_rows} == {"2026-09-06"}

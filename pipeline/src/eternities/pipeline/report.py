@@ -17,7 +17,8 @@ from typing import Any, cast
 from ..contract.binary import decode_sets
 from ..contract.enums import CONTRACT_VERSION
 from ..contract.models import Dataset
-from .assemble import AssemblyStats
+from ..fixtures import layout
+from .assemble import BRIGHTNESS_PERCENTILE, AssemblyStats
 from .verify import Finding
 
 BLIND_ETERNITIES_SLUG = "blind-eternities"
@@ -40,6 +41,8 @@ class ReportInput:
     via_override: list[str]
     bulk_uri_reconstructed: bool = False
     """See ``BulkSource.uri_reconstructed``: the URI is a local cache path, so say so on the row."""
+    unused_overrides: list[str] = field(default_factory=list)
+    """``overrides.json`` records that matched no first printing (see ``PlaneAssignment``)."""
     dropped_via_parent: dict[str, str] = field(default_factory=dict)
     """PRD 4.3.1 read through 4.6.3: set code -> the ancestor whose row dropped it."""
     parent_rule_only: dict[str, int] = field(default_factory=dict)
@@ -234,6 +237,92 @@ def _table(header: list[str], rows: list[list[str]]) -> list[str]:
     return lines
 
 
+def _radius_saturation_section(data: ReportInput) -> list[str]:
+    """How close the biggest planes are to PRD 5.3.2's radius clamp (review finding D2).
+
+    ``visual_radius`` normalises by ``layout.RADIUS_SPAN_CARDS``, so past that count every plane
+    encodes ``R_MAX`` and two planes of very different sizes render the same. The clamp itself is
+    the spec; what was missing is anyone being told when the data reached it.
+    """
+    out = [f"## Plane radius headroom (PRD 5.3.2, span {layout.RADIUS_SPAN_CARDS:,} cards)", ""]
+    rows = data.stats.radius_saturation
+    if not rows:
+        out.append(
+            "No plane is within "
+            f"{layout.RADIUS_SATURATION_REPORT_FRACTION:.0%} of the radius span; every plane's "
+            "card count still moves its radius."
+        )
+        return out
+    out.extend(
+        _table(
+            ["Plane", "Cards", "Span used", "Radius"],
+            [
+                [
+                    f"`{slug}`",
+                    f"{cards:,}",
+                    f"{saturation:.1%}" + (" **clamped**" if saturation >= 1.0 else ""),
+                    f"{radius:.2f} / {layout.R_MAX:.1f}",
+                ]
+                for slug, cards, saturation, radius in rows
+            ],
+        )
+    )
+    clamped = [slug for slug, _, saturation, _ in rows if saturation >= 1.0]
+    out.append("")
+    if clamped:
+        out.append(
+            f"**{', '.join(f'`{s}`' for s in clamped)} is at the clamp.** Further growth is "
+            "unrepresentable: the plane encodes `R_MAX` whatever it holds. Raising "
+            "`layout.RADIUS_SPAN_CARDS` re-normalises every radius, and radii feed 8.6.1's plane "
+            "placement, so it is a deliberate visual re-tune plus a full refresh — not a fix to "
+            "slip into a data run."
+        )
+    else:
+        out.append(
+            "Nothing is clamped yet. At 100% a plane's radius stops responding to its card count, "
+            "so this table is the warning that `layout.RADIUS_SPAN_CARDS` needs a decision."
+        )
+    return out
+
+
+def _brightness_cap_section(data: ReportInput) -> list[str]:
+    """PRD 5.4.10's per-plane percentile cap, as numbers (review finding D6).
+
+    The cap is applied in the pipeline, so the 11.11 "visual tunable" reading of it is not
+    available to the browser: ``stars.bin`` carries the capped byte and not the printing count it
+    came from. The count does reach the browser — ``planes/*.json`` ships every card's printing
+    list — but not in the star record the renderer reads, so a re-tune is still a data refresh.
+    Publishing the caps at least makes the choice reviewable here.
+    """
+    out = ["## Brightness cap per plane (PRD 5.4.10)", ""]
+    rows = [row for row in data.stats.brightness_caps if row[2] > row[1]]
+    out.append(
+        f"The cap is each plane's {BRIGHTNESS_PERCENTILE:.0%} percentile of printing count. "
+        f"{len(rows)} of {len(data.stats.brightness_caps)} non-empty planes hold at least one card "
+        "above their cap; those cards all encode the same maximum brightness. The cap is applied "
+        "before encoding, so changing the curve means re-running the pipeline (finding D6)."
+    )
+    if rows:
+        out.extend(
+            [
+                "",
+                *_table(
+                    ["Plane", "Cap", "Highest", "Cards at or above"],
+                    [
+                        [f"`{slug}`", str(cap), str(highest), f"{at_cap:,}"]
+                        for slug, cap, highest, at_cap in sorted(rows, key=lambda r: (-r[2], r[0]))[
+                            :10
+                        ]
+                    ],
+                ),
+            ]
+        )
+        if len(rows) > 10:
+            out.append("")
+            out.append(f"Top 10 by highest printing count; {len(rows) - 10} more planes are alike.")
+    return out
+
+
 def render(data: ReportInput) -> str:
     dataset = data.dataset
     blind = next(p for p in dataset.planes if p.slug == BLIND_ETERNITIES_SLUG)
@@ -376,6 +465,10 @@ def render(data: ReportInput) -> str:
             ],
         ),
         "",
+        *_radius_saturation_section(data),
+        "",
+        *_brightness_cap_section(data),
+        "",
         "## Sets mapped through a parent set (PRD 4.6 rule 3)",
         "",
     ]
@@ -434,8 +527,28 @@ def render(data: ReportInput) -> str:
             (
                 ", ".join(sorted(data.via_override))
                 if data.via_override
-                else "None — `overrides.json` is still empty (PRD 4.1.5)."
+                else "None — `overrides.json` carries no records (PRD 4.1.5)."
             ),
+        ]
+    )
+    if data.unused_overrides:
+        # A curated line that matches nothing is the state Appendix B's two "cards via overrides"
+        # notes were already in: a claimed curation with no effect. Named here so the next refresh
+        # either fixes the record or deletes it.
+        out.extend(
+            [
+                "",
+                f"**{len(data.unused_overrides)} override "
+                f"{'record' if len(data.unused_overrides) == 1 else 'records'} matched no first "
+                "printing.** Each is either a card some 4.3/4.4 rule excludes, or a stale record "
+                "whose `oracleId` no longer belongs to a card in the dataset. Fix or delete "
+                "them.",
+                "",
+                *(f"- {line}" for line in data.unused_overrides),
+            ]
+        )
+    out.extend(
+        [
             "",
             "## Cards whose plane changed since the previous run (PRD 4.9.2)",
             "",

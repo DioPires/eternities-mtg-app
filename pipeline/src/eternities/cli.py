@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Final, cast
 
 from .contract import write_dataset
 from .contract.enums import CONTRACT_VERSION, PIPELINE_VERSION
@@ -26,6 +27,9 @@ CACHE_DIR = REPO_ROOT / "pipeline" / ".cache" / "scryfall"
 
 _FIXTURES: dict[str, FixtureSpec] = {"small": SMALL, "scale": SCALE}
 
+DATA_DIR_NAME: Final = re.compile(r"^[0-9a-f]{16}$")
+"""Data contract §1: a dataset directory is named for its 16-hex-character ``dataHash``."""
+
 
 def _display(path: Path) -> str:
     """Repository-relative when it is inside the repository, absolute when it is not."""
@@ -33,6 +37,36 @@ def _display(path: Path) -> str:
         return str(path.relative_to(REPO_ROOT))
     except ValueError:
         return str(path)
+
+
+def remove_stale_dataset(data_root: Path, name: str) -> bool:
+    """Delete a superseded dataset directory, refusing anything that is not one.
+
+    Both call sites take ``name`` from ``web/datasets.json`` and hand it to ``rmtree``. The
+    registry is a tracked file a hand-edit, a bad merge or a resolved conflict can put any string
+    into, so it is trusted for the *intent* — which directory this run superseded — and never for
+    the shape of the path. A name has to be a bare ``dataHash`` (data contract §1), which by
+    construction cannot contain a separator, ``..`` or a drive; the parent is then re-checked
+    against ``data_root`` so a symlinked child cannot redirect the delete outside the data root
+    either.
+
+    Returns whether anything was removed. A refusal prints: a registry that names a directory this
+    function will not touch is a data problem to fix, not something to swallow — the same reason
+    the run report exists.
+    """
+    if not DATA_DIR_NAME.fullmatch(name):
+        print(f"  refused to remove {name!r}: not a 16-hex dataHash directory name")
+        return False
+    candidate = data_root / name
+    if candidate.is_symlink() or not candidate.is_dir():
+        print(f"  refused to remove {name!r}: not a directory (or is a symlink to one)")
+        return False
+    if candidate.resolve().parent != data_root.resolve():
+        print(f"  refused to remove {name!r}: resolves outside {_display(data_root)}")
+        return False
+    shutil.rmtree(candidate)
+    print(f"  removed stale {name}/")
+    return True
 
 
 def _cmd_fixtures(args: argparse.Namespace) -> int:
@@ -63,8 +97,7 @@ def _cmd_fixtures(args: argparse.Namespace) -> int:
         if previous and previous != out_dir.name and (data_root / previous).exists():
             # The data directory is immutable and content-hashed; a stale one is dead weight
             # (PRD 8.3, 8.8.2).
-            shutil.rmtree(data_root / previous)
-            print(f"  removed stale {previous}/")
+            remove_stale_dataset(data_root, previous)
         print(
             f"{spec.name}: {len(dataset.stars)} stars, {len(dataset.planes)} planes "
             f"-> {_display(out_dir)}"
@@ -149,8 +182,7 @@ def _cmd_build(args: argparse.Namespace) -> int:
         print(f"datasets.json active = {result.data_dir.name}")
         if previous and previous != result.data_dir.name and (data_root / previous).exists():
             # PRD 8.8.3: the stale hash directory goes in the same pull request.
-            shutil.rmtree(data_root / previous)
-            print(f"  removed stale {previous}/")
+            remove_stale_dataset(data_root, previous)
     return 0
 
 
