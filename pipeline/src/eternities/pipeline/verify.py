@@ -22,6 +22,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Final, cast
 
+from ..contract.enums import BLIND_ETERNITIES_SLUG
 from .appendices import Appendices, SetEntry
 from .records import RawPrinting, ScrySet
 from .stages import governing_set_row
@@ -330,7 +331,7 @@ def verify_roster(appendices: Appendices, wiki_titles: list[str] | None) -> Find
         candidates[slug] = title
 
     only_wiki = sorted(set(candidates) - ours)
-    only_appendix = sorted(ours - set(candidates) - {"blind-eternities"})
+    only_appendix = sorted(ours - set(candidates) - {BLIND_ETERNITIES_SLUG})
 
     detail = [
         f"wiki Category:Planes pages: {len(wiki_titles)}; "

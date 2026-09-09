@@ -14,7 +14,8 @@ from typing import Final
 
 from ..contract.enums import (
     BLIND_ETERNITIES_SLUG,
-    HueClass,
+    MULTIVERSE_RADIUS,
+    UNRELEASED_DATE,
     colour_identity_mask,
     hue_class_for,
     size_class_for,
@@ -34,15 +35,6 @@ from ..fixtures import layout, rng
 from .appendices import Appendices
 from .records import CardDetail, MeldResult, RawPrinting, ScrySet
 
-MULTIVERSE_RADIUS: Final = 130.0
-"""R of PRD 8.6.1, sized so the whole Appendix A roster packs with the 5.3.3 anti-overlap margin.
-Identical to ``fixture-scale``, so bench numbers taken against the fixture carry over.
-
-Manually linked to two places outside this file: ``fixtures/generate.py`` mirrors the value, and
-``web/scripts/verify-browser.mjs`` writes it out as the literal ``130`` in the ``unprojectable``
-failure message (a cross-language export was judged not worth it for one diagnostic string). If this
-changes, change both — a stale figure in that message misdirects whoever reads the failure."""
-
 BRIGHTNESS_PERCENTILE: Final = 0.98
 """PRD 5.4.10: the printing-count cap is the plane's 98th percentile."""
 
@@ -61,11 +53,8 @@ class CardInput:
 
 @dataclass(frozen=True, slots=True)
 class AssemblyStats:
-    cards_per_plane: dict[str, int]
-    sets_per_plane: dict[str, int]
     blind_eternities_top_sets: list[tuple[str, str, int]]
     """PRD 9.2.2: ``(code, name, cards)`` of the sets contributing most to the dust."""
-    largest_plane: tuple[str, int]
 
 
 def build_dataset(
@@ -119,10 +108,14 @@ def build_dataset(
     for index, slug in enumerate(ordered_slugs):
         bands = plane_bands[slug]
         band_of = {ref.code: band for band, ref in enumerate(bands)}
+        # Two defaults on purpose, named so they cannot drift into each other: the sort key wants
+        # an unknown set *after* every band, while a star's band index must stay a real band.
+        unknown_sorts_last = len(bands)
+        unknown_clamps_to_last = max(len(bands) - 1, 0)
         rows = sorted(
             by_plane[slug],
             key=lambda c: (
-                band_of.get(c.first_printing.set_code, len(bands)),
+                band_of.get(c.first_printing.set_code, unknown_sorts_last),
                 int(hue_class_for(c.detail.colour_identity)),
                 c.oracle_id,
             ),
@@ -141,7 +134,7 @@ def build_dataset(
 
         for row in rows:
             hue = hue_class_for(row.detail.colour_identity)
-            band = band_of.get(row.first_printing.set_code, max(len(bands) - 1, 0))
+            band = band_of.get(row.first_printing.set_code, unknown_clamps_to_last)
             if slug == BLIND_ETERNITIES_SLUG:
                 position = layout.blind_eternities_position(
                     row.oracle_id, len(stars), plane_positions, plane_radii, MULTIVERSE_RADIUS
@@ -255,7 +248,7 @@ def _global_set_dictionary(
     by_code = appendices.by_code()
     ordered = sorted(
         appearing,
-        key=lambda code: (sets[code].released_at if code in sets else "9999-12-31", code),
+        key=lambda code: (sets[code].released_at if code in sets else UNRELEASED_DATE, code),
     )
     records: list[SetRecord] = []
     set_id_of: dict[str, int] = {}
@@ -287,7 +280,7 @@ def _chronology_bands(
         code = row.first_printing.set_code
         counts[code] = counts.get(code, 0) + 1
     ordered = sorted(
-        counts, key=lambda code: (sets[code].released_at if code in sets else "9999-12-31", code)
+        counts, key=lambda code: (sets[code].released_at if code in sets else UNRELEASED_DATE, code)
     )
     return [
         PlaneSetRef(
@@ -311,7 +304,7 @@ def _contract_card(
     printings = sorted(
         row.printings,
         key=lambda p: (
-            sets[p.set_code].released_at if p.set_code in sets else "9999-12-31",
+            sets[p.set_code].released_at if p.set_code in sets else UNRELEASED_DATE,
             p.set_code,
             p.collector_number,
             p.id,
@@ -379,17 +372,8 @@ def _stats(
         code = card.first_printing.set_code
         contributions[code] = contributions.get(code, 0) + 1
     top = sorted(contributions.items(), key=lambda kv: (-kv[1], kv[0]))[:10]
-    largest = max(((s, len(r)) for s, r in by_plane.items()), key=lambda kv: (kv[1], kv[0]))
     return AssemblyStats(
-        cards_per_plane={s: len(r) for s, r in by_plane.items()},
-        sets_per_plane={s: len(b) for s, b in plane_bands.items()},
         blind_eternities_top_sets=[
             (code, sets[code].name if code in sets else code, count) for code, count in top
         ],
-        largest_plane=largest,
     )
-
-
-def hue_of(colour_identity: str) -> HueClass:
-    """Re-exported so the report can label arms without importing the enums module."""
-    return hue_class_for(colour_identity)

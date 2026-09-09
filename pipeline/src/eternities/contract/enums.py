@@ -22,9 +22,22 @@ SHARD_SIZE: Final = 2000
 """Amendment A1: every plane's detail file shards at this many cards."""
 
 BLIND_ETERNITIES_SLUG: Final = "blind-eternities"
+"""PRD 4.7.3's dust plane. The one spelling — never write the literal."""
 
 FRAME_RADIUS: Final = 1.2
 """PRD 8.6.2: plane-local positions live inside this radius."""
+
+UNRELEASED_DATE: Final = "9999-12-31"
+"""Release date for a set the API gave none. Sorts after every real date (PRD 4.3.8), which is the
+whole point: an undated set is treated as unreleased, never as the oldest printing."""
+
+MULTIVERSE_RADIUS: Final = 130.0
+"""R of PRD 8.6.1, sized so the whole Appendix A roster packs with the 5.3.3 anti-overlap margin.
+Identical in ``fixture-scale``, so bench numbers taken against the fixture carry over.
+
+One manual link remains outside Python: ``web/scripts/verify-browser.mjs`` writes the value out as
+the literal ``130`` in its ``unprojectable`` failure message (a cross-language export was judged not
+worth it for one diagnostic string). A stale figure there misdirects whoever reads the failure."""
 
 
 class BinaryKind(IntEnum):

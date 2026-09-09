@@ -23,7 +23,7 @@ from typing import Final
 
 from ..contract.enums import (
     BLIND_ETERNITIES_SLUG,
-    SHARD_SIZE,
+    MULTIVERSE_RADIUS,
     CardType,
     HueClass,
     SizeClass,
@@ -47,14 +47,6 @@ APPENDIX_A: Final = Path(__file__).resolve().parents[3] / "data" / "appendix_a.j
 
 NAMESPACE: Final = uuid.UUID("6e7d1f4a-2c3b-4a5e-9d80-1f2a3b4c5d6e")
 """Fixed namespace so every fixture id is reproducible from its key alone."""
-
-MULTIVERSE_RADIUS: Final = 130.0
-"""R of PRD 8.6.1. Sized so the named Appendix A planes plus the PRD 5.3.3 anti-overlap margin
-actually pack.
-
-Mirrors ``pipeline.assemble.MULTIVERSE_RADIUS``, which carries the full note: the value is also
-written out by hand as the literal ``130`` in ``web/scripts/verify-browser.mjs``'s ``unprojectable``
-failure message, and a change here has to reach all three."""
 
 BLIND_ETERNITIES_SHARE: Final = 0.22
 """PRD 9.2.2 expects 20-25% in the real data; the fixtures sit in that range on purpose."""
@@ -542,16 +534,10 @@ def _palette(rows: list[_Row]) -> tuple[float, float, float, float, float, float
     return layout.palette_from_hue_counts(buckets)
 
 
-def blind_eternities_shard_count(dataset: Dataset) -> int:
-    blind = next(p for p in dataset.planes if p.slug == BLIND_ETERNITIES_SLUG)
-    return max(1, math.ceil(blind.card_count / SHARD_SIZE))
-
-
 __all__ = [
     "SCALE",
     "SMALL",
     "CardType",
     "FixtureSpec",
-    "blind_eternities_shard_count",
     "build",
 ]

@@ -40,6 +40,10 @@ HALO_MAX: Final = 1.2
 BAND_JITTER: Final = 0.35
 """PRD 8.6.2: radial jitter is +/- 0.35 of a band."""
 
+DUST_HALF_THICKNESS_RATIO: Final = 0.075
+"""PRD 8.6.1: half the disc's thickness, as a fraction of the multiverse radius. Read by plane
+placement and by the Blind Eternities scatter, which must agree on where the disc ends."""
+
 PLANE_MARGIN_FACTOR: Final = 0.15
 """PRD 5.3.3, as a fraction of mean plane spacing: the anti-overlap margin :func:`place_planes`
 must be given. Every plane drifts by ``DRIFT_FACTOR`` of the same spacing and a pair can drift
@@ -156,7 +160,7 @@ def place_planes(
     largest-first so the tight constraints are satisfied while the disc is still empty. The
     ``margin`` must be at least twice the drift amplitude (PRD 5.3.3), which the caller enforces.
     """
-    half_thickness = 0.075 * multiverse_radius
+    half_thickness = DUST_HALF_THICKNESS_RATIO * multiverse_radius
     placed: list[tuple[str, float, tuple[float, float, float]]] = []
     result: dict[str, tuple[float, float, float]] = {}
 
@@ -259,7 +263,7 @@ def blind_eternities_position(
     Returns a position in the Blind Eternities' own local frame, which is multiverse coordinates
     scaled by ``1 / multiverse_radius`` (PRD 8.3), so the shader path is identical for every star.
     """
-    half_thickness = 0.075 * multiverse_radius
+    half_thickness = DUST_HALF_THICKNESS_RATIO * multiverse_radius
     best: tuple[float, float, float] | None = None
     best_weight = -1.0
 

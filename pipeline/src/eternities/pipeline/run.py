@@ -123,7 +123,7 @@ def build(
     ]
 
     emit("emit: artefacts (PRD 8.3) + report (PRD 4.9.2)")
-    previous = report.load_previous_planes(data_root, exclude="")
+    previous = report.load_previous_planes(data_root)
     # Read the predecessor's own record *before* the write replaces it — on a re-run in a pruned
     # tree that directory is this run's own. `manifest_chain` explains what the pair is for.
     carried = report.recorded_previous_run(data_root / previous.name) if previous else None
