@@ -34,21 +34,53 @@
  * is judged against, so the trade lands on not degrading a machine that is meeting it.
  */
 
+import {
+  BLOOM_LEVELS_FULL as FULL,
+  BLOOM_LEVELS_REDUCED as REDUCED,
+} from '../post/postTuning'
+
 export interface QualityTier {
   /** PRD 7.1.3: the pixel-ratio cap is also what bounds the cost of a 4K display. */
   readonly pixelRatioCap: number
   /** Multiplier on the bloom's render resolution (PRD 8.5.5's half-resolution blur is 0.5). */
   readonly bloomScale: number
+  /**
+   * Mip levels the bloom's blur chain runs (DEC-703, review §3.5: "bloom source ½→¼ and 6→5
+   * levels").
+   *
+   * The second rung used to be `bloomScale` alone, and `bloomScale` was inert (finding R3), so the
+   * rung moved nothing. It now sizes the source *and* drops a level, which are the two quantities
+   * the chain's cost is made of.
+   */
+  readonly bloomLevels: number
   /** PRD 8.5.8's default atlas capacity. Phase 3 reads it; Phase 2a only carries it. */
   readonly thumbnailCapacity: number
   readonly label: string
 }
 
 export const QUALITY_TIERS: readonly QualityTier[] = [
-  { pixelRatioCap: 1.5, bloomScale: 0.5, thumbnailCapacity: 512, label: 'full' },
-  { pixelRatioCap: 1.0, bloomScale: 0.5, thumbnailCapacity: 512, label: 'pixel-ratio' },
-  { pixelRatioCap: 1.0, bloomScale: 0.25, thumbnailCapacity: 512, label: 'bloom' },
-  { pixelRatioCap: 1.0, bloomScale: 0.25, thumbnailCapacity: 256, label: 'thumbnails' },
+  { pixelRatioCap: 1.5, bloomScale: 0.5, bloomLevels: FULL, thumbnailCapacity: 512, label: 'full' },
+  {
+    pixelRatioCap: 1.0,
+    bloomScale: 0.5,
+    bloomLevels: FULL,
+    thumbnailCapacity: 512,
+    label: 'pixel-ratio',
+  },
+  {
+    pixelRatioCap: 1.0,
+    bloomScale: 0.25,
+    bloomLevels: REDUCED,
+    thumbnailCapacity: 512,
+    label: 'bloom',
+  },
+  {
+    pixelRatioCap: 1.0,
+    bloomScale: 0.25,
+    bloomLevels: REDUCED,
+    thumbnailCapacity: 256,
+    label: 'thumbnails',
+  },
 ]
 
 export interface QualityMonitorOptions {

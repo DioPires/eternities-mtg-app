@@ -904,6 +904,7 @@ export function SceneView({
           resources={data.resources}
           starsComplete={data.starsComplete}
           reducedMotion={reducedMotion}
+          bloomScale={tier.tier.bloomScale}
           onHover={setHover}
           onSelect={onSelect}
           onQualityChange={onQualityChange}

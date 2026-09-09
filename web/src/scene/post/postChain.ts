@@ -18,10 +18,10 @@
  * {@link PostChain.configure} and destroyed in `disposeTargets`, which is the one method both the
  * resize path and {@link PostChain.dispose} call. There is no second list to keep in step.
  *
- * **Target count and cost.** Seven targets at the top of the ladder (one scene buffer plus six
- * bloom levels) against the old chain's ~20, and the bloom levels start at half the drawing buffer
- * rather than at all of it. At 1920x1080 and dpr 1.5 that is ~50 MB of render targets where review
- * §2.2 measured ~150 MB, and — because the field is drawn a second time at half resolution instead
+ * **Target count and cost.** Eight targets at the top of the ladder (a scene buffer, a bloom source
+ * and six blur levels) against the old chain's ~20, and the bloom chain starts at half the drawing
+ * buffer rather than at all of it. At 1920x1080 and dpr 1.5 that is ~59 MB of render targets where
+ * review §2.2 measured ~150 MB, and — because the field is drawn a second time at half resolution instead
  * of the whole scene being drawn a third time at full resolution for a mask nobody read — fewer
  * bytes per frame as well. The bandwidth claim is what `scripts/bench.mjs` and §9's kit measure;
  * the allocation claim is what `scripts/alloc-probe.mjs` measures.
@@ -54,6 +54,7 @@ import type { PostCapabilities } from './capabilities'
 import {
   POST_COMPOSITE_FRAGMENT_SHADER,
   POST_DOWNSAMPLE_FRAGMENT_SHADER,
+  POST_PREFILTER_FRAGMENT_SHADER,
   POST_UPSAMPLE_FRAGMENT_SHADER,
   POST_VERTEX_SHADER,
 } from './postShaders'
@@ -82,6 +83,8 @@ export class PostChain {
   private readonly quadScene = new Scene()
   private readonly quadCamera = new Camera()
   private readonly quad: Mesh
+  /** PRD 5.3.20's threshold, source into level 0. See `POST_PREFILTER_FRAGMENT_SHADER`. */
+  private readonly prefilterMaterial: ShaderMaterial
   private readonly downsampleMaterial: ShaderMaterial
   private readonly upsampleMaterial: ShaderMaterial
   private readonly compositeMaterial: ShaderMaterial
@@ -90,14 +93,25 @@ export class PostChain {
   private sceneTarget: WebGLRenderTarget | null = null
 
   /**
-   * The bloom chain, level 0 first.
+   * The bloom source: the target the field draws itself into, at the tier's `bloomScale`.
    *
-   * Level 0 is the *source* — the half-resolution target the field draws itself into, already
-   * thresholded by the object shaders. The blur runs down the list and then back up it, mixing each
-   * level into the one below, so level 0 ends the frame holding the finished bloom and the
-   * composite samples it. That is the arrangement `MipmapBlurPass` uses, minus its second set of
-   * upsampling targets: mixing in place needs no extra memory and never binds a target as both
-   * input and output.
+   * Un-thresholded, and exactly the picture the main pass drew minus everything that did not opt
+   * into `BLOOM_LAYER`. Nothing samples it but the threshold pass.
+   */
+  private sourceTarget: WebGLRenderTarget | null = null
+
+  /**
+   * The blur chain, finest level first. Level 0 is the thresholded source at the source's own
+   * resolution; each level after it is a halving.
+   *
+   * The chain runs down the list and then back up it, mixing each level into the one below, so
+   * level 0 ends the frame holding the finished bloom and the composite samples it. That is
+   * `MipmapBlurPass`'s arrangement minus its second set of upsampling targets: mixing in place
+   * needs no extra memory and never binds a target as both input and output.
+   *
+   * Level 0 has to exist as a *separate* target from the source, and the reason is in
+   * `POST_PREFILTER_FRAGMENT_SHADER` — the mix needs a sharp, thresholded level to dilute its
+   * coarse levels against, and the source is not thresholded.
    */
   private levels: WebGLRenderTarget[] = []
 
@@ -113,6 +127,16 @@ export class PostChain {
     const geometry = new BufferGeometry()
     geometry.setAttribute('position', new BufferAttribute(FULLSCREEN_TRIANGLE, 3))
     geometry.boundingSphere = null
+
+    this.prefilterMaterial = new ShaderMaterial({
+      name: 'post.prefilter',
+      uniforms: { uInput: { value: null }, uTexelSize: { value: new Vector2() } },
+      vertexShader: POST_VERTEX_SHADER,
+      fragmentShader: POST_PREFILTER_FRAGMENT_SHADER,
+      blending: NoBlending,
+      depthTest: false,
+      depthWrite: false,
+    })
 
     this.downsampleMaterial = new ShaderMaterial({
       name: 'post.downsample',
@@ -174,8 +198,8 @@ export class PostChain {
    * the one the rung set was not the one the chain ran at (R3), there is now one.
    */
   get bloomSourceSize(): TargetSize | null {
-    const level = this.levels[0]
-    return level ? { width: level.width, height: level.height } : null
+    const target = this.sourceTarget
+    return target ? { width: target.width, height: target.height } : null
   }
 
   /** How many mip levels the blur is running, after the clamp in {@link configure}. */
@@ -202,7 +226,8 @@ export class PostChain {
       height === this.height &&
       bloomScale === this.bloomScale &&
       levels === this.levelCount &&
-      this.sceneTarget !== null
+      this.sceneTarget !== null &&
+      this.sourceTarget !== null
     ) {
       return
     }
@@ -217,6 +242,7 @@ export class PostChain {
 
     let levelWidth = Math.max(1, Math.round(width * bloomScale))
     let levelHeight = Math.max(1, Math.round(height * bloomScale))
+    this.sourceTarget = this.createTarget(levelWidth, levelHeight, 'post.bloom.source', false)
     // A level narrower than two texels cannot be halved again, and a 1x1 tap is a blur of one
     // pixel over the whole screen. Stop there rather than allocating levels that do nothing —
     // which is also what keeps a 640x360 CI viewport at dpr 2 from asking for eleven halvings.
@@ -224,8 +250,7 @@ export class PostChain {
     const affordable = Math.max(MIN_LEVELS, Math.min(levels, 1 + Math.floor(Math.log2(smallest))))
 
     for (let i = 0; i < affordable; i += 1) {
-      const name = i === 0 ? 'post.bloom.source' : `post.bloom.${i}`
-      this.levels.push(this.createTarget(levelWidth, levelHeight, name, false))
+      this.levels.push(this.createTarget(levelWidth, levelHeight, `post.bloom.${i}`, false))
       levelWidth = Math.max(1, Math.floor(levelWidth / 2))
       levelHeight = Math.max(1, Math.floor(levelHeight / 2))
     }
@@ -241,8 +266,9 @@ export class PostChain {
    */
   render(scene: Scene, camera: Camera): void {
     const sceneTarget = this.sceneTarget
-    const source = this.levels[0]
-    if (!sceneTarget || !source) return
+    const source = this.sourceTarget
+    const bloom = this.levels[0]
+    if (!sceneTarget || !source || !bloom) return
 
     const renderer = this.renderer
     const previousTarget = renderer.getRenderTarget()
@@ -279,20 +305,22 @@ export class PostChain {
     // what is already there, so nothing below may clear.
     renderer.autoClear = false
 
+    // PRD 5.3.20's threshold, at the source's resolution: source -> level 0.
+    this.setPassInput(this.prefilterMaterial, source)
+    this.drawQuad(this.prefilterMaterial, bloom)
+
     for (let i = 1; i < this.levels.length; i += 1) {
-      const input = this.levels[i - 1]!
-      this.setPassInput(this.downsampleMaterial, input)
+      this.setPassInput(this.downsampleMaterial, this.levels[i - 1]!)
       this.drawQuad(this.downsampleMaterial, this.levels[i]!)
     }
 
     for (let i = this.levels.length - 1; i >= 1; i -= 1) {
-      const input = this.levels[i]!
-      this.setPassInput(this.upsampleMaterial, input)
+      this.setPassInput(this.upsampleMaterial, this.levels[i]!)
       this.drawQuad(this.upsampleMaterial, this.levels[i - 1]!)
     }
 
     this.compositeMaterial.uniforms['uScene']!.value = sceneTarget.texture
-    this.compositeMaterial.uniforms['uBloom']!.value = source.texture
+    this.compositeMaterial.uniforms['uBloom']!.value = bloom.texture
     this.drawQuad(this.compositeMaterial, null)
 
     renderer.autoClear = previousAutoClear
@@ -301,6 +329,7 @@ export class PostChain {
 
   dispose(): void {
     this.disposeTargets()
+    this.prefilterMaterial.dispose()
     this.downsampleMaterial.dispose()
     this.upsampleMaterial.dispose()
     this.compositeMaterial.dispose()
@@ -354,6 +383,8 @@ export class PostChain {
   private disposeTargets(): void {
     this.sceneTarget?.dispose()
     this.sceneTarget = null
+    this.sourceTarget?.dispose()
+    this.sourceTarget = null
     for (const level of this.levels) level.dispose()
     this.levels = []
   }

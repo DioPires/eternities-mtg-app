@@ -29,7 +29,7 @@ import {
   recordBenchCpu,
   type BenchResult,
 } from '../bench/BenchRunner'
-import { Effects } from '../scene/Effects'
+import { PostEffects } from '../scene/post/PostEffects'
 import { sceneErrors, type SceneDataError } from '../scene/errors'
 import type { PickResult } from '../scene/picking/scenePicker'
 import { selfCheckRequested } from '../scene/selfCheck'
@@ -117,13 +117,17 @@ export function Phase2aScene(): ReactElement {
           resources={data.resources}
           starsComplete={data.starsComplete}
           reducedMotion={reducedMotion}
+          bloomScale={tier.tier.bloomScale}
           onHover={setHover}
           onSelect={setSelected}
           onQualityChange={onQualityChange}
           onFrame={onFrame}
           handleRef={sceneRef}
         />
-        <Effects bloomScale={tier.tier.bloomScale} />
+        <PostEffects
+          bloomScale={tier.tier.bloomScale}
+          bloomLevels={tier.tier.bloomLevels}
+        />
         {!bench && <OrbitControls makeDefault enableDamping dampingFactor={0.08} />}
         {bench && data.planes && data.resources && (
           <BenchRunner

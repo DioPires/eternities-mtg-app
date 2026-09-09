@@ -65,6 +65,16 @@ export interface StarSceneProps {
   readonly starsComplete?: boolean
   /** PRD 5.9. 0 stops rotation, drift, twinkle and dust turbulence. */
   readonly reducedMotion: boolean
+  /**
+   * The live tier's bloom resolution multiplier (PRD 8.5.11's second rung), for the bloom source
+   * pass (DEC-703).
+   *
+   * The field's sprite sizes are in device pixels, and the bloom source is a smaller target than
+   * the drawing buffer, so the second draw needs the same numbers scaled — see the uniform block in
+   * `./starfield/starFieldObjects`. It arrives as a prop rather than off the monitor because the
+   * post chain has to be told the same value in the same frame, and one owner of it is the point.
+   */
+  readonly bloomScale: number
   /** PRD 5.4.12 hover and PRD 5.7.2 click. `null` means the pointer is over empty space. */
   readonly onHover?: (pick: PickResult) => void
   readonly onSelect?: (pick: PickResult) => void
@@ -89,6 +99,7 @@ export function StarScene({
   resources,
   starsComplete = false,
   reducedMotion,
+  bloomScale,
   onHover,
   onSelect,
   onQualityChange,
@@ -341,6 +352,7 @@ export function StarScene({
         gl.domElement.height,
         ((camera as PerspectiveCamera).fov * Math.PI) / 180,
         gl.getPixelRatio(),
+        bloomScale,
       )
       advanceBackground(background.group, table.multiverseAngle)
 
@@ -374,6 +386,10 @@ export function StarScene({
           <primitive object={resources.field.glow} />
           <primitive object={resources.field.points} />
           <primitive object={resources.field.pickPoints} />
+          {/* PRD 5.3.20's bloom source. On `BLOOM_LAYER`, so only the post chain's source pass
+              draws it; the main pass and the pick pass never see it (DEC-703). The glows need no
+              second object — the mesh above is on both layers. */}
+          <primitive object={resources.field.bloomPoints} />
         </>
       )}
     </>

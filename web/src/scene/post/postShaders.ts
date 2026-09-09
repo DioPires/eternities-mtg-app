@@ -1,11 +1,12 @@
 /**
  * The owned post chain's GLSL (DEC-703, review §3.5 and findings R3/R4).
  *
- * Three fullscreen programs — downsample, upsample, composite — plus one chunk that the *object*
- * shaders include when they draw themselves a second time into the bloom source. That second draw
- * is what makes the bloom selective for free: cards, thumbnails and planets never enable the bloom
- * layer, so there is no mask pass and no depth pass to be inert (R4), and the source is sized by
- * the ladder rather than by the drawing buffer, so rung 2 moves the pixels the frame pays for (R3).
+ * Four fullscreen programs — threshold, downsample, upsample, composite. The bloom *source* is not
+ * one of them: the field draws itself into it a second time with its own materials, which is what
+ * makes the bloom selective for free:
+ * cards, thumbnails and planets never enable the bloom layer, so there is no mask pass and no depth
+ * pass to be inert (R4), and the source is sized by the ladder rather than by the drawing buffer,
+ * so rung 2 moves the pixels the frame pays for (R3).
  *
  * **Every number here comes from `../tuning`.** The look is meant to be unchanged from the shipped
  * picture, so each program below reproduces what `postprocessing` computes today, chunk for chunk:
@@ -13,7 +14,10 @@
  *  - the threshold is `postprocessing`'s `LuminanceMaterial` in `COLOR` mode
  *    (`build/index.js:2767`): `l = smoothstep(threshold, threshold + smoothing, l) * l`, then
  *    `rgb * clamp(l, 0, 1)`. Note that it scales by the *mask times the luminance*, not by the mask
- *    alone — a detail worth keeping, because it is a third of the bloom's contrast;
+ *    alone — a detail worth keeping, because it is a third of the bloom's contrast. It runs over
+ *    the half-resolution source rather than the full drawing buffer, and it reads the *accumulated*
+ *    source, which is what the old chain thresholded too — see `POST_PREFILTER_FRAGMENT_SHADER`
+ *    for the two cheaper placements that were measured and rejected;
  *  - the downsample is its `DownsamplingMaterial` (`:3086`), a 13-tap with the same
  *    0.125 / 0.0555555 weights and the same border clamp;
  *  - the upsample is its `UpsamplingMaterial` (`:3134`), a 9-tap tent mixed into the level below by
@@ -42,29 +46,6 @@ function glslFloat(value: number): string {
 }
 
 /**
- * PRD 5.3.20's luminance threshold, for the object shaders that draw the bloom source.
- *
- * Included by the star and glow fragment shaders under `BLOOM_PASS`, which is what puts the
- * threshold where PRD 8.5.5's "selective" actually is: a star dimmed to `FILTER_DIM` by a filter
- * (PRD 5.8.1) has already been multiplied by that `dim` term when it reaches here, so it falls
- * under the threshold and drops out of the bloom with no per-object bookkeeping — exactly the
- * reading `Effects.tsx` documented and the old chain then failed to implement.
- *
- * three's `<common>` defines `luminance()` with the same coefficients, but a `ShaderMaterial` only
- * gets that chunk if it asks for it, and these shaders do not otherwise want `<common>`.
- */
-export const BLOOM_MASK_GLSL = /* glsl */ `
-#define BLOOM_THRESHOLD ${glslFloat(BLOOM_THRESHOLD)}
-#define BLOOM_SMOOTHING ${glslFloat(BLOOM_SMOOTHING)}
-
-vec3 bloomMask(vec3 colour) {
-  float l = dot(colour, vec3(0.2126729, 0.7151522, 0.0721750));
-  l = smoothstep(BLOOM_THRESHOLD, BLOOM_THRESHOLD + BLOOM_SMOOTHING, l) * l;
-  return colour * clamp(l, 0.0, 1.0);
-}
-`
-
-/**
  * One fullscreen triangle, in clip space, for all three programs.
  *
  * A triangle rather than a quad: two fewer vertices, one primitive instead of two, and no index
@@ -79,6 +60,88 @@ varying vec2 vUv;
 void main() {
   vUv = position.xy * 0.5 + 0.5;
   gl_Position = vec4(position.xy, 1.0, 1.0);
+}
+`
+
+/**
+ * PRD 5.3.20's threshold, at the bloom source's own resolution, under the downsample's own kernel.
+ *
+ * This is `postprocessing`'s `LuminanceMaterial` in `COLOR` mode, coefficient for coefficient — but
+ * over a half-resolution source rather than the full drawing buffer, which is the whole of what
+ * review §3.5 objected to when it said "no luminance pass". Two things were tried before settling
+ * on keeping the pass at all, and both are worth recording because each looked cheaper:
+ *
+ *  - **Threshold in the object shaders**, which is what §3.5 suggests. Measured against the old
+ *    chain: mean |Δ| 1.9/255, max 65/255, every large difference on a dense star-cluster core, all
+ *    of them *darker*. The old chain thresholded the *accumulated* buffer, where a hundred faint
+ *    stars in a cluster sum over the threshold together; thresholding each sprite's own
+ *    contribution drops all hundred individually and the cluster stops blooming.
+ *  - **Threshold folded into the first downsample**, with the composite reading the quarter-
+ *    resolution level. That restores the accumulated semantics (max |Δ| fell to 34/255) but the
+ *    chain then has no sharp level to dilute its coarse ones against, and it laid a visible broad
+ *    wash over the same cluster — a numerically small, perceptually obvious regression.
+ *  - **A plain one-tap threshold into level 0.** Structurally right, but the old chain's level 0 is
+ *    a 13-tap *downsample* of its thresholded buffer, so a straight copy leaves this level sharper
+ *    than the old one and the bloom too bright everywhere (max |Δ| 70/255, all of it brighter).
+ *
+ * So the threshold gets its own pass, producing the chain's level 0 at the source's resolution.
+ * That is `MipmapBlurPass`'s structure exactly, at half the resolution: one extra half-res pass
+ * (~14 MB/frame at 1080p and dpr 1.5) against the old chain's full-res luminance pass, full-res
+ * mip 0, depth pass and mask pass.
+ *
+ * A star dimmed to `FILTER_DIM` by a filter (PRD 5.8.1) arrives here already multiplied by that
+ * term, so it falls under the threshold and drops out of the bloom with no per-object bookkeeping —
+ * the reading of "selective" that `Effects.tsx` documented and the old chain then failed to deliver.
+ */
+export const POST_PREFILTER_FRAGMENT_SHADER = /* glsl */ `
+precision highp float;
+
+#define BLOOM_THRESHOLD ${glslFloat(BLOOM_THRESHOLD)}
+#define BLOOM_SMOOTHING ${glslFloat(BLOOM_SMOOTHING)}
+#define WEIGHT_INNER 0.125
+#define WEIGHT_OUTER 0.0555555
+
+uniform sampler2D uInput;
+uniform vec2 uTexelSize;
+
+varying vec2 vUv;
+
+// postprocessing's LuminanceMaterial in COLOR mode: the mask is a smoothstep over the threshold
+// band times the luminance itself, and it scales the colour rather than replacing it.
+vec3 threshold(vec3 colour) {
+  float l = dot(colour, vec3(0.2126729, 0.7151522, 0.0721750));
+  l = smoothstep(BLOOM_THRESHOLD, BLOOM_THRESHOLD + BLOOM_SMOOTHING, l) * l;
+  return colour * clamp(l, 0.0, 1.0);
+}
+
+// The downsample's 13-tap kernel at HALF its usual reach, thresholded per tap. See the header: the
+// old chain thresholded at full resolution and then took this kernel on the way down to half, so
+// its taps sat half a half-res texel apart. Reproducing that spacing over a source that is already
+// half resolution is what makes the two chains agree; running the kernel at full reach doubles the
+// blur, and skipping it entirely leaves this level sharper than the old chain's and the whole bloom
+// too bright (measured: max |delta| 70/255).
+vec3 tap(vec2 offset) {
+  vec2 uv = vUv + uTexelSize * offset * 0.5;
+  float inside = float(uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0);
+  return threshold(texture2D(uInput, uv).rgb) * inside;
+}
+
+void main() {
+  vec3 c = vec3(0.0);
+  c += WEIGHT_INNER * tap(vec2(-1.0, 1.0));
+  c += WEIGHT_INNER * tap(vec2(1.0, 1.0));
+  c += WEIGHT_INNER * tap(vec2(-1.0, -1.0));
+  c += WEIGHT_INNER * tap(vec2(1.0, -1.0));
+  c += WEIGHT_OUTER * tap(vec2(-2.0, 2.0));
+  c += WEIGHT_OUTER * tap(vec2(0.0, 2.0));
+  c += WEIGHT_OUTER * tap(vec2(2.0, 2.0));
+  c += WEIGHT_OUTER * tap(vec2(-2.0, 0.0));
+  c += WEIGHT_OUTER * tap(vec2(2.0, 0.0));
+  c += WEIGHT_OUTER * tap(vec2(-2.0, -2.0));
+  c += WEIGHT_OUTER * tap(vec2(0.0, -2.0));
+  c += WEIGHT_OUTER * tap(vec2(2.0, -2.0));
+  c += WEIGHT_OUTER * threshold(texture2D(uInput, vUv).rgb);
+  gl_FragColor = vec4(c, 1.0);
 }
 `
 
