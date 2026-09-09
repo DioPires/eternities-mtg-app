@@ -66,9 +66,12 @@ panel and report its numbers under a `2560x1440` label. Get Firefox's 1440p numb
 **How to tell it landed on the right screen.** Read the `placement` line the kit prints per browser:
 
 ```
-  window     2560x1312 device px (1707x875 CSS @ dpr 1.5)
+  window     2560x1440 asked, 2560x1312 device px measured (1707x875 CSS @ dpr 1.5)
   placement  on a 2560x1440 display — the 2560x1440 display, as asked
 ```
+
+There is one such pair per resolution you asked for, so on run 3 you will see the 1080p leg's lines
+and the 1440p leg's lines, in that order.
 
 If it says `NOT the 2560x1440 display you asked for`, fix the coordinates and run it again. Do not
 try to check this from the CSS numbers — at 150% scaling a *correct* window reads `1707x875 CSS`,
@@ -148,7 +151,10 @@ so in its own output too. This is a decision, not a gap — you are not missing 
 
 - the output ends with `refusing: the runs above did not measure what they claim`;
 - the GPU line names `SwiftShader`, `Basic Render` or anything with "software" in it;
-- a row ends with `NOT THE RESOLUTION IT CLAIMS`;
+- a row ends with `NOT THE RESOLUTION IT CLAIMS` **and** the remedy the refusal itself prints does
+  not clear it. That message names two fixes — move the window onto the display you meant to
+  measure, or, if the window you had *is* the one you meant, re-run with the `--resolutions` value
+  it tells you. Try them, once each; report it only if a clean row will not come;
 - on **run 3 only**, the `placement` line says `NOT the 2560x1440 display you asked for` and
   different `--window-position` coordinates do not fix it. On runs 1, 2 and 4 the `placement` line
   is only telling you which display you are on — it naming a panel that is not exactly 1920×1080 is

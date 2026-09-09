@@ -65,7 +65,10 @@
  *
  * **Nothing measured is ever thrown away.** A browser that is missing or undrivable is recorded as
  * not run and the others still produce a report; a run that fails inside a browser that otherwise
- * works is recorded as failed and the battery carries on. That is the default, and it is the only
+ * works is recorded as failed and the battery carries on; a browser that stops answering part-way
+ * — one that will no longer even start is the case seen in the field — ends that browser's battery
+ * with every row it had already measured kept, printed under `DID NOT FINISH`, listed in
+ * `incomplete`, and exited 2. That is the default, and it is the only
  * behaviour the owner should ever see: on their machines one invocation is ~10 bench runs and 6
  * self-checks, the self-check has a known flake (see `PAGE_IS_GONE`), and a late failure discarding
  * the earlier numbers would delete exactly the two results §9 exists to obtain. `--fail-fast` is for
@@ -77,7 +80,10 @@
  * frame error that `PAGE_IS_GONE` is about. It exists because the real fault is a rare flake that
  * will not reproduce on demand, and a recovery path nobody has ever seen run is not a recovery
  * path: this is how you check that the retry fires, that it recovers, and that the report says it
- * happened. Nothing else reads it.
+ * happened. `KIT_FAULT_LAUNCH=n` is the same idea for the other unreproducible fault: it makes the
+ * nth browser launch of the process fail the way puppeteer's 30 s connect timeout does, which is
+ * how you check that a battery cut short mid-way keeps the rows it had already measured. Both
+ * inject a message that says it was injected. Nothing else reads either.
  */
 
 import { execFileSync, spawn } from 'node:child_process'
@@ -372,7 +378,21 @@ function launchArgs(browser, args, resolution, uncapped) {
   ]
 }
 
+/** How many browsers this process has launched; read only by the `KIT_FAULT_LAUNCH` injection. */
+let launches = 0
+
 async function launch(browser, args, resolution, uncapped) {
+  launches += 1
+  // `KIT_FAULT_LAUNCH=n` makes the nth launch of the process fail the way a real one does. See the
+  // header: a launch timeout is the fault that used to delete a battery's completed runs, and it
+  // cannot be provoked on demand on a machine where the browser starts fine.
+  const faultAt = Number(process.env['KIT_FAULT_LAUNCH'] ?? 0)
+  if (faultAt > 0 && launches === faultAt) {
+    throw new Error(
+      `Timed out after 30000 ms while trying to connect to the browser! ` +
+        `(injected by KIT_FAULT_LAUNCH=${faultAt}; this is not a real launch failure)`,
+    )
+  }
   return puppeteer.launch({
     executablePath: browser.path,
     browser: browser.family === 'firefox' ? 'firefox' : 'chrome',
@@ -454,7 +474,17 @@ function checkResolution(requested, environment) {
   }
   const widthRatio = Math.round((device.width / width) * 1000) / 1000
   const heightRatio = Math.round((device.height / height) * 1000) / 1000
-  const ok = widthRatio >= 0.9 && widthRatio <= 1.1 && heightRatio >= 0.65 && heightRatio <= 1.1
+  // The one thing the display *does* refuse: being shorter than the window asked for. The height
+  // ratio has to tolerate 0.65 because browser chrome eats 130-plus CSS pixels, and that slack is
+  // wide enough to swallow a whole missing display: a 1440p leg run on a 2560x1080 ultrawide fills
+  // 2560x~1000, passes the width test outright, and lands at a height ratio of ~0.69 that is
+  // indistinguishable from Firefox's title bar — 360 rows of the measurement simply absent, under
+  // a green label. Refusing on 0.95 of the requested height closes that without touching the case
+  // the display is deliberately *not* refused for: a 1920x1200 panel measuring a 1920x1080 window
+  // (1200 >= 1026) still passes, which is why this is a height test and not `onRequestedDisplay`.
+  const displayTallEnough = display.height >= height * 0.95
+  const ok =
+    widthRatio >= 0.9 && widthRatio <= 1.1 && heightRatio >= 0.65 && heightRatio <= 1.1 && displayTallEnough
   const onRequestedDisplay =
     Math.abs(display.width - width) <= width * 0.03 && Math.abs(display.height - height) <= height * 0.03
   return {
@@ -463,6 +493,7 @@ function checkResolution(requested, environment) {
     display,
     widthRatio,
     heightRatio,
+    displayTallEnough,
     ok,
     onRequestedDisplay,
     why: ok
@@ -470,6 +501,10 @@ function checkResolution(requested, environment) {
       : `asked for ${requested}, the window filled ${device.width}x${device.height} device px ` +
         `(${environment.viewport.width}x${environment.viewport.height} CSS @ dpr ${dpr}) ` +
         `on a ${display.width}x${display.height} display. ` +
+        (displayTallEnough
+          ? ''
+          : `That display is only ${display.height} device px tall, so no window on it can measure ` +
+            `${height}. `) +
         `Move the window to the ${requested} display, or — if this window IS the one you meant to ` +
         `measure — re-run with --resolutions ${display.width}x${display.height}`,
   }
@@ -680,8 +715,13 @@ async function selfCheckWithRetry(browser, args, positions) {
   for (let attempt = 1; ; attempt += 1) {
     selfCheckAttempts = attempt
     process.stdout.write(`  self-check ${label}${attempt > 1 ? ` (attempt ${attempt})` : ''} ... `)
-    const browserProcess = await launch(browser, args, args.resolutions[0], false)
+    // The launch is inside the `try`, not before it. A browser that will not start — puppeteer
+    // waits 30 s for the port, and a cold Iris Xe behind antivirus is where that happens — is a
+    // failed self-check, recorded and returned like any other, rather than an exception thrown
+    // past this function's caller with the whole battery's data still on the stack.
+    let browserProcess
     try {
+      browserProcess = await launch(browser, args, args.resolutions[0], false)
       const check = await selfCheckRun(browserProcess, args, positions)
       console.log(
         `${check.ok ? 'ok' : 'FAILED'} — mode ${check.positionMode}` +
@@ -695,7 +735,8 @@ async function selfCheckWithRetry(browser, args, positions) {
       if (gone && attempt < SELF_CHECK_ATTEMPTS) continue
       return { requestedPositions: label, attempts: attempt, error: error.message }
     } finally {
-      await browserProcess.close().catch(() => {})
+      // `?.` because the launch itself is now one of the things that can fail in here.
+      await browserProcess?.close().catch(() => {})
     }
   }
 }
@@ -723,42 +764,66 @@ async function runBrowser(name, args) {
     return error
   }
 
-  for (const resolution of args.resolutions) {
-    // vsync always; uncapped only where the browser can actually unlock the frame rate.
-    const caps = args.quick || browser.family === 'firefox' ? [false] : [false, true]
-    for (const uncapped of caps) {
-      for (const tier of args.tiers) {
-        const what = `${resolution} tier ${tier} (${TIER_LABELS[tier]}) ${uncapped ? 'uncapped' : 'vsync'}`
-        process.stdout.write(`  bench ${what} ... `)
-        const browserProcess = await launch(browser, args, resolution, uncapped)
-        try {
-          const run = await benchRun(browserProcess, args, { resolution, tier, uncapped, cold })
-          cold = false
-          runs.push(run)
-          const bench = run.bench
-          console.log(
-            `${bench.fps} fps, p95 ${bench.frameMsP95} ms, ` +
-              `buffer ${bench.viewport.width}x${bench.viewport.height} @ dpr ${bench.viewport.dpr}, ` +
-              `alloc ${run.allocation.rate ? `${run.allocation.rate.estimatedMbPerS} MB/s` : 'n/a'}`,
-          )
-        } catch (error) {
-          console.log(`FAILED: ${error.message.split('\n')[0]}`)
-          runs.push({ resolution, tier, frameCap: uncapped ? 'uncapped' : 'vsync', error: error.message })
-          if (args.failFast) throw abort(error)
-        } finally {
-          await browserProcess.close().catch(() => {})
+  // The whole body, so `abort` covers every throw site rather than the ones that happen to sit
+  // inside a loop's own `try`. It previously did not: the browser was launched on the line *above*
+  // the `try`, so a launch that timed out mid-battery threw straight past `abort`, and the outer
+  // handler had no `error.partial` to keep — it filled in an empty array and the report said
+  // `NOT RUN` for a browser that had just printed a dozen live measurements. One `try` around
+  // everything means the claim "nothing measured is ever thrown away" needs no reader to check
+  // which lines it holds for. `findBrowser` stays outside on purpose: a browser that is not
+  // installed measured nothing, and `not run` is the honest word for it.
+  try {
+    for (const resolution of args.resolutions) {
+      // vsync always; uncapped only where the browser can actually unlock the frame rate.
+      const caps = args.quick || browser.family === 'firefox' ? [false] : [false, true]
+      for (const uncapped of caps) {
+        for (const tier of args.tiers) {
+          const what = `${resolution} tier ${tier} (${TIER_LABELS[tier]}) ${uncapped ? 'uncapped' : 'vsync'}`
+          process.stdout.write(`  bench ${what} ... `)
+          let browserProcess
+          try {
+            browserProcess = await launch(browser, args, resolution, uncapped)
+            const run = await benchRun(browserProcess, args, { resolution, tier, uncapped, cold })
+            cold = false
+            runs.push(run)
+            const bench = run.bench
+            const canvas = run.environment.drawingBuffer
+            console.log(
+              `${bench.fps} fps, p95 ${bench.frameMsP95} ms, ` +
+                // Two different numbers, both wanted, and this line used to print the first under
+                // the second's name: the viewport is CSS pixels, the drawing buffer is the device
+                // pixels the GPU filled, and at tier 0 the app scales the buffer past dpr on top.
+                `window ${bench.viewport.width}x${bench.viewport.height} CSS @ dpr ${bench.viewport.dpr}, ` +
+                `canvas ${canvas ? `${canvas.width}x${canvas.height}` : 'unknown'} device px, ` +
+                `alloc ${run.allocation.rate ? `${run.allocation.rate.estimatedMbPerS} MB/s` : 'n/a'}`,
+            )
+          } catch (error) {
+            console.log(`FAILED: ${error.message.split('\n')[0]}`)
+            runs.push({ resolution, tier, frameCap: uncapped ? 'uncapped' : 'vsync', error: error.message })
+            // A run that failed *inside* a browser that works is one lost row and the battery goes
+            // on — that is the common case and the default the owner should see. A browser that
+            // would not start is a different fact about the machine: the next fifteen launches
+            // will most likely spend 30 s each timing out the same way, so the battery ends here
+            // and the truncation is reported. Either way the rows already collected are kept.
+            if (args.failFast || !browserProcess) throw error
+          } finally {
+            // `?.` because the launch itself is now one of the things that can fail in here.
+            await browserProcess?.close().catch(() => {})
+          }
         }
       }
     }
-  }
 
-  if (!args.quick) {
-    for (const positions of [null, 'float32']) {
-      const check = await selfCheckWithRetry(browser, args, positions)
-      selfChecks.push(check)
-      if (!check.error) continue
-      if (args.failFast) throw abort(new Error(check.error))
+    if (!args.quick) {
+      for (const positions of [null, 'float32']) {
+        const check = await selfCheckWithRetry(browser, args, positions)
+        selfChecks.push(check)
+        if (!check.error) continue
+        if (args.failFast) throw new Error(check.error)
+      }
     }
+  } catch (error) {
+    throw abort(error)
   }
 
   return { browser: name, label: browser.label, executable: browser.path, runs, selfChecks }
@@ -795,7 +860,12 @@ function integrity(report) {
       // `--angle` is a request too, and it is visible in the renderer string, so it is checkable.
       // An owner who gets "Direct3D11" back from `--angle vulkan` has two identical D3D11 runs
       // under two labels, and "the backends agree" would be the conclusion drawn from them.
-      if (report.angle && renderer) {
+      //
+      // Chromium only, because `--use-angle` is Chromium only: `launchArgs` never passes it to
+      // Firefox, so checking a Firefox renderer string against it refuses a run for not honouring
+      // a flag it was never given — and the refusal exits 1 and voids a battery that measured
+      // exactly what it claimed to.
+      if (report.angle && renderer && BROWSERS[engine.browser]?.family !== 'firefox') {
         const expected = ANGLE_BACKEND[report.angle]
         if (expected && !expected.test(renderer)) {
           problems.push(
@@ -929,10 +999,22 @@ function criteria(report) {
   const checks = report.engines.flatMap((engine) =>
     engine.selfChecks.filter((check) => !check.error).map((check) => ({ engine: engine.browser, check })),
   )
+  // A self-check that failed to run is not a tolerance failure and must not be counted as one — but
+  // it must not disappear either. It is excluded from the verdict and named beside it, because
+  // "zero tolerance failures" over one of the two modes is a narrower claim than the criterion
+  // makes, and the difference is invisible unless the line says so.
+  const notChecked = report.engines.flatMap((engine) =>
+    engine.selfChecks
+      .filter((check) => check.error)
+      .map((check) => `${engine.browser} ${check.requestedPositions} did not run`),
+  )
   rows.push({
     criterion: 'zero self-check tolerance failures (float16 and float32)',
     measured: checks.length
-      ? checks.map(({ engine, check }) => `${engine} ${check.positionMode} ${check.missed} missed`).join(', ')
+      ? [
+          checks.map(({ engine, check }) => `${engine} ${check.positionMode} ${check.missed} missed`).join(', '),
+          ...(notChecked.length > 0 ? [`not covered by this verdict: ${notChecked.join(', ')}`] : []),
+        ].join('\n         ')
       : 'not run',
     pass: checks.length ? checks.every(({ check }) => check.ok && check.missed === 0) : null,
   })
@@ -986,6 +1068,9 @@ function summarise(report) {
   lines.push(`\n${'='.repeat(96)}`)
   lines.push(`Windows measurement kit — machine "${report.machine}", ${report.power}`)
   lines.push(`target ${report.url}${report.built ? ' (local build)' : ''}, host ${report.host.platform} ${report.host.release}`)
+  // Spelled out because the flag is Chromium-only and the label is global: without this line a
+  // Firefox row in an `--angle vulkan` battery reads as a Vulkan measurement of Firefox.
+  if (report.angle) lines.push(`--angle ${report.angle} requested (Chromium engines only; Firefox ignores it)`)
   lines.push('='.repeat(96))
 
   for (const engine of report.engines) {
@@ -1005,27 +1090,36 @@ function summarise(report) {
     }
     const first = measured[0]
     if (first) {
-      const check = first.resolutionCheck
       lines.push(`  GPU        ${first.gpu?.renderer ?? first.gpu?.glRenderer ?? 'unknown'}`)
-      // The device-pixel numbers first, because they are the ones the owner is asked to judge and
-      // the CSS line cannot be judged: at 150% scaling a correct 2560x1440 window reads 1707x875.
-      lines.push(
-        `  window     ${check.deviceViewport.width}x${check.deviceViewport.height} device px ` +
-          `(${first.environment.viewport.width}x${first.environment.viewport.height} CSS @ dpr ` +
-          `${first.environment.devicePixelRatio})`,
-      )
-      lines.push(
-        `  placement  on a ${check.display.width}x${check.display.height} display — ` +
-          (check.onRequestedDisplay
-            ? `the ${check.requested} display, as asked`
-            : `NOT the ${check.requested} display you asked for`),
-      )
-      // The canvas's own backing store, which is the pixel count the GPU fills. It is not the
-      // window: at tier 0 the app multiplies by its own pixel ratio on top of dpr (§3.2).
-      if (first.environment.drawingBuffer) {
+      // One block per requested resolution, not one for `measured[0]`. The placement question is
+      // asked *per resolution* — run 3 of the procedure is the 1440p leg on a second display, and
+      // it is the leg most likely to be measuring the wrong panel — so a header that described
+      // only the first entry of `--resolutions 1920x1080,2560x1440` reported the window and the
+      // display of the leg nobody was worried about, and said nothing at all about the other.
+      for (const resolution of [...new Set(measured.map((run) => run.resolution))]) {
+        const run = measured.find((entry) => entry.resolution === resolution)
+        const check = run.resolutionCheck
+        // The device-pixel numbers first, because they are the ones the owner is asked to judge and
+        // the CSS line cannot be judged: at 150% scaling a correct 2560x1440 window reads 1707x875.
         lines.push(
-          `  canvas     ${first.environment.drawingBuffer.width}x${first.environment.drawingBuffer.height} device px (drawing buffer at this tier)`,
+          `  window     ${check.requested} asked, ` +
+            `${check.deviceViewport.width}x${check.deviceViewport.height} device px measured ` +
+            `(${run.environment.viewport.width}x${run.environment.viewport.height} CSS @ dpr ` +
+            `${run.environment.devicePixelRatio})`,
         )
+        lines.push(
+          `  placement  on a ${check.display.width}x${check.display.height} display — ` +
+            (check.onRequestedDisplay
+              ? `the ${check.requested} display, as asked`
+              : `NOT the ${check.requested} display you asked for`),
+        )
+        // The canvas's own backing store, which is the pixel count the GPU fills. It is not the
+        // window: at tier 0 the app multiplies by its own pixel ratio on top of dpr (§3.2).
+        if (run.environment.drawingBuffer) {
+          lines.push(
+            `  canvas     ${run.environment.drawingBuffer.width}x${run.environment.drawingBuffer.height} device px (drawing buffer at tier ${run.tier})`,
+          )
+        }
       }
       if (measured.some((run) => run.instrumented === false)) {
         lines.push(
@@ -1154,7 +1248,7 @@ function summarise(report) {
   }
 
   if (report.incomplete.length > 0) {
-    lines.push(`\n${'-'.repeat(96)}\nTHESE BROWSERS DID NOT FINISH THEIR BATTERY\n${'-'.repeat(96)}`)
+    lines.push(`\n${'-'.repeat(96)}\nTHESE BROWSERS DID NOT PRODUCE THE WHOLE BATTERY\n${'-'.repeat(96)}`)
     for (const entry of report.incomplete) lines.push(`  - ${entry}`)
     lines.push(
       '  Everything they had already measured is in this report and in the JSON. Send it anyway —\n' +
@@ -1244,16 +1338,29 @@ try {
 }
 
 report.integrity = integrity(report)
-// A browser that stopped part-way through, which after `--fail-fast` is the only way to get one.
-// It is separate from `integrity`: the data that survives is trustworthy, there is just less of it,
-// and the two must not be reported as the same kind of problem.
-report.incomplete = report.engines
-  .filter((engine) => engine.error && (engine.runs.length > 0 || engine.selfChecks.length > 0))
-  .map(
-    (engine) =>
-      `${engine.browser}: stopped after ${engine.runs.filter((run) => !run.error).length} of the ` +
-      `battery's runs — ${engine.error.split('\n')[0]}`,
-  )
+// A browser that produced less than the battery asked for. It is separate from `integrity`: the
+// data that survives is trustworthy, there is just less of it, and the two must not be reported as
+// the same kind of problem.
+report.incomplete = report.engines.flatMap((engine) => {
+  const completed = engine.runs.filter((run) => !run.error).length
+  if (engine.error && (engine.runs.length > 0 || engine.selfChecks.length > 0)) {
+    return [
+      `${engine.browser}: stopped after ${completed} of the battery's runs — ` +
+        `${engine.error.split('\n')[0]}`,
+    ]
+  }
+  // A battery that ran to the end and measured nothing. It reaches here with no `engine.error` at
+  // all — every run failed on its own and the loop kept going, which is the right thing to do and
+  // was reported by a silent exit 0 until now. Every row printing `FAILED` is not a result, and
+  // the exit code is the only part of this output a script or a tired owner reads.
+  if (engine.runs.length > 0 && completed === 0) {
+    return [
+      `${engine.browser}: all ${engine.runs.length} of the battery's runs failed — ` +
+        `${engine.runs[0].error.split('\n')[0]}`,
+    ]
+  }
+  return []
+})
 report.criteria = criteria(report)
 
 const summary = summarise(report)
@@ -1276,6 +1383,9 @@ if (report.integrity.length > 0) {
   process.exit(1)
 }
 if (report.incomplete.length > 0) {
-  console.error('\nincomplete: the browsers above stopped part-way. Their completed runs are kept.')
+  console.error(
+    '\nincomplete: the browsers above did not produce the whole battery. Whatever they did ' +
+      'measure is kept.',
+  )
   process.exit(2)
 }
