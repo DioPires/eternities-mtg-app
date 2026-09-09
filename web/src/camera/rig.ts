@@ -19,6 +19,10 @@
  */
 
 import type { PlaneRecord, PlanesFile } from '../data/types'
+import {
+  DEFAULT_DURATION_MS,
+  REDUCED_MOTION_DURATION_MS,
+} from '../navigation/machine'
 import type { CameraState } from '../navigation/types'
 
 import {
@@ -49,18 +53,22 @@ import {
   type MutVec3,
 } from './vec'
 
-/** PRD 5.7.3: 1.2 s for a one-level hop. */
-export const DEFAULT_DURATION_MS = 1200
-/** PRD 5.7.3: scaled with distance, capped here. */
+/**
+ * The four durations the navigation contract fixes are imported, not restated: `machine.ts` is the
+ * contract and a transport that disagreed with it about how long a hop lasts would be a transport
+ * that fails `test/navigation.test.ts` for a reason no reader could see (review §6.2).
+ */
+export {
+  DEFAULT_DURATION_MS,
+  INTRO_DURATION_MS,
+  REDUCED_MOTION_DURATION_MS,
+  TWO_STAGE_CAP_MS,
+} from '../navigation/machine'
+
+/** PRD 5.7.3: scaled with distance, capped here. The rig's own, not the contract's. */
 export const MAX_DURATION_MS = 3000
-/** PRD 6.2.3: the combined two-stage card fly-to. */
-export const TWO_STAGE_CAP_MS = 3500
-/** PRD 6.2.3: the hold between the two stages. */
+/** PRD 6.2.3: the hold between the two stages. The rig's own. */
 export const TWO_STAGE_HOLD_MS = 400
-/** PRD 6.8.2. */
-export const INTRO_DURATION_MS = 4000
-/** PRD 5.9. */
-export const REDUCED_MOTION_DURATION_MS = 300
 
 /** How fast orbit inertia bleeds off after the user lets go, and after a hand-over. */
 const ORBIT_DAMPING = 2.6

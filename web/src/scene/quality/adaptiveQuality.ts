@@ -256,7 +256,7 @@ export class QualityMonitor {
       ),
       minTier,
       maxTier,
-    } as ResolvedOptions
+    }
     this.degradeOverrideMs = options.degradeMs
     this.restoreOverrideMs = options.restoreMs
     this.refreshFixed = options.refreshMs !== undefined && options.refreshMs > 0

@@ -7,6 +7,9 @@
  *    screen — where the focused object is — stays clickable through it;
  *  - attract mode removes it from the tree entirely rather than fading it, because PRD 5.3.23 says
  *    "hidden entirely" and a transparent HUD still eats pointer events.
+ *
+ * One thing survives attract mode, and it is not part of the HUD in the sense PRD 6.3 means:
+ * {@link LoadAnnouncement}'s live region. See its own note.
  */
 
 import { useEffect, useState, type ReactElement } from 'react'
@@ -16,8 +19,8 @@ import { useStore } from '../store/store'
 import { Breadcrumb } from './Breadcrumb'
 import { ControlCluster } from './ControlCluster'
 import { FilterChips } from './FilterChips'
+import { formatCount } from './format'
 
-const NUMBER = new Intl.NumberFormat('en-GB')
 
 /**
  * PRD 6.8.1: "there is never a spinner over a black screen" — so this is a line, not a spinner.
@@ -35,7 +38,7 @@ function LoadingLine(): ReactElement | null {
   if (stars !== null || manifest === null) return null
   return (
     <p className="hud-loading">
-      {NUMBER.format(drawable)} of {NUMBER.format(manifest.counts.stars)} stars
+      {formatCount(drawable)} of {formatCount(manifest.counts.stars)} stars
     </p>
   )
 }
@@ -47,7 +50,14 @@ function LoadingLine(): ReactElement | null {
  * be in the accessibility tree *before* its content changes for the change to be announced at all,
  * so a region that appears already-populated is a region most screen readers say nothing about.
  * That is also why this sits outside `LoadingLine`, which unmounts at exactly the moment the
- * announcement is due.
+ * announcement is due — and, for the same reason, outside the `attract` guard below (DEC-695 N3).
+ * Attract mode starts after 45 s of idle, and a slow enough load finishes inside it; with the
+ * region unmounted at that moment there is nothing in the tree for the change to happen *to*, so
+ * the one announcement the app makes is simply lost.
+ *
+ * Leaving it mounted does not put the HUD back on screen. PRD 6.3's "hidden entirely" is about a
+ * surface that occludes the focused object and eats pointer events; this is a 1×1 clipped
+ * paragraph outside `.hud`, which is still removed from the tree in full.
  *
  * Visually hidden rather than `display: none`, which would take it out of the tree with the same
  * result.
@@ -59,7 +69,7 @@ function LoadAnnouncement(): ReactElement {
 
   useEffect(() => {
     if (stars === null || manifest === null) return
-    setMessage(`${NUMBER.format(stars.count)} stars loaded.`)
+    setMessage(`${formatCount(stars.count)} stars loaded.`)
   }, [stars, manifest])
 
   return (
@@ -69,21 +79,24 @@ function LoadAnnouncement(): ReactElement {
   )
 }
 
-export function Hud(): ReactElement | null {
+export function Hud(): ReactElement {
   const attract = useNavSnapshot().attract
   // PRD 6.10.1's "labels on/off" is about the scene's plane and set labels (PRD 5.3.8-12, 5.4.5),
   // not the HUD: the breadcrumb is how PRD 6.3.1 says where you are, and hiding it behind a
   // setting would leave a user with no way back up but Esc.
-  if (attract) return null
   return (
-    <div className="hud">
-      <header className="hud-left">
-        <Breadcrumb />
-        <FilterChips />
-        <LoadingLine />
-        <LoadAnnouncement />
-      </header>
-      <ControlCluster />
-    </div>
+    <>
+      <LoadAnnouncement />
+      {!attract && (
+        <div className="hud">
+          <header className="hud-left">
+            <Breadcrumb />
+            <FilterChips />
+            <LoadingLine />
+          </header>
+          <ControlCluster />
+        </div>
+      )}
+    </>
   )
 }

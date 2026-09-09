@@ -6,9 +6,10 @@
  * back disposed on the second mount. The scene's camera rig has the same lifetime as the page, so
  * that is the lifetime it gets — created in `main.tsx`, never disposed.
  *
- * `createNavigation()` is also the single seam Phase 2b replaces: the whole shell reaches the
- * scene through it, so swapping the Phase 0 stub for the real rig is a one-line change here and
- * nowhere else (navigation contract, header).
+ * `createNavigationHost()` is also the single seam Phase 2b replaced: the whole shell reaches the
+ * scene through it, so swapping the Phase 0 stub for the real rig was a one-line change here and
+ * nowhere else (navigation contract, header). It is called directly — the local `createNavigation`
+ * wrapper that used to sit in front of it forwarded and did nothing else (review §6.3).
  */
 
 import { createContext, useContext, useSyncExternalStore, type ReactNode } from 'react'
@@ -22,16 +23,10 @@ import {
 import { Router, browserHost, type RouterSnapshot } from '../router/router'
 
 /**
- * Phase 4 built against the stub; Phase 6 returns the host, and no call site changed. The contract
- * held.
- *
  * The host is not a third implementation — it forwards to the stub until the scene has built the
  * real rig from `planes.json`, then forwards to that, keeping the shell's listeners across the
  * swap. See `../navigation/host`.
  */
-export function createNavigation(): NavigationHost {
-  return createNavigationHost()
-}
 
 /**
  * `useSyncExternalStore` compares snapshots by identity, and `NavigationApi.snapshot()` builds a
@@ -72,7 +67,7 @@ export interface Services {
 }
 
 export function createServices(): Services {
-  const nav = createNavigation()
+  const nav = createNavigationHost()
   return { nav, navStore: createNavStore(nav), router: new Router(browserHost()) }
 }
 

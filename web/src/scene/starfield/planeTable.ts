@@ -80,7 +80,7 @@ export class PlaneTable {
   /** Seconds since the scene started. The shader's `uTime`, kept here so both advance together. */
   time = 0
 
-  private readonly data: Float32Array
+  private readonly data: Float32Array<ArrayBuffer>
   private multiverseAngleValue = 0
   private dustFocusTarget = 0
 

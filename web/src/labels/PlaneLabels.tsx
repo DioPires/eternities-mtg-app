@@ -103,6 +103,8 @@ export function PlaneLabels({
   )
   /** Which frame last placed a label, so the hide pass can tell "dropped" from "moved". */
   const frameCount = useRef(0)
+  /** Whether the last frame ran with labels off and has already blanked every node. */
+  const blanked = useRef(false)
   const projector = useMemo(() => new Projector(), [])
   const projected = useMemo(() => createProjected(), [])
   const point = useMemo<MutVec3>(() => vec(), [])
@@ -142,9 +144,37 @@ export function PlaneLabels({
     [candidates, bandCandidates],
   )
 
+  /**
+   * Drop every label to `opacity: 0`. Idempotent: a node already at zero is skipped, so calling
+   * this every frame after the first costs one map lookup per node and no style write.
+   */
+  const blankAll = (): void => {
+    for (const [key, node] of nodes.current) {
+      if (!node) continue
+      const last = written.current.get(key)
+      if (last?.opacity === 0) continue
+      node.style.opacity = '0'
+      if (last) last.opacity = 0
+      else written.current.set(key, { tx: Number.NaN, ty: Number.NaN, opacity: 0, frame: 0 })
+    }
+  }
+
   // One frame of work, hoisted out of the effect so the dependency list stays honest.
   const frameRef = useRef<() => void>(() => {})
   frameRef.current = (): void => {
+    // PRD 6.10.1's labels-off setting, taken at the top (DEC-695 N2). `layoutLabels` already
+    // returns 0 for this case, but only *after* this function has projected all 86 plane anchors
+    // and rebuilt the band candidates — every frame, for labels nobody can see. Blank once, then
+    // do nothing at all until the setting comes back.
+    if (enabled === false) {
+      if (!blanked.current) {
+        blankAll()
+        blanked.current = true
+      }
+      return
+    }
+    blanked.current = false
+
     const width = window.innerWidth
     const height = window.innerHeight
     projector.update({

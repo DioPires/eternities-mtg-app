@@ -32,6 +32,20 @@ repos:
         language: system
         files: '^web/.*\.(ts|tsx)$'
         pass_filenames: false
+      # Review §6.4 T6: the hook ran the type-checker and neither of the two things that catch what
+      # a type-checker cannot. Both are seconds, which is what makes them the fast half.
+      - id: web-lint
+        name: web lint (eslint)
+        entry: bash -c 'cd web && pnpm lint'
+        language: system
+        files: '^web/.*\.(ts|tsx|mjs|js)$'
+        pass_filenames: false
+      - id: web-test
+        name: web unit + component tests (vitest)
+        entry: bash -c 'cd web && pnpm test'
+        language: system
+        files: '^web/(src|test)/.*\.(ts|tsx)$'
+        pass_filenames: false
       - id: vercel-json
         name: vercel.json matches security-headers.mjs
         entry: bash -c 'cd web && node scripts/write-vercel-json.mjs --check'

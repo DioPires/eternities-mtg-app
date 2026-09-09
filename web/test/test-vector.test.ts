@@ -539,7 +539,7 @@ describe('loud failures', () => {
         const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
         const doc = json<Record<string, unknown>>(url.slice(VECTOR_ROOT.length))
         return Promise.resolve(Response.json({ ...doc, contractVersion: version }))
-      }) as typeof fetch,
+      }),
     }
   }
 
