@@ -9,6 +9,10 @@ web/playwright-report/
 web/test-results/
 web/blob-report/
 
+# Windows measurement kit output (review §9). Regenerated on every run and sent back as a folder,
+# not committed. `git add -f` if a particular run's results should be kept in the repo.
+web/bench/windows/results/
+
 # Python
 .venv/
 __pycache__/

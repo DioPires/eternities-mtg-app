@@ -11,7 +11,19 @@ import tseslint from 'typescript-eslint'
  * `strictTypeChecked` one.
  */
 export default tseslint.config(
-  { ignores: ['dist', 'node_modules', 'public/data', '**/*.d.ts', '**/*.d.mts'] },
+  {
+    // `bench/windows/results` is generated: the measurement kit writes its JSON, its summaries and
+    // the `console-probe.js` snippet there on every run. Linting generated output is noise, and the
+    // snippet in particular is deliberately ES5-shaped browser source for a devtools console.
+    ignores: [
+      'dist',
+      'node_modules',
+      'public/data',
+      'bench/windows/results',
+      '**/*.d.ts',
+      '**/*.d.mts',
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
   {
