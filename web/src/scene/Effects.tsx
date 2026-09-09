@@ -51,6 +51,24 @@ export interface EffectsProps {
   /** From the adaptive-quality tier. PRD 8.5.5's default is a half-resolution blur. */
   readonly bloomScale: number
   /**
+   * PRD 6.10.1's bloom setting, resolved to an intensity by `BLOOM_INTENSITY_STEPS`.
+   *
+   * A *setting*, not a tier: the ladder owns `bloomScale` (how many pixels the blur costs) and the
+   * user owns this (how much of it is mixed back in). Defaults to the tuned value so the bench and
+   * the Phase 2a harness, which have no settings surface, keep the intensity their baselines were
+   * measured at.
+   *
+   * Changing it re-renders this component, and the `SelectiveBloom` wrapper reconstructs its effect
+   * on any render it does see (review §2.2, R1) — so a click on the setting drops one set of bloom
+   * render targets for the collector. That is a click, not a frame, and the wrapper is on its way
+   * out (review §3.5); it is not a reason to leave the control dead.
+   *
+   * Since DEC-692 R1 this component is memoised, so the *only* renders the wrapper sees are a tier
+   * change, a selection change, and a click on this setting. The cost above is unchanged — it was
+   * always per-reconstruction — but it is no longer paid on an unrelated render of the canvas owner.
+   */
+  readonly bloomIntensity?: number
+  /**
    * Restrict the bloom to these objects (PRD 5.3.20's "selective", the object half of it).
    *
    * PRD 8.5.5 reads "selective" as a luminance threshold, and for a scene that is only stars that
@@ -183,6 +201,7 @@ export const Effects = memo(function Effects({
   bloomScale,
   bloomSelection,
   bloomRef,
+  bloomIntensity = BLOOM_INTENSITY,
 }: EffectsProps): ReactElement {
   const bloom =
     bloomSelection && bloomSelection.length > 0 ? (
@@ -193,7 +212,7 @@ export const Effects = memo(function Effects({
         ref={bloomRef as unknown as SelectiveBloomRef}
         selection={bloomSelection as Object3D[]}
         lights={NO_LIGHTS}
-        intensity={BLOOM_INTENSITY}
+        intensity={bloomIntensity}
         luminanceThreshold={BLOOM_THRESHOLD}
         luminanceSmoothing={BLOOM_SMOOTHING}
         resolutionScale={bloomScale}
@@ -203,7 +222,7 @@ export const Effects = memo(function Effects({
       <Bloom
         key={`bloom-${bloomScale}`}
         ref={bloomRef as unknown as BloomRef}
-        intensity={BLOOM_INTENSITY}
+        intensity={bloomIntensity}
         luminanceThreshold={BLOOM_THRESHOLD}
         luminanceSmoothing={BLOOM_SMOOTHING}
         resolutionScale={bloomScale}

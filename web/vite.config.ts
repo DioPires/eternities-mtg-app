@@ -91,7 +91,16 @@ export default defineConfig({
   plugins: [react(), injectDataHash(), localSecurityHeaders()],
   build: {
     target: 'es2022',
-    sourcemap: true,
+    /**
+     * Off, per the board's answer to review §8 Q7 (B3).
+     *
+     * The maps were built and never served: 2.2 MB of `.map` for the three chunks, which Vercel
+     * answers with HTTP 403 (measured against the deployment, review §2.1). They were also
+     * invisible to `scripts/check-budget.mjs`, which counts JS, CSS and fonts — so 3 MB of `dist/`
+     * sat outside every budget the repo checks. Nothing debugs production off this deployment;
+     * `'hidden'` would keep the build cost for a file nobody can fetch.
+     */
+    sourcemap: false,
     // PRD 7.7.3: upgrades are deliberate, so keep the chunking legible rather than clever.
     rollupOptions: {
       output: {

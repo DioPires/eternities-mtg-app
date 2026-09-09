@@ -12,14 +12,31 @@
 
 import type { ReactElement } from 'react'
 
+/**
+ * Cached, because the answer cannot change within a page and the probe is not free: it costs a real
+ * GL context, and browsers cap how many a document may hold at once (Chrome evicts the oldest at
+ * 16). The scene's own context is the one that matters, so the probe must not be able to compete
+ * with it.
+ */
+let webgl2: boolean | null = null
+
 export function hasWebGL2(): boolean {
+  if (webgl2 !== null) return webgl2
   try {
     const canvas = document.createElement('canvas')
-    return canvas.getContext('webgl2') !== null
+    const gl = canvas.getContext('webgl2')
+    // Released explicitly rather than left to the collector. A throwaway context that is still
+    // alive is a context the browser has to reclaim on its own terms, and Firefox says so out loud:
+    // it logs "WebGL context was lost" at start-up when this one is finally collected — a warning
+    // that reads, to anyone debugging, as the *scene's* context dying (review §5.3 P8). Losing it
+    // deliberately answers the question and takes the warning with it.
+    gl?.getExtension('WEBGL_lose_context')?.loseContext()
+    webgl2 = gl !== null
   } catch {
     // Firefox with WebGL disabled throws rather than returning null.
-    return false
+    webgl2 = false
   }
+  return webgl2
 }
 
 export function WebGLFallback(): ReactElement {

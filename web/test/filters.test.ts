@@ -13,6 +13,7 @@ import {
   BinaryKind,
   CONTRACT_VERSION,
   CardTypeBit,
+  FILTER_MASK_PASS,
   HueClass,
   SizeClass,
   STAR_RECORD_BYTES,
@@ -94,7 +95,9 @@ function filters(patch: Partial<FilterState>): FilterState {
 function matched(state: FilterState, resolution = { setIds: [] as number[], sets: null }): number[] {
   const result = evaluateFilters(STARS, state, resolution)
   const indices: number[] = []
-  for (let i = 0; i < result.total; i += 1) if (result.mask[i] === 1) indices.push(i)
+  for (let i = 0; i < result.total; i += 1) {
+    if (result.mask[i] === FILTER_MASK_PASS) indices.push(i)
+  }
   expect(indices.length).toBe(result.matching)
   return indices
 }
@@ -164,7 +167,7 @@ describe('colour identity (PRD 6.6.2)', () => {
     )
     const run = (state: FilterState): number[] => {
       const result = evaluateFilters(stars, state, { setIds: [], sets: null })
-      return all.filter((i) => result.mask[i] === 1)
+      return all.filter((i) => result.mask[i] === FILTER_MASK_PASS)
     }
     ;(['W', 'U', 'B', 'R', 'G'] as const).forEach((colour, bit) => {
       expect(run(filters({ colours: [colour] }))).toEqual(
@@ -245,7 +248,7 @@ describe('the set facet waits for sets.bin (PRD 6.6.5)', () => {
     const state = filters({ sets: ['mh2'], rarities: ['rare'], colours: ['U'] })
     const result = evaluateFilters(STARS, state, { setIds: [7], sets: sidecar })
     expect(result.matching).toBe(1)
-    expect(result.mask[1]).toBe(1)
+    expect(result.mask[1]).toBe(FILTER_MASK_PASS)
   })
 
   it('a set code that resolves to no id matches nothing once the sidecar is up', () => {

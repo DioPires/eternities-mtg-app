@@ -19,6 +19,20 @@ export const SHARD_SIZE = 2000
 export const FRAME_RADIUS = 1.2
 export const BLIND_ETERNITIES_SLUG = 'blind-eternities'
 
+/**
+ * PRD 5.8/8.5.1's filter mask byte for a star that passes, on both sides of the GPU boundary.
+ *
+ * It lives here, in the contract module, because it is a contract between two files that never
+ * import each other: `filters/evaluate.ts` writes the mask and `scene/starfield/starGeometry.ts`
+ * uploads it as a **normalised** `uint8` vertex attribute, where the shader reads `1.0` for a pass
+ * and gates picking on `aFilter > 0.5` (`starfield/shaders.ts`). The two halves shipped with
+ * different encodings — the producer wrote `1`, the buffer was initialised to `255` — and because
+ * the mask had no production consumer nothing ever compared them. Uploaded as it was, a passing
+ * star would have read `1/255 = 0.004`: dimmed to `FILTER_DIM` and discarded by the pickable gate,
+ * i.e. the whole field invisible and unclickable. One constant, so they cannot drift again.
+ */
+export const FILTER_MASK_PASS = 255
+
 export const BinaryKind = { Stars: 1, Sets: 2 } as const
 export type BinaryKind = (typeof BinaryKind)[keyof typeof BinaryKind]
 
