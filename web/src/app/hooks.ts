@@ -244,20 +244,6 @@ export const ATTRACT_IDLE_MS = 45_000
 
 export function useAttractMode(enabled: boolean): void {
   const nav = useNavigation()
-  const setAttract = useStore((state) => state.setAttract)
-
-  useEffect(() => {
-    const offEnter = nav.on('attractenter', () => {
-      setAttract(true)
-    })
-    const offExit = nav.on('attractexit', () => {
-      setAttract(false)
-    })
-    return () => {
-      offEnter()
-      offExit()
-    }
-  }, [nav, setAttract])
 
   useEffect(() => {
     if (!enabled) {

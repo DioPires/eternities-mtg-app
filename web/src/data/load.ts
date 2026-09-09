@@ -6,7 +6,7 @@
  * for the shell's toast. Phase 2a wires the error events to the loader; Phase 4 wires the toast.
  */
 
-import { ContractError, decodeSets, decodeStars, StarStreamReader, type SetsSidecar, type Stars } from './decode'
+import { ContractError, decodeSets, StarStreamReader, type SetsSidecar, type Stars } from './decode'
 import type { Manifest, PlaneShardFile, PlanesFile, SearchFile } from './types'
 import { BINARY_HEADER_BYTES, CONTRACT_VERSION, SHARD_SIZE } from './types'
 
@@ -161,11 +161,6 @@ export async function loadSearch(options: RetryOptions = {}): Promise<SearchFile
 
 export async function loadSets(options: RetryOptions = {}): Promise<SetsSidecar> {
   return decodeSets(await (await fetchWithRetry('sets.bin', options)).arrayBuffer())
-}
-
-/** Non-streaming `stars.bin` load, for tests and for the bench route's fixed path. */
-export async function loadStars(options: RetryOptions = {}): Promise<Stars> {
-  return decodeStars(await (await fetchWithRetry('stars.bin', options)).arrayBuffer())
 }
 
 /** `Content-Range: bytes 1234-5678/9012` → 1234; `null` if it is absent or not a byte range. */
