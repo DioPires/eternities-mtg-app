@@ -19,6 +19,7 @@ import {
 } from 'three'
 
 import { BLOOM_LAYER } from './post/bloomLayer'
+import { SHADER_NAME_BACKGROUND_LAYER } from './shaderNames'
 import { BACKGROUND_LAYERS, SKY_COLOUR, type BackgroundLayerSpec } from './tuning'
 
 export { SKY_COLOUR }
@@ -56,10 +57,9 @@ function createLayer(spec: BackgroundLayerSpec, seed: number): Points {
     new BufferAttribute(shellPositions(spec.count, spec.radius, seed), 3),
   )
   const material = new PointsMaterial({
-    // Not a raw `ShaderMaterial`, but `SHADER_NAME` comes from `material.name` with no fallback to
-    // the built-in shader id, so an unnamed `PointsMaterial` is just as anonymous in a GPU profile.
-    // All three layers differ only in uniforms, so they share one program and one name.
-    name: 'BackgroundLayer',
+    // All three layers differ only in uniforms, so they share one program and one name. A built-in
+    // material is as anonymous as a raw one without this — see `shaderNames.ts`.
+    name: SHADER_NAME_BACKGROUND_LAYER,
     size: spec.size,
     sizeAttenuation: false,
     color: new Color(spec.tint),

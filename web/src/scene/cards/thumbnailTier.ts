@@ -54,6 +54,7 @@ import {
   THUMBNAIL_SELECT_INTERVAL_S,
   THUMBNAIL_WORLD_HEIGHT,
 } from '../tuning'
+import { SHADER_NAME_THUMBNAIL_TIER, SHADER_NAME_THUMBNAIL_TIER_PICK } from '../shaderNames'
 import { ThumbnailAtlas, ATLAS_CELLS, type AtlasCellUv } from './atlas'
 import { THUMBNAIL_FRAGMENT_SHADER, THUMBNAIL_VERTEX_SHADER } from './cardShaders'
 import type { ImageQueue } from './imageQueue'
@@ -175,9 +176,7 @@ export class ThumbnailTier {
     }
 
     const material = new ShaderMaterial({
-      // See `starFieldObjects.ts` for why these are named: it is the `SHADER_NAME` a GPU profile
-      // and the Windows measurement kit read back, and it cannot change program identity.
-      name: 'ThumbnailTier',
+      name: SHADER_NAME_THUMBNAIL_TIER,
       uniforms: shared,
       vertexShader: THUMBNAIL_VERTEX_SHADER,
       fragmentShader: THUMBNAIL_FRAGMENT_SHADER,
@@ -191,7 +190,7 @@ export class ThumbnailTier {
     })
 
     const idMaterial = new ShaderMaterial({
-      name: 'ThumbnailTierPick',
+      name: SHADER_NAME_THUMBNAIL_TIER_PICK,
       uniforms: { ...shared },
       defines: { ID_PASS: '' },
       vertexShader: THUMBNAIL_VERTEX_SHADER,
