@@ -10,7 +10,7 @@
  *
  * This is the last of the review tooling still maintained, and deliberately so (review amendment
  * A1): while the galaxy concept stands it is PRD 9.3's acceptance instrument, and
- * `docs/refresh-runbook.md` step 8 runs it on every dataset refresh. `verify-browser.mjs`,
+ * `docs/refresh-runbook.md` § 4.2 runs it on every dataset refresh. `verify-browser.mjs`,
  * `cross-browser.mjs` and `arm-lane-capture.mjs` were archived by DEC-708 under the
  * `review-tooling-2026-09` tag.
  *

@@ -16,7 +16,10 @@ and live — `https://eternities-mtg-app.vercel.app`, deployed automatically on 
 
 A refresh is a **data** change. It does not touch rendering, so it does not need `pnpm bench`
 (PRD 9.1.2's rule is "before merging any change that touches rendering"). It does need the report
-review and the browser check below, both of which are cheap.
+review and the automated browser checks (§4.1), both of which are cheap — **and it needs the PRD
+9.3 visual gate (§4.2), which is not cheap and is not optional.** A refresh moves plane positions
+(PRD 4.9.3), so it can change what the multiverse looks like without touching a line of rendering
+code; that is the one thing only the gate can catch.
 
 ---
 
@@ -200,10 +203,13 @@ paragraph as a reason to act. Amendment A2 rules out Git LFS as the escape hatch
 
 ## 4. Verify the built site
 
+### 4.1 The automated checks
+
 ```sh
 cd web
+pnpm build
 node scripts/check-budget.mjs --dataset <new-hash>
-node scripts/verify-browser.mjs --dataset production
+pnpm test:e2e
 ```
 
 `check-budget` enforces PRD 7.2 at the encoded-size ceilings. On 2026-09-05 every target and ceiling
@@ -222,10 +228,52 @@ failure, and not a reason to stop a refresh: the commitment in PRD 7.2 is the **
 which is 2.2× away. Report the crossing in the pull request and carry on; a ceiling breach is the
 one that blocks.
 
-`verify-browser` drives the real dataset through the shell, the scene and the card tier on a real
-GPU, under the production CSP. It is the check that the new data actually *loads* — a report can be
-perfect over artefacts a browser cannot decode. On 2026-09-05 it passed with 0 failed Scryfall image
-requests, which is the part only a real-id dataset can tell you.
+`pnpm test:e2e` drives the built site under the production CSP: PRD 8.9.2's five route kinds, the
+quality ladder, and Phase 5's accessibility checklist with the CSP/HSTS self-check. It is the check
+that the new data actually *loads* — a report can be perfect over artefacts a browser cannot decode.
+It renders through SwiftShader and says nothing about how the refresh **looks**; that is 4.2.
+
+> **Changed since the 2026-09-05 rehearsal.** The rehearsal ran
+> `node scripts/verify-browser.mjs --dataset production`, which passed with 0 failed Scryfall image
+> requests — the part only a real-id dataset can tell you. DEC-708 archived that script under the
+> `review-tooling-2026-09` tag and moved its a11y and CSP assertions into `e2e/a11y.spec.ts`.
+> Its Scryfall-image count did not move with them, so watch the network panel during 4.2 instead:
+> the gate loads real images on the production dataset and the card checkpoints are where a broken
+> id shows up.
+
+### 4.2 The visual gate — every refresh, without exception
+
+```sh
+cd web
+node scripts/visual-gate.mjs --dataset production --out ../visual-gate-<new-hash>
+```
+
+**Run this on every refresh.** PRD 9.3 words its cadence as "per milestone-sized change", which
+does not obviously include a data refresh — and it must, for a reason specific to refreshes: PRD
+4.9.3 lets plane positions move between datasets, and the arm geometry every 9.3 criterion is
+judged on is *computed from the data*. A refresh can therefore break "spiral arms are legible for
+every plane with ≥ 2,000 cards" or "no label overlaps another at the home view" without a single
+line of rendering code changing, and nothing in 4.1 would notice. This is review amendment A1's
+note, written down here so the cadence has a home.
+
+`visual-gate.mjs` is the acceptance instrument for PRD 9.3 — DEC-661, DEC-683 and DEC-684 were all
+accepted on its output — so it is maintained tooling, not one-off review tooling, and it survived
+the DEC-708 archival for exactly that reason. It captures the seven checkpoints against the
+**shipped composition** (`?probe=shell`: the scene inside the HUD, which is what 9.3 judges), plus
+the shimmer recordings and the cross-fade pass, and writes `capture.json` beside them.
+
+It is a capture tool, not a check: it fails only if it cannot reach a checkpoint, never because of
+what a checkpoint looks like. **The owner judges the frames** against 9.3's seven criteria, and PRD
+9.4 makes that acceptance part of done. So:
+
+- attach the output directory to the refresh pull request (§5), and
+- if the arms on any plane over 2,000 cards read worse than the previous refresh, say so in the PR
+  rather than leaving it for the owner to spot. The previous refresh's captures are the comparison;
+  keep them until the new ones are accepted.
+
+Two practical notes. It needs a **real GPU** and a local Chrome — a software rasteriser cannot
+answer a question about bloom or shimmer — so it runs on the refresher's machine, not in CI. And it
+builds the site itself unless you pass `--no-build`, so it will pick up the dataset you just made.
 
 ---
 
@@ -242,6 +290,10 @@ gh pr create --title "Data refresh — Scryfall bulk 2026-09-05T09:05:28.871+00:
 
 Put the report diff summary and the classifier output in the body. A reviewer should not have to
 re-derive what you already ran.
+
+**Attach §4.2's captures.** PRD 9.4 makes the owner's acceptance of the visual review part of done,
+and the owner cannot accept frames that are sitting in a directory on your laptop. Say in the body
+which dataset they were taken on and how the arms compare to the previous refresh.
 
 ---
 
@@ -311,7 +363,11 @@ un-publish. That is a true statement about git; it has never been run against a 
 - **A same-day re-run is a no-op**, and looks alarmingly like a failed build. Check the hash.
 - **Safari cannot load `pnpm preview`.** PRD 7.6.1's CSP ends in `upgrade-insecure-requests` and
   WebKit applies it to loopback, so every subresource is upgraded to `https://localhost` and fails.
-  The page renders blank with no error. Use `pnpm cross-browser`, which serves over real HTTPS, or a
-  Vercel preview deployment. See `docs/cross-browser.md`.
-- **Do not skip `verify-browser` because the report was clean.** They check different things: one
-  reads the pipeline's own account of the run, the other decodes the artefacts in a browser.
+  The page renders blank with no error. `pnpm cross-browser` used to serve it over real HTTPS, but
+  DEC-708 archived that script under the `review-tooling-2026-09` tag — use a Vercel preview
+  deployment instead. See `docs/cross-browser.md`.
+- **Do not skip step 4 because the report was clean.** They check different things: one reads the
+  pipeline's own account of the run, the other decodes the artefacts in a browser.
+- **Do not skip 4.2 because 4.1 was green.** A refresh moves plane positions (PRD 4.9.3), and the
+  arm geometry PRD 9.3 is judged on comes out of the data. Green automated checks over a multiverse
+  whose arms stopped reading is the exact failure 4.2 exists to catch.
