@@ -116,6 +116,9 @@ interface Planet {
 
 function faceMaterial(): ShaderMaterial {
   return new ShaderMaterial({
+    // See `starFieldObjects.ts` for why these are named. The front and back faces share one program
+    // — same sources, no defines — so they share this name too, which is the honest label for it.
+    name: 'FocusedCardFace',
     uniforms: {
       uImage: { value: null },
       uHasImage: { value: 0 },
@@ -214,7 +217,9 @@ export class FocusedCard {
     this.flipGroup.add(new Mesh(front, this.frontMaterial))
     this.flipGroup.add(new Mesh(back, this.backMaterial))
     // PRD 5.6.2: "Edge: dark neutral."
-    this.flipGroup.add(new Mesh(edge, new MeshBasicMaterial({ color: 0x14161f })))
+    this.flipGroup.add(
+      new Mesh(edge, new MeshBasicMaterial({ name: 'FocusedCardEdge', color: 0x14161f })),
+    )
   }
 
   get starIndex(): number {
@@ -559,6 +564,8 @@ export class FocusedCard {
       if (!printing) continue
 
       const material = new ShaderMaterial({
+        // Every slot's material compiles to the same program, so they all carry the same name.
+        name: 'FocusedCardPlanet',
         uniforms: {
           uImage: { value: null },
           uHasImage: { value: 0 },
@@ -575,6 +582,7 @@ export class FocusedCard {
 
       const id = PLANET_ID_BASE + i + 1
       const pickMaterial = new ShaderMaterial({
+        name: 'FocusedCardPlanetPick',
         uniforms: {
           uIdColour: {
             value: new Color(

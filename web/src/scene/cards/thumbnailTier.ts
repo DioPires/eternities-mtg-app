@@ -175,6 +175,9 @@ export class ThumbnailTier {
     }
 
     const material = new ShaderMaterial({
+      // See `starFieldObjects.ts` for why these are named: it is the `SHADER_NAME` a GPU profile
+      // and the Windows measurement kit read back, and it cannot change program identity.
+      name: 'ThumbnailTier',
       uniforms: shared,
       vertexShader: THUMBNAIL_VERTEX_SHADER,
       fragmentShader: THUMBNAIL_FRAGMENT_SHADER,
@@ -188,6 +191,7 @@ export class ThumbnailTier {
     })
 
     const idMaterial = new ShaderMaterial({
+      name: 'ThumbnailTierPick',
       uniforms: { ...shared },
       defines: { ID_PASS: '' },
       vertexShader: THUMBNAIL_VERTEX_SHADER,

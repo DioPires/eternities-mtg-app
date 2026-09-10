@@ -162,6 +162,12 @@ export function createStarField(
   }
 
   const material = new ShaderMaterial({
+    // three writes `#define SHADER_NAME <material.name>` into every compiled program, and leaves it
+    // empty when the material has no name. Naming these is what lets a GPU profile attribute a slow
+    // link or draw to a material instead of to `(unnamed)`. It cannot change program identity:
+    // `getProgramCacheKey` keys on the interned shader sources, the defines and the parameters, and
+    // never on the name.
+    name: 'StarField',
     uniforms: starUniforms,
     vertexShader: STAR_VERTEX_SHADER,
     fragmentShader: STAR_FRAGMENT_SHADER,
@@ -174,6 +180,7 @@ export function createStarField(
   })
 
   const idMaterial = new ShaderMaterial({
+    name: 'StarFieldPick',
     // Same objects for the shared entries, its own minimum pixel size: a one-pixel star has to be
     // clickable even though it is drawn one pixel wide.
     uniforms: { ...starUniforms, uMinPixels: uPickMinPixels },
@@ -322,6 +329,7 @@ function createGlowMesh(table: PlaneTable, noise: Texture, shared: SharedUniform
   }
 
   const material = new ShaderMaterial({
+    name: 'PlaneGlow',
     uniforms: glowUniforms,
     vertexShader: GLOW_VERTEX_SHADER,
     fragmentShader: GLOW_FRAGMENT_SHADER,
