@@ -2,20 +2,12 @@
  * The camera rig (PRD 5.7, 8.4.5): a tethered orbit controller with per-level distance limits and
  * a fly-to tween that owns the camera during transitions and yields on any input.
  *
- * The whole thing is one spherical parameterisation — a live tether point plus `(azimuth, polar,
- * distance)` — and both modes write the same three numbers:
+ * One spherical parameterisation throughout — a live tether plus `(azimuth, polar, distance)` —
+ * written by orbit from input and by the tween from an eased path, which is what makes PRD 5.7.3's
+ * hand-over exactly continuous in position *and* velocity. `docs/camera-and-labels.md` §1-§3 has
+ * the algorithm and the frame-rate-independence measurements.
  *
- * - **orbit** drives them from input, with exactly integrated inertia;
- * - **the tween** drives them from an eased path between two tethers.
- *
- * That is what makes PRD 5.7.3's hand-over honest rather than approximate. When input arrives
- * mid-flight the rig does not stop the tween and hope: it rebases onto the destination tether so
- * the world position is *identical*, projects the tween's analytic velocity onto the spherical
- * basis at that point, and hands those rates to the orbit's inertia. Position and velocity are both
- * continuous, which is PRD 7.3.6 stated as an algorithm.
- *
- * Nothing here touches three.js, the DOM, or `Date.now()`. It is a pure function of `update(dt)`,
- * so PRD 9.1.3's frame-rate-independence check runs it in Node at 30, 60 and 120 fps.
+ * Nothing here touches three.js, the DOM, or `Date.now()`: a pure function of `update(dt)`.
  */
 
 import type { PlaneRecord, PlanesFile } from '../data/types'
@@ -76,13 +68,12 @@ const ORBIT_DAMPING = 2.6
  * How hard a distance outside the current level's limits is pulled back inside, as a spring
  * *acceleration* rather than a position correction.
  *
- * The distinction is the whole point. A hand-over mid-flight can leave the camera 140 units from a
- * tether whose limit is 63 — and correcting that by moving the camera, however smoothly damped,
- * puts a step in its velocity on the very frame PRD 5.7.3 requires to be continuous. Feeding the
- * error into `distanceRate` instead makes it a force: the camera keeps the velocity it had and
- * eases inwards over the following seconds — from 258 units outside a 60-unit limit it is within
- * 5% of it after 5.5 s and 0.1% after 10 s. Chosen overdamped against `ORBIT_DAMPING` (λ² > 4k),
- * so it never overshoots and bounces.
+ * The distinction is the whole point. A hand-over mid-flight can leave the camera far outside the
+ * level's limit, and correcting that by moving the camera — however smoothly damped — puts a step
+ * in its velocity on the very frame PRD 5.7.3 requires to be continuous. Feeding the error into
+ * `distanceRate` instead makes it a force: the camera keeps the velocity it had and eases inwards
+ * over the following seconds. Chosen overdamped against `ORBIT_DAMPING` (λ² > 4k) so it never
+ * overshoots and bounces; `docs/camera-and-labels.md` §3 has the settling times.
  */
 const LIMIT_SPRING = 1.5
 
@@ -450,9 +441,8 @@ export class CameraRig {
    * Inside the limits the distance simply coasts, on the same exactly integrated decay the two
    * angles use. Outside them the limit pulls back as a *force* rather than a position correction
    * (see `LIMIT_SPRING`), which makes `(distance, distanceRate)` a damped oscillator. Stepping that
-   * acceleration per frame — `distanceRate += excess · k · dt` — was a Riemann sum and therefore
-   * frame-rate dependent: 0.022 units of spread between 30 and 120 fps over the same six seconds.
-   * Both regimes are solved exactly here instead.
+   * acceleration per frame — `distanceRate += excess · k · dt` — is a Riemann sum and therefore
+   * frame-rate dependent, so both regimes are solved exactly here instead.
    *
    * The step is also split at the instant the camera crosses a limit, so the regime changes at the
    * same *time* at every frame rate rather than at whichever frame boundary comes next. Both

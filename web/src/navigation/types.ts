@@ -199,16 +199,10 @@ export type Unsubscribe = () => void
  *    `'correction'` focus change is a `replaceState`, not a navigation (PRD 6.7.1).
  *
  * **Every member is a function-typed property, not a method, and that is load-bearing.** Callers
- * destructure constantly — `const { flyToPlane } = useNavigation()` and
- * `onPointerDown={nav.handOver}` are the natural React spellings — and against a method signature
- * every one of those lines is an `@typescript-eslint/unbound-method` error. Property signatures
- * silence the rule. That is what this shape buys.
- *
- * What it does **not** buy is compiler enforcement of the no-`this` rule. TypeScript contextually
- * types `this` inside an object literal whichever syntax the implementation uses, so one that
- * reaches for `this` type-checks clean and fails only at runtime, once a caller detaches it. The
- * detachment tests in `web/test/navigation.test.ts` are the enforcement. An implementation must
- * close over its own state.
+ * destructure constantly (`const { flyToPlane } = useNavigation()`), which against a method
+ * signature is an `@typescript-eslint/unbound-method` error on every line. An implementation must
+ * therefore close over its own state and never reach for `this` — a rule the compiler cannot
+ * enforce, so the detachment tests in `web/test/navigation.test.ts` are what does.
  */
 export interface NavigationApi {
   snapshot: () => NavigationSnapshot
