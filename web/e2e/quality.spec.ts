@@ -11,10 +11,10 @@
  * into the bloom's constructor, `setCapacity` into the atlas — and each of those could have been
  * dropped on the floor with the whole unit suite still green.
  *
- * So this pins each tier in turn and reads the effect back off the live renderer, the live bloom
- * passes and the live atlas (`ProbeState.quality`, never `QUALITY_TIERS`).
+ * So this pins each tier in turn and reads the effect back off the live renderer, the live post
+ * chain and the live atlas (`ProbeState.quality`, never `QUALITY_TIERS`).
  *
- * **Rewritten for DEC-692 (T5).** The version this replaces was vacuous in two places and said so
+ * **Rewritten for DEC-692 (T5).** The version that replaced was vacuous in two places and said so
  * about neither:
  *
  *  - it asserted rung 1 as a *delta* ("tier 1's buffer is smaller than tier 0's") while recording
@@ -23,12 +23,16 @@
  *    removed prop was red on only 2 of 3 runs. R2 made the prop the single writer, so the caps are
  *    now asserted as the *exact* drawing buffer each one produces. A prop naming the wrong tier is
  *    a deterministic failure.
- *  - it asserted rung 2 by reading `BloomEffect.resolution`, which with `mipmapBlur` on sizes only
- *    `BloomEffect.renderTarget` — a target nothing samples. The chain the frame actually runs is
- *    `mipmapBlurPass`, and `BloomEffect.setSize` hands it the *full* drawing buffer whatever the
- *    scale says (`postprocessing/build/index.js:3896-3899`). So the old assertion watched a number
- *    move while the frame's cost did not. Both are read here, and the inert one is asserted as
- *    inert against {@link BLOOM_RUNG_KNOWN_INERT} rather than left to look like coverage.
+ *  - it asserted rung 2 by reading `BloomEffect.resolution`, which with `mipmapBlur` on sized only
+ *    `BloomEffect.renderTarget` — a target nothing sampled. That was finding R3, and T5 pinned it
+ *    as a known-inert rung rather than leaving it looking covered.
+ *
+ * **Rung 2 is real as of DEC-703 (W2.1).** The two postprocessing packages are gone and
+ * `scene/post/PostChain` is the chain, so there is no longer a number the rung sets and a
+ * different one the frame pays: `bloomSource` is both. The rung now moves *two* quantities — the
+ * source's size and the mip-level count — and both are asserted below, as exact values off the
+ * chain's own arithmetic rather than as a tolerance band. `BLOOM_RUNG_KNOWN_INERT` and the
+ * two-number `bloom` / `bloomBlur` seam it guarded are deleted with it.
  *
  * **It asserts values where a value is deterministic and deltas where only a delta is.** Tier N and
  * tier N+1 differ in exactly one rung, so the adjacent comparisons still isolate each rung from the
@@ -45,7 +49,7 @@
  *
  * **Why there is no HUD here.** `?probe=1` selects Phase 3's harness (`App.tsx`'s
  * `sceneRequested`), because the probe seam is that scene's. The harness is the shipped scene plus
- * a status panel — same `StarScene`, same `Effects`, same `CardTier` — so it is the same three
+ * a status panel — same `StarScene`, same `PostEffects`, same `CardTier` — so it is the same three
  * rungs. It is `routes.spec.ts` that owns the shell's chrome; nothing about the ladder lives there.
  */
 
@@ -76,6 +80,43 @@ function expectedBuffer(cap: number): { width: number; height: number } {
 }
 
 /**
+ * The bloom source a rung must produce: `PostChain.configure`'s own `round(buffer * scale)`.
+ *
+ * Deliberately *not* a mirror of that method's level clamp as well — see
+ * {@link expectAffordsLevels}. This one number is the whole of R3: under the old chain the rung's
+ * scale and the size the frame paid were two unrelated values, and here there is one to predict.
+ */
+function expectedBloomSource(cap: number, bloomScale: number): { width: number; height: number } {
+  const buffer = expectedBuffer(cap)
+  return {
+    width: Math.max(1, Math.round(buffer.width * bloomScale)),
+    height: Math.max(1, Math.round(buffer.height * bloomScale)),
+  }
+}
+
+/**
+ * Assert this viewport can actually afford the level count the tier asks for, before asserting the
+ * chain honoured it.
+ *
+ * `configure` clamps levels to what the source can be halved into, so on a small enough buffer
+ * every tier would report the same clamped count and the rung-2 level assertion would pass without
+ * the rung doing anything. Stating the precondition here means a future viewport change fails
+ * *this* line, with this explanation, instead of quietly hollowing out the assertion below it.
+ */
+function expectAffordsLevels(
+  source: { width: number; height: number },
+  requested: number,
+  label: string,
+): void {
+  const affordable = 1 + Math.floor(Math.log2(Math.max(1, Math.min(source.width, source.height))))
+  expect(
+    affordable,
+    `${label}: a ${source.width}x${source.height} source affords only ${affordable} levels, so ` +
+      `asserting ${requested} would be asserting the clamp — raise VIEWPORT or DEVICE_SCALE`,
+  ).toBeGreaterThanOrEqual(requested)
+}
+
+/**
  * Load the multiverse with tier `index` pinned and read the ladder's effects back.
  *
  * `motion=1` forces reduced motion *off* whatever the runner prefers, so `motion` below is the
@@ -98,19 +139,19 @@ async function pinnedTier(page: Page, index: number): Promise<Quality> {
  *
  * The harness panel's own words for the stream, not a sleep. `starsDrawn` has to be *final* before
  * it can be compared across tiers, or the invariant would be reading the stream's progress rather
- * than the ladder's effect on it. Both bloom sizes are waited for, because the mipmap chain is
- * sized by the same `setSize` and a `null` there would make the rung-2 comparison read as equal.
+ * than the ladder's effect on it. The bloom source is waited for too: it is `null` until the
+ * chain's first `configure`, and a `null` would make the rung-2 comparisons read as equal.
  */
 async function waitForField(page: Page): Promise<void> {
   await expect(page.getByTestId('eternities-status')).toContainText('(complete)', {
     timeout: 120_000,
   })
-  // The bloom's render targets are sized on the composer's first render, a frame or two later.
+  // The chain's targets are allocated on its first frame, a tick or two after the field completes.
   await expect
     .poll(
       async () => {
         const quality = await readQuality(page)
-        return quality.bloom !== null && quality.bloomBlur !== null
+        return quality.bloomSource !== null && quality.bloomLevels > 0
       },
       { timeout: 30_000 },
     )
@@ -126,16 +167,6 @@ async function readQuality(page: Page): Promise<Quality> {
 }
 
 const TIER_LABELS = ['full', 'pixel-ratio', 'bloom', 'thumbnails'] as const
-
-/**
- * Defect R3, asserted rather than skirted: `resolutionScale` does not move the resolution the
- * mipmap blur chain runs at, so rung 2 changes a constructor option and not the frame's cost.
- *
- * When W2.1 replaces the post chain with an owned half-resolution bloom, this flips to `false` and
- * the assertion under it becomes a real inequality. Leaving it out would leave rung 2 looking
- * covered by a number nothing samples, which is what T5 objected to.
- */
-const BLOOM_RUNG_KNOWN_INERT = true
 
 test('every rung of the quality ladder lands, and only its own rung (PRD 8.5.11, 9.1.4)', async ({
   page,
@@ -161,40 +192,43 @@ test('every rung of the quality ladder lands, and only its own rung (PRD 8.5.11,
   expect(pixelRatio.drawingBuffer.width).toBeLessThan(full.drawingBuffer.width)
   expect(pixelRatio.drawingBuffer.height).toBeLessThan(full.drawingBuffer.height)
 
-  // Rung 1 also shrinks the post chain, which is the point of it. `BloomEffect.setSize` is handed
-  // the drawing buffer and the mipmap pass halves it for its first level, so the target the
-  // composite samples tracks the cap — a consequence no assertion here used to reach.
-  for (const tier of tiers) {
-    expect(tier.bloomBlur, `${tier.tier} blur chain`).toEqual({
-      width: Math.round(tier.drawingBuffer.width / 2),
-      height: Math.round(tier.drawingBuffer.height / 2),
-    })
+  // Rung 1 also shrinks the post chain, which is the point of it: the bloom source is a fraction of
+  // the drawing buffer, so a cap that lands drags the whole chain down with it. Asserted at every
+  // tier as the exact product, which is a consequence no assertion here used to reach.
+  for (let index = 0; index < tiers.length; index += 1) {
+    const spec = QUALITY_TIERS[index]!
+    const quality = tiers[index]!
+    expect(quality.bloomSource, `${quality.tier} bloom source`).toEqual(
+      expectedBloomSource(spec.pixelRatioCap, spec.bloomScale),
+    )
+    // The level count the tier asked for reached the chain — but only assert that where the buffer
+    // is big enough for the answer to mean something.
+    expectAffordsLevels(quality.bloomSource!, spec.bloomLevels, quality.tier)
+    expect(quality.bloomLevels, `${quality.tier} bloom levels`).toBe(spec.bloomLevels)
   }
+  expect(pixelRatio.bloomSource!.width).toBeLessThan(full.bloomSource!.width)
 
-  // Rung 2 — `resolutionScale` 0.5 → 0.25, with the pixel ratio held at 1.0 so the buffer it is a
-  // fraction of has not moved. Both facts are needed: a bloom that shrank only because the frame
-  // shrank would not be this rung.
+  // Rung 2 — the bloom source 0.5 → 0.25 and 8 → 7 levels, with the pixel ratio held at 1.0 so the
+  // buffer it is a fraction of has not moved. Both facts are needed: a bloom that shrank only
+  // because the frame shrank would not be this rung.
+  //
+  // This is where R3 was. The assertion used to be that rung 2 changed *nothing* the frame paid
+  // for, guarded by a `BLOOM_RUNG_KNOWN_INERT` flag; the chain is owned now, so it is a real
+  // inequality in both quantities the blur's cost is made of.
   expect(bloom.pixelRatio).toBeCloseTo(pixelRatio.pixelRatio, 5)
   expect(bloom.drawingBuffer).toEqual(pixelRatio.drawingBuffer)
-  expect(bloom.bloom).not.toBeNull()
-  expect(pixelRatio.bloom).not.toBeNull()
-  // The option reached the effect's constructor: 0.5 → 0.25 of the same buffer. Rounding is why
-  // this is a range and not an equality.
-  expect(pixelRatio.bloom!.width / bloom.bloom!.width).toBeGreaterThan(1.8)
-  expect(pixelRatio.bloom!.width / bloom.bloom!.width).toBeLessThan(2.2)
-  if (BLOOM_RUNG_KNOWN_INERT) {
-    // ...and did nothing to the chain the frame runs. This is defect R3, not a passing rung.
-    expect(bloom.bloomBlur, 'R3: resolutionScale is inert under mipmapBlur').toEqual(
-      pixelRatio.bloomBlur,
-    )
-  } else {
-    expect(bloom.bloomBlur!.width).toBeLessThan(pixelRatio.bloomBlur!.width)
-  }
+  expect(bloom.bloomSource!.width, 'R3: the bloom rung shrinks the source the frame pays for')
+    .toBeLessThan(pixelRatio.bloomSource!.width)
+  expect(bloom.bloomSource!.height).toBeLessThan(pixelRatio.bloomSource!.height)
+  // 0.5 → 0.25 of an unmoved buffer, so half in each axis. An equality, not a tolerance band:
+  // `expectedBloomSource` above already pinned both sides to the chain's own rounding.
+  expect(pixelRatio.bloomSource!.width / bloom.bloomSource!.width).toBeCloseTo(2, 5)
+  expect(bloom.bloomLevels, 'the bloom rung drops a mip level').toBeLessThan(pixelRatio.bloomLevels)
 
   // Rung 3 — the atlas capacity, with the two rungs above it held.
   expect(thumbnails.drawingBuffer).toEqual(bloom.drawingBuffer)
-  expect(thumbnails.bloom).toEqual(bloom.bloom)
-  expect(thumbnails.bloomBlur).toEqual(bloom.bloomBlur)
+  expect(thumbnails.bloomSource).toEqual(bloom.bloomSource)
+  expect(thumbnails.bloomLevels).toBe(bloom.bloomLevels)
   expect(thumbnails.thumbnailCapacity).toBeLessThan(bloom.thumbnailCapacity)
   // ...and nothing below rung 3 touches it.
   expect(bloom.thumbnailCapacity).toBe(full.thumbnailCapacity)
