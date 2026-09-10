@@ -724,26 +724,35 @@ export function SceneView({
       },
       focusCard: (options = {}) => {
         const wanted = options.dfc === true
-        let nth = options.nth ?? 0
+        const nth = options.nth ?? 0
         let best = -1
-        let bestPrintings = -1
-        for (const [star, record] of cardsRef.current) {
-          const printing = record.p[0]
-          if (!printing) continue
-          if (wanted) {
+        if (wanted) {
+          let remaining = nth
+          for (const [star, record] of cardsRef.current) {
+            const printing = record.p[0]
+            if (!printing) continue
             if (cardBackImageUri(record, printing, 'large') === null) continue
-            if (nth > 0) {
-              nth -= 1
+            if (remaining > 0) {
+              remaining -= 1
               continue
             }
             best = star
             break
           }
-          // Most printings first, so PRD 5.6.7's planets have something to draw.
-          if (record.p.length > bestPrintings) {
-            bestPrintings = record.p.length
-            best = star
+        } else {
+          // Most printings first, so PRD 5.6.7's planets have something to draw — and `nth` walks
+          // that order rather than being ignored, which is what the `Probe` contract has always
+          // said and what a caller measuring the planet path needs: `nth: 0` alone re-focuses one
+          // card, and `show` is idempotent for the same star, so it rebuilds no planets at all.
+          const ranked: Array<{ star: number; printings: number }> = []
+          for (const [star, record] of cardsRef.current) {
+            if (!record.p[0]) continue
+            ranked.push({ star, printings: record.p.length })
           }
+          // Ties broken by star index so the order is stable across calls in one session; a tour
+          // that revisited `nth` and got a different card would measure nothing repeatable.
+          ranked.sort((a, b) => b.printings - a.printings || a.star - b.star)
+          best = ranked[nth]?.star ?? -1
         }
         if (best < 0) return -1
         focusStar(best, geometry.planeRowOf(best))

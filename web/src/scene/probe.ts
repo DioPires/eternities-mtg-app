@@ -150,8 +150,9 @@ export interface Probe {
   focusPlane: (slug: string) => boolean
   /**
    * Focus a card of the currently focused plane. `dfc` picks one with a genuine back image, for
-   * PRD 9.3's checkpoint 4; otherwise the `nth` card with the most printings, so the planets of PRD
-   * 5.6.7 have something to show. Returns the star index, or -1.
+   * PRD 9.3's checkpoint 4; otherwise cards are ranked by printing count, most first, and `nth`
+   * indexes that ranking — so the planets of PRD 5.6.7 have something to show, and a caller can
+   * walk several distinct cards. Returns the star index, or -1 if there is no `nth` card.
    */
   focusCard: (options?: { dfc?: boolean; nth?: number }) => number
   flip: () => boolean
