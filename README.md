@@ -48,21 +48,24 @@ web/                      Vite, React, TypeScript strict, react-three-fiber, Zus
   src/camera/             The camera rig: tethered orbit, fly-to, attract mode (Phase 2b).
   src/labels/             Plane and chronology-band labels, and the CPU projection they use.
   src/plane-detail/       Plane shards fetched and parsed in a worker (amendment A1).
-  src/scene/              The hello-scene, the star field, and the GPU self-check.
-  src/bench/              The in-page bench harness `scripts/bench.mjs` drives.
+  src/scene/              The shipped scene: the star field, the card tier, the post chain and
+                          the GPU self-check.
+  src/bench/              The in-page bench `scripts/bench.mjs` drives, behind `/bench`. Lazy.
   src/router/             PRD 6.7's URL: the source of truth for focus and filters.
   src/store/              PRD 8.4.2's transient view state, and the persisted settings.
   src/filters/            PRD 6.6's facets: the dimming mask and the exact count.
   src/search/             PRD 6.5's client-side fuzzy index over search.json.
   src/app/                Cold start, dataset loading, and the shell's hooks.
   src/ui/                 HUD, drawers, overlays, toasts, WebGL2 fallback.
-  src/harness/            Phase 2a's and 2b's demo scenes, behind `?harness=`. Deleted when
-                          Phase 3 folds them into the shell's scene.
+  src/harness/            The still field the GPU self-check needs, behind `?selfcheck`. Lazy,
+                          so none of it is in the product's chunk.
   public/data/<hash>/     Committed artefacts, immutable, content-hashed.
-  scripts/                Budget check, vercel.json generation, browser verification.
+  scripts/                Budget check, vercel.json generation, browser verification, and
+                          `visual-gate.mjs` — PRD 9.3's acceptance instrument.
   e2e/                    Playwright: PRD 8.9.2's route smoke and 9.1.2's bench smoke, in CI.
 contract/test-vectors/v2/ The shared byte-level test vector. Both languages assert against it.
 docs/                     The contract and policy documents above.
+docs/archive/             Superseded PRDs and their reviews. Nothing current.
 ```
 
 ## Getting started
@@ -174,17 +177,22 @@ picker and the hello-scene proxies are gone.
 Phase 0's hello-scene. Three seams did it: `src/navigation/host.ts` forwards from the `NavigationApi`
 built before React to the rig built when `planes.json` lands; `src/app/dataset.ts` stopped fetching,
 because the shell and the scene each ran PRD 8.7's loading order and mounting one inside the other
-doubled every transfer including `stars.bin`; and `SceneView` carries the canvas so the Phase 3
-harness (`?harness=3`) keeps working exactly as reviewed. `/bench` flies the shipped scene now, not
+doubled every transfer including `stars.bin`; and `SceneView` carries the canvas so the scene stays
+reachable standalone (`?probe=1`) exactly as reviewed. `/bench` flies the shipped scene now, not
 2a's harness, so `web/bench/baseline-2026-09-05.json` measures the product. Phase 6 is in progress —
 the cross-browser pass, the refresh rehearsal and the visual review are outstanding.
+
+Phase 2a's harness is gone (review §6.1 group B). What it hosted that is still needed — the GPU
+self-check — lives at `?selfcheck` in `src/harness/SelfCheckScene.tsx`; `?harness=2a` and
+`?harness=3` are not routes any more.
 
 Two browser checks, with different jobs.
 
 `node web/scripts/verify-browser.mjs --dataset all` is the local gate, on this machine's real GPU:
 PRD section 6's interaction requirements and Phase 5's accessibility checklist on the shell, a
 fly-to the Blind Eternities with its worker-parsed shards and Esc back out on the scene, the card
-tier through the `?probe=1` seam, and the GPU self-check on 2a — under the production CSP. Add
+tier through the `?probe=1` seam, and the GPU self-check at `?selfcheck=1` — under the production
+CSP. Add
 `--dataset production` for the run where the Scryfall images actually arrive.
 
 `pnpm test:e2e` is the CI gate, on every pull request: PRD 8.9.2's five route kinds and PRD 9.1.2's
