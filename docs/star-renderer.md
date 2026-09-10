@@ -164,6 +164,29 @@ single frames; stepping up needs a longer, calmer window than stepping down; eve
 cooldown. **Nothing in the ladder can reach the star count, the draw range or the motion** — PRD
 8.5.11's "geometry and motion are never degraded" is structural, not a promise.
 
+### 6.1 The pixel-ratio rung, and why the prop is a range
+
+`<Canvas dpr={[0.5, tier.pixelRatioCap]}>` in `EternitiesScene.tsx` is the **only** writer of the
+pixel ratio (DEC-692 R2). It used to be a bare number naming tier 0's cap, with `StarScene` calling
+`setDpr(min(cap, devicePixelRatio))` on mount and on every tier change — and a comment recording
+the prop as inert.
+
+It was not inert, and the ladder's first rung never landed because of it. Under a `?quality=` pin
+the prop and the pin agree, so every measurement taken through a pin saw the pin win. Under the
+free ladder they do not, and R3F re-reads the prop on every render (`configure()`: `if (dpr &&
+state.viewport.dpr !== calculateDpr(dpr)) state.setDpr(dpr)`), so the readout panel's 2 Hz
+re-render put 1.5 back twice a second. Measured on the live site: the canvas stayed at 2880×1620
+through `full → pixel-ratio → bloom` on a `devicePixelRatio` 1 viewport, while the composer's scene
+buffer sat at 1920×1080 — a 1× render upscaled through a 1.5× post chain (review §2.2, §3.2).
+
+A *range* fixes it at the root rather than racing it: R3F resolves an array as `min(max(lo,
+devicePixelRatio), hi)`, which is exactly `min(cap, devicePixelRatio)` for any display at or above
+the floor. `configure()` re-applying it is then a no-op, binding `hi` to the live tier makes the
+rung real, and `StarScene` no longer touches dpr at all. `e2e/quality.spec.ts` asserts the exact
+drawing buffer each cap produces, so a wrong value is a deterministic failure rather than the
+2-of-3 flake DEC-667 N1 recorded. The 0.5 floor is R3F's own minimum-sane ratio and never binds on
+real hardware; it is there because a range needs two ends.
+
 ## 7. Verifying it
 
 ```

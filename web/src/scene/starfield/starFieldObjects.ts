@@ -138,11 +138,11 @@ export function createStarField(
    * vertex shader computes from `uSizeScale` — leave it unscaled and a star would fade into its
    * thumbnail at a different distance in the bloom than in the picture.
    */
-  const uBloomSizeScale = uniform(1)
-  const uBloomMinPixels = uniform(STAR_MIN_PX)
-  const uBloomMaxPixels = uniform(STAR_MAX_PX)
-  const uBloomThumbStartPx = uniform(THUMBNAIL_FADE_START_PX)
-  const uBloomThumbFullPx = uniform(THUMBNAIL_FADE_FULL_PX)
+  const uBloomSizeScale = new Uniform(1)
+  const uBloomMinPixels = new Uniform(STAR_MIN_PX)
+  const uBloomMaxPixels = new Uniform(STAR_MAX_PX)
+  const uBloomThumbStartPx = new Uniform(THUMBNAIL_FADE_START_PX)
+  const uBloomThumbFullPx = new Uniform(THUMBNAIL_FADE_FULL_PX)
 
   const hues = HUE_COLOURS.map(([r, g, b]) => new Color(r, g, b))
   const starUniforms = {
@@ -315,10 +315,10 @@ function createGlowMesh(table: PlaneTable, noise: Texture, shared: SharedUniform
 
   const glowUniforms = {
     ...shared,
-    uNoise: uniform(noise),
-    uNebulaOpacity: uniform(NEBULA_OPACITY),
-    uEmptyOpacity: uniform(EMPTY_GLOW_OPACITY),
-    uEmptyCore: uniform(EMPTY_GLOW_CORE),
+    uNoise: new Uniform(noise),
+    uNebulaOpacity: new Uniform(NEBULA_OPACITY),
+    uEmptyOpacity: new Uniform(EMPTY_GLOW_OPACITY),
+    uEmptyCore: new Uniform(EMPTY_GLOW_CORE),
   }
 
   const material = new ShaderMaterial({
