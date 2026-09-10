@@ -66,11 +66,10 @@
  *  21. the GPU self-check of PRD 8.5.7 — that the CPU motion mirror agrees with the vertex shader
  *      — passes on this machine's actual driver.
  *
- * The shell's canvas is still Phase 0's hello-scene: Phase 3 folded 2a's field into 2b's rig, but
- * mounting that folded scene *inside* the shell means giving the shell the real navigation instead
- * of the Phase 0 stub `app/services` still returns, which would re-point every assertion above at
- * behaviour no review has seen. That join is Phase 6's, and until it lands each phase's exit
- * criteria stay checkable exactly as reviewed.
+ * The shell's canvas is the real scene: Phase 6 made the join, so the default route mounts
+ * `SceneView` over the navigation host rather than the Phase 0 stub. The `?probe=1` and
+ * `?selfcheck=1` routes below still exist because the probe and the self-check drive the camera
+ * themselves, which they cannot do in a scene where the rig is flying it.
  *
  * And across all of them: nothing blocked by the Content Security Policy (including `worker-src`
  * and the `connect-src` grant for Scryfall), no console error and no failed request from our own

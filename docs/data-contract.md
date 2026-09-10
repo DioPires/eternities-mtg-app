@@ -219,7 +219,7 @@ Card `oracle_id`s are **not** in `search.json`; they are in `sets.bin` section 1
 
 ## 8. Payload budget
 
-PRD 7.2 budgets the pair `search.json` + `sets.bin` at ≤ 700 KB target / 1.5 MB ceiling, **encoded transferred size**. Both datasets below are measured at brotli quality 11 — the numbers `web/scripts/check-budget.mjs` reports, re-measured against the committed artefacts of `7bd31529bcc71780` (`fixture-scale`: 30 000 stars, 87 planes, 476 sets) and `d5ee9661aaffafa3` (production: 28 587 stars, 87 planes, 294 sets), both at `contractVersion` 2:
+PRD 7.2 budgets the pair `search.json` + `sets.bin` at ≤ 700 KB target / 1.5 MB ceiling, **encoded transferred size**. Both datasets below are measured at brotli quality 11 — the numbers `web/scripts/check-budget.mjs` reports, re-measured against the committed artefacts of `9d46708448e96fcc` (`fixture-scale`: 30 000 stars, 87 planes, 476 sets) and `6d4779695fde33ea` (production: 28 587 stars, 87 planes, 294 sets), both at `contractVersion` 2:
 
 | Artefact | Scale raw | Scale brotli | Production raw | Production brotli |
 |---|---|---|---|---|
@@ -361,7 +361,7 @@ Amendment A3 (implementation-plan.md §8), on the board's DEC-589 decision. Each
 
 Both failures are silent, which is exactly the case §10's version rule exists for. Contrast the 0.2.0 entry above, where bumping would have been the *breaking* option: there the change was unobservable to any decoder, here it is observable to all of them. `pipelineVersion` moves 0.3.0 → **0.4.0** for the added field.
 
-Every artefact re-hashes, so all three datasets were regenerated: `fixture-small` `a609e157836c79f0`, `fixture-scale` `7bd31529bcc71780`, production `d5ee9661aaffafa3` (the same 28 587 cards from the pinned 2026-09-04 bulk). The test vector moved from `contract/test-vectors/v1/` to `v2/`.
+Every artefact re-hashes, so all three datasets were regenerated: `fixture-small` `a609e157836c79f0`, `fixture-scale` `7bd31529bcc71780`, production `d5ee9661aaffafa3` (the same 28 587 cards from the pinned 2026-09-04 bulk). Those four hashes are the record of *that* change and are deliberately not updated when a later refresh moves them; the committed hashes today are `1868a1c21c63f474`, `9d46708448e96fcc` and `6d4779695fde33ea`, and §8's table cites those. The test vector moved from `contract/test-vectors/v1/` to `v2/`.
 
 Three things a reviewer should check rather than take on trust:
 
