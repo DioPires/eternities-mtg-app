@@ -1,43 +1,18 @@
 /**
- * The scene. One canvas, one camera, one picker, every tier.
+ * The scene. One canvas, one camera, one picker, every tier (PRD 5, 8.5).
  *
- * Phases 2a and 2b each shipped a harness that stood in for the other's half — 2a flew a
- * development orbit control over a real star field, 2b flew the real camera rig over Phase 0's
- * backdrop — and each phase's documentation said the other would replace it. Neither did, so the
- * merge that brought them together left `App` routing between two scenes and recorded the join as
- * Phase 3's (DEC-628's carry-forward on DEC-590). This is that join, and Phase 3's exit criterion —
- * "the full multiverse → card journey works end to end" — is not reachable without it.
+ * `SceneView` is the scene with nothing around it: the shell mounts it inside its own `.app`, and
+ * `EternitiesScene` mounts it as its own application for `?probe=1`. Three things differ between
+ * the two, all named on {@link SceneViewProps} — who loads the data, who starts PRD 6.8.2's intro,
+ * and who owns the keyboard.
  *
- * What the fold actually resolved, since each of these was a real fork:
- *
- *  - **The camera.** 2a's `OrbitControls` was a development stand-in; the rig wins, driven from
- *    `CameraRigController` on the renderer's own clock (PRD 5.7, 8.4.5).
- *  - **The picker.** 2b's `harness/pick.ts` projected plane centres and could not see a star; 2a's
- *    id buffer is exact and picks stars, thumbnails, planets and — through the plane raycast it
- *    falls back to — planes (PRD 8.5.6). The id buffer wins, and the projection picker is gone.
- *  - **The backdrop.** `HelloScene` is gone; the star field is the scene.
- *  - **Reduced motion.** One hook (`scene/useReducedMotion`), feeding both the shader's `uMotion`
- *    and the navigation contract's `setReducedMotion`.
- *  - **The clock.** The plane table and the camera's motion mirror were integrating the same angles
- *    separately. The table is now the single clock and `MotionSync` mirrors it into the rig every
- *    frame, before the rig reads a tether. See `camera/motion.ts`.
- *
- * What is deliberately *not* folded in is Phase 2a's GPU self-check harness. It holds the field
- * still and reads pixels back, which it cannot do in a scene where the rig is also flying the
- * camera; `App` still routes `?selfcheck` there.
- *
- * **Phase 6 split this file in two.** `SceneView` is the scene with nothing around it, and it is
- * what the shell mounts inside its own `.app` — the join that Phase 3 recorded and Phase 4 deferred.
- * `EternitiesScene` is the Phase 3 harness: the same `SceneView` plus its own load, its own intro
- * and the readout panel that Phase 3's exit criteria and `scripts/verify-browser.mjs` assert
- * against. Three things differ between the two, all of them named on `SceneViewProps`: who loads
- * the data, who starts PRD 6.8.2's intro, and who owns the keyboard.
- *
- * The bench rejoined here too. PRD 9.1.2's `/bench` drives this scene through `bench/benchDrive`
- * rather than Phase 2a's harness, so the numbers are the shipped renderer's.
+ * The GPU self-check is not here: it holds the field still and reads pixels back, which it cannot
+ * do in a scene where the rig is flying the camera. `App` routes `?selfcheck` to `harness/`.
+ * Everything the review's §6.3 split moved out — the probe seam, the bench seam, plane detail, the
+ * readout panel — is imported below and named after what it does.
  */
 
-import { Canvas, useFrame } from '@react-three/fiber'
+import { Canvas } from '@react-three/fiber'
 import {
   Suspense,
   lazy,
@@ -47,192 +22,48 @@ import {
   useRef,
   useState,
   type ReactElement,
-  type RefObject,
 } from 'react'
 import {
   NoToneMapping,
   Vector2,
   Vector3,
   type PerspectiveCamera,
-  type ShaderMaterial,
   type WebGLRenderer,
 } from 'three'
 
-import type { BenchContext, BenchDrive, BenchResult } from '../bench/BenchRunner'
+import type { BenchResult } from '../bench/BenchRunner'
 import { recordBenchCpu } from '../bench/cpuSamples'
-
 import { CameraRigController } from '../camera/CameraRigController'
-import type { SceneMotion } from '../camera/motion'
-import {
-  BLIND_ETERNITIES_SLUG,
-  cardBackImageUri,
-  dataRoot,
-  type CardRecord,
-  type PlaneRecord,
-  type PlaneShardFile,
-} from '../data'
+import { BLIND_ETERNITIES_SLUG, type PlaneRecord } from '../data'
 import { PlaneLabels } from '../labels/PlaneLabels'
 import type { NavigationHost } from '../navigation/host'
 import { createSceneNavigation, type SceneNavigation } from '../navigation/scene'
 import type { NavigationSnapshot } from '../navigation/types'
-import { createPlaneDetailLoader } from '../plane-detail/client'
 import { useStore } from '../store/store'
 
-import { CameraReadout } from './CameraReadout'
-import { CardTier, type CardTierHandle, type PlaneCards, type PlanetLabelState } from './cards/CardTier'
-import { formatMb, gpuMemoryReport } from './cards/gpuMemory'
+import { useBenchSeam } from './benchSeam'
+import { CardTier, type CardTierHandle, type PlanetLabelState } from './cards/CardTier'
 import { Effects, type BloomProbe } from './Effects'
 import { sceneErrors, type SceneDataError } from './errors'
+import { MotionSync } from './MotionSync'
 import type { PickResult } from './picking/scenePicker'
-import { probeRequested, type Probe, type ProbeState } from './probe'
+import { PlanetHoverLabel } from './PlanetHoverLabel'
+import { probeRequested } from './probe'
+import { useProbeSeam } from './probeSeam'
 import { QUALITY_TIERS, pinnedQualityTier, type QualityTier } from './quality/adaptiveQuality'
+import { SceneReadout } from './SceneReadout'
 import { StarScene, type StarSceneHandle } from './StarScene'
-import type { PlaneTable } from './starfield/planeTable'
 import { BLOOM_INTENSITY_STEPS, SKY_COLOUR } from './tuning'
+import { usePlaneDetail } from './usePlaneDetail'
 import { useReducedMotion } from './useReducedMotion'
 import { useSceneData, type SceneDataState } from './useSceneData'
 
 const FOV = 55
 
 /**
- * The one place the two clocks are reconciled, mounted between the star field and the camera rig so
- * that R3F runs it in exactly that order.
- *
- * Per frame: the table has already advanced (`StarScene`), so its time, its multiverse angle and
- * its per-plane spin angles are copied into the rig's motion mirror; and PRD 5.6.6's eased spin
- * scale, which the rig owns because it knows what is focused, is pushed the other way into the
- * table so the shader stops the same plane the tether does.
- */
-function MotionSync({ table, motion }: { table: PlaneTable; motion: SceneMotion }): null {
-  useEffect(() => {
-    motion.setExternalClock(true)
-    return () => {
-      motion.setExternalClock(false)
-    }
-  }, [motion])
-
-  useFrame(() => {
-    motion.syncClock(table.time, table.multiverseAngle)
-    for (let row = 0; row < table.planes.length; row += 1) {
-      const state = table.planes[row]!
-      motion.syncSpin(row, state.spinAngle)
-      table.setSpinScale(row, motion.spinScaleOf(row))
-    }
-  })
-  return null
-}
-
-/**
- * The harness readout's two live counters, polled off the card tier's handle.
- *
- * These used to be `useState` in {@link SceneView}, written by a 500 ms `setInterval` from two
- * getters that return a fresh object every call. Both writes therefore re-rendered the component
- * that owns `<Canvas>` twice a second for the whole session, and R3F pushes that component's
- * children into its own reconciler on every render — which rebuilt `SelectiveBloomEffect` and its
- * twenty-odd render targets each time and dropped the old ones on the floor, because
- * `EffectComposer.removePass` does not dispose. Measured on the live site: ~42 texture allocations
- * and ~308 MB of GPU memory per second, in every phase, for the whole session (DEC-692 R1,
- * review §2.2).
- *
- * A leaf that polls a ref is the same 2 Hz refresh confined to the two `<li>`s that show it.
- * Nothing above this component re-renders, so nothing near the canvas does either.
- */
-function SceneStats({ handle }: { handle: RefObject<CardTierHandle | null> }): ReactElement {
-  const [stats, setStats] = useState({
-    atlas: 0,
-    card: 0,
-    drawn: 0,
-    cells: 0,
-    capacity: 0,
-    failed: 0,
-  })
-
-  useEffect(() => {
-    const read = (): void => {
-      const tier = handle.current
-      if (!tier) return
-      const gpu = tier.gpuBytes
-      const thumbnails = tier.stats
-      setStats({
-        atlas: gpu.atlas,
-        card: gpu.card,
-        drawn: thumbnails.drawn,
-        cells: thumbnails.cells,
-        capacity: thumbnails.capacity,
-        failed: thumbnails.failed,
-      })
-    }
-    read()
-    const timer = window.setInterval(read, 500)
-    return () => {
-      window.clearInterval(timer)
-    }
-  }, [handle])
-
-  const memory = gpuMemoryReport(stats.atlas, stats.card)
-  return (
-    <>
-      <li data-testid="thumbnails">
-        thumbnails: {stats.drawn} drawn · {stats.cells} / {stats.capacity} cells · {stats.failed}{' '}
-        failed
-      </li>
-      <li data-testid="gpu">
-        gpu: {formatMb(memory.totalBytes)} of {formatMb(memory.targetBytes)} target (atlas{' '}
-        {formatMb(memory.atlasBytes)}, card {formatMb(memory.cardBytes)}) ·{' '}
-        {memory.withinTarget
-          ? 'within target'
-          : memory.withinCeiling
-            ? 'over target'
-            : 'OVER CEILING'}
-      </li>
-    </>
-  )
-}
-
-/** PRD 5.6.9's hover label: written by the frame loop, read by its own rAF (PRD 7.3.3). */
-function PlanetHoverLabel({
-  state,
-  text,
-}: {
-  state: PlanetLabelState
-  text: (printing: number) => string
-}): ReactElement {
-  const node = useRef<HTMLDivElement>(null)
-  const shown = useRef(-1)
-
-  useEffect(() => {
-    let handle = 0
-    const tick = (): void => {
-      handle = requestAnimationFrame(tick)
-      const element = node.current
-      if (!element) return
-      if (!state.visible) {
-        if (shown.current !== -1) {
-          element.style.opacity = '0'
-          shown.current = -1
-        }
-        return
-      }
-      element.style.transform = `translate3d(${Math.round(state.x)}px, ${Math.round(state.y)}px, 0)`
-      if (shown.current !== state.printing) {
-        element.textContent = text(state.printing)
-        element.style.opacity = '1'
-        shown.current = state.printing
-      }
-    }
-    handle = requestAnimationFrame(tick)
-    return () => {
-      cancelAnimationFrame(handle)
-    }
-  }, [state, text])
-
-  return <div ref={node} className="planet-label" data-testid="planet-label" />
-}
-
-/**
  * 622 lines that only `benchContext !== null` can reach, so they are not in the product's chunk
- * (review §5.4 B1). The per-frame `recordBenchCpu` writer stays static in `bench/cpuSamples` —
- * it is six lines and the runner reads through it, so the split costs no samples.
+ * (review §5.4 B1). The per-frame `recordBenchCpu` writer stays static in `bench/cpuSamples` — it
+ * is six lines and the runner reads through it, so the split costs no samples.
  */
 const BenchRunner = lazy(async () => ({
   default: (await import('../bench/BenchRunner')).BenchRunner,
@@ -253,15 +84,14 @@ export interface SceneViewProps {
   /**
    * Where to publish the real navigation once `planes.json` has built it.
    *
-   * With a host, the shell is driving: it owns PRD 6.8.2's intro (`app/boot.ts` sequences it against
-   * the deep link, which this scene cannot see), it owns the keyboard map (PRD 6.11), and it owns
-   * the chrome. Without one, this scene is the whole application — the Phase 3 harness — and owns
-   * all three itself.
+   * With a host, the shell is driving: it owns PRD 6.8.2's intro (`app/boot.ts` sequences it
+   * against the deep link, which this scene cannot see), the keyboard map (PRD 6.11) and the
+   * chrome. Without one, this scene is the whole application and owns all three itself.
    */
   readonly host?: NavigationHost | null
   /**
-   * Render the harness readout and bind its shortcuts. True for `?harness=3` and `?probe=1`, whose
-   * assertions read that panel; false in the shell, where PRD section 6's HUD is the real one.
+   * Render the harness readout and bind its shortcuts. True for `?probe=1`, whose assertions read
+   * that panel; false in the shell, where PRD section 6's HUD is the real one.
    */
   readonly chrome?: boolean
   /**
@@ -277,8 +107,8 @@ export interface SceneViewProps {
 }
 
 /**
- * The scene, with nothing around it. Mounted by the shell (inside its `.app`) and by the Phase 3
- * harness (which supplies its own).
+ * The scene, with nothing around it. Mounted by the shell (inside its `.app`) and by
+ * {@link EternitiesScene} (which supplies its own).
  */
 export function SceneView({
   data,
@@ -291,8 +121,6 @@ export function SceneView({
   /**
    * PRD 6.10.1's two scene-facing settings, subscribed one field at a time.
    *
-   * Both were persisted and read by nothing until now — the labels toggle wrote a store field that
-   * never reached `PlaneLabels`' own `enabled` prop, and the bloom steps never reached the effect.
    * Selecting the fields rather than the whole `settings` object is what keeps this off the render
    * path: a hint dismissal or a reduced-motion change must not re-render the component that owns
    * the `<Canvas>` (review §2.2).
@@ -300,18 +128,16 @@ export function SceneView({
   const labelsEnabled = useStore((state) => state.settings.labels)
   const bloomIntensity = useStore((state) => BLOOM_INTENSITY_STEPS[state.settings.bloom])
   // `?quality=N` starts the scene at tier N and holds it there (PRD 9.1.4). The monitor inside
-  // `StarScene` is pinned to the same tier, so it never announces a change and this stays the
-  // tier for the run — which is why the initial value has to be right rather than corrected later.
+  // `StarScene` is pinned to the same tier, so it never announces a change and this stays the tier
+  // for the run — which is why the initial value has to be right rather than corrected later.
   const pinnedTier = useMemo(() => pinnedQualityTier(), [])
   /**
    * Whether the URL asked for the `./probe` seam — read **once**, at the first render.
    *
-   * The effect that installs it re-runs when `planes.json` and the GPU resources land, a second or
-   * two after mount, and under the shell that is long enough for the URL to have changed: PRD 6.7's
-   * router owns the address bar and canonicalises it on boot, so `?probe=shell` is gone by the time
-   * the effect runs again and a `location.search` read there says the seam was never asked for. The
-   * harness has no router, which is why `?probe=1` never showed this. Latched for the same reason
-   * `pinnedTier` is: a flag the page was *opened* with is not a value that may change under it.
+   * The effect that installs it re-runs when `planes.json` and the GPU resources land, and under
+   * the shell that is long enough for the URL to have changed: PRD 6.7's router canonicalises the
+   * address bar on boot, so a `location.search` read there would say the seam was never asked for.
+   * A flag the page was *opened* with is not a value that may change under it.
    */
   const probeWanted = useMemo(() => probeRequested(), [])
   const [tier, setTier] = useState<{ tier: QualityTier; changes: number }>({
@@ -320,14 +146,11 @@ export function SceneView({
   })
   const [hover, setHover] = useState<PickResult>(null)
   const [toast, setToast] = useState<SceneDataError | null>(null)
-  const [detail, setDetail] = useState<{ slug: string; cards: number; shards: number } | null>(null)
   const [focusedStar, setFocusedStar] = useState(-1)
-  // Read by the `?probe=1` seam, which must not be reinstalled on every focus change.
+  // The three values the probe's `state()` reads that must not re-install it. See `ProbeSeamDeps`.
   const focusedStarRef = useRef(-1)
-  /** The current tier, for the probe's `state()` — which must not re-install on a tier change. */
   const tierRef = useRef<QualityTier>(QUALITY_TIERS[pinnedTier ?? 0]!)
   const focusedSlugRef = useRef<string | null>(null)
-  const [cardVersion, setCardVersion] = useState(0)
 
   const starScene = useRef<StarSceneHandle>(null)
   const cardTier = useRef<CardTierHandle>(null)
@@ -339,21 +162,6 @@ export function SceneView({
   // Both for the `?probe=1` quality block only; see `ProbeState.quality`.
   const rendererRef = useRef<WebGLRenderer | null>(null)
   const bloomRef = useRef<BloomProbe | null>(null)
-
-  /**
-   * The focused plane's cards, by global star index.
-   *
-   * A plain `Map` behind a stable object: the thumbnail tier asks per star per pass and the focused
-   * card asks once, so lookup has to be O(1), and the identity has to change when shards land or
-   * the memo in `CardTier` would never see them.
-   */
-  const cardsRef = useRef(new Map<number, CardRecord>())
-  const cards: PlaneCards = useMemo(
-    () => ({ get: (star: number) => cardsRef.current.get(star) ?? null }),
-    // `cardVersion` is the whole dependency, on purpose: the map is a ref, so its identity never
-    // changes and nothing downstream would ever re-read it. The counter ticks once per shard.
-    [cardVersion],
-  )
 
   useEffect(() => sceneErrors.subscribe(setToast), [])
 
@@ -440,46 +248,7 @@ export function SceneView({
     scene.rig.motion.setFocusedPlane(focus?.kind === 'card' ? focus.planeSlug : null)
   }, [scene, focus])
 
-  // PRD 8.7.6 / amendment A1: plane detail on focus, parsed in a worker, shard by shard.
-  const loaderRef = useRef<ReturnType<typeof createPlaneDetailLoader> | null>(null)
-  useEffect(() => {
-    if (!data.planes) return
-    const loader = createPlaneDetailLoader({ root: dataRoot() })
-    loaderRef.current = loader
-    return () => {
-      loader.dispose()
-      loaderRef.current = null
-    }
-  }, [data.planes])
-
-  useEffect(() => {
-    const loader = loaderRef.current
-    if (!loader || !focusedPlane) return
-    cardsRef.current.clear()
-    setCardVersion((v) => v + 1)
-    let cardCount = 0
-    let shards = 0
-    setDetail({ slug: focusedPlane.slug, cards: 0, shards: 0 })
-    loader.load(focusedPlane.slug, focusedPlane.shardCount, {
-      onShard: (file: PlaneShardFile) => {
-        // Contract §: `starOffset` is the global star index of this shard's local index 0.
-        for (let i = 0; i < file.cards.length; i += 1) {
-          cardsRef.current.set(file.starOffset + i, file.cards[i]!)
-        }
-        cardCount += file.cards.length
-        shards += 1
-        setDetail({ slug: focusedPlane.slug, cards: cardCount, shards })
-        setCardVersion((v) => v + 1)
-      },
-      onError: (message) => {
-        // PRD 7.4.1's single non-blocking report. Phase 4 owns the toast.
-        console.warn(`plane detail: ${message}`)
-      },
-    })
-    return () => {
-      loader.cancel()
-    }
-  }, [focusedPlane])
+  const { cards, cardsRef, cardVersion, detail } = usePlaneDetail(data.planes !== null, focusedPlane)
 
   /**
    * A star was clicked. PRD 5.6.1 focuses it; PRD 6.2.3's two-stage fly-to is the scene's own.
@@ -518,7 +287,7 @@ export function SceneView({
       )
       setFocusedStar(index)
     },
-    [data.planes, data.resources, anchorScratch],
+    [data.planes, data.resources, anchorScratch, cardsRef],
   )
 
   // The shards for the plane a pending star sits on have landed; finish the focus.
@@ -527,7 +296,7 @@ export function SceneView({
     if (index < 0 || !data.resources) return
     if (!cardsRef.current.has(index)) return
     focusStar(index, data.resources.geometry.planeRowOf(index))
-  }, [cardVersion, focusStar, data.resources])
+  }, [cardVersion, focusStar, data.resources, cardsRef])
 
   const onSelect = useCallback(
     (pick: PickResult) => {
@@ -538,10 +307,9 @@ export function SceneView({
         // PRD 5.6.9: clicking a planet swaps the front and marks it active. It is not a navigation:
         // "the active printing is view state, changes no route" (navigation contract, `Focus`).
         //
-        // Resolved from the *clicked* planet, not from whichever one the hover label last named.
-        // The click carries its own id out of the same id buffer, and reaching for the hover state
-        // instead made the click depend on a hover having been reported first — which, before the
-        // dedupe fix in `StarScene`, it very often had not been.
+        // Resolved from the *clicked* planet, not from whichever one the hover label last named:
+        // reaching for the hover state made the click depend on a hover having been reported first,
+        // which before the dedupe fix in `StarScene` it very often had not been.
         const slot = cardTier.current?.card
         if (slot) {
           const printing = slot.printingOfPlanet(pick.index)
@@ -586,7 +354,7 @@ export function SceneView({
       } else if (event.key === 'b' || event.key === 'B') {
         built.api.flyToBlindEternities(undefined, { reason: 'user' })
       } else if (event.key === 'f' || event.key === 'F') {
-        // PRD 5.6.5's flip control. Phase 4 gives it a button; this is the same call.
+        // PRD 5.6.5's flip control; the shell's HUD calls the same handle.
         cardTier.current?.card.toggleFlip()
       }
     }
@@ -596,248 +364,34 @@ export function SceneView({
     }
   }, [chrome])
 
-  // The `?probe=1` seam of `./probe`. Installed only when the URL asks, and it calls the same
-  // `focusStar` the pointer does rather than a second implementation of it.
-  useEffect(() => {
-    if (!probeWanted || !data.planes || !data.resources) return
-    const planes = data.planes
-    const geometry = data.resources.geometry
-    // The uniform the star shader actually samples, not the `motion` argument passed to `update`.
-    const motionUniform = (data.resources.field.points.material as ShaderMaterial).uniforms[
-      'uMotion'
-    ]
+  useProbeSeam({
+    enabled: probeWanted,
+    planes: data.planes,
+    resources: data.resources,
+    focusStar,
+    pinnedTier,
+    sceneRef,
+    starScene,
+    cardTier,
+    cameraRef,
+    rendererRef,
+    bloomRef,
+    tierRef,
+    focusedStarRef,
+    focusedSlugRef,
+    cardsRef,
+    screen: probeScreen,
+    buffer: probeBuffer,
+  })
 
-    // Read back off the live objects, never off QUALITY_TIERS. See `ProbeState.quality`.
-    const qualityState = (): ProbeState['quality'] => {
-      const renderer = rendererRef.current
-      const buffer = renderer?.getDrawingBufferSize(probeBuffer)
-      const bloom = bloomRef.current?.resolution
-      // The target the composite actually samples, as opposed to the one `resolutionScale` sizes.
-      // See `Effects.BloomProbe`.
-      const blur = bloomRef.current?.mipmapBlurPass.texture.image
-      const band = starScene.current?.qualityThresholds
-      return {
-        tier: tierRef.current.label,
-        tierIndex: QUALITY_TIERS.indexOf(tierRef.current),
-        pinned: pinnedTier,
-        pixelRatio: renderer?.getPixelRatio() ?? 0,
-        drawingBuffer: { width: buffer?.x ?? 0, height: buffer?.y ?? 0 },
-        // Zero until the composer has sized it, which is not the same as "no bloom".
-        bloom: bloom && bloom.width > 0 ? { width: bloom.width, height: bloom.height } : null,
-        bloomBlur: blur && blur.width > 0 ? { width: blur.width, height: blur.height } : null,
-        thumbnailCapacity: cardTier.current?.stats.capacity ?? 0,
-        starsDrawn: geometry.drawCount,
-        motion: typeof motionUniform?.value === 'number' ? motionUniform.value : -1,
-        refreshMs: band?.refreshMs ?? 0,
-        degradeMs: band?.degradeMs ?? 0,
-        restoreMs: band?.restoreMs ?? 0,
-      }
-    }
-
-    const state = (): ProbeState => {
-      const built = sceneRef.current
-      const snap = built?.api.snapshot()
-      const handle = cardTier.current
-      const memoryNow = gpuMemoryReport(
-        handle?.gpuBytes.atlas ?? 0,
-        handle?.gpuBytes.card ?? 0,
-      )
-      const focused = focusedStarRef.current
-      const record = focused >= 0 ? cardsRef.current.get(focused) : undefined
-      const cardState = handle?.card
-      const lookAt = built?.rig.lookAt
-      const frameOffset =
-        cardState?.visible && lookAt
-          ? Math.hypot(
-              cardState.root.position.x - lookAt.x,
-              cardState.root.position.y - lookAt.y,
-              cardState.root.position.z - lookAt.z,
-            )
-          : 0
-      return {
-        focus: snap?.focus.kind ?? 'none',
-        level: snap?.level ?? 'none',
-        flying: snap?.flight !== null && snap?.flight !== undefined,
-        cameraDistance: built?.rig.distanceToTether ?? 0,
-        planeSlug: focusedSlugRef.current,
-        cardsLoaded: cardsRef.current.size,
-        thumbnails: {
-          drawn: handle?.stats.drawn ?? 0,
-          cells: handle?.stats.cells ?? 0,
-          capacity: handle?.stats.capacity ?? 0,
-          requested: handle?.stats.requested ?? 0,
-          loaded: handle?.stats.loaded ?? 0,
-          failed: handle?.stats.failed ?? 0,
-        },
-        images: handle?.imageStats ?? {
-          inFlight: 0,
-          waiting: 0,
-          completed: 0,
-          failed: 0,
-          peakInFlight: 0,
-        },
-        gpu: {
-          atlasBytes: memoryNow.atlasBytes,
-          cardBytes: memoryNow.cardBytes,
-          totalBytes: memoryNow.totalBytes,
-          targetBytes: memoryNow.targetBytes,
-          ceilingBytes: memoryNow.ceilingBytes,
-          withinTarget: memoryNow.withinTarget,
-          withinCeiling: memoryNow.withinCeiling,
-        },
-        quality: qualityState(),
-        card:
-          record && cardState && cardState.visible
-            ? {
-                name: record.n,
-                printings: record.p.length,
-                planets: cardState.planetCount,
-                overflow: cardState.printingOverflow,
-                canFlip: cardState.canFlip,
-                flipped: cardState.flipped,
-                activePrinting: cardState.activePrinting,
-                starIndex: cardState.starIndex,
-              }
-            : null,
-        cardFrameOffset: frameOffset,
-        cardEyeDistance:
-          cardState?.visible && cameraRef.current
-            ? cameraRef.current.position.distanceTo(cardState.root.position)
-            : 0,
-        cardScreen: cardState?.visible
-          ? (() => {
-              probeScreen.copy(cardState.root.position).project(cameraRef.current!)
-              return { x: (probeScreen.x + 1) / 2, y: (1 - probeScreen.y) / 2 }
-            })()
-          : null,
-      }
-    }
-
-    const probe: Probe = {
-      state,
-      planes: () =>
-        planes.planes
-          .filter((p) => p.cardCount > 0)
-          .sort((a, b) => b.cardCount - a.cardCount)
-          .map((p) => ({ slug: p.slug, index: p.index, cardCount: p.cardCount })),
-      focusPlane: (slug) => {
-        const built = sceneRef.current
-        const plane = planes.planes.find((p) => p.slug === slug)
-        if (!built || !plane) return false
-        built.api.flyToPlane(slug, { reason: 'user' })
-        return true
-      },
-      focusCard: (options = {}) => {
-        const wanted = options.dfc === true
-        let nth = options.nth ?? 0
-        let best = -1
-        let bestPrintings = -1
-        for (const [star, record] of cardsRef.current) {
-          const printing = record.p[0]
-          if (!printing) continue
-          if (wanted) {
-            if (cardBackImageUri(record, printing, 'large') === null) continue
-            if (nth > 0) {
-              nth -= 1
-              continue
-            }
-            best = star
-            break
-          }
-          // Most printings first, so PRD 5.6.7's planets have something to draw.
-          if (record.p.length > bestPrintings) {
-            bestPrintings = record.p.length
-            best = star
-          }
-        }
-        if (best < 0) return -1
-        focusStar(best, geometry.planeRowOf(best))
-        return best
-      },
-      flip: () => {
-        const handle = cardTier.current?.card
-        if (!handle?.canFlip) return false
-        handle.toggleFlip()
-        return true
-      },
-      activatePrinting: (index) => {
-        const handle = cardTier.current?.card
-        if (!handle?.visible) return false
-        handle.setActivePrinting(index)
-        return handle.activePrinting === index
-      },
-      thumbnailStars: () => [...(cardTier.current?.drawnStars ?? [])],
-      planetScreen: (index) => {
-        const handle = cardTier.current?.card
-        const camera = cameraRef.current
-        if (!handle?.visible || !camera) return null
-        if (!handle.planetWorldPosition(index, probeScreen)) return null
-        probeScreen.project(camera)
-        if (probeScreen.z >= 1) return null
-        return { x: (probeScreen.x + 1) / 2, y: (1 - probeScreen.y) / 2 }
-      },
-    }
-    window.__eternitiesProbe = probe
-    return () => {
-      delete window.__eternitiesProbe
-    }
-  }, [data.planes, data.resources, focusStar, probeScreen])
-
-  /**
-   * What the bench asks of this scene (PRD 9.1.2). Every call reaches the same code a user's click
-   * would — `flyToPlane` is the navigation contract's, `focusCard` is the one `focusStar` above
-   * runs — so a bench segment cannot end up measuring a path that only the bench can take.
-   *
-   * `immediate` throughout: the camera is the bench's for the duration, so a tween here would
-   * change nothing visible and would only make the focus land later than the segment it belongs to.
-   */
-  const benchDrive: BenchDrive = useMemo(
-    () => ({
-      focusPlane: (slug: string) => {
-        sceneRef.current?.api.flyToPlane(slug, { immediate: true, reason: 'programmatic' })
-      },
-      focusMultiverse: () => {
-        sceneRef.current?.api.flyToMultiverse({ immediate: true, reason: 'programmatic' })
-      },
-      focusCard: () => {
-        const geometry = data.resources?.geometry
-        if (!geometry) return false
-        // Most printings first, so PRD 5.6.7's planets have something to draw — the same choice
-        // `probe.focusCard` makes, for the same reason.
-        let best = -1
-        let bestPrintings = -1
-        for (const [star, record] of cardsRef.current) {
-          if (record.p.length > bestPrintings) {
-            bestPrintings = record.p.length
-            best = star
-          }
-        }
-        if (best < 0) return false
-        focusStar(best, geometry.planeRowOf(best))
-        return true
-      },
-      cardPosition: (out: Vector3) => {
-        const slot = cardTier.current?.card
-        if (!slot?.visible) return false
-        out.copy(slot.root.position)
-        return true
-      },
-    }),
-    [data.resources, focusStar],
-  )
-
-  const benchContext: BenchContext | null = useMemo(() => {
-    if (!bench || !data.resources || !data.planes || !data.manifest) return null
-    return {
-      dataset: data.manifest.dataset,
-      stars: data.manifest.counts.stars,
-      planes: data.manifest.counts.planes,
-      positionMode: data.resources.positionMode,
-      multiverseRadius: data.planes.multiverseRadius,
-      table: data.resources.table,
-      drive: benchDrive,
-    }
-  }, [bench, data.resources, data.planes, data.manifest, benchDrive])
+  const benchContext = useBenchSeam({
+    bench: bench !== null,
+    data,
+    focusStar,
+    sceneRef,
+    cardTier,
+    cardsRef,
+  })
 
   const setName = useCallback(
     (printing: number): string => {
@@ -847,7 +401,7 @@ export function SceneView({
       const set = data.search?.sets.find((entry) => entry.id === tuple[1])
       return set ? `${set.name} · ${set.year}` : `set ${tuple[1]}`
     },
-    [data.search, focusedStar],
+    [data.search, focusedStar, cardsRef],
   )
 
   // PRD 5.3.20 and 9.3: the field blooms, the cards do not. See `Effects`.
@@ -867,12 +421,11 @@ export function SceneView({
           antialias: false,
           alpha: false,
           powerPreference: 'high-performance',
-          // Only for the `?probe=1` verification pass, and for the same reason Phase 2a's harness
-          // does it: without a preserved buffer a screenshot of the canvas is whatever frame the
-          // compositor last kept, which is not necessarily the frame the assertions were made
-          // against. It cost PRD 9.3's checkpoint images their credibility once already — they
-          // showed a card mid-fly-to while the probe reported it dead centre. Preserving on every
-          // frame is a full-buffer copy nobody is paying for in production.
+          // Only for the `?probe=1` verification pass: without a preserved buffer a screenshot of
+          // the canvas is whatever frame the compositor last kept, which is not necessarily the
+          // frame the assertions were made against. It cost PRD 9.3's checkpoint images their
+          // credibility once already. Preserving every frame is a full-buffer copy nobody is
+          // paying for in production.
           preserveDrawingBuffer: probeWanted,
         }}
         flat
@@ -881,29 +434,9 @@ export function SceneView({
           cameraRef.current = camera as PerspectiveCamera
           rendererRef.current = gl
         }}
-        // **This prop is the pixel-ratio rung — the only writer of it (DEC-692 R2).**
-        //
-        // It used to be a bare number naming tier 0's cap, and a long comment here recorded it as
-        // inert: `StarScene` called `setDpr(min(cap, devicePixelRatio))` on mount and on every tier
-        // change, and under a `?quality=` pin the prop and the pin agree, so every measurement made
-        // through a pin saw the pin win. Under the *free* ladder they do not agree, and R3F re-reads
-        // this prop on every render (`configure()`: `if (dpr && state.viewport.dpr !==
-        // calculateDpr(dpr)) state.setDpr(dpr)`) — so a 2 Hz re-render put 1.5 back twice a second
-        // and the ladder's first rung never landed. Measured on the live site: the canvas stayed at
-        // 2880×1620 through `full → pixel-ratio → bloom` on a `devicePixelRatio` 1 viewport, while
-        // the composer's scene buffer sat at 1920×1080 — a 1× render upscaled through a 1.5× post
-        // chain (review §2.2, §3.2).
-        //
-        // A *range* fixes it at the root rather than racing it: R3F resolves an array as
-        // `min(max(lo, devicePixelRatio), hi)`, which is exactly `min(cap, devicePixelRatio)` for
-        // any display at or above the floor. So `configure()` re-applying it is a no-op, and
-        // binding `hi` to the live tier makes the rung real — the prop is now what delivers it, and
-        // `StarScene` no longer touches dpr at all. `e2e/quality.spec.ts` asserts the exact drawing
-        // buffer each cap produces, so a wrong value here is a deterministic failure rather than
-        // the 2-of-3 flake DEC-667 N1 recorded.
-        //
-        // The 0.5 floor is R3F's own minimum-sane ratio and never binds on real hardware; it is
-        // there because a range needs two ends.
+        // **The pixel-ratio rung, and the only writer of it (DEC-692 R2).** A range rather than a
+        // number on purpose: R3F re-reads this prop on every render, so a bare `cap` raced the
+        // ladder and the first rung never landed. See `docs/star-renderer.md` §6.1.
         dpr={[0.5, tier.tier.pixelRatioCap]}
         style={{ background: SKY_COLOUR }}
       >
@@ -983,75 +516,38 @@ export function SceneView({
   return (
     <div className="app">
       {body}
-
-      <div className="scene-status" data-testid="eternities-status">
-        <h1>Eternities</h1>
-        <p className="muted">
-          Drag to orbit · scroll to zoom · click a plane, a star or a thumbnail · Esc to go back ·{' '}
-          <kbd>b</kbd> the Blind Eternities · <kbd>a</kbd> attract mode · <kbd>f</kbd> flip
-        </p>
-        <ul>
-          <li data-testid="focus">
-            focus: {snapshot?.focus.kind ?? '—'}
-            {focusedSlug !== null ? ` (${focusedSlug})` : ''} · level {snapshot?.level ?? '—'}
-          </li>
-          <li data-testid="flight">
-            flight: {snapshot?.flight ? `#${snapshot.flight.id}` : 'idle'} · attract{' '}
-            {String(snapshot?.attract ?? false)} · reduced motion {String(reducedMotion)}
-          </li>
-          {scene && <CameraReadout rig={scene.rig} />}
-          <li data-testid="stars">
-            stars: {data.drawable} / {data.expected}
-            {data.starsComplete ? ' (complete)' : ' (streaming)'} · quality {tier.tier.label} ·{' '}
-            {tier.changes} change{tier.changes === 1 ? '' : 's'}
-          </li>
-          <li data-testid="detail">
-            detail:{' '}
-            {detail === null
-              ? '—'
-              : `${detail.slug} ${detail.cards} cards over ${detail.shards} shard(s)` +
-                (detail.slug === BLIND_ETERNITIES_SLUG ? ' (sharded, worker-parsed)' : '')}
-          </li>
-          <SceneStats handle={cardTier} />
-          <li data-testid="card">
-            card:{' '}
-            {focusedCard === undefined
-              ? '—'
-              : `${focusedCard.n} · ${cardTier.current?.card.planetCount ?? 0} planet(s)` +
-                ` of ${focusedCard.p.length} printing(s)` +
-                (cardTier.current?.card.canFlip ? ' · flippable' : '')}
-          </li>
-          <li data-testid="hover">
-            hover:{' '}
-            {hover === null
-              ? '—'
-              : hover.kind === 'star'
-                ? `star ${hover.index}`
-                : hover.kind === 'planet'
-                  ? `planet ${hover.index}`
-                  : `plane ${data.planes?.planes[hover.index]?.displayName ?? hover.index}`}
-          </li>
-        </ul>
-        {!data.ok && <p className="bad">the data contract decode failed — see the console</p>}
-        {toast && (
-          <p className="bad" data-testid="data-error">
-            {toast.message}
-          </p>
-        )}
-      </div>
+      <SceneReadout
+        scene={scene}
+        snapshot={snapshot}
+        planes={data.planes}
+        focusedSlug={focusedSlug}
+        focusedCardName={focusedCard?.n ?? null}
+        focusedPrintings={focusedCard?.p.length ?? 0}
+        cardTier={cardTier}
+        detail={detail}
+        hover={hover}
+        reducedMotion={reducedMotion}
+        quality={{ label: tier.tier.label, changes: tier.changes }}
+        stars={{
+          drawable: data.drawable,
+          expected: data.expected,
+          complete: data.starsComplete,
+        }}
+        decodeOk={data.ok}
+        toast={toast}
+      />
     </div>
   )
 }
 
 /**
- * The Phase 3 harness: the scene as its own application, with its own load, its own reduced-motion
- * resolution, its own intro and its own readout panel.
+ * The scene as its own application: its own load, its own reduced-motion resolution, its own intro
+ * and its own readout panel.
  *
- * `App` routes `?harness=3` and `?probe=1` here, and that is the whole reason it still exists —
- * Phase 3's exit criteria and `scripts/verify-browser.mjs` were both signed off against this panel,
- * and re-pointing them at the shell's HUD inside the same change that first mounts the shell's HUD
- * would leave nothing standing still to compare against. It is the same {@link SceneView} the shell
- * renders; only the surroundings differ.
+ * `App` routes `?probe=1` here. It exists because `scripts/verify-browser.mjs` was signed off
+ * against this panel, and re-pointing it at the shell's HUD inside the same change that first
+ * mounts the shell's HUD would leave nothing standing still to compare against. Same
+ * {@link SceneView} the shell renders; only the surroundings differ.
  */
 export function EternitiesScene(): ReactElement {
   const data = useSceneData()
