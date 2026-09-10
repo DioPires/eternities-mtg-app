@@ -17,15 +17,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type { SetsSidecar, Stars } from '../data/decode'
-import {
-  LOAD_ATTEMPTS,
-  loadManifest,
-  loadPlaneShard,
-  loadPlanes,
-  loadSearch,
-  loadSets,
-} from '../data/load'
-import { BLIND_ETERNITIES_SLUG, type Manifest, type PlanesFile, type SearchFile } from '../data/types'
+import { LOAD_ATTEMPTS, loadManifest, loadPlanes, loadSearch, loadSets } from '../data/load'
+import type { Manifest, PlanesFile, SearchFile } from '../data/types'
 import { sceneErrors } from './errors'
 import { createNebulaTexture } from './starfield/nebulaTexture'
 import { PlaneTable } from './starfield/planeTable'
@@ -195,18 +188,6 @@ export function useSceneData(): SceneDataState {
       patch({ drawable: geometry.drawCount, starsComplete: true, stars })
 
       await background
-
-      // The Phase 0 contract check, kept: a plane detail shard is the one artefact the scene does
-      // not otherwise touch until Phase 2b, and it is the last line `scripts/verify-browser.mjs`
-      // waits for.
-      const blind = planes.planes.find((plane) => plane.slug === BLIND_ETERNITIES_SLUG)
-      if (blind) {
-        const shard = await loadPlaneShard(blind.slug, blind.shardCount - 1, { signal })
-        lines.push(
-          `plane shard ${blind.slug}.${shard.shard}: ${shard.cards.length} cards ` +
-            `(of ${blind.shardCount} shards)`,
-        )
-      }
       patch({})
     }
 
