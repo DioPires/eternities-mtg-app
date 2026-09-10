@@ -101,7 +101,13 @@ export class ThumbnailAtlas {
 
   private readonly blitScene = new Scene()
   private readonly blitCamera = new OrthographicCamera(-0.5, 0.5, 0.5, -0.5, 0, 1)
-  private readonly blitMaterial = new MeshBasicMaterial({ depthTest: false, depthWrite: false })
+  // Named for the same reason as the scene's other materials: `SHADER_NAME` is `material.name`, so
+  // an unnamed built-in is as anonymous in the program list as an unnamed raw `ShaderMaterial`.
+  private readonly blitMaterial = new MeshBasicMaterial({
+    name: 'AtlasBlit',
+    depthTest: false,
+    depthWrite: false,
+  })
   private readonly blitMesh: Mesh
   /** Scratch for the caller's viewport and scissor, saved across a blit. See {@link upload}. */
   private readonly savedViewport = new Vector4()

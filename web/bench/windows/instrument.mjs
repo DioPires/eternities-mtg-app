@@ -140,9 +140,9 @@ export function installGpuProbe() {
   //                  further still, the cost lands here.
   //
   // `SHADER_NAME` is read out of the source because three.js emits `#define SHADER_NAME <name>`,
-  // which turns 13 anonymous programs into a named list. For the app's raw `ShaderMaterial`s that
-  // name is empty and the row reads `(unnamed)`; `sourceHash` is what makes those rows attributable
-  // later — see `hashSource`.
+  // which turns 13 anonymous programs into a named list. It is `material.name` with no fallback, so
+  // it is empty for any unnamed material — built-in or raw. The app now names its own (DEC-700),
+  // and `SHADER_TYPE` covers the rest; see `nameFrom`/`typeFrom`.
   // ---------------------------------------------------------------------------------------------
   let nextProgramId = 1
   const programs = new WeakMap()
@@ -155,9 +155,13 @@ export function installGpuProbe() {
    * deterministic — the same page linked 14 programs on one run and 18 on another, so id 7 in the
    * JSON the owner posts back is not id 7 here. `vertexChars`/`fragmentChars` collide freely. The
    * source text does not: it comes from the same bundle, so a hash computed on an Iris Xe matches
-   * the hash of the same program computed here. That is what lets a naming scheme landed later be
-   * applied *retroactively* to data already returned, instead of costing a second trip to laptops we
-   * do not own. Collision resistance is irrelevant here — there are ~15 programs.
+   * the hash of the same program computed here.
+   *
+   * Within one build, that is. The source hashed is the whole thing three compiles, and its header
+   * carries `#define SHADER_NAME` — so naming a material changes its hash, which is exactly what
+   * DEC-700 did to seven of these. Two reports are comparable by hash when they came from the same
+   * bundle, and by name otherwise. Collision resistance is irrelevant here — there are ~15
+   * programs.
    */
   function hashSource(source) {
     let hash = 0x811c9dc5
@@ -195,6 +199,18 @@ export function installGpuProbe() {
   const nameFrom = (source) => {
     const match = /#define[ \t]+SHADER_NAME[ \t]+(\S+)/.exec(source || '')
     return match ? match[1] : null
+  }
+
+  // The fallback when the material has no name. three emits `#define SHADER_TYPE <material.type>`
+  // beside `SHADER_NAME`, and unlike the name it is never empty — it is the material's class. It is
+  // a weaker label (every `MeshBasicMaterial` in the scene reports the same thing, and a raw
+  // `ShaderMaterial` reports only `ShaderMaterial`), so it is bracketed to keep the two apart: a
+  // bare word is a name the app chose, `(InBrackets)` is a class the renderer knew anyway. This
+  // covers the programs no product change can reach — three's and the effect chain's own — so no
+  // row has to read `(unnamed)`.
+  const typeFrom = (source) => {
+    const match = /#define[ \t]+SHADER_TYPE[ \t]+(\S+)/.exec(source || '')
+    return match ? `(${match[1]})` : null
   }
 
   function wrap(proto, isGl2) {
@@ -305,7 +321,12 @@ export function installGpuProbe() {
           record.fragmentChars = source.length
           record.fragmentHash = hashSource(source)
         }
-        if (!record.name) record.name = nameFrom(source)
+        // A name beats a type, whichever source carries it: the vertex and fragment shaders of one
+        // program agree on both defines, but only checking `record.name` would let a type read from
+        // the vertex shader block a name read from the fragment shader.
+        const named = nameFrom(source)
+        if (named) record.name = named
+        else if (!record.name) record.name = typeFrom(source)
       }
       return base.apply(this, args)
     })

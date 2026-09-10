@@ -149,7 +149,10 @@ so in its own output too. This is a decision, not a gap — you are not missing 
 
 **Stop and say so** if any of these happen, because they mean the run did not measure the product:
 
-- the output ends with `refusing: the runs above did not measure what they claim`;
+- the output ends with `refusing: the runs above did not measure what they claim` — **except** when
+  the only thing listed above that line is a `NOT THE RESOLUTION IT CLAIMS` row, which has its own
+  bullet below and a remedy to try first. A failed resolution check always prints `refusing:` too,
+  so read what is listed, not just the last line;
 - the GPU line names `SwiftShader`, `Basic Render` or anything with "software" in it;
 - a row ends with `NOT THE RESOLUTION IT CLAIMS` **and** the remedy the refusal itself prints does
   not clear it. That message names two fixes — move the window onto the display you meant to
@@ -172,3 +175,13 @@ One line that looks alarming but is not: `self-check float32 ... FAILED: the pag
 by `self-check float32 (attempt 2)`. The browser occasionally drops the page before it answers; the
 kit relaunches it once and the report records `[took 2 attempts]`. Let it run. Only the **second**
 failure in a row is a real one.
+
+**The exit code**, if you are running this from a script rather than watching it:
+
+| Code | Meaning | What to do |
+|---|---|---|
+| 0 | the battery ran and the report is trustworthy | send the files. A **failed §9 criterion still exits 0** — that is a result, not an error |
+| 1 | `refusing:` — at least one run did not measure what it claims | the report is not usable as-is; see the stop list above |
+| 2 | `incomplete:` — less was measured than was asked for | send it anyway; whatever completed is kept and is real |
+
+Both files are written before the kit exits, on every code including 1 and 2.

@@ -55,6 +55,10 @@ function createLayer(spec: BackgroundLayerSpec, seed: number): Points {
     new BufferAttribute(shellPositions(spec.count, spec.radius, seed), 3),
   )
   const material = new PointsMaterial({
+    // Not a raw `ShaderMaterial`, but `SHADER_NAME` comes from `material.name` with no fallback to
+    // the built-in shader id, so an unnamed `PointsMaterial` is just as anonymous in a GPU profile.
+    // All three layers differ only in uniforms, so they share one program and one name.
+    name: 'BackgroundLayer',
     size: spec.size,
     sizeAttenuation: false,
     color: new Color(spec.tint),
