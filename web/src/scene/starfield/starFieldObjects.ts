@@ -36,6 +36,11 @@ import {
   THUMBNAIL_FADE_FULL_PX,
   THUMBNAIL_FADE_START_PX,
 } from '../tuning'
+import {
+  SHADER_NAME_PLANE_GLOW,
+  SHADER_NAME_STAR_FIELD,
+  SHADER_NAME_STAR_FIELD_PICK,
+} from '../shaderNames'
 import { PlaneKindCode } from './motion'
 import type { PlaneTable } from './planeTable'
 import {
@@ -128,12 +133,9 @@ export function createStarField(
   }
 
   const material = new ShaderMaterial({
-    // three writes `#define SHADER_NAME <material.name>` into every compiled program, and leaves it
-    // empty when the material has no name. Naming these is what lets a GPU profile attribute a slow
-    // link or draw to a material instead of to `(unnamed)`. It cannot change program identity:
-    // `getProgramCacheKey` keys on the interned shader sources, the defines and the parameters, and
-    // never on the name.
-    name: 'StarField',
+    // `shaderNames.ts` has the why: three writes this into the shader header, and a material
+    // without one links a program no profile can attribute.
+    name: SHADER_NAME_STAR_FIELD,
     uniforms: starUniforms,
     vertexShader: STAR_VERTEX_SHADER,
     fragmentShader: STAR_FRAGMENT_SHADER,
@@ -146,7 +148,7 @@ export function createStarField(
   })
 
   const idMaterial = new ShaderMaterial({
-    name: 'StarFieldPick',
+    name: SHADER_NAME_STAR_FIELD_PICK,
     // Same objects for the shared entries, its own minimum pixel size: a one-pixel star has to be
     // clickable even though it is drawn one pixel wide.
     uniforms: { ...starUniforms, uMinPixels: uPickMinPixels },
@@ -240,7 +242,7 @@ function createGlowMesh(table: PlaneTable, noise: Texture, shared: SharedUniform
   geometry.boundingSphere = null
 
   const material = new ShaderMaterial({
-    name: 'PlaneGlow',
+    name: SHADER_NAME_PLANE_GLOW,
     uniforms: {
       ...shared,
       uNoise: uniform(noise),
