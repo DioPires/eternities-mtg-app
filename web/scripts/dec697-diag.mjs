@@ -9,9 +9,12 @@
  * fetch again, which is what a thrash would look like.
  *
  * Committed rather than thrown away because it is what showed the headline number to be measured
- * over the wrong window: on the unfixed build `returning` is ~0 and the per-second rate decays to
- * ~2.6/s after the 512-cell initial fill, so the churn was the per-upload `Texture` allocation and
- * not a thrash. Keep it for the next time a rate needs separating from a burst.
+ * over the wrong window: on the unfixed build `returning` is ~0, so the churn was the per-upload
+ * `Texture` allocation and not a thrash — and the per-second rate falls away as the initial fill
+ * completes rather than holding at the ~18/s that `alloc-probe`'s 30 s average reported. Sampled
+ * far enough out it reaches exactly 0/s (second 35 onwards over a 110 s window), which is the
+ * shape of a finite fetch-bound burst and not of a rate. Keep it for the next time a rate needs
+ * separating from a burst.
  *
  *   node scripts/dec697-diag.mjs --url http://localhost:4173 --samples 15
  */

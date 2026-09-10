@@ -309,6 +309,12 @@ export class ThumbnailAtlas {
     // above — so nothing outside this call holds a decoded image. The staging texture keeps a
     // reference to the closed bitmap until the next upload replaces it, which costs nothing:
     // `close()` has already released the pixels.
+    //
+    // Safe only because `blitMaterial` is rendered from inside `upload` and nowhere else, always
+    // one statement after `blitSource` pointed it at a live bitmap. A closed `ImageBitmap` reports
+    // width and height 0, so rendering that material from any other site — after a context loss,
+    // say, when three reallocates from `image` — would issue a 0x0 `texStorage2D`. Keep the render
+    // here.
     bitmap.close()
 
     this.cells[slot]!.loaded = true
@@ -320,9 +326,20 @@ export class ThumbnailAtlas {
    *
    * **Why one texture and not one per upload (DEC-697).** A fresh `Texture` per upload is a fresh
    * `glCreateTexture` and a fresh `texStorage2D` — a 91 KB GPU allocation — followed by a
-   * `glDeleteTexture` the moment the blit is done. At card level that ran at 18.3 allocate/free
-   * cycles a second, indefinitely, for 1.59 MB/s of GPU allocation churn that bought nothing: the
-   * pixels still have to be transferred either way, and only the allocation around them was new.
+   * `glDeleteTexture` the moment the blit is done. One per thumbnail, so filling the atlas at card
+   * level cost ~721 allocate/free cycles, and one more for every cell that arrives later.
+   *
+   * That total is fixed, not a rate: it is bounded by the number of cells, and the fill is
+   * fetch-bound, so the cycles land in whatever span the fetches take and then stop. Measured over
+   * 110 s from `focusCard` on a warm HTTP cache they were concentrated in the first four seconds
+   * (peaking at 183/s), tailed off by second 34, and were exactly 0/s for the 76 seconds after —
+   * cumulative frozen at 822 created / 721 deleted. So the case for the fix is not a steady-state
+   * saving; the unfixed build is also idle at genuine steady state. It is that the whole burst
+   * lands during the first seconds at card level, which is exactly when the frame budget is
+   * tightest, and it bought nothing: the pixels still have to be transferred either way, and only
+   * the allocation around them was new. (An earlier "18.3 cycles/s, indefinitely" was
+   * `alloc-probe`'s 30 s average window sitting on top of that burst. The apparent rate tracks HTTP
+   * cache warmth, not elapsed time.)
    *
    * Reusing the texture works because three keys its GL texture on the *parameters* — wrap, filter,
    * format, `flipY`, colour space — and not on the image. Swapping `image` and bumping the source

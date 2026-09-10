@@ -339,9 +339,11 @@ describe('PRD 8.5.8 atlas blit frame', () => {
 
   /**
    * DEC-697. A `Texture` per upload is a `glCreateTexture` + `texStorage2D` + `glDeleteTexture`
-   * per thumbnail; at card level that measured 18.3 allocate/free cycles a second and 1.59 MB/s of
-   * GPU allocation churn, for ever. One staging texture makes every upload after the first a bare
-   * `texSubImage2D`, because three keys its GL texture on the parameters and not on the image.
+   * per thumbnail — a 91 KB allocate/free cycle each. Filling the atlas at card level measured
+   * ~721 of them, plus one per cell arriving later. Fetch-bound and finite, not a steady rate: the
+   * burst landed in the first seconds after `focusCard` and was at 0/s by second 35. One staging
+   * texture makes every upload after the first a bare `texSubImage2D`, because three keys its GL
+   * texture on the parameters and not on the image.
    */
   const stagingOf = (atlas: ThumbnailAtlas): Texture | null =>
     (atlas as unknown as { blitTexture: Texture | null }).blitTexture

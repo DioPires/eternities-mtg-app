@@ -145,8 +145,12 @@ const HOOKS = `
       // sized a 6-arg atlas upload as \`format x type x bpp\`, e.g. 6408 x 5121 x 4 = 130 MB of
       // pure fiction per call. Switch on the arity instead, which is what actually distinguishes
       // the overloads. Those uploads are still counted by \`uploads\`, just without bytes.
+      //
+      // The threshold is 9, not 8: there is no 8-argument overload. The forms that carry width and
+      // height are \`(target, level, internalFormat, width, height, border, format, type, X)\` — 9
+      // arguments — and its WebGL2 \`srcData, srcOffset\` variant at 10.
       state.uploads += 1
-      if (arguments.length >= 8) {
+      if (arguments.length >= 9) {
         attribute(target, size(internalFormat, width, height))
       }
       return image.apply(this, arguments)
