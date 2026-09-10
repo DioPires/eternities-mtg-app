@@ -34,7 +34,9 @@
  * rather than assumed. What the check buys is bounded from below by injection and stated in
  * `docs/star-renderer.md`; neither that statement nor this one is a claim to be exhaustive.
  *
- * Nothing runs unless `?selfcheck=1` asks for it. `scripts/verify-browser.mjs` is the caller.
+ * Nothing runs unless `?selfcheck=1` asks for it — and since DEC-708 archived
+ * `scripts/verify-browser.mjs`, nothing asks for it automatically. Drive it by hand, or restore
+ * the driver from the `review-tooling-2026-09` tag. See `docs/star-renderer.md` § 7.
  */
 
 import { Vector3, type PerspectiveCamera, type Scene, type WebGLRenderer } from 'three'

@@ -65,8 +65,9 @@ src/ui/*.tsx             HUD, drawer, panels, overlays, hint, toasts, WebGL2 fal
 
 Everything with real logic is pure and tested under Node: `web/test/route.test.ts`,
 `router.test.ts`, `filters.test.ts`, `search.test.ts`, `shell.test.ts`. The surfaces are verified in
-a real browser by `web/scripts/verify-browser.mjs`, which walks PRD section 6 end to end against
-both fixtures under the production CSP.
+a real browser by `web/e2e/` — `routes.spec.ts` for PRD 8.9.2's five route kinds and `a11y.spec.ts`
+for Phase 5's accessibility checklist — under the production CSP. The wider end-to-end walk of PRD
+section 6 was `verify-browser.mjs`'s, archived by DEC-708 under the `review-tooling-2026-09` tag.
 
 ## 3. Seams for the other phases
 

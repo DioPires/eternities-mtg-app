@@ -70,8 +70,9 @@ Our policy (`web/security-headers.mjs`, live from day one) grantlists `https://*
 governed by `connect-src`, not `img-src`, and PRD 8.5.8 fetches. `api.scryfall.com` is deliberately
 *not* grantlisted — the browser never talks to the API.
 
-The policy is verified end to end by `web/scripts/verify-browser.mjs`, which serves the built site
-under the production headers and fails if anything is blocked.
+The policy is verified by `web/e2e/a11y.spec.ts` 9f, which drives the built site under the
+production headers and fails on any `securitypolicyviolation` — with a control that injects a
+`<style>` element, so "no violations" cannot mean "the listener is dead".
 
 ## 4. Rate limits
 
@@ -171,7 +172,7 @@ curl -sS -A "Eternities/0.1 (contact)" \
   'https://api.scryfall.com/cards/search?q=%21%22Delver+of+Secrets%22&unique=prints'   # transform
 
 # The CSP as the browser sees it
-cd web && node scripts/verify-browser.mjs --dataset small
+cd web && pnpm build && pnpm exec playwright test e2e/a11y.spec.ts
 ```
 
 ## 9. Phase 6 re-confirmation, 2026-09-05

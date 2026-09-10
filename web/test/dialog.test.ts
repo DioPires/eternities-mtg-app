@@ -3,8 +3,8 @@
  *
  * `nextFocusIndex` is the pure half of the focus trap: given how many things are focusable, where
  * focus is now, and which direction Tab went, where should it land. The DOM half — reading the
- * order, moving focus, restoring it on close — is driven in a real browser by
- * `scripts/verify-browser.mjs`, which is the only place a focus trap can honestly be tested.
+ * order, moving focus, restoring it on close — is driven in a real browser by `e2e/a11y.spec.ts`
+ * 9c, which is the only place a focus trap can honestly be tested.
  *
  * The case worth having a test for is `current === -1`: the focused element is not in the tab
  * order. It is reached whenever focus sits on something inside the dialog that `focusablesIn`

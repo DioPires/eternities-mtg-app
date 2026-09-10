@@ -64,9 +64,10 @@ each refused. See F5.
 
 The dev server still gets `'unsafe-inline'` on `style-src`, because Vite injects CSS as `<style>`
 elements so HMR can swap them. The built site ships one `<link>` and gets the strict policy.
-`verify-browser.mjs` loads the built site under exactly the production policy with a
+`e2e/a11y.spec.ts` 9f loads the built site under exactly the production policy with a
 `securitypolicyviolation` listener attached, so a future dependency that injects a `<style>` fails
-that check rather than the user's page.
+that check rather than the user's page — and since DEC-708 it fails it *in CI, on every pull
+request*, which is what review §5.5 T3 asked for.
 
 ### 2. `Strict-Transport-Security` added
 
@@ -128,7 +129,7 @@ is correct in advance if one is ever added. No change.
   `Cross-Origin-Resource-Policy` on its CDN, which is not ours to arrange. Declined.
 - **CSP reporting (`report-to` / `report-uri`).** Needs an endpoint. PRD 8.10 is explicit that
   there is no server and no third party, and a reporting endpoint would be both. Declined; the
-  browser check in `verify-browser.mjs` is the substitute, and it fails the build rather than
+  browser check in `e2e/a11y.spec.ts` 9f is the substitute, and it fails the build rather than
   filing a report nobody reads.
 
 ### F5 — `style-src-attr 'unsafe-inline'` is very likely droppable — **DROPPED in Phase 6**
@@ -174,7 +175,8 @@ own shape rather than argued around.
 Re-run on the built site under the new header, real Chrome, production dataset
 (`d5ee9661aaffafa3`), ANGLE Metal on an M5 Pro:
 
-- `node scripts/verify-browser.mjs --dataset production` — **green, zero
+- `node scripts/verify-browser.mjs --dataset production` (the script DEC-708 later archived under
+  the `review-tooling-2026-09` tag; this is the record of the Phase 6 run) — **green, zero
   `securitypolicyviolation` events and zero console errors**, walking PRD section 6 end to end in
   the shell: the multiverse, a plane, the thumbnail sheet, a focused card with 72 planets, the
   planet hover and pick path, a double-faced flip, `Esc` back out, and Phase 2a's harness. That
@@ -195,8 +197,10 @@ inline styling is untouched, because all of it is CSSOM — the control column, 
 under both headers, is what proves the two are different mechanisms rather than the probe being
 inert.
 
-`verify-browser.mjs` now asserts `style-src-attr` is **absent**, so re-adding the relaxation has to
-argue with a failing check rather than sliding back in.
+`e2e/a11y.spec.ts` 9f asserts `style-src-attr` is **absent**, so re-adding the relaxation has to
+argue with a failing check rather than sliding back in. DEC-708 moved that assertion here from
+`verify-browser.mjs` and proved it bites: with `'style-src-attr': ["'unsafe-inline'"]` put back
+into `security-headers.mjs`, 9f fails on "style-src-attr came back".
 
 Note that this is not a regression. The policy as it ships is a **strict improvement** on the old
 `style-src 'self' 'unsafe-inline'`, which permitted injected `<style>` elements. F5 is the
@@ -206,6 +210,6 @@ observation that the tightening did not go as far as it could have, not that it 
 
 - **7.6.2, external links open with `rel="noopener noreferrer"`.** Two external links exist, both
   in the new About view. `test/design.test.ts` asserts the attribute on every anchor in that file
-  and `verify-browser.mjs` re-reads it from the rendered DOM.
+  and `e2e/a11y.spec.ts` 9d re-reads it from the rendered DOM.
 - **7.6.3, no user-supplied content rendered as HTML.** Unchanged this phase. Search input reaches
   only the in-memory index; nothing in the shell writes `innerHTML`.

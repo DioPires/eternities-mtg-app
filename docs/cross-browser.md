@@ -1,6 +1,11 @@
 # Cross-browser pass (PRD 7.1.2)
 
-Produced by `pnpm cross-browser`. Re-run it and overwrite this file; do not edit it by hand.
+Produced by `pnpm cross-browser` on 2026-09-05. **That script was archived by DEC-708** under the
+`review-tooling-2026-09` tag (review §6.1 group C), so this file is now a dated record rather than
+something you re-run. Review §9's Windows measurement kit (`web/bench/windows/`, `pnpm
+windows-kit`) is what regenerates this evidence — and it is the one that matters, because every
+row below is macOS and PRD 7.1.2 asks for Windows too. To reproduce the table as written:
+`git show review-tooling-2026-09:web/scripts/cross-browser.mjs > web/scripts/cross-browser.mjs`.
 
 > **This run is stale.** The dataset below is two refreshes behind what is committed
 > (`6d4779695fde33ea` today), and no Windows or integrated-GPU engine has ever been driven —

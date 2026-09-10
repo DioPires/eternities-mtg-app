@@ -41,7 +41,7 @@ export default tseslint.config(
   {
     files: ['**/*.mjs', '*.config.js'],
     ...tseslint.configs.disableTypeChecked,
-    // `scripts/verify-browser.mjs` is a Node script whose `page.evaluate` callbacks are
+    // `scripts/visual-gate.mjs` is a Node script whose `page.evaluate` callbacks are
     // serialised and run in the browser, so it legitimately references both global sets.
     languageOptions: { globals: { ...globals.node, ...globals.browser } },
   },
@@ -55,8 +55,8 @@ export default tseslint.config(
   },
   {
     // The Playwright specs run in Node, but their `evaluate` callbacks are serialised and run in
-    // the page exactly as `verify-browser.mjs`'s are — so both global sets are legitimately in
-    // scope in one file.
+    // the page exactly as `scripts/visual-gate.mjs`'s are — so both global sets are legitimately
+    // in scope in one file.
     files: ['e2e/**/*.ts'],
     languageOptions: { globals: { ...globals.node, ...globals.browser } },
   },
