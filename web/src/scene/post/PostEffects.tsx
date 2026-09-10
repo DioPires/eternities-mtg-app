@@ -26,6 +26,8 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, type MutableRefObject } from 'react'
 import { Vector2 } from 'three'
 
+import { BLOOM_INTENSITY } from '../tuning'
+
 import { detectPostCapabilities } from './capabilities'
 import { PostChain } from './postChain'
 
@@ -41,6 +43,15 @@ export interface PostEffectsProps {
   /** Mip levels in the blur chain, also from the tier. See `./postTuning`. */
   readonly bloomLevels: number
   /**
+   * PRD 6.10.1's bloom setting, resolved to an intensity by `BLOOM_INTENSITY_STEPS`.
+   *
+   * A *setting*, not a tier: the ladder owns how many pixels the blur costs (`bloomScale`,
+   * `bloomLevels`) and the user owns how much of it is mixed back in. Defaults to the tuned value
+   * so the bench and the Phase 2a harness, which have no settings surface, keep the intensity
+   * their baselines were measured at.
+   */
+  readonly bloomIntensity?: number
+  /**
    * The live chain, for the `?probe=1` seam only (PRD 9.1.4's forced-degradation check).
    *
    * `Effects` had to expose *two* sizes here because the one the ladder set was not the one the
@@ -52,7 +63,12 @@ export interface PostEffectsProps {
 /** Scratch for the per-frame drawing-buffer read (PRD 7.3.2: no allocation in the frame path). */
 const drawingBuffer = new Vector2()
 
-export function PostEffects({ bloomScale, bloomLevels, chainRef }: PostEffectsProps): null {
+export function PostEffects({
+  bloomScale,
+  bloomLevels,
+  bloomIntensity = BLOOM_INTENSITY,
+  chainRef,
+}: PostEffectsProps): null {
   const gl = useThree((state) => state.gl)
   const scene = useThree((state) => state.scene)
   const camera = useThree((state) => state.camera)
@@ -78,6 +94,9 @@ export function PostEffects({ bloomScale, bloomLevels, chainRef }: PostEffectsPr
     // each frame costs a `Vector2` write and cannot go stale.
     const size = gl.getDrawingBufferSize(drawingBuffer)
     chain.configure(size.x, size.y, bloomScale, bloomLevels)
+    // A float write, from the closure this frame was scheduled with. Cheaper than an effect that
+    // has to re-run, and it cannot be stale by a frame the way one would.
+    chain.bloomIntensity = bloomIntensity
     chain.render(scene, camera)
   }, 1)
 

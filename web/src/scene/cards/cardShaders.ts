@@ -9,8 +9,8 @@
  * star during the one moment the user is watching both.
  *
  * Every image these sample is stored sRGB-encoded and decoded here, because the scene is authored
- * in linear light and the composer encodes on output (`scene/Effects`). See `./atlas` for why the
- * atlas holds sRGB bytes rather than linear ones.
+ * in linear light and the composite encodes on output (`scene/post/postShaders`). See `./atlas`
+ * for why the atlas holds sRGB bytes rather than linear ones.
  */
 
 import { DEFINE_BLOCK, MOTION_GLSL } from '../starfield/shaders'

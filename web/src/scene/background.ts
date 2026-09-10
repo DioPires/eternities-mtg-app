@@ -18,6 +18,7 @@ import {
   PointsMaterial,
 } from 'three'
 
+import { BLOOM_LAYER } from './post/bloomLayer'
 import { BACKGROUND_LAYERS, SKY_COLOUR, type BackgroundLayerSpec } from './tuning'
 
 export { SKY_COLOUR }
@@ -65,6 +66,16 @@ function createLayer(spec: BackgroundLayerSpec, seed: number): Points {
   })
   const points = new Points(geometry, material)
   points.frustumCulled = false
+  // Layer 0 *and* the bloom layer, from one object, the way the field's glow mesh is (DEC-703).
+  //
+  // These shells bloomed under the shipped chain, because that chain's selection was inert and it
+  // thresholded the whole composited frame (review finding R4). Two of the three are comfortably
+  // over the threshold once their opacity and tint are folded in — layer 0's is 0.72 and layer 1's
+  // 0.45 against `BLOOM_THRESHOLD` 0.28 — so leaving the group off the layer would have taken a
+  // halo off the two nearest shells and called it a no-op. Layer 2 lands at 0.19 and contributes
+  // nothing either way; it opts in regardless, because the threshold is the prefilter's business
+  // and not a thing to re-derive here every time a tint moves.
+  points.layers.enable(BLOOM_LAYER)
   return points
 }
 

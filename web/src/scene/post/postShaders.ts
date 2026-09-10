@@ -25,6 +25,11 @@
  *  - the composite is `BloomEffect`'s `intensity` multiply (`:3637`) under the `SCREEN` blend
  *    (`:2215`, `x + y - min(x * y, 1)`), then `VignetteEffect`'s default technique (`:12635`).
  *
+ * The threshold and the smoothing are baked in as `#define`s because nothing may change them at
+ * runtime — PRD 9.3's "bloom never washes out a label or the focused card" is a property of those
+ * two numbers, so PRD 6.10.1's setting deliberately does not reach them. The *intensity* does, so
+ * it is a uniform; see `POST_COMPOSITE_FRAGMENT_SHADER`.
+ *
  * Written with GLSL ES 1.00 keywords because three compiles a `ShaderMaterial` as `#version 300 es`
  * and defines the compatibility aliases — the same arrangement `../starfield/shaders` documents at
  * its head, and the reason `texture2D` and `gl_FragColor` below get ES 3.0 semantics.
@@ -33,7 +38,6 @@
  */
 
 import {
-  BLOOM_INTENSITY,
   BLOOM_SMOOTHING,
   BLOOM_THRESHOLD,
   VIGNETTE_DARKNESS,
@@ -251,16 +255,22 @@ void main() {
  *
  * The output encode is three's own `colorspace_fragment` chunk rather than a hand-written sRGB
  * transfer, so the composite follows `WebGLRenderer.outputColorSpace` instead of asserting it.
+ *
+ * `uBloomIntensity` is a uniform and not a `#define` because PRD 6.10.1's bloom setting writes it
+ * (`BLOOM_INTENSITY_STEPS`, three steps around the tuned value). Under the old chain that setting
+ * was a *constructor option*, so a click on it reconstructed `SelectiveBloomEffect` and dropped a
+ * set of render targets on the floor — `Effects.tsx` recorded the cost and shipped it anyway
+ * because the wrapper was on its way out. Here it is one float write per click, and no allocation.
  */
 export const POST_COMPOSITE_FRAGMENT_SHADER = /* glsl */ `
 precision highp float;
 
-#define BLOOM_INTENSITY ${glslFloat(BLOOM_INTENSITY)}
 #define VIGNETTE_OFFSET ${glslFloat(VIGNETTE_OFFSET)}
 #define VIGNETTE_DARKNESS ${glslFloat(VIGNETTE_DARKNESS)}
 
 uniform sampler2D uScene;
 uniform sampler2D uBloom;
+uniform float uBloomIntensity;
 uniform float uTonemapStrength;
 
 varying vec2 vUv;
@@ -274,7 +284,7 @@ vec3 rollOff(vec3 c) {
 
 void main() {
   vec3 scene = texture2D(uScene, vUv).rgb;
-  vec3 bloom = texture2D(uBloom, vUv).rgb * BLOOM_INTENSITY;
+  vec3 bloom = texture2D(uBloom, vUv).rgb * uBloomIntensity;
 
   // Screen, exactly as the old chain blended the bloom effect over the scene.
   vec3 c = scene + bloom - min(scene * bloom, 1.0);

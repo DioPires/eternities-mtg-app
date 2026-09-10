@@ -74,21 +74,34 @@ export interface ProbeState {
     readonly pixelRatio: number
     readonly drawingBuffer: { readonly width: number; readonly height: number }
     /**
-     * The size the bloom's `resolutionScale` *asked* for. `null` before the composer has sized it.
+     * The target the field draws its bloom source into, and that the blur chain runs from.
+     * `null` before the chain's first `configure`, which is not the same as "no bloom".
      *
-     * Not the size the frame runs at: with `mipmapBlur` on, this drives only a render target
-     * nothing samples. Read {@link bloomBlur} for the real one, and `Effects.BloomProbe` for why
-     * there are two.
+     * **One size, where there used to be two** (DEC-703, review finding R3). The old chain
+     * reported a `bloom` and a `bloomBlur` because `resolutionScale` sized a target that nothing
+     * sampled while the composite read a different one off `mipmapBlur`, so the rung the ladder
+     * pulled and the pixels the frame paid for were two unrelated numbers. Here they are the same
+     * number: `drawingBuffer * tier.bloomScale`, rounded, and everything downstream is a mip of
+     * it. It moves with the bloom rung *and* the pixel-ratio rung, because both are real.
      */
-    readonly bloom: { readonly width: number; readonly height: number } | null
+    readonly bloomSource: { readonly width: number; readonly height: number } | null
     /**
-     * The top level of the mipmap blur chain — the target the composite actually reads.
+     * Mip levels in the blur chain, from the tier (`postTuning.FULL` / `REDUCED`). `0` before the
+     * first `configure`.
      *
-     * Half the drawing buffer, because `BloomEffect.setSize` hands the mipmap pass the full
-     * drawing buffer and the pass halves it for its first level. So this moves with the
-     * pixel-ratio rung and, until R3 lands, *not* with the bloom rung.
+     * The bloom rung moves this as well as {@link bloomSource}: reach is a function of both, and
+     * a quarter-size source at the same level count would blur a *smaller* angular radius rather
+     * than a cheaper one. See `scene/post/postTuning`.
      */
-    readonly bloomBlur: { readonly width: number; readonly height: number } | null
+    readonly bloomLevels: number
+    /**
+     * Whether the chain got `EXT_color_buffer_float` and allocated half-float targets.
+     *
+     * `false` means an 8-bit bloom source, which is why `scene/post/capabilities` floors the free
+     * ladder two rungs down on such a GPU (review §3.7). Reported so a bench run on hardware we
+     * do not own says which of the two pictures it measured.
+     */
+    readonly bloomFloatTargets: boolean
     /** The atlas's live capacity, after `CardTier.setCapacity`. */
     readonly thumbnailCapacity: number
     readonly starsDrawn: number

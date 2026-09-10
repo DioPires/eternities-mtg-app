@@ -49,6 +49,8 @@ import {
   type WebGLRenderer,
 } from 'three'
 
+import { BLOOM_INTENSITY } from '../tuning'
+
 import { BLOOM_LAYER } from './bloomLayer'
 import type { PostCapabilities } from './capabilities'
 import {
@@ -170,6 +172,7 @@ export class PostChain {
       uniforms: {
         uScene: { value: null },
         uBloom: { value: null },
+        uBloomIntensity: { value: BLOOM_INTENSITY },
         uTonemapStrength: { value: TONEMAP_STRENGTH },
       },
       vertexShader: POST_VERTEX_SHADER,
@@ -210,6 +213,22 @@ export class PostChain {
   /** Whether the chain got the float targets it asked for. See `./capabilities`. */
   get floatTargets(): boolean {
     return this.capabilities.floatTargets
+  }
+
+  /**
+   * PRD 6.10.1's bloom setting: how much of the finished bloom the composite mixes back in.
+   *
+   * A uniform write, deliberately not part of {@link configure}. The ladder's rung changes what the
+   * chain *costs* and has to rebuild targets; this changes what it *looks like* and must not. That
+   * distinction is the whole of why the setting was expensive before — the old chain took intensity
+   * as a constructor option, so a click on a radio button rebuilt an effect and its render targets.
+   */
+  set bloomIntensity(value: number) {
+    this.compositeMaterial.uniforms['uBloomIntensity']!.value = value
+  }
+
+  get bloomIntensity(): number {
+    return this.compositeMaterial.uniforms['uBloomIntensity']!.value as number
   }
 
   /**

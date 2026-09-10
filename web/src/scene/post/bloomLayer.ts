@@ -6,8 +6,15 @@
  * chain's `SelectiveBloom` selection was inert — it built a depth pass and a mask pass every frame
  * and then bloomed everything anyway, cards included.
  *
- * A layer replaces all of it. The star field and the nebulae enable this layer as well as layer 0;
- * cards, thumbnails and planets never do. The bloom source pass points the camera at this layer
+ * A layer replaces all of it. The star field, the nebulae and the three background parallax shells
+ * enable this layer as well as layer 0; cards, thumbnails and planets never do.
+ *
+ * **The background is on it because it bloomed before.** Under an inert selection every lit thing
+ * bloomed, cards included, so "the cards stop blooming" is the change R4 asks for and "the sky
+ * quietly dimmed" is not one — two of the three shells clear `BLOOM_THRESHOLD` once their opacity
+ * and tint are folded in. See `../background`.
+ *
+ * The bloom source pass points the camera at this layer
  * alone, so the selection is enforced by the same mechanism that already keeps the id buffer's
  * points out of the picture (`../picking/idPicker`'s `PICK_LAYER`), costs one draw call per object
  * that opted in, and cannot fall out of step with a selection array.

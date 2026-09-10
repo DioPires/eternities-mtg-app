@@ -23,13 +23,17 @@ export interface PostCapabilities {
   /** The `type` every target in the chain is allocated with. */
   readonly targetType: TextureDataType
   /**
-   * The highest quality tier the chain will honour, as an index into `QUALITY_TIERS`.
+   * The best quality tier the ladder may sit at on this GPU, as an index into `QUALITY_TIERS`.
    *
-   * `0` — no cap — whenever float targets are available. Without them the bloom source is
-   * quantised, and review §3.5 caps the ladder at tier 2 rather than pretending the top rungs mean
-   * the same thing.
+   * Index, not quality: `0` is the top of the ladder and no cap, which is the answer whenever float
+   * targets are available. Without them the bloom source is quantised to eight bits, and the honest
+   * thing is to sit two rungs down rather than to claim `full` for a picture that is not.
+   *
+   * The monitor's own name for this bound is `minTier` — the lowest *index* it may climb to — and
+   * `qualityOptionsFor` in `../quality/adaptiveQuality` is where the two meet. A `?quality=` pin
+   * still wins over it: a pin is PRD 9.1.4's explicit override and has to be able to name any tier.
    */
-  readonly maxTierIndex: number
+  readonly minTierIndex: number
 }
 
 /** Without `EXT_color_buffer_float` the ladder cannot claim its top rungs. See {@link PostCapabilities}. */
@@ -42,6 +46,6 @@ export function detectPostCapabilities(renderer: WebGLRenderer): PostCapabilitie
   return {
     floatTargets,
     targetType: floatTargets ? HalfFloatType : UnsignedByteType,
-    maxTierIndex: floatTargets ? 0 : CAPPED_TIER_INDEX,
+    minTierIndex: floatTargets ? 0 : CAPPED_TIER_INDEX,
   }
 }

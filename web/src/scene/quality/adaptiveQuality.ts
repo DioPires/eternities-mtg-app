@@ -249,6 +249,25 @@ export function pinnedQualityOptions(pin: number | null): QualityMonitorOptions 
   return pin === null ? {} : { minTier: pin, maxTier: pin }
 }
 
+/**
+ * The monitor's options for a `?quality=` pin layered over the post chain's capability floor
+ * (DEC-703; `../post/capabilities`, review §3.7).
+ *
+ * `floor` is the best tier index the chain will honour on this GPU — 0 unless
+ * `EXT_color_buffer_float` is missing, in which case the bloom source is 8-bit and claiming `full`
+ * would be a lie. It becomes the monitor's `minTier`, so the free ladder starts there and can never
+ * climb above it.
+ *
+ * **A pin beats the floor.** PRD 9.1.4's `?quality=N` is an explicit override whose whole job is to
+ * name a tier and hold it; a floor that silently moved it would make the forced-degradation check
+ * assert against a tier nobody asked for, and `e2e/quality.spec.ts` pins all four in turn. The
+ * capability cap is about what the *adaptive* ladder may choose for a user who is choosing nothing.
+ */
+export function qualityOptionsFor(pin: number | null, floor: number): QualityMonitorOptions {
+  if (pin !== null) return pinnedQualityOptions(pin)
+  return floor > 0 ? { minTier: floor } : {}
+}
+
 /** Everything the monitor needs a value for; the thresholds are derived, not defaulted. */
 type ResolvedOptions = Required<Omit<QualityMonitorOptions, 'refreshMs' | 'degradeMs' | 'restoreMs'>>
 
