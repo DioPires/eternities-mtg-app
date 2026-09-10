@@ -1,6 +1,9 @@
 #!/bin/zsh
 # The control for `selfcheck-ladder.sh`, and the reason the off-screen gate needs no discriminator.
 #
+# DOES NOT RUN AS OF DEC-708 — see the note at the top of `selfcheck-ladder.sh`: the driver both
+# scripts shell out to was archived under the `review-tooling-2026-09` tag.
+#
 # It applies the SAME displacement as a ladder rung, but to the plane table instead of the mirror.
 # `PlaneTable.data` is the one `Float32Array` behind both `get raw()` (which the CPU mirror reads)
 # and the `DataTexture` the GLSL twin samples, so the row is genuinely, *correctly* off screen for

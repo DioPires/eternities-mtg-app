@@ -85,7 +85,7 @@ pnpm typecheck && pnpm lint && pnpm test
 pnpm build && pnpm preview            # preview serves the *production* headers
 pnpm test:e2e                         # Playwright route + bench smoke; needs a build first
 node scripts/check-budget.mjs --dataset scale
-node scripts/verify-browser.mjs --dataset all   # needs a local Chrome
+node scripts/visual-gate.mjs --dataset production   # PRD 9.3 captures; needs a local Chrome
 ```
 
 `pnpm test:e2e` needs Chromium once: `pnpm exec playwright install chromium`. It runs against
@@ -181,13 +181,17 @@ the cross-browser pass, the refresh rehearsal and the visual review are outstand
 
 Two browser checks, with different jobs.
 
-`node web/scripts/verify-browser.mjs --dataset all` is the local gate, on this machine's real GPU:
-PRD section 6's interaction requirements and Phase 5's accessibility checklist on the shell, a
-fly-to the Blind Eternities with its worker-parsed shards and Esc back out on the scene, the card
-tier through the `?probe=1` seam, and the GPU self-check on 2a — under the production CSP. Add
-`--dataset production` for the run where the Scryfall images actually arrive.
+`pnpm test:e2e` is the CI gate, on every pull request: PRD 8.9.2's five route kinds, PRD 9.1.2's
+`/bench` run, PRD 9.1.4's quality ladder, and Phase 5's accessibility checklist with the CSP/HSTS
+self-check (`e2e/a11y.spec.ts`). It is narrower than a real-GPU run on purpose — a cloud runner has
+no representative GPU, so it renders through SwiftShader and asserts nothing about frame time. PRD
+7.2's ceilings are enforced by `pnpm bench` on the reference machine.
 
-`pnpm test:e2e` is the CI gate, on every pull request: PRD 8.9.2's five route kinds and PRD 9.1.2's
-`/bench` run. It is narrower on purpose — a cloud runner has no representative GPU, so it renders
-through SwiftShader and asserts nothing about frame time. PRD 7.2's ceilings are enforced by
-`pnpm bench` on the reference machine.
+`node web/scripts/visual-gate.mjs --dataset production` is the local one, on this machine's real
+GPU: PRD 9.3's seven capture checkpoints for the owner to judge. `docs/refresh-runbook.md` step 8
+runs it on every dataset refresh.
+
+DEC-708 archived the wider local gate — `verify-browser.mjs`, `cross-browser.mjs` and
+`arm-lane-capture.mjs` — under the `review-tooling-2026-09` tag (review §6.1 group C). Its a11y and
+CSP assertions moved into `e2e/a11y.spec.ts`, where CI runs them; the rest is retrievable with
+`git show review-tooling-2026-09:web/scripts/<name>`.

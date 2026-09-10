@@ -2,13 +2,17 @@
 /**
  * PRD 9.3's visual review, captured.
  *
- * `verify-browser.mjs --shots` already writes checkpoints 3 and 4 — it has to fly the card journey
- * to assert on it, so the frames fall out of a pass it was making anyway. The other four cannot be
- * had that way: checkpoint 1 is the home view *held still*, checkpoint 2 is three named planes
- * chosen by card count, checkpoint 6 is the dust, and checkpoint 7 is attract mode caught in the
- * middle of a drift. None of them is an assertion, and 9.3 does not ask for one — the owner judges
- * the frames. So this is a capture tool and not a check: it fails only if it cannot reach a
- * checkpoint, never because of what a checkpoint looks like.
+ * Seven checkpoints: checkpoint 1 is the home view *held still*, checkpoint 2 is three named planes
+ * chosen by card count, 3 and 4 are the card journey, checkpoint 6 is the dust, and checkpoint 7 is
+ * attract mode caught in the middle of a drift. None of them is an assertion, and 9.3 does not ask
+ * for one — the owner judges the frames. So this is a capture tool and not a check: it fails only
+ * if it cannot reach a checkpoint, never because of what a checkpoint looks like.
+ *
+ * This is the last of the review tooling still maintained, and deliberately so (review amendment
+ * A1): while the galaxy concept stands it is PRD 9.3's acceptance instrument, and
+ * `docs/refresh-runbook.md` step 8 runs it on every dataset refresh. `verify-browser.mjs`,
+ * `cross-browser.mjs` and `arm-lane-capture.mjs` were archived by DEC-708 under the
+ * `review-tooling-2026-09` tag.
  *
  * What it drives, and why that page and not another:
  *
@@ -159,7 +163,7 @@ const TAIL_LIMIT = 4000
  *
  * `stop()` rather than `child.kill()` at the call site, so the deliberate teardown at the end of a
  * run is not reported as the death this is watching for, and it is all the caller gets: the child
- * itself is not returned, so there is no second way to kill it. Mirrors `verify-browser.mjs`.
+ * itself is not returned, so there is no second way to kill it.
  */
 async function startPreview(dataset) {
   const child = spawn('pnpm', ['exec', 'vite', 'preview', '--port', '0', '--strictPort', 'false'], {
@@ -526,8 +530,8 @@ async function stateText(page) {
  * Poll until `predicate` holds of the probe state, or throw.
  *
  * Polled through `evaluate` rather than `page.waitForFunction`, which injects a function the CSP
- * refuses on any build carrying PRD 7.6.1's real headers — the same reason `cross-browser.mjs`
- * polls. `describe` is what the timeout message says it was waiting for.
+ * refuses on any build carrying PRD 7.6.1's real headers. `describe` is what the timeout message
+ * says it was waiting for.
  */
 async function waitForProbe(page, describe, predicate, timeout = 60_000) {
   const deadline = Date.now() + timeout
@@ -834,11 +838,10 @@ async function capture(args) {
     }
     if (!isShell && hudAtStart) notes.push('the HUD is in the tree on ?probe=1, which routes past the shell')
 
-    // The readout, measured rather than assumed. `verify-browser.mjs` asserts the same four things
-    // — the check is shared, in `lib/status-panel.mjs` — but a capture run is often the first
-    // thing anyone points at a new build, so it carries the same strength here and reports it as a
-    // note in `capture.json` saying which state the frames were taken beside. Every fault, not
-    // just the first: nothing downstream stops on one, so the whole picture is more use.
+    // The readout, measured rather than assumed — the check is `lib/status-panel.mjs`. A capture
+    // run is often the first thing anyone points at a new build, so a fault is reported as a note
+    // in `capture.json` saying which state the frames were taken beside. Every fault, not just the
+    // first: nothing downstream stops on one, so the whole picture is more use.
     const panel = await measureStatusPanel(page, 'eternities-status')
     if (isShell) {
       // The shell mounts `SceneView` with `chrome: false`, so the panel should not exist here at

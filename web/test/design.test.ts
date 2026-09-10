@@ -11,12 +11,13 @@
  *  - **contrast** (PRD 7.5.4) is proved, pair by pair, against the *composite* backdrop each piece
  *    of text actually sits on — including the worst case where a bloomed star sits under a
  *    translucent panel. That is arithmetic on the shipped values, so it is real proof;
- *  - **encoding as text** (PRD 7.5.3) is proved by `verify-browser.mjs`, which reads the rendered
- *    card panel; this file only pins the labels the panel is built from;
+ *  - **encoding as text** (PRD 7.5.3) is unchecked in a browser since DEC-708 archived
+ *    `verify-browser.mjs`, which read the rendered card panel (`docs/design-system.md` row 11);
+ *    this file only pins the labels the panel is built from;
  *  - **keyboard operability** (PRD 7.5.2) is `test/dialog.test.ts` for the ordering logic and
- *    `verify-browser.mjs` for the real focus behaviour in a real browser;
- *  - **reduced motion** (PRD 7.5.1, 5.9) has a CSS half asserted here and a renderer half that
- *    only a GPU can answer for, which `verify-browser.mjs` drives.
+ *    `e2e/a11y.spec.ts` 9c for the real focus behaviour in a real browser;
+ *  - **reduced motion** (PRD 7.5.1, 5.9) has a CSS half asserted here and in `e2e/a11y.spec.ts`
+ *    9e, and a renderer half in `starfield.test.ts` and `navigation.test.ts`.
  */
 
 import { readFileSync } from 'node:fs'

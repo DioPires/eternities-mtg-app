@@ -17,8 +17,7 @@
     "test:e2e": "playwright test",
     "check-budget": "node scripts/check-budget.mjs",
     "bench": "node scripts/bench.mjs",
-    "verify-browser": "node scripts/verify-browser.mjs",
-    "cross-browser": "node scripts/cross-browser.mjs",
+    "visual-gate": "node scripts/visual-gate.mjs",
     "windows-kit": "node bench/windows/run.mjs"
   },
   "dependencies": {

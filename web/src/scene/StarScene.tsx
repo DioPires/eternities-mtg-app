@@ -301,7 +301,7 @@ export function StarScene({
   )
 
   // PRD 8.5.6 and 8.5.7, checked against each other on a real GPU. Diagnostic only, and only when
-  // the URL asks; `scripts/verify-browser.mjs` is the caller. See `./selfCheck`.
+  // the URL asks — which nothing does automatically since DEC-708. See `./selfCheck`.
   useEffect(() => {
     if (!resources || !starsComplete || !selfCheckWanted || !isPerspective(camera)) return
     let cancelled = false

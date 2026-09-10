@@ -63,9 +63,10 @@ curl -sS -o /dev/null -D- https://<deployment>/data/<hash>/stars.bin | grep -i c
 curl -sS -o /dev/null -w '%{http_code}\n' https://<deployment>/plane/dominaria
 ```
 
-Locally, `pnpm preview` serves the built site with the **production** headers, and
-`node scripts/verify-browser.mjs --dataset all` drives a real Chrome at it and asserts the fixtures
-decode with nothing blocked by the CSP. That is the same check, minus the CDN.
+Locally, `pnpm preview` serves the built site with the **production** headers, and `pnpm test:e2e`
+drives Chrome at it and asserts the routes decode with nothing blocked by the CSP —
+`e2e/a11y.spec.ts` 9f reads the headers off the response and collects every
+`securitypolicyviolation` the page raises. That is the same check, minus the CDN.
 
 ## 4. Data directories and repository size
 

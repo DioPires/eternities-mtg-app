@@ -2,10 +2,13 @@
  * PRD 8.9.2's route smoke, PRD 9.1.2's bench smoke and PRD 9.1.4's forced-degradation check, in a
  * real browser, in CI.
  *
- * These are the three checks the PRD asks a scripted browser for and nothing else. They run against the
- * **built** site served by `vite preview`, not the dev server, for the same reason
- * `scripts/verify-browser.mjs` does: preview sends the production PRD 7.6.1 headers, and a route
- * smoke that passes only under the dev server's relaxed policy has not smoked the product.
+ * These are the three checks the PRD asks a scripted browser for; `a11y.spec.ts` adds Phase 5's
+ * accessibility checklist and the CSP/HSTS self-check, which DEC-708 moved here out of the
+ * archived `verify-browser.mjs`. They run against the **built** site served by `vite preview`,
+ * not the dev server: preview sends the production PRD 7.6.1 headers, and a check that passes only
+ * under the dev server's relaxed policy has not checked the product. For `a11y.spec.ts` that is
+ * not a preference but the whole point — the dev server allows the inline styles the production
+ * policy refuses.
  *
  * **`dist/` must exist.** The config does not build, because CI builds once in the `web` job and
  * hands the artefact on (building again would measure a different tree than the one the budget

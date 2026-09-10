@@ -1,11 +1,12 @@
 /**
  * The development readout is on screen, not merely in the DOM.
  *
- * Shared by `verify-browser.mjs`, which turns a fault into a failed run, and `visual-gate.mjs`,
- * which turns one into a note beside the frames. They used to carry two different checks: the
- * gate's was a pure-overlap boolean, so a panel pushed almost entirely off screen, or one clipped
- * by its own `max-height`, produced no note at all. A capture run is the first thing anyone points
- * at a new build, which is exactly when the stronger version is wanted, so there is now one.
+ * `visual-gate.mjs`'s, which turns a fault into a note beside the frames. It was shared with
+ * `verify-browser.mjs` — which turned one into a failed run — until DEC-708 archived that script
+ * under the `review-tooling-2026-09` tag. The two used to carry different checks: the gate's was a
+ * pure-overlap boolean, so a panel pushed almost entirely off screen, or one clipped by its own
+ * `max-height`, produced no note at all. A capture run is the first thing anyone points at a new
+ * build, which is exactly when the stronger version is wanted, so there is now one.
  *
  * Every other assertion in either script reads the panel's `textContent`, and `textContent` is
  * happy with a node that never paints. It was: for two phases both scenes asked for
@@ -69,8 +70,8 @@ export function describeStatusPanel(seen) {
 
 /**
  * Every way this panel can be present and unreadable, worst first, as ready-to-print sentences.
- * Empty when the panel is fine. Ordered because `verify-browser.mjs` reports only the first, and
- * the first should be the one that explains the rest.
+ * Empty when the panel is fine. Ordered so the first is the one that explains the rest — which
+ * mattered to `verify-browser.mjs`, which printed only the first; the gate prints all of them.
  */
 export function statusPanelFaults(seen) {
   const where = describeStatusPanel(seen)

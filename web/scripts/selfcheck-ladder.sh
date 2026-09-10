@@ -2,6 +2,11 @@
 # The injection ladder behind `docs/star-renderer.md` § "The off-screen hole, and how it was closed"
 # and the tables in `web/src/scene/selfCheck.ts`.
 #
+# DOES NOT RUN AS OF DEC-708. Its driver, `verify-browser.mjs`, was archived under the
+# `review-tooling-2026-09` tag (review §6.1 group C); this script and `selfcheck-control.sh` are
+# group B and go with the phase harnesses in a later leg. To run the ladder today, restore the
+# driver: `git show review-tooling-2026-09:web/scripts/verify-browser.mjs > web/scripts/verify-browser.mjs`.
+#
 # Patches the CPU motion mirror ONLY (`motion.ts`; the GLSL twin in `shaders.ts` is untouched), so
 # the two sides of the self-check genuinely disagree, then rebuilds, runs `verify-browser`, and
 # prints the self-check lines and the verdict. Every file it touches is restored before it exits,
