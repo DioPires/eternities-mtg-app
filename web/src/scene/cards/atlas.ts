@@ -326,20 +326,27 @@ export class ThumbnailAtlas {
    *
    * **Why one texture and not one per upload (DEC-697).** A fresh `Texture` per upload is a fresh
    * `glCreateTexture` and a fresh `texStorage2D` — a 91 KB GPU allocation — followed by a
-   * `glDeleteTexture` the moment the blit is done. One per thumbnail, so filling the atlas at card
-   * level cost ~721 allocate/free cycles, and one more for every cell that arrives later.
+   * `glDeleteTexture` the moment the blit is done. One per thumbnail, so a 110 s card-level session
+   * cost ~721 allocate/free cycles: the fill first, then one more for every cell arriving after it.
    *
-   * That total is fixed, not a rate: it is bounded by the number of cells, and the fill is
-   * fetch-bound, so the cycles land in whatever span the fetches take and then stop. Measured over
-   * 110 s from `focusCard` on a warm HTTP cache they were concentrated in the first four seconds
+   * That total is a count, not a rate, and it is bounded — but not by `ATLAS_CELLS` (DEC-717 N1).
+   * 736 is what the atlas *physically* has; the usable count is the quality tier's
+   * `thumbnailCapacity`, 512 on the top three tiers and 256 on the lowest, and `claim` never looks
+   * past it. So a fill is at most 512 cycles and the 721 is the whole session, fill plus later
+   * arrivals — do not read it as the cost of filling and then add arrivals on top of it. The fill
+   * is fetch-bound, so the cycles land in whatever span the fetches take and then stop. Measured
+   * over 110 s from `focusCard` (DEC-707's run) they were concentrated in the first four seconds
    * (peaking at 183/s), tailed off by second 34, and were exactly 0/s for the 76 seconds after —
    * cumulative frozen at 822 created / 721 deleted. So the case for the fix is not a steady-state
    * saving; the unfixed build is also idle at genuine steady state. It is that the whole burst
    * lands during the first seconds at card level, which is exactly when the frame budget is
    * tightest, and it bought nothing: the pixels still have to be transferred either way, and only
    * the allocation around them was new. (An earlier "18.3 cycles/s, indefinitely" was
-   * `alloc-probe`'s 30 s average window sitting on top of that burst. The apparent rate tracks HTTP
-   * cache warmth, not elapsed time.)
+   * `alloc-probe`'s 30 s average window sitting on top of that burst. How tall and narrow the burst
+   * is depends on how fast the fetches land: the run above spread 581 cycles over four seconds,
+   * which is the *colder* shape, and a warmer HTTP cache packs them tighter — `dec697-diag.mjs`
+   * caught 188 in a single first sample. Either way it is the window, not elapsed time, that made
+   * a finite burst read as a rate.)
    *
    * Reusing the texture works because three keys its GL texture on the *parameters* — wrap, filter,
    * format, `flipY`, colour space — and not on the image. Swapping `image` and bumping the source
