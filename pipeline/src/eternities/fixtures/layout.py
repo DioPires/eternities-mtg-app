@@ -29,9 +29,12 @@ position, renames the dataset directory and forces a full refresh — a value th
 data would do all of that on every run.
 
 Which leaves the clamp reachable, and reaching it invisible in the artefacts: planes of 30,000 and
-60,000 cards both encode radius 12.0. Production's largest is at 28,587 cards (2026-09-06) —
-99.5% of the span on the log scale, radius 11.96 of 12 — so it is close. :func:`radius_saturation`
-exists so the run report says so, rather than the next refresh finding out (review finding D2)."""
+60,000 cards both encode radius 12.0. Production is not close: its largest *plane* is `dominaria`
+at 6,266 cards (2026-09-06) — 84.8% of the span on the log scale, radius 10.63 of 12, below the
+0.9 reporting fraction, which is why the run report says no plane is within 90% of the span. The
+28,587 that sits near the clamp is the whole multiverse's card count, not any one plane's, and the
+gap between the two is the headroom. :func:`radius_saturation` exists so the run report tracks
+that per plane, rather than the next refresh finding out (review finding D2)."""
 
 RADIUS_SATURATION_REPORT_FRACTION: Final = 0.9
 """Saturation from here up is reported per plane (PRD 4.9.2)."""

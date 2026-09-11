@@ -102,6 +102,22 @@ def test_the_allocation_produces_all_three_plane_morphologies():
     assert any(n >= 50 for n in named.values()), "no spiral"
 
 
+def test_a_budget_too_small_for_a_spiral_each_spreads_the_roster_instead_of_starving_it():
+    """Pins ``_allocate_cards``' conditional ``floor`` (review note N1).
+
+    The guard is a *morphology* guard, not the negative-count fix — ``_spend_exactly``'s clawback
+    is what keeps counts non-negative, and forcing the floor unconditionally leaves every other
+    test in this file green. What it costs is shape: at the full roster on 500 cards the floor
+    would hand ``SPIRAL_THRESHOLD`` to each large plane, the clawback would take it all back off
+    the tail, and 87 planes would collapse to 9 non-empty ones. Guarded, the same budget spreads
+    over 63 — a fixture whose planes are nearly all empty is not one the renderer can be developed
+    against.
+    """
+    counts = generate._allocate_cards(ROSTER, 500)
+    assert sum(counts.values()) == 500
+    assert sum(1 for n in counts.values() if n > 0) > 40, "budget collapsed onto a few planes"
+
+
 def test_the_allocation_never_goes_negative_on_a_budget_too_small_for_the_shape():
     """A found bug, and the reason this file exists (review finding D10).
 
@@ -125,13 +141,19 @@ def test_the_allocation_partitions_a_tiny_roster_instead_of_double_counting_one_
     which was added to ``small_total`` and then overwritten by the large loop — so the budget was
     charged twice for one plane and the allocation no longer summed to ``total``. Three planes at
     a total of 0 came out at **-23**.
+
+    The budgets have to reach past the low hundreds, and that is not decoration (review finding
+    B1). Below a total of 65 the small band's ``room`` cap drives every small draw to 0, so the
+    overlapping plane contributes nothing and there is no double charge to see: restoring the
+    pre-fix slicing leaves a ``range(40)`` sweep entirely green. The two-named-plane roster is the
+    one that breaks, contiguously from a total of 65 up — at 500 it allocates 477.
     """
     for roster in (
         [BLIND_ETERNITIES_SLUG, "dominaria"],
         [BLIND_ETERNITIES_SLUG, "dominaria", "ravnica"],
         [BLIND_ETERNITIES_SLUG, "dominaria", "ravnica", "innistrad"],
     ):
-        for total in range(40):
+        for total in [*range(40), 65, 100, 500, 5000, 30000]:
             counts = generate._allocate_cards(roster, total)
             assert sum(counts.values()) == total, f"{len(roster)} planes, total={total}: {counts}"
             assert all(n >= 0 for n in counts.values()), f"{roster} at {total}: {counts}"
