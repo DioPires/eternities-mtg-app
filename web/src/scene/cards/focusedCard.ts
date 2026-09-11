@@ -81,6 +81,16 @@ export const PLANET_TEXTURE_HEIGHT = Math.round((PLANET_TEXTURE_PX * 457) / 626)
 
 interface ImageSlot {
   texture: Texture | null
+  /**
+   * The size {@link texture}'s GL storage was allocated at, so a mismatch can be caught.
+   *
+   * `texSubImage2D` writes the image's own dimensions at offset 0: a smaller bitmap would leave the
+   * previous printing's pixels showing around it and a larger one is a GL error. Every `large` is
+   * 672 × 936, so a mismatch should not happen — and if it ever does, the storage is reallocated
+   * rather than written past. Same invariant as the atlas's staging texture (DEC-697).
+   */
+  width: number
+  height: number
   /** Seconds since the image landed, for PRD 7.3.5's 200 ms fade. */
   since: number
   /** The url currently loaded or loading, so a re-show does not re-fetch. */
@@ -128,8 +138,22 @@ export class FocusedCard {
 
   private readonly frontMaterial = faceMaterial()
   private readonly backMaterial = faceMaterial()
-  private readonly frontImage: ImageSlot = { texture: null, since: 0, url: null, key: null }
-  private readonly backImage: ImageSlot = { texture: null, since: 0, url: null, key: null }
+  private readonly frontImage: ImageSlot = {
+    texture: null,
+    width: 0,
+    height: 0,
+    since: 0,
+    url: null,
+    key: null,
+  }
+  private readonly backImage: ImageSlot = {
+    texture: null,
+    width: 0,
+    height: 0,
+    since: 0,
+    url: null,
+    key: null,
+  }
 
   private readonly faceGeometries: BufferGeometry[] = []
   private readonly planetGeometry = new SphereGeometry(PLANET_RADIUS, 24, 16)
@@ -463,18 +487,48 @@ export class FocusedCard {
           bitmap.close()
           return
         }
-        slot.texture?.dispose()
-        const texture = new Texture(bitmap as unknown as HTMLImageElement)
+        // Reuse this face's texture rather than disposing it and allocating a replacement.
+        //
+        // **Why (DEC-714).** A fresh `Texture` per upload is a fresh `glCreateTexture` and a fresh
+        // `texStorage2D` — 672 × 936 × 4 is 2.5 MB of GPU storage — followed by a `glDeleteTexture`
+        // the moment the next printing lands. Measured on the shipped build, six `activatePrinting`
+        // switches were exactly six allocate/free cycles at 672 × 936. The pixels have to be
+        // transferred either way; only the allocation around them was new.
+        //
+        // Safe here, and *not* safe for the planets, because a face is a single destination: there
+        // is exactly one front texture and one back texture, each bound to one material and sampled
+        // for as long as that face is up. The planets are 72 distinct live textures bound to 72
+        // materials at once (see `rebuildPlanets`), so one shared texture would show whichever art
+        // crop landed last on every planet. That is the distinction DEC-707 note N4 missed.
+        //
+        // Reusing works because three keys its GL texture on the *parameters* and not the image.
+        // Swapping `image` and bumping the source version leaves `sourceProperties.__version`
+        // defined, so `allocateMemory` is false and the upload is a bare `texSubImage2D` into
+        // storage that is already the right size.
+        const existing = slot.texture
+        const fits = existing !== null && bitmap.width === slot.width && bitmap.height === slot.height
+        let texture: Texture
+        if (fits) {
+          texture = existing!
+          texture.image = bitmap as unknown as HTMLImageElement
+        } else {
+          existing?.dispose()
+          texture = new Texture(bitmap as unknown as HTMLImageElement)
+          texture.generateMipmaps = false
+          slot.texture = texture
+          slot.width = bitmap.width
+          slot.height = bitmap.height
+          material.uniforms.uImage!.value = texture
+          // Only when the map's identity changes. Left on every upload it would re-run the program
+          // cache lookup for a material whose shader has not moved since the first printing.
+          material.needsUpdate = true
+        }
         texture.needsUpdate = true
-        texture.generateMipmaps = false
-        slot.texture = texture
         slot.since = 0
         slot.url = url
         slot.key = key
-        material.uniforms.uImage!.value = texture
         material.uniforms.uHasImage!.value = 1
         material.uniforms.uImageFade!.value = 0
-        material.needsUpdate = true
         this.pendingUploads.push({ texture, bitmap })
       })
   }
@@ -483,6 +537,10 @@ export class FocusedCard {
     if (slot.key !== null) this.queue.cancel(slot.key)
     slot.texture?.dispose()
     slot.texture = null
+    // Cleared with the texture: a stale size would let the next bitmap take the reuse path against
+    // storage that no longer exists.
+    slot.width = 0
+    slot.height = 0
     slot.url = null
     slot.key = null
     slot.since = 0
@@ -535,7 +593,16 @@ export class FocusedCard {
       this.orbitGroup.add(mesh)
       this.orbitGroup.add(pickMesh)
 
-      const image: ImageSlot = { texture: null, since: 0, url: null, key: `planet:${printing[0]}` }
+      // A planet keeps its own texture for as long as it is on screen — 72 of them at once on a
+      // capped card — so there is no reuse to do here and the size is only ever recorded.
+      const image: ImageSlot = {
+        texture: null,
+        width: 0,
+        height: 0,
+        since: 0,
+        url: null,
+        key: `planet:${printing[0]}`,
+      }
       const planet: Planet = { mesh, pickMesh, material, image }
       this.planets.push(planet)
 
