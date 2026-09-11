@@ -59,6 +59,18 @@ const RATES = arg('rates', '1,6,20,6,1,20,1')
   .map((r) => Number(r.trim()))
 /** How long to wait for the monitor to react to one throttling rate before moving on. */
 const SETTLE_MS = Number(arg('settle', '12000'))
+/**
+ * Device pixel ratio for the page, because at 1 the ladder's `pixel-ratio` rung is unobservable.
+ *
+ * `QUALITY_TIERS` caps dpr at 1.5 for `full` and 1.0 for `pixel-ratio`, and the renderer takes the
+ * `min` of the cap and the device's own ratio — so at `deviceScaleFactor: 1` both rungs clamp to 1,
+ * the drawing buffer never changes across that transition, and nothing downstream of it resizes.
+ * Measured: the drawing buffer held 1920x1080 across a full->pixel-ratio->full sweep on both the
+ * shipped and the owned chain. At 2 the same transition moves it 2880x1620 <-> 1920x1080, which is
+ * what makes the rung a real event and, on the shipped chain, the only ladder trigger that rebuilt
+ * the effect chain at all (the bloom rung being inert is review finding R3).
+ */
+const DPR = Number(arg('dpr', '1'))
 
 /**
  * Installed before any app code. Counts into `window.__alloc`, which the driver samples.
@@ -331,7 +343,7 @@ async function sweepTiers(page) {
 const browser = await puppeteer.launch({
   executablePath: CHROME,
   headless: false,
-  defaultViewport: { width: 1920, height: 1080, deviceScaleFactor: 1 },
+  defaultViewport: { width: 1920, height: 1080, deviceScaleFactor: DPR },
   args: ['--window-size=1920,1140', '--use-angle=metal', '--hide-scrollbars'],
 })
 
@@ -348,7 +360,14 @@ try {
 
   let report
   if (MODE === 'tiers') {
-    report = { label: LABEL, url: URL_BASE, mode: MODE, rates: RATES, ...(await sweepTiers(page)) }
+    report = {
+      label: LABEL,
+      url: URL_BASE,
+      mode: MODE,
+      rates: RATES,
+      dpr: DPR,
+      ...(await sweepTiers(page)),
+    }
   } else {
     const phases = []
     phases.push(await measure(page, 'multiverse', SECONDS))
