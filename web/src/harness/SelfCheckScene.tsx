@@ -18,18 +18,22 @@ import { Canvas } from '@react-three/fiber'
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
 import { NoToneMapping, Vector3 } from 'three'
 
-import { PostEffects } from '../scene/post/PostEffects'
+import { useReducedMotion } from '../app/hooks'
 import { sceneErrors, type SceneDataError } from '../scene/errors'
+import { motionOverride } from '../scene/motionOverride'
 import type { PickResult } from '../scene/picking/scenePicker'
+import { PostEffects } from '../scene/post/PostEffects'
 import { QUALITY_TIERS, type QualityTier } from '../scene/quality/adaptiveQuality'
 import { StarScene, type StarSceneHandle } from '../scene/StarScene'
 import { SKY_COLOUR } from '../scene/tuning'
-import { useReducedMotion } from '../scene/useReducedMotion'
 import { useSceneData } from '../scene/useSceneData'
 
 export function SelfCheckScene(): ReactElement {
   const data = useSceneData()
-  const reducedMotion = useReducedMotion()
+  // PRD 5.9's one resolution, with `?motion=` over it — §9's Windows protocol holds the field
+  // still to read pixels back against the CPU mirror. See `../scene/motionOverride`.
+  const resolved = useReducedMotion()
+  const reducedMotion = motionOverride() ?? resolved
 
   const [tier, setTier] = useState<{ tier: QualityTier; changes: number }>({
     tier: QUALITY_TIERS[0]!,

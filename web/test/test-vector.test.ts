@@ -506,6 +506,19 @@ describe('loud failures', () => {
     )
   })
 
+  // The float32 flag (§6 header flags bit 0, a uint16 LE at byte 6) would mean a wider record than
+  // the fixed 12-byte float16 one this decoder and its length check know how to read. Review §6.1
+  // group A deleted the unreachable float32 branch; refusing is what replaced it, so a silent
+  // mis-read is the thing this pins. The length check cannot catch it — the byte count is
+  // untouched, only the declaration changes. (DEC-715 N5.)
+  it('refuses a stars file that declares float32 positions', () => {
+    const buffer = new Uint8Array(bytes('stars.bin'))
+    expect(() => decodeStars(buffer.buffer)).not.toThrow()
+    buffer[6]! |= 1
+    expect(() => decodeStars(buffer.buffer)).toThrow(ContractError)
+    expect(() => decodeStars(buffer.buffer)).toThrow(/float32 positions/)
+  })
+
   // The §11 argument for bumping to v2 is that a v1 file read by a v2 build fails *silently*
   // without the bump. The code that makes it loud was itself unpinned: `it('is the version this
   // build speaks')` compares two constants and passes even with the gate at `decode.ts:54` deleted

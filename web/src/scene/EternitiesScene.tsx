@@ -31,6 +31,7 @@ import {
   type WebGLRenderer,
 } from 'three'
 
+import { useReducedMotion } from '../app/hooks'
 import type { BenchResult } from '../bench/BenchRunner'
 import { recordBenchCpu } from '../bench/cpuSamples'
 import { CameraRigController } from '../camera/CameraRigController'
@@ -44,6 +45,7 @@ import { useStore } from '../store/store'
 import { useBenchSeam } from './benchSeam'
 import { CardTier, type CardTierHandle, type PlanetLabelState } from './cards/CardTier'
 import { sceneErrors, type SceneDataError } from './errors'
+import { motionOverride } from './motionOverride'
 import { MotionSync } from './MotionSync'
 import type { PickResult } from './picking/scenePicker'
 import { PlanetHoverLabel } from './PlanetHoverLabel'
@@ -56,7 +58,6 @@ import { SceneReadout } from './SceneReadout'
 import { StarScene, type StarSceneHandle } from './StarScene'
 import { BLOOM_INTENSITY_STEPS, SKY_COLOUR } from './tuning'
 import { usePlaneDetail } from './usePlaneDetail'
-import { useReducedMotion } from './useReducedMotion'
 import { useSceneData, type SceneDataState } from './useSceneData'
 
 const FOV = 55
@@ -557,6 +558,11 @@ export function SceneView({
  */
 export function EternitiesScene(): ReactElement {
   const data = useSceneData()
-  const reducedMotion = useReducedMotion()
+  // One resolution (PRD 5.9, 6.10.1) with `?motion=` laid over it, which is what
+  // `e2e/quality.spec.ts` drives to hold the field still. See `./motionOverride`.
+  // The hook is called unconditionally and the override applied after: `??` around a hook call
+  // would skip it whenever `?motion=` is set.
+  const resolved = useReducedMotion()
+  const reducedMotion = motionOverride() ?? resolved
   return <SceneView data={data} reducedMotion={reducedMotion} />
 }

@@ -1,7 +1,7 @@
 /**
  * A live readout of where the camera actually is.
  *
- * Development-only, and it goes when Phase 4's HUD lands. It exists
+ * Development-only, and never on the shipped shell — `App.tsx` passes `chrome={false}`. It exists
  * because "the camera moved" is otherwise unobservable from outside: reading a WebGL canvas back
  * with `toDataURL` returns a stale or cleared drawing buffer unless the context was created with
  * `preserveDrawingBuffer`, which costs a full-frame copy every frame and is not something to turn
@@ -10,6 +10,10 @@
  *
  * It writes `textContent` on one node from its own `requestAnimationFrame`, rather than through
  * React state: 60 re-renders a second is exactly what PRD 7.3.2 and 7.3.3 rule out.
+ *
+ * This used to say it went when Phase 4's HUD landed. The HUD has landed (`ui/Hud.tsx`, rendered
+ * from `App.tsx`) and this is still here, because the HUD was never what depended on it — the
+ * scripts are. It goes with the panel it sits in; see `./SceneReadout` for what that waits on.
  */
 
 import { useEffect, useRef, type ReactElement } from 'react'

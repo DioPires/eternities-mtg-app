@@ -1210,12 +1210,12 @@ kbd {
   text-transform: uppercase;
 }
 
-/* ------------------------------------ the development state readout (`?harness=2a`, `?harness=3`) */
+/* ------------------------------ the development state readout (`?probe=1`, `?selfcheck`) */
 
 /*
- * The panel `EternitiesScene` and `Phase2aScene` render. It is not product UI — no shipped route
- * mounts either scene — but it is where `verify-browser.mjs` and `visual-gate.mjs` read the scene's
- * state from, so it is worth its bytes.
+ * The panel `scene/SceneReadout` renders, plus the self-check's own. It is not product UI — the
+ * shell passes `chrome={false}` and mounts none of it — but it is where `verify-browser.mjs` and
+ * `visual-gate.mjs` read the scene's state from, so it is worth its bytes.
  *
  * It had no rule at all for two phases. Both scenes asked for `class="overlay"`, Phase 5's
  * stylesheet replaced the harness's and defines `.overlay-scrim` but no `.overlay`, so the panel
