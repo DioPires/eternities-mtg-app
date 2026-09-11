@@ -65,8 +65,9 @@ export function decodeHeader(buffer: ArrayBuffer, byteOffset = 0): BinaryHeader 
  * A decoded `stars.bin`.
  *
  * `interleaved` is the record array with no header, ready to become a single WebGL buffer with
- * stride {@link STAR_RECORD_BYTES}. `positions` is only materialised on demand, for the float32
- * fallback path of PRD risk 6 and for the CPU motion mirror of PRD 8.5.7.
+ * stride {@link STAR_RECORD_BYTES}. Positions are materialised only on demand, through
+ * {@link Stars.toFloat32Positions}, for PRD risk 6's fallback path and PRD 8.5.7's CPU motion
+ * mirror. (The field this used to name, `float32Positions`, went with review §6.1 group A.)
  */
 export interface Stars {
   readonly count: number

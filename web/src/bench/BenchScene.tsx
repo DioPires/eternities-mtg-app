@@ -23,8 +23,9 @@
 
 import { useState, type ReactElement } from 'react'
 
+import { useReducedMotion } from '../app/hooks'
 import { SceneView } from '../scene/EternitiesScene'
-import { motionOverride, useReducedMotion } from '../scene/useReducedMotion'
+import { motionOverride } from '../scene/motionOverride'
 import { useSceneData } from '../scene/useSceneData'
 
 import { benchHold, type BenchResult } from './BenchRunner'
@@ -52,9 +53,10 @@ export function benchRouteRequested(
 
 export function BenchScene(): ReactElement {
   const data = useSceneData()
-  // PRD 5.9. The bench honours the OS preference like anything else, but `?motion=0` is how the
-  // cross-browser pass holds the field still to compare two GPUs drawing the same thing.
-  const reducedMotion = useReducedMotion(motionOverride())
+  // PRD 5.9. The bench resolves reduced motion the way everything else does, but `?motion=0` is
+  // how the cross-browser pass holds the field still to compare two GPUs drawing the same thing.
+  const resolved = useReducedMotion()
+  const reducedMotion = motionOverride() ?? resolved
   const [result, setResult] = useState<BenchResult | null>(null)
   const hold = benchHold()
 

@@ -2,10 +2,17 @@
  * The harness readout panel: what `?probe=1` and `scripts/verify-browser.mjs` assert against.
  *
  * Split out of `EternitiesScene` (review §6.3) rather than deleted. Review §6.1 group B lists this
- * panel and `CameraReadout` for deletion, but `verify-browser.mjs` reads them in fifteen places and
- * that script is group C — held until the §4.3 concept decision, and until T3 ports its a11y and
- * CSP assertions to `e2e/`. Deleting the panel first would blind the local gate before its
- * replacement exists, so it moves out of the shipped scene's file and waits for C.
+ * panel and `CameraReadout` for deletion, but two scripts read it and neither is group B's to
+ * delete. `verify-browser.mjs` is group C — held until the §4.3 concept decision, and until T3
+ * ports its a11y and CSP assertions to `e2e/`. `visual-gate.mjs` group C explicitly *keeps*, as
+ * the acceptance instrument for PRD 9.3, and two of its reads are load-bearing rather than
+ * tolerant of absence: it sources every capture sidecar on `--target scene` from this panel, and
+ * hard-waits on its attract field.
+ *
+ * So the panel does not merely wait for group C, it outlives it. Deleting it is deliverable only
+ * once `visual-gate` sources those sidecars from `ProbeState` on both targets — which it already
+ * knows how to do, because that is what it does on `?probe=shell`. Until then it moves out of the
+ * shipped scene's file and stays. (DEC-715 attention point 1.)
  *
  * The shell renders none of this: PRD section 6's HUD is the real one.
  */

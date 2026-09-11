@@ -140,16 +140,18 @@ not apply to CSSOM writes. Everything this app does is a CSSOM write:
 
 - `labels/PlaneLabels.tsx` sets `node.style.transform`, `node.style.opacity` and
   `node.style.fontSize` — property assignments, not attributes, so no directive governs them;
-- the `style={{ background: SKY_COLOUR }}` props — two of them since the Phase 3 fold, in
-  `Phase2aScene.tsx` and `EternitiesScene.tsx` — are React style objects, which React applies
-  through the CSSOM as well;
+- the `style={{ background: SKY_COLOUR }}` props — two of them, in `EternitiesScene.tsx` and
+  `harness/SelfCheckScene.tsx` — are React style objects, which React applies through the CSSOM as
+  well;
 - `index.html` contains no literal `style=`, and nothing in the tree uses
   `dangerouslySetInnerHTML`, `innerHTML` or `setAttribute('style', …)`.
 
-The label overlay named in the old rationale is also mounted **only in the scene**, never on the
-shipped shell route. Phase 3 folded Phase 2b's harness into `EternitiesScene` and deleted it, so
-the route that reaches the overlay is now `?harness=3`; when this was audited it was `?harness=2b`,
-which is the route the experiment below was run against.
+*At the time of this audit*, the label overlay named in the old rationale was mounted **only in the
+scene**, never on the shipped shell route, and the route the experiment below was run against was
+`?harness=2b`. Both facts have since changed and the Resolution below turns on it: Phase 3 folded
+Phase 2b's harness into `EternitiesScene`, so `SceneView` now renders the overlay on the shell as
+well, and review §6.1 group B retired Phase 2a's harness along with the `?harness=` vocabulary
+itself — the scene-alone route is `?probe=1` and no `?harness=` spelling is a route any more.
 
 The reviewer tested it rather than reasoning about it: with `style-src-attr` removed entirely and
 the built site served under `style-src 'self'` alone, all 82 labels received their `translate3d`
