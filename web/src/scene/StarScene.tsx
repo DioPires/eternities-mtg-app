@@ -25,10 +25,11 @@ import {
   samePick,
   type PickResult,
 } from './picking/scenePicker'
+import { detectPostCapabilities } from './post/capabilities'
 import {
   QualityMonitor,
-  pinnedQualityOptions,
   pinnedQualityTier,
+  qualityOptionsFor,
   type QualityTier,
 } from './quality/adaptiveQuality'
 import { runSelfCheck, samplesPerRowRequested, selfCheckRequested } from './selfCheck'
@@ -65,6 +66,16 @@ export interface StarSceneProps {
   readonly starsComplete?: boolean
   /** PRD 5.9. 0 stops rotation, drift, twinkle and dust turbulence. */
   readonly reducedMotion: boolean
+  /**
+   * The live tier's bloom resolution multiplier (PRD 8.5.11's second rung), for the bloom source
+   * pass (DEC-703).
+   *
+   * The field's sprite sizes are in device pixels, and the bloom source is a smaller target than
+   * the drawing buffer, so the second draw needs the same numbers scaled — see the uniform block in
+   * `./starfield/starFieldObjects`. It arrives as a prop rather than off the monitor because the
+   * post chain has to be told the same value in the same frame, and one owner of it is the point.
+   */
+  readonly bloomScale: number
   /** PRD 5.4.12 hover and PRD 5.7.2 click. `null` means the pointer is over empty space. */
   readonly onHover?: (pick: PickResult) => void
   readonly onSelect?: (pick: PickResult) => void
@@ -89,6 +100,7 @@ export function StarScene({
   resources,
   starsComplete = false,
   reducedMotion,
+  bloomScale,
   onHover,
   onSelect,
   onQualityChange,
@@ -102,7 +114,21 @@ export function StarScene({
   const background = useMemo(() => createBackground(), [])
   const idPicker = useMemo(() => new IdPicker(), [])
   const planePicker = useMemo(() => new PlanePicker(), [])
-  const quality = useMemo(() => new QualityMonitor(pinnedQualityOptions(pinnedQualityTier())), [])
+  /**
+   * The tier monitor, floored by what the post chain can actually render (DEC-703, review §3.7).
+   *
+   * Keyed on `gl` because the floor comes off the GL context: without `EXT_color_buffer_float` the
+   * bloom source is quantised to eight bits and the top two rungs stop meaning what they say, so
+   * the ladder starts two rungs down instead. See `../post/capabilities` and `qualityOptionsFor` —
+   * a `?quality=` pin still wins, because a pin has to be able to name any tier.
+   */
+  const quality = useMemo(
+    () =>
+      new QualityMonitor(
+        qualityOptionsFor(pinnedQualityTier(), detectPostCapabilities(gl).minTierIndex),
+      ),
+    [gl],
+  )
   /**
    * `?selfcheck=1`, read **once** (DEC-692 R7).
    *
@@ -287,10 +313,20 @@ export function StarScene({
   // whichever ran last won and under the free ladder that was the prop, twice a second. The prop is
   // now a range — `dpr={[0.5, tier.pixelRatioCap]}`, which R3F resolves to exactly the `min` above
   // — so the cap has one writer and the rung lands. All this effect does is announce the change.
-  useEffect(
-    () => quality.subscribe((tier, index) => callbacks.current.onQualityChange?.(tier, index)),
-    [quality],
-  )
+  //
+  // **It announces the starting tier too (DEC-703).** The monitor's initial index is no longer a
+  // value the caller can compute for itself: it used to be `pinnedQualityTier() ?? 0`, which both
+  // this file and `EternitiesScene` read independently and agreed on by construction, and it is now
+  // that pin layered over a GPU capability floor that only the renderer knows. Two authorities for
+  // one number is how a caller ends up rendering tier 0's `bloomScale` into tier 2's targets, so
+  // the monitor is the authority and this is where it says so. One render, once, on mount.
+  useEffect(() => {
+    const unsubscribe = quality.subscribe((tier, index) =>
+      callbacks.current.onQualityChange?.(tier, index),
+    )
+    callbacks.current.onQualityChange?.(quality.tier, quality.index)
+    return unsubscribe
+  }, [quality])
 
   useEffect(
     () => () => {
@@ -341,6 +377,7 @@ export function StarScene({
         gl.domElement.height,
         ((camera as PerspectiveCamera).fov * Math.PI) / 180,
         gl.getPixelRatio(),
+        bloomScale,
       )
       advanceBackground(background.group, table.multiverseAngle)
 
@@ -374,6 +411,10 @@ export function StarScene({
           <primitive object={resources.field.glow} />
           <primitive object={resources.field.points} />
           <primitive object={resources.field.pickPoints} />
+          {/* PRD 5.3.20's bloom source. On `BLOOM_LAYER`, so only the post chain's source pass
+              draws it; the main pass and the pick pass never see it (DEC-703). The glows need no
+              second object — the mesh above is on both layers. */}
+          <primitive object={resources.field.bloomPoints} />
         </>
       )}
     </>

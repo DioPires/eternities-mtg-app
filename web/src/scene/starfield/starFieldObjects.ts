@@ -1,6 +1,6 @@
 /**
- * The three.js object graph of the star field: one `Points` for the picture, one `Points` for the
- * id buffer, one instanced quad for the nebulae and zero-card glows.
+ * The three.js object graph of the star field: one `Points` for the picture, one for the id buffer,
+ * one for the bloom source, and one instanced quad for the nebulae and zero-card glows.
  *
  * Built imperatively rather than as JSX because every one of these objects shares mutable state
  * with the others — the plane table, the time uniform, the geometry — and a single owner that
@@ -23,6 +23,7 @@ import {
 } from 'three'
 
 import { PICK_LAYER } from '../picking/idPicker'
+import { BLOOM_LAYER } from '../post/bloomLayer'
 import {
   EMPTY_GLOW_CORE,
   EMPTY_GLOW_OPACITY,
@@ -56,7 +57,22 @@ export interface StarField {
   readonly points: Points
   /** The same geometry and the same vertex program, writing ids (PRD 8.5.6). Pick layer only. */
   readonly pickPoints: Points
-  /** PRD 5.3.19 nebulae and PRD 5.3.6 zero-card glows, one instanced draw call. */
+  /**
+   * The same geometry and the same programs again, into PRD 5.3.20's bloom source (DEC-703). Bloom
+   * layer only, so the post chain's source pass draws it and the main pass does not.
+   *
+   * A separate object rather than a second layer on {@link StarField.points} because the sprite
+   * sizes are in device pixels and the source is a smaller target — see `uBloomSizeScale`.
+   *
+   * This is what "selective" costs now: one more draw of the field at half resolution, against the
+   * old chain's extra full-resolution scene render plus a depth pass and a mask pass — for a
+   * selection that review finding R4 showed was inert anyway.
+   */
+  readonly bloomPoints: Points
+  /**
+   * PRD 5.3.19 nebulae and PRD 5.3.6 zero-card glows, one instanced draw call — on layer 0 *and*
+   * the bloom layer, so the post chain's source pass draws the same mesh again (DEC-703).
+   */
   readonly glow: Mesh
 
   /**
@@ -64,13 +80,15 @@ export interface StarField {
    *
    * `drawingBufferHeight` and `fovRadians` turn world-unit star diameters into device pixels;
    * `pixelRatio` keeps the minimum and maximum sizes fixed in CSS pixels as the ratio adapts
-   * (PRD 8.5.11).
+   * (PRD 8.5.11). `bloomScale` is the live tier's, and sizes the same quantities for the bloom
+   * source, which is a smaller target — see the uniform block in `createStarField`.
    */
   update(
     motion: number,
     drawingBufferHeight: number,
     fovRadians: number,
     pixelRatio: number,
+    bloomScale: number,
   ): void
 
   /** PRD 5.4.12: the star under the pointer brightens by 30%. `-1` for none. */
@@ -109,6 +127,27 @@ export function createStarField(
   const uThumbFullPx = uniform(THUMBNAIL_FADE_FULL_PX)
   /** `null` means "use `PICK_MIN_PX`". See `setPickSpriteFloorPx`. */
   let pickSpriteFloorPx: number | null = null
+
+  /*
+   * The bloom pass's own copies of every uniform measured in *device pixels* (DEC-703).
+   *
+   * The bloom source is a smaller target than the drawing buffer — half of it at the top of the
+   * ladder, a quarter two rungs down — and `gl_PointSize` is in device pixels of whatever target is
+   * bound. Sharing `uSizeScale` with the main pass would draw every star sprite at twice its
+   * angular size in the source, so the bloom would be a halo around a star twice as wide as the one
+   * on screen. The old chain never had this problem because it derived its source *from* the scene
+   * buffer by downsampling; drawing the source directly is what makes the scale explicit.
+   *
+   * The rule is one line: everything in device pixels scales with the target. That includes PRD
+   * 5.5.1's cross-fade band, because the band is compared against the same `pixels` value the
+   * vertex shader computes from `uSizeScale` — leave it unscaled and a star would fade into its
+   * thumbnail at a different distance in the bloom than in the picture.
+   */
+  const uBloomSizeScale = uniform(1)
+  const uBloomMinPixels = uniform(STAR_MIN_PX)
+  const uBloomMaxPixels = uniform(STAR_MAX_PX)
+  const uBloomThumbStartPx = uniform(THUMBNAIL_FADE_START_PX)
+  const uBloomThumbFullPx = uniform(THUMBNAIL_FADE_FULL_PX)
 
   const hues = HUE_COLOURS.map(([r, g, b]) => new Color(r, g, b))
   const starUniforms = {
@@ -152,6 +191,35 @@ export function createStarField(
     depthTest: true,
   })
 
+  /*
+   * The bloom source's stars: the same programs, the same blending, the same picture — at the
+   * bloom target's resolution.
+   *
+   * Deliberately *not* thresholded here. The post chain applies PRD 5.3.20's threshold to the
+   * accumulated source in its first downsample, because that is what the old chain did (it
+   * thresholded the composited scene buffer) and a cluster of faint stars has to be able to sum
+   * over the threshold together. Thresholding each sprite on its own was measured against the old
+   * chain and lost the bloom off every dense cluster core — see `POST_DOWNSAMPLE_FRAGMENT_SHADER`.
+   *
+   * So the only difference from `material` is the five uniforms measured in device pixels.
+   */
+  const bloomMaterial = new ShaderMaterial({
+    uniforms: {
+      ...starUniforms,
+      uSizeScale: uBloomSizeScale,
+      uMinPixels: uBloomMinPixels,
+      uMaxPixels: uBloomMaxPixels,
+      uThumbStartPx: uBloomThumbStartPx,
+      uThumbFullPx: uBloomThumbFullPx,
+    },
+    vertexShader: STAR_VERTEX_SHADER,
+    fragmentShader: STAR_FRAGMENT_SHADER,
+    transparent: true,
+    blending: AdditiveBlending,
+    depthWrite: false,
+    depthTest: false,
+  })
+
   const points = new Points(geometry.geometry, material)
   points.frustumCulled = false
   points.matrixAutoUpdate = false
@@ -161,6 +229,11 @@ export function createStarField(
   pickPoints.frustumCulled = false
   pickPoints.matrixAutoUpdate = false
   pickPoints.layers.set(PICK_LAYER)
+
+  const bloomPoints = new Points(geometry.geometry, bloomMaterial)
+  bloomPoints.frustumCulled = false
+  bloomPoints.matrixAutoUpdate = false
+  bloomPoints.layers.set(BLOOM_LAYER)
 
   const glow = createGlowMesh(table, noise, {
     uPlaneTable,
@@ -172,8 +245,9 @@ export function createStarField(
   return {
     points,
     pickPoints,
+    bloomPoints,
     glow,
-    update(motion, drawingBufferHeight, fovRadians, pixelRatio) {
+    update(motion, drawingBufferHeight, fovRadians, pixelRatio, bloomScale) {
       uTime.value = table.time
       uMultiverseAngle.value = table.multiverseAngle
       uMotion.value = motion
@@ -186,6 +260,14 @@ export function createStarField(
       // band scales with the ratio exactly as the star size floors above it do.
       uThumbStartPx.value = THUMBNAIL_FADE_START_PX * pixelRatio
       uThumbFullPx.value = THUMBNAIL_FADE_FULL_PX * pixelRatio
+
+      // The bloom source, in its own device pixels. One multiply each, from the values just
+      // written, so the two passes cannot disagree about anything but the resolution.
+      uBloomSizeScale.value = uSizeScale.value * bloomScale
+      uBloomMinPixels.value = uMinPixels.value * bloomScale
+      uBloomMaxPixels.value = uMaxPixels.value * bloomScale
+      uBloomThumbStartPx.value = uThumbStartPx.value * bloomScale
+      uBloomThumbFullPx.value = uThumbFullPx.value * bloomScale
     },
     setHovered(index) {
       uHoverIndex.value = index
@@ -196,6 +278,7 @@ export function createStarField(
     dispose() {
       material.dispose()
       idMaterial.dispose()
+      bloomMaterial.dispose()
       glow.geometry.dispose()
       ;(glow.material as ShaderMaterial).dispose()
     },
@@ -212,6 +295,9 @@ interface SharedUniforms {
 /**
  * One camera-facing quad per plane that has a glow — every plane except the Blind Eternities,
  * whose "radius" is the whole multiverse and which is drawn as dust instead.
+ *
+ * Drawn twice per frame since DEC-703 — once into the picture and once into the bloom source —
+ * from one mesh on two layers. See the layer enable at the end of this function.
  */
 function createGlowMesh(table: PlaneTable, noise: Texture, shared: SharedUniforms): Mesh {
   const rows = table.planes
@@ -232,14 +318,16 @@ function createGlowMesh(table: PlaneTable, noise: Texture, shared: SharedUniform
   geometry.instanceCount = rows.length
   geometry.boundingSphere = null
 
+  const glowUniforms = {
+    ...shared,
+    uNoise: uniform(noise),
+    uNebulaOpacity: uniform(NEBULA_OPACITY),
+    uEmptyOpacity: uniform(EMPTY_GLOW_OPACITY),
+    uEmptyCore: uniform(EMPTY_GLOW_CORE),
+  }
+
   const material = new ShaderMaterial({
-    uniforms: {
-      ...shared,
-      uNoise: uniform(noise),
-      uNebulaOpacity: uniform(NEBULA_OPACITY),
-      uEmptyOpacity: uniform(EMPTY_GLOW_OPACITY),
-      uEmptyCore: uniform(EMPTY_GLOW_CORE),
-    },
+    uniforms: glowUniforms,
     vertexShader: GLOW_VERTEX_SHADER,
     fragmentShader: GLOW_FRAGMENT_SHADER,
     transparent: true,
@@ -256,5 +344,11 @@ function createGlowMesh(table: PlaneTable, noise: Texture, shared: SharedUniform
   // order immaterial.
   mesh.renderOrder = -1
   mesh.layers.set(0)
+  // ...and again into PRD 5.3.20's bloom source (DEC-703). *The same object*, not a copy: a glow
+  // quad's size comes from the plane table in world units, so its projected size scales with the
+  // target on its own and there is nothing to give the bloom pass a second value of. The star
+  // field cannot do this — see `uBloomSizeScale` and the sprite sizes in `createStarField`.
+  mesh.layers.enable(BLOOM_LAYER)
+
   return mesh
 }

@@ -83,9 +83,10 @@ import { useStore } from '../store/store'
 import { CameraReadout } from './CameraReadout'
 import { CardTier, type CardTierHandle, type PlaneCards, type PlanetLabelState } from './cards/CardTier'
 import { formatMb, gpuMemoryReport } from './cards/gpuMemory'
-import { Effects, type BloomProbe } from './Effects'
 import { sceneErrors, type SceneDataError } from './errors'
 import type { PickResult } from './picking/scenePicker'
+import { PostEffects } from './post/PostEffects'
+import type { PostChain } from './post/postChain'
 import { probeRequested, type Probe, type ProbeState } from './probe'
 import { QUALITY_TIERS, pinnedQualityTier, type QualityTier } from './quality/adaptiveQuality'
 import { StarScene, type StarSceneHandle } from './StarScene'
@@ -331,7 +332,7 @@ export function SceneView({
   const cameraRef = useRef<PerspectiveCamera | null>(null)
   // Both for the `?probe=1` quality block only; see `ProbeState.quality`.
   const rendererRef = useRef<WebGLRenderer | null>(null)
-  const bloomRef = useRef<BloomProbe | null>(null)
+  const chainRef = useRef<PostChain | null>(null)
 
   /**
    * The focused plane's cards, by global star index.
@@ -604,10 +605,9 @@ export function SceneView({
     const qualityState = (): ProbeState['quality'] => {
       const renderer = rendererRef.current
       const buffer = renderer?.getDrawingBufferSize(probeBuffer)
-      const bloom = bloomRef.current?.resolution
-      // The target the composite actually samples, as opposed to the one `resolutionScale` sizes.
-      // See `Effects.BloomProbe`.
-      const blur = bloomRef.current?.mipmapBlurPass.texture.image
+      const chain = chainRef.current
+      // One size, where `Effects.BloomProbe` had to report two — see `ProbeState.bloomSource`.
+      const source = chain?.bloomSourceSize
       const band = starScene.current?.qualityThresholds
       return {
         tier: tierRef.current.label,
@@ -615,9 +615,11 @@ export function SceneView({
         pinned: pinnedTier,
         pixelRatio: renderer?.getPixelRatio() ?? 0,
         drawingBuffer: { width: buffer?.x ?? 0, height: buffer?.y ?? 0 },
-        // Zero until the composer has sized it, which is not the same as "no bloom".
-        bloom: bloom && bloom.width > 0 ? { width: bloom.width, height: bloom.height } : null,
-        bloomBlur: blur && blur.width > 0 ? { width: blur.width, height: blur.height } : null,
+        // Null until the chain's first `configure`, which is not the same as "no bloom".
+        bloomSource:
+          source && source.width > 0 ? { width: source.width, height: source.height } : null,
+        bloomLevels: chain?.bloomLevels ?? 0,
+        bloomFloatTargets: chain?.floatTargets ?? false,
         thumbnailCapacity: cardTier.current?.stats.capacity ?? 0,
         starsDrawn: geometry.drawCount,
         motion: typeof motionUniform?.value === 'number' ? motionUniform.value : -1,
@@ -843,11 +845,12 @@ export function SceneView({
     [data.search, focusedStar],
   )
 
-  // PRD 5.3.20 and 9.3: the field blooms, the cards do not. See `Effects`.
-  const bloomSelection = useMemo(
-    () => (data.resources ? [data.resources.field.points, data.resources.field.glow] : []),
-    [data.resources],
-  )
+  /*
+   * PRD 5.3.20 and 9.3 — "the field blooms, the cards do not" — used to be an *array* here, handed
+   * to `SelectiveBloom` as its selection. It is now a camera layer that the field's objects enable
+   * for themselves (`post/bloomLayer`), which is review finding R4: the array was inert, and the
+   * depth pass and mask pass built to honour it were pure cost. Nothing to assemble at this level.
+   */
 
   const hoveredPlanet = hover?.kind === 'planet' ? hover.index : -1
   const focusedCard = focusedStar >= 0 ? cardsRef.current.get(focusedStar) : undefined
@@ -904,6 +907,7 @@ export function SceneView({
           resources={data.resources}
           starsComplete={data.starsComplete}
           reducedMotion={reducedMotion}
+          bloomScale={tier.tier.bloomScale}
           onHover={setHover}
           onSelect={onSelect}
           onQualityChange={onQualityChange}
@@ -944,11 +948,14 @@ export function SceneView({
             />
           </>
         )}
-        <Effects
+        {/* Last in the tree on purpose: it subscribes at `useFrame` priority 1, so R3F stops
+            rendering the scene itself and this owns the frame — main pass, bloom source, blur,
+            composite — after every priority-0 subscriber above has finished its own work. */}
+        <PostEffects
           bloomScale={tier.tier.bloomScale}
-          bloomSelection={bloomSelection}
-          bloomRef={bloomRef}
+          bloomLevels={tier.tier.bloomLevels}
           bloomIntensity={bloomIntensity}
+          chainRef={chainRef}
         />
       </Canvas>
 

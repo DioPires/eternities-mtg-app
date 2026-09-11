@@ -457,10 +457,16 @@ describe('adaptive quality (PRD 8.5.11)', () => {
     expect(QUALITY_TIERS[1]!.pixelRatioCap).toBe(1)
     expect(QUALITY_TIERS[1]!.bloomScale).toBe(QUALITY_TIERS[0]!.bloomScale)
     expect(QUALITY_TIERS[2]!.bloomScale).toBeLessThan(QUALITY_TIERS[1]!.bloomScale)
+    // The bloom rung moves *both* of the chain's cost terms (DEC-703, review §3.5's "bloom source
+    // ½→¼ and 6→5 levels"), and it is still the only rung that touches either.
+    expect(QUALITY_TIERS[1]!.bloomLevels).toBe(QUALITY_TIERS[0]!.bloomLevels)
+    expect(QUALITY_TIERS[2]!.bloomLevels).toBeLessThan(QUALITY_TIERS[1]!.bloomLevels)
+    expect(QUALITY_TIERS[3]!.bloomLevels).toBe(QUALITY_TIERS[2]!.bloomLevels)
     expect(QUALITY_TIERS[3]!.thumbnailCapacity).toBeLessThan(QUALITY_TIERS[2]!.thumbnailCapacity)
     // Nothing in a tier can reach the star count or the motion.
     for (const tier of QUALITY_TIERS) {
       expect(Object.keys(tier).sort()).toEqual([
+        'bloomLevels',
         'bloomScale',
         'label',
         'pixelRatioCap',
