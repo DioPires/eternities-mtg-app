@@ -103,6 +103,16 @@ export class ThumbnailAtlas {
   private readonly blitCamera = new OrthographicCamera(-0.5, 0.5, 0.5, -0.5, 0, 1)
   private readonly blitMaterial = new MeshBasicMaterial({ depthTest: false, depthWrite: false })
   private readonly blitMesh: Mesh
+  /**
+   * The one staging texture every cell upload goes through. See {@link blitSource}.
+   *
+   * Null until the first upload, because its GL storage is allocated at the first bitmap's size and
+   * there is nothing to size it from before then.
+   */
+  private blitTexture: Texture | null = null
+  /** The size {@link blitTexture}'s GL storage was allocated at, so a mismatch can be caught. */
+  private blitWidth = 0
+  private blitHeight = 0
   /** Scratch for the caller's viewport and scissor, saved across a blit. See {@link upload}. */
   private readonly savedViewport = new Vector4()
   private readonly savedScissor = new Vector4()
@@ -249,21 +259,7 @@ export class ThumbnailAtlas {
       return false
     }
 
-    const texture = new Texture(bitmap as unknown as HTMLImageElement)
-    // Not a mistake: Scryfall's bytes are sRGB and the atlas stores them that way, so three must
-    // not decode on the way in. See the file header.
-    texture.colorSpace = NoColorSpace
-    // Explicitly off, and it would be off in effect either way: `UNPACK_FLIP_Y_WEBGL` does not
-    // apply to an `ImageBitmap`, whose orientation the WebGL spec fixes at creation. Saying `true`
-    // here reads as a flip that is not happening — which is how the sheet came to draw upside down.
-    // The orientation is handled once, in `blitGeometry`, where it is visible.
-    texture.flipY = false
-    texture.generateMipmaps = false
-    texture.minFilter = LinearFilter
-    texture.magFilter = LinearFilter
-    texture.needsUpdate = true
-    this.blitMaterial.map = texture
-    this.blitMaterial.needsUpdate = true
+    this.blitSource(bitmap)
 
     const x = (slot % ATLAS_COLUMNS) * ATLAS_CELL_WIDTH
     const y = Math.floor(slot / ATLAS_COLUMNS) * ATLAS_CELL_HEIGHT
@@ -309,12 +305,90 @@ export class ThumbnailAtlas {
     renderer.setScissor(this.savedScissor)
     renderer.setRenderTarget(previousTarget)
 
-    this.blitMaterial.map = null
-    texture.dispose()
+    // The bitmap's pixels are in the atlas now — `texSubImage2D` copied them during the render
+    // above — so nothing outside this call holds a decoded image. The staging texture keeps a
+    // reference to the closed bitmap until the next upload replaces it, which costs nothing:
+    // `close()` has already released the pixels.
+    //
+    // Safe only because `blitMaterial` is rendered from inside `upload` and nowhere else, always
+    // one statement after `blitSource` pointed it at a live bitmap. A closed `ImageBitmap` reports
+    // width and height 0, so rendering that material from any other site — after a context loss,
+    // say, when three reallocates from `image` — would issue a 0x0 `texStorage2D`. Keep the render
+    // here.
     bitmap.close()
 
     this.cells[slot]!.loaded = true
     return true
+  }
+
+  /**
+   * Point the blit quad at `bitmap`, reusing one staging texture for every cell upload.
+   *
+   * **Why one texture and not one per upload (DEC-697).** A fresh `Texture` per upload is a fresh
+   * `glCreateTexture` and a fresh `texStorage2D` — a 91 KB GPU allocation — followed by a
+   * `glDeleteTexture` the moment the blit is done. One per thumbnail, so a 110 s card-level session
+   * cost ~721 allocate/free cycles: the fill first, then one more for every cell arriving after it.
+   *
+   * That total is a count, not a rate, and it is bounded — but not by `ATLAS_CELLS` (DEC-717 N1).
+   * 736 is what the atlas *physically* has; the usable count is the quality tier's
+   * `thumbnailCapacity`, 512 on the top three tiers and 256 on the lowest, and `claim` never looks
+   * past it. So a fill is at most 512 cycles and the 721 is the whole session, fill plus later
+   * arrivals — do not read it as the cost of filling and then add arrivals on top of it. The fill
+   * is fetch-bound, so the cycles land in whatever span the fetches take and then stop. Measured
+   * over 110 s from `focusCard` (DEC-707's run) they were concentrated in the first four seconds
+   * (peaking at 183/s), tailed off by second 34, and were exactly 0/s for the 76 seconds after —
+   * cumulative frozen at 822 created / 721 deleted. So the case for the fix is not a steady-state
+   * saving; the unfixed build is also idle at genuine steady state. It is that the whole burst
+   * lands during the first seconds at card level, which is exactly when the frame budget is
+   * tightest, and it bought nothing: the pixels still have to be transferred either way, and only
+   * the allocation around them was new. (An earlier "18.3 cycles/s, indefinitely" was
+   * `alloc-probe`'s 30 s average window sitting on top of that burst. How tall and narrow the burst
+   * is depends on how fast the fetches land: the run above spread 581 cycles over four seconds,
+   * which is the *colder* shape, and a warmer HTTP cache packs them tighter — `dec697-diag.mjs`
+   * caught 188 in a single first sample. Either way it is the window, not elapsed time, that made
+   * a finite burst read as a rate.)
+   *
+   * Reusing the texture works because three keys its GL texture on the *parameters* — wrap, filter,
+   * format, `flipY`, colour space — and not on the image. Swapping `image` and bumping the source
+   * version leaves `sourceProperties.__version` defined, so `allocateMemory` is false and the
+   * upload is a bare `texSubImage2D` into storage that is already the right size.
+   *
+   * That last clause is the invariant: `texSubImage2D` writes the image's own dimensions at offset
+   * 0, so a smaller bitmap would leave a previous thumbnail's pixels showing around it and a larger
+   * one is a GL error. Every thumbnail is decoded straight to the cell size by
+   * `createImageBitmap`'s `resizeWidth`/`resizeHeight`, so a mismatch should not happen — and if it
+   * ever does, the storage is reallocated rather than written past.
+   */
+  private blitSource(bitmap: ImageBitmap): void {
+    const fits =
+      this.blitTexture !== null &&
+      bitmap.width === this.blitWidth &&
+      bitmap.height === this.blitHeight
+    if (!fits) {
+      this.blitTexture?.dispose()
+      const texture = new Texture(bitmap as unknown as HTMLImageElement)
+      // Not a mistake: Scryfall's bytes are sRGB and the atlas stores them that way, so three must
+      // not decode on the way in. See the file header.
+      texture.colorSpace = NoColorSpace
+      // Explicitly off, and it would be off in effect either way: `UNPACK_FLIP_Y_WEBGL` does not
+      // apply to an `ImageBitmap`, whose orientation the WebGL spec fixes at creation. Saying
+      // `true` here reads as a flip that is not happening — which is how the sheet came to draw
+      // upside down. The orientation is handled once, in `blitGeometry`, where it is visible.
+      texture.flipY = false
+      texture.generateMipmaps = false
+      texture.minFilter = LinearFilter
+      texture.magFilter = LinearFilter
+      this.blitTexture = texture
+      this.blitWidth = bitmap.width
+      this.blitHeight = bitmap.height
+      this.blitMaterial.map = texture
+      // Only when the map's identity changes. Left on every upload it would re-run the program
+      // cache lookup for a material whose shader has not moved since the first thumbnail.
+      this.blitMaterial.needsUpdate = true
+    } else {
+      this.blitTexture!.image = bitmap
+    }
+    this.blitTexture!.needsUpdate = true
   }
 
   /**
@@ -361,5 +435,7 @@ export class ThumbnailAtlas {
     this.target.dispose()
     this.blitMesh.geometry.dispose()
     this.blitMaterial.dispose()
+    this.blitTexture?.dispose()
+    this.blitTexture = null
   }
 }

@@ -22,9 +22,30 @@
  * period whatever the frame costs — so an absolute threshold measures the monitor rather than the
  * app. The two absolutes this shipped with (degrade above 20 ms, restore below 13.5 ms) were both
  * wrong for that reason: on a 60 Hz panel a *healthy* frame reports 16.7 ms, which is above the
- * restore threshold, so the ladder could only ever descend; and 20 ms is PRD 7.2's 50 fps ceiling,
- * so 50–59 fps was accepted as fine on that same panel. See {@link refreshIntervalMs} for what
+ * restore threshold, so the ladder could only ever descend. See {@link refreshIntervalMs} for what
  * replaces them.
+ *
+ * **The 50 fps ceiling, and why neither constant is really what governs it (DEC-698 N1).** This
+ * paragraph used to also say that 20 ms was PRD 7.2's 50 fps ceiling, so 50–59 fps was accepted as
+ * fine — offered as a second defect the relative threshold repairs. It repairs no such thing, and
+ * read as an average interval it is worse: `DEGRADE_FACTOR` of 1.45 on a 60 Hz period is 24.2 ms,
+ * which is 41 fps against the old constant's 50.
+ *
+ * But an average interval is not a state a vsync-locked page occupies. On a 60 Hz panel a frame is
+ * 16.7 ms or it is 33.3, and *both* thresholds sit in the gap between them, so on that panel the
+ * old constant and the new factor decide identically — what actually moves the ladder is the
+ * fraction of frames that doubled, and the only limb here is a p90. p90 crosses into the doubled
+ * bucket at 10 % doubled, which is 60 / 1.1 ≈ 55 fps. So the band genuinely accepted on a locked
+ * 60 Hz panel is about 55–59 fps, under either number, and it is a property of the p90 window
+ * rather than of the constant.
+ *
+ * Where the two do differ is a page that is *not* vsync-locked — an offscreen or vsync-disabled
+ * run, which is what the bench and the e2e smoke are — and there 24.2 ms is a real 41 fps and the
+ * limb is the looser one. That is the accepted cost of the paragraph below: a threshold tight
+ * enough to catch a sustained 50 fps also fires on the jitter of a locked run that is coping, and
+ * measurably walked one down all three rungs. Do not tighten `DEGRADE_FACTOR` to recover the 50 fps
+ * ceiling without re-running that bench — and do not expect tightening it to change anything on a
+ * locked panel, because it will not.
  *
  * The review also wanted the converse caught — a 120 Hz panel dropping every second frame is still
  * only 60 fps. It is **not** caught here, deliberately: the estimate is capped at the 60 Hz period,

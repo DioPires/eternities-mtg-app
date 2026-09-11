@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import type { BufferGeometry, Vector4, WebGLRenderer } from 'three'
+import type { BufferGeometry, Texture, Vector4, WebGLRenderer } from 'three'
 
 import { ATLAS_BYTES, ATLAS_CELLS, ATLAS_COLUMNS, ThumbnailAtlas } from '../src/scene/cards/atlas'
 import {
@@ -335,6 +335,100 @@ describe('PRD 8.5.8 atlas blit frame', () => {
     expect(fake.scissorTest()).toBe(true)
     expect(fake.renderTarget()).toBe(otherTarget)
     atlas.dispose()
+  })
+
+  /**
+   * DEC-697. A `Texture` per upload is a `glCreateTexture` + `texStorage2D` + `glDeleteTexture`
+   * per thumbnail — a 91 KB allocate/free cycle each. A 110 s card-level session measured ~721 of
+   * them: the fill, bounded by the tier's `thumbnailCapacity` of 512 rather than by `ATLAS_CELLS`,
+   * plus every cell arriving after it. Fetch-bound and finite, not a steady rate: the burst landed
+   * in the first seconds after `focusCard` and was at 0/s by second 35. One staging
+   * texture makes every upload after the first a bare `texSubImage2D`, because three keys its GL
+   * texture on the parameters and not on the image.
+   */
+  const stagingOf = (atlas: ThumbnailAtlas): Texture | null =>
+    (atlas as unknown as { blitTexture: Texture | null }).blitTexture
+
+  it('stages every upload through one texture rather than allocating one per thumbnail', () => {
+    const atlas = new ThumbnailAtlas(ATLAS_CELLS)
+    const fake = fakeRenderer(1, 1920, 1080)
+    const closed: boolean[] = []
+    const tracked = (): ImageBitmap => {
+      const index = closed.push(false) - 1
+      return {
+        width: ATLAS_CELL_WIDTH,
+        height: ATLAS_CELL_HEIGHT,
+        close: () => {
+          closed[index] = true
+        },
+      } as unknown as ImageBitmap
+    }
+
+    atlas.claim(0, 0)
+    atlas.upload(fake.renderer, 0, tracked())
+    const staging = stagingOf(atlas)
+    expect(staging).not.toBeNull()
+
+    const versionAfterFirst = staging!.source.version
+    for (let key = 1; key < 5; key += 1) {
+      atlas.claim(key, 0)
+      expect(atlas.upload(fake.renderer, key, tracked())).toBe(true)
+      // Same `Texture`, so three's cache key never moves and its GL storage is never reallocated.
+      expect(stagingOf(atlas)).toBe(staging)
+    }
+    // Each upload still bumps the source version, or three would skip the re-upload entirely and
+    // every cell after the first would hold the first thumbnail.
+    expect(staging!.source.version).toBe(versionAfterFirst + 4)
+    // The material keeps pointing at it: nulling `map` between uploads flipped `USE_MAP` on and
+    // off and re-ran the program cache lookup every time.
+    expect(
+      (atlas as unknown as { blitMaterial: { map: Texture | null } }).blitMaterial.map,
+    ).toBe(staging)
+    // Still nothing outside the atlas holding a decoded image.
+    expect(closed).toEqual([true, true, true, true, true])
+
+    atlas.dispose()
+  })
+
+  it('reallocates the staging texture when a bitmap is not the cell size', () => {
+    // `texSubImage2D` writes the image's own dimensions at offset 0 into storage sized by the
+    // *first* bitmap. A smaller one would leave the previous thumbnail's pixels showing around it
+    // and a larger one is a GL error, so a mismatch has to reallocate rather than reuse.
+    const atlas = new ThumbnailAtlas(ATLAS_CELLS)
+    const fake = fakeRenderer(1, 1920, 1080)
+    const sized = (width: number, height: number): ImageBitmap =>
+      ({ width, height, close: () => {} }) as unknown as ImageBitmap
+
+    atlas.claim(0, 0)
+    atlas.upload(fake.renderer, 0, sized(ATLAS_CELL_WIDTH, ATLAS_CELL_HEIGHT))
+    const first = stagingOf(atlas)
+
+    atlas.claim(1, 0)
+    atlas.upload(fake.renderer, 1, sized(ATLAS_CELL_WIDTH, ATLAS_CELL_HEIGHT - 1))
+    expect(stagingOf(atlas)).not.toBe(first)
+
+    // And back to the cell size: the new one is kept and reused from there.
+    const second = stagingOf(atlas)
+    atlas.claim(2, 0)
+    atlas.upload(fake.renderer, 2, sized(ATLAS_CELL_WIDTH, ATLAS_CELL_HEIGHT - 1))
+    expect(stagingOf(atlas)).toBe(second)
+
+    atlas.dispose()
+  })
+
+  it('disposes the staging texture with the atlas', () => {
+    const atlas = new ThumbnailAtlas(ATLAS_CELLS)
+    const fake = fakeRenderer(1, 1920, 1080)
+    atlas.claim(0, 0)
+    atlas.upload(fake.renderer, 0, bitmap())
+    const staging = stagingOf(atlas)!
+    let disposed = false
+    staging.addEventListener('dispose', () => {
+      disposed = true
+    })
+    atlas.dispose()
+    expect(disposed).toBe(true)
+    expect(stagingOf(atlas)).toBeNull()
   })
 })
 

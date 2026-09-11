@@ -139,10 +139,18 @@ const HOOKS = `
     }
     const image = proto.texImage2D
     proto.texImage2D = function (target, level, internalFormat, width, height) {
-      // The 6-argument DOM-source overload has no width/height; those are atlas uploads, not
-      // render targets, and they are counted by \`uploads\` without bytes.
+      // The 6-argument DOM-source overload is \`(target, level, internalFormat, format, type,
+      // source)\`, so its 4th and 5th arguments are the format and type enums — both numbers.
+      // A \`typeof width === 'number'\` guard therefore does *not* exclude it (DEC-698 N6): it
+      // sized a 6-arg atlas upload as \`format x type x bpp\`, e.g. 6408 x 5121 x 4 = 130 MB of
+      // pure fiction per call. Switch on the arity instead, which is what actually distinguishes
+      // the overloads. Those uploads are still counted by \`uploads\`, just without bytes.
+      //
+      // The threshold is 9, not 8: there is no 8-argument overload. The forms that carry width and
+      // height are \`(target, level, internalFormat, width, height, border, format, type, X)\` — 9
+      // arguments — and its WebGL2 \`srcData, srcOffset\` variant at 10.
       state.uploads += 1
-      if (typeof width === 'number' && typeof height === 'number') {
+      if (arguments.length >= 9) {
         attribute(target, size(internalFormat, width, height))
       }
       return image.apply(this, arguments)
