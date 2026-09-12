@@ -39,8 +39,8 @@ The alphas are **load-bearing, not decorative**. See §3.
 One family: Inter, self-hosted, variable weight, SIL OFL 1.1 (`web/src/fonts/Inter-OFL.txt`). Two
 `unicode-range` subsets — `latin` (48 KB) and `latin-ext` (85 KB). In practice only the first is
 ever fetched: the shipped dataset's names live entirely inside `latin` plus U+2013, which the
-browser confirms by never requesting the second file (`verify-browser.mjs` reports
-`1 face(s)`).
+browser confirms by never requesting the second file (`e2e/a11y.spec.ts` 9a reads the fetched
+`.woff2` origins, and sees one).
 
 Five sizes on a 1.2 ratio from `0.6875rem`, three weights, one eyebrow treatment (uppercase,
 tracked, `--ink-muted`) shared by every section label in the product. Anything that is a column of
@@ -184,8 +184,10 @@ transition in the file.
 
 The scene's own motion is not CSS and is not here: `useReducedMotion` stops rotation, drift,
 twinkle, fly-to easing and attract mode in the renderer, because a shader does not read a media
-query. `verify-browser.mjs` drives both halves under an emulated
-`prefers-reduced-motion: reduce`.
+query. `e2e/a11y.spec.ts` 9e drives the CSS half under an emulated `prefers-reduced-motion:
+reduce`. The renderer half stays with the unit suite — `starfield.test.ts` freezes every angle
+where it stands, `navigation.test.ts` shortens the flights — because a software rasteriser in CI
+cannot judge motion.
 
 ## 6. The accessibility checklist
 
@@ -197,24 +199,32 @@ browser.
 | --- | --- | --- | --- |
 | 1 | 7.5.4 | Every text/surface pairing reaches 4.5:1 against a **bloomed-star** backdrop | `test/design.test.ts`, 33 enumerated pairs |
 | 2 | 7.5.4 | …and against the sky, the reading the PRD's wording gives | `test/design.test.ts` |
-| 3 | 7.5.4 | The stylesheet actually paints with those tokens | `verify-browser.mjs` — computed colours compared back to the tokens |
+| 3 | 7.5.4 | The stylesheet actually paints with those tokens | `e2e/a11y.spec.ts` 9b — computed colours compared back to the tokens |
 | 4 | 1.4.11 | Controls with no fill have a 3:1 boundary | `test/design.test.ts` |
-| 5 | 7.5.2 | Focus is visible on any backdrop, including a white star | `test/design.test.ts` + `verify-browser.mjs` reads the computed ring |
-| 6 | 7.5.2 | A modal opens focused, on the right element | `verify-browser.mjs` |
-| 7 | 7.5.2 | Tab cannot leave a modal — 40 presses, drawer rows live behind the scrim | `verify-browser.mjs` |
-| 8 | 7.5.2 | Closing hands focus back to the control that opened it | `verify-browser.mjs` |
-| 9 | 7.5.2 | The search combobox holds focus on its input | `verify-browser.mjs` |
+| 5 | 7.5.2 | Focus is visible on any backdrop, including a white star | `test/design.test.ts` + `e2e/a11y.spec.ts` 9c reads the computed ring |
+| 6 | 7.5.2 | A modal opens focused, on the right element | `e2e/a11y.spec.ts` 9c |
+| 7 | 7.5.2 | Tab cannot leave a modal — 40 presses, drawer rows live behind the scrim | `e2e/a11y.spec.ts` 9c |
+| 8 | 7.5.2 | Closing hands focus back to the control that opened it | `e2e/a11y.spec.ts` 9c |
+| 9 | 7.5.2 | The search combobox holds focus on its input | `e2e/a11y.spec.ts` 9c |
 | 10 | 7.5.2 | Tab order arithmetic, including focus-outside and single-element cases | `test/dialog.test.ts` |
-| 11 | 7.5.3 | Colour identity and rarity are text in the card panel | `verify-browser.mjs` (Phase 4's walk, step 5) |
-| 12 | 7.5.1, 5.9 | Duration tokens collapse and nothing transitions | `verify-browser.mjs` under emulated reduced motion |
+| 11 | 7.5.3 | Colour identity and rarity are text in the card panel | **nothing, since DEC-708** — was `verify-browser.mjs`'s Phase 4 walk, step 5 |
+| 12 | 7.5.1, 5.9 | Duration tokens collapse and nothing transitions | `e2e/a11y.spec.ts` 9e, under emulated reduced motion |
 | 13 | 7.5.1, 5.9 | Every duration is a token, so the override reaches all of them | `test/design.test.ts` |
-| 14 | 5.9 | Scene motion stops | `verify-browser.mjs`, Phase 2a self-check readout |
-| 15 | 7.6.1 | Fonts are self-hosted, same-origin, and in use | `verify-browser.mjs` |
+| 14 | 5.9 | Scene motion stops | **nothing, since DEC-708** — was `verify-browser.mjs` reading the Phase 2a self-check readout |
+| 15 | 7.6.1 | Fonts are self-hosted, same-origin, and in use | `e2e/a11y.spec.ts` 9a |
 | 16 | 7.6.1 | No third-party origin in any `@font-face` | `test/design.test.ts` |
-| 17 | 4.11 | The Fan Content notice appears verbatim, all five clauses | `test/design.test.ts` + `verify-browser.mjs` |
-| 18 | 4.11 | Scryfall credited for data and images | `verify-browser.mjs` |
-| 19 | 7.6.2 | Every external link is `rel="noopener noreferrer"` | `test/design.test.ts` + `verify-browser.mjs` |
-| 20 | 7.6.1 | The page does not violate its own CSP | `verify-browser.mjs`, `securitypolicyviolation` listener |
+| 17 | 4.11 | The Fan Content notice appears verbatim, all five clauses | `test/design.test.ts` + `e2e/a11y.spec.ts` 9d |
+| 18 | 4.11 | Scryfall credited for data and images | `e2e/a11y.spec.ts` 9d |
+| 19 | 7.6.2 | Every external link is `rel="noopener noreferrer"` | `test/design.test.ts` + `e2e/a11y.spec.ts` 9d |
+| 20 | 7.6.1 | The page does not violate its own CSP | `e2e/a11y.spec.ts` 9f, `securitypolicyviolation` listener, with an injected-`<style>` control |
+| 21 | 7.5.x | No serious or critical axe violation on the shipped shell | `e2e/a11y.spec.ts`, `@axe-core/playwright` |
+
+**What DEC-708 changed here.** Twelve of these rows used to be checked by
+`web/scripts/verify-browser.mjs`, which ran on a real GPU on one laptop and was in neither CI nor
+pre-commit (review §5.5 T3). They now run in CI on every pull request. Two rows — 11 and 14 — were
+part of the wider walk rather than the accessibility checklist and were not ported, so they are
+unchecked as of that change and say so; the archived script is retrievable at the
+`review-tooling-2026-09` tag.
 
 ### What is not claimed
 

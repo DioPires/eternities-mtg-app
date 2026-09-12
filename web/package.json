@@ -17,8 +17,7 @@
     "test:e2e": "playwright test",
     "check-budget": "node scripts/check-budget.mjs",
     "bench": "node scripts/bench.mjs",
-    "verify-browser": "node scripts/verify-browser.mjs",
-    "cross-browser": "node scripts/cross-browser.mjs",
+    "visual-gate": "node scripts/visual-gate.mjs",
     "windows-kit": "node bench/windows/run.mjs"
   },
   "dependencies": {
@@ -29,6 +28,7 @@
     "zustand": "5.0.15"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.63.0",
     "@testing-library/dom": "^10.4.1",

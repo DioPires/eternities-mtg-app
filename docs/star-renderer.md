@@ -191,14 +191,22 @@ real hardware; it is there because a range needs two ends.
 
 ```
 pnpm test                       # the arithmetic: motion, plane table, geometry, quality, errors
-pnpm verify-browser --dataset all
+pnpm test:e2e                   # the routes, the quality ladder, the a11y and CSP checklist
 pnpm bench --dataset scale --uncapped --shots ../shots
 ```
 
-`verify-browser` runs on the machine's **real GPU** — the same launch flags as `bench` — and fails
-if Chrome falls back to SwiftShader. That matters because the check below is cited as the mitigation
-for driver variance, and a software rasteriser cannot answer for a driver. `--allow-software`
-downgrades it to a warning, for a box with no GPU at all.
+**The GPU self-check has no driver as of DEC-708.** It ran under `verify-browser.mjs`, which was
+archived under the `review-tooling-2026-09` tag (review §6.1 group C); the a11y and CSP half of
+that script moved to `e2e/a11y.spec.ts`, but the self-check half did not, because it needs a real
+GPU and CI has none. Everything below describes the check as it stands in `selfCheck.ts` — the code
+is untouched and `?selfcheck=1` still runs it in a browser — but nothing invokes it automatically
+today. Review §6.1 group B keeps `scene/selfCheck.ts` and moves it behind a separate harness entry;
+that leg is where it gets a driver back. To run it now:
+`git show review-tooling-2026-09:web/scripts/verify-browser.mjs > web/scripts/verify-browser.mjs`.
+
+That driver ran on the machine's **real GPU** — the same launch flags as `bench` — and failed if
+Chrome fell back to SwiftShader. That mattered because the check below is cited as the mitigation
+for driver variance, and a software rasteriser cannot answer for a driver.
 
 It runs the **GPU self-check** (`web/src/scene/selfCheck.ts`, `?selfcheck=1`), the only way to test
 the one claim that cannot be tested without a GPU: that the CPU motion mirror agrees with the vertex

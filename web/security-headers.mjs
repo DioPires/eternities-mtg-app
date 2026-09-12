@@ -57,9 +57,9 @@ export function contentSecurityPolicy(options = {}) {
      * With the directive absent, `style-src 'self'` governs attributes too — so an injected
      * `style="…"` is now refused as well as an injected `<style>`.
      *
-     * `verify-browser.mjs` asserts the built site loads clean under exactly this policy, so a
+     * `e2e/a11y.spec.ts` 9f asserts the built site loads clean under exactly this policy, so a
      * future dependency that injects a `<style>` — or a `style` attribute — fails the check rather
-     * than the user's page.
+     * than the user's page. In CI on every pull request, since DEC-708.
      */
     'style-src': ["'self'"],
     // PRD 7.6.1: fonts are self-hosted.
