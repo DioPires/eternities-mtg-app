@@ -66,14 +66,27 @@ type ParsedSite = Site & { readonly options: string }
 /**
  * Each `new <Something>Material(…)` in `src`, with its own constructor options.
  *
- * The match deliberately stops at the class name, and treats the argument list as optional, rather
- * than requiring `({`. Every character the *regex* insists on is a filter: requiring the brace makes
- * `new PointsMaterial()` or `new PointsMaterial(opts)` not a site that failed the name check but no
- * site at all, and requiring even the paren does the same for `new PointsMaterial`, which is legal
- * TypeScript and constructs the material just as anonymously. Nothing else in this repo rejects that
- * spelling — there is no Prettier to normalise it to `()` and `new-parens` is not among the lint
- * rules — so the guard is the only thing that can. Matching the construction and recording an
- * unreadable argument as `null` moves the decision to an assertion, where it is visible.
+ * The match deliberately stops at the *construction* — tolerating any whitespace after `new`, an
+ * optional namespace qualifier, and an optional parenthesised callee — and treats the argument list
+ * as optional, rather than requiring `({`. Every character the *regex* insists on is a filter, and
+ * each one exempts a spelling that constructs the material just as anonymously:
+ *
+ * - requiring `{` makes `new PointsMaterial()` and `new PointsMaterial(opts)` no site at all;
+ * - requiring even the paren does the same for `new PointsMaterial`;
+ * - requiring one literal space exempts `new··PointsMaterial`, a tab, and a line wrap after `new`;
+ * - requiring an unqualified callee exempts `new THREE.PointsMaterial`;
+ * - requiring no parenthesis around the callee exempts `new (PointsMaterial)(…)`;
+ * - requiring a letters-only class name exempts `new My2Material`.
+ *
+ * All of those are legal TypeScript, and nothing else in this repo rejects any of them: there is no
+ * Prettier to normalise them, and `no-multi-spaces`, `no-tabs` and `new-parens` are all absent from
+ * `eslint.config.js`. The guard is the only thing that can, so the regex insists on as little as it
+ * can. Matching the construction and recording an unreadable argument as `null` moves the decision
+ * to an assertion, where it is visible.
+ *
+ * `\bnew\b` rather than `new\s+` is what makes the whitespace optional without inventing sites: a
+ * variable named `newPointsMaterial` is not a construction and must not match, while `new(X)` with
+ * no space at all must.
  *
  * The cost is that a `new SomethingMaterial` written in prose in a comment under `src` would now be
  * a phantom site, and would fail. That is the safe direction for this guard, and there are none
@@ -88,14 +101,23 @@ type ParsedSite = Site & { readonly options: string }
 function materialSites(files: [string, string][]): Site[] {
   const sites: Site[] = []
   for (const [file, source] of files) {
-    const pattern = /new ([A-Za-z]*Material)\b/g
+    const pattern = /\bnew\b\s*\(?\s*(?:[A-Za-z0-9_$]+\s*\.\s*)*([A-Za-z0-9_$]*Material)\b/g
     let match: RegExpExecArray | null
     while ((match = pattern.exec(source)) !== null) {
       let open = match.index + match[0].length
-      while (open < source.length && /\s/.test(source[open]!)) open += 1
+      const skip = (): void => {
+        while (open < source.length && /\s/.test(source[open]!)) open += 1
+      }
+      skip()
+      // A parenthesised callee — `new (PointsMaterial)({ … })` — leaves its close paren between the
+      // class name and the argument list. Consuming it is what keeps that spelling a site.
+      if (source[open] === ')') {
+        open += 1
+        skip()
+      }
       if (source[open] === '(') {
         open += 1
-        while (open < source.length && /\s/.test(source[open]!)) open += 1
+        skip()
       }
       if (source[open] !== '{') {
         sites.push({ file, kind: match[1]!, options: null })
@@ -198,7 +220,13 @@ describe('shader names (DEC-700)', () => {
     // material would inherit that one's `name:`. No site's options may contain a second
     // constructor call.
     for (const site of PARSED) {
-      expect(site.options, `${site.file} ${site.kind}`).not.toMatch(/new [A-Za-z]*Material\(/)
+      // Kept as wide as the site scanner above deliberately. A slice that overran into a following
+      // construction written in any of the spellings the scanner accepts must be reported here too;
+      // a narrower regex here would re-create exactly the asymmetry that let those spellings past
+      // the scanner in the first place.
+      expect(site.options, `${site.file} ${site.kind}`).not.toMatch(
+        /\bnew\b[\s(]*(?:[A-Za-z0-9_$]+\s*\.\s*)*[A-Za-z0-9_$]*Material\b/,
+      )
     }
   })
 
