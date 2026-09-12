@@ -361,7 +361,7 @@ describe('PRD 8.5.8 atlas blit frame', () => {
         close: () => {
           closed[index] = true
         },
-      } as unknown as ImageBitmap
+      }
     }
 
     atlas.claim(0, 0)
@@ -396,8 +396,11 @@ describe('PRD 8.5.8 atlas blit frame', () => {
     // and a larger one is a GL error, so a mismatch has to reallocate rather than reuse.
     const atlas = new ThumbnailAtlas(ATLAS_CELLS)
     const fake = fakeRenderer(1, 1920, 1080)
-    const sized = (width: number, height: number): ImageBitmap =>
-      ({ width, height, close: () => {} }) as unknown as ImageBitmap
+    const sized = (width: number, height: number): ImageBitmap => ({
+      width,
+      height,
+      close: () => {},
+    })
 
     atlas.claim(0, 0)
     atlas.upload(fake.renderer, 0, sized(ATLAS_CELL_WIDTH, ATLAS_CELL_HEIGHT))

@@ -272,7 +272,7 @@ async function sweepTiers(page) {
     const t0 = Date.now()
     // Poll for a tier change rather than assuming one: a rate that does not cross the band is a
     // legitimate outcome and must be recorded as "no change", not waited out as a failure.
-    let current = previous
+    let current
     while (Date.now() - t0 < SETTLE_MS) {
       await sleep(500)
       current = await readTier(page)

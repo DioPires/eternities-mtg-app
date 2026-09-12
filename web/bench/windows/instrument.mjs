@@ -435,7 +435,7 @@ export function installGpuProbe() {
     const canvases = document.querySelectorAll('canvas')
     for (const canvas of canvases) {
       for (const kind of ['webgl2', 'webgl']) {
-        let context = null
+        let context
         try {
           context = nativeGetContext.call(canvas, kind)
         } catch {
