@@ -35,9 +35,10 @@ MULTIVERSE_RADIUS: Final = 130.0
 """R of PRD 8.6.1, sized so the whole Appendix A roster packs with the 5.3.3 anti-overlap margin.
 Identical in ``fixture-scale``, so bench numbers taken against the fixture carry over.
 
-One manual link remains outside Python: ``web/scripts/verify-browser.mjs`` writes the value out as
-the literal ``130`` in its ``unprojectable`` failure message (a cross-language export was judged not
-worth it for one diagnostic string). A stale figure there misdirects whoever reads the failure."""
+The one manual link outside Python was ``web/scripts/verify-browser.mjs``, which wrote the value out
+as the literal ``130`` in its ``unprojectable`` failure message (a cross-language export was judged
+not worth it for one diagnostic string). DEC-708 archived that script under the
+``review-tooling-2026-09`` tag, so no file outside this module restates the figure today."""
 
 
 class BinaryKind(IntEnum):
