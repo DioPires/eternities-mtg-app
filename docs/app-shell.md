@@ -4,13 +4,13 @@
 stub over Phase 0's hello-scene, with every camera-dependent flow wired through the contract and
 waiting for the seam below to be swapped. It has been. `scene/EternitiesScene.tsx` — one scene with
 the real rig, the star field and the card tier — is now the shell's canvas on the default route, and
-`?harness=3` still reaches it standalone so Phase 3's exit criteria stay checkable as reviewed.
+`?probe=1` still reaches it standalone so Phase 3's exit criteria stay checkable as reviewed.
 
 The two lifetimes that were in the way are reconciled by `src/navigation/host.ts`: a stateless
 `NavigationApi` built before React that forwards to a delegate, starting as the Phase 0 stub and
 becoming the rig when `planes.json` lands. It owns the listener sets, so the router binding `boot()`
-registers survives the swap. `createNavigation()` in `app/services.tsx` was the only line that had to
-change — the frozen contract held. `web/test/navigation.test.ts` runs the parameterised suite over
+registers survives the swap. `createNavigationHost()` in `app/services.tsx` was the only line that had
+to change — the frozen contract held. `web/test/navigation.test.ts` runs the parameterised suite over
 the host as well as the stub and the rig, plus a block for the swap itself.
 
 One consequence worth knowing: `app/dataset.ts` no longer fetches. The shell and the scene each ran

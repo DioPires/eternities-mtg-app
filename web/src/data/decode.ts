@@ -65,14 +65,13 @@ export function decodeHeader(buffer: ArrayBuffer, byteOffset = 0): BinaryHeader 
  * A decoded `stars.bin`.
  *
  * `interleaved` is the record array with no header, ready to become a single WebGL buffer with
- * stride {@link STAR_RECORD_BYTES}. `positions` is only materialised on demand, for the float32
- * fallback path of PRD risk 6 and for the CPU motion mirror of PRD 8.5.7.
+ * stride {@link STAR_RECORD_BYTES}. Positions are materialised only on demand, through
+ * {@link Stars.toFloat32Positions}, for PRD risk 6's fallback path and PRD 8.5.7's CPU motion
+ * mirror. (The field this used to name, `float32Positions`, went with review §6.1 group A.)
  */
 export interface Stars {
   readonly count: number
   readonly flags: number
-  /** True when the emitter wrote float32 positions instead of float16. Always false today. */
-  readonly float32Positions: boolean
   readonly interleaved: Uint8Array
   readonly view: DataView
   x(index: StarIndex): number
@@ -111,17 +110,19 @@ export function decodeStars(buffer: ArrayBuffer): Stars {
 function makeStars(buffer: ArrayBuffer, count: number, flags: number): Stars {
   const interleaved = new Uint8Array(buffer, BINARY_HEADER_BYTES, count * STAR_RECORD_BYTES)
   const view = new DataView(buffer, BINARY_HEADER_BYTES, count * STAR_RECORD_BYTES)
-  const float32Positions = (flags & FLAG_FLOAT32_POSITIONS) !== 0
+  // The record is a fixed 12 bytes (three float16 coordinates), so a float32 emitter would need a
+  // wider record than this decoder — and than the length check above — knows how to read. Refuse
+  // rather than mis-read: PRD risk 6's fallback is `starGeometry`'s, not a second record layout.
+  if ((flags & FLAG_FLOAT32_POSITIONS) !== 0) {
+    throw new ContractError('stars.bin declares float32 positions; the record is 12-byte float16')
+  }
   const at = (i: StarIndex, offset: number): number => i * STAR_RECORD_BYTES + offset
   const coordinate = (i: StarIndex, axis: 0 | 1 | 2): number =>
-    float32Positions
-      ? view.getFloat32(at(i, axis * 4), true)
-      : float16ToNumber(view.getUint16(at(i, axis * 2), true))
+    float16ToNumber(view.getUint16(at(i, axis * 2), true))
 
   return {
     count,
     flags,
-    float32Positions,
     interleaved,
     view,
     x: (i) => coordinate(i, 0),

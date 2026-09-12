@@ -55,8 +55,3 @@ export async function loadCard(
   if (row && row.u === oracleId) return row
   return shard.cards.find((card) => card.u === oracleId) ?? null
 }
-
-/** Test seam; also what a data refresh would need if the app ever hot-swapped a dataset. */
-export function clearShardCache(): void {
-  shards.clear()
-}

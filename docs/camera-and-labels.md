@@ -92,6 +92,12 @@ The two places the lazy spelling would have failed:
   every frame rate. Stepping the acceleration per frame put 0.022 units between 30 and 120 fps
   (DEC-606).
 
+How long the spring takes, since "as a force" only reassures if it actually settles: a hand-over
+mid-flight can leave the camera 140 units from a tether whose limit is 63, and from the worst case
+measured — 258 units outside a 60-unit limit — it is within 5% of the limit after 5.5 s and within
+0.1% after 10 s. `LIMIT_SPRING` is overdamped against `ORBIT_DAMPING` (λ² > 4k), so it never
+overshoots and bounces on the way in.
+
 PRD 9.1.3's check runs the motion function and the rig at 30, 60 and 120 fps for a fixed elapsed
 time and compares positions to nine decimal places — six for the rig, whose flights and springs
 carry float error through more arithmetic. `web/test/camera.test.ts` runs it over a plain flight and

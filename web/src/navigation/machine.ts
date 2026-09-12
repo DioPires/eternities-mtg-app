@@ -33,7 +33,8 @@ import {
   type Vec3,
 } from './types'
 
-export const BLIND_ETERNITIES_SLUG = 'blind-eternities'
+import { BLIND_ETERNITIES_SLUG } from '../data/types'
+
 /** PRD 5.7.3 default; PRD 5.9 drops it to 300 ms under reduced motion. */
 export const DEFAULT_DURATION_MS = 1200
 export const REDUCED_MOTION_DURATION_MS = 300
@@ -303,9 +304,9 @@ export function createNavigationMachine(
       set = new Set()
       listeners.set(event, set)
     }
-    set.add(listener as (payload: never) => void)
+    set.add(listener)
     return () => {
-      set.delete(listener as (payload: never) => void)
+      set.delete(listener)
     }
   }
 

@@ -12,12 +12,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final, cast
 
+from ..contract.enums import BLIND_ETERNITIES_SLUG
+
 DATA_DIR: Final = Path(__file__).resolve().parents[3] / "data"
 APPENDIX_A: Final = DATA_DIR / "appendix_a.json"
 APPENDIX_B: Final = DATA_DIR / "appendix_b.json"
 OVERRIDES: Final = DATA_DIR / "overrides.json"
-
-BLIND_ETERNITIES: Final = "blind-eternities"
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,8 +130,8 @@ class Appendices:
     def __post_init__(self) -> None:
         slugs = [p.slug for p in self.planes]
         _reject_duplicates(slugs, "Appendix A plane slug")
-        if BLIND_ETERNITIES not in slugs:
-            raise ValueError(f"Appendix A must contain {BLIND_ETERNITIES!r} (PRD 4.7.3)")
+        if BLIND_ETERNITIES_SLUG not in slugs:
+            raise ValueError(f"Appendix A must contain {BLIND_ETERNITIES_SLUG!r} (PRD 4.7.3)")
         _reject_duplicates([s.code for s in self.sets], "Appendix B set code")
 
         known = set(slugs)

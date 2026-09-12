@@ -17,7 +17,7 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from typing import Any, Final, cast
 
-from ..contract.enums import assert_known_layout
+from ..contract.enums import UNRELEASED_DATE, assert_known_layout
 
 SECURITY_STAMPS: Final[frozenset[str]] = frozenset(
     {"oval", "triangle", "acorn", "circle", "arena", "heart"}
@@ -299,7 +299,7 @@ def parse_set(row: dict[str, Any]) -> ScrySet:
         name=str(row["name"]),
         # A handful of announced sets carry no date; treat them as far-future so 4.3.8 keeps them
         # out rather than crashing on a missing key.
-        released_at=str(row.get("released_at") or "9999-12-31"),
+        released_at=str(row.get("released_at") or UNRELEASED_DATE),
         set_type=str(row["set_type"]),
         parent_set_code=str(parent) if isinstance(parent, str) else None,
         digital=bool(row.get("digital", False)),

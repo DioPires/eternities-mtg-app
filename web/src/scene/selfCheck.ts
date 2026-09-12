@@ -191,21 +191,15 @@ declare global {
   }
 }
 
-export function selfCheckRequested(
-  search = typeof location === 'undefined' ? '' : location.search,
-): boolean {
-  const value = new URLSearchParams(search).get('selfcheck')
-  return value !== null && value !== '0'
-}
+export { selfCheckRequested } from './selfCheck.url'
 
 /**
  * `?perrow=N`, the per-row sample budget, or `null` to use {@link SAMPLES_PER_ROW}.
  *
  * The floor and rate in `findDarkRows` are only meaningful against a particular budget, so the
  * budget has to be movable without a rebuild — otherwise re-deriving them means recompiling the
- * bundle once per candidate value, and nobody re-checks them again. `scripts/selfcheck-measure.mjs`
- * sweeps this. Diagnostic only: it is read on the `?selfcheck=1` path, which is the only path that
- * runs the check at all.
+ * bundle once per candidate value, and nobody re-checks them again. Diagnostic only: it is read on
+ * the `?selfcheck=1` path, which is the only path that runs the check at all.
  *
  * Rejects anything that is not a positive integer rather than letting it become `NaN`, which would
  * make `Math.min(perRow, total)` produce `NaN` and silently sample nothing.
@@ -273,111 +267,17 @@ const COINCIDENT_PX = 3
 const MIN_MEASURED = 16
 
 /**
- * The assertion that closes `unmeasured`'s escape hatch.
+ * The floor and rate that close `unmeasured`'s escape hatch (PRD 8.5.7).
  *
- * `distanceTo` searches an 11×11 window centred on the mirror's prediction, so the check's
- * sensitivity is not monotone in the size of the error: a star the mirror puts more than half a
- * window out is not in its own window at all, comes back `-1`, and is scored `unmeasured` —
- * dropped from the mean, from `missed` and from `ok` alike. Injecting `py += 2` into the dust row
- * of `fixture-small` fails the check; injecting `py += 3`, `4` or `6` — the same bug, larger —
- * passed it, with a *better* mean than the clean run, because all 15 row-0 samples went dark. That
- * is the exact PRD 8.5.7 catastrophe reported as agreement.
+ * A star the mirror puts more than half a pick window out is not in its own window, comes back
+ * `-1`, and is scored `unmeasured` — so a large enough error can read as agreement. What separates
+ * that from ordinary occlusion is distribution: occlusion is scattered, a mirror error moves a
+ * whole plane row at once. `findDarkRows` fails a row that went dark for a reason occlusion does
+ * not account for, given enough samples of it to tell.
  *
- * What separates the two causes of `unmeasured` is not the individual sample — from inside one
- * sample they are identical — but how they distribute across plane rows. Occlusion is a property
- * of one star's neighbourhood: it strikes the stars inside a galaxy core and not the ones in its
- * halo, so it is scattered, and it leaves plenty of the same row measurable. The mirror is written
- * per plane row, so an error in it moves every star on that row together and takes the whole row
- * out at once. A row that went all but entirely dark is therefore the signature of the bug and not
- * of the field — provided enough of it was sampled to tell the difference, which is what the floor
- * below is for. Rows sampled fewer times than that are reported but not judged; on an 87-plane
- * fixture most rows draw one sample and can never be either.
- *
- * Both numbers are set from measurement, and DEC-634 re-derived them against the per-row sampler.
- * **Neither moved. What moved is the numerator they are applied to**, and that is the whole of the
- * story — so read this as the record of a rule that had to change shape, not a pair of tuned knobs.
- *
- * *The floor stays 10, for a new reason.* Its old job was to outrank luck: at 37 of 64 samples
- * occluded, a row drawing four or five samples goes entirely dark by chance, as rows 47 and 43 did
- * on a clean build. Under {@link rowSampleIndices} a row's sample count is no longer a draw from
- * the file; it is `min(SAMPLES_PER_ROW, that row's stars)`, and on `fixture-scale` those counts run
- * 24 for 70 rows, then 23, 21, 21, 19, 18, 18, 12 — and then 7, 7, 6, which is all eighty non-empty
- * rows and sums to the 1832 samples a run takes. Nothing lands between 7 and 12, so every floor in
- * that gap selects the same 77 rows and the choice is insensitive. What the floor
- * now excludes is not unlucky rows but *small* ones: `lorwyn` (6 stars), `diraden` and `vryn` (7)
- * cannot reach ten samples at any budget without reading the same star twice, and ten reads of one
- * occluded star are ten dark samples establishing exactly what one established. They are reported
- * and never judged. Seven further planes hold no stars at all and cannot be sampled by any means, so
- * the denominator is 77 of 87: 80 non-empty rows, less those 3, against 7 empty ones.
- *
- * *The rate stays 0.9 — but only because the numerator stopped being `unmeasured`.* Sampling every
- * row reaches rows the file-wide sampler never judged, and on a real dataset some of them are
- * legitimately almost entirely occluded. Measured on Metal, clean, three runs each:
- *
- *     production   row 19 `dominaria`  23/24 23/24 23/24 dark   0.958
- *     production   row 67 `ravnica`    22/24 21/24 21/24        0.917
- *     production   rows 2, 60, 85      21/24                    0.875
- *     fixture-scale row 42             20/24 on all five runs   0.833
- *
- * `dominaria` holds 6266 stars, 21.9% of the production field, and at a 2 px pick sprite almost
- * every one of them is behind a nearer one. So on `unmeasured` there is **no threshold that works**:
- * 0.9 and 0.95 both fail that row on a clean build, and 1.0 sits one sample away from failing while
- * letting a single straggler exempt a genuinely displaced row. Raising the budget cannot separate
- * 0.958 from 1.0 either. The old constants hid this because the old sampler judged `dominaria` on
- * 14 samples drawn from one stretch of the file; sampling the row evenly is what revealed it.
- *
- * The fix is not a number. A dark sample now records *why* it was dark — see the branch in `sample`
- * — by asking what the pick window held instead, and only samples that occlusion does not account
- * for reach {@link SelfCheckResult.unexplainedRows}, which is what this rule reads. That quantity
- * is density-independent, and the separation is total rather than marginal:
- *
- *     production, clean            row 19: 23/24 dark, **0** unexplained; 1 unexplained in the run
- *     production, `py += 400`      row 19: 24/24 dark, **24** unexplained
- *     fixture-scale, clean         4 unexplained across 80 rows, 1122 of 1126 dark samples occluded
- *     fixture-scale, `py += 400`   row 44: 24/24 dark, **24** unexplained
- *
- * *So the rate moves from 0.9 to 0.5, and the numerator change is what demands it.* Against
- * `unmeasured`, 0.9 meant "this row went essentially entirely dark". Against `unexplained` that
- * reading is wrong, because occlusion keeps some of a *displaced* row's samples explained too. The
- * smallest rung on the ladder, `py += 3` into `fixture-small`'s row 0, moves the row a few pixels,
- * and four of its 24 samples then find a genuinely nearer star at the predicted pixel. That rung
- * reads 20 of 24 unexplained — 0.833, under 0.9 — so a rate carried across unexamined would have
- * let the ladder's *smallest* injection pass green. Re-running the ladder is what caught it, which
- * is the only way any entry on that list has ever been caught.
- *
- * What the measurements show is a gap with nothing in it. Clean rows reach at most 1 unexplained
- * sample of 24 (0.042), across all three datasets and every run measured; injected rows read 0.833
- * to 1.0. The rate goes in the middle of that gap rather than at either edge, so neither more
- * occlusion coincidence on a displaced row nor more noise on a clean one moves a verdict. Its old
- * job — denying a displaced row its exemption for one measurable straggler — is still done, with an
- * order of magnitude more room than 0.9 ever had.
- *
- * One thing this rule does not do, and one it used to not do. The list is **not** offered as
- * exhaustive — each entry was found by pushing an injection further than the round before it had
- * thought to, and the next one would be found the same way.
- *
- * It does not judge a row with fewer than ten stars, and it never can — see the floor above. What
- * it no longer does is fail to judge a row merely because the *file* was sampled evenly: that was
- * DEC-634's hole, and closing it took the judged count on `fixture-scale` from 1 row to 77.
- *
- * It used to miss an error large enough to project the row off screen, and no longer does. Nothing
- * in this constant or in `findDarkRows` changed to fix it — the fix is upstream, in `mirrorPixel`,
- * which stopped returning `null` for a projection outside NDC. An off-screen sample now enters
- * `checked` and `sampledRows` like any other, gets a pick window aimed at it, and is judged by the
- * rule below unchanged. On `fixture-small` the rung that used to pass green, `py += 400` into row
- * 0, now fails naming row 0 dark 24 of 24 while reporting `24 off screen`; the control that
- * displaces the same row in the *plane table* — mirror and shader agreeing, the row genuinely out
- * of frame — reports the identical `24 off screen` and passes, located 24 of 24. Opposite verdicts
- * on the same count, decided by measurement rather than by a rule about frustums, which is why the
- * discriminator the earlier analysis went looking for turned out to be unnecessary rather than
- * merely deferred. See `mirrorPixel` for the mechanism, and `docs/star-renderer.md`
- * § "The off-screen hole, and how it was closed" for the ladder, the control and the caveats on
- * reproducing them.
- *
- * The one projection that still escapes this rule is `z > 1` — behind the eye or past the far plane
- * — which no lateral view offset can aim a window at. Those samples are dropped before both
- * tallies, so they are not left to `findDarkRows` at all: they are counted as `unprojectable` and
- * `ok` requires zero of them. See that clause in `sample` for what makes a flat zero safe.
+ * Both numbers are measured, not chosen. `docs/star-renderer.md` § "How `DARK_ROW_MIN_SAMPLES`
+ * and `DARK_ROW_RATE` were derived" has the ladder runs, the per-row counts and the gap they sit
+ * in — including why the rate moved to 0.5 when the numerator became `unexplained`.
  */
 const DARK_ROW_MIN_SAMPLES = 10
 const DARK_ROW_RATE = 0.5
@@ -902,88 +802,14 @@ async function sample(
     buffer: [renderer.domElement.width, renderer.domElement.height],
     canvasBytes,
     positionMode: geometry.positionMode,
-    // Four clauses, for four ways the mirror can be wrong.
+    // Four clauses, for four ways the mirror can be wrong: nothing missed; enough located that
+    // "nothing missed" means something; no plane row dark for a reason occlusion does not explain
+    // (see `DARK_ROW_MIN_SAMPLES`); and nothing unprojectable.
     //
-    // Nothing may have missed — the mirror agrees with the shader wherever the two were compared.
-    // The run must have located enough stars for that to mean something, or the check passes
-    // vacuously on a crowded field: no misses, because nothing was ever compared. An absolute
-    // floor rather than a fraction, because what fraction is measurable is a property of the
-    // fixture's density, not of the mirror. And no plane row may have gone dark, or an error too
-    // large to measure passes as an error that was never there — see `DARK_ROW_MIN_SAMPLES`.
-    //
-    // The fourth is the other half of the off-screen fix. Aiming the pick window off screen makes
-    // a laterally displaced row measurable, but a star the mirror puts *behind the eye* has no
-    // pixel to aim at, and such a sample is still dropped before both tallies — which absorbs an
-    // error in two ways, both measured on `fixture-small` and both green before this clause.
-    // `py += 4000` takes row 0 out of `sampledRows` entirely, the same disappearance the lateral
-    // fix closes. `pz += 400` is quieter: it thins the row instead of removing it. Under the
-    // file-wide sampler that was the worse of the two — row 0 fell from 15 samples to 8, all 8 came
-    // back dark, and the row escaped `findDarkRows`, which does not judge below its floor of 10.
-    // Dropping a sample does not just lose that sample; it can drag the row it came from under the
-    // floor and take the others down with it.
-    //
-    // Per-row sampling (DEC-634) does not remove that mechanism, it just moves where it bites: the
-    // same rung now thins row 0 from 24 to 10, which is the floor exactly, so the row is judged,
-    // goes 10 of 10 unexplained, and the run fails on this clause and the dark-row rule together.
-    // One sample fewer and only this clause would fire. That margin is not a safety property of
-    // anything — it is where this fixture's arithmetic happens to land.
-    //
-    // Requiring zero is a real assertion here rather than a formality, and two separate facts are
-    // what make it safe — one about the camera, one about the data. Both have to hold, because a
-    // sample lands behind the eye either by the eye moving towards it or by the star being placed
-    // out past the eye.
-    //
-    // The camera: `?selfcheck=1` routes to the Phase 2a harness, and that harness runs its own
-    // fixed dev camera rather than the rig — `[0, 150, 260]` in `harness/Phase2aScene.tsx`, so
-    // 300.2 units out, the eye well outside the multiverse looking in. Not the rig's home framing
-    // of `R * 1.9 = 247`; the self-check and the bench live in the harness precisely because they
-    // drive the camera themselves.
-    //
-    // The data: `MULTIVERSE_RADIUS = 130.0` (`pipeline/src/eternities/pipeline/assemble.py`) bounds
-    // where the pipeline may place a plane *centre*, and the fixture centres go inside the same
-    // radius (`pipeline/src/eternities/fixtures/layout.py`). But a centre is not a star.
-    // `starWorldPosition` (`starfield/motion.ts`) puts two further terms on top of it: the star's
-    // local position scaled by the plane's visual radius (`px *= radius`), and `drift * motion`.
-    // Spin, tilt, shear and the multiverse rotation are all rotations and move nothing further out,
-    // so the bound is
-    //
-    //   |star| <= |centre| + FRAME_RADIUS * radius + driftAmplitude
-    //
-    // with `FRAME_RADIUS = 1.2` (`contract/enums.py`) bounding a local position. For a named plane
-    // that is `130 + 1.2 * 12 + drift` ~ 145, `R_MAX = 12` being the largest visual radius
-    // `layout.py` emits and drift being 3% of mean plane spacing (0.85 on an 87-plane dataset, 3.9
-    // on five-plane `fixture-small`). The widest row is the Blind Eternities dust row, which PRD
-    // 8.3 gives the identity transform and radius `R` itself: `0 + 1.2 * 130 = 156`. Either way a
-    // star sits within 156 of the origin, so depth stays inside `300.2 +/- 156` — 144.2 to 456.2.
-    // That clears the 0.1 near plane by three orders of magnitude and sits inside the harness
-    // camera's 6000 far plane by a factor of 13, which is why production comes back
-    // `0 unprojectable` over 87 planes.
-    //
-    // Those are bounds rather than measurements, and the measured spans are narrower because no
-    // star sits on the view axis at full extent: 191.1-402.6 on production, 188.5-411.3 on
-    // `fixture-scale`, the widest of the three. `nearestDepth` and `farthestDepth` report both
-    // margins on every run so the claim is checkable against numbers — but read them knowing they
-    // are taken over the surviving samples, so they cannot warn about the samples that trip this
-    // clause. A failing run still prints a healthy nearest.
-    //
-    // What would break the camera half is running the check from *inside* the field, where stars
-    // behind the eye are ordinary and this clause fires on a correct mirror. The near plane is the
-    // same regime by a quieter route: `pixelForNdc` accepts `z < -1` as measurable — correctly,
-    // since it is in front of the eye and a window can be aimed at it — but the shader clips it at
-    // the 0.1 near plane and never draws it, so the sample is measured, comes back unlocatable,
-    // and a correct mirror reads as a dark row rather than as an unprojectable one. Inside the
-    // field both clauses go wrong at once, and only one of them says so.
-    //
-    // What would break the data half is a plane legitimately placed far enough out. Measured: the
-    // plane-table control at `home + 4000` — mirror and shader in perfect agreement, the data
-    // simply saying the plane is up there — fails with 24 unprojectable. The message used to call
-    // that a mirror error; it now names both causes. The same control at `home + 400` passes, so
-    // the boundary sits between the two, a factor of 30 beyond the 130 a centre is allowed.
-    //
-    // It is a flat zero rather than a rate because neither regime exists today, and it should be
-    // replaced rather than loosened if either arrives — the replacement is a comparison against
-    // the shader, not a threshold: a star the mirror puts behind the eye that the id buffer still
-    // shows on screen is a contradiction no legitimate camera produces.
+    // The fourth is a real assertion, not a formality — a sample the mirror puts behind the eye has
+    // no pixel to aim a window at, so it would otherwise absorb an error silently. A flat zero is
+    // safe because of one fact about the camera and one about the data; both are written out in
+    // `docs/star-renderer.md` § "Why `ok` requires zero unprojectable samples".
     ok:
       missed.length === 0 &&
       offsetSamples >= MIN_MEASURED &&

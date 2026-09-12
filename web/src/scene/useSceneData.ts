@@ -153,8 +153,13 @@ export function useSceneData(): SceneDataState {
       lines.push(`star buffer: ${manifest.counts.stars} records, ${positionMode} positions`)
       patch({ planes, resources: { table, geometry, field, positionMode }, expected: manifest.counts.stars })
 
-      // PRD 8.7.5: the background artefacts wait for the first frame, so they never compete with
-      // `stars.bin` for the connection the intro is waiting on.
+      // PRD 8.7.5: the background artefacts wait for the first frame.
+      //
+      // What that buys, precisely (review §5.2 F6): they are not *issued* before the first paint,
+      // so the paint is never behind them. It is not a guarantee that they never compete with
+      // `stars.bin` — the star transfer is still streaming at that point and these start beside
+      // it. Gating on `starsComplete` instead would deliver non-competition and cost the search
+      // index its head start; PRD 8.7.5 asks for the frame, so the frame is what this waits on.
       const background = afterFirstFrame().then(async () => {
         const [search, sets] = await Promise.all([
           loadSearch({ signal }).catch((error: unknown) => {
@@ -232,7 +237,11 @@ export function useSceneData(): SceneDataState {
   return state
 }
 
-/** Resolves after the browser has painted at least once (PRD 8.7.5's "after the first frame"). */
+/**
+ * Resolves after the browser has painted at least once (PRD 8.7.5's "after the first frame").
+ *
+ * One rAF plus a macrotask. Not "after `stars.bin`" — see the call site.
+ */
 function afterFirstFrame(): Promise<void> {
   return new Promise((resolve) => {
     requestAnimationFrame(() => {

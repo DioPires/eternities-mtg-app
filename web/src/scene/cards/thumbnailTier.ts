@@ -32,7 +32,7 @@ import {
   Mesh,
   NormalBlending,
   ShaderMaterial,
-  type Uniform,
+  Uniform,
   type WebGLRenderer,
 } from 'three'
 
@@ -65,10 +65,6 @@ export interface CardIndex {
   readonly firstPrintingOf: (starIndex: number) => PrintingTuple | null
 }
 
-function uniform<T>(value: T): Uniform<T> {
-  return { value } as Uniform<T>
-}
-
 export interface ThumbnailTierStats {
   /** Instances drawn this frame. */
   readonly drawn: number
@@ -95,9 +91,9 @@ export class ThumbnailTier {
   private readonly aStar: InstancedBufferAttribute
   private readonly aFade: InstancedBufferAttribute
 
-  private readonly uSizeScale = uniform(1)
-  private readonly uThumbStartPx = uniform(THUMBNAIL_FADE_START_PX)
-  private readonly uThumbFullPx = uniform(THUMBNAIL_FADE_FULL_PX)
+  private readonly uSizeScale = new Uniform(1)
+  private readonly uThumbStartPx = new Uniform(THUMBNAIL_FADE_START_PX)
+  private readonly uThumbFullPx = new Uniform(THUMBNAIL_FADE_FULL_PX)
 
   /** Star index → the scene time its cell finished loading, for PRD 7.3.5's fade. */
   private readonly loadedAt = new Map<number, number>()
@@ -164,18 +160,18 @@ export class ThumbnailTier {
     this.geometry.instanceCount = 0
 
     const shared = {
-      uPlaneTable: uniform(this.table.texture),
-      uTime: uniform(0),
-      uMultiverseAngle: uniform(0),
-      uMotion: uniform(1),
-      uAtlas: uniform(this.atlas.texture),
-      uHues: uniform(HUE_COLOURS.map(([r, g, b]) => new Color(r, g, b))),
-      uStarDiameter: uniform(STAR_WORLD_DIAMETER),
+      uPlaneTable: new Uniform(this.table.texture),
+      uTime: new Uniform(0),
+      uMultiverseAngle: new Uniform(0),
+      uMotion: new Uniform(1),
+      uAtlas: new Uniform(this.atlas.texture),
+      uHues: new Uniform(HUE_COLOURS.map(([r, g, b]) => new Color(r, g, b))),
+      uStarDiameter: new Uniform(STAR_WORLD_DIAMETER),
       uSizeScale: this.uSizeScale,
       uThumbStartPx: this.uThumbStartPx,
       uThumbFullPx: this.uThumbFullPx,
-      uQuadHeight: uniform(THUMBNAIL_WORLD_HEIGHT),
-      uQuadAspect: uniform(ATLAS_CELL_WIDTH / ATLAS_CELL_HEIGHT),
+      uQuadHeight: new Uniform(THUMBNAIL_WORLD_HEIGHT),
+      uQuadAspect: new Uniform(ATLAS_CELL_WIDTH / ATLAS_CELL_HEIGHT),
     }
 
     const material = new ShaderMaterial({

@@ -64,8 +64,8 @@ export interface SceneNavigationOptions {
   readonly stars?: StarSource
   /**
    * `'auto'` runs an internal frame loop — `requestAnimationFrame` in a browser, a timer elsewhere.
-   * `'manual'` means the caller drives `update(dt)`, which is what the R3F component does from
-   * `useFrame` so the rig shares the renderer's clock.
+   * `'manual'` means the caller drives `rig.update(dt)` itself, which is what
+   * `CameraRigController` does from `useFrame` so the rig shares the renderer's clock.
    */
   readonly drive?: 'auto' | 'manual'
   /** Collapse every flight the caller did not time explicitly. The stub's `instant`, for tests. */
@@ -76,8 +76,6 @@ export interface SceneNavigationOptions {
 export interface SceneNavigation {
   readonly api: NavigationApi
   readonly rig: CameraRig
-  /** Advance the rig by `dt` seconds. Only used with `drive: 'manual'`. */
-  readonly update: (dt: number) => void
   /**
    * `stars.bin` arrives after the first frame (PRD 8.7.3), so a scene built at load time has no
    * way to resolve a `starIndex` yet. This hands the source over later without rebuilding anything
@@ -432,9 +430,6 @@ export function createSceneNavigation(
   return {
     api,
     rig,
-    update: (dt: number) => {
-      if (!disposed) rig.update(dt)
-    },
     setStarSource: (source: StarSource) => {
       stars = source
     },

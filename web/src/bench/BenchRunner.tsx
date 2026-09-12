@@ -12,12 +12,8 @@
  *     itself through `recordBenchCpu` rather than guessed at from the outside.
  *
  * Frame *rate* is capped by the display's refresh, so the honest reading of a 60 fps result on a
- * 60 Hz panel is "never missed a vsync". The frame-time percentiles say how much headroom is
- * left, which is why they are reported alongside and not instead.
- *
- * Note on `useFrame` priority: it stays at the default. A priority above zero takes over the
- * render loop in react-three-fiber, and the effect composer already owns that. `delta` measures
- * animation-frame to animation-frame, so it covers the previous frame's full render either way.
+ * 60 Hz panel is "never missed a vsync"; the frame-time percentiles say how much headroom is left,
+ * which is why they are reported alongside and not instead.
  */
 
 import { useFrame, useThree } from '@react-three/fiber'
@@ -38,6 +34,7 @@ import {
   type BenchAnchors,
   type BenchPose,
 } from './benchPath'
+import { benchCpuMs } from './cpuSamples'
 
 /**
  * The path is 39 s (`BENCH_DURATION_S`, nine segments). An uncapped run on a fast GPU reaches
@@ -119,8 +116,8 @@ export interface BenchResult extends BenchSummary {
   readonly saturated: boolean
   /**
    * Segments whose scene state could not be established. In practice that is `card`, whose focus
-   * fails until the anchor plane's shards have arrived (DEC-667 N8); the plane segments can also
-   * land here, but only on a dataset that offered no plane to aim at (DEC-677 N1).
+   * fails until the anchor plane's shards have arrived; the plane segments can also land here, but
+   * only on a dataset that offered no plane to aim at.
    *
    * Without this a run whose card never resolved would report a `card` segment measuring an empty
    * sky, with nothing in the result to tell it apart from a good one, and a baseline could be
@@ -140,9 +137,9 @@ declare global {
      * Set once the camera has been parked at a named segment and `driveSegment` has reported that
      * segment's focus established, for a screenshot. `bench.mjs --shots` waits on this.
      *
-     * **What that is worth depends on the segment, and only `card` gets a real wait** (DEC-677 N2).
+     * **What that is worth depends on the segment, and only `card` gets a real wait.**
      * `focusCard` genuinely fails until the anchor plane's shards have arrived, so a `card` hold
-     * retries and this stays undefined meanwhile — that is the gate DEC-667 B1 asked for. Every
+     * retries and this stays undefined meanwhile, which is the gate. Every
      * other segment issues a focus that cannot fail, so this is set on the first frame and says
      * nothing about whether the segment's *contents* have loaded. A `sheet` hold signals with
      * `thumbnails.requested` still at 0; what actually gives its atlas time to fill is the fixed
@@ -223,15 +220,6 @@ export function benchHold(
   return new URLSearchParams(search).get('hold')
 }
 
-/**
- * The scene reports its own per-frame CPU cost here. PRD 7.2's "CPU time per frame in the render
- * loop" is the scene's work, not the whole task, and only the scene knows where that starts.
- */
-let lastCpuMs = 0
-export function recordBenchCpu(ms: number): void {
-  lastCpuMs = ms
-}
-
 export function BenchRunner({
   ready,
   context,
@@ -264,7 +252,7 @@ export function BenchRunner({
      * Read once during warm-up rather than at teardown. `rendererName` is a synchronous round trip
      * to the GPU process, which cannot answer until the command buffer has drained — and uncapped
      * that buffer is hundreds of frames deep, so the same call cost 343 ms at the end of a run
-     * (DEC-645). It is the same mechanism as the three.js shader-link stall that issue is about;
+     * It is the same mechanism as the three.js shader-link stall;
      * here it was the bench's own, and it produced a ~400 ms long-animation-frame that looked like
      * the scene's. During warm-up the queue is shallow and the answer is immediate.
      */
@@ -372,8 +360,8 @@ export function BenchRunner({
    * plane's shards have not arrived and there is no card to focus; the plane segments answer `false`
    * when the dataset yielded no plane to aim at, which only happens if every plane is dust or
    * starless. Every caller has to act on that — discarding it is what let `?hold=card` photograph an
-   * empty multiverse (DEC-667 B1, N8). The plane cases used to skip their focus and report success
-   * anyway, which measured whatever the camera happened to be looking at (DEC-677 N1).
+   * empty multiverse. The plane cases must not skip their focus and report success anyway, which
+   * would measure whatever the camera happened to be looking at.
    */
   const driveSegment = (segment: string): boolean => {
     const drive = context.drive
@@ -407,7 +395,7 @@ export function BenchRunner({
    * focused dominaria twenty seconds earlier and its shards are long since parsed. A hold drives
    * exactly one segment (`state.segment !== hold` fires once), so it has to establish the chain
    * itself — otherwise `focusCard` runs against an empty card map, returns false, and the camera
-   * parks at the card keyframe about the world origin over an empty multiverse (DEC-667 B1).
+   * parks at the card keyframe about the world origin over an empty multiverse.
    */
   const holdPrerequisites = (segment: string): readonly string[] =>
     segment === 'card' ? ['sheet'] : []
@@ -425,6 +413,9 @@ export function BenchRunner({
     }
   }, [ready, hold, state, gl])
 
+  // Default priority, deliberately: a priority above zero takes over R3F's render loop and the
+  // effect composer already owns that. `delta` is animation-frame to animation-frame either way,
+  // so it covers the previous frame's full render.
   useFrame((_, delta) => {
     if (hold !== null) {
       // Parked: the camera sits at the segment's end pose while the field keeps moving, so a
@@ -435,8 +426,7 @@ export function BenchRunner({
       // right camera pose over the wrong contents — the empty multiverse a `card` hold used to
       // photograph. Note the limit of what this establishes: it drives the segment's *focus*, and
       // only `card`'s focus can fail, so only `card` is really gated here. A `sheet` hold reports
-      // driven on its first frame with an empty atlas; its thumbnails ride `bench.mjs`'s 2 s sleep
-      // (DEC-677 N2).
+      // driven on its first frame with an empty atlas; its thumbnails ride `bench.mjs`'s 2 s sleep.
       //
       // The prerequisites and the segment's own focus go once, on the first frame the hold is live,
       // because these are focus changes and repeating them every frame would restart the shard
@@ -490,7 +480,7 @@ export function BenchRunner({
       state.settle -= 1
     } else if (state.count < CAPACITY) {
       frameMs[state.count] = delta * 1000
-      cpuMs[state.count] = lastCpuMs
+      cpuMs[state.count] = benchCpuMs()
       segmentIds[state.count] = segmentIndex(state.segment)
       state.count += 1
     }

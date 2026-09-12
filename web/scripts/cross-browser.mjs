@@ -184,7 +184,9 @@ function makeCertificate() {
       { stdio: 'ignore' },
     )
   } catch (error) {
-    throw new Error(`could not generate a loopback certificate with openssl: ${error.message}`)
+    throw new Error(`could not generate a loopback certificate with openssl: ${error.message}`, {
+      cause: error,
+    })
   }
   return { key: readFileSync(key), cert: readFileSync(cert) }
 }
@@ -511,7 +513,7 @@ async function playwrightSession(browser, baseUrl) {
     const original = HTMLCanvasElement.prototype.getContext
     HTMLCanvasElement.prototype.getContext = function (type, ...rest) {
       // `localStorage` throws on an opaque origin, and the init script also runs on `about:blank`.
-      let blind = false
+      let blind
       try {
         blind = localStorage.getItem('__eternitiesNoWebGL2') === '1'
       } catch {

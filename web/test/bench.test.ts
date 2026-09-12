@@ -8,7 +8,9 @@
 
 import { describe, expect, it } from 'vitest'
 
+import { benchRouteWanted } from '../src/App'
 import { stillSettling } from '../src/bench/BenchRunner'
+import { benchRouteRequested } from '../src/bench/BenchScene'
 import {
   BENCH_DURATION_S,
   BENCH_PATH,
@@ -76,5 +78,44 @@ describe('bench settling (PRD 9.1.2)', () => {
     // `segmentSeconds` returns null for an unknown name and the runner substitutes 0. Settling
     // forever on a segment the path does not know about would be the wrong failure.
     expect(stillSettling(6, 0, 0)).toBe(false)
+  })
+})
+
+/**
+ * `App.benchRouteWanted` is a copy of `BenchScene.benchRouteRequested`, and it exists so that
+ * asking the question does not import the bench (review §6.3). A copy can drift, so it is pinned
+ * to the original over every spelling that decides the route — including the ones that must say
+ * no, because a copy that answered `true` too often would route real visitors to the bench.
+ */
+describe("the URL test App inlines so it doesn't import the bench", () => {
+  const CASES: readonly (readonly [string, string])[] = [
+    ['/bench', ''],
+    ['/bench/', ''],
+    ['/benchmark', ''],
+    ['/', '?bench'],
+    ['/', '?bench=1'],
+    ['/', '?bench=0'],
+    ['/', '?hold=card'],
+    ['/', '?hold='],
+    ['/', '?held=card'],
+    ['/', '?probe=shell'],
+    ['/', ''],
+    ['/', '?quality=2&bench=1'],
+  ]
+
+  it('answers exactly what the bench module answers, for every spelling', () => {
+    for (const [pathname, search] of CASES) {
+      expect([pathname, search, benchRouteWanted(pathname, search)]).toEqual([
+        pathname,
+        search,
+        benchRouteRequested(pathname, search),
+      ])
+    }
+  })
+
+  it('says no to the shell, which is the answer that matters', () => {
+    expect(benchRouteWanted('/', '')).toBe(false)
+    expect(benchRouteWanted('/', '?probe=shell')).toBe(false)
+    expect(benchRouteWanted('/', '?bench=0')).toBe(false)
   })
 })

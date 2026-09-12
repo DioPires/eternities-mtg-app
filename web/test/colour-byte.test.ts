@@ -333,16 +333,15 @@ describe('byte 7 has exactly one reader (tripwire)', () => {
   })
 
   it('pins the offsets it cannot resolve statically', () => {
-    // An unresolvable offset is not a pass. These three are the position path and the `at` helper
-    // that feeds every resolved site above; a fourth means someone added a computed record read,
+    // An unresolvable offset is not a pass. These two are the position path and the `at` helper
+    // that feeds every resolved site above; a third means someone added a computed record read,
     // and it needs a look before it joins this list.
     const dynamic = recordReads()
       .filter((site) => site.offset === null)
       .map((site) => `${site.file}:${site.text}`)
     expect(dynamic).toEqual([
       'data/decode.ts:const at = (i: StarIndex, offset: number): number => i * STAR_RECORD_BYTES + offset',
-      'data/decode.ts:? view.getFloat32(at(i, axis * 4), true)',
-      'data/decode.ts:: float16ToNumber(view.getUint16(at(i, axis * 2), true))',
+      'data/decode.ts:float16ToNumber(view.getUint16(at(i, axis * 2), true))',
     ])
   })
 

@@ -10,7 +10,7 @@
 import type { ReactElement } from 'react'
 
 import { useStore } from '../store/store'
-import { useDialog } from './dialog'
+import { Sheet } from './Sheet'
 
 const KEYS: ReadonlyArray<readonly [string, string]> = [
   ['/', 'Search'],
@@ -28,18 +28,35 @@ const POINTER: ReadonlyArray<readonly [string, string]> = [
 
 export function HelpOverlay(): ReactElement {
   const setOverlay = useStore((state) => state.setOverlay)
-  const dialog = useDialog<HTMLDivElement>()
   return (
-    <div
-      className="overlay-scrim overlay-scrim-top"
-      onPointerDown={(event) => {
-        if (event.target === event.currentTarget) setOverlay(null)
-      }}
+    <Sheet
+      label="Help"
+      title="Getting around"
+      footer={
+        <>
+          {/* PRD 4.11's About view. Reached from here rather than from a seventh cluster control,
+              because PRD 6.3.3's list of six is closed. */}
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => {
+              setOverlay('about')
+            }}
+          >
+            About &amp; credits
+          </button>
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => {
+              setOverlay(null)
+            }}
+          >
+            Close
+          </button>
+        </>
+      }
     >
-      <div className="sheet" role="dialog" aria-modal="true" aria-label="Help" ref={dialog}>
-        <header className="sheet-head">
-          <h2>Getting around</h2>
-        </header>
 
         <h3 className="panel-heading">Pointer</h3>
         <dl className="keymap">
@@ -67,29 +84,6 @@ export function HelpOverlay(): ReactElement {
           Touch is not supported in this version. Everything here needs a pointer and a keyboard.
         </p>
 
-        <footer className="sheet-foot">
-          {/* PRD 4.11's About view. Reached from here rather than from a seventh cluster control,
-              because PRD 6.3.3's list of six is closed. */}
-          <button
-            type="button"
-            className="link-button"
-            onClick={() => {
-              setOverlay('about')
-            }}
-          >
-            About &amp; credits
-          </button>
-          <button
-            type="button"
-            className="link-button"
-            onClick={() => {
-              setOverlay(null)
-            }}
-          >
-            Close
-          </button>
-        </footer>
-      </div>
-    </div>
+    </Sheet>
   )
 }

@@ -2,6 +2,11 @@
 
 Produced by `pnpm cross-browser`. Re-run it and overwrite this file; do not edit it by hand.
 
+> **This run is stale.** The dataset below is two refreshes behind what is committed
+> (`6d4779695fde33ea` today), and no Windows or integrated-GPU engine has ever been driven —
+> review §9 and DEC-691's measurement kit exist to close that. The engine results are still the
+> record of what passed on 2026-09-05; do not read the dataset line as current.
+
 - **Run:** 2026-09-05
 - **Machine:** macOS 26.5, Apple M5 Pro
 - **Dataset:** `production` (d5ee9661aaffafa3)

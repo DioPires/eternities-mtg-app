@@ -211,7 +211,7 @@ export class ImageQueue {
     const controller = new AbortController()
     this.controllers.set(request.key, controller)
 
-    let bitmap: ImageBitmap | null = null
+    let bitmap: ImageBitmap | null
     let aborted = false
     try {
       const response = await this.fetchImpl(request.url, {

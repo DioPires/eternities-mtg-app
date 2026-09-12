@@ -8,10 +8,9 @@
  * temptation to mirror them for convenience is exactly what PRD 6.7 exists to prevent, because a
  * mirror can disagree with the address bar and then sharing a link ships the wrong view.
  *
- * What *is* here: hover id, the active printing (PRD 6.2.1: view state, no route, no history),
- * panel and overlay state, attract mode, the adaptive-quality tier slot (PRD 8.5.11 — Phase 2a's
- * monitor writes it, Phase 3 reads the thumbnail step), the loaded artefacts, the derived filter
- * evaluation, the toast queue and the persisted settings.
+ * What *is* here: the active printing (PRD 6.2.1: view state, no route, no history), panel and
+ * overlay state, the loaded artefacts, the derived filter evaluation, the toast queue and the
+ * persisted settings.
  */
 
 import { create } from 'zustand'
@@ -52,17 +51,10 @@ export interface Toast {
   readonly timeoutMs: number | null
 }
 
-/**
- * PRD 8.5.11's degradation ladder, as a store slot. Phase 4 owns the slot and the settings
- * surface; Phase 2a's frame-time monitor owns the transitions and Phase 3 reads `thumbnails`.
- */
-export type QualityTier = 0 | 1 | 2 | 3
-
 export interface DataState {
   readonly manifest: Manifest | null
   readonly planes: PlanesFile | null
   readonly planeBySlug: ReadonlyMap<string, PlaneRecord>
-  readonly planeByIndex: readonly PlaneRecord[]
   readonly stars: Stars | null
   /** PRD 6.8.1: the streaming draw range, so the shell can show progress without a spinner. */
   readonly starsDrawable: number
@@ -75,15 +67,11 @@ export interface DataState {
 
 export interface AppState extends DataState {
   // --- transient view state (PRD 8.4.2) ---
-  /** Star or plane id under the pointer, written by the scene's picking layer (PRD 8.5.6). */
-  readonly hoverId: number | null
   /** PRD 6.2.1: the active printing is view state, changes no route and pushes no history. */
   readonly activePrinting: number
   readonly panelOpen: boolean
   readonly overlay: Overlay
-  readonly attract: boolean
   readonly hintVisible: boolean
-  readonly qualityTier: QualityTier
   readonly toasts: readonly Toast[]
   readonly settings: Settings
   readonly osReducedMotion: boolean
@@ -91,13 +79,10 @@ export interface AppState extends DataState {
   readonly filterEvaluation: FilterEvaluation | null
 
   // --- actions ---
-  setHoverId: (id: number | null) => void
   setActivePrinting: (index: number) => void
   setPanelOpen: (open: boolean) => void
   setOverlay: (overlay: Overlay) => void
-  setAttract: (attract: boolean) => void
   setHintVisible: (visible: boolean) => void
-  setQualityTier: (tier: QualityTier) => void
   setFilterEvaluation: (evaluation: FilterEvaluation | null) => void
   patchData: (patch: Partial<DataState>) => void
   updateSettings: (patch: Partial<Settings>) => void
@@ -112,7 +97,6 @@ export const useStore = create<AppState>((set, get) => ({
   manifest: null,
   planes: null,
   planeBySlug: new Map(),
-  planeByIndex: [],
   stars: null,
   starsDrawable: 0,
   searchFile: null,
@@ -121,29 +105,19 @@ export const useStore = create<AppState>((set, get) => ({
   setByCode: new Map(),
   setById: new Map(),
 
-  hoverId: null,
   activePrinting: 0,
   panelOpen: true,
   overlay: null,
-  attract: false,
   hintVisible: false,
-  qualityTier: 0,
   toasts: [],
   settings: DEFAULT_SETTINGS,
   osReducedMotion: false,
   filterEvaluation: null,
 
-  setHoverId: (hoverId) => {
-    // Hover fires on every pointer move the picking layer resolves; bail before Zustand notifies
-    // so an unchanged id never re-renders the HUD (PRD 7.3.3's no-layout-per-frame rule).
-    if (get().hoverId !== hoverId) set({ hoverId })
-  },
   setActivePrinting: (activePrinting) => set({ activePrinting }),
   setPanelOpen: (panelOpen) => set({ panelOpen }),
   setOverlay: (overlay) => set({ overlay }),
-  setAttract: (attract) => set({ attract }),
   setHintVisible: (hintVisible) => set({ hintVisible }),
-  setQualityTier: (qualityTier) => set({ qualityTier }),
   setFilterEvaluation: (filterEvaluation) => set({ filterEvaluation }),
   patchData: (patch) => set(patch),
 

@@ -34,17 +34,10 @@ import type { SceneDataState } from '../scene/useSceneData'
 import { buildSearchIndex } from '../search'
 import { useStore } from '../store/store'
 
-function indexPlanes(planes: readonly PlaneRecord[]): {
-  planeBySlug: Map<string, PlaneRecord>
-  planeByIndex: PlaneRecord[]
-} {
+function indexPlanes(planes: readonly PlaneRecord[]): { planeBySlug: Map<string, PlaneRecord> } {
   const planeBySlug = new Map<string, PlaneRecord>()
-  const planeByIndex: PlaneRecord[] = []
-  for (const plane of planes) {
-    planeBySlug.set(plane.slug, plane)
-    planeByIndex[plane.index] = plane
-  }
-  return { planeBySlug, planeByIndex }
+  for (const plane of planes) planeBySlug.set(plane.slug, plane)
+  return { planeBySlug }
 }
 
 function indexSets(sets: readonly SearchSetRecord[]): {

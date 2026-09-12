@@ -1,9 +1,6 @@
 /**
  * The navigation contract's behavioural checks — run over **every** implementation of it.
  *
- * The demo caller in `src/navigation/demo.ts` proves the contract *type-checks* against a real
- * caller; this proves the state machine matches what `types.ts` promises.
- *
  * Since Phase 2b (DEC-588) the suite is parameterised. docs/navigation-contract.md §5 named the
  * acceptance test for the swap: "Phase 2b's implementation should pass the same suite against the
  * real rig." So it does — the same 27 checks run against the Phase 0 stub *and* against
@@ -15,10 +12,10 @@ import { describe, expect, it } from 'vitest'
 
 import { distance, set, vec } from '../src/camera/vec'
 import { BLIND_ETERNITIES_SLUG } from '../src/data/types'
-import { levelOf, runNavigationDemo, type Focus, type NavigationApi } from '../src/navigation'
+import { levelOf, type Focus, type NavigationApi } from '../src/navigation'
 import { createNavigationHost } from '../src/navigation/host'
 import { createNavigationStub } from '../src/navigation/stub'
-import { createSceneNavigation, type StarSource } from '../src/navigation/scene'
+import { createSceneNavigation, type SceneNavigation, type StarSource } from '../src/navigation/scene'
 
 import { loadFixturePlanes } from './fixtures'
 
@@ -62,29 +59,6 @@ const IMPLEMENTATIONS: ReadonlyArray<{ readonly name: string; readonly create: (
 
 for (const { name: implementation, create } of IMPLEMENTATIONS) {
   describe(implementation, () => {
-  describe('navigation demo caller', () => {
-    it('walks the whole contract and ends at the multiverse', async () => {
-      const log = await runNavigationDemo(create({ instant: true }))
-      expect(log.finalFocus).toEqual({ kind: 'multiverse' })
-      expect(log.events).toContain('focusParent-at-multiverse:null')
-      expect(log.events).toContain('interrupted:cancelled')
-      expect(log.events).toContain('superseded:superseded')
-      expect(log.events).toContain('cancelled:cancelled')
-      expect(log.events).toContain('attract-after-input:false')
-      expect(log.events).toContain('reducedMotion:true')
-      expect(log.events).toContain('level:multiverse')
-      // The contract additions the deep-link cold start needs (PRD 6.7.1, 6.2.3, risk 9).
-      expect(log.events).toContain('resolved:4242')
-      expect(log.events).toContain('resolved-same-flight:true')
-      expect(log.events).toContain('retargeted:ravnica')
-      expect(log.events).toContain('unresolvable:failed')
-      expect(log.events).toContain('dust-parent-anchor:12,0.5,-30')
-      expect(log.events).toContain('focuschange:card:correction')
-      expect(log.events.filter((e) => e.startsWith('anchorchange:'))).toHaveLength(1)
-      expect(log.snapshots.length).toBeGreaterThan(0)
-    })
-  })
-
   describe('navigation stub', () => {
     it('updates focus synchronously at the start of a flight (PRD 6.7.1)', () => {
       const nav = create()
@@ -566,8 +540,8 @@ for (const { name: implementation, create } of IMPLEMENTATIONS) {
 describe('the scene transport', () => {
   const scenePlanes = loadFixturePlanes('scale')
 
-  const run = (scene: { update: (dt: number) => void }, seconds: number): void => {
-    for (let i = 0; i < 60 * seconds; i += 1) scene.update(1 / 60)
+  const run = (scene: SceneNavigation, seconds: number): void => {
+    for (let i = 0; i < 60 * seconds; i += 1) scene.rig.update(1 / 60)
   }
 
   it('re-tethers to the focus when attract mode exits (PRD 5.7.1, 5.3.23)', () => {
@@ -636,7 +610,7 @@ describe('the scene transport', () => {
       scene.api.flyToCard(target)
       let frames = 0
       while (scene.api.snapshot().flight !== null && frames < 120 * 10) {
-        scene.update(1 / 120)
+        scene.rig.update(1 / 120)
         frames += 1
       }
       return scene
@@ -699,7 +673,7 @@ describe('the scene transport', () => {
       scene.api.flyToCard({ planeSlug: 'innistrad', oracleId: 'a' })
       let frames = 0
       while (scene.api.snapshot().flight !== null && frames < 120 * 10) {
-        scene.update(1 / 120)
+        scene.rig.update(1 / 120)
         frames += 1
       }
       scene.api.dispose()

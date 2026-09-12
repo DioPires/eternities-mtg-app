@@ -11,12 +11,7 @@
  * Runs under Node against the Phase 0 navigation stub and a fake history, like `router.test.ts`.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-
-// `boot` kicks off the dataset load, which would fetch. Nothing here waits on an artefact.
-vi.mock('../src/app/dataset', () => ({
-  startDatasetLoad: () => Promise.resolve(),
-}))
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { boot } from '../src/app/boot'
 import { createNavigationStub, type NavigationApi } from '../src/navigation'

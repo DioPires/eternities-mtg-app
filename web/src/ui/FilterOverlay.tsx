@@ -25,9 +25,9 @@ import {
   TYPE_LABEL,
 } from '../filters/types'
 import { useStore } from '../store/store'
-import { useDialog } from './dialog'
+import { Sheet } from './Sheet'
+import { formatCount } from './format'
 
-const NUMBER = new Intl.NumberFormat('en-GB')
 
 function Toggle({
   label,
@@ -57,7 +57,6 @@ export function FilterOverlay(): ReactElement {
   const sets = useStore((state) => state.sets)
   const planeBySlug = useStore((state) => state.planeBySlug)
   const { focus } = useNavSnapshot()
-  const dialog = useDialog<HTMLDivElement>()
 
   const focusedSlug =
     focus.kind === 'plane' ? focus.slug : focus.kind === 'card' ? focus.planeSlug : null
@@ -84,23 +83,28 @@ export function FilterOverlay(): ReactElement {
   }, [focusedSlug, planeBySlug, searchFile])
 
   return (
-    <div
-      className="overlay-scrim overlay-scrim-top"
-      onPointerDown={(event) => {
-        if (event.target === event.currentTarget) setOverlay(null)
-      }}
+    <Sheet
+      label="Filters"
+      title="Filters"
+      className="sheet-filters"
+      head={<p className="muted">Any value within a facet, all facets together.</p>}
+      footer={
+        <>
+          <button type="button" className="link-button" onClick={clearAll}>
+            Clear all
+          </button>
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => {
+              setOverlay(null)
+            }}
+          >
+            Done
+          </button>
+        </>
+      }
     >
-      <div
-        className="sheet sheet-filters"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Filters"
-        ref={dialog}
-      >
-        <header className="sheet-head">
-          <h2>Filters</h2>
-          <p className="muted">Any value within a facet, all facets together.</p>
-        </header>
 
         <section className="facet">
           <h3>Colour identity</h3>
@@ -165,7 +169,7 @@ export function FilterOverlay(): ReactElement {
               setOptions.map((set) => (
                 <Toggle
                   key={set.code}
-                  label={`${set.name} · ${String(set.year)} · ${NUMBER.format(set.cardCount)}`}
+                  label={`${set.name} · ${String(set.year)} · ${formatCount(set.cardCount)}`}
                   active={filters.sets.includes(set.code)}
                   onClick={() => {
                     toggleSet(set.code)
@@ -176,21 +180,6 @@ export function FilterOverlay(): ReactElement {
           </div>
         </section>
 
-        <footer className="sheet-foot">
-          <button type="button" className="link-button" onClick={clearAll}>
-            Clear all
-          </button>
-          <button
-            type="button"
-            className="link-button"
-            onClick={() => {
-              setOverlay(null)
-            }}
-          >
-            Done
-          </button>
-        </footer>
-      </div>
-    </div>
+    </Sheet>
   )
 }

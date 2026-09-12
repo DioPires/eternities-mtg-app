@@ -17,28 +17,30 @@
  *   - the scene owned a canvas, a keyboard map and a readout panel that the shell also owns
  *     (`SceneViewProps`).
  *
- * The harnesses stay reachable, so every earlier phase's exit criteria stay checkable exactly as
- * they were reviewed:
+ * Three measurement routes stay reachable, and **none of their code is in the product's chunk**:
+ * each is a `lazy()` boundary and the URL tests below are inlined, so deciding to render the shell
+ * imports nothing heavy (review §5.4 B1, §6.3).
  *
  *   - `/bench`, and the `?bench` / `?hold` spellings `scripts/bench.mjs` uses, get PRD 9.1.2's
- *     bench route — which since Phase 6 flies the *shipped* scene rather than Phase 2a's harness,
- *     so the numbers are the product's;
- *   - `?selfcheck` still gets Phase 2a's harness, because the GPU self-check holds the field still
- *     and reads pixels back, which it cannot do while anything is flying the camera. `?harness=2a`
- *     gets it by hand;
- *   - `?harness=3` gets Phase 3's scene with its readout panel, and `?probe=1` gets it too: the
- *     seam that flag opens (`scene/probe.ts`) is that scene's, and it is what `verify-browser.mjs`
- *     drives the card tier through;
+ *     bench route — which since Phase 6 flies the *shipped* scene, so the numbers are the
+ *     product's;
+ *   - `?selfcheck` gets `harness/SelfCheckScene`, because the GPU self-check holds the field still
+ *     and reads pixels back, which it cannot do while anything is flying the camera;
+ *   - `?probe=1` gets the scene on its own with the `scene/probe.ts` seam installed, which is what
+ *     `verify-browser.mjs` drives the card tier through;
  *   - everything else gets the shell — including `?probe=shell`, which installs that same seam
  *     *here*, because PRD 9.3's visual review is of the shipped composition and since Phase 6 the
  *     scene on its own is no longer that (`scripts/visual-gate.mjs`).
+ *
+ * The manual `?harness=2a` / `?harness=3` spellings are gone with Phase 2a's harness (review §6.1
+ * group B). The routes above are the supported way in.
  *
  * These all bypass the shell rather than rendering inside it. Each owns its own camera, and the
  * bench and the self-check drive that camera themselves, which they cannot do in a scene where the
  * rig is flying it.
  */
 
-import { useEffect, type ReactElement } from 'react'
+import { Suspense, lazy, useEffect, type ReactElement } from 'react'
 
 import { boot } from './app/boot'
 import { useMirrorSceneData, useSceneErrorToasts } from './app/dataset'
@@ -53,11 +55,9 @@ import {
   useRouter,
   useNavigation,
 } from './app/hooks'
-import { BenchScene, benchRouteRequested } from './bench/BenchScene'
-import { Phase2aScene } from './harness/Phase2aScene'
 import { EternitiesScene, SceneView } from './scene/EternitiesScene'
 import { probeTarget } from './scene/probe'
-import { selfCheckRequested } from './scene/selfCheck'
+import { selfCheckRequested } from './scene/selfCheck.url'
 import { useSceneData } from './scene/useSceneData'
 import { useStore } from './store/store'
 import { AboutOverlay } from './ui/AboutOverlay'
@@ -72,25 +72,54 @@ import { SettingsOverlay } from './ui/SettingsOverlay'
 import { Toasts } from './ui/Toasts'
 
 /**
- * Which scene the URL asks for, if any. The bench and self-check flags imply 2a because that is the
- * scene they measure, and `?probe=1` implies 3 because the probe seam is that scene's; `?harness=`
- * names either one directly.
+ * The three measurement routes, behind `lazy()` so none of their code is in the product's chunk.
+ *
+ * `EternitiesScene` is not one of them: the shell renders `SceneView` from the same module, so
+ * splitting it would only move the shipped scene out of the shipped chunk.
  */
-function sceneRequested(): 'bench' | '2a' | '3' | null {
+const BenchScene = lazy(async () => ({ default: (await import('./bench/BenchScene')).BenchScene }))
+const SelfCheckScene = lazy(async () => ({
+  default: (await import('./harness/SelfCheckScene')).SelfCheckScene,
+}))
+
+/**
+ * Which URL asks for the bench.
+ *
+ * Inlined rather than imported from `bench/BenchScene`, and that is the point: importing the test
+ * imports the module that answers it, so every visitor downloaded the bench runner to be told they
+ * were not benching (review §6.3). `test/bench.test.ts` pins this against `benchRouteRequested`,
+ * which stays exported there as the module's own answer to the same question.
+ *
+ * Both spellings: `/bench` is PRD 9.1.2's and what a person types; `?bench` and `?hold=<segment>`
+ * are what `scripts/bench.mjs` drives and what the committed baseline was recorded through.
+ */
+export function benchRouteWanted(pathname: string, search: string): boolean {
+  if (pathname === '/bench' || pathname === '/bench/') return true
+  const params = new URLSearchParams(search)
+  const bench = params.get('bench')
+  if (bench !== null && bench !== '0') return true
+  return params.get('hold') !== null
+}
+
+/**
+ * Which scene the URL asks for, if any.
+ *
+ * Every test here is a `URLSearchParams` read against a string. Nothing on this path imports a
+ * scene — that is what makes the `lazy()` boundaries above worth having.
+ */
+function sceneRequested(): 'bench' | 'selfcheck' | 'probe' | null {
   const search = typeof location === 'undefined' ? '' : location.search
   const pathname = typeof location === 'undefined' ? '' : location.pathname
   // PRD 9.1.2's route, intercepted before `parseRoute` can call `/bench` an unknown route.
-  if (benchRouteRequested(pathname, search)) return 'bench'
-  // The GPU self-check still needs Phase 2a's harness: it holds the field still and reads pixels
-  // back, which it cannot do in a scene where a rig or a bench is flying the camera.
-  if (selfCheckRequested(search)) return '2a'
-  // `?probe=1` is Phase 3's scene; `?probe=shell` keeps the shell and lets `SceneView` install the
-  // same seam inside it, which is how `scripts/visual-gate.mjs` captures PRD 9.3 against the
-  // shipped composition rather than against the scene on its own. See `scene/probe.ts`.
+  if (benchRouteWanted(pathname, search)) return 'bench'
+  // The GPU self-check needs a still field over a fixed camera: it reads pixels back, which it
+  // cannot do in a scene where a rig or a bench is flying the camera.
+  if (selfCheckRequested(search)) return 'selfcheck'
+  // `?probe=1` is the scene on its own; `?probe=shell` keeps the shell and lets `SceneView` install
+  // the same seam inside it, which is how `scripts/visual-gate.mjs` captures PRD 9.3 against the
+  // shipped composition rather than against the scene alone. See `scene/probe.ts`.
   const probe = probeTarget(search)
-  if (probe !== null) return probe === 'shell' ? null : '3'
-  const named = new URLSearchParams(search).get('harness')
-  return named === '2a' || named === '3' ? named : null
+  return probe === 'scene' ? 'probe' : null
 }
 
 function Overlays(): ReactElement | null {
@@ -178,10 +207,18 @@ function AppShell(): ReactElement {
 export function App(): ReactElement {
   switch (sceneRequested()) {
     case 'bench':
-      return <BenchScene />
-    case '2a':
-      return <Phase2aScene />
-    case '3':
+      return (
+        <Suspense fallback={null}>
+          <BenchScene />
+        </Suspense>
+      )
+    case 'selfcheck':
+      return (
+        <Suspense fallback={null}>
+          <SelfCheckScene />
+        </Suspense>
+      )
+    case 'probe':
       return <EternitiesScene />
     case null:
       return <AppShell />

@@ -14,7 +14,8 @@ from typing import Final
 
 from ..contract.enums import (
     BLIND_ETERNITIES_SLUG,
-    HueClass,
+    MULTIVERSE_RADIUS,
+    UNRELEASED_DATE,
     colour_identity_mask,
     hue_class_for,
     size_class_for,
@@ -34,15 +35,6 @@ from ..fixtures import layout, rng
 from .appendices import Appendices
 from .records import CardDetail, MeldResult, RawPrinting, ScrySet
 
-MULTIVERSE_RADIUS: Final = 130.0
-"""R of PRD 8.6.1, sized so the whole Appendix A roster packs with the 5.3.3 anti-overlap margin.
-Identical to ``fixture-scale``, so bench numbers taken against the fixture carry over.
-
-Manually linked to two places outside this file: ``fixtures/generate.py`` mirrors the value, and
-``web/scripts/verify-browser.mjs`` writes it out as the literal ``130`` in the ``unprojectable``
-failure message (a cross-language export was judged not worth it for one diagnostic string). If this
-changes, change both — a stale figure in that message misdirects whoever reads the failure."""
-
 BRIGHTNESS_PERCENTILE: Final = 0.98
 """PRD 5.4.10: the printing-count cap is the plane's 98th percentile."""
 
@@ -61,8 +53,6 @@ class CardInput:
 
 @dataclass(frozen=True, slots=True)
 class AssemblyStats:
-    cards_per_plane: dict[str, int]
-    sets_per_plane: dict[str, int]
     blind_eternities_top_sets: list[tuple[str, str, int]]
     """PRD 9.2.2: ``(code, name, cards)`` of the sets contributing most to the dust."""
     largest_plane: tuple[str, int]
@@ -292,7 +282,7 @@ def _global_set_dictionary(
     by_code = appendices.by_code()
     ordered = sorted(
         appearing,
-        key=lambda code: (sets[code].released_at if code in sets else "9999-12-31", code),
+        key=lambda code: (sets[code].released_at if code in sets else UNRELEASED_DATE, code),
     )
     records: list[SetRecord] = []
     set_id_of: dict[str, int] = {}
@@ -324,7 +314,7 @@ def _chronology_bands(
         code = row.first_printing.set_code
         counts[code] = counts.get(code, 0) + 1
     ordered = sorted(
-        counts, key=lambda code: (sets[code].released_at if code in sets else "9999-12-31", code)
+        counts, key=lambda code: (sets[code].released_at if code in sets else UNRELEASED_DATE, code)
     )
     return [
         PlaneSetRef(
@@ -348,7 +338,7 @@ def _contract_card(
     printings = sorted(
         row.printings,
         key=lambda p: (
-            sets[p.set_code].released_at if p.set_code in sets else "9999-12-31",
+            sets[p.set_code].released_at if p.set_code in sets else UNRELEASED_DATE,
             p.set_code,
             p.collector_number,
             p.id,
@@ -427,8 +417,6 @@ def _stats(
         and layout.radius_saturation(len(rows)) >= layout.RADIUS_SATURATION_REPORT_FRACTION
     ]
     return AssemblyStats(
-        cards_per_plane={s: len(r) for s, r in by_plane.items()},
-        sets_per_plane={s: len(b) for s, b in plane_bands.items()},
         blind_eternities_top_sets=[
             (code, sets[code].name if code in sets else code, count) for code, count in top
         ],
@@ -436,8 +424,3 @@ def _stats(
         radius_saturation=sorted(saturation, key=lambda row: (-row[2], row[0])),
         brightness_caps=brightness_caps,
     )
-
-
-def hue_of(colour_identity: str) -> HueClass:
-    """Re-exported so the report can label arms without importing the enums module."""
-    return hue_class_for(colour_identity)

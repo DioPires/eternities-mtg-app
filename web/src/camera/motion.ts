@@ -46,9 +46,7 @@ import {
   type MutVec3,
   vec,
 } from './vec'
-
-/** PRD 5.3.13: the whole multiverse turns about its vertical axis once every 20 minutes. */
-export const MULTIVERSE_PERIOD_S = 20 * 60
+import { MULTIVERSE_PERIOD_S } from '../scene/tuning'
 
 /** PRD 5.6.6: a focused plane's rotation eases to a stop over 1 s, and back over 1 s. */
 export const SPIN_EASE_S = 1

@@ -18,8 +18,8 @@ import type { ReactElement } from 'react'
 
 import { useFilters } from '../app/hooks'
 import type { PlaneRecord } from '../data'
+import { formatCount } from './format'
 
-const NUMBER = new Intl.NumberFormat('en-GB')
 
 export function PlanePanel({ plane }: { plane: PlaneRecord }): ReactElement {
   const { filters, addSet } = useFilters()
@@ -33,7 +33,7 @@ export function PlanePanel({ plane }: { plane: PlaneRecord }): ReactElement {
       ) : (
         <>
           <p className="panel-stat">
-            <strong>{NUMBER.format(plane.cardCount)}</strong> cards
+            <strong>{formatCount(plane.cardCount)}</strong> cards
             {plane.firstYear !== null && plane.lastYear !== null ? (
               <>
                 {' · '}
@@ -62,7 +62,7 @@ export function PlanePanel({ plane }: { plane: PlaneRecord }): ReactElement {
                   >
                     <span className="set-name">{set.name}</span>
                     <span className="set-year">{set.year}</span>
-                    <span className="set-count">{NUMBER.format(set.cardCount)}</span>
+                    <span className="set-count">{formatCount(set.cardCount)}</span>
                   </button>
                 </li>
               )

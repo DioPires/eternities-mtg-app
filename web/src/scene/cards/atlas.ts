@@ -366,7 +366,7 @@ export class ThumbnailAtlas {
       bitmap.height === this.blitHeight
     if (!fits) {
       this.blitTexture?.dispose()
-      const texture = new Texture(bitmap as unknown as HTMLImageElement)
+      const texture = new Texture(bitmap)
       // Not a mistake: Scryfall's bytes are sRGB and the atlas stores them that way, so three must
       // not decode on the way in. See the file header.
       texture.colorSpace = NoColorSpace

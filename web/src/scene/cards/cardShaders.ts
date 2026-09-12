@@ -21,10 +21,7 @@ import {
   THUMBNAIL_RIM_GAIN,
   THUMBNAIL_RIM_WIDTH,
 } from '../tuning'
-
-function glslFloat(value: number): string {
-  return Number.isInteger(value) ? `${value}.0` : String(value)
-}
+import { glslFloat } from '../starfield/shaders'
 
 /** The inverse of the sRGB transfer function, exactly — not a 2.2 power approximation. */
 const SRGB_GLSL = /* glsl */ `

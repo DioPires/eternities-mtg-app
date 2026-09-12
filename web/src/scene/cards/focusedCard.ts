@@ -464,7 +464,7 @@ export class FocusedCard {
           return
         }
         slot.texture?.dispose()
-        const texture = new Texture(bitmap as unknown as HTMLImageElement)
+        const texture = new Texture(bitmap)
         texture.needsUpdate = true
         texture.generateMipmaps = false
         slot.texture = texture
@@ -559,7 +559,7 @@ export class FocusedCard {
             bitmap.close()
             return
           }
-          const texture = new Texture(bitmap as unknown as HTMLImageElement)
+          const texture = new Texture(bitmap)
           texture.needsUpdate = true
           texture.generateMipmaps = false
           image.texture = texture

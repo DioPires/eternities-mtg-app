@@ -1,7 +1,7 @@
 # Eternities — Implementation Plan
 
-**Contract:** `prd_v3.md` (verified clean, see `prd-review.md`), plus the two PRD amendments proposed in §8 below — they need board approval together with this plan.
-**Plan revision:** v2, 2026-09-04. Revision v1 failed an adversarial soundness review; the findings and their dispositions are in `implementation-plan-review.md`. v2 fixes every accepted finding.
+**Contract:** `prd_v3.md` (verified clean, see `docs/archive/prd-review.md`), plus the two PRD amendments proposed in §8 below — they need board approval together with this plan.
+**Plan revision:** v2, 2026-09-04. Revision v1 failed an adversarial soundness review; the findings and their dispositions are in `docs/archive/implementation-plan-review.md`. v2 fixes every accepted finding.
 **Repository:** this repository (`eternities-mtg-app`), deployed as a standalone app on Vercel.
 **Issue:** DEC-584. Author: CEO.
 

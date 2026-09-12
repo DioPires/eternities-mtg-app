@@ -19,7 +19,7 @@ import {
   Points,
   ShaderMaterial,
   type Texture,
-  type Uniform,
+  Uniform,
 } from 'three'
 
 import { PICK_LAYER } from '../picking/idPicker'
@@ -46,11 +46,6 @@ import {
   STAR_VERTEX_SHADER,
 } from './shaders'
 import type { StarGeometry } from './starGeometry'
-
-/** A uniform entry, shared by reference across the three materials that need the same value. */
-function uniform<T>(value: T): Uniform<T> {
-  return { value } as Uniform<T>
-}
 
 export interface StarField {
   /** The drawn star field (PRD 8.5.1), on the default layer. */
@@ -113,18 +108,18 @@ export function createStarField(
   noise: Texture,
 ): StarField {
   // Shared by reference: one write per frame reaches every material that reads them.
-  const uPlaneTable = uniform(table.texture)
-  const uTime = uniform(0)
-  const uMultiverseAngle = uniform(0)
-  const uMotion = uniform(1)
+  const uPlaneTable = new Uniform(table.texture)
+  const uTime = new Uniform(0)
+  const uMultiverseAngle = new Uniform(0)
+  const uMotion = new Uniform(1)
 
-  const uSizeScale = uniform(1)
-  const uMinPixels = uniform(STAR_MIN_PX)
-  const uMaxPixels = uniform(STAR_MAX_PX)
-  const uPickMinPixels = uniform(PICK_MIN_PX)
-  const uHoverIndex = uniform(-1)
-  const uThumbStartPx = uniform(THUMBNAIL_FADE_START_PX)
-  const uThumbFullPx = uniform(THUMBNAIL_FADE_FULL_PX)
+  const uSizeScale = new Uniform(1)
+  const uMinPixels = new Uniform(STAR_MIN_PX)
+  const uMaxPixels = new Uniform(STAR_MAX_PX)
+  const uPickMinPixels = new Uniform(PICK_MIN_PX)
+  const uHoverIndex = new Uniform(-1)
+  const uThumbStartPx = new Uniform(THUMBNAIL_FADE_START_PX)
+  const uThumbFullPx = new Uniform(THUMBNAIL_FADE_FULL_PX)
   /** `null` means "use `PICK_MIN_PX`". See `setPickSpriteFloorPx`. */
   let pickSpriteFloorPx: number | null = null
 
@@ -143,11 +138,11 @@ export function createStarField(
    * vertex shader computes from `uSizeScale` — leave it unscaled and a star would fade into its
    * thumbnail at a different distance in the bloom than in the picture.
    */
-  const uBloomSizeScale = uniform(1)
-  const uBloomMinPixels = uniform(STAR_MIN_PX)
-  const uBloomMaxPixels = uniform(STAR_MAX_PX)
-  const uBloomThumbStartPx = uniform(THUMBNAIL_FADE_START_PX)
-  const uBloomThumbFullPx = uniform(THUMBNAIL_FADE_FULL_PX)
+  const uBloomSizeScale = new Uniform(1)
+  const uBloomMinPixels = new Uniform(STAR_MIN_PX)
+  const uBloomMaxPixels = new Uniform(STAR_MAX_PX)
+  const uBloomThumbStartPx = new Uniform(THUMBNAIL_FADE_START_PX)
+  const uBloomThumbFullPx = new Uniform(THUMBNAIL_FADE_FULL_PX)
 
   const hues = HUE_COLOURS.map(([r, g, b]) => new Color(r, g, b))
   const starUniforms = {
@@ -155,9 +150,9 @@ export function createStarField(
     uTime,
     uMultiverseAngle,
     uMotion,
-    uHues: uniform(hues),
-    uRaritySize: uniform([...RARITY_SIZE]),
-    uStarDiameter: uniform(STAR_WORLD_DIAMETER),
+    uHues: new Uniform(hues),
+    uRaritySize: new Uniform([...RARITY_SIZE]),
+    uStarDiameter: new Uniform(STAR_WORLD_DIAMETER),
     uSizeScale,
     uMinPixels,
     uMaxPixels,
@@ -320,10 +315,10 @@ function createGlowMesh(table: PlaneTable, noise: Texture, shared: SharedUniform
 
   const glowUniforms = {
     ...shared,
-    uNoise: uniform(noise),
-    uNebulaOpacity: uniform(NEBULA_OPACITY),
-    uEmptyOpacity: uniform(EMPTY_GLOW_OPACITY),
-    uEmptyCore: uniform(EMPTY_GLOW_CORE),
+    uNoise: new Uniform(noise),
+    uNebulaOpacity: new Uniform(NEBULA_OPACITY),
+    uEmptyOpacity: new Uniform(EMPTY_GLOW_OPACITY),
+    uEmptyCore: new Uniform(EMPTY_GLOW_CORE),
   }
 
   const material = new ShaderMaterial({

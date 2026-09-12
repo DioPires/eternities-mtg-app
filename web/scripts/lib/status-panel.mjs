@@ -93,7 +93,7 @@ export function statusPanelFaults(seen) {
   //    panel that can be read;
   //  - 60% of the panel's own box, because a viewport fraction alone scales with the wrong thing.
   //    The viewport tenth is 108px at 1080 whatever the panel, and the two panels are not the same
-  //    size: measured on `small`, ?harness=3's is 248px tall and 2a's is 374px. So the flat floor
+  //    size: measured on `small`, ?probe=1's is 248px tall and the self-check host's is 374px. So the flat floor
   //    is 44% of the one and 29% of the other, and a regression that pushed the tall one 71% off
   //    the bottom would still leave more than 108px on screen and pass.
   //

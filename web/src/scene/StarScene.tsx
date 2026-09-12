@@ -32,7 +32,7 @@ import {
   qualityOptionsFor,
   type QualityTier,
 } from './quality/adaptiveQuality'
-import { runSelfCheck, samplesPerRowRequested, selfCheckRequested } from './selfCheck'
+import { selfCheckRequested } from './selfCheck.url'
 import { starWorldPosition } from './starfield/motion'
 import { SKY_COLOUR } from './tuning'
 import type { SceneResources } from './useSceneData'
@@ -342,20 +342,26 @@ export function StarScene({
     if (!resources || !starsComplete || !selfCheckWanted || !isPerspective(camera)) return
     let cancelled = false
     // One second in, so every plane has finished fading and the field has actually moved.
+    //
+    // Imported here rather than at the top of the file, and that is the whole point: `selfCheck.ts`
+    // is 993 lines that only this branch can reach, and a static import put every one of them in
+    // the product's first chunk (review §5.4 B1). The URL test above lives in `selfCheck.url.ts`
+    // so asking the question stays free.
     const timer = window.setTimeout(() => {
-      void runSelfCheck(
-        gl,
-        scene,
-        camera,
-        idPicker,
-        resources.table,
-        resources.geometry,
-        resources.field,
-        reducedMotion,
-        // `?perrow=N` when the URL sets it, the built-in budget otherwise. Diagnostic knob, on a
-        // path that only runs under `?selfcheck=1`; see `samplesPerRowRequested`.
-        samplesPerRowRequested() ?? undefined,
-      ).then((result) => {
+      void import('./selfCheck').then(async ({ runSelfCheck, samplesPerRowRequested }) => {
+        const result = await runSelfCheck(
+          gl,
+          scene,
+          camera,
+          idPicker,
+          resources.table,
+          resources.geometry,
+          resources.field,
+          reducedMotion,
+          // `?perrow=N` when the URL sets it, the built-in budget otherwise. Diagnostic knob, on a
+          // path that only runs under `?selfcheck=1`; see `samplesPerRowRequested`.
+          samplesPerRowRequested() ?? undefined,
+        )
         if (!cancelled) window.__eternitiesSelfCheck = result
       })
     }, 1000)
