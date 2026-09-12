@@ -65,6 +65,14 @@
 | Ravnica | `ravnica` | 3 | 1 | irregular |
 | Segovia | `segovia` | 0 | 0 | empty |
 
+## Plane radius headroom (PRD 5.3.2, span 30,000 cards)
+
+No plane is within 90% of the radius span; every plane's card count still moves its radius.
+
+## Brightness cap per plane (PRD 5.4.10)
+
+The cap is each plane's 98% percentile of printing count. 0 of 3 non-empty planes hold at least one card above their cap; those cards all encode the same maximum brightness. The cap is applied before encoding, so changing the curve means re-running the pipeline (finding D6).
+
 ## Sets mapped through a parent set (PRD 4.6 rule 3)
 
 | Set | Inherited from |
@@ -90,7 +98,11 @@ Only 1 of these 2 sets is load-bearing: `pza` (15 printings, inherited from `tmt
 
 ## Card-level overrides applied (PRD 4.6 rule 1)
 
-Card 3
+Card 3 -> ravnica
+
+**1 override record matched no first printing.** Each is either a card some 4.3/4.4 rule excludes, or a stale record whose `oracleId` no longer belongs to a card in the dataset. Fix or delete them.
+
+- Card 99 (00000000-0000-4000-8000-000000000099) -> segovia
 
 ## Cards whose plane changed since the previous run (PRD 4.9.2)
 

@@ -150,9 +150,22 @@ def verify_security_stamp(
 
 
 def verify_set_codes(appendices: Appendices, sets: dict[str, ScrySet]) -> Finding:
-    """Q10 / Appendix B. Every code the PRD marked *verify*, plus any it got wrong."""
+    """Q10 / Appendix B. Every code the PRD marked *verify*, plus any it got wrong.
+
+    Every row is re-checked on every run; what changed with review finding D8 is how much of a
+    settled answer gets re-printed. A row carrying ``prdVerified`` was confirmed by an earlier run,
+    so while it still matches it collapses into a dated count instead of a line of its own — the
+    fifteen confirmed rows were being read out in full every run, burying the one line that was not
+    settled, which is the failure ``prdRatified`` already fixed for corrections and the roster
+    finding fixed for open question 1.
+
+    A verified row that *stops* matching goes to ``regressed`` and is printed at the top, because
+    the day it stops being true is the entire reason to keep checking it.
+    """
     rows = [s for s in appendices.sets if s.prd_verify or s.corrected_from is not None]
     ok: list[str] = []
+    settled: list[str] = []
+    regressed: list[str] = []
     mismatched: list[str] = []
     missing: list[str] = []
     corrected: list[str] = []
@@ -166,6 +179,10 @@ def verify_set_codes(appendices: Appendices, sets: dict[str, ScrySet]) -> Findin
         scry = sets.get(row.code)
         if scry is None:
             missing.append(f"{row.code} ({row.prd_name}) — no such set on Scryfall")
+            if row.prd_verified is not None:
+                regressed.append(
+                    f"{row.code} was confirmed {row.prd_verified} and is now absent from Scryfall"
+                )
             outstanding.add(row.code)
             continue
         if row.corrected_from is not None:
@@ -182,11 +199,27 @@ def verify_set_codes(appendices: Appendices, sets: dict[str, ScrySet]) -> Findin
                 outstanding.add(row.code)
         elif scry.name.lower() != row.prd_name.lower() and row.prd_section != "B.3":
             mismatched.append(f"{row.code}: PRD “{row.prd_name}” vs Scryfall “{scry.name}”")
+            if row.prd_verified is not None:
+                regressed.append(
+                    f"{row.code} was confirmed {row.prd_verified} and now reads "
+                    f"“{scry.name}” on Scryfall against the PRD's “{row.prd_name}”"
+                )
             outstanding.add(row.code)
+        elif row.prd_verified is not None:
+            settled.append(f"{row.code} (confirmed {row.prd_verified})")
         else:
             ok.append(f"{row.code} “{scry.name}” ({scry.released_at}, {scry.set_type})")
 
-    detail = [f"confirmed: {len(ok)}"]
+    detail: list[str] = []
+    if regressed:
+        detail.append(f"REGRESSED since they were confirmed: {len(regressed)}")
+        detail.extend(f"  {line}" for line in regressed)
+    detail.append(f"confirmed by an earlier run and still matching: {len(settled)}")
+    if settled:
+        # Named but not expanded: the codes are cheap to print and let a reader see *which* rows
+        # are settled without re-reading the full Scryfall row for each.
+        detail.append("  " + ", ".join(settled))
+    detail.append(f"confirmed by this run: {len(ok)}")
     detail.extend(f"  {line}" for line in ok)
     if corrected:
         detail.append(f"corrected against Scryfall: {len(corrected)}")
@@ -199,7 +232,9 @@ def verify_set_codes(appendices: Appendices, sets: dict[str, ScrySet]) -> Findin
         detail.extend(f"  {line}" for line in missing)
 
     verdict = (
-        "resolved — every verify-marked code exists on Scryfall"
+        f"REGRESSED — {len(regressed)} previously confirmed rows no longer match Scryfall"
+        if regressed
+        else "resolved — every verify-marked code exists on Scryfall"
         if not missing and not mismatched
         else "resolved with corrections — see below"
     )

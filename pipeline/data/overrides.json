@@ -1,5 +1,679 @@
 {
-  "source": "PRD 4.1.5 — curated card-name to plane-slug overrides",
-  "notes": "Starts empty (PRD 4.1.5). Grows as misassignments are noticed; PRD 11.9 orders the curation work. Keys are exact Scryfall front-face card names; values are Appendix A plane slugs.",
-  "overrides": {}
+  "source": "PRD 4.1.5 — curated card-to-plane overrides",
+  "notes": "One record per card, keyed by Scryfall `oracle_id`: a front-face name is not an identifier, so a name key moves every card that answers to it (review finding D1). `name` is an assertion, not data — the run fails when an `oracleId` no longer names the card written beside it. `why` is the curation rationale. `plane` is an Appendix A slug. PRD 11.9 orders the curation work; a record that matches no first printing is listed in the run report rather than applied.",
+  "overrides": [
+    {
+      "oracleId": "8faa4330-07bb-4b65-810a-bbce29d3cd42",
+      "name": "Invasion of Alara",
+      "plane": "alara",
+      "why": "MOM battle; the card's own title names the plane it depicts (Alara)."
+    },
+    {
+      "oracleId": "79c90a68-1c31-4e16-be53-1304132da80f",
+      "name": "Sigiled Sentinel",
+      "plane": "alara",
+      "why": "MOM; flavour: \"Alara has been broken before\"."
+    },
+    {
+      "oracleId": "2c0061ab-4123-4b0c-8286-3207e8f9497d",
+      "name": "Djeru and Hazoret",
+      "plane": "amonkhet",
+      "why": "MOM; both named characters are Amonkhet's — not a cross-plane pairing."
+    },
+    {
+      "oracleId": "fd9b8889-a78a-4cda-9a6b-39f5536c3a0b",
+      "name": "Invasion of Amonkhet",
+      "plane": "amonkhet",
+      "why": "MOM battle; the card's own title names the plane it depicts (Amonkhet)."
+    },
+    {
+      "oracleId": "f08d8fc5-c7fb-4913-92fc-06a0d4311d71",
+      "name": "Khenra Spellspear",
+      "plane": "amonkhet",
+      "why": "MOM; name: Khenra, a people found only on Amonkhet."
+    },
+    {
+      "oracleId": "b3ea71d2-6298-452a-9c54-7c880b7e9cc0",
+      "name": "Unseal the Necropolis",
+      "plane": "amonkhet",
+      "why": "MOM; flavour: \"On Amonkhet, Phyrexia found a ready-made army\"."
+    },
+    {
+      "oracleId": "aba7e9e2-8df8-454e-a332-9abae1d95b6f",
+      "name": "Change the Equation",
+      "plane": "arcavios",
+      "why": "MOM; flavour: Strixhaven, the university on Arcavios."
+    },
+    {
+      "oracleId": "63a85361-56bc-4209-aea8-b49319bc7b92",
+      "name": "Final Flourish",
+      "plane": "arcavios",
+      "why": "MOM; flavour: Strixhaven, the university on Arcavios."
+    },
+    {
+      "oracleId": "9794e31f-e73d-4aa0-a421-dc496080c987",
+      "name": "Invasion of Arcavios",
+      "plane": "arcavios",
+      "why": "MOM battle; the card's own title names the plane it depicts (Arcavios)."
+    },
+    {
+      "oracleId": "399770b9-eab7-4512-aa1d-65c5bd81094f",
+      "name": "Trailblazing Historian",
+      "plane": "arcavios",
+      "why": "MOM; flavour: Lorehold, a Strixhaven college on Arcavios."
+    },
+    {
+      "oracleId": "80ecb069-36e2-490d-9f6c-ef553c00e997",
+      "name": "Aetherblade Agent",
+      "plane": "avishkar",
+      "why": "MOM; flavour: \"The Consulate of Kaladesh\" — Avishkar's former name."
+    },
+    {
+      "oracleId": "4d472308-5bc7-4a3c-81b5-0a757f00d9e2",
+      "name": "Consuming Aetherborn",
+      "plane": "avishkar",
+      "why": "MOM; type line: Aetherborn, a creature type exclusive to Avishkar."
+    },
+    {
+      "oracleId": "2553ab57-ceb6-4654-a59d-bc61735da908",
+      "name": "Guardian of Ghirapur",
+      "plane": "avishkar",
+      "why": "MOM; name: Ghirapur, Avishkar's capital."
+    },
+    {
+      "oracleId": "bc6f4f73-e10c-44ae-926d-9e5f6ddc14be",
+      "name": "Invasion of Kaladesh",
+      "plane": "avishkar",
+      "why": "MOM battle; the card's own title names the plane it depicts (Kaladesh)."
+    },
+    {
+      "oracleId": "1abcdddd-0022-4dfe-8c15-eb1fa86de614",
+      "name": "Invasion of Azgol",
+      "plane": "azgol",
+      "why": "MOM battle; the card's own title names the plane it depicts (Azgol)."
+    },
+    {
+      "oracleId": "10426070-2e6f-47a5-bc8d-16dcfb058b26",
+      "name": "Volcanic Spite",
+      "plane": "azgol",
+      "why": "MOM; flavour: \"intelligence concerning the world of Azgol\"."
+    },
+    {
+      "oracleId": "e462e78d-2d26-4a2d-8d8f-5f31abe5c924",
+      "name": "Invasion of Belenon",
+      "plane": "belenon",
+      "why": "MOM battle; the card's own title names the plane it depicts (Belenon)."
+    },
+    {
+      "oracleId": "18aa69d5-9611-49fe-8aa4-7b91d5980dbc",
+      "name": "Swordsworn Cavalier",
+      "plane": "belenon",
+      "why": "MOM; flavour: \"The Royal Knights of Belenon\"."
+    },
+    {
+      "oracleId": "ff192482-3808-4291-a31e-3dfaeb49cda2",
+      "name": "Artistic Refusal",
+      "plane": "capenna",
+      "why": "MOM; flavour: \"the streets of New Capenna\"."
+    },
+    {
+      "oracleId": "530dc119-e266-4525-abe9-7fab599e9de2",
+      "name": "Invasion of New Capenna",
+      "plane": "capenna",
+      "why": "MOM battle; the card's own title names the plane it depicts (New Capenna)."
+    },
+    {
+      "oracleId": "215fd0b4-5817-4335-a0ed-1694e44bde41",
+      "name": "Omen Hawker",
+      "plane": "capenna",
+      "why": "MOM; flavour: \"naive customers of the Obscura\" — a Capenna family."
+    },
+    {
+      "oracleId": "08574d1b-4b76-42dd-884b-29c5a61cfdda",
+      "name": "Seraph of New Capenna",
+      "plane": "capenna",
+      "why": "a Capennan angel (Appendix A renamed New Capenna to Capenna)"
+    },
+    {
+      "oracleId": "74b631c5-9420-496e-8845-3b050d3d5340",
+      "name": "Streetwise Negotiator",
+      "plane": "capenna",
+      "why": "MOM; flavour: \"the Brokers' favor\" — a Capenna family."
+    },
+    {
+      "oracleId": "448cc829-1596-4aec-b180-c0c1e0566f6b",
+      "name": "Wary Thespian",
+      "plane": "capenna",
+      "why": "MOM; flavour: \"The Cabaretti performance\" — a Capenna family."
+    },
+    {
+      "oracleId": "ea405cb4-a21b-4a26-98f3-251e65ea2aef",
+      "name": "Blightreaper Thallid",
+      "plane": "dominaria",
+      "why": "MOM; flavour: \"the wrecked machines in Urborg\" — Dominaria."
+    },
+    {
+      "oracleId": "dcbd8b15-e5fd-4f0d-ba2d-06f018b64fb3",
+      "name": "Invasion of Dominaria",
+      "plane": "dominaria",
+      "why": "MOM battle; the card's own title names the plane it depicts (Dominaria)."
+    },
+    {
+      "oracleId": "3b91dc3e-46ef-4a68-829f-ef7d79598cf7",
+      "name": "Meeting of Minds",
+      "plane": "dominaria",
+      "why": "MOM; attributed to \"Niambi, cleric of Dominaria\" — speaker, not scene."
+    },
+    {
+      "oracleId": "bf7f5e9d-de3d-4a29-af25-f0b56336cecb",
+      "name": "Shivan Branch-Burner",
+      "plane": "dominaria",
+      "why": "MOM; name: Shiv, a Dominarian region."
+    },
+    {
+      "oracleId": "980e1721-3717-4425-95a4-938dbf2ac661",
+      "name": "Yargle and Multani",
+      "plane": "dominaria",
+      "why": "MOM; both named characters are Dominaria's — not a cross-plane pairing."
+    },
+    {
+      "oracleId": "329fcb1e-7066-46c5-ba27-20ed2b18c1ba",
+      "name": "Invasion of Eldraine",
+      "plane": "eldraine",
+      "why": "MOM battle; the card's own title names the plane it depicts (Eldraine)."
+    },
+    {
+      "oracleId": "d849be9d-0447-4f0b-a382-3f4ceb98f9a5",
+      "name": "Order of the Mirror",
+      "plane": "eldraine",
+      "why": "MOM; flavour: \"The Magic Mirror of Vantress\" — Eldraine."
+    },
+    {
+      "oracleId": "ce807ee3-a27c-4f3b-92a4-37faaca42aa1",
+      "name": "Wildwood Escort",
+      "plane": "eldraine",
+      "why": "MOM; flavour: \"With Eldraine's human knights called away\"."
+    },
+    {
+      "oracleId": "fe84933e-d98f-4cbc-b272-387a80894e31",
+      "name": "Invasion of Ergamon",
+      "plane": "ergamon",
+      "why": "MOM battle; the card's own title names the plane it depicts (Ergamon)."
+    },
+    {
+      "oracleId": "7209f2b6-8851-42ab-bac6-5cf06e211e46",
+      "name": "Invasion of Fiora",
+      "plane": "fiora",
+      "why": "MOM battle; the card's own title names the plane it depicts (Fiora)."
+    },
+    {
+      "oracleId": "cff8dd65-e531-4496-aa49-e8d4350b9620",
+      "name": "Infected Defector",
+      "plane": "gobakhan",
+      "why": "MOM; flavour: \"The diamond storms of Gobakhan\"."
+    },
+    {
+      "oracleId": "86c32a56-3272-4738-b0b3-a8aa49a17ce4",
+      "name": "Invasion of Gobakhan",
+      "plane": "gobakhan",
+      "why": "MOM battle; the card's own title names the plane it depicts (Gobakhan)."
+    },
+    {
+      "oracleId": "b06067e7-330e-47de-be59-c2874eedba1d",
+      "name": "Bonded Herdbeast",
+      "plane": "ikoria",
+      "why": "MOM; flavour: \"the monsters of Ikoria and their human bonders\"."
+    },
+    {
+      "oracleId": "6971eac1-afd0-46c3-a37f-4a26d50ef656",
+      "name": "Copper Host Crusher",
+      "plane": "ikoria",
+      "why": "MOM; flavour: \"assaults even from Ikoria's apex monsters\"."
+    },
+    {
+      "oracleId": "706833f7-af50-45bf-8f1d-d3a5a31cf2c8",
+      "name": "Glistening Deluge",
+      "plane": "ikoria",
+      "why": "MOM; flavour: \"As oil began to pour from Ikoria's crystals\"."
+    },
+    {
+      "oracleId": "21d90735-5e04-4a8c-a546-ff26d4d5998d",
+      "name": "Invasion of Ikoria",
+      "plane": "ikoria",
+      "why": "MOM battle; the card's own title names the plane it depicts (Ikoria)."
+    },
+    {
+      "oracleId": "d7dcd1a3-3163-4e26-94e8-f4072e477e6a",
+      "name": "Halo-Charged Skaab",
+      "plane": "innistrad",
+      "why": "MOM; flavour: \"Innistrad's stitchers\"."
+    },
+    {
+      "oracleId": "a3c1af66-63c8-41ec-a401-a3da1131dc67",
+      "name": "Invasion of Innistrad",
+      "plane": "innistrad",
+      "why": "MOM battle; the card's own title names the plane it depicts (Innistrad)."
+    },
+    {
+      "oracleId": "f810e185-4498-483b-ab37-0c583dae0eaf",
+      "name": "Pyretic Prankster",
+      "plane": "innistrad",
+      "why": "MOM; flavour: \"marking every surface on Innistrad\"."
+    },
+    {
+      "oracleId": "9c0073d7-a12a-45ba-8ac3-9e2230e2fb06",
+      "name": "Burning Sun's Fury",
+      "plane": "ixalan",
+      "why": "MOM; flavour: \"Ixalan greeted Phyrexia with a defiant roar\"."
+    },
+    {
+      "oracleId": "1e5a5a7d-2c34-4e56-96e9-ebcf7745a03c",
+      "name": "Invasion of Ixalan",
+      "plane": "ixalan",
+      "why": "MOM battle; the card's own title names the plane it depicts (Ixalan)."
+    },
+    {
+      "oracleId": "17e74c4b-435c-469e-a9a4-32bf0cb7634c",
+      "name": "Ravenous Sailback",
+      "plane": "ixalan",
+      "why": "MOM; flavour: \"as many of Ixalan's dinosaurs as possible\"."
+    },
+    {
+      "oracleId": "0b34581e-66df-4e2f-91fb-dddba632d203",
+      "name": "Sun-Blessed Guardian",
+      "plane": "ixalan",
+      "why": "MOM; name: the Sun Empire, an Ixalan nation."
+    },
+    {
+      "oracleId": "ce8ec966-ecff-425e-944c-36dc8d4aef23",
+      "name": "Axgard Artisan",
+      "plane": "kaldheim",
+      "why": "MOM; name: Axgard, a Kaldheim location."
+    },
+    {
+      "oracleId": "f055a941-8b83-464e-a57f-8f188dc69aaa",
+      "name": "Fearless Skald",
+      "plane": "kaldheim",
+      "why": "MOM; flavour: \"Tonight we feast in Starnheim!\" — Kaldheim."
+    },
+    {
+      "oracleId": "fea60c45-cc36-4dd1-8475-23a9361e370d",
+      "name": "Furnace Host Charger",
+      "plane": "kaldheim",
+      "why": "MOM; flavour: \"crashed into Kaldheim's defenders\"."
+    },
+    {
+      "oracleId": "66914a34-59b3-48a0-9305-ebd956d34f02",
+      "name": "Invasion of Kaldheim",
+      "plane": "kaldheim",
+      "why": "MOM battle; the card's own title names the plane it depicts (Kaldheim)."
+    },
+    {
+      "oracleId": "66a131ae-dbb2-4e7b-b6ce-7695f47c8f87",
+      "name": "Serpent-Blade Assailant",
+      "plane": "kaldheim",
+      "why": "MOM; flavour: \"Kaldheim's cosmos was never yours to corrupt\"."
+    },
+    {
+      "oracleId": "baea7cc5-15ec-4229-ad8b-d4b34c2e21e8",
+      "name": "Akki Scrapchomper",
+      "plane": "kamigawa",
+      "why": "MOM; flavour: \"Kamigawa's akki\"."
+    },
+    {
+      "oracleId": "242c39b4-5ef0-469a-a852-738f79d93bd6",
+      "name": "Corruption of Towashi",
+      "plane": "kamigawa",
+      "why": "MOM; name: Towashi, a Kamigawa city."
+    },
+    {
+      "oracleId": "462fa2a4-651b-4fc1-b73b-1bd4508c8f75",
+      "name": "Invasion of Kamigawa",
+      "plane": "kamigawa",
+      "why": "MOM battle; the card's own title names the plane it depicts (Kamigawa)."
+    },
+    {
+      "oracleId": "c4b6dd8f-cdef-413a-a820-ec47e168b3bd",
+      "name": "Terror of Towashi",
+      "plane": "kamigawa",
+      "why": "MOM; name: Towashi, a Kamigawa city."
+    },
+    {
+      "oracleId": "2676d0c3-0a24-4e93-ae80-8f3fe03da483",
+      "name": "War Historian",
+      "plane": "kamigawa",
+      "why": "MOM; flavour: \"All children on Kamigawa learn of the Kami War\"."
+    },
+    {
+      "oracleId": "2d125ef5-074c-44eb-a1d0-c308d48bfbc2",
+      "name": "Invasion of Karsus",
+      "plane": "karsus",
+      "why": "MOM battle; the card's own title names the plane it depicts (Karsus)."
+    },
+    {
+      "oracleId": "dc8c6803-dd87-4f00-8a92-9613dbe90549",
+      "name": "Karsus Depthguard",
+      "plane": "karsus",
+      "why": "a Karsus defender, named for the plane it defends"
+    },
+    {
+      "oracleId": "fee0aa18-5103-4814-94e3-87ad3eaf5a6f",
+      "name": "Invasion of Kylem",
+      "plane": "kylem",
+      "why": "MOM battle; the card's own title names the plane it depicts (Kylem)."
+    },
+    {
+      "oracleId": "e1c458ca-10f6-4da8-a93d-3adfb86fe97d",
+      "name": "Preening Champion",
+      "plane": "kylem",
+      "why": "MOM; flavour: \"On Kylem, the omens of impending invasion\"."
+    },
+    {
+      "oracleId": "65b8bb9b-91f9-44e2-aa6e-e82e3760a4d9",
+      "name": "Compleated Huntmaster",
+      "plane": "lorwyn",
+      "why": "MOM; flavour: \"The elves of Lorwyn sought perfection\"."
+    },
+    {
+      "oracleId": "e2da8c3e-6ffc-41dd-a68a-62e64f7e9c60",
+      "name": "Fertilid's Favor",
+      "plane": "lorwyn",
+      "why": "MOM; flavour: \"The denizens of Lorwyn\"."
+    },
+    {
+      "oracleId": "c877a430-75bc-45ac-b11d-2365d11ed341",
+      "name": "Invasion of Lorwyn",
+      "plane": "lorwyn",
+      "why": "MOM battle; the card's own title names the plane it depicts (Lorwyn)."
+    },
+    {
+      "oracleId": "142d2063-d692-42a6-b828-42d998914589",
+      "name": "Kithkin Billyrider",
+      "plane": "lorwyn",
+      "why": "MOM; flavour: \"Lorwyn still needs me\"."
+    },
+    {
+      "oracleId": "dd5a9ea5-0f27-4492-97d1-1a9970094c19",
+      "name": "Invasion of Mercadia",
+      "plane": "mercadia",
+      "why": "MOM battle; the card's own title names the plane it depicts (Mercadia)."
+    },
+    {
+      "oracleId": "a9855326-8958-4b03-b81b-1f9e4d1335b1",
+      "name": "Invasion of Moag",
+      "plane": "moag",
+      "why": "MOM battle; the card's own title names the plane it depicts (Moag)."
+    },
+    {
+      "oracleId": "e71eca6f-388c-4750-b70e-3ee1832931f0",
+      "name": "Timberland Ancient",
+      "plane": "moag",
+      "why": "MOM; flavour: \"when Moag ignored warnings of Phyrexia millennia ago\"."
+    },
+    {
+      "oracleId": "2e0d12dc-55fa-4363-b28f-612e7cfa12c6",
+      "name": "Invasion of Muraganda",
+      "plane": "muraganda",
+      "why": "MOM battle; the card's own title names the plane it depicts (Muraganda)."
+    },
+    {
+      "oracleId": "3d036f68-5f3a-4182-88f0-cdd685817dd0",
+      "name": "Angelic Intervention",
+      "plane": "new-phyrexia",
+      "why": "MOM; flavour: \"hope in the Mirrans and terror in New Phyrexia\"."
+    },
+    {
+      "oracleId": "650ed75c-20b0-45b8-a4d4-813e0369aaf1",
+      "name": "Elesh Norn",
+      "plane": "new-phyrexia",
+      "why": "MOM; the praetor herself; New Phyrexia is her plane of origin."
+    },
+    {
+      "oracleId": "480ea052-87d7-4fea-ac97-b6121b78f863",
+      "name": "Invasion of New Phyrexia",
+      "plane": "new-phyrexia",
+      "why": "MOM battle; the card's own title names the plane it depicts (New Phyrexia)."
+    },
+    {
+      "oracleId": "b70c3adb-64ba-49ea-bcf6-6406a58cb453",
+      "name": "Jin-Gitaxias",
+      "plane": "new-phyrexia",
+      "why": "MOM; the praetor himself; New Phyrexia is his plane of origin."
+    },
+    {
+      "oracleId": "aeaf3ce8-6bdf-4a90-8b81-cdbce0f3bb12",
+      "name": "Mirran Banesplitter",
+      "plane": "new-phyrexia",
+      "why": "MOM; name: the Mirran resistance, native to New Phyrexia."
+    },
+    {
+      "oracleId": "ec83f398-31af-484d-b6d2-8c7add142260",
+      "name": "Mirrodin Avenged",
+      "plane": "new-phyrexia",
+      "why": "MOM; name: Mirrodin, New Phyrexia's former name."
+    },
+    {
+      "oracleId": "97652492-7906-4d79-983c-fa1dc1239eba",
+      "name": "Sheoldred",
+      "plane": "new-phyrexia",
+      "why": "MOM; the praetor herself; New Phyrexia is her plane of origin."
+    },
+    {
+      "oracleId": "ae7643ea-ef1c-43a3-9605-4e8585239ea3",
+      "name": "Storm the Seedcore",
+      "plane": "new-phyrexia",
+      "why": "MOM; the Seedcore is on New Phyrexia; the raiders are Mirran."
+    },
+    {
+      "oracleId": "4b1da9aa-a30c-44b8-a10e-f9dc3fe70b6f",
+      "name": "Urabrask",
+      "plane": "new-phyrexia",
+      "why": "MOM; the praetor himself; New Phyrexia is his plane of origin."
+    },
+    {
+      "oracleId": "166e5680-b8cf-47da-bcae-3591367c5fb4",
+      "name": "Vorinclex",
+      "plane": "new-phyrexia",
+      "why": "MOM; the praetor himself; New Phyrexia is his plane of origin."
+    },
+    {
+      "oracleId": "323437f5-cc6c-4579-b591-499476dffb3c",
+      "name": "Invasion of Pyrulea",
+      "plane": "pyrulea",
+      "why": "MOM battle; the card's own title names the plane it depicts (Pyrulea)."
+    },
+    {
+      "oracleId": "ac5487ba-6d6e-47ee-ae29-776e186789cc",
+      "name": "Captive Weird",
+      "plane": "ravnica",
+      "why": "MOM; flavour: \"Izzet researchers\" — a Ravnican guild."
+    },
+    {
+      "oracleId": "78da7a38-0f08-4371-bda3-38f079f7724d",
+      "name": "Invasion of Ravnica",
+      "plane": "ravnica",
+      "why": "MOM battle; the card's own title names the plane it depicts (Ravnica)."
+    },
+    {
+      "oracleId": "4f0bcfe5-7e52-4249-a26a-482619716f18",
+      "name": "Invasion of Regatha",
+      "plane": "regatha",
+      "why": "MOM battle; the card's own title names the plane it depicts (Regatha)."
+    },
+    {
+      "oracleId": "7b3c0d89-55ed-43d7-a00a-7b060857ec4e",
+      "name": "Invasion of Segovia",
+      "plane": "segovia",
+      "why": "MOM battle; the card's own title names the plane it depicts (Segovia)."
+    },
+    {
+      "oracleId": "b5fe62f0-d914-4789-afd3-3831dcdbed7b",
+      "name": "Invasion of Shandalar",
+      "plane": "shandalar",
+      "why": "MOM battle; the card's own title names the plane it depicts (Shandalar)."
+    },
+    {
+      "oracleId": "5c7f02ad-1daf-4d1a-bef0-0b2064f9b67e",
+      "name": "Invasion of Tarkir",
+      "plane": "tarkir",
+      "why": "MOM battle; the card's own title names the plane it depicts (Tarkir)."
+    },
+    {
+      "oracleId": "89ff1b0a-0cf3-455e-a381-1d93ef86a41b",
+      "name": "Oculus Whelp",
+      "plane": "tarkir",
+      "why": "MOM; flavour: \"before Phyrexia's forces arrived on Tarkir\"."
+    },
+    {
+      "oracleId": "c554ae68-0201-4958-aa63-8159911acb50",
+      "name": "Tarkir Duneshaper",
+      "plane": "tarkir",
+      "why": "a Tarkir creature, named for its plane"
+    },
+    {
+      "oracleId": "941c9acd-2773-456a-88d5-0537735f93c6",
+      "name": "Zurgo and Ojutai",
+      "plane": "tarkir",
+      "why": "MOM; both named characters are Tarkir's — not a cross-plane pairing."
+    },
+    {
+      "oracleId": "ad172d4e-febf-4844-9544-861d03e27ab5",
+      "name": "Alabaster Host Sanctifier",
+      "plane": "theros",
+      "why": "MOM; flavour: \"beneath his purifying eyes, Theros is united as one\"."
+    },
+    {
+      "oracleId": "1e0bb57a-f5c7-45e9-b5b9-5bb3ec930108",
+      "name": "Ephara's Dispersal",
+      "plane": "theros",
+      "why": "MOM; name: Ephara, a god of Theros."
+    },
+    {
+      "oracleId": "c4e51cba-e5f7-4f44-9ae9-9223a2efd004",
+      "name": "Harried Artisan",
+      "plane": "theros",
+      "why": "MOM; flavour: \"As strange portals roared open across Theros\"."
+    },
+    {
+      "oracleId": "c27c6ba9-8d72-4101-b3a5-1e8d81755568",
+      "name": "Heliod, the Radiant Dawn",
+      "plane": "theros",
+      "why": "MOM; the god of Theros, compleated."
+    },
+    {
+      "oracleId": "ba5f7f37-352a-4b9c-b648-0ba5c8d842fc",
+      "name": "Invasion of Theros",
+      "plane": "theros",
+      "why": "MOM battle; the card's own title names the plane it depicts (Theros)."
+    },
+    {
+      "oracleId": "fb3f5097-0da0-458c-8508-60823567e2da",
+      "name": "Sunfall",
+      "plane": "theros",
+      "why": "MOM; attributed to Heliod, god of Theros — speaker, not scene."
+    },
+    {
+      "oracleId": "420290d9-7bb9-4e5a-82ec-c777152ccc72",
+      "name": "Urn of Godfire",
+      "plane": "theros",
+      "why": "MOM; flavour: \"Ephara blessed the defenders of Theros\"."
+    },
+    {
+      "oracleId": "083ea8b0-ff2a-406e-90f1-668f33443747",
+      "name": "Ichor Shade",
+      "plane": "tolvada",
+      "why": "MOM; flavour: \"Tolvada's dead rose to join the invaders' ranks\"."
+    },
+    {
+      "oracleId": "7f8dad7f-a573-469f-9095-4ba3886b4f0b",
+      "name": "Invasion of Tolvada",
+      "plane": "tolvada",
+      "why": "MOM battle; the card's own title names the plane it depicts (Tolvada)."
+    },
+    {
+      "oracleId": "f1acb469-9d02-44e6-8c09-8b4157551b2c",
+      "name": "Invasion of Ulgrotha",
+      "plane": "ulgrotha",
+      "why": "MOM battle; the card's own title names the plane it depicts (Ulgrotha)."
+    },
+    {
+      "oracleId": "73c7fdb3-4742-4d08-8658-daa4435c49b1",
+      "name": "Invasion of Vryn",
+      "plane": "vryn",
+      "why": "MOM battle; the card's own title names the plane it depicts (Vryn)."
+    },
+    {
+      "oracleId": "83633ea1-a8d5-4351-9047-625d6905386d",
+      "name": "Stasis Field",
+      "plane": "vryn",
+      "why": "MOM; flavour: \"critical tools in Vryn's defense\"."
+    },
+    {
+      "oracleId": "8b5add91-2e82-4430-bfc5-f4a6366dbbdb",
+      "name": "Invasion of Xerex",
+      "plane": "xerex",
+      "why": "MOM battle; the card's own title names the plane it depicts (Xerex)."
+    },
+    {
+      "oracleId": "2e150f97-5688-4559-94b8-86c33fda28a0",
+      "name": "Xerex Strobe-Knight",
+      "plane": "xerex",
+      "why": "a Xerex knight, named for its plane"
+    },
+    {
+      "oracleId": "896213bb-28a0-45a4-abbd-35af51f1d9aa",
+      "name": "Attentive Skywarden",
+      "plane": "zendikar",
+      "why": "MOM; flavour: the kitesail \"carried her safely through the Roil\" — Zendikar."
+    },
+    {
+      "oracleId": "f8ad2f88-72ae-4e47-beb5-25a6dacc709b",
+      "name": "Expedition Lookout",
+      "plane": "zendikar",
+      "why": "MOM; flavour: \"Zendikar's adventurers\"."
+    },
+    {
+      "oracleId": "4b1874af-4ea5-4e22-a4d4-e718d75fe95e",
+      "name": "Invasion of Zendikar",
+      "plane": "zendikar",
+      "why": "MOM battle; the card's own title names the plane it depicts (Zendikar)."
+    },
+    {
+      "oracleId": "29e96c47-94ad-4740-ba86-66dc2cf9ae2f",
+      "name": "Skyclave Aerialist",
+      "plane": "zendikar",
+      "why": "MOM; flavour: \"every waterway on Zendikar, from the Tazeem highlands\"."
+    },
+    {
+      "oracleId": "237b8528-a199-45f4-8efc-96d67119f738",
+      "name": "Vengeant Earth",
+      "plane": "zendikar",
+      "why": "MOM; flavour: \"When Zendikar's defenders faltered, the Roil rose up\"."
+    },
+    {
+      "oracleId": "9ad01fb2-2ba7-447a-a5ef-e57d46421635",
+      "name": "Marshal of Zhalfir",
+      "plane": "zhalfir",
+      "why": "a Zhalfirin officer; Appendix B's `mom` note names Zhalfir"
+    },
+    {
+      "oracleId": "d74d6f6a-aff0-4a36-9a99-8b2281f5e29d",
+      "name": "Thunderhead Squadron",
+      "plane": "zhalfir",
+      "why": "MOM; flavour: \"the griffin riders of Zhalfir\"."
+    },
+    {
+      "oracleId": "5adcd0cb-9305-4e77-a117-31e9dca5c96d",
+      "name": "Zhalfirin Lancer",
+      "plane": "zhalfir",
+      "why": "Zhalfirin knight; Appendix B's `mom` note names Zhalfir"
+    },
+    {
+      "oracleId": "cf459f47-e565-4bbb-89e4-ed54da8adae1",
+      "name": "Zhalfirin Shapecraft",
+      "plane": "zhalfir",
+      "why": "Zhalfirin magic — the weakest of the seven, being a spell rather than a creature with a home"
+    }
+  ],
+  "rule": "A record is written only when the card's own printed front face identifies exactly one plane: a plane named in flavour text or in the card name, a location or faction exclusive to one plane, a creature type exclusive to one plane, or a named character with one plane of origin. The evidence is read off the front face only — the committed records were curated that way, so a back face's flavour text, type line or character is not grounds for a record and a transforming card is judged on its front alone (review note N3). Cards naming two planes (a cross-plane team-up, or an event that travels between worlds) and cards whose text says 'the Multiverse' are left in the Blind Eternities on purpose — the dust is the correct answer for a card with no single setting (PRD 4.7.3), not a bucket to be emptied. `why` carries the evidence so a reviewer can audit a line without opening Scryfall."
 }

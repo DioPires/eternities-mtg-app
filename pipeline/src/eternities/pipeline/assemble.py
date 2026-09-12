@@ -9,7 +9,7 @@ code (implementation plan §2, Phase 0).
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Final
 
 from ..contract.enums import (
@@ -66,6 +66,15 @@ class AssemblyStats:
     blind_eternities_top_sets: list[tuple[str, str, int]]
     """PRD 9.2.2: ``(code, name, cards)`` of the sets contributing most to the dust."""
     largest_plane: tuple[str, int]
+    radius_saturation: list[tuple[str, int, float, float]] = field(default_factory=list)
+    """``(slug, cards, saturation, radius)`` for planes near or at 5.3.2's clamp (finding D2)."""
+    brightness_caps: list[tuple[str, int, int, int]] = field(default_factory=list)
+    """``(slug, cap, highest printing count, cards at or above the cap)`` (finding D6).
+
+    PRD 5.4.10's 98th-percentile cap is applied here, in the pipeline, and only the capped
+    ``brightness`` byte reaches ``stars.bin`` — so re-tuning the curve is a data refresh, not a
+    browser setting. Publishing the numbers does not change that; it makes the cap reviewable from
+    the report rather than only inferable from the encoded bytes."""
 
 
 def build_dataset(
@@ -111,18 +120,22 @@ def build_dataset(
     motions = {s: layout.plane_motion(s, mean_spacing) for s in ordered_slugs}
     plane_positions = [positions[s] for s in named]
     plane_radii = [radii[s] for s in named]
+    # Built once: the plane geometry is fixed before the first dust card, and re-deriving its
+    # nearest-neighbour table per card was two thirds of PRD 8.6.3's cost (finding D5).
+    dust_field = layout.DustField.build(plane_positions, plane_radii, MULTIVERSE_RADIUS)
 
     planes: list[Plane] = []
     stars: list[StarRecord] = []
     out_cards: list[Card] = []
+    brightness_caps: list[tuple[str, int, int, int]] = []
 
     for index, slug in enumerate(ordered_slugs):
         bands = plane_bands[slug]
-        band_of = {ref.code: band for band, ref in enumerate(bands)}
+        band_of = _band_index(slug, bands, by_plane[slug])
         rows = sorted(
             by_plane[slug],
             key=lambda c: (
-                band_of.get(c.first_printing.set_code, len(bands)),
+                band_of[c.first_printing.set_code],
                 int(hue_class_for(c.detail.colour_identity)),
                 c.oracle_id,
             ),
@@ -137,15 +150,18 @@ def build_dataset(
             if int(hue) < 5:
                 arm_counts[int(hue)] += 1
         mean_arm = sum(arm_counts) / 5.0 if sum(arm_counts) else 1.0
-        cap = _brightness_cap([len(r.printings) for r in rows])
+        printing_counts = [len(r.printings) for r in rows]
+        cap = _brightness_cap(printing_counts)
+        if printing_counts:
+            brightness_caps.append(
+                (slug, cap, max(printing_counts), sum(1 for n in printing_counts if n >= cap))
+            )
 
         for row in rows:
             hue = hue_class_for(row.detail.colour_identity)
-            band = band_of.get(row.first_printing.set_code, max(len(bands) - 1, 0))
+            band = band_of[row.first_printing.set_code]
             if slug == BLIND_ETERNITIES_SLUG:
-                position = layout.blind_eternities_position(
-                    row.oracle_id, len(stars), plane_positions, plane_radii, MULTIVERSE_RADIUS
-                )
+                position = dust_field.scatter(row.oracle_id, len(stars))
             else:
                 position = layout.card_position(
                     slug,
@@ -217,7 +233,28 @@ def build_dataset(
         multiverse_radius=MULTIVERSE_RADIUS,
         disc_thickness=0.15 * MULTIVERSE_RADIUS,
     )
-    return dataset, _stats(by_plane, plane_bands, sets)
+    return dataset, _stats(by_plane, plane_bands, sets, brightness_caps)
+
+
+def _band_index(slug: str, bands: list[PlaneSetRef], rows: list[CardInput]) -> dict[str, int]:
+    """Set code -> chronology band, total over ``rows``' first-printing sets (PRD 5.4.2).
+
+    One mapping, one lookup, no default. It was read twice with two *different* defaults — past
+    the end when sorting, the last band when positioning — which cannot both be right: a card the
+    mapping missed would sort after every band and then be placed inside the final one, so the
+    star's radius and its position in ``planes.json[].sets`` would disagree while the artefacts
+    still validated. Unreachable today, because :func:`_chronology_bands` is derived from exactly
+    these rows; the point is that if it ever stops being true the run says which plane and which
+    set, rather than emitting a plausible dataset (review findings D4, D7).
+    """
+    band_of = {ref.code: band for band, ref in enumerate(bands)}
+    missing = sorted({r.first_printing.set_code for r in rows} - set(band_of))
+    if missing:
+        raise ValueError(
+            f"plane {slug!r}: first-printing sets {missing} have no chronology band, though the "
+            "bands are built from exactly these rows (PRD 5.4.2)"
+        )
+    return band_of
 
 
 def _hue_histogram(rows: list[CardInput]) -> list[float]:
@@ -372,6 +409,7 @@ def _stats(
     by_plane: dict[str, list[CardInput]],
     plane_bands: dict[str, list[PlaneSetRef]],
     sets: dict[str, ScrySet],
+    brightness_caps: list[tuple[str, int, int, int]],
 ) -> AssemblyStats:
     dust = by_plane.get(BLIND_ETERNITIES_SLUG, [])
     contributions: dict[str, int] = {}
@@ -380,6 +418,14 @@ def _stats(
         contributions[code] = contributions.get(code, 0) + 1
     top = sorted(contributions.items(), key=lambda kv: (-kv[1], kv[0]))[:10]
     largest = max(((s, len(r)) for s, r in by_plane.items()), key=lambda kv: (kv[1], kv[0]))
+    # The Blind Eternities is excluded: PRD 8.3 gives it the multiverse radius outright, so it
+    # never goes through `visual_radius` and its card count says nothing about the clamp.
+    saturation = [
+        (slug, len(rows), layout.radius_saturation(len(rows)), layout.visual_radius(len(rows)))
+        for slug, rows in sorted(by_plane.items())
+        if slug != BLIND_ETERNITIES_SLUG
+        and layout.radius_saturation(len(rows)) >= layout.RADIUS_SATURATION_REPORT_FRACTION
+    ]
     return AssemblyStats(
         cards_per_plane={s: len(r) for s, r in by_plane.items()},
         sets_per_plane={s: len(b) for s, b in plane_bands.items()},
@@ -387,6 +433,8 @@ def _stats(
             (code, sets[code].name if code in sets else code, count) for code, count in top
         ],
         largest_plane=largest,
+        radius_saturation=sorted(saturation, key=lambda row: (-row[2], row[0])),
+        brightness_caps=brightness_caps,
     )
 
 

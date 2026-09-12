@@ -19,6 +19,10 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
+# Coverage is measured on every pytest run (pipeline/pyproject.toml), so this file is rewritten
+# constantly. Committing it makes a clean tree dirty the moment anyone runs the suite.
+.coverage
+.coverage.*
 
 # Pipeline working files. Artefacts under web/public/data/ ARE committed (PRD 8.1.4) so a clone
 # deploys without running the pipeline; the Scryfall bulk cache is not.

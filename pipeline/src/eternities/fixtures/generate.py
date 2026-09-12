@@ -240,26 +240,58 @@ def _allocate_cards(slugs: list[str], total: int) -> dict[str, int]:
     if not order:
         return counts
 
-    zero_count = max(1, len(order) // 12)
-    small_count = max(1, len(order) // 5)
-    small_planes = order[-(zero_count + small_count) : -zero_count]
-    large_planes = order[: len(order) - zero_count - small_count] or [order[0]]
+    # The three bands must *partition* `order`. The slices used to be able to overlap: at two named
+    # planes `small_planes` and the `or [order[0]]` large-plane fallback resolved to the same plane,
+    # which was counted into `small_total` and then overwritten by the large loop, so the allocation
+    # stopped summing to `total` (found by tests/test_generate.py, review finding D10). At least one
+    # plane is always large, because something has to carry the budget.
+    zero_count = min(max(1, len(order) // 12), max(len(order) - 1, 0))
+    small_count = max(min(max(1, len(order) // 5), len(order) - zero_count - 1), 0)
+    large_planes = order[: len(order) - zero_count - small_count]
+    small_planes = order[len(large_planes) : len(order) - zero_count]
 
     small_total = 0
     for slug in small_planes:
-        counts[slug] = rng.integer(1, layout.SPIRAL_THRESHOLD - 1, slug, "smallcount")
+        # Capped by what is left once every large plane has taken its minimum: on a budget this
+        # small the 1-49 draws alone can exceed the whole allocation. Never binds at fixture scale.
+        room = remaining - small_total - layout.SPIRAL_THRESHOLD * len(large_planes)
+        draw = rng.integer(1, layout.SPIRAL_THRESHOLD - 1, slug, "smallcount")
+        counts[slug] = max(0, min(draw, room))
         small_total += counts[slug]
 
+    budget = remaining - small_total
+    # A budget that cannot give every large plane a spiral does not get one: forcing the threshold
+    # anyway is what drove the total negative (`_allocate_cards(roster, 500)` gave `shandalar`
+    # -3,063 cards, and a negative card count encodes as a corrupt dataset rather than an error).
+    floor = layout.SPIRAL_THRESHOLD if budget >= layout.SPIRAL_THRESHOLD * len(large_planes) else 0
     weights = [1.0 / (i + 1.6) ** 0.95 for i in range(len(large_planes))]
-    scale = max(remaining - small_total, len(large_planes)) / sum(weights)
-    assigned = 0
+    scale = max(budget, len(large_planes)) / sum(weights)
     for slug, weight in zip(large_planes, weights, strict=True):
-        n = max(layout.SPIRAL_THRESHOLD, int(weight * scale))
-        counts[slug] = n
-        assigned += n
-    # Absorb the rounding drift into the largest plane so the total is exact.
-    counts[large_planes[0]] += remaining - small_total - assigned
+        counts[slug] = max(floor, int(weight * scale))
+    _spend_exactly(counts, large_planes, budget)
     return counts
+
+
+def _spend_exactly(counts: dict[str, int], planes: list[str], budget: int) -> None:
+    """Make ``planes`` sum to ``budget`` with no negative count, keeping the Zipf profile.
+
+    The weighted shares and the ``SPIRAL_THRESHOLD`` floor do not have to add up, in either
+    direction: rounding leaves a few cards unspent at fixture scale, and a skewed weight against a
+    tight budget over-commits. Surplus goes to the highest-weighted plane, which is what this
+    replaced did and is why the committed fixture hashes are unmoved. A deficit is taken back
+    largest-first, which only happens on a budget too small to pay for the shape at all.
+    """
+    drift = budget - sum(counts[slug] for slug in planes)
+    if drift >= 0:
+        counts[planes[0]] += drift
+        return
+    for slug in sorted(planes, key=lambda s: (-counts[s], s)):
+        take = min(counts[slug], -drift)
+        counts[slug] -= take
+        drift += take
+        if drift == 0:
+            return
+    raise ValueError(f"cannot spend {budget} cards over {len(planes)} planes: {drift} left over")
 
 
 def _sets_for_plane(slug: str, card_count: int) -> list[tuple[str, str, int, int]]:
@@ -358,6 +390,7 @@ def build(spec: FixtureSpec) -> Dataset:
     cards: list[Card] = []
     plane_positions = [positions[s] for s in sorted(named)]
     plane_radii = [radii[s] for s in sorted(named)]
+    dust_field = layout.DustField.build(plane_positions, plane_radii, MULTIVERSE_RADIUS)
 
     for index, slug in enumerate(ordered_slugs):
         entry = by_slug[slug]
@@ -383,9 +416,7 @@ def build(spec: FixtureSpec) -> Dataset:
 
         for row in rows:
             if slug == BLIND_ETERNITIES_SLUG:
-                pos = layout.blind_eternities_position(
-                    row.card.oracle_id, len(stars), plane_positions, plane_radii, MULTIVERSE_RADIUS
-                )
+                pos = dust_field.scatter(row.card.oracle_id, len(stars))
             else:
                 pos = layout.card_position(
                     slug,

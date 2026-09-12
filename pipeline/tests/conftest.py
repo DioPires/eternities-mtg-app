@@ -16,6 +16,7 @@ import pytest
 
 from eternities.pipeline.appendices import (
     Appendices,
+    CardOverride,
     PlaneEntry,
     SecretLairRule,
     SetEntry,
@@ -94,6 +95,8 @@ def set_entry(
     universes_beyond: bool = False,
     excluded: bool = False,
     prd_name: str | None = None,
+    prd_verify: bool = False,
+    prd_verified: str | None = None,
     corrected_from: str | None = None,
     prd_ratified: str | None = None,
 ) -> SetEntry:
@@ -105,19 +108,30 @@ def set_entry(
         excluded=excluded,
         notes="",
         prd_section="B.1",
-        prd_verify=False,
+        prd_verify=prd_verify,
         prd_name=prd_name if prd_name is not None else f"Set {code}",
         prd_date="2000-01",
         corrected_from=corrected_from,
+        prd_verified=prd_verified,
         prd_ratified=prd_ratified,
     )
+
+
+def card_override(
+    oracle_id: str = "card-1",
+    *,
+    name: str = "Test Card",
+    plane: str = "ravnica",
+    why: str = "test",
+) -> CardOverride:
+    return CardOverride(oracle_id=oracle_id, card_name=name, plane=plane, why=why)
 
 
 def appendices(
     *,
     sets: list[SetEntry] | None = None,
     planes: list[str] | None = None,
-    overrides: dict[str, str] | None = None,
+    overrides: list[CardOverride] | None = None,
 ) -> Appendices:
     slugs = planes or ["blind-eternities", "dominaria", "ravnica"]
     return Appendices(
@@ -126,7 +140,7 @@ def appendices(
         secret_lair=SecretLairRule(
             code_prefix="sl", name_contains="Secret Lair", exempt_codes=frozenset({"slx"})
         ),
-        overrides=overrides or {},
+        overrides={o.oracle_id: o for o in overrides or []},
     )
 
 

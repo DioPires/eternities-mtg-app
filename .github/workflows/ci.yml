@@ -101,7 +101,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
         working-directory: web
       - name: Python re-encodes the vector byte for byte
-        run: uv run pytest tests/test_test_vector.py -v
+        # `--no-cov`: the coverage floor in pyproject.toml applies to every pytest run and one test
+        # file cannot reach it. The floor is enforced by the `pipeline` job's full-suite run.
+        run: uv run pytest tests/test_test_vector.py -v --no-cov
         working-directory: pipeline
       - name: TypeScript decodes the same bytes
         run: pnpm exec vitest run test/test-vector.test.ts

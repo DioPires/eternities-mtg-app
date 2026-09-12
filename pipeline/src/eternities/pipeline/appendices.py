@@ -49,6 +49,19 @@ class SetEntry:
     prd_name: str
     prd_date: str
     corrected_from: str | None
+    prd_verified: str | None = None
+    """Date a run confirmed this ``prdVerify`` row against Scryfall, or ``None`` while it is open.
+
+    ``prdVerify`` marks a row open question 10 asked the *first run* to confirm. Fifteen rows were
+    confirmed on 2026-09-06 and every run since re-printed all fifteen in full, so the Q10 finding
+    asked the reader to re-read a settled answer to find the one line that was not — the failure
+    the roster finding had against open question 1 and ``prd_ratified`` fixed for corrections
+    (review finding D8).
+
+    Recording it does not stop the check: :func:`~eternities.pipeline.verify.verify_set_codes`
+    still tests every row against Scryfall each run, and a verified row that stops matching is
+    reported as a regression rather than collapsed into the count. What the date removes is the
+    noise, not the guard."""
     prd_ratified: str | None = None
     """Date the PRD text took this row's correction, or ``None`` while it is still outstanding.
 
@@ -62,6 +75,30 @@ class SetEntry:
     def drops_printings(self) -> bool:
         """PRD 4.3.1: a Universes Beyond or excluded row drops every printing in its set."""
         return self.universes_beyond or self.excluded
+
+
+@dataclass(frozen=True, slots=True)
+class CardOverride:
+    """One ``overrides.json`` record: a curated plane for one card (PRD 4.1.5, 4.6 rule 1).
+
+    Keyed by ``oracle_id``, not by card name. A front-face name is not an identifier — Scryfall
+    reuses one across distinct cards, and every such pair would move together under a single
+    curated line — while ``oracle_id`` is what the rest of the pipeline already joins on: stage 3
+    excludes by it, stage 4 chooses one first printing per it, and the encoder writes it into
+    every artefact.
+
+    ``card_name`` is kept anyway, because the file is curated by a human reading it and a bare
+    list of UUIDs is unreviewable. It is therefore an *assertion* rather than data:
+    :func:`~eternities.pipeline.stages.assign_planes` fails the run when the oracle id no longer
+    names this card, which is the drift a hand-maintained file accumulates.
+    """
+
+    oracle_id: str
+    card_name: str
+    plane: str
+    why: str
+    """Why this card moves. Curation is a judgement call; the reason belongs beside it, not in a
+    commit message the next curator will not find."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,8 +124,8 @@ class Appendices:
     planes: tuple[PlaneEntry, ...]
     sets: tuple[SetEntry, ...]
     secret_lair: SecretLairRule
-    overrides: dict[str, str]
-    """Card name -> plane slug (PRD 4.1.5, 4.6.1)."""
+    overrides: dict[str, CardOverride]
+    """``oracle_id`` -> the curated record (PRD 4.1.5, 4.6.1). See :class:`CardOverride`."""
 
     def __post_init__(self) -> None:
         slugs = [p.slug for p in self.planes]
@@ -111,11 +148,16 @@ class Appendices:
                     f"Appendix B row {entry.code!r} has no plane and is not flagged "
                     "universes_beyond or excluded; every in-universe row needs a plane (PRD 4.6.2)"
                 )
-        for name, slug in sorted(self.overrides.items()):
-            if slug not in known:
+        for oracle_id, override in sorted(self.overrides.items()):
+            if override.plane not in known:
                 raise ValueError(
-                    f"overrides.json maps {name!r} to plane {slug!r}, "
-                    "which is not in Appendix A (PRD 4.6)"
+                    f"overrides.json maps {override.card_name!r} ({oracle_id}) to plane "
+                    f"{override.plane!r}, which is not in Appendix A (PRD 4.6)"
+                )
+            if not override.card_name:
+                raise ValueError(
+                    f"overrides.json record {oracle_id} has no `name`; the name is the assertion "
+                    "that makes the record reviewable (see CardOverride)"
                 )
 
     @property
@@ -174,6 +216,7 @@ def load_appendices(
             corrected_from=(
                 None if row.get("correctedFrom") is None else str(row["correctedFrom"])
             ),
+            prd_verified=(None if row.get("prdVerified") is None else str(row["prdVerified"])),
             prd_ratified=(None if row.get("prdRatified") is None else str(row["prdRatified"])),
         )
         for row in cast("list[dict[str, Any]]", b["sets"])
@@ -184,5 +227,35 @@ def load_appendices(
         name_contains=str(rule["nameContains"]),
         exempt_codes=frozenset(str(c) for c in cast("list[Any]", rule["exemptCodes"])),
     )
-    override_map = {str(k): str(v) for k, v in cast("dict[str, Any]", o["overrides"]).items()}
-    return Appendices(planes=planes, sets=sets, secret_lair=secret_lair, overrides=override_map)
+    return Appendices(
+        planes=planes, sets=sets, secret_lair=secret_lair, overrides=_read_overrides(o, overrides)
+    )
+
+
+def _read_overrides(document: dict[str, Any], path: Path) -> dict[str, CardOverride]:
+    """``overrides.json``'s ``overrides`` array, keyed by ``oracle_id``.
+
+    The shape changed with the move off name keys (review finding D1). The old shape was a JSON
+    *object* of ``name -> slug``; the new one is an array of records. An object here is therefore
+    not a schema surprise to guess at, it is a file that predates the change, so it gets its own
+    message naming the migration rather than a ``KeyError`` from the first record read.
+    """
+    raw = document["overrides"]
+    if isinstance(raw, dict):
+        raise ValueError(
+            f"{path} uses the old name-keyed `overrides` object. It is now an array of records "
+            "with `oracleId`, `name`, `plane` and `why` — a front-face name is not an identifier "
+            "(review finding D1). Re-key the entries by Scryfall oracle_id."
+        )
+    result: dict[str, CardOverride] = {}
+    for row in cast("list[dict[str, Any]]", raw):
+        oracle_id = str(row["oracleId"])
+        if oracle_id in result:
+            raise ValueError(f"{path} carries two records for oracle_id {oracle_id}")
+        result[oracle_id] = CardOverride(
+            oracle_id=oracle_id,
+            card_name=str(row["name"]),
+            plane=str(row["plane"]),
+            why=str(row.get("why", "")),
+        )
+    return result

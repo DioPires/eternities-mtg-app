@@ -716,7 +716,7 @@
       "plane": "blind-eternities",
       "universesBeyond": false,
       "excluded": false,
-      "notes": "Avishkar, Amonkhet, and Muraganda cards via overrides",
+      "notes": "Avishkar, Amonkhet, and Muraganda cards via overrides — NOT YET WRITTEN. DEC-710 curated mom and left dft; until the records exist this row's cards all land in the dust.",
       "prdSection": "B.2",
       "prdVerify": false,
       "correctedFrom": null
@@ -915,6 +915,7 @@
       "notes": "",
       "prdSection": "B.1",
       "prdVerify": true,
+      "prdVerified": "2026-09-06",
       "correctedFrom": null
     },
     {
@@ -1228,6 +1229,7 @@
       "notes": "",
       "prdSection": "B.3",
       "prdVerify": true,
+      "prdVerified": "2026-09-06",
       "correctedFrom": null
     },
     {
@@ -1241,6 +1243,7 @@
       "notes": "",
       "prdSection": "B.3",
       "prdVerify": true,
+      "prdVerified": "2026-09-06",
       "correctedFrom": null
     },
     {
@@ -1696,6 +1699,7 @@
       "notes": "",
       "prdSection": "B.3",
       "prdVerify": true,
+      "prdVerified": "2026-09-06",
       "correctedFrom": null
     },
     {
@@ -1918,6 +1922,7 @@
       "notes": "",
       "prdSection": "B.3",
       "prdVerify": true,
+      "prdVerified": "2026-09-06",
       "correctedFrom": null
     },
     {
@@ -1931,6 +1936,7 @@
       "notes": "",
       "prdSection": "B.3",
       "prdVerify": true,
+      "prdVerified": "2026-09-06",
       "correctedFrom": null
     },
     {
@@ -2348,6 +2354,7 @@
       "notes": "",
       "prdSection": "B.2",
       "prdVerify": true,
+      "prdVerified": "2026-09-06",
       "correctedFrom": null
     },
     {
@@ -2388,6 +2395,7 @@
       "notes": "",
       "prdSection": "B.1",
       "prdVerify": true,
+      "prdVerified": "2026-09-06",
       "correctedFrom": null
     },
     {
@@ -2440,6 +2448,7 @@
       "notes": "",
       "prdSection": "B.1",
       "prdVerify": true,
+      "prdVerified": "2026-09-06",
       "correctedFrom": null
     },
     {
@@ -2453,6 +2462,7 @@
       "notes": "",
       "prdSection": "B.3",
       "prdVerify": true,
+      "prdVerified": "2026-09-06",
       "correctedFrom": null
     },
     {
@@ -2466,6 +2476,7 @@
       "notes": "plus its Commander set · **verify code**",
       "prdSection": "B.3",
       "prdVerify": true,
+      "prdVerified": "2026-09-06",
       "correctedFrom": null
     },
     {
@@ -2584,6 +2595,7 @@
       "notes": "",
       "prdSection": "B.3",
       "prdVerify": true,
+      "prdVerified": "2026-09-06",
       "correctedFrom": null
     },
     {
@@ -2610,6 +2622,7 @@
       "notes": "",
       "prdSection": "B.3",
       "prdVerify": true,
+      "prdVerified": "2026-09-06",
       "correctedFrom": null
     },
     {
@@ -2636,6 +2649,7 @@
       "notes": "",
       "prdSection": "B.3",
       "prdVerify": true,
+      "prdVerified": "2026-09-06",
       "correctedFrom": null
     },
     {
@@ -2649,6 +2663,7 @@
       "notes": "",
       "prdSection": "B.3",
       "prdVerify": true,
+      "prdVerified": "2026-09-06",
       "correctedFrom": null
     },
     {

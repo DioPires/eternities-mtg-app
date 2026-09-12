@@ -21,6 +21,7 @@ dev = [
   "ruff==0.14.4",
   "basedpyright==1.31.7",
   "pre-commit==4.4.0",
+  "pytest-cov==7.0.0",
 ]
 
 [tool.ruff]
@@ -54,6 +55,35 @@ reportUnusedCallResult = false
 reportAny = false
 reportExplicitAny = false
 
+# Unit tests for a module's internal rules are what review finding D10 asked for, and reaching a
+# module-private helper is how they do it. The alternative is exporting every helper so that a test
+# may call it, which makes a module's public surface a function of its test suite. Scoped to
+# `tests/` so `src/` keeps the rule.
+[[tool.basedpyright.executionEnvironments]]
+root = "tests"
+reportPrivateUsage = false
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+# Coverage is measured on every run rather than in a separate command, because a floor nobody
+# invokes is a floor that rots (review finding D10 — the tree had no coverage measurement at all).
+# 91% is what the suite reached the day the floor went in; it is a ratchet against regression, not
+# a target. `--cov-fail-under` makes it a gate rather than a number in the output nobody reads.
+#
+# It applies to every pytest invocation, so running a *subset* fails the floor by construction —
+# pass `--no-cov` for that (`uv run pytest tests/test_report.py --no-cov`). CI's contract job does.
+addopts = "-q --cov=eternities --cov-report=term-missing:skip-covered --cov-fail-under=91"
+
+[tool.coverage.run]
+# `sysmon` is CPython 3.13's PEP 669 monitoring backend. Without it, tracing every line takes the
+# suite from 27 s to 93 s — a 3.5x tax on the default dev loop is how always-on coverage gets
+# turned off again. With it the cost is under a second.
+core = "sysmon"
+branch = false
+source = ["src/eternities"]
+
+[tool.coverage.report]
+exclude_also = [
+  "if TYPE_CHECKING:",
+  "raise NotImplementedError",
+]

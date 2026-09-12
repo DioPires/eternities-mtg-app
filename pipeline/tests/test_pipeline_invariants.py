@@ -476,3 +476,75 @@ def test_the_arm_width_base_moves_x_and_z_but_never_y():
         if (narrow[0], narrow[2]) != (wide[0], wide[2]):
             moved += 1
     assert moved > 150, f"only {moved} of 200 arm cards moved; the width is not reaching the arm"
+
+
+def test_a_stars_radius_agrees_with_its_band_in_the_plane_set_list(dataset: Dataset):
+    """Review finding D7: the chronology band is encoded twice, and nothing checked they agree.
+
+    ``stars.bin`` carries the band as a *radius* — PRD 8.6.2 places a card at
+    ``(band + 0.5 + jitter) / band_count`` of the plane's frame — while ``planes.json[].sets`` is
+    the band *order*, which the data contract §4 states outright ("band `b` of a plane is
+    `sets[b]`"). Two representations of one fact, in two artefacts, derived down two code paths.
+    Before this the only thing tying them together was that `assemble` happened to read one
+    mapping; a decoder trusting §4 would have silently drawn the wrong ring.
+
+    Asserted as interval containment rather than ``floor(r * bands)`` because ``card_position``
+    clamps the radius to a 0.02 floor, and on a plane with many bands every band-0 card is under
+    that floor — so the naive inverse reports band 2 for a band-0 card on a 100-band plane and the
+    test would be asserting the clamp, not the agreement.
+
+    Only the five mono hues carry a band radius: 8.6.2 pulls multicolour into the bulge
+    (``r *= BULGE_SCALE``) and pushes colourless out to the halo, both of which discard ``r`` by
+    design.
+    """
+    checked = 0
+    for plane in dataset.planes:
+        if plane.slug == BLIND_ETERNITIES_SLUG or plane.star_count == 0:
+            continue
+        bands = max(len(plane.sets), 1)
+        band = 0
+        seen_in_band = 0
+        for star in dataset.stars[plane.star_offset : plane.star_offset + plane.star_count]:
+            while band < len(plane.sets) and seen_in_band == plane.sets[band].card_count:
+                band += 1
+                seen_in_band = 0
+            seen_in_band += 1
+            if int(star.hue) >= 5:
+                continue
+            radius = math.sqrt(star.x**2 + star.z**2)
+            low = _band_radius(band - layout.BAND_JITTER, bands)
+            high = _band_radius(band + layout.BAND_JITTER, bands)
+            assert low - 1e-9 <= radius <= high + 1e-9, (
+                f"{plane.slug}: star at radius {radius:.4f} sits outside band {band} of {bands} "
+                f"([{low:.4f}, {high:.4f}]) — stars.bin and planes.json[].sets disagree"
+            )
+            checked += 1
+    assert checked > 0, "the invariant asserted nothing; the band walk found no mono-hue stars"
+
+
+def _band_radius(band_offset: float, bands: int) -> float:
+    """``card_position``'s radial mapping, at a chosen point in the band (PRD 8.6.2)."""
+    return min(max((band_offset + 0.5) / bands, 0.02), 1.0)
+
+
+def test_the_band_radius_intervals_do_not_overlap_so_the_radius_carries_the_band():
+    """The containment test above is only meaningful if the intervals are distinguishable.
+
+    ``BAND_JITTER`` is 0.35 of a band against a half-band of 0.5, so consecutive bands leave a
+    0.3-band dark lane between them. At 0.5 they would abut and one radius would name two bands —
+    exactly the reading a decoder would get wrong — so the margin is pinned here rather than left
+    as a property of one constant nobody connects to the contract.
+
+    The 0.02 radius floor is the one place bands genuinely collapse: on a plane with many bands
+    every low band clamps to it, so those pairs are allowed to share a radius. What must not
+    happen is two *unclamped* bands sharing one.
+    """
+    assert layout.BAND_JITTER < 0.5
+    floor = 0.02
+    for bands in (1, 2, 7, 64, 200):
+        for band in range(bands - 1):
+            high = _band_radius(band + layout.BAND_JITTER, bands)
+            next_low = _band_radius(band + 1 - layout.BAND_JITTER, bands)
+            if high <= floor:
+                continue  # both ends sit on the clamp; see the docstring
+            assert high < next_low, f"bands={bands}: band {band} and {band + 1} share radii"

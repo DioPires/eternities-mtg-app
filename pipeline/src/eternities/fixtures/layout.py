@@ -18,6 +18,27 @@ R_MIN: Final = 3.0
 R_MAX: Final = 12.0
 """PRD 5.3.2: visual radius is log(card count), clamped to [r_min, r_max]."""
 
+RADIUS_SPAN_CARDS: Final = 30000
+"""The card count at which a plane's radius reaches ``R_MAX`` — where 5.3.2's clamp bites.
+
+Not a spec constant. 5.3.2 fixes the curve ("log(card count), clamped to [r_min, r_max]") and
+leaves the normalisation open, so this is a visual tunable; it was an unnamed literal inside
+:func:`visual_radius`. It is deliberately *not* re-derived per run from the largest plane: radii
+feed 8.6.1's plane placement by rejection sampling, so moving this moves every plane's home
+position, renames the dataset directory and forces a full refresh — a value that drifted with the
+data would do all of that on every run.
+
+Which leaves the clamp reachable, and reaching it invisible in the artefacts: planes of 30,000 and
+60,000 cards both encode radius 12.0. Production is not close: its largest *plane* is `dominaria`
+at 6,266 cards (2026-09-06) — 84.8% of the span on the log scale, radius 10.63 of 12, below the
+0.9 reporting fraction, which is why the run report says no plane is within 90% of the span. The
+28,587 that sits near the clamp is the whole multiverse's card count, not any one plane's, and the
+gap between the two is the headroom. :func:`radius_saturation` exists so the run report tracks
+that per plane, rather than the next refresh finding out (review finding D2)."""
+
+RADIUS_SATURATION_REPORT_FRACTION: Final = 0.9
+"""Saturation from here up is reported per plane (PRD 4.9.2)."""
+
 SPIRAL_THRESHOLD: Final = 50
 """PRD 5.3.6: >= 50 cards is a five-arm spiral, 1-49 an irregular cloud, 0 an empty glow."""
 
@@ -74,13 +95,23 @@ class PlaneMotion:
     bar: bool
 
 
+def radius_saturation(card_count: int) -> float:
+    """Where this card count sits on ``RADIUS_SPAN_CARDS``, on the log scale that sets the radius.
+
+    ``1.0`` means the plane is clamped at ``R_MAX`` and any growth from here is unrepresentable.
+    Unclamped on purpose: a value above 1.0 is the number the report needs to say *how far* past
+    the span the data has gone.
+    """
+    if card_count <= 0:
+        return 0.0
+    return math.log(card_count + 1) / math.log(RADIUS_SPAN_CARDS)
+
+
 def visual_radius(card_count: int) -> float:
-    """PRD 5.3.2. Zero-card planes render at ``R_MIN``."""
+    """PRD 5.3.2. Zero-card planes render at ``R_MIN``; see ``RADIUS_SPAN_CARDS`` for the clamp."""
     if card_count <= 0:
         return R_MIN
-    span = math.log(30000.0)
-    t = min(math.log(card_count + 1) / span, 1.0)
-    return R_MIN + (R_MAX - R_MIN) * t
+    return R_MIN + (R_MAX - R_MIN) * min(radius_saturation(card_count), 1.0)
 
 
 def plane_kind(slug: str, card_count: int) -> PlaneKind:
@@ -247,78 +278,141 @@ def _clamp_to_frame(p: tuple[float, float, float]) -> tuple[float, float, float]
     return (p[0] * scale, p[1] * scale, p[2] * scale)
 
 
-def blind_eternities_position(
-    oracle_id: str,
-    index: int,
-    plane_positions: list[tuple[float, float, float]],
-    plane_radii: list[float],
-    multiverse_radius: float,
-) -> tuple[float, float, float]:
-    """PRD 8.6.3: scatter through the disc, avoiding plane interiors, densest between neighbours.
+DUST_ATTEMPTS: Final = 24
+"""PRD 8.6.3 samples per dust card; the best-weighted one wins."""
 
-    Returns a position in the Blind Eternities' own local frame, which is multiverse coordinates
-    scaled by ``1 / multiverse_radius`` (PRD 8.3), so the shader path is identical for every star.
+DUST_EXCLUSION_FACTOR: Final = 1.3
+"""A dust card must clear this multiple of a plane's visual radius."""
+
+
+@dataclass(frozen=True, slots=True)
+class DustField:
+    """The plane geometry PRD 8.6.3's scatter reads, with its per-plane tables built once.
+
+    :func:`scatter` used to take the raw ``plane_positions``/``plane_radii`` lists and re-derive
+    everything per card: the nearest-neighbour lookup was a full 86-plane scan run twelve times
+    *per card*, and the exclusion radius was re-multiplied for every plane on every attempt. On
+    production's 4,980 dust cards that came to roughly 15.5 million distance computations in pure
+    Python, two thirds of them re-deriving the same 86-entry table (review finding D5).
+
+    Nothing about the sampling changed: the tables are pure functions of the plane geometry, which
+    is fixed before the first dust card is placed, so every position this produces is the position
+    the per-card version produced. ``test_fixtures`` and the committed fixture hashes are what
+    hold that.
     """
-    half_thickness = 0.075 * multiverse_radius
-    best: tuple[float, float, float] | None = None
-    best_weight = -1.0
 
-    for attempt in range(24):
-        # Half the samples are biased toward a midpoint between two neighbouring planes, which is
-        # the "connecting tissue" reading of PRD 8.6.3; the rest fill the volume.
-        if plane_positions and attempt % 2 == 0:
-            a = rng.integer(0, len(plane_positions) - 1, oracle_id, "pa", attempt)
-            b = _nearest_other(a, plane_positions)
-            pa, pb = plane_positions[a], plane_positions[b]
-            t = rng.between(0.35, 0.65, oracle_id, "t", attempt)
-            spread = 0.35 * _distance(pa, pb)
-            candidate = tuple(
-                pa[i] + (pb[i] - pa[i]) * t + rng.gaussian(oracle_id, "s", attempt, i) * spread
-                for i in range(3)
-            )
-        else:
-            u = rng.unit(oracle_id, "r", attempt)
-            r = math.sqrt(u) * multiverse_radius
-            theta = rng.between(0.0, 2.0 * math.pi, oracle_id, "theta", attempt)
-            candidate = (
-                r * math.cos(theta),
-                rng.gaussian(oracle_id, "y", attempt) * half_thickness * 0.6,
-                r * math.sin(theta),
-            )
+    positions: tuple[tuple[float, float, float], ...]
+    radii: tuple[float, ...]
+    multiverse_radius: float
+    nearest_other: tuple[int, ...]
+    """Index of each plane's nearest other plane — 86 x 86 once, not 86 per card."""
+    exclusion: tuple[float, ...]
+    """``DUST_EXCLUSION_FACTOR * radius`` per plane."""
+    neighbour_spread: tuple[float, ...]
+    """``0.35 * distance`` to the nearest other plane, the midpoint sampler's jitter scale."""
 
-        x, y, z = candidate
-        y = max(-half_thickness * 1.4, min(half_thickness * 1.4, y))
-        radial = math.sqrt(x * x + z * z)
-        if radial > multiverse_radius:
-            scale = multiverse_radius / radial
-            x, z = x * scale, z * scale
-        candidate = (x, y, z)
-
-        clearance = min(
-            (
-                _distance(candidate, p) - 1.3 * radius
-                for p, radius in zip(plane_positions, plane_radii, strict=True)
+    @classmethod
+    def build(
+        cls,
+        plane_positions: list[tuple[float, float, float]],
+        plane_radii: list[float],
+        multiverse_radius: float,
+    ) -> DustField:
+        nearest = tuple(_nearest_other(i, plane_positions) for i in range(len(plane_positions)))
+        return cls(
+            positions=tuple(plane_positions),
+            radii=tuple(plane_radii),
+            multiverse_radius=multiverse_radius,
+            nearest_other=nearest,
+            exclusion=tuple(DUST_EXCLUSION_FACTOR * r for r in plane_radii),
+            neighbour_spread=tuple(
+                0.35 * _distance(plane_positions[i], plane_positions[j])
+                for i, j in enumerate(nearest)
             ),
-            default=1.0,
-        )
-        if clearance <= 0.0:
-            continue
-        # Prefer samples nearest a plane's exclusion shell: that is where the dust reads densest.
-        weight = 1.0 / (1.0 + clearance)
-        if weight > best_weight:
-            best_weight, best = weight, candidate
-
-    if best is None:
-        # Every sample landed inside a plane: fall back to the outer rim, which is always clear.
-        theta = rng.between(0.0, 2.0 * math.pi, oracle_id, "fallback", index)
-        best = (
-            multiverse_radius * 0.98 * math.cos(theta),
-            0.0,
-            multiverse_radius * 0.98 * math.sin(theta),
         )
 
-    inv = 1.0 / multiverse_radius
-    return _clamp_to_frame((best[0] * inv, best[1] * inv, best[2] * inv))
+    def scatter(self, oracle_id: str, index: int) -> tuple[float, float, float]:
+        """PRD 8.6.3: through the disc, avoiding plane interiors, densest between neighbours.
+
+        Returns a position in the Blind Eternities' own local frame, which is multiverse
+        coordinates scaled by ``1 / multiverse_radius`` (PRD 8.3), so the shader path is identical
+        for every star.
+        """
+        multiverse_radius = self.multiverse_radius
+        half_thickness = 0.075 * multiverse_radius
+        positions = self.positions
+        best: tuple[float, float, float] | None = None
+        best_weight = -1.0
+
+        for attempt in range(DUST_ATTEMPTS):
+            # Half the samples are biased toward a midpoint between two neighbouring planes, which
+            # is the "connecting tissue" reading of PRD 8.6.3; the rest fill the volume.
+            if positions and attempt % 2 == 0:
+                a = rng.integer(0, len(positions) - 1, oracle_id, "pa", attempt)
+                pa, pb = positions[a], positions[self.nearest_other[a]]
+                t = rng.between(0.35, 0.65, oracle_id, "t", attempt)
+                spread = self.neighbour_spread[a]
+                candidate = tuple(
+                    pa[i] + (pb[i] - pa[i]) * t + rng.gaussian(oracle_id, "s", attempt, i) * spread
+                    for i in range(3)
+                )
+            else:
+                u = rng.unit(oracle_id, "r", attempt)
+                r = math.sqrt(u) * multiverse_radius
+                theta = rng.between(0.0, 2.0 * math.pi, oracle_id, "theta", attempt)
+                candidate = (
+                    r * math.cos(theta),
+                    rng.gaussian(oracle_id, "y", attempt) * half_thickness * 0.6,
+                    r * math.sin(theta),
+                )
+
+            x, y, z = candidate
+            y = max(-half_thickness * 1.4, min(half_thickness * 1.4, y))
+            radial = math.sqrt(x * x + z * z)
+            if radial > multiverse_radius:
+                scale = multiverse_radius / radial
+                x, z = x * scale, z * scale
+            candidate = (x, y, z)
+
+            clearance = self._clearance(candidate)
+            if clearance <= 0.0:
+                continue
+            # Prefer samples nearest a plane's exclusion shell: the dust reads densest there.
+            weight = 1.0 / (1.0 + clearance)
+            if weight > best_weight:
+                best_weight, best = weight, candidate
+
+        if best is None:
+            # Every sample landed inside a plane: fall back to the outer rim, always clear.
+            theta = rng.between(0.0, 2.0 * math.pi, oracle_id, "fallback", index)
+            best = (
+                multiverse_radius * 0.98 * math.cos(theta),
+                0.0,
+                multiverse_radius * 0.98 * math.sin(theta),
+            )
+
+        inv = 1.0 / multiverse_radius
+        return _clamp_to_frame((best[0] * inv, best[1] * inv, best[2] * inv))
+
+    def _clearance(self, candidate: tuple[float, float, float]) -> float:
+        """Distance from the nearest plane's exclusion shell, or ``<= 0`` inside one.
+
+        The caller only distinguishes "inside a plane" from "this far out", so the scan stops at
+        the first plane that swallows the candidate instead of finishing the ``min`` — and on the
+        midpoint-biased samples, which aim between two planes, that is where most of them land.
+        The value returned when nothing swallows it is the full minimum, computed with the same
+        :func:`_distance` as before so the weighting is bit-for-bit what it was.
+        """
+        if not self.positions:
+            return 1.0
+        best = math.inf
+        for position, exclusion in zip(self.positions, self.exclusion, strict=True):
+            clearance = _distance(candidate, position) - exclusion
+            if clearance <= 0.0:
+                return clearance
+            if clearance < best:
+                best = clearance
+        return best
 
 
 def _nearest_other(index: int, positions: list[tuple[float, float, float]]) -> int:

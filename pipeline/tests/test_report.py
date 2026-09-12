@@ -20,6 +20,7 @@ import difflib
 import json
 import os
 from collections import Counter
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -128,7 +129,8 @@ def _report_input(data_root: Path, codes: list[str] | None = None) -> ReportInpu
         unreleased_sets=["trk"],
         cards_excluded=Counter({"4.4.1 no included printing": 6, "4.4.3 Universes Beyond": 2}),
         via_parent={"dmr": "lea"},
-        via_override=["Card 3"],
+        via_override=["Card 3 -> ravnica"],
+        unused_overrides=["Card 99 (00000000-0000-4000-8000-000000000099) -> segovia"],
         dropped_via_parent={"pza": "tmt", "ttmt": "tmt"},
         parent_rule_only={"pza": 15},
         findings=[
@@ -470,3 +472,63 @@ def test_a_predecessor_under_an_older_contract_does_not_claim_to_be_the_first(tm
     assert "8.8.3 removed" not in text, "the artefacts are present; this is not the pruned case"
     assert "`contractVersion` 1" in text
     assert "not computed — this run follows `fe74a34ff803574b`" in text
+
+
+# --- review findings D2 and D6: the two silent normalisations, made visible --------------------
+
+
+def test_the_radius_headroom_section_says_so_when_nothing_is_near_the_clamp(report_text: str):
+    """Finding D2. The fixture's planes hold 3 to 6 cards, so the section must read as "clear"."""
+    assert "## Plane radius headroom (PRD 5.3.2, span 30,000 cards)" in report_text
+    assert "No plane is within 90% of the radius span" in report_text
+    assert "clamped" not in report_text
+
+
+def test_a_plane_at_the_clamp_is_named_and_the_consequence_stated(tmp_path: Path):
+    """Finding D2's actual failure: at the clamp a plane's card count stops moving its radius.
+
+    Driven through ``AssemblyStats`` rather than by building a 30,000-card dataset, because what
+    is under test is the report's reading of the number, not ``visual_radius`` — which
+    ``test_fixtures`` already pins.
+    """
+    data = _report_input(tmp_path)
+    data.stats = replace(
+        data.stats,
+        radius_saturation=[
+            ("dominaria", 41_000, 1.0269, 12.0),
+            ("ravnica", 24_000, 0.9754, 11.78),
+        ],
+    )
+
+    text = render(data)
+
+    assert "| `dominaria` | 41,000 | 102.7% **clamped** | 12.00 / 12.0 |" in text
+    assert "| `ravnica` | 24,000 | 97.5% | 11.78 / 12.0 |" in text
+    assert "**`dominaria` is at the clamp.**" in text
+    assert "Further growth is unrepresentable" in text
+    assert "full refresh" in text, "the cost of re-tuning the span belongs in the warning"
+
+
+def test_the_brightness_cap_section_reports_the_cap_and_who_is_above_it(tmp_path: Path):
+    """Finding D6. The cap is applied before encoding, so the report is where it is reviewable."""
+    data = _report_input(tmp_path)
+    data.stats = replace(
+        data.stats,
+        brightness_caps=[("dominaria", 12, 84, 37), ("ravnica", 9, 9, 1)],
+    )
+
+    text = render(data)
+
+    assert "## Brightness cap per plane (PRD 5.4.10)" in text
+    assert "The cap is each plane's 98% percentile of printing count." in text
+    assert "1 of 2 non-empty planes" in text, "`ravnica` has nothing above its cap"
+    assert "| `dominaria` | 12 | 84 | 37 |" in text
+    assert "| `ravnica` | 9 | 9 |" not in text, "a plane with nothing above its cap adds no row"
+    assert "re-running the pipeline" in text
+
+
+def test_an_override_that_matched_nothing_is_named_in_the_report(report_text: str):
+    """Finding D1's other half: a curated line doing nothing must not be invisible."""
+    assert "**1 override record matched no first printing.**" in report_text
+    assert "- Card 99 (00000000-0000-4000-8000-000000000099) -> segovia" in report_text
+    assert "Card 3 -> ravnica" in report_text, "the applied override still reads as applied"

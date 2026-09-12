@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from conftest import appendices, printing, scry_set, set_entry
+from conftest import appendices, card_override, printing, scry_set, set_entry
 
 from eternities.pipeline.appendices import Appendices
 from eternities.pipeline.records import (
@@ -21,6 +21,7 @@ from eternities.pipeline.records import (
 )
 from eternities.pipeline.stages import (
     CardExclusionResult,
+    OverrideDriftError,
     PrintingFilterResult,
     UnmappedSetError,
     assign_planes,
@@ -444,10 +445,53 @@ def test_first_printing_is_independent_of_input_order():
 
 
 def test_rules_are_evaluated_in_order_and_the_override_wins():
-    apx = appendices(sets=[set_entry("tst", plane="dominaria")], overrides={"Test Card": "ravnica"})
+    apx = appendices(sets=[set_entry("tst", plane="dominaria")], overrides=[card_override()])
     result = assign_planes({"card-1": printing()}, {"tst": scry_set()}, apx)
     assert result.by_oracle_id == {"card-1": "ravnica"}
-    assert result.via_override == ["Test Card"]
+    assert result.via_override == ["Test Card -> ravnica"]
+    assert result.unused_overrides == []
+
+
+def test_an_override_moves_only_the_card_holding_its_oracle_id():
+    """Review finding D1: the key is the ``oracle_id``, so a shared name is not a shared fate.
+
+    Two distinct cards with the same front-face name is the case the old name key got wrong — it
+    moved both, and the report named one line for what was two moves. Nothing in the roster
+    depends on the pair being real; what matters is that the key discriminates.
+    """
+    apx = appendices(
+        sets=[set_entry("tst", plane="dominaria")], overrides=[card_override("card-1")]
+    )
+    printings = {"card-1": printing("card-1"), "card-2": printing("card-2")}
+    result = assign_planes(printings, {"tst": scry_set()}, apx)
+    assert result.by_oracle_id == {"card-1": "ravnica", "card-2": "dominaria"}
+    assert result.via_override == ["Test Card -> ravnica"]
+
+
+def test_an_override_whose_name_no_longer_matches_fails_the_run():
+    apx = appendices(
+        sets=[set_entry("tst", plane="dominaria")],
+        overrides=[card_override("card-1", name="Renamed Since Curation")],
+    )
+    with pytest.raises(OverrideDriftError, match="Renamed Since Curation"):
+        assign_planes({"card-1": printing("card-1", name="Test Card")}, {"tst": scry_set()}, apx)
+
+
+def test_an_override_matching_no_first_printing_is_reported_not_raised():
+    """A curated line that does nothing is reported, never silent — and never fatal.
+
+    An override for a card 4.3 or 4.4 excludes is a legitimate state: the record is correct and
+    simply has nothing to act on. Failing the build on it would make the curated file a hostage of
+    every exclusion rule, so the run succeeds and the report names the record.
+    """
+    apx = appendices(
+        sets=[set_entry("tst", plane="dominaria")],
+        overrides=[card_override("card-gone", name="Vanished Card")],
+    )
+    result = assign_planes({"card-1": printing("card-1")}, {"tst": scry_set()}, apx)
+    assert result.by_oracle_id == {"card-1": "dominaria"}
+    assert result.via_override == []
+    assert result.unused_overrides == ["Vanished Card (card-gone) -> ravnica"]
 
 
 def test_a_child_set_inherits_its_parents_plane_and_the_inheritance_is_reported():

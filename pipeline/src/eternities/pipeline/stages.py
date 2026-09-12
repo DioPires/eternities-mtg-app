@@ -354,12 +354,30 @@ class UnmappedSetError(RuntimeError):
     """PRD 4.6.4. New sets are added to Appendix B deliberately, never bucketed silently."""
 
 
+class OverrideDriftError(RuntimeError):
+    """An ``overrides.json`` record names a card its ``oracle_id`` no longer identifies.
+
+    Curated by hand, keyed by an opaque id, and read by nobody until it misfires: exactly the file
+    whose carried name has to be checked rather than trusted (see
+    :class:`~eternities.pipeline.appendices.CardOverride`).
+    """
+
+
 @dataclass(slots=True)
 class PlaneAssignment:
     by_oracle_id: dict[str, str] = field(default_factory=dict)
     via_parent: dict[str, str] = field(default_factory=dict)
     """Set code -> parent set code, for every card mapped through rule 3 (reported per PRD 4.6)."""
     via_override: list[str] = field(default_factory=list)
+    """``"<name> -> <plane>"`` for each applied override, in the report's reading order."""
+    unused_overrides: list[str] = field(default_factory=list)
+    """Records that matched no first printing — curated lines doing nothing (PRD 4.9.2).
+
+    Not an error. An override for a card some 4.3/4.4 rule excludes, or one stranded by a Scryfall
+    oracle-id merge, is a real state of a hand-maintained file, and the run's answer is still
+    correct without it. But a curated line that silently does nothing is the failure this repo's
+    two "cards via overrides" appendix notes already had — Appendix B claimed a curation that was
+    never written — so it is reported rather than swallowed."""
     unmapped: dict[str, int] = field(default_factory=dict)
     """Set code -> card count, for sets with no Appendix B row and no mapped parent."""
 
@@ -372,13 +390,21 @@ def assign_planes(
     """PRD 4.6, rules in order, first match wins. Raises on an unmapped set."""
     by_code = appendices.by_code()
     result = PlaneAssignment()
+    applied: set[str] = set()
 
     for oracle_id in sorted(first_printings):
         printing = first_printings[oracle_id]
-        override = appendices.overrides.get(printing.card_name)
+        override = appendices.overrides.get(oracle_id)
         if override is not None:
-            result.by_oracle_id[oracle_id] = override
-            result.via_override.append(printing.card_name)
+            if override.card_name != printing.card_name:
+                raise OverrideDriftError(
+                    f"overrides.json record {oracle_id} says {override.card_name!r} but that "
+                    f"oracle_id is {printing.card_name!r} on this bulk file. Re-check the "
+                    "curation: either the name is stale or the id is the wrong card."
+                )
+            result.by_oracle_id[oracle_id] = override.plane
+            result.via_override.append(f"{override.card_name} -> {override.plane}")
+            applied.add(oracle_id)
             continue
 
         # Rules 2 and 3 are one walk, not two lookups: `governing_set_row` returns the set's own
@@ -395,6 +421,12 @@ def assign_planes(
             continue
 
         result.unmapped[printing.set_code] = result.unmapped.get(printing.set_code, 0) + 1
+
+    result.unused_overrides = [
+        f"{o.card_name} ({oid}) -> {o.plane}"
+        for oid, o in sorted(appendices.overrides.items(), key=lambda kv: kv[1].card_name)
+        if oid not in applied
+    ]
 
     if result.unmapped:
         listing = ", ".join(
