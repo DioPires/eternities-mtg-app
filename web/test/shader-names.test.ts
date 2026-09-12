@@ -9,10 +9,20 @@
  * (DEC-700): it links a program no report can attribute, which is what made a 91 ms link-status
  * stall on Brave unactionable.
  *
- * The site check reads `src/scene/**` as data. That is deliberate rather than lazy: the alternative
- * is constructing each material, and the ones that need a `WebGLRenderer` cannot be built in this
+ * The site check reads `src/**` as data. That is deliberate rather than lazy: the alternative is
+ * constructing each material, and the ones that need a `WebGLRenderer` cannot be built in this
  * environment — so a test covering only the constructible ones would leave exactly the sites most
  * likely to be forgotten unpinned. Naming is a property of the source, so the source is asserted.
+ *
+ * The scan root is the whole of `src`, not `src/scene`. Every material today is under `src/scene`,
+ * but "the scene directory is where materials live" is a convention, not a rule the compiler
+ * enforces, and a root that stops at it would report a material added one directory over as no
+ * material at all — a pass, not a failure.
+ *
+ * Because this reads source text rather than objects, the parser is the guard: any site it cannot
+ * read is a site it cannot vouch for. So an unreadable site fails, and fails loudly, rather than
+ * dropping out of the list. A test that skips what it does not understand reports a scene as fully
+ * named when the one material it could not parse is the anonymous one.
  */
 
 import { readFileSync, readdirSync } from 'node:fs'
@@ -20,16 +30,19 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+import * as shaderNames from '../src/scene/shaderNames'
 import { SHADER_NAMES } from '../src/scene/shaderNames'
 
-const SCENE_ROOT = fileURLToPath(new URL('../src/scene', import.meta.url))
+const SRC_ROOT = fileURLToPath(new URL('../src', import.meta.url))
+const SHADER_NAMES_FILE = `${SRC_ROOT}/scene/shaderNames.ts`
+const SHADER_NAMES_SOURCE = readFileSync(SHADER_NAMES_FILE, 'utf8')
 
-/** Every `.ts`/`.tsx` file under `src/scene`, recursively, as `[relative path, source]`. */
-function sceneSources(directory = SCENE_ROOT, prefix = ''): [string, string][] {
+/** Every `.ts`/`.tsx` file under `src`, recursively, as `[relative path, source]`. */
+function sources(directory = SRC_ROOT, prefix = ''): [string, string][] {
   const found: [string, string][] = []
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     const relative = prefix ? `${prefix}/${entry.name}` : entry.name
-    if (entry.isDirectory()) found.push(...sceneSources(`${directory}/${entry.name}`, relative))
+    if (entry.isDirectory()) found.push(...sources(`${directory}/${entry.name}`, relative))
     else if (/\.tsx?$/.test(entry.name)) {
       found.push([relative, readFileSync(`${directory}/${entry.name}`, 'utf8')])
     }
@@ -40,11 +53,24 @@ function sceneSources(directory = SCENE_ROOT, prefix = ''): [string, string][] {
 interface Site {
   readonly file: string
   readonly kind: string
-  readonly options: string
+  /**
+   * The site's own `{ … }` argument, or `null` when the call's argument is not an inline object
+   * literal — `new PointsMaterial()`, `new PointsMaterial(opts)`. A `null` here is a test failure,
+   * never a skip.
+   */
+  readonly options: string | null
 }
 
+type ParsedSite = Site & { readonly options: string }
+
 /**
- * Each `new <Something>Material({ … })` in the scene, with its own constructor options.
+ * Each `new <Something>Material(…)` in `src`, with its own constructor options.
+ *
+ * The match deliberately stops at the opening paren rather than requiring `({`. Requiring the brace
+ * makes the *regex* the filter: a material written `new PointsMaterial()` or
+ * `new PointsMaterial(opts)` is then not a site that failed the name check, it is not a site at
+ * all, and every assertion below passes over it in silence. Matching the call and recording an
+ * unreadable argument as `null` moves that decision to an assertion, where it is visible.
  *
  * The options are sliced by counting braces from the opening one, not by looking for the next
  * close at a guessed indentation. Brace counting costs three lines and does not care whether a
@@ -52,13 +78,18 @@ interface Site {
  * to the *next* material when a site is single-line, and a `name:` belonging to that next call
  * then satisfies the assertion for this one.
  */
-function materialSites(sources: [string, string][]): Site[] {
+function materialSites(files: [string, string][]): Site[] {
   const sites: Site[] = []
-  for (const [file, source] of sources) {
-    const pattern = /new ([A-Za-z]*Material)\(\{/g
+  for (const [file, source] of files) {
+    const pattern = /new ([A-Za-z]*Material)\(/g
     let match: RegExpExecArray | null
     while ((match = pattern.exec(source)) !== null) {
-      const open = source.indexOf('{', match.index)
+      let open = match.index + match[0].length
+      while (open < source.length && /\s/.test(source[open]!)) open += 1
+      if (source[open] !== '{') {
+        sites.push({ file, kind: match[1]!, options: null })
+        continue
+      }
       let depth = 0
       let end = open
       for (; end < source.length; end += 1) {
@@ -74,7 +105,15 @@ function materialSites(sources: [string, string][]): Site[] {
   return sites
 }
 
-const SITES = materialSites(sceneSources())
+const SITES = materialSites(sources())
+const PARSED: readonly ParsedSite[] = SITES.filter(
+  (site): site is ParsedSite => site.options !== null,
+)
+
+/** The `SHADER_NAME_*` constants `shaderNames.ts` declares, in declaration order. */
+const DECLARED = [
+  ...SHADER_NAMES_SOURCE.matchAll(/^export const (SHADER_NAME_[A-Z0-9_]+)/gm),
+].map((match) => match[1]!)
 
 describe('shader names (DEC-700)', () => {
   it('are single tokens, so every reader agrees on where the name ends', () => {
@@ -98,20 +137,56 @@ describe('shader names (DEC-700)', () => {
     expect([...new Set(SHADER_NAMES)]).toHaveLength(SHADER_NAMES.length)
   })
 
+  it('puts every declared name on the list the rules are enforced against', () => {
+    // The three checks above iterate `SHADER_NAMES`, which is hand-maintained. A name declared in
+    // `shaderNames.ts`, used at a real site, and left out of that array is subject to none of them:
+    // `SHADER_NAME_TWELFTH = 'Two Words'` ships, and the kit reports that program as `Two`.
+    //
+    // Checked twice, because the two checks miss different things. By value, against the imported
+    // module — no parser, so it holds however the file is written. By identifier, against the array
+    // literal — which additionally catches a name left off the list whose *value* duplicates one
+    // already on it, the case the uniqueness check above cannot see.
+    const listed: readonly string[] = SHADER_NAMES
+    const unlistedValues = Object.entries(shaderNames)
+      .filter(([key]) => /^SHADER_NAME_[A-Z0-9_]+$/.test(key))
+      .filter(([, value]) => !listed.includes(String(value)))
+      .map(([key, value]) => `${key} = ${String(value)}`)
+    expect(unlistedValues, 'declared but missing from SHADER_NAMES').toEqual([])
+
+    const roster = /export const SHADER_NAMES = \[([^\]]*)\]/.exec(SHADER_NAMES_SOURCE)?.[1]
+    expect(roster, 'the SHADER_NAMES array literal must stay parseable by this test').toBeDefined()
+    const rosterNames = new Set([...roster!.matchAll(/SHADER_NAME_[A-Z0-9_]+/g)].map((m) => m[0]))
+    expect(DECLARED.filter((name) => !rosterNames.has(name))).toEqual([])
+  })
+
   it('finds the material sites it is about to check', () => {
     // Guards the parser, not the product: if `materialSites` silently matched nothing, every
     // assertion below would pass over an empty list and report the scene fully named.
     expect(SITES.length).toBeGreaterThanOrEqual(11)
-    expect(new Set(SITES.map((site) => site.kind))).toEqual(
-      new Set(['ShaderMaterial', 'MeshBasicMaterial', 'PointsMaterial']),
-    )
+    expect(
+      new Set(SITES.map((site) => site.kind)),
+      'a material class this test has not seen before. If the new class is meant to be here, add ' +
+        'it to this set deliberately — that edit is the record that its sites were considered.',
+    ).toEqual(new Set(['ShaderMaterial', 'MeshBasicMaterial', 'PointsMaterial']))
   })
 
-  it('slices each site\'s own options, not the next site\'s', () => {
+  it('can read the options of every site it found', () => {
+    // The parser is the guard (see the file header). A call whose argument is not an inline object
+    // literal cannot be checked for a name, and the one outcome this test cannot afford is to say
+    // nothing about it.
+    expect(
+      SITES.filter((site) => site.options === null).map((site) => `${site.file} ${site.kind}`),
+      'this material is built from a variable or from no arguments, so its name cannot be read ' +
+        'here. Give the site an inline `{ name: SHADER_NAME_*, … }` literal, or teach this parser ' +
+        'to follow the indirection — do not relax the match to let the site through unchecked.',
+    ).toEqual([])
+  })
+
+  it("slices each site's own options, not the next site's", () => {
     // The failure this pins is specific: a single-line site whose slice runs on into the following
     // material would inherit that one's `name:`. No site's options may contain a second
     // constructor call.
-    for (const site of SITES) {
+    for (const site of PARSED) {
       expect(site.options, `${site.file} ${site.kind}`).not.toMatch(/new [A-Za-z]*Material\(/)
     }
   })
@@ -120,14 +195,17 @@ describe('shader names (DEC-700)', () => {
     // Not only raw `ShaderMaterial`s: `getParameters` reads `shaderName` from `material.name` for
     // every material type (`three.module.js:20782`), with no fallback to the built-in shader id,
     // so a stock `PointsMaterial` is anonymous in a program list too.
-    const unnamed = SITES.filter((site) => !/\bname:/.test(site.options))
+    //
+    // An unreadable site counts as unnamed here as well as failing the parser check above. It has
+    // not been shown to carry a name, and that is the whole question this test asks.
+    const unnamed = SITES.filter((site) => site.options === null || !/\bname:/.test(site.options))
     expect(unnamed.map((site) => `${site.file} ${site.kind}`)).toEqual([])
   })
 
   it('is the only thing those sites use as a name', () => {
     // A literal here instead of a `SHADER_NAME_*` constant would pass the check above while
     // escaping the whitespace and uniqueness rules entirely.
-    for (const site of SITES) {
+    for (const site of PARSED) {
       const assigned = /\bname:\s*([^,\n}]+)/.exec(site.options)?.[1]?.trim()
       expect(assigned, `${site.file} ${site.kind}`).toMatch(/^SHADER_NAME_[A-Z0-9_]+$/)
     }
@@ -136,15 +214,10 @@ describe('shader names (DEC-700)', () => {
   it('declares no name it does not use', () => {
     // A name left behind after its material is deleted would sit in the list forever, and the count
     // below would keep passing.
-    const declared = [
-      ...readFileSync(`${SCENE_ROOT}/shaderNames.ts`, 'utf8').matchAll(
-        /^export const (SHADER_NAME_[A-Z0-9_]+)/gm,
-      ),
-    ].map((match) => match[1]!)
     const used = new Set(
-      SITES.map((site) => /\bname:\s*([^,\n}]+)/.exec(site.options)?.[1]?.trim()).filter(Boolean),
+      PARSED.map((site) => /\bname:\s*([^,\n}]+)/.exec(site.options)?.[1]?.trim()).filter(Boolean),
     )
-    expect(declared.filter((name) => !used.has(name))).toEqual([])
+    expect(DECLARED.filter((name) => !used.has(name))).toEqual([])
   })
 
   it('covers every material the scene builds, one name per program', () => {

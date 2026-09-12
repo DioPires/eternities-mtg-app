@@ -184,4 +184,8 @@ failure in a row is a real one.
 | 1 | `refusing:` — at least one run did not measure what it claims | the report is not usable as-is; see the stop list above |
 | 2 | `incomplete:` — less was measured than was asked for | send it anyway; whatever completed is kept and is real |
 
+The codes are checked in that order, so a run that is *both* refusing and incomplete exits **1**, not
+2: an exit 2 means integrity was clean and only coverage was short. Read a 1 as "do not use these
+numbers", a 2 as "use the numbers that are there".
+
 Both files are written before the kit exits, on every code including 1 and 2.
