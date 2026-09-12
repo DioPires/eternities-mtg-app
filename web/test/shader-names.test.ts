@@ -54,9 +54,9 @@ interface Site {
   readonly file: string
   readonly kind: string
   /**
-   * The site's own `{ … }` argument, or `null` when the call's argument is not an inline object
-   * literal — `new PointsMaterial()`, `new PointsMaterial(opts)`. A `null` here is a test failure,
-   * never a skip.
+   * The site's own `{ … }` argument, or `null` when the construction's argument is not an inline
+   * object literal — `new PointsMaterial()`, `new PointsMaterial(opts)`, or `new PointsMaterial`
+   * with no argument list at all. A `null` here is a test failure, never a skip.
    */
   readonly options: string | null
 }
@@ -66,11 +66,18 @@ type ParsedSite = Site & { readonly options: string }
 /**
  * Each `new <Something>Material(…)` in `src`, with its own constructor options.
  *
- * The match deliberately stops at the opening paren rather than requiring `({`. Requiring the brace
- * makes the *regex* the filter: a material written `new PointsMaterial()` or
- * `new PointsMaterial(opts)` is then not a site that failed the name check, it is not a site at
- * all, and every assertion below passes over it in silence. Matching the call and recording an
- * unreadable argument as `null` moves that decision to an assertion, where it is visible.
+ * The match deliberately stops at the class name, and treats the argument list as optional, rather
+ * than requiring `({`. Every character the *regex* insists on is a filter: requiring the brace makes
+ * `new PointsMaterial()` or `new PointsMaterial(opts)` not a site that failed the name check but no
+ * site at all, and requiring even the paren does the same for `new PointsMaterial`, which is legal
+ * TypeScript and constructs the material just as anonymously. Nothing else in this repo rejects that
+ * spelling — there is no Prettier to normalise it to `()` and `new-parens` is not among the lint
+ * rules — so the guard is the only thing that can. Matching the construction and recording an
+ * unreadable argument as `null` moves the decision to an assertion, where it is visible.
+ *
+ * The cost is that a `new SomethingMaterial` written in prose in a comment under `src` would now be
+ * a phantom site, and would fail. That is the safe direction for this guard, and there are none
+ * today.
  *
  * The options are sliced by counting braces from the opening one, not by looking for the next
  * close at a guessed indentation. Brace counting costs three lines and does not care whether a
@@ -81,11 +88,15 @@ type ParsedSite = Site & { readonly options: string }
 function materialSites(files: [string, string][]): Site[] {
   const sites: Site[] = []
   for (const [file, source] of files) {
-    const pattern = /new ([A-Za-z]*Material)\(/g
+    const pattern = /new ([A-Za-z]*Material)\b/g
     let match: RegExpExecArray | null
     while ((match = pattern.exec(source)) !== null) {
       let open = match.index + match[0].length
       while (open < source.length && /\s/.test(source[open]!)) open += 1
+      if (source[open] === '(') {
+        open += 1
+        while (open < source.length && /\s/.test(source[open]!)) open += 1
+      }
       if (source[open] !== '{') {
         sites.push({ file, kind: match[1]!, options: null })
         continue
