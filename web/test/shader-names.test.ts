@@ -195,7 +195,7 @@ describe('shader names (DEC-700)', () => {
   it('finds the material sites it is about to check', () => {
     // Guards the parser, not the product: if `materialSites` silently matched nothing, every
     // assertion below would pass over an empty list and report the scene fully named.
-    expect(SITES.length).toBeGreaterThanOrEqual(11)
+    expect(SITES.length).toBeGreaterThanOrEqual(16)
     expect(
       new Set(SITES.map((site) => site.kind)),
       'a material class this test has not seen before. If the new class is meant to be here, add ' +
@@ -261,8 +261,15 @@ describe('shader names (DEC-700)', () => {
 
   it('covers every material the scene builds, one name per program', () => {
     // A count, not a list: adding a material and leaving it out of `SHADER_NAMES` should be a
-    // deliberate act. There are 11 sites and 11 names — the two `faceMaterial()` *calls* share one
-    // name because they share one source, one set of defines, and therefore one program.
-    expect(SHADER_NAMES).toHaveLength(11)
+    // deliberate act. There are 16 sites and 15 names, and the gap is the point of this test.
+    //
+    // Two *sites* share `SHADER_NAME_STAR_FIELD`: the drawn star field and the bloom source's copy
+    // of it differ only in the values bound to five uniforms, which are not in the program cache
+    // key, so three.js links one program for both (DEC-703). A sixteenth name would be a roster row
+    // for a program that never exists.
+    //
+    // The two `faceMaterial()` *calls* also share one name for the same underlying reason, but they
+    // do not widen this gap — they are one source site, so the scanner counts them once.
+    expect(SHADER_NAMES).toHaveLength(15)
   })
 })

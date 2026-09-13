@@ -208,6 +208,9 @@ export function createStarField(
    * So the only difference from `material` is the five uniforms measured in device pixels.
    */
   const bloomMaterial = new ShaderMaterial({
+    // The same name as `material` on purpose: same source, same (absent) defines, so three.js
+    // links one program for both and a second name would describe nothing. See `shaderNames.ts`.
+    name: SHADER_NAME_STAR_FIELD,
     uniforms: {
       ...starUniforms,
       uSizeScale: uBloomSizeScale,

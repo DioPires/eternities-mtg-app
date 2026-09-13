@@ -38,10 +38,19 @@
  *
  * Two materials sharing source *and* defines still share one program, which carries whichever name
  * linked first. The uniqueness check does not catch such a pair, so name both the same thing
- * deliberately — `SHADER_NAME_CARD_FACE` is the one case, used by both card faces.
+ * deliberately — `SHADER_NAME_CARD_FACE`, used by both card faces, and `SHADER_NAME_STAR_FIELD`,
+ * used by both the drawn star field and the bloom source's copy of it (DEC-703). The bloom copy
+ * differs only in the *values* bound to five uniforms, and uniform values are not in the cache key,
+ * so giving it a name of its own would put a second row in the roster for a program that never
+ * exists — and the row that did appear would be whichever of the two linked first.
  */
 
-/** The star field's additive glow points — `starfield/starFieldObjects.ts`. */
+/**
+ * The star field's additive glow points — `starfield/starFieldObjects.ts`.
+ *
+ * Also carried by the bloom source's copy of the field, which shares this program. See the note on
+ * shared programs in this file's header.
+ */
 export const SHADER_NAME_STAR_FIELD = 'StarField'
 
 /** The same star geometry drawn to the id buffer under `ID_PASS` — its own program. */
@@ -80,6 +89,28 @@ export const SHADER_NAME_ATLAS_BLIT = 'AtlasBlit'
 /** The three background star shells — a built-in `PointsMaterial`, `background.ts`. */
 export const SHADER_NAME_BACKGROUND_LAYER = 'BackgroundLayer'
 
+/*
+ * The four post chain passes — `post/postChain.ts`, added by DEC-703.
+ *
+ * These arrived already named, as `'post.prefilter'` and friends. The dot is why they are constants
+ * now rather than left alone: a name is preprocessor replacement text and has to be one identifier
+ * (see this file's header), which `post.prefilter` is not. The kit would report it verbatim, so
+ * nothing was broken in practice — but it could not join `SHADER_NAMES` without failing the
+ * identifier rule, and a name outside the roster is subject to none of the checks.
+ */
+
+/** PRD 5.3.20's threshold/prefilter pass. */
+export const SHADER_NAME_POST_PREFILTER = 'PostPrefilter'
+
+/** The bloom pyramid's downsample pass. */
+export const SHADER_NAME_POST_DOWNSAMPLE = 'PostDownsample'
+
+/** The bloom pyramid's tent upsample pass. */
+export const SHADER_NAME_POST_UPSAMPLE = 'PostUpsample'
+
+/** The final composite and tonemap into the drawing buffer. */
+export const SHADER_NAME_POST_COMPOSITE = 'PostComposite'
+
 /**
  * Every name above, for the test that enforces the rules in this file's header.
  *
@@ -99,4 +130,8 @@ export const SHADER_NAMES = [
   SHADER_NAME_CARD_PLANET_PICK,
   SHADER_NAME_ATLAS_BLIT,
   SHADER_NAME_BACKGROUND_LAYER,
+  SHADER_NAME_POST_PREFILTER,
+  SHADER_NAME_POST_DOWNSAMPLE,
+  SHADER_NAME_POST_UPSAMPLE,
+  SHADER_NAME_POST_COMPOSITE,
 ] as const

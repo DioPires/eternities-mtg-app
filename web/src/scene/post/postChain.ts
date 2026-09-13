@@ -49,6 +49,12 @@ import {
   type WebGLRenderer,
 } from 'three'
 
+import {
+  SHADER_NAME_POST_COMPOSITE,
+  SHADER_NAME_POST_DOWNSAMPLE,
+  SHADER_NAME_POST_PREFILTER,
+  SHADER_NAME_POST_UPSAMPLE,
+} from '../shaderNames'
 import { BLOOM_INTENSITY } from '../tuning'
 
 import { BLOOM_LAYER } from './bloomLayer'
@@ -131,7 +137,7 @@ export class PostChain {
     geometry.boundingSphere = null
 
     this.prefilterMaterial = new ShaderMaterial({
-      name: 'post.prefilter',
+      name: SHADER_NAME_POST_PREFILTER,
       uniforms: { uInput: { value: null }, uTexelSize: { value: new Vector2() } },
       vertexShader: POST_VERTEX_SHADER,
       fragmentShader: POST_PREFILTER_FRAGMENT_SHADER,
@@ -141,7 +147,7 @@ export class PostChain {
     })
 
     this.downsampleMaterial = new ShaderMaterial({
-      name: 'post.downsample',
+      name: SHADER_NAME_POST_DOWNSAMPLE,
       uniforms: { uInput: { value: null }, uTexelSize: { value: new Vector2() } },
       vertexShader: POST_VERTEX_SHADER,
       fragmentShader: POST_DOWNSAMPLE_FRAGMENT_SHADER,
@@ -151,7 +157,7 @@ export class PostChain {
     })
 
     this.upsampleMaterial = new ShaderMaterial({
-      name: 'post.upsample',
+      name: SHADER_NAME_POST_UPSAMPLE,
       uniforms: {
         uInput: { value: null },
         uTexelSize: { value: new Vector2() },
@@ -168,7 +174,7 @@ export class PostChain {
     })
 
     this.compositeMaterial = new ShaderMaterial({
-      name: 'post.composite',
+      name: SHADER_NAME_POST_COMPOSITE,
       uniforms: {
         uScene: { value: null },
         uBloom: { value: null },
