@@ -788,12 +788,20 @@ async function runBrowser(name, args) {
             runs.push(run)
             const bench = run.bench
             const canvas = run.environment.drawingBuffer
+            // `bench.viewport.dpr` is the *renderer's* pixel ratio — `min(tier cap, dpr)` — and this
+            // line used to print it under the bare name `dpr`, so on §9's prescribed 150% display
+            // every tier-1 row read `@ dpr 1`. The device ratio is what `dpr` means everywhere else
+            // in this kit, including the persisted header and `checkResolution`, so print that; the
+            // render ratio is still worth seeing, but only when the tier cap has actually bitten.
+            const deviceDpr = run.environment.devicePixelRatio
+            const renderDpr = bench.viewport.dpr
             console.log(
               `${bench.fps} fps, p95 ${bench.frameMsP95} ms, ` +
                 // Two different numbers, both wanted, and this line used to print the first under
                 // the second's name: the viewport is CSS pixels, the drawing buffer is the device
                 // pixels the GPU filled, and at tier 0 the app scales the buffer past dpr on top.
-                `window ${bench.viewport.width}x${bench.viewport.height} CSS @ dpr ${bench.viewport.dpr}, ` +
+                `window ${bench.viewport.width}x${bench.viewport.height} CSS @ dpr ${deviceDpr}` +
+                `${renderDpr !== deviceDpr ? ` (rendered at ${renderDpr})` : ''}, ` +
                 `canvas ${canvas ? `${canvas.width}x${canvas.height}` : 'unknown'} device px, ` +
                 `alloc ${run.allocation.rate ? `${run.allocation.rate.estimatedMbPerS} MB/s` : 'n/a'}`,
             )
@@ -1016,7 +1024,18 @@ function criteria(report) {
           ...(notChecked.length > 0 ? [`not covered by this verdict: ${notChecked.join(', ')}`] : []),
         ].join('\n         ')
       : 'not run',
-    pass: checks.length ? checks.every(({ check }) => check.ok && check.missed === 0) : null,
+    // Naming the missing mode beside the verdict was not enough on its own: with one mode gone the
+    // surviving mode still voted `ok`, and a criterion whose own title says "float16 and float32"
+    // printed `[  ok]` having measured one of them. A real tolerance failure still reports FAIL —
+    // that evidence exists. Otherwise incomplete coverage is `?`, not a pass. The missing mode also
+    // reaches `incomplete` below, which is what makes the exit code non-zero.
+    pass: !checks.length
+      ? null
+      : !checks.every(({ check }) => check.ok && check.missed === 0)
+        ? false
+        : notChecked.length > 0
+          ? null
+          : true,
   })
 
   // Counted over the runs that actually happened, and `null` when none did: "no console errors
@@ -1175,27 +1194,43 @@ function summarise(report) {
       // `id` is assignment order, and the order is not stable — the same page has linked 14
       // programs on one run and 18 on another. `source hash` is: it is the content of the vertex
       // and fragment source, which comes from the same bundle everywhere. A slow program in the
-      // JSON that comes back from a Windows laptop is identified by that column and nothing else,
-      // which is what lets the material-naming follow-up be applied to data already collected
-      // instead of needing the laptops again.
+      // JSON that comes back from a Windows laptop is identified by that column and nothing else.
+      //
+      // It identifies a program *within one build*, and only that. The hash covers the whole source
+      // three compiles, header included, and `#define SHADER_NAME` is in that header — so naming a
+      // material changes its hash. The names below landed that way (DEC-700) and moved seven of
+      // these hashes. Do not compare a hash across builds, and do not expect a hash collected
+      // before that change to match one collected after; compare names, and compare hashes only
+      // between reports from the same bundle.
       lines.push(
-        '    (`(unnamed)` is a raw ShaderMaterial, which three.js gives no SHADER_NAME. Quote the ' +
+        '    (A bare name is the material\'s own `SHADER_NAME`. `(InBrackets)` is three\'s ' +
+          '`SHADER_TYPE`,\n     the material class, shown when the material was given no name. ' +
+          '`(unnamed)` is neither, and means\n     a program three.js did not compile. Quote the ' +
           'source hash, not the id.)',
       )
       // Amendment A4 expects ~13 programs (15 on Firefox) because three.js caches by parameter
-      // hash. A *named* program appearing twice is not that cache missing — it is the same material
-      // linked again, which is what the postprocessing wrapper does when it rebuilds the bloom
-      // effect (review §2.2). Naming the repeats turns "more programs than expected" into the
-      // reason for it.
+      // hash. A program appearing twice is not that cache missing — it is the same material linked
+      // again, which is what the postprocessing wrapper does when it rebuilds the bloom effect
+      // (review §2.2). Naming the repeats turns "more programs than expected" into the reason.
+      //
+      // Grouped by source hash, not by name. Identical source linked twice *is* the same program
+      // built twice, whether or not anyone named it — so this now catches a relink of an unnamed
+      // program, which matching on names missed. It also cannot raise a false one: with the
+      // `SHADER_TYPE` fallback, two different unnamed materials of the same class both label
+      // `(MeshBasicMaterial)`, and grouping those by name would report a rebuild that never
+      // happened. Their sources differ, so their hashes do.
       const seen = new Map()
       for (const program of shaders.each) {
-        if (program.name) seen.set(program.name, (seen.get(program.name) ?? 0) + 1)
+        const entry = seen.get(program.sourceHash) ?? { count: 0, name: null }
+        entry.count += 1
+        entry.name ??= program.name
+        seen.set(program.sourceHash, entry)
       }
-      const rebuilt = [...seen.entries()].filter(([, count]) => count > 1)
+      const rebuilt = [...seen.entries()].filter(([, entry]) => entry.count > 1)
       if (rebuilt.length > 0) {
         lines.push(
           `    relinked programs (same material, linked more than once): ` +
-            rebuilt.map(([name, count]) => `${name} x${count}`).join(', '),
+            rebuilt.map(([hash, entry]) => `${entry.name ?? hash} x${entry.count}`).join(', '),
         )
       }
     }
@@ -1250,9 +1285,18 @@ function summarise(report) {
   if (report.incomplete.length > 0) {
     lines.push(`\n${'-'.repeat(96)}\nTHESE BROWSERS DID NOT PRODUCE THE WHOLE BATTERY\n${'-'.repeat(96)}`)
     for (const entry of report.incomplete) lines.push(`  - ${entry}`)
+    // "Everything they measured is still here" is the right thing to say when something was
+    // measured. On the all-failed branch nothing was, and telling the owner their partial results
+    // are safe when the report is empty sends them off to read rows that do not exist.
+    const anyMeasured = report.engines.some((engine) =>
+      engine.runs.some((run) => !run.error),
+    )
     lines.push(
-      '  Everything they had already measured is in this report and in the JSON. Send it anyway —\n' +
-        '  the missing rows are the only thing missing.',
+      anyMeasured
+        ? '  Everything they had already measured is in this report and in the JSON. Send it ' +
+            'anyway —\n  the missing rows are the only thing missing.'
+        : '  No run completed, so there are no measurements in this report — only the errors ' +
+            'above.\n  Send it anyway: why every run failed is itself the finding.',
     )
   }
 
@@ -1358,6 +1402,18 @@ report.incomplete = report.engines.flatMap((engine) => {
       `${engine.browser}: all ${engine.runs.length} of the battery's runs failed — ` +
         `${engine.runs[0].error.split('\n')[0]}`,
     ]
+  }
+  // A self-check mode that never launched, on a browser that otherwise finished. The bench runs are
+  // all there, so nothing above catches it, and the criterion it belongs to only ever votes over
+  // the modes that survived. By the same rule as the branch above — a battery that produced less
+  // than it was asked for must not exit 0 — the absent mode is named here.
+  const failedChecks = engine.selfChecks.filter((check) => check.error)
+  if (failedChecks.length > 0) {
+    return failedChecks.map(
+      (check) =>
+        `${engine.browser}: the ${check.requestedPositions} self-check did not run — ` +
+        `${check.error.split('\n')[0]}`,
+    )
   }
   return []
 })

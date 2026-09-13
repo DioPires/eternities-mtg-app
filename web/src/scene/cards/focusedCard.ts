@@ -59,6 +59,12 @@ import {
   PLANET_FRAGMENT_SHADER,
   PLANET_VERTEX_SHADER,
 } from './cardShaders'
+import {
+  SHADER_NAME_CARD_EDGE,
+  SHADER_NAME_CARD_FACE,
+  SHADER_NAME_CARD_PLANET,
+  SHADER_NAME_CARD_PLANET_PICK,
+} from '../shaderNames'
 import type { ImageQueue } from './imageQueue'
 import { planetLayout, planetPosition, type PlanetLayout } from './planets'
 import { cardEdgeGeometry, cardFaceGeometry } from './roundedRect'
@@ -116,6 +122,9 @@ interface Planet {
 
 function faceMaterial(): ShaderMaterial {
   return new ShaderMaterial({
+    // The front and back faces share one program — same sources, no defines — so they share this
+    // name too, which is the honest label for it. See `shaderNames.ts`.
+    name: SHADER_NAME_CARD_FACE,
     uniforms: {
       uImage: { value: null },
       uHasImage: { value: 0 },
@@ -214,7 +223,9 @@ export class FocusedCard {
     this.flipGroup.add(new Mesh(front, this.frontMaterial))
     this.flipGroup.add(new Mesh(back, this.backMaterial))
     // PRD 5.6.2: "Edge: dark neutral."
-    this.flipGroup.add(new Mesh(edge, new MeshBasicMaterial({ color: 0x14161f })))
+    this.flipGroup.add(
+      new Mesh(edge, new MeshBasicMaterial({ name: SHADER_NAME_CARD_EDGE, color: 0x14161f })),
+    )
   }
 
   get starIndex(): number {
@@ -559,6 +570,8 @@ export class FocusedCard {
       if (!printing) continue
 
       const material = new ShaderMaterial({
+        // Every slot's material compiles to the same program, so they all carry the same name.
+        name: SHADER_NAME_CARD_PLANET,
         uniforms: {
           uImage: { value: null },
           uHasImage: { value: 0 },
@@ -575,6 +588,7 @@ export class FocusedCard {
 
       const id = PLANET_ID_BASE + i + 1
       const pickMaterial = new ShaderMaterial({
+        name: SHADER_NAME_CARD_PLANET_PICK,
         uniforms: {
           uIdColour: {
             value: new Color(

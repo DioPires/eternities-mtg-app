@@ -37,6 +37,11 @@ import {
   THUMBNAIL_FADE_FULL_PX,
   THUMBNAIL_FADE_START_PX,
 } from '../tuning'
+import {
+  SHADER_NAME_PLANE_GLOW,
+  SHADER_NAME_STAR_FIELD,
+  SHADER_NAME_STAR_FIELD_PICK,
+} from '../shaderNames'
 import { PlaneKindCode } from './motion'
 import type { PlaneTable } from './planeTable'
 import {
@@ -162,6 +167,9 @@ export function createStarField(
   }
 
   const material = new ShaderMaterial({
+    // `shaderNames.ts` has the why: three writes this into the shader header, and a material
+    // without one links a program no profile can attribute.
+    name: SHADER_NAME_STAR_FIELD,
     uniforms: starUniforms,
     vertexShader: STAR_VERTEX_SHADER,
     fragmentShader: STAR_FRAGMENT_SHADER,
@@ -174,6 +182,7 @@ export function createStarField(
   })
 
   const idMaterial = new ShaderMaterial({
+    name: SHADER_NAME_STAR_FIELD_PICK,
     // Same objects for the shared entries, its own minimum pixel size: a one-pixel star has to be
     // clickable even though it is drawn one pixel wide.
     uniforms: { ...starUniforms, uMinPixels: uPickMinPixels },
@@ -199,6 +208,9 @@ export function createStarField(
    * So the only difference from `material` is the five uniforms measured in device pixels.
    */
   const bloomMaterial = new ShaderMaterial({
+    // The same name as `material` on purpose: same source, same (absent) defines, so three.js
+    // links one program for both and a second name would describe nothing. See `shaderNames.ts`.
+    name: SHADER_NAME_STAR_FIELD,
     uniforms: {
       ...starUniforms,
       uSizeScale: uBloomSizeScale,
@@ -322,6 +334,7 @@ function createGlowMesh(table: PlaneTable, noise: Texture, shared: SharedUniform
   }
 
   const material = new ShaderMaterial({
+    name: SHADER_NAME_PLANE_GLOW,
     uniforms: glowUniforms,
     vertexShader: GLOW_VERTEX_SHADER,
     fragmentShader: GLOW_FRAGMENT_SHADER,

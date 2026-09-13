@@ -37,6 +37,7 @@ import {
   type WebGLRenderer,
 } from 'three'
 
+import { SHADER_NAME_ATLAS_BLIT } from '../shaderNames'
 import { ATLAS_CELL_HEIGHT, ATLAS_CELL_WIDTH, ATLAS_SIZE, THUMBNAIL_GRACE_S } from '../tuning'
 
 /** A cell's occupant. `key` is the star index the cell holds a thumbnail for. */
@@ -101,7 +102,12 @@ export class ThumbnailAtlas {
 
   private readonly blitScene = new Scene()
   private readonly blitCamera = new OrthographicCamera(-0.5, 0.5, 0.5, -0.5, 0, 1)
-  private readonly blitMaterial = new MeshBasicMaterial({ depthTest: false, depthWrite: false })
+  // Named for the same reason as the scene's other materials — see `shaderNames.ts`.
+  private readonly blitMaterial = new MeshBasicMaterial({
+    name: SHADER_NAME_ATLAS_BLIT,
+    depthTest: false,
+    depthWrite: false,
+  })
   private readonly blitMesh: Mesh
   /**
    * The one staging texture every cell upload goes through. See {@link blitSource}.
