@@ -27,10 +27,10 @@ import {
   Group,
   Mesh,
   MeshBasicMaterial,
+  PlaneGeometry,
   Points,
   PointsMaterial,
   ShaderMaterial,
-  SphereGeometry,
   Texture,
   Vector3,
   Color,
@@ -53,8 +53,10 @@ import {
   IMAGE_FADE_MS,
   PLANET_CAP,
   PLANET_PERIOD_S,
-  PLANET_RADIUS,
-  PLANET_TEXTURE_PX,
+  PLANET_QUAD_HEIGHT,
+  PLANET_QUAD_WIDTH,
+  PLANET_SMALL_HEIGHT,
+  PLANET_SMALL_WIDTH,
   PLANET_TICK_PX,
 } from '../tuning'
 import {
@@ -89,8 +91,16 @@ export const PLANET_ID_BASE = 0x800000
 export const CARD_IMAGE_WIDTH = 672
 export const CARD_IMAGE_HEIGHT = 936
 
-/** `art_crop` is 626 × 457; PRD 8.5.10 downscales it to 256 on the long side. */
-export const PLANET_TEXTURE_HEIGHT = Math.round((PLANET_TEXTURE_PX * 457) / 626)
+/**
+ * A printing's image, worlds spec §1.10: Scryfall's `small`, uploaded at its own size.
+ *
+ * Re-exported from the tuning constants rather than computed here, because the pair that used to
+ * live at this name *was* computed — `art_crop` is 626 × 457 and PRD 8.5.10 downscaled it to 256
+ * on the long side, so the height was a derivation of the width. `small` has no such step: the
+ * bytes on the GPU are the bytes Scryfall serves.
+ */
+export const PRINTING_IMAGE_WIDTH = PLANET_SMALL_WIDTH
+export const PRINTING_IMAGE_HEIGHT = PLANET_SMALL_HEIGHT
 
 interface ImageSlot {
   texture: Texture | null
@@ -172,7 +182,17 @@ export class FocusedCard {
   }
 
   private readonly faceGeometries: BufferGeometry[] = []
-  private readonly planetGeometry = new SphereGeometry(PLANET_RADIUS, 24, 16)
+  /**
+   * §1.10's flat quad, shared by every printing and by its pick mesh.
+   *
+   * **It needs no billboarding, and that is a property of where it hangs rather than luck.** A
+   * `PlaneGeometry` faces +Z, and this class's header records that `root` turns to face the camera
+   * every frame so the card never presents its edge to an orbiting viewer. The ring hangs off
+   * `root`, so the quads inherit exactly that facing — which is also why a `FrontSide` material is
+   * safe here and why the sphere's 24 × 16 tessellation was 384 triangles per printing, 27,648 on
+   * a capped card, to draw something the camera only ever sees one side of.
+   */
+  private readonly planetGeometry = new PlaneGeometry(PLANET_QUAD_WIDTH, PLANET_QUAD_HEIGHT)
 
   /**
    * §1.10's overflow ticks: one `Points` object for the whole tail, not one object per tick.
@@ -642,7 +662,7 @@ export class FocusedCard {
     slot.since = 0
   }
 
-  /** PRD 5.6.7-8, plus PRD 8.5.10's 256 px art crops. */
+  /** PRD 5.6.7-8, as §1.10's flat `small` quads. */
   private rebuildPlanets(): void {
     this.clearPlanets()
     const card = this.card
@@ -678,15 +698,17 @@ export class FocusedCard {
       const planet: Planet = { mesh, pickMesh, material, image }
       this.planets.push(planet)
 
-      const url = printingImageUri(printing, 'art_crop')
+      // §1.10: the whole card at Scryfall's `small`, not a crop of its art. **No `resize`**, and
+      // that is the conversion paying for itself rather than an omission: PRD 8.5.10's decode-time
+      // downscale existed because an `art_crop` arrives at 626 × 457, and `small` arrives at
+      // 146 × 204 — already under the 256 px the downscale was aiming for. Resizing to 256 here
+      // would *upscale* 72 images and cost more than the sphere did.
+      const url = printingImageUri(printing, 'small')
       image.url = url
       void this.queue
         .request({
           key: image.key!,
           url,
-          // PRD 8.5.10: downscaled on decode. A full-size art crop is about 1 MB of texels and 72
-          // of them would be the whole GPU budget on their own.
-          resize: { width: PLANET_TEXTURE_PX, height: PLANET_TEXTURE_HEIGHT },
           // Behind the card's own faces, ahead of any thumbnail: the planets are what the user is
           // looking at once a card is focused.
           priority: () => (image.url === url ? -0.5 : null),
@@ -776,7 +798,7 @@ export class FocusedCard {
     if (this.frontImage.texture) bytes += CARD_IMAGE_WIDTH * CARD_IMAGE_HEIGHT * 4
     if (this.backImage.texture) bytes += CARD_IMAGE_WIDTH * CARD_IMAGE_HEIGHT * 4
     for (const planet of this.planets) {
-      if (planet.image.texture) bytes += PLANET_TEXTURE_PX * PLANET_TEXTURE_HEIGHT * 4
+      if (planet.image.texture) bytes += PRINTING_IMAGE_WIDTH * PRINTING_IMAGE_HEIGHT * 4
     }
     return bytes
   }
@@ -809,8 +831,8 @@ export class FocusedCard {
 }
 
 /**
- * PRD 5.6.7's orbiting printing sphere. One program for all of them — same sources, no defines — so
- * every slot's material carries the same name.
+ * PRD 5.6.7's orbiting printing, as §1.10's flat quad. One program for all of them — same sources,
+ * no defines — so every slot's material carries the same name.
  *
  * Extracted from `rebuildPlanets` so the boot-time warm-up can build one without a card
  * (`FocusedCard.warmupSpecs`, DEC-739). A factory rather than a shared singleton because each
@@ -833,7 +855,13 @@ function planetMaterial(active: number): ShaderMaterial {
   })
 }
 
-/** The same sphere into the id buffer (PRD 8.5.6), with its slot's id as a colour. */
+/**
+ * The same quad into the id buffer (PRD 8.5.6), with its slot's id as a colour.
+ *
+ * Sharing the draw geometry is what keeps the pick target from drifting off the picture, and §1.10
+ * makes the target *larger* than it was: the quad is 0.172 × 0.24 where the sphere it replaces was
+ * 0.116 across, so no printing became harder to click in the conversion.
+ */
 function planetPickMaterial(id: number): ShaderMaterial {
   return new ShaderMaterial({
     name: SHADER_NAME_CARD_PLANET_PICK,
@@ -851,9 +879,12 @@ function planetPickMaterial(id: number): ShaderMaterial {
   })
 }
 
-/** PRD 7.2's worst case: a 72-printing card, both faces loaded and every planet textured. */
+/** PRD 7.2's worst case: a 72-printing card, both faces loaded and every printing textured. */
 export function worstCaseCardBytes(): number {
-  return CARD_IMAGE_WIDTH * CARD_IMAGE_HEIGHT * 4 * 2 + PLANET_CAP * PLANET_TEXTURE_PX * PLANET_TEXTURE_HEIGHT * 4
+  return (
+    CARD_IMAGE_WIDTH * CARD_IMAGE_HEIGHT * 4 * 2 +
+    PLANET_CAP * PRINTING_IMAGE_WIDTH * PRINTING_IMAGE_HEIGHT * 4
+  )
 }
 
 /**

@@ -241,12 +241,47 @@ export const PLANET_CAP = PLANETS_PER_RING * PLANET_RING_COUNT
 /** PRD 5.6.7: "one revolution per 60 s", independent of the plane's spin. */
 export const PLANET_PERIOD_S = 60
 
-/** Planet radius and ring radii, in the card's own units. The first ring clears the card's corner. */
-export const PLANET_RADIUS = 0.058
+/** Ring radii, in the card's own units. The first ring clears the card's corner. */
 export const PLANET_RING_RADII: readonly number[] = [0.82, 1.12, 1.42]
 
-/** PRD 8.5.10: `art_crop` textures downscaled on decode to 256 px on the long side. */
-export const PLANET_TEXTURE_PX = 256
+/**
+ * Worlds spec §1.10: a printing is a flat quad showing its own `small` image, not a sphere.
+ *
+ * Scryfall's `small` is 146 × 204 and is uploaded **at its own size**. That is the point of the
+ * conversion rather than an incidental detail: PRD 8.5.10's 256 px `art_crop` exists because an
+ * `art_crop` arrives at 626 × 457 and has to be cut down, and `small` arrives already smaller than
+ * the size that downscale was aiming for. So the quad both retires the decode-time resize and
+ * shows the whole card instead of a crop of its art — which is what lets §1.10 satisfy Scryfall's
+ * alternative attribution clause without an artist credit beside each planet.
+ */
+export const PLANET_SMALL_WIDTH = 146
+export const PLANET_SMALL_HEIGHT = 204
+
+/**
+ * The quad's height in the card's own units, and its width **derived from the image it shows**.
+ *
+ * Derived rather than written as its own literal, because "undistorted" is §1.10's entire claim
+ * for the flat quad and a literal width can drift from the image's aspect while the picture stays
+ * completely plausible — a card squashed by a few percent still reads as a card, and nothing
+ * errors. Deriving makes the distortion unrepresentable instead of merely untested.
+ *
+ * 0.24 is what the ring can hold. The inner ring seats {@link PLANETS_PER_RING} printings at
+ * radius `PLANET_RING_RADII[0]`, so neighbours are `2π · 0.82 / 24` = 0.215 apart along the arc,
+ * and the rings are 0.30 apart radially. At this height the quad is 0.172 wide and clears both.
+ */
+export const PLANET_QUAD_HEIGHT = 0.24
+export const PLANET_QUAD_WIDTH = (PLANET_QUAD_HEIGHT * PLANET_SMALL_WIDTH) / PLANET_SMALL_HEIGHT
+
+/**
+ * Width of the quad's rim, **in the card's units and not in UV** (§1.10, PRD 5.6.9).
+ *
+ * A sphere's rim came free from its own curvature: the fresnel term fell off towards the limb, so
+ * the mark was the same width all the way round whatever the silhouette was. A flat quad has a
+ * constant normal — the fresnel term is uniform across it — so the rim has to be drawn as a border
+ * in the surface's own coordinates, and those coordinates are not square. Insetting by a fraction
+ * of UV would make the left and right edges 204/146 = 1.4× thicker than the top and bottom.
+ */
+export const PLANET_RIM_WIDTH = 0.014
 
 /**
  * Worlds spec §1.10: the ring's overflow, as 1 px ticks on a ring of their own.

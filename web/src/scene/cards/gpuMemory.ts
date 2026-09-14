@@ -21,10 +21,11 @@ import { ATLAS_BYTES } from './atlas'
 import {
   CARD_IMAGE_HEIGHT,
   CARD_IMAGE_WIDTH,
-  PLANET_TEXTURE_HEIGHT,
+  PRINTING_IMAGE_HEIGHT,
+  PRINTING_IMAGE_WIDTH,
   worstCaseCardBytes,
 } from './focusedCard'
-import { PLANET_CAP, PLANET_TEXTURE_PX } from '../tuning'
+import { PLANET_CAP } from '../tuning'
 import { ART_LAYER_HEIGHT, ART_LAYER_WIDTH } from '../worlds/artStream'
 import { CELL_INSTANCE_BYTES } from '../worlds/cellSheet'
 import { EQUIRECT_HEIGHT, EQUIRECT_WIDTH } from '../worlds/lod'
@@ -82,7 +83,7 @@ export function worstCaseReport(): GpuMemoryReport {
 export const WORST_CASE = {
   atlasBytes: ATLAS_BYTES,
   cardFaceBytes: textureBytes(CARD_IMAGE_WIDTH, CARD_IMAGE_HEIGHT) * 2,
-  planetBytes: PLANET_CAP * textureBytes(PLANET_TEXTURE_PX, PLANET_TEXTURE_HEIGHT),
+  planetBytes: PLANET_CAP * textureBytes(PRINTING_IMAGE_WIDTH, PRINTING_IMAGE_HEIGHT),
   planets: PLANET_CAP,
 } as const
 
@@ -134,10 +135,11 @@ export function worldsBudgetReport(input: WorldsBudgetInput): WorldsBudgetReport
   const artPoolBytes = input.artPoolLayers * textureBytes(ART_LAYER_WIDTH, ART_LAYER_HEIGHT)
   const equirectBytes = input.worldsWithCards * textureBytes(EQUIRECT_WIDTH, EQUIRECT_HEIGHT)
   const cellBytes = input.cells * CELL_INSTANCE_BYTES
-  // The ring as it is drawn **today**: 72 art crops at PRD 8.5.10's 256 px on the long side.
-  // §1.10's flat `small` quads (146x204) would make this row 8.18 MiB instead of 13.15; the
-  // conversion has not landed, so reporting 8.18 here would be reporting a plan.
-  const printingRingBytes = PLANET_CAP * textureBytes(PLANET_TEXTURE_PX, PLANET_TEXTURE_HEIGHT)
+  // §1.10's flat quads: 72 `small` images (146 × 204) at their own size, 8.18 MiB. This row was
+  // 13.15 MiB while the ring still uploaded `art_crop` at PRD 8.5.10's 256 px, and it moved on its
+  // own when the conversion landed — it is computed from the constant the renderer allocates with,
+  // which is the rule stated above this function.
+  const printingRingBytes = PLANET_CAP * textureBytes(PRINTING_IMAGE_WIDTH, PRINTING_IMAGE_HEIGHT)
   const focusedCardBytes =
     textureBytes(CARD_IMAGE_WIDTH, CARD_IMAGE_HEIGHT) * (input.doubleFaced ? 2 : 1)
   const totalBytes =

@@ -874,8 +874,28 @@ tick positions, not with a capture. See §5, Q5.
 >
 > **Landed as one `Points` object per card, rotated on the orbit**, not one object per tick: 498
 > marks would otherwise be 498 draw calls, and a single angle is what guarantees the tail cannot
-> drift against the quads. The sphere-to-quad conversion in this section's first paragraph has
-> **not** landed; §1.12's printing-ring budget row records what that costs.
+> drift against the quads.
+
+> **The sphere-to-quad conversion has landed (DEC-751).** `focusedCard.ts` builds one
+> `PlaneGeometry` of 0.172 × 0.24 — the height the ring can hold, the width **derived from the
+> 146 × 204 of the `small` image it shows**, so the undistorted claim is a property of the code
+> rather than a number that has to stay in agreement with another number. It needs no billboarding:
+> PRD 5.6.1's root already turns to face the camera each frame and the ring hangs off it. The pick
+> mesh shares the geometry object, and the quad is larger than the 0.116 sphere it replaces, so no
+> printing became harder to click.
+>
+> **Two things did not survive the conversion, and both would have failed silently.** The wrapped
+> lambert collapses to a single constant on a flat quad — it would have dimmed every printing by
+> 0.86 forever and read as a deliberate choice — and PRD 5.6.9's fresnel rim collapses to
+> *identically zero*, because the quad faces the camera by construction. Carried across, `uActive`
+> and `uHover` would still be bound and still be written, multiplying into nothing: the active and
+> hovered printings would simply stop being marked, with no error and no unwritten uniform to
+> catch it. The rim is therefore distance to the quad's **own edge**, scaled by both quad
+> dimensions so the border is even on four sides rather than 1.4× thicker on the left and right.
+>
+> The conversion also retires PRD 8.5.10's decode-time downscale here: it existed because an
+> `art_crop` arrives at 626 × 457, and a `small` arrives already below the 256 px it was aiming
+> for. §1.12's printing-ring row falls from 13.15 MiB to the 8.18 it always priced.
 
 ### 1.11 Picking, labels, filters
 
@@ -1018,12 +1038,14 @@ first place concept B pays for itself rather than costing.
 > `test/worlds-cell-sheet.test.ts` proves the figure from the geometry rather than restating it, so
 > the next attribute moves this row automatically.
 
-> **The printing-ring row prices §1.10's flat quads, which have not landed.** The ticks have
-> (DEC-751); the sphere-to-quad conversion has not, so the ring still uploads 72 `art_crop`
-> textures at PRD 8.5.10's 256 px and costs **13.15 MiB**, not 8.18. Today's real total is
-> therefore **70.29 MiB** — still under target with 25.7 MiB to spare, so the conclusion holds
-> either way and the conversion is a saving rather than a prerequisite.
-> `test/worlds-budget.test.ts` asserts the allocation, not this table, and says so in that row.
+> **The printing-ring row is now what the ring allocates (DEC-751).** It priced §1.10's flat quads
+> from the start, and while the ring still uploaded 72 `art_crop` textures at PRD 8.5.10's 256 px
+> it cost **13.15 MiB** against this table's 8.18 — a 4.97 MiB gap the budget reported honestly
+> rather than papering over. §1.10's conversion has landed, so the row and the table agree and the
+> **65.32 MiB** total above is the real one. `test/worlds-budget.test.ts` asserts the allocation
+> rather than this table, and pins the row's *provenance* — the cap times the bytes of the image
+> `rebuildPlanets` actually requests — because this is the one row that takes no varying input and
+> so is the one row a transcribed constant could sit in undetected.
 
 > **The two dataset-dependent rows are v3's** (45 worlds, 24,399 cards on worlds — §1.2). On the
 > 87-plane roster they are 29 layers / 3.62 MiB and 23,607 cells / 0.99 MiB, for **63.20 MiB**
@@ -1290,11 +1312,18 @@ shards**, ≈ 87 KB raw on the largest — an estimated +20–25 KB brotli on a 
 room.
 
 **Why it is needed at all.** Scryfall asks that an `art_crop` be shown with the artist name and
-copyright in the same interface, *or* the full card shown alongside. Today the app satisfies the
-alternative clause, because `art_crop` only ever appears on the printing planets orbiting a focused
-card that is showing its full `large` image. Concept B shows tens of thousands of art crops with no
+copyright in the same interface, *or* the full card shown alongside. The galaxy satisfied the
+alternative clause because `art_crop` only ever appeared on the printing planets orbiting a focused
+card that was showing its full `large` image. Concept B shows tens of thousands of art crops with no
 card in sight, so the alternative clause no longer applies and the artist must be in the contract.
 Review §4.4 is explicit about this and the prototype's own footer states the gap.
+
+> **§1.10 has since removed the ring from this argument entirely (DEC-751).** The printings are now
+> flat quads showing the whole `small` card, so the ring does not display an `art_crop` at all and
+> carries its attribution on each quad's own face. That does not weaken this section — it sharpens
+> it. The **cell sheet is now the only `art_crop` surface in the app**, so the contract's artist
+> field is the whole of the app's compliance rather than a second line of defence behind a
+> ring that was already covered.
 
 **Which printing's art a cell shows:** printing index 0 — the tuple list is ordered by release date,
 so index 0 is the first printing, which is what the card's `r` size class already refers to. The

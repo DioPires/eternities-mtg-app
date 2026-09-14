@@ -11,7 +11,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { Vector3 } from 'three'
-import type { BufferGeometry, Points, Texture, Vector4, WebGLRenderer } from 'three'
+import type { BufferGeometry, Mesh, Points, Texture, Vector4, WebGLRenderer } from 'three'
 
 import { ATLAS_BYTES, ATLAS_CELLS, ATLAS_COLUMNS, ThumbnailAtlas } from '../src/scene/cards/atlas'
 import {
@@ -19,7 +19,14 @@ import {
   stepSpring,
   worstCaseCardBytes,
   PLANET_ID_BASE,
+  PRINTING_IMAGE_HEIGHT,
+  PRINTING_IMAGE_WIDTH,
 } from '../src/scene/cards/focusedCard'
+import {
+  PLANET_FRAGMENT_SHADER,
+  PLANET_VERTEX_SHADER,
+} from '../src/scene/cards/cardShaders'
+import { glslFloat } from '../src/scene/starfield/shaders'
 import type { CardRecord, PrintingTuple } from '../src/data/types'
 import {
   GPU_CEILING_BYTES,
@@ -37,7 +44,7 @@ import {
   samePick,
   type PickResult,
 } from '../src/scene/picking/scenePicker'
-import { PICK_BUSY, PICK_MISS } from '../src/scene/picking/idPicker'
+import { PICK_BUSY, PICK_LAYER, PICK_MISS } from '../src/scene/picking/idPicker'
 import { cardEdgeGeometry, cardFaceGeometry } from '../src/scene/cards/roundedRect'
 import {
   ATLAS_CELL_HEIGHT,
@@ -50,6 +57,9 @@ import {
   PLANETS_PER_RING,
   PLANET_CAP,
   PLANET_PERIOD_S,
+  PLANET_QUAD_HEIGHT,
+  PLANET_QUAD_WIDTH,
+  PLANET_RING_RADII,
   PLANET_TICK_RADIUS,
   THUMBNAIL_FADE_FULL_PX,
   THUMBNAIL_GRACE_S,
@@ -1187,5 +1197,200 @@ describe('§1.10 the tick tail is in the scene, not only in the layout', () => {
 
     card.dispose()
     queue.dispose()
+  })
+})
+
+/**
+ * §1.10's first paragraph: a printing is a **flat `small` quad**, not a textured sphere.
+ *
+ * Its claims are "flat", "at their own aspect ratio", "undistorted", "unshaded" and "the active
+ * printing marked by a brighter rim" — and every one of them is invisible when wrong. A card
+ * squashed by a few percent still reads as a card; a uniformly dimmed ring reads as a styling
+ * choice; an active marker whose term evaluates to zero reads as nothing at all. So they are
+ * pinned here rather than left to a capture.
+ */
+describe('§1.10 the printings are flat quads', () => {
+  /**
+   * A GLSL source with its comments stripped, so a source-text assertion reads the **program**.
+   *
+   * Every shader row below would otherwise be satisfiable by prose, and in both directions. That is
+   * not hypothetical — it is what the first run of these rows did. The "no view-dependent term" row
+   * forbids `pow(1 - dot(n, toEye), 3)`, and the comment beside the rim quotes that expression
+   * verbatim in order to explain why it is gone; the "unshaded" row went red on the word `lambert`
+   * appearing in a comment that says the lambert was removed. A guard that cannot tell code from a
+   * note about code fails on an honest explanation and passes on a claim nobody implemented.
+   */
+  function glslCode(source: string): string {
+    const stripped = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
+    // A parser this small is only worth trusting if it fails loudly rather than degrading. If a
+    // rewrite ever leaves a comment marker standing, that is one failure here instead of six
+    // quietly weakened assertions downstream.
+    if (stripped.includes('/*') || stripped.includes('//')) {
+      throw new Error('glslCode left a comment marker behind')
+    }
+    return stripped
+  }
+
+  it('reads the program and not the prose around it', () => {
+    // The positive control for `glslCode`, and it is load-bearing rather than decorative: with the
+    // stripping inert, every row below still passes except the two that would be *wrong*.
+    expect(PLANET_FRAGMENT_SHADER).toContain('lambert')
+    expect(glslCode(PLANET_FRAGMENT_SHADER)).not.toContain('lambert')
+    expect(glslCode(PLANET_FRAGMENT_SHADER).length).toBeLessThan(PLANET_FRAGMENT_SHADER.length)
+    // And it does not eat the program on the way past.
+    expect(glslCode(PLANET_FRAGMENT_SHADER)).toContain('gl_FragColor')
+  })
+
+  function cardWith(printings: number): CardRecord {
+    const p: PrintingTuple[] = Array.from({ length: printings }, (_, i) => [
+      `0aeebaf5-8c7d-4636-9e82-${String(i).padStart(12, '0')}`,
+      1,
+      '1',
+      1700000000,
+      `${i}`,
+    ])
+    return { u: 'o-1', n: 'Basic', m: '{0}', t: 'Land', o: '', b: null, ci: 'C', r: 0, l: 'normal', p }
+  }
+
+  function queueStub(): ImageQueue {
+    return new ImageQueue({
+      fetchImpl: () => new Promise<Response>(() => {}),
+      decode: () => new Promise<ImageBitmap>(() => {}),
+    })
+  }
+
+  it('gives the quad the aspect of the image it shows, so a printing cannot be distorted', () => {
+    // Not "close to 0.7157" — **equal**, because the width is derived from the image's dimensions
+    // rather than written down. A literal within a percent of the aspect would pass a
+    // `toBeCloseTo` and squash all 72 printings on screen with nothing to report it.
+    expect(PLANET_QUAD_WIDTH / PLANET_QUAD_HEIGHT).toBe(
+      PRINTING_IMAGE_WIDTH / PRINTING_IMAGE_HEIGHT,
+    )
+    // And that is the *card's* aspect, which is what lets §1.10 retire the sphere: the ring and the
+    // focused card's own face now agree about the shape of a card.
+    expect(PLANET_QUAD_WIDTH / PLANET_QUAD_HEIGHT).toBeCloseTo(CARD_WIDTH / CARD_HEIGHT, 2)
+  })
+
+  it('puts a four-vertex plane in the scene, for the draw pass and the pick pass alike', () => {
+    const queue = queueStub()
+    const card = new FocusedCard(queue)
+    card.show(cardWith(4), 0, 0)
+
+    const meshes: Mesh[] = []
+    card.root.traverse((node) => {
+      if ((node as Mesh).isMesh) meshes.push(node as Mesh)
+    })
+    // Three for the card itself (front, back, edge) and two per printing — draw and pick.
+    const printingMeshes = meshes.filter((mesh) => mesh.geometry.getAttribute('position').count === 4)
+    expect(printingMeshes).toHaveLength(8)
+
+    for (const mesh of printingMeshes) {
+      const position = mesh.geometry.getAttribute('position')
+      // A quad, not a 24 x 16 sphere's 425 vertices. `position.count` rather than `geometry.type`:
+      // the type is a string three sets, and it would survive a swap that kept the label.
+      expect(position.count).toBe(4)
+      // Flat, and flat in the plane that faces the camera. The ring hangs off a root that does
+      // `lookAt(camera)`, so a quad in local XY needs no billboarding — and a quad that had drifted
+      // out of XY would be edge-on at some camera angles and invisible, intermittently.
+      for (let i = 0; i < position.count; i += 1) expect(position.getZ(i)).toBe(0)
+    }
+
+    // Four drawn and four in the pick pass, and the *same* geometry object behind all eight — so
+    // the hit target cannot drift off the picture. A second `PlaneGeometry` of equal size would
+    // satisfy every dimension assertion above and still be free to diverge later.
+    const drawn = printingMeshes.filter((mesh) => mesh.layers.mask === 1)
+    const picked = printingMeshes.filter((mesh) => mesh.layers.mask === 1 << PICK_LAYER)
+    expect(drawn).toHaveLength(4)
+    expect(picked).toHaveLength(4)
+    expect(new Set(printingMeshes.map((mesh) => mesh.geometry)).size).toBe(1)
+
+    card.dispose()
+    queue.dispose()
+  })
+
+  it('clears its neighbours on the tightest ring, so the quads do not overlap', () => {
+    // The ring spacing was chosen for a 0.116-wide sphere and the quad is bigger, so this is a real
+    // question rather than a restatement. The inner ring binds: 24 printings at the smallest radius.
+    const arc = (2 * Math.PI * PLANET_RING_RADII[0]!) / PLANETS_PER_RING
+    expect(PLANET_QUAD_WIDTH).toBeLessThan(arc)
+    // Radially the quad is the taller dimension, so this is what would collide first.
+    expect(PLANET_QUAD_HEIGHT).toBeLessThan(PLANET_RING_RADII[1]! - PLANET_RING_RADII[0]!)
+  })
+
+  it('makes no printing harder to click than the sphere it replaces', () => {
+    // The pick mesh shares the quad, so the hit area *is* the quad. Both dimensions have to clear
+    // the sphere's 0.116 diameter, or the conversion would have bought a better picture with
+    // pickability — and nothing on screen would say so.
+    const sphereDiameter = 0.058 * 2
+    expect(PLANET_QUAD_WIDTH).toBeGreaterThan(sphereDiameter)
+    expect(PLANET_QUAD_HEIGHT).toBeGreaterThan(sphereDiameter)
+  })
+
+  it('asks for the whole card at `small`, not a crop of its art', () => {
+    const requested: string[] = []
+    const queue = new ImageQueue({
+      fetchImpl: (input: RequestInfo | URL) => {
+        // `ImageQueue` passes the request's url, which is a plain string. Narrowed rather than
+        // stringified: `String(new Request(...))` is "[object Object]", and a url assertion
+        // against that would pass or fail for reasons that have nothing to do with the image size.
+        expect(typeof input).toBe('string')
+        requested.push(input as string)
+        return new Promise<Response>(() => {})
+      },
+      decode: () => new Promise<ImageBitmap>(() => {}),
+    })
+    const card = new FocusedCard(queue)
+    card.show(cardWith(4), 0, 0)
+
+    const ring = requested.filter((url) => !url.includes('/large/'))
+    expect(ring).toHaveLength(4)
+    for (const url of ring) {
+      expect(url).toContain('/small/')
+      // The sphere's source. §1.10 drops it for the reason review §10 Q3 records: an `art_crop`
+      // carries no title, frame or artist line, so showing one obliges an artist credit beside
+      // every planet, while a whole card carries its attribution on its own face.
+      expect(url).not.toContain('/art_crop/')
+    }
+
+    card.dispose()
+    queue.dispose()
+  })
+
+  it('marks the active printing with a term that is not identically zero on a flat quad', () => {
+    /*
+     * The trap this row exists for, and it is the one thing in this conversion that fails
+     * **silently**. The sphere's rim was `pow(1 - dot(n, toEye), 3)`. The quad faces the camera by
+     * construction, so `dot(n, toEye)` is 1 across the whole surface and that expression is
+     * identically zero. Ported across unchanged it leaves `uActive` and `uHover` bound, still
+     * written by `setActivePrinting`/`setHoveredPlanet`, and multiplied into nothing: PRD 5.6.9's
+     * mark stops existing, with no error raised and no uniform left unwritten to notice.
+     *
+     * So no view-dependent term reaches the fragment stage at all, and the rim is distance to the
+     * quad's own edge instead.
+     */
+    expect(glslCode(PLANET_FRAGMENT_SHADER)).not.toContain('vNormalView')
+    expect(glslCode(PLANET_FRAGMENT_SHADER)).not.toContain('vViewPosition')
+    expect(glslCode(PLANET_FRAGMENT_SHADER)).not.toContain('dot(')
+    expect(glslCode(PLANET_VERTEX_SHADER)).not.toContain('normalMatrix')
+    expect(glslCode(PLANET_FRAGMENT_SHADER)).toContain('vec2 toEdge = min(vUv, 1.0 - vUv)')
+    expect(glslCode(PLANET_FRAGMENT_SHADER)).toContain('uActive * (ACTIVE_GAIN - 1.0)')
+  })
+
+  it('measures the rim in the quads units, not in UV, so the border is even on four sides', () => {
+    // The quad is 146:204, so a rim inset by a fraction of UV would be 1.4x thicker on the left and
+    // right edges than on the top and bottom. Scaling by both dimensions is what evens it, so both
+    // have to reach the shader — and reach it carrying the quad's real size, not a second literal.
+    const code = glslCode(PLANET_FRAGMENT_SHADER)
+    expect(code).toContain('* vec2(QUAD_WIDTH, QUAD_HEIGHT)')
+    expect(code).toContain(`#define QUAD_WIDTH ${glslFloat(PLANET_QUAD_WIDTH)}`)
+    expect(code).toContain(`#define QUAD_HEIGHT ${glslFloat(PLANET_QUAD_HEIGHT)}`)
+  })
+
+  it('is unshaded — no lighting term survived the conversion', () => {
+    // "Unshaded" is not a style note here. The wrapped lambert it replaces collapses to a single
+    // constant on a flat quad, so carried over it would dim every printing by that constant
+    // forever and read as a deliberate choice.
+    expect(glslCode(PLANET_FRAGMENT_SHADER)).not.toContain('lambert')
+    expect(glslCode(PLANET_FRAGMENT_SHADER)).not.toMatch(/base\s*\*=/)
   })
 })

@@ -18,12 +18,14 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import type { PlanesFile } from '../src/data/types'
+import { PRINTING_IMAGE_HEIGHT, PRINTING_IMAGE_WIDTH } from '../src/scene/cards/focusedCard'
 import {
   GPU_TARGET_BYTES,
   MEGABYTE,
   worldsBudgetReport,
   worstCaseReport,
 } from '../src/scene/cards/gpuMemory'
+import { PLANET_CAP } from '../src/scene/tuning'
 import { QUALITY_TIERS } from '../src/scene/quality/adaptiveQuality'
 import { isWorldPlane } from '../src/data/types'
 
@@ -112,12 +114,38 @@ describe('§1.12 the worlds budget', () => {
     expect(mib(v3().totalBytes - small.totalBytes)).toBeCloseTo(2.03, 1)
   })
 
-  it('reports the printing ring as it is drawn today, not as §1.10 plans it', () => {
-    // §1.12's table prices the ring at 8.18 MiB, which is 72 flat `small` quads (146x204). The ring
-    // still draws 72 art crops at PRD 8.5.10's 256 px, so today it costs 13.15 MiB. The budget
-    // reports the allocation; the gap is the flat-quad conversion, which has not landed.
-    expect(mib(v3().printingRingBytes)).toBeCloseTo(13.15, 2)
-    // And the conclusion survives the difference, which is why the conversion is not urgent.
+  it('prices the printing ring at §1.10s flat quads, which have now landed', () => {
+    // 72 `small` images at 146 x 204 x 4 = 8.18 MiB. This row read 13.15 MiB while the ring still
+    // uploaded `art_crop` at PRD 8.5.10's 256 px, and §1.12's table has always carried 8.18 — so
+    // the row agreeing with the table is the conversion arriving, not the table being restated.
+    expect(mib(v3().printingRingBytes)).toBeCloseTo(8.18, 2)
     expect(v3().withinTarget).toBe(true)
+  })
+
+  it('takes the ring row from the image the ring actually uploads', () => {
+    /*
+     * The row is 8.18 MiB either because it is computed from the quad's texture size or because
+     * someone typed 8,577,792 — and those two are indistinguishable from the number alone. So
+     * assert the *provenance*: the row is exactly the cap times the bytes of the image
+     * `rebuildPlanets` requests, both read from the modules that own them.
+     *
+     * This is the row's only defence. The other four rows are guarded by inputs that vary
+     * (`artPoolLayers`, `worldsWithCards`, `cells`, `doubleFaced`), so a transcribed constant shows
+     * up there the moment a test moves one. The ring row takes no input at all.
+     */
+    expect(v3().printingRingBytes).toBe(
+      PLANET_CAP * PRINTING_IMAGE_WIDTH * PRINTING_IMAGE_HEIGHT * 4,
+    )
+    expect(PRINTING_IMAGE_WIDTH).toBe(146)
+    expect(PRINTING_IMAGE_HEIGHT).toBe(204)
+  })
+
+  it('got cheaper for the conversion, which is the saving §1.12 records', () => {
+    // §1.10 sells the flat quad on the picture — undistorted, self-attributing — and §1.12 records
+    // that it also pays. The ring it replaces was `PLANET_CAP` art crops at PRD 8.5.10's 256 px on
+    // the long side; if a change to the printing image ever inverts this, that note stops holding.
+    const artCropRingBytes = PLANET_CAP * 256 * Math.round((256 * 457) / 626) * 4
+    expect(v3().printingRingBytes).toBeLessThan(artCropRingBytes)
+    expect(mib(artCropRingBytes - v3().printingRingBytes)).toBeCloseTo(4.97, 2)
   })
 })
