@@ -108,26 +108,28 @@
       "name": "Forgotten Realms Commander",
       "prdName": "Forgotten Realms Commander",
       "prdDate": "2021-07",
-      "plane": "blind-eternities",
+      "plane": "forgotten-realms",
       "universesBeyond": false,
       "excluded": false,
-      "notes": "",
-      "prdSection": "B.2",
+      "notes": "Moved off the dust by owner decision 2026-09-14 (DEC-710 sign-off, interaction 0dec0512), with afr and clb. Set-level evidence: the set is wall-to-wall Forgotten Realms, so the plane is a property of the product, not of 62 individual cards",
+      "prdSection": "B.1",
       "prdVerify": false,
-      "correctedFrom": null
+      "correctedFrom": null,
+      "prdRatified": null
     },
     {
       "code": "afr",
       "name": "Adventures in the Forgotten Realms",
       "prdName": "Adventures in the Forgotten Realms",
       "prdDate": "2021-07",
-      "plane": "blind-eternities",
+      "plane": "forgotten-realms",
       "universesBeyond": false,
       "excluded": false,
-      "notes": "",
-      "prdSection": "B.2",
+      "notes": "Moved off the dust by owner decision 2026-09-14 (DEC-710 sign-off, interaction 0dec0512), with afc and clb. Set-level evidence: the set is wall-to-wall Forgotten Realms, so the plane is a property of the product, not of 257 individual cards",
+      "prdSection": "B.1",
       "prdVerify": false,
-      "correctedFrom": null
+      "correctedFrom": null,
+      "prdRatified": null
     },
     {
       "code": "akh",
@@ -511,13 +513,14 @@
       "name": "Commander Legends: Battle for Baldur's Gate",
       "prdName": "Commander Legends: Battle for Baldur's Gate",
       "prdDate": "2022-06",
-      "plane": "blind-eternities",
+      "plane": "forgotten-realms",
       "universesBeyond": false,
       "excluded": false,
-      "notes": "",
-      "prdSection": "B.2",
+      "notes": "Moved off the dust by owner decision 2026-09-14 (DEC-710 sign-off, interaction 0dec0512), with afr and afc. Set-level evidence: the set is wall-to-wall Forgotten Realms, so the plane is a property of the product, not of 345 individual cards. `Ravenloft Adventurer` is the one card whose own name points at another D&D world; it is mapped here anyway because Ravenloft is not an Appendix A plane and Magic reaches the whole D&D cosmology as one plane (DEC-745, reported rather than applied silently)",
+      "prdSection": "B.1",
       "prdVerify": false,
-      "correctedFrom": null
+      "correctedFrom": null,
+      "prdRatified": null
     },
     {
       "code": "clu",
@@ -527,10 +530,12 @@
       "plane": "ravnica",
       "universesBeyond": false,
       "excluded": false,
-      "notes": "",
+      "stampExempt": true,
+      "notes": "`stampExempt` added by owner decision 2026-09-14 (DEC-710 sign-off, interaction 0dec0512). The row already mapped clu to Ravnica; what kept its 16 cards out of the dataset was the triangle security stamp, which 4.3.5 reads as a Universes Beyond marker and 4.4.3 reads again on the earliest printing. Clue Edition is an in-universe Ravnica product that carries the stamp because it is sold through mass-market retail, not because it is Universes Beyond — so the exemption is a statement about this set, and 4.3.5 itself is unchanged",
       "prdSection": "B.1",
       "prdVerify": false,
-      "correctedFrom": null
+      "correctedFrom": null,
+      "prdRatified": null
     },
     {
       "code": "cmd",

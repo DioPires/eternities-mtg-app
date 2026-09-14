@@ -7,8 +7,8 @@ windows-kit`) is what regenerates this evidence — and it is the one that matte
 row below is macOS and PRD 7.1.2 asks for Windows too. To reproduce the table as written:
 `git show review-tooling-2026-09:web/scripts/cross-browser.mjs > web/scripts/cross-browser.mjs`.
 
-> **This run is stale.** The dataset below is two refreshes behind what is committed
-> (`6d4779695fde33ea` today), and no Windows or integrated-GPU engine has ever been driven —
+> **This run is stale.** The dataset below is three refreshes behind what is committed
+> (`dabe2c9a68b4d799` today), and no Windows or integrated-GPU engine has ever been driven —
 > review §9 and DEC-691's measurement kit exist to close that. The engine results are still the
 > record of what passed on 2026-09-05; do not read the dataset line as current.
 

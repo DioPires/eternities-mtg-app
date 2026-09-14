@@ -147,6 +147,11 @@
       "notes": "Ratified from the wiki roster diff, 2026-09-04 (open question 1); no set maps here yet"
     },
     {
+      "slug": "forgotten-realms",
+      "displayName": "Forgotten Realms",
+      "notes": "The D&D crossover setting (Faerûn and the wider Great Wheel Magic reaches through it). Added by owner decision 2026-09-14 (DEC-710 sign-off, interaction 0dec0512); afr, afc and clb map here. Not a page in the wiki's Category:Planes, so the roster diff lists it under 'no wiki page of that name' by design"
+    },
+    {
       "slug": "gargantikar",
       "displayName": "Gargantikar",
       "notes": ""

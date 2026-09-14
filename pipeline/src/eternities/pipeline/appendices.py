@@ -70,6 +70,19 @@ class SetEntry:
     question 1 — a report whose job is to surface what needs a decision must not carry a settled
     one. A newly corrected row defaults to ``None``, so the ask reappears for the next correction.
     """
+    stamp_exempt: bool = False
+    """This set's ``triangle`` security stamp does not mean Universes Beyond (PRD 4.3.5, 4.4.3).
+
+    The stamp is a *proxy*: 4.3.5 uses it to catch Universes Beyond printings whose set has no
+    Appendix B row of its own, and 4.4.3 reads it again on a card's earliest printing. The proxy
+    has a false positive — a set can carry the stamp for a reason that has nothing to do with
+    Universes Beyond, as ``clu`` (Ravnica: Clue Edition) does because it is sold through
+    mass-market retail. This flag is how Appendix B says so for one set.
+
+    It deliberately does **not** change either rule's meaning. The stamp still marks Universes
+    Beyond everywhere the appendix has not said otherwise, and a row that claims both the
+    exemption and ``universesBeyond`` is a contradiction the loader rejects rather than resolves.
+    """
 
     @property
     def drops_printings(self) -> bool:
@@ -148,6 +161,16 @@ class Appendices:
                     f"Appendix B row {entry.code!r} has no plane and is not flagged "
                     "universes_beyond or excluded; every in-universe row needs a plane (PRD 4.6.2)"
                 )
+            # `stampExempt` says "this set's triangle stamp is not a Universes Beyond marker".
+            # A row that also claims the set *is* Universes Beyond asserts both halves of a
+            # contradiction, and the pipeline must not pick a winner for it (PRD 4.6).
+            if entry.stamp_exempt and entry.drops_printings:
+                raise ValueError(
+                    f"Appendix B row {entry.code!r} is stampExempt and also flagged "
+                    "universes_beyond or excluded. The exemption says the triangle stamp does "
+                    "not mark this set as Universes Beyond; the flags say every printing in it "
+                    "is dropped anyway. Drop one of the two."
+                )
         for oracle_id, override in sorted(self.overrides.items()):
             if override.plane not in known:
                 raise ValueError(
@@ -218,6 +241,7 @@ def load_appendices(
             ),
             prd_verified=(None if row.get("prdVerified") is None else str(row["prdVerified"])),
             prd_ratified=(None if row.get("prdRatified") is None else str(row["prdRatified"])),
+            stamp_exempt=bool(row.get("stampExempt", False)),
         )
         for row in cast("list[dict[str, Any]]", b["sets"])
     )

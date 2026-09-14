@@ -104,7 +104,7 @@ waits on the pipeline and bench numbers mean something from the first shader com
 | Fixture | Contents | Purpose |
 |---|---|---|
 | `fixture-small` | 4 planes + the Blind Eternities, 500 cards, one dust shard | Semantic and decoder tests |
-| `fixture-scale` | all 87 Appendix A roster entries, 30 000 stars, 4 dust shards | Performance, label collision, budget |
+| `fixture-scale` | all 88 Appendix A roster entries, 30 000 stars, 4 dust shards | Performance, label collision, budget |
 
 Both draw colour identity from the proportions of the real Phase 1 dataset — mono colours ~15%
 each, multicolour a 16.5% minority, colourless 8.5% — so a plane's five arms carry the stars and
@@ -115,7 +115,7 @@ The real dataset is committed alongside them:
 
 | Dataset | Contents |
 |---|---|
-| `production` | 28 587 cards across 87 planes, 93 plane shards, from the Scryfall bulk file of 2026-09-04 |
+| `production` | 28 603 cards across 88 planes, 94 plane shards, from the Scryfall bulk file of 2026-09-11 |
 
 `fixture-scale` is generated *from* `pipeline/data/appendix_a.json`, so a roster change re-hashes it
 along with the production dataset. `fixture-small` names its five planes explicitly and does not move.

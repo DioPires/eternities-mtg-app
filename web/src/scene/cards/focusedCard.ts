@@ -72,7 +72,7 @@ import { cardEdgeGeometry, cardFaceGeometry } from './roundedRect'
 /**
  * Ids the pick pass writes for planets, offset well clear of the star ids.
  *
- * Star ids are `gl_VertexID + 1`, so they run to the star count — 28,587 on the production dataset
+ * Star ids are `gl_VertexID + 1`, so they run to the star count — 28,603 on the production dataset
  * and bounded by the 24 bits the id buffer has. Half of that range is a boundary no dataset can
  * reach and no arithmetic can land on by accident.
  */

@@ -60,7 +60,7 @@ Three deliberate shapes, against PRD 6.2.1's four "focus kinds":
 `levelOf(focus)` gives the camera-distance band. PRD 5.1.3: levels are distances, not views.
 
 **The `planeIndex` cap.** A star record's `planeIndex` is a `uint8` (data contract §5), so the
-roster is capped at 256 planes. Appendix A has 87 and the encoder fails loudly rather than
+roster is capped at 256 planes. Appendix A has 88 and the encoder fails loudly rather than
 truncating. Recorded here because it is a contract limit that is not otherwise written down.
 
 ## 2. Flights

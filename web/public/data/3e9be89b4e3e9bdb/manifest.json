@@ -1,0 +1,596 @@
+{
+  "contractVersion": 2,
+  "pipelineVersion": "0.4.0",
+  "dataset": "fixture-scale",
+  "dataHash": "3e9be89b4e3e9bdb",
+  "asOf": "2026-09-04",
+  "generatedAt": "2026-09-04T00:00:00Z",
+  "scryfallBulkUpdatedAt": null,
+  "starRecordBytes": 12,
+  "shardSize": 2000,
+  "counts": {
+    "planes": 88,
+    "stars": 30000,
+    "sets": 480,
+    "printings": 71040,
+    "blindEternitiesStars": 6600,
+    "blindEternitiesShare": 0.22
+  },
+  "planeShards": {
+    "blind-eternities": 4,
+    "abyss": 1,
+    "alara": 1,
+    "alkabah": 1,
+    "amonkhet": 1,
+    "antausia": 1,
+    "aranzhur": 1,
+    "arcavios": 1,
+    "arkhos": 1,
+    "avishkar": 1,
+    "azgol": 1,
+    "azoria": 1,
+    "belenon": 1,
+    "bloomburrow": 1,
+    "cabralin": 1,
+    "capenna": 1,
+    "clamhattan": 1,
+    "cridhe": 1,
+    "diraden": 1,
+    "dominaria": 1,
+    "duskmourn": 1,
+    "echoir": 1,
+    "edge": 1,
+    "eldraine": 1,
+    "equilor": 1,
+    "ergamon": 1,
+    "fabacin": 1,
+    "fiora": 1,
+    "foldaria": 1,
+    "forgotten-realms": 1,
+    "gargantikar": 1,
+    "gastal": 1,
+    "gobakhan": 1,
+    "hell": 1,
+    "horsehead-nebula": 1,
+    "ikoria": 1,
+    "ilcae": 1,
+    "innistrad": 1,
+    "iquatana": 1,
+    "ir": 1,
+    "ixalan": 1,
+    "kaldheim": 1,
+    "kamigawa": 1,
+    "kandoka": 1,
+    "karsus": 1,
+    "kephalai": 1,
+    "kinshala": 1,
+    "kodisha": 1,
+    "kolbahan": 1,
+    "kylem": 1,
+    "kyneth": 1,
+    "lorwyn": 1,
+    "luvion": 2,
+    "meditation-realm": 1,
+    "mercadia": 1,
+    "metal-island": 1,
+    "mirrankkar": 1,
+    "moag": 1,
+    "mongseng": 1,
+    "muraganda": 1,
+    "nether-void": 1,
+    "new-phyrexia": 1,
+    "obsidias": 1,
+    "parnash": 1,
+    "phyrexia": 1,
+    "pyrulea": 1,
+    "rabiah": 1,
+    "rath": 1,
+    "ravnica": 1,
+    "regatha": 1,
+    "segovia": 1,
+    "serras-realm": 1,
+    "shandalar": 2,
+    "shenmeng": 1,
+    "skalla": 1,
+    "tarkir": 1,
+    "tavelia": 1,
+    "theros": 1,
+    "thunder-junction": 1,
+    "tolvada": 1,
+    "ulgrotha": 1,
+    "valla": 1,
+    "vatraquaz": 1,
+    "vryn": 1,
+    "wildfire": 1,
+    "xerex": 1,
+    "zendikar": 1,
+    "zhalfir": 1
+  },
+  "files": [
+    {
+      "path": "planes.json",
+      "bytes": 91239,
+      "sha256": "fce2d700b22026450972bffa121f112cb4492785ba520f0d5c0fa6bfd803a69c"
+    },
+    {
+      "path": "planes/abyss.0.json",
+      "bytes": 58485,
+      "sha256": "789204a550d51d1b534a1dd9e9d964a5e2cee316235b03a963cc71bad383e1db"
+    },
+    {
+      "path": "planes/alara.0.json",
+      "bytes": 117570,
+      "sha256": "e173b5f24d0385945759c4e78471a8edb5cd61a278c3e6922460ee1a5e72f982"
+    },
+    {
+      "path": "planes/alkabah.0.json",
+      "bytes": 135836,
+      "sha256": "59ef9ba64d00f41b232859a99e7bc4d66444491b760107000d48615eb74b8bac"
+    },
+    {
+      "path": "planes/amonkhet.0.json",
+      "bytes": 109363,
+      "sha256": "885ededabecfb59820526efc7976687da4122108c2a37c9380312ed1a6c01af3"
+    },
+    {
+      "path": "planes/antausia.0.json",
+      "bytes": 95,
+      "sha256": "feb6f8d43e7519770b7d378f48823a7a7e4167375da23641611aa78dfb45419f"
+    },
+    {
+      "path": "planes/aranzhur.0.json",
+      "bytes": 11932,
+      "sha256": "5e0d41294194d97ee1efe4d090d60ff2bb4f3322071e7cf310abccf69b6dd263"
+    },
+    {
+      "path": "planes/arcavios.0.json",
+      "bytes": 195822,
+      "sha256": "a1b742d83f989f56d36dba656553c3387db788cccfecdd8b1508e00dbd4e5a0c"
+    },
+    {
+      "path": "planes/arkhos.0.json",
+      "bytes": 77794,
+      "sha256": "cfe1cf0678c92720bba12ec3be615d5895c44aa1fa3a518e9b837669a633e3d3"
+    },
+    {
+      "path": "planes/avishkar.0.json",
+      "bytes": 16795,
+      "sha256": "c19a209d5e3c93100bcb0871a52701a4272fbca0cdb8f0a7c0edc62f4e49af26"
+    },
+    {
+      "path": "planes/azgol.0.json",
+      "bytes": 513162,
+      "sha256": "c88224e23b682c1fd9cc18cb57ca60615c7b658dbf337a79f7b3018094fa38a4"
+    },
+    {
+      "path": "planes/azoria.0.json",
+      "bytes": 93,
+      "sha256": "ffc13c25f67c1e9077df02f8cb573b1cbf75c9f743d3dbd86f413f06e4019810"
+    },
+    {
+      "path": "planes/belenon.0.json",
+      "bytes": 92729,
+      "sha256": "e95b1ee0afca1f5431cadf6d8865a300dc896d97764c03b0d338183cca62243f"
+    },
+    {
+      "path": "planes/blind-eternities.0.json",
+      "bytes": 844370,
+      "sha256": "039355122a6792cde676d57df2f2862bf124a41cc07ece9abb84c729e050ce8b"
+    },
+    {
+      "path": "planes/blind-eternities.1.json",
+      "bytes": 853377,
+      "sha256": "be6e4f59134c35b2025e49f01093e69ece6430b06c3a23a16240727e472b152c"
+    },
+    {
+      "path": "planes/blind-eternities.2.json",
+      "bytes": 858391,
+      "sha256": "f7862a3366e4e4a1b6e1bba9cc9bcea8ffd15549ae871aeadd369c85fcd2a884"
+    },
+    {
+      "path": "planes/blind-eternities.3.json",
+      "bytes": 255504,
+      "sha256": "798d0d9945edd53e38118afca8b9a0d29e711f5b6faf9219c236ab084f67bf40"
+    },
+    {
+      "path": "planes/bloomburrow.0.json",
+      "bytes": 67989,
+      "sha256": "c93e85cbf54e0763188b2ab7a083b640fb89b0d16e47200eb6dcd3f97cb04346"
+    },
+    {
+      "path": "planes/cabralin.0.json",
+      "bytes": 59873,
+      "sha256": "2d7b95c8ed3b498d231c14ee7b901f47298305e4407b56e51c3026a0da698b70"
+    },
+    {
+      "path": "planes/capenna.0.json",
+      "bytes": 234314,
+      "sha256": "61f71ae1b49ad70960efcdc1172b1f8827a659b5936d149b9d7a597d8ae82aa5"
+    },
+    {
+      "path": "planes/clamhattan.0.json",
+      "bytes": 250006,
+      "sha256": "ad575e59edd45f956235b6b2ceeefb6ad4189e5b4fe22a0a8154dd5842ed44b5"
+    },
+    {
+      "path": "planes/cridhe.0.json",
+      "bytes": 127847,
+      "sha256": "35fd6d19f2fe96792d686be21b6e39fbd7ed46e9a8093b85d5afff2601e8d714"
+    },
+    {
+      "path": "planes/diraden.0.json",
+      "bytes": 3242,
+      "sha256": "6c2226fb80f1822b040e5a7a06f0a196282e48febae6e299f56ab1e34c3a91ac"
+    },
+    {
+      "path": "planes/dominaria.0.json",
+      "bytes": 97,
+      "sha256": "6e2ff22c2caacfc7d4c7dc7c1e368c0a34fc57c294ccc20a8eef817163ed206f"
+    },
+    {
+      "path": "planes/duskmourn.0.json",
+      "bytes": 75036,
+      "sha256": "2ada4e084516493b9d06fc8f7b48d1127840f728ae6ae684ee6a538f952cf423"
+    },
+    {
+      "path": "planes/echoir.0.json",
+      "bytes": 50811,
+      "sha256": "994a36f6bdfd0078f178f7342c38a23e03b9d7bd6fd5391e987ff8e1eb5760be"
+    },
+    {
+      "path": "planes/edge.0.json",
+      "bytes": 312330,
+      "sha256": "9aae37c26bcd141dcc9ccd83370b61277db3e6dd9d95980364ca01be0de2e20e"
+    },
+    {
+      "path": "planes/eldraine.0.json",
+      "bytes": 83581,
+      "sha256": "43c80ed7b82b362d13d40cd6eea848b993d66843950cb46ca5c1dbb0cd812bce"
+    },
+    {
+      "path": "planes/equilor.0.json",
+      "bytes": 48945,
+      "sha256": "36ef0c5723b698dd77a68889cbba631b4579c451aeafa74acc9a76fce9138dd8"
+    },
+    {
+      "path": "planes/ergamon.0.json",
+      "bytes": 50949,
+      "sha256": "be71aeb48186f476d204fa390e4b52ab0de973b4fb7f74369746df5190daf61e"
+    },
+    {
+      "path": "planes/fabacin.0.json",
+      "bytes": 42272,
+      "sha256": "6559af802c5444aefadf763a7e6c80604afe4689ab206bdb27139e7d307385ac"
+    },
+    {
+      "path": "planes/fiora.0.json",
+      "bytes": 7477,
+      "sha256": "8c399c14547468d8ddecfb60039aa25059702be97a4d3bdd246613c3d9e00e77"
+    },
+    {
+      "path": "planes/foldaria.0.json",
+      "bytes": 82311,
+      "sha256": "a867121685769f00f19a4a4e66a666e03e6bd3f2237fd44c6085533397768601"
+    },
+    {
+      "path": "planes/forgotten-realms.0.json",
+      "bytes": 7979,
+      "sha256": "1518f1b0821df2c4beaaae44b847413126adb0a48a1e5d90ddffd85e3ba9e2a5"
+    },
+    {
+      "path": "planes/gargantikar.0.json",
+      "bytes": 44190,
+      "sha256": "82f9699c1662595229341b16163e525a9f8977317e4b0cdb8f4d85d1130aa714"
+    },
+    {
+      "path": "planes/gastal.0.json",
+      "bytes": 9176,
+      "sha256": "395b5d2ba6cf89a5886e33e23560b4f64d3f9e971c2296feb3acf51b15b44686"
+    },
+    {
+      "path": "planes/gobakhan.0.json",
+      "bytes": 43775,
+      "sha256": "16c85b577993b387fb2be5d5b4cc4084c9ad15ebece5f4aa7a914bae1b727061"
+    },
+    {
+      "path": "planes/hell.0.json",
+      "bytes": 151432,
+      "sha256": "714d6772a1de8822d904e296c93b647908800b274a7d890fd9048a3e1228f189"
+    },
+    {
+      "path": "planes/horsehead-nebula.0.json",
+      "bytes": 62034,
+      "sha256": "9de563edd8711f5957492079473d277d3ac2702e6bc7b2bfca3557855e3adc98"
+    },
+    {
+      "path": "planes/ikoria.0.json",
+      "bytes": 171381,
+      "sha256": "4ff815e38ff0b56bb47c34e977936f1a0a1ae49cb7ad037b862b13684e7bb0fa"
+    },
+    {
+      "path": "planes/ilcae.0.json",
+      "bytes": 46947,
+      "sha256": "4e40a3abb013672d2f7f95530badbd136b472a7519b4db256394c53544851d93"
+    },
+    {
+      "path": "planes/innistrad.0.json",
+      "bytes": 97,
+      "sha256": "05cb7cd8a2572af3149af27f1d9260f22ea1a3b36ca0b2b4eb475354a9de0900"
+    },
+    {
+      "path": "planes/iquatana.0.json",
+      "bytes": 77996,
+      "sha256": "4dd8da86cb8a0ed5bf74847b8d5efa2396cb2eece989bde007af9993eed4a173"
+    },
+    {
+      "path": "planes/ir.0.json",
+      "bytes": 90057,
+      "sha256": "8cc2f0753e30891177408e0643e16cadc41f8de93765d98999fcafe47ad723ca"
+    },
+    {
+      "path": "planes/ixalan.0.json",
+      "bytes": 56428,
+      "sha256": "a66451330acc1993f4232d2ad4308b71ba9d91c742e4e6dea6809dea2d5addcb"
+    },
+    {
+      "path": "planes/kaldheim.0.json",
+      "bytes": 44891,
+      "sha256": "0e9c2a72fd6c76bda6df6f12c21f3bb15731cd9de107ab821a7e7033b4da2e37"
+    },
+    {
+      "path": "planes/kamigawa.0.json",
+      "bytes": 15465,
+      "sha256": "d42da8ec93c4f74da1ec8f70c8f9a42472ec8cf93a0a744167aed47ed44167fc"
+    },
+    {
+      "path": "planes/kandoka.0.json",
+      "bytes": 273935,
+      "sha256": "b153c8cc9fc2551f85e9c939235500e67d6b2c646c7680fdca189e99a978a21a"
+    },
+    {
+      "path": "planes/karsus.0.json",
+      "bytes": 93793,
+      "sha256": "62b1eab65241904ed869988f68ded20f679ba17d74f4c9863d95c5aa5c8f1eaa"
+    },
+    {
+      "path": "planes/kephalai.0.json",
+      "bytes": 9498,
+      "sha256": "2c297869686d816de358d0d346566c8caa53b5a154b0192440a3a9a982572bec"
+    },
+    {
+      "path": "planes/kinshala.0.json",
+      "bytes": 53621,
+      "sha256": "6132af4881f91b83ffffc7a227f0215a15b5828ec35296c0f6259b69df864a6c"
+    },
+    {
+      "path": "planes/kodisha.0.json",
+      "bytes": 178300,
+      "sha256": "74b3d80b3ae2cca868e6944f2a46a0260cce96dd3dfbc916fd39e11b95e7a739"
+    },
+    {
+      "path": "planes/kolbahan.0.json",
+      "bytes": 643671,
+      "sha256": "837abe4c78a44ca414e478a8c6d6fd7ac16f885ebfb9aa24c730b13438dfc40a"
+    },
+    {
+      "path": "planes/kylem.0.json",
+      "bytes": 50260,
+      "sha256": "d26bc2ce1a8b8a8457cf35814fa7a36890acaaad9afcb1544ac77b70c8f91339"
+    },
+    {
+      "path": "planes/kyneth.0.json",
+      "bytes": 57120,
+      "sha256": "89d5de38a54b1e2de5c9b4f69ea2eb835af9d220a6f968eae70c92b78ac3f3d6"
+    },
+    {
+      "path": "planes/lorwyn.0.json",
+      "bytes": 2564,
+      "sha256": "c61ba76dfc111b05c820ce3f484e259f510593f85e06dbbbe7344387dab0b761"
+    },
+    {
+      "path": "planes/luvion.0.json",
+      "bytes": 855729,
+      "sha256": "6a2213d2d810c716b2fc2b0365af4db7fadade5b9a33f54819528ae7fabd8bc4"
+    },
+    {
+      "path": "planes/luvion.1.json",
+      "bytes": 25831,
+      "sha256": "0c5337905c169b189c3d52516222aed507af1acbbc11c3985e05f5bf3acfc187"
+    },
+    {
+      "path": "planes/meditation-realm.0.json",
+      "bytes": 61636,
+      "sha256": "57ee7a5374091b2070c374a5dbe90b315ea3894e320145946cfdeb06723bf55e"
+    },
+    {
+      "path": "planes/mercadia.0.json",
+      "bytes": 10998,
+      "sha256": "3075da9735487705bd9d349a02de317e4f39b60242e3a171990bba1a082d7231"
+    },
+    {
+      "path": "planes/metal-island.0.json",
+      "bytes": 42356,
+      "sha256": "5c8bbcde9f90e8cc40fa03f2baa5ea24a62ea93c7c53c4bd501026f73fe0e8d6"
+    },
+    {
+      "path": "planes/mirrankkar.0.json",
+      "bytes": 5060,
+      "sha256": "759595d79df298a799dfedac9d236ff1a14502292a075eaf28500c2d5c66cc8b"
+    },
+    {
+      "path": "planes/moag.0.json",
+      "bytes": 64992,
+      "sha256": "69cf761196b8d62c8f668ac49bffaad1bcf10e8e910306658b680dd5d6392b79"
+    },
+    {
+      "path": "planes/mongseng.0.json",
+      "bytes": 50809,
+      "sha256": "489a7e9210c1055d5fb4d2d110d4aac47a86e31099da68d4b845928e071993f2"
+    },
+    {
+      "path": "planes/muraganda.0.json",
+      "bytes": 18284,
+      "sha256": "c295a7a581ddd8b1d58e9e07089d9a37a426ff186dcdaa5521815f97de08ccaf"
+    },
+    {
+      "path": "planes/nether-void.0.json",
+      "bytes": 99,
+      "sha256": "f473edf4f16493cf9e303e6c4adc2201c9cbcbd10abd886d8d7c57c4fe96687e"
+    },
+    {
+      "path": "planes/new-phyrexia.0.json",
+      "bytes": 48418,
+      "sha256": "626867c678d30647a02604a076856a2cdbec578c9bbd3195ae89391a5b1d02d5"
+    },
+    {
+      "path": "planes/obsidias.0.json",
+      "bytes": 96,
+      "sha256": "36c8816dc47e94c3abc1715cea6ce223a51a622db0302d9ae240df2a864b8698"
+    },
+    {
+      "path": "planes/parnash.0.json",
+      "bytes": 112997,
+      "sha256": "f1ad82cb35d0f2f584da2a599eb6722007af27df1da36d3503e26a6ffeb0b07b"
+    },
+    {
+      "path": "planes/phyrexia.0.json",
+      "bytes": 358181,
+      "sha256": "f37803508c724ad98b6a18f56c8ac942632e4b60c8a62ab0d36edf3a4094804a"
+    },
+    {
+      "path": "planes/pyrulea.0.json",
+      "bytes": 141195,
+      "sha256": "7dc6fad0165b2cbb997cc53eddc5badf4dee60beabe165cba17f7b930a2a4fe2"
+    },
+    {
+      "path": "planes/rabiah.0.json",
+      "bytes": 100073,
+      "sha256": "4db2b1d18a237896fb23b3590038a2cd54fd0ba23f56c24df536fb1ff5db1346"
+    },
+    {
+      "path": "planes/rath.0.json",
+      "bytes": 425788,
+      "sha256": "2f70dc0425c68ca90311d7b4a8563094aabba4eb1cf7ee483c415376f0ae49b9"
+    },
+    {
+      "path": "planes/ravnica.0.json",
+      "bytes": 70310,
+      "sha256": "271a6e80770660c587911995c74dead1dea8a4709fce5c06bf9b644c2afc74fe"
+    },
+    {
+      "path": "planes/regatha.0.json",
+      "bytes": 8243,
+      "sha256": "d5b5b176390214eca40d5379125a7c26e3e1f301798a2189c20f2d4d07ccc1ec"
+    },
+    {
+      "path": "planes/segovia.0.json",
+      "bytes": 76085,
+      "sha256": "27226379188b9e14d8dbb52a47837b941ae083b63cac9b6ac3453b5a3135cbc9"
+    },
+    {
+      "path": "planes/serras-realm.0.json",
+      "bytes": 104367,
+      "sha256": "4774617b789acc55f5dfbc6b82f94568bb3bc252453d6f49b987c73db7e7efcf"
+    },
+    {
+      "path": "planes/shandalar.0.json",
+      "bytes": 859488,
+      "sha256": "131222204f34fd2576ab6939ddef9c2c0eee9fbc6c435280cfba39c4aaadf860"
+    },
+    {
+      "path": "planes/shandalar.1.json",
+      "bytes": 558888,
+      "sha256": "14aed9b2db6dad7a9cb4c7ed5fa157f30068c500736a261514fc44c7ae203fbf"
+    },
+    {
+      "path": "planes/shenmeng.0.json",
+      "bytes": 52036,
+      "sha256": "c162f36a50fb596553999faa5b4a7dd18d365445fc43927fd363a226d52a6d6a"
+    },
+    {
+      "path": "planes/skalla.0.json",
+      "bytes": 95664,
+      "sha256": "c8ebb39c61f815993a83ba1db3e5ad6ffc9ddfcea9e21fc30afa41cddab0e5a0"
+    },
+    {
+      "path": "planes/tarkir.0.json",
+      "bytes": 45542,
+      "sha256": "6db6ffe8acb0e4b2f0841a16c08d1d9f50eefbb18fc2b567230e3cef2dc23565"
+    },
+    {
+      "path": "planes/tavelia.0.json",
+      "bytes": 63397,
+      "sha256": "73ca3cea397c026b8dfb0dc9384a28228f16d9211c561fd2c2a9a1b2ef08ff8e"
+    },
+    {
+      "path": "planes/theros.0.json",
+      "bytes": 19121,
+      "sha256": "2b775a37e9deda99fb2e98d80596e01881a6b045a7a0d5c3670f8ce2cabe70a7"
+    },
+    {
+      "path": "planes/thunder-junction.0.json",
+      "bytes": 8793,
+      "sha256": "7eea82330537d7b598f2de1cdd287eb5333c69140326b29f0022b1b9a97c09d1"
+    },
+    {
+      "path": "planes/tolvada.0.json",
+      "bytes": 61756,
+      "sha256": "2c81718cf6d0fedf68f15a3c94645876a307f5671bdce022fae928aec05abb1e"
+    },
+    {
+      "path": "planes/ulgrotha.0.json",
+      "bytes": 220230,
+      "sha256": "af2fe1083089c40663256a283c8f971e54ea53403b72030a0a5b185fe1e3cf90"
+    },
+    {
+      "path": "planes/valla.0.json",
+      "bytes": 121213,
+      "sha256": "98de957f38aca50f7f5b5175ee9622a0d75b1e91336ffdc24de44826c143a02d"
+    },
+    {
+      "path": "planes/vatraquaz.0.json",
+      "bytes": 97,
+      "sha256": "cfb4b49d362e6a83aeca3e78cc5d040e6fe7bac12c6572a77025f9fe78e844f4"
+    },
+    {
+      "path": "planes/vryn.0.json",
+      "bytes": 3013,
+      "sha256": "efd576b29191cd391fa860ef6253b9fe71956d8db0652446657fca053780497e"
+    },
+    {
+      "path": "planes/wildfire.0.json",
+      "bytes": 44479,
+      "sha256": "0c9121b7581a3abf2225ebba6909866ba377f35e2549fa98f779f7f461143d83"
+    },
+    {
+      "path": "planes/xerex.0.json",
+      "bytes": 12869,
+      "sha256": "25ecd78ff9123880525eac693666e0b21520ea8cb91586f98de7b30c0bf38d11"
+    },
+    {
+      "path": "planes/zendikar.0.json",
+      "bytes": 59602,
+      "sha256": "c56bd65ed7eec95279c7dfa0a542c77bb010012f35580d609038a19a3432a9d9"
+    },
+    {
+      "path": "planes/zhalfir.0.json",
+      "bytes": 162787,
+      "sha256": "da671fc414b15e7b83ce62dd0a458fe1e4d28912f7430d49fbe325921ea470bd"
+    },
+    {
+      "path": "search.json",
+      "bytes": 931401,
+      "sha256": "8b8dfda46ecf1f5c1ad909d2bf32653c5e5dafc56b2503ff80b3d364b3ff5795"
+    },
+    {
+      "path": "sets.bin",
+      "bytes": 682152,
+      "sha256": "4e511c0624c505316ee36b3dd2e621c76f250095376baf85d7547bf0f84012cd"
+    },
+    {
+      "path": "stars.bin",
+      "bytes": 360016,
+      "sha256": "3345c35cf0c3ff4142bc05b7cff372debc03b16694b68bce15126296640b9e46"
+    }
+  ]
+}

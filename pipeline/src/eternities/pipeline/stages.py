@@ -170,7 +170,12 @@ def _printing_exclusion_rule(
         return "4.3.4 digital"
     if printing.oversized:
         return "4.3.4 oversized"
-    if printing.security_stamp == UNIVERSES_BEYOND_STAMP:
+    # `row` is the *governing* row, so a stamp exemption inherits down a product line exactly as
+    # 4.3.1's drop does. Reading it off the set's own row instead would let a child set disagree
+    # with the parent whose exemption it was — the shape the `pza` leak had.
+    if printing.security_stamp == UNIVERSES_BEYOND_STAMP and not (
+        row is not None and row.stamp_exempt
+    ):
         return "4.3.5 security_stamp triangle"
     if printing.lang != "en":
         return "4.3.6 non-English"
@@ -281,10 +286,18 @@ def _originates_universes_beyond(
     (a card first printed in an inherited-drop set has no included printing there, so 4.4.1 takes
     it first, and genuine originals carry the triangle stamp the second clause catches), but two
     accidents are not a reason for one file to read one appendix two ways.
+
+    The stamp clause honours :attr:`~.appendices.SetEntry.stamp_exempt` for the same reason 4.3.5
+    does, and this is the half that is easy to miss: exempting a set in 4.3.5 alone lets its
+    printings through stage 2 and straight into this test, where the identical stamp excludes the
+    *card* instead. The set would move from "dropped by 4.3.5" to "dropped by 4.4.3" and ship
+    nothing, which is how `clu` behaved before the exemption reached both sites.
     """
     resolved = governing_set_row(first_ever.set_code, by_code, sets)
     if resolved is not None and resolved[0].universes_beyond:
         return True
+    if resolved is not None and resolved[0].stamp_exempt:
+        return False
     return first_ever.security_stamp == UNIVERSES_BEYOND_STAMP and first_ever.flavor_name is None
 
 

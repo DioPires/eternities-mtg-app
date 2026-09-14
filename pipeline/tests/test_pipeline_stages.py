@@ -303,6 +303,70 @@ def test_a_flavor_named_triangle_printing_does_not_condemn_the_card():
     assert _exclude(rows, rows, apx).included == {"ikoria"}
 
 
+def test_a_stamp_exempt_row_keeps_its_triangle_printings():
+    """4.3.5 honours `stampExempt`: the stamp is a proxy and Appendix B may say it is wrong here."""
+    rows = [printing(set_code="clu", security_stamp="triangle")]
+    apx = appendices(sets=[set_entry("clu", plane="ravnica", stamp_exempt=True)])
+    result = _filter(rows, sets={"clu": scry_set("clu")}, apx=apx)
+    assert len(result.kept) == 1
+    assert result.dropped_by_rule["4.3.5 security_stamp triangle"] == 0
+
+
+def test_the_stamp_exemption_must_reach_the_origin_test_too():
+    """The half of the `clu` fix that is easy to leave out — and the control that proves it.
+
+    Exempting a set in 4.3.5 alone is not enough to ship a card. Its printings then clear stage 2
+    and land in 4.4.3, whose stamp clause reads the *same* `triangle` on the *same* earliest
+    printing and excludes the card instead. The set moves from "dropped by 4.3.5" to "dropped by
+    4.4.3" and still ships nothing.
+
+    Both halves are asserted here against one input, so the pair cannot pass vacuously: the
+    `stamp_exempt=False` leg is the negative control, and it is what fails if the exemption is
+    removed from `_originates_universes_beyond` while 4.3.5 keeps its own.
+    """
+    rows = [printing(oracle_id="scarlett", set_code="clu", security_stamp="triangle")]
+    sets = {"clu": scry_set("clu")}
+
+    # Control: without the exemption, 4.4.3 is what excludes the card once 4.3.5 has been passed.
+    unexempt = appendices(sets=[set_entry("clu", plane="ravnica")])
+    control = _exclude(rows, rows, unexempt, sets)
+    assert control.included == set()
+    assert control.excluded_by_rule["4.4.3 Universes Beyond origin"] == 1
+
+    # Treatment: the exemption reaches 4.4.3, so the card ships.
+    exempt = appendices(sets=[set_entry("clu", plane="ravnica", stamp_exempt=True)])
+    treatment = _exclude(rows, rows, exempt, sets)
+    assert treatment.included == {"scarlett"}
+    assert treatment.excluded_by_rule["4.4.3 Universes Beyond origin"] == 0
+
+
+def test_a_stamp_exemption_does_not_leak_to_other_sets():
+    """The exemption is a statement about one set, not a change to what `triangle` means."""
+    rows = [printing(oracle_id="ub", set_code="mix", security_stamp="triangle")]
+    apx = appendices(sets=[set_entry("clu", plane="ravnica", stamp_exempt=True), set_entry("mix")])
+    sets = {"clu": scry_set("clu"), "mix": scry_set("mix")}
+    assert _filter(rows, sets=sets, apx=apx).dropped_by_rule["4.3.5 security_stamp triangle"] == 1
+    assert _exclude(rows, rows, apx, sets).included == set()
+
+
+def test_a_stamp_exempt_universes_beyond_row_is_a_contradiction():
+    """The two flags assert opposite things, so the loader refuses rather than picking a winner."""
+    with pytest.raises(ValueError, match="stampExempt"):
+        appendices(sets=[set_entry("oops", universes_beyond=True, stamp_exempt=True)])
+
+
+def test_a_stamp_exemption_inherits_to_a_child_set():
+    """4.3.5 reads the governing row, so a child of an exempt product line is exempt too.
+
+    Same walk as 4.3.1's drop. Reading the set's own row instead would let a child disagree with
+    the parent whose exemption it was — the shape the `pza` leak had.
+    """
+    rows = [printing(set_code="pclu", security_stamp="triangle")]
+    apx = appendices(sets=[set_entry("clu", plane="ravnica", stamp_exempt=True)])
+    sets = {"clu": scry_set("clu"), "pclu": scry_set("pclu", parent_set_code="clu")}
+    assert len(_filter(rows, sets=sets, apx=apx).kept) == 1
+
+
 def test_universes_within_exemption_overrides_the_origin_test():
     """PRD 4.4.5: an `slx` printing rescues a card whose earliest printing is Universes Beyond."""
     apx = appendices(
