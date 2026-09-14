@@ -70,7 +70,40 @@ export interface ThresholdReport {
 }
 
 /**
- * The histogram and the hysteresis, across frames.
+ * One subject's cross-frame threshold state — the hysteresis, and nothing else.
+ *
+ * > **Normative — the hysteresis is per-subject (§1.6, DEC-768 F2).** §1.12 budgets **one** art
+ * > pool for the whole roster, and {@link AdaptiveThreshold} is shared with it because the
+ * > histogram is per-frame scratch and the quantile is taken against that one pool's capacity. The
+ * > *hysteresis* is neither: "the boundary must not oscillate" is a statement about **this world's
+ * > previous frame**, and a roster of 45 surfaces running through one shared bucket makes it a
+ * > statement about *the previous surface* instead. Measured on the shipped roster before this type
+ * > existed — `zendikar` alternating between 2.18 and 2.20 world-radii at 224 layers, where the raw
+ * > quantile moves one bucket every frame: alone on the roster it held at
+ * > `44.02 47.48 47.48 47.48 …`, and on the full 45 it oscillated `44.02 47.48 44.02 47.48 …` —
+ * > the ring of art flickering one cell wide that the hold branch is declared normative to remove.
+ * > A roster of 45 always has a preceding world, so the second row was what always happened. The
+ * > mechanism was present, normative, and inert.
+ *
+ * It is a required argument of {@link AdaptiveThreshold.end} rather than a field with a default,
+ * so that sharing one is a thing a caller has to *write* rather than a thing it gets by omission.
+ */
+export class ThresholdMemory {
+  /**
+   * The bucket whose lower edge was the threshold in force for this subject last frame. 0 is the
+   * 24 px floor, which is also the right starting value: a world that has never been measured has
+   * no raised boundary to hold.
+   */
+  bucket = 0
+}
+
+/**
+ * The histogram, and the quantile taken over it.
+ *
+ * Shared across the roster (§1.12's one pool, one policy); the per-frame fields below are written
+ * and read within a single {@link AdaptiveThreshold.begin}/{@link AdaptiveThreshold.end} pair and
+ * handed out as a fresh {@link ThresholdReport}, so nothing here survives into another subject's
+ * pass. The one thing that has to is {@link ThresholdMemory}, and it lives on the subject.
  *
  * > **Normative — the control has to starve the *policy*, not the resource (§1.6).** Shrinking the
  * > pool does not work as W4's negative control: the threshold is defined *relative to pool
@@ -81,8 +114,6 @@ export interface ThresholdReport {
  */
 export class AdaptiveThreshold {
   private readonly histogram = new Int32Array(BUCKETS)
-  /** The bucket whose lower edge is the threshold in force. 0 means the 24 px floor. */
-  private bucket = 0
   private wanting = 0
   private admitted = 0
 
@@ -104,31 +135,51 @@ export class AdaptiveThreshold {
   }
 
   /**
-   * Close the pass and pick the threshold for `capacity` layers.
+   * Close the pass and pick the threshold for `capacity` layers, against `memory`'s previous frame.
    *
    * Counts down from the tallest bucket until admitting one more would exceed capacity; the
    * threshold is the lower edge of the last bucket that fit. A capacity that covers every wanting
    * cell leaves the threshold at the 24 px floor, which is the ordinary case away from a surface.
+   *
+   * > **Normative — a pool with demand in front of it is never left idle (§1.6, DEC-768 F1).** The
+   * > last bucket that fit is one bucket *above* the one the running count crosses at, and §1.6
+   * > says the crossing one. The two agree everywhere except the case where the crossing bucket is
+   * > the **first non-empty one** — where "the last that fit" is a bucket nothing is in, so the
+   * > frame admits **nothing at all** and every layer of the pool sits idle in front of a world
+   * > that wants art. Measured before this branch existed: `dominaria` at 2.2 world-radii, tier 4's
+   * > 128 layers, 922 wanting cells in buckets 0–3 (185/299/280/158) — bucket 3 alone exceeds 128,
+   * > the threshold jumped to 32.50 px and **0** of 128 layers were used. The same world at 1.8
+   * > radii wanted 961 and admitted 0 as well; they were the only two poses of ninety in that sweep
+   * > that did. That is strictly worse than the `fixed24` prototype this quantile replaces, at the
+   * > pose §3.1 states W4 at.
+   * >
+   * > So the crossing bucket is taken whenever the bucket above it would admit nothing, and the
+   * > overshoot — at most that one bucket's own count, 158 against 128 above — is left to the
+   * > pool's LRU. A frame that asks for 1.2 pools is a frame with one round of eviction in it; a
+   * > frame that asks for nothing is a world with no art on it at all.
    */
-  end(capacity: number): ThresholdReport {
+  end(capacity: number, memory: ThresholdMemory): ThresholdReport {
     if (!this.adaptive) {
       // The prototype exactly: everything over 24 asks, and the pool runs out.
-      this.bucket = 0
+      memory.bucket = 0
       this.admitted = this.wanting
-      return this.report()
+      return this.report(memory.bucket)
     }
     let running = 0
     let chosen = 0
     for (let index = BUCKETS - 1; index >= 0; index -= 1) {
       if (running + this.histogram[index]! > capacity) {
-        chosen = index + 1
+        // `running === 0` is the whole of the case above: nothing above `index` fit, so `index + 1`
+        // is empty by construction. A zero-layer pool is excluded because it is *legal* there —
+        // §1.6 makes a pool of no layers a swatch-only world, and it must admit nothing.
+        chosen = running === 0 && capacity > 0 ? index : index + 1
         break
       }
       running += this.histogram[index]!
     }
-    this.bucket = this.applyHysteresis(chosen)
-    this.admitted = this.countAtOrAbove(this.bucket)
-    return this.report()
+    memory.bucket = this.applyHysteresis(chosen, memory.bucket, capacity)
+    this.admitted = this.countAtOrAbove(memory.bucket)
+    return this.report(memory.bucket)
   }
 
   /**
@@ -139,11 +190,19 @@ export class AdaptiveThreshold {
    * histogram has moved clear by more than a single bucket, which is what stops the boundary
    * oscillating between two adjacent edges as the camera drifts — a ring of art flickering one cell
    * wide is more obviously wrong than a ring one cell too small.
+   *
+   * `previous` is {@link ThresholdMemory.bucket}, this subject's own last frame. See that type: on
+   * the shipped roster it used to be *the previous surface's*, which made the hold branch below
+   * unreachable in the product.
    */
-  private applyHysteresis(chosen: number): number {
-    if (chosen > this.bucket) return chosen
-    if (chosen < this.bucket - 1) return chosen
-    return this.bucket
+  private applyHysteresis(chosen: number, previous: number, capacity: number): number {
+    if (chosen > previous) return chosen
+    if (chosen < previous - 1) return chosen
+    // A held boundary that draws nothing is the idle pool above, reached one frame later instead of
+    // at once: the subject's own demand has moved entirely below a bucket it is still holding. A
+    // ring one cell too small is the trade this hysteresis makes; no ring at all is not.
+    if (capacity > 0 && this.wanting > 0 && this.countAtOrAbove(previous) === 0) return chosen
+    return previous
   }
 
   private countAtOrAbove(bucket: number): number {
@@ -152,9 +211,9 @@ export class AdaptiveThreshold {
     return total
   }
 
-  private report(): ThresholdReport {
+  private report(bucket: number): ThresholdReport {
     return {
-      effectiveThresholdPx: this.adaptive ? bucketEdgePx(this.bucket) : BASE_THRESHOLD_PX,
+      effectiveThresholdPx: this.adaptive ? bucketEdgePx(bucket) : BASE_THRESHOLD_PX,
       wanting: this.wanting,
       admitted: this.admitted,
       adaptive: this.adaptive,

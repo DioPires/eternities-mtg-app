@@ -916,9 +916,10 @@ tick positions, not with a capture. See §5, Q5.
   > reports the headroom rather than pinning it. The screen-space check and the implementation are
   > R3's; the tie-break is ruled out above, so R3 implements the plain floor.
 - **Labels.** The label solver is kept. Under worlds its home-view subject count is
-  `planesWithCards.length`, not the plane count, because the moons are unlabelled until hover
-  (§1.8): **30 of 87** on today's roster, **46 of 88** on v3. The label tick stays after the final
-  camera matrices, per W4.2.
+  `worldsWithCards.length`, not the plane count, because the moons are unlabelled until hover
+  (§1.8) and the belt is dropped before projection (PRD 5.3.4, and §3.1's W5): **29 of 87** on
+  today's roster, **45 of 88** on v3. The label tick stays after the final camera matrices, per
+  W4.2.
 - **Filters.** The GPU filter-mask subscription W1.2 landed (review F1) is kept and rebound: a
   filtered-out cell drops to its swatch and dims, and **never** dims its art. Dimming a card image is
   a colour shift, which Scryfall's terms forbid and `docs/scryfall-policy.md` §5 already calls out as
@@ -1385,17 +1386,29 @@ an assertion there.
 > planesWithCards  = planes.filter(p => p.cardCount > 0)                        // 30 today
 > ```
 >
-> W1 iterates `worldsWithCards`; **W5's floor is `planesWithCards.length`** — that set is exactly
-> "the worlds plus the belt", which is where W5's 30 comes from. The numbers written in this section
-> are the 87-plane roster (verified against `web/public/data/6d4779695fde33ea/planes.json`:
-> 87 planes = 29 worlds + 1 dust + 57 empty, 23,607 cards on worlds), not constants to compile in.
+> W1 and W5 both iterate `worldsWithCards`, and for the same reason: the Blind Eternities has cards
+> but is not a world, so it has neither a cell sheet for W1 to measure (§1.8) nor a label for W5 to
+> count. `planesWithCards` is that set **plus the belt**, and it is carried here only so the two can
+> be told apart — nothing is measured against it.
+>
+> > **Normative — W5's ceiling is `worldsWithCards.length`, not `planesWithCards.length`
+> > (CEO ruling, DEC-768 F4).** `labels/PlaneLabels.tsx` filters `BLIND_ETERNITIES_SLUG` out of the
+> > candidate list *before* projection (PRD 5.3.4: the dust spans the whole multiverse and has no
+> > centre worth labelling), so the belt can never carry a label and `planesWithCards.length` is
+> > unreachable **by one, by construction**. A ceiling with a permanent unit of slack is slack in
+> > the direction a ceiling exists to refuse. On v3 the ruling reads **45**, and `worlds-metrics`'
+> > `homeLabelCeiling` on leg G already ships it.
+>
+> The numbers written in this section are the 87-plane roster (verified against
+> `web/public/data/6d4779695fde33ea/planes.json`: 87 planes = 29 worlds + 1 dust + 57 empty,
+> 23,607 cards on worlds), not constants to compile in.
 >
 > **This is a gate threshold, so hard-coding it fails the gate on correct behaviour** — and the
 > dataset this gate runs on is already measured. DEC-710's curation sign-off is answered and lands
 > in the v3 dataset leg P publishes; measured on PR #46 head `311b87d` (`dabe2c9a68b4d799`) that
 > dataset is **88 planes = 45 worlds + 1 dust + 42 empty, 24,399 cards on worlds**, so the two
 > `.length`s become **45** and **46**. Forgotten Realms is not a `+1`: the refresh is the first
-> dataset to bake in PR #41's plane overrides (§1.2). A W5 pinned at 30 — or re-pinned at 31 on the
+> dataset to bake in PR #41's plane overrides (§1.2). A W5 pinned at 29 — or re-pinned at 30 on the
 > strength of "FR is one more world" — goes **RED the moment that data lands**, against a renderer
 > doing exactly what this section asks, and the failure will be read as a renderer regression.
 > Derived, the refresh is a data change and the gate stays honest. This is the whole argument for
@@ -1407,7 +1420,7 @@ an assertion there.
 | **W2** | **The mosaic reads as tiles, not as a wash.** This is T7's replacement. | Sample the captured frame at the centre of every front-facing cell ≥ 6 px tall, convert to CIELAB. Report the median ΔE to a cell's nearest on-screen neighbour, and the interquartile range of L\* **across the iso-shade subset** — the cells whose reported `shade` lies within ±2.5% of the median shade. | **median neighbour ΔE ≥ 6** and **iso-shade IQR(L\*) ≥ 8**. |
 | **W3** | **Latitude reads as colour.** | Group the same samples by band. For every pair of bands adjacent **in §1.3's 13-band chain** (a chain, not a cycle: the two ice caps are its two ends and are the furthest apart of any pair) where the smaller holds ≥ 5% of the plane's cards, the ΔE between their mean a\*b\*. | **≥ 10** for every such pair. |
 | **W4** | **Art resolves without exhausting.** | At the surface view (2.2× radius), after a 5 s settle: the fraction of on-screen front-facing cells above the effective threshold that are showing art, and evictions per second over the last 2 s. | **≥ 90%** showing art, **≤ 5 evictions/s**. |
-| **W5** | **The home view is not a wall of labels.** | Count rendered plane labels in the DOM at the home view. | **≤ `planesWithCards.length`** — the worlds plus the belt, **30** on the 87-plane roster and **46** on v3 (measured, not predicted — §1.2). Read it from the dataset under test; today the view renders 82. |
+| **W5** | **The home view is not a wall of labels.** | Count rendered plane labels in the DOM at the home view. | **≤ `worldsWithCards.length`** — **29** on the 87-plane roster and **45** on v3 (measured, not predicted — §1.2). Not the Blind Eternities, the same exclusion W1 makes and for the matching reason: `PlaneLabels` drops it before projection (PRD 5.3.4), so it can never carry a label — `planesWithCards` would be 30 / 46 and would leave the ceiling one short of ever binding. Read it from the dataset under test; today the view renders 82. |
 
 > **Normative — W2's IQR(L\*) half is measured on an iso-shade subset, and the un-subsetted version
 > it replaces could not fail (DEC-749, on DEC-752's finding).** §1.4's shade runs

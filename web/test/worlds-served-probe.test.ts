@@ -274,11 +274,16 @@ describe('§3.1 the served worlds payload', () => {
     expect(worldsProbeOf(sourceFor('ravnica'))).toBeDefined()
   })
 
-  it('reports one entry per card, never one per sub-quad', () => {
+  it('reports at most one entry per card, never one per sub-quad', () => {
     // On a subdivided world a payload that walked facets would multiply W1's sample count by k^2
     // and divide its median height. 32 of v3's 45 worlds are subdivided, so this is the common case.
     // Alara, not Ravnica: §1.4 reaches k = (1, 1) from 574 cards up, so a 2,304-card world is NOT
     // subdivided and would make this row vacuous. The defect only exists where k > 1.
+    //
+    // **At most**, which is what the assertion below has always said and what this row's NAME used
+    // to overstate (DEC-768 F5): `buildWorldsProbe` drops a cell whose projected rect is `null` and
+    // one whose centre is behind the near plane, so equality holds only at a pose that frames the
+    // whole world. A gate asserting `===` here would go RED on a correct renderer.
     const source = sourceFor('alara')
     expect(source.subdivision.subQuads).toBeGreaterThan(1)
     const probe = buildWorldsProbe(source)

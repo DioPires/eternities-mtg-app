@@ -21,6 +21,7 @@ import { ArtPool, LAYER_RESERVED, artPoolSize } from '../src/scene/worlds/artPoo
 import {
   AdaptiveThreshold,
   BASE_THRESHOLD_PX,
+  ThresholdMemory,
   bucketEdgePx,
   bucketOf,
 } from '../src/scene/worlds/adaptiveThreshold'
@@ -149,7 +150,7 @@ describe('§1.6 the per-frame adaptive threshold', () => {
     const threshold = new AdaptiveThreshold()
     threshold.begin()
     for (let i = 0; i < 50; i += 1) threshold.offer(30)
-    const report = threshold.end(1024)
+    const report = threshold.end(1024, new ThresholdMemory())
     expect(report.effectiveThresholdPx).toBeCloseTo(BASE_THRESHOLD_PX, 9)
     expect(report.wanting).toBe(50)
     expect(report.admitted).toBe(50)
@@ -163,7 +164,7 @@ describe('§1.6 the per-frame adaptive threshold', () => {
     const threshold = new AdaptiveThreshold()
     threshold.begin()
     for (let i = 0; i < 2759; i += 1) threshold.offer(24 + (i % 400))
-    const report = threshold.end(1024)
+    const report = threshold.end(1024, new ThresholdMemory())
     expect(report.wanting).toBe(2759)
     expect(report.effectiveThresholdPx).toBeGreaterThan(BASE_THRESHOLD_PX)
     // The whole point: what the frame asks for now fits in the pool.
@@ -181,20 +182,26 @@ describe('§1.6 the per-frame adaptive threshold', () => {
     }
     const big = new AdaptiveThreshold()
     offer(big)
-    const bigReport = big.end(1024)
+    const bigReport = big.end(1024, new ThresholdMemory())
     const small = new AdaptiveThreshold()
     offer(small)
-    const smallReport = small.end(128)
-    // Starving the resource: the threshold just rises and demand still fits. W4 stays GREEN.
+    const smallReport = small.end(128, new ThresholdMemory())
+    // Starving the resource: the threshold just rises and the demand is trimmed to something the
+    // pool can nearly serve. W4 stays GREEN.
     expect(smallReport.effectiveThresholdPx).toBeGreaterThan(bigReport.effectiveThresholdPx)
-    expect(smallReport.admitted).toBeLessThanOrEqual(128)
     expect(bigReport.admitted).toBeLessThanOrEqual(1024)
+    // "Nearly", not "exactly": the quantile is a bucket edge, so when the crossing bucket is the
+    // topmost non-empty one the frame admits that whole bucket rather than nothing at all (F1, and
+    // the block at the bottom of this file). The overshoot is one bucket's own count and nothing
+    // more — orders of magnitude off the 3,000 the unstarved policy would ask for.
+    expect(smallReport.admitted).toBeLessThan(2 * 128)
+    expect(smallReport.admitted).toBeLessThan(bigReport.admitted)
 
     // Starving the POLICY: `?artThreshold=fixed24` asks for everything over 24 px and lets the pool
     // run out. That is exhaustion, and it is the only thing that falsifies W4.
     const fixed = new AdaptiveThreshold(false)
     offer(fixed)
-    const fixedReport = fixed.end(1024)
+    const fixedReport = fixed.end(1024, new ThresholdMemory())
     expect(fixedReport.admitted).toBe(3000)
     expect(fixedReport.admitted).toBeGreaterThan(1024)
   })
@@ -205,7 +212,7 @@ describe('§1.6 the per-frame adaptive threshold', () => {
     const fixed = new AdaptiveThreshold(false)
     fixed.begin()
     for (let i = 0; i < 5000; i += 1) fixed.offer(24 + (i % 900))
-    const report = fixed.end(64)
+    const report = fixed.end(64, new ThresholdMemory())
     expect(report.adaptive).toBe(false)
     expect(report.effectiveThresholdPx).toBe(24)
 
@@ -214,7 +221,7 @@ describe('§1.6 the per-frame adaptive threshold', () => {
     const adaptive = new AdaptiveThreshold()
     adaptive.begin()
     for (let i = 0; i < 5000; i += 1) adaptive.offer(24 + (i % 900))
-    const quantile = adaptive.end(64)
+    const quantile = adaptive.end(64, new ThresholdMemory())
     expect(quantile.adaptive).toBe(true)
     expect(quantile.effectiveThresholdPx).not.toBe(24)
   })
@@ -237,16 +244,181 @@ describe('§1.6 the per-frame adaptive threshold', () => {
     // Raising is immediate because capacity is a hard bound. Lowering waits, so the boundary does
     // not oscillate between two adjacent edges as the camera drifts.
     const threshold = new AdaptiveThreshold()
+    // One memory across both runs, because this row is one subject across two frames. Which subject
+    // a frame belongs to is now something the caller has to say — see `ThresholdMemory`.
+    const memory = new ThresholdMemory()
     const run = (count: number, capacity: number) => {
       threshold.begin()
       for (let i = 0; i < count; i += 1) threshold.offer(24 + (i % 300))
-      return threshold.end(capacity)
+      return threshold.end(capacity, memory)
     }
     const raised = run(3000, 100)
     expect(raised.effectiveThresholdPx).toBeGreaterThan(BASE_THRESHOLD_PX)
     // Demand collapses, but one frame of slack does not drop the threshold all the way back.
     const settled = run(3000, 110)
     expect(settled.effectiveThresholdPx).toBeLessThanOrEqual(raised.effectiveThresholdPx)
+  })
+})
+
+/**
+ * §1.6's two mechanisms at the unit, for the cases the block above cannot reach (DEC-768 F1, F2).
+ *
+ * F1 needs the crossing bucket to be the **first non-empty** one, which a `24 + (i % N)` fill never
+ * produces — it spreads demand over a contiguous run of buckets, so `running` is always positive at
+ * the crossing and the discarded bucket is never the only one. F2 needs **two** subjects in one
+ * frame, and every row above has exactly one.
+ *
+ * The histograms below are therefore built a bucket at a time from `bucketEdgePx` rather than from
+ * a height fill: each row is about *which bucket* the demand sits in, and a fill says that only by
+ * accident.
+ */
+describe('§1.6 the quantile and its hysteresis (DEC-768 F1, F2)', () => {
+  /** Put `count` cells in each named bucket, just above its lower edge. */
+  function fill(threshold: AdaptiveThreshold, histogram: Record<number, number>): void {
+    threshold.begin()
+    for (const [bucket, count] of Object.entries(histogram)) {
+      for (let i = 0; i < count; i += 1) threshold.offer(bucketEdgePx(Number(bucket)) * 1.001)
+    }
+  }
+
+  it('takes the crossing bucket when the bucket above it would admit nothing — F1', () => {
+    // `dominaria` at 2.2 world-radii under tier 4, measured on the shipped v3 roster at 1920x1080:
+    // 922 wanting cells across four buckets, and bucket 3 alone (158) exceeds the 128-layer pool.
+    // Before this row `chosen` was `3 + 1`, `countAtOrAbove(4)` was 0, and the frame admitted
+    // NOTHING — 128 layers idle in front of a world asking for art, which is strictly worse than
+    // the `fixed24` prototype §1.6 replaces, at the pose §3.1 states W4 at.
+    const threshold = new AdaptiveThreshold()
+    fill(threshold, { 0: 185, 1: 299, 2: 280, 3: 158 })
+    const report = threshold.end(128, new ThresholdMemory())
+
+    expect(report.wanting).toBe(922)
+    expect(report.admitted, 'the pool must not sit idle in front of demand').toBe(158)
+    // §1.6: "raise the effective threshold to the bucket AT WHICH the running count crosses
+    // capacity" — bucket 3's edge, 30.13 px, not bucket 4's 32.50 px.
+    expect(report.effectiveThresholdPx).toBeCloseTo(bucketEdgePx(3), 9)
+
+    // The overshoot is real, and is bounded by that one bucket's own count. It goes to the pool's
+    // LRU: a frame that asks for 1.2 pools evicts once; a frame that asks for nothing draws no art.
+    expect(report.admitted).toBeGreaterThan(128)
+  })
+
+  it('keeps the bucket above the crossing whenever that one does fit — the F1 control', () => {
+    // The normal case, unchanged, and the row that stops "always take `index`" scoring as well as
+    // the fix: `running` is 60 at the crossing, so bucket 13 both fits and is non-empty, and
+    // admitting bucket 12 as well would exceed capacity.
+    const threshold = new AdaptiveThreshold()
+    fill(threshold, { 12: 60, 13: 60 })
+    const report = threshold.end(100, new ThresholdMemory())
+
+    expect(report.wanting).toBe(120)
+    expect(report.admitted).toBe(60)
+    expect(report.admitted).toBeLessThanOrEqual(100)
+    expect(report.effectiveThresholdPx).toBeCloseTo(bucketEdgePx(13), 9)
+  })
+
+  it('still admits nothing at zero capacity, which §1.6 makes a legal swatch-only world', () => {
+    // The guard on the fix. `?layers=0` and a non-WebGL2 context both produce a real pool of no
+    // layers, and "never leave the pool idle" must not turn that into a frame asking for art it has
+    // nowhere to put.
+    const threshold = new AdaptiveThreshold()
+    fill(threshold, { 3: 158 })
+    const report = threshold.end(0, new ThresholdMemory())
+    expect(report.wanting).toBe(158)
+    expect(report.admitted).toBe(0)
+  })
+
+  /**
+   * A subject whose raw quantile alternates between two adjacent buckets, frame to frame.
+   *
+   * Frame A crosses in bucket 12 with bucket 13 fitting, so it picks 13. Frame B's extra 100 cells
+   * in bucket 11 pull the crossing down one, so it picks 12. Unheld that is `13 12 13 12 …` — the
+   * ring of art flickering one cell wide §1.6's hold branch is declared normative to remove.
+   */
+  const frameA = (t: AdaptiveThreshold, m: ThresholdMemory) => {
+    t.begin()
+    for (let i = 0; i < 60; i += 1) t.offer(bucketEdgePx(13) * 1.001)
+    for (let i = 0; i < 60; i += 1) t.offer(bucketEdgePx(12) * 1.001)
+    return t.end(100, m)
+  }
+  const frameB = (t: AdaptiveThreshold, m: ThresholdMemory) => {
+    t.begin()
+    for (let i = 0; i < 40; i += 1) t.offer(bucketEdgePx(13) * 1.001)
+    for (let i = 0; i < 40; i += 1) t.offer(bucketEdgePx(12) * 1.001)
+    for (let i = 0; i < 100; i += 1) t.offer(bucketEdgePx(11) * 1.001)
+    return t.end(100, m)
+  }
+  /** Another world, wanting art well below the subject's boundary. Any of the other 44. */
+  const otherWorld = (t: AdaptiveThreshold, m: ThresholdMemory) => {
+    t.begin()
+    for (let i = 0; i < 300; i += 1) t.offer(bucketEdgePx(2) * 1.001)
+    return t.end(100, m)
+  }
+
+  const edges = (...buckets: number[]) => buckets.map((b) => bucketEdgePx(b).toFixed(2))
+
+  function sequence(
+    t: AdaptiveThreshold,
+    subject: () => ThresholdMemory,
+    before?: () => void,
+  ): string[] {
+    const seen: string[] = []
+    for (let frame = 0; frame < 6; frame += 1) {
+      before?.()
+      const report = frame % 2 === 0 ? frameA(t, subject()) : frameB(t, subject())
+      seen.push(report.effectiveThresholdPx.toFixed(2))
+    }
+    return seen
+  }
+
+  it('shows the boundary genuinely wobbles, so the hold branch has something to hold', () => {
+    // The bound must bind. Run each frame against a FRESH memory — no hysteresis at all — and the
+    // two adjacent edges alternate. Without this row the two below are assertions about a boundary
+    // that never moved.
+    const raw = sequence(new AdaptiveThreshold(), () => new ThresholdMemory())
+    expect(raw).toEqual(edges(13, 12, 13, 12, 13, 12))
+  })
+
+  it('holds the raised boundary for a lone subject', () => {
+    const memory = new ThresholdMemory()
+    const held = sequence(new AdaptiveThreshold(), () => memory)
+    // Frame 1 raises to 13; frame 2's drop to 12 is within one bucket and is refused, and so is
+    // every later one.
+    expect(held).toEqual(edges(13, 13, 13, 13, 13, 13))
+  })
+
+  it('holds it just the same when another world runs first in the same frame — F2', () => {
+    // The finding. With the hysteresis living on the shared `AdaptiveThreshold`, the bucket the
+    // hold branch compared against was the PREVIOUS SURFACE's — so any neighbour with a different
+    // boundary reset it and the subject fell back to its raw quantile every frame. Against the
+    // pre-fix tree these six frames read `64.30 59.61 64.30 59.61 64.30 59.61`, where the row above
+    // reads `64.30` throughout. A roster of 45 always has a preceding world, so the hold branch
+    // could not fire in the product at all; `worlds-attach.test.ts` runs the same pair on the real
+    // roster, where the pre-fix reading is `44.02 47.48 44.02 47.48 …`.
+    const threshold = new AdaptiveThreshold()
+    const memory = new ThresholdMemory()
+    const neighbour = new ThresholdMemory()
+    const withNeighbour = sequence(
+      threshold,
+      () => memory,
+      () => otherWorld(threshold, neighbour),
+    )
+    expect(withNeighbour).toEqual(edges(13, 13, 13, 13, 13, 13))
+  })
+
+  it('does not hold a boundary its own demand has left entirely below', () => {
+    // The other half of F1, one frame later: the subject raised to bucket 13, then its demand moved
+    // to bucket 12 and below. Holding at 13 would admit nothing — the idle pool again — so a hold
+    // over an empty tail is refused.
+    const threshold = new AdaptiveThreshold()
+    const memory = new ThresholdMemory()
+    fill(threshold, { 12: 60, 13: 60 })
+    expect(threshold.end(100, memory).effectiveThresholdPx).toBeCloseTo(bucketEdgePx(13), 9)
+
+    fill(threshold, { 11: 40, 12: 300 })
+    const report = threshold.end(100, memory)
+    expect(report.wanting).toBe(340)
+    expect(report.admitted, 'nothing sits at or above bucket 13 any more').toBeGreaterThan(0)
+    expect(report.effectiveThresholdPx).toBeCloseTo(bucketEdgePx(12), 9)
   })
 })
 

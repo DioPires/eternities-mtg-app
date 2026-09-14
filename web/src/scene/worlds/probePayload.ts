@@ -189,11 +189,17 @@ export function cellScreenRect(
 /**
  * The per-cell records, given everything the renderer already has.
  *
- * > **Normative — one entry per card (§3.1).** §1.4 subdivides the *base geometry* of the instanced
- * > draw, so the instance count survives the re-mesh untouched and `cells.length` is the world's
- * > `cardCount` whatever `k` is. A payload that grew with the subdivision would make every one of
- * > G's per-cell criteria measure sub-quads, and W1's floor — a count of cells above a pixel height
- * > — would pass by counting the same card up to 512 times.
+ * > **Normative — at most one entry per card (§3.1).** §1.4 subdivides the *base geometry* of the
+ * > instanced draw, so the instance count survives the re-mesh untouched and `cells.length` is
+ * > bounded by the world's `cardCount` whatever `k` is. A payload that grew with the subdivision
+ * > would make every one of G's per-cell criteria measure sub-quads, and W1's floor — a count of
+ * > cells above a pixel height — would pass by counting the same card up to 512 times.
+ * >
+ * > The bound is not an equality, and the `continue` below is the whole reason (DEC-768 F5): a
+ * > `null` record is a cell the caller could not measure — every vertex clipped, or a centre behind
+ * > the near plane — and it is dropped rather than reported as a zero-size rect. Those cells are
+ * > off-screen, so nothing G scores goes missing with them; what would break is a gate asserting
+ * > `cells.length === cardCount`, which is correct at no close pose at all.
  */
 export function buildProbeCells(
   cardCount: number,

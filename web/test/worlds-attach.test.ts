@@ -20,7 +20,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Matrix4, PerspectiveCamera, Scene, Vector2, Vector3, type WebGLRenderer } from 'three'
 
 import { decodeStars, decodeSwatches } from '../src/data/decode'
-import type { PlanesFile } from '../src/data/types'
+import type { PlaneRecord, PlanesFile } from '../src/data/types'
 import { FrameLoop, TICK_PHASES } from '../src/scene/renderer/frameLoop'
 import type { ImageQueue } from '../src/scene/cards/imageQueue'
 import { attachWorlds, DEFAULT_TIER_ART_LAYERS } from '../src/scene/worlds/attachWorlds'
@@ -472,6 +472,145 @@ describe('the shared art pool (§1.6, §1.12)', () => {
     // resident — and the payload is still a measurement, not a setup failure.
     expect(worldsProbeOf(rig.worlds.probeSource())?.pool.layers).toBe(0)
     rig.worlds.dispose()
+  })
+})
+
+/**
+ * §1.6's quantile and hysteresis **on the shipped path** (DEC-768 F1, F2).
+ *
+ * `worlds-art-stream.test.ts` pins both mechanisms at the unit, against hand-built histograms. This
+ * block is the other half, and the half neither finding could be seen from: both defects are about
+ * what happens when the shipped composition — the real v3 roster, one shared pool and one shared
+ * threshold, forty-five surfaces running in roster order — meets a real pose. F1 needs a world
+ * whose demand is concentrated enough that one bucket outruns the pool, which is a property of the
+ * dataset. F2 needs a **neighbour**, which a one-surface harness does not have.
+ */
+describe('§1.6 on the shipped roster (DEC-768 F1, F2)', () => {
+  /** The two poses §3.1 states W4 at, swept over every world. */
+  const POSES = [1.8, 2.2]
+
+  interface PoseReading {
+    readonly slug: string | null
+    readonly radii: number
+    readonly wanting: number
+    readonly admitted: number
+  }
+
+  function sweep(capacity: number): PoseReading[] {
+    const rig = build({ seams: { ...NO_SEAMS, layersRequested: capacity } })
+    rig.worlds.setData(roster())
+    expect(rig.worlds.pool.layers, 'the sweep must run at the capacity it names').toBe(capacity)
+    const readings: PoseReading[] = []
+    for (const surface of rig.worlds.surfaces) {
+      for (const radii of POSES) {
+        poseAt(rig.camera, surface.centre, surface.radius, radii)
+        rig.tick()
+        const report = surface.threshold
+        readings.push({
+          slug: surface.planeSlug,
+          radii,
+          wanting: report.wanting,
+          admitted: report.admitted,
+        })
+      }
+    }
+    rig.worlds.dispose()
+    return readings
+  }
+
+  it('never leaves the pool idle in front of a world that wants art — F1', () => {
+    // 128 is tier 4, §1.12's smallest rung and the one this is reachable at today through R1's own
+    // `?layers=` seam. Before the crossing-bucket branch, `dominaria` admitted **0 of 128** at both
+    // poses — 961 and 922 wanting cells, every layer idle — which is strictly worse than the
+    // `fixed24` prototype §1.6 replaces, and puts W4's `artFraction` at zero for a reason that is
+    // not the renderer running out of pool, the one thing W4 exists to distinguish.
+    const readings = sweep(128)
+
+    // The denominator, always: "no idle poses" and "I measured no poses" must not print the same.
+    expect(readings).toHaveLength(WORLDS.length * POSES.length)
+    const withDemand = readings.filter((r) => r.wanting > 0)
+    expect(withDemand.length, 'poses with any demand at all').toBeGreaterThan(40)
+
+    const idle = withDemand.filter((r) => r.admitted === 0)
+    expect(idle.map((r) => `${r.slug}@${r.radii}r (${r.wanting} wanting)`)).toEqual([])
+  })
+
+  it('bounds the overshoot at one bucket, and says where it binds', () => {
+    // The branch admits a bucket that does not fit, so the row above is only half the claim: the
+    // other half is that the overshoot is small and rare rather than the exhaustion §1.6 removes.
+    // `ArtPool` absorbs it without churn — a key wanted this frame is not an eviction candidate, so
+    // the excess requests simply fail to reserve rather than evicting cells that are on screen.
+    const over = (capacity: number) =>
+      sweep(capacity)
+        .filter((r) => r.admitted > capacity)
+        .map((r) => `${r.slug}@${r.radii}r ${r.admitted}/${capacity}`)
+
+    // Tier 4, where it binds: two poses of ninety, and neither asks for more than 1.6 pools.
+    const tier4 = over(128)
+    expect(tier4).toHaveLength(2)
+    expect(tier4.every((row) => row.startsWith('dominaria@'))).toBe(true)
+    for (const reading of sweep(128)) expect(reading.admitted).toBeLessThan(2 * 128)
+
+    // The control, and the reason the row above is a measurement of the dataset rather than of the
+    // branch: at the capacity tiers 0-3 actually run at, no pose overshoots at all.
+    expect(over(SPEC_MINIMUM.maxArrayTextureLayers - 32)).toEqual([])
+  })
+
+  /**
+   * Zendikar between 2.18 and 2.20 world-radii at 224 layers: the raw quantile alternates between
+   * two adjacent buckets, which is the drifting camera §1.6's hysteresis is written for.
+   *
+   * Found by sweeping radii, not guessed: on this roster most worlds move the boundary
+   * monotonically with distance and never present the hold branch with anything to hold.
+   */
+  const WOBBLE = { slug: 'zendikar', capacity: 224, radii: [2.18, 2.2] } as const
+
+  function thresholds(planes: readonly PlaneRecord[], freshRigPerFrame: boolean): string[] {
+    const seen: string[] = []
+    let rig = null as ReturnType<typeof build> | null
+    for (let frame = 0; frame < 6; frame += 1) {
+      if (!rig || freshRigPerFrame) {
+        rig?.worlds.dispose()
+        rig = build({ seams: { ...NO_SEAMS, layersRequested: WOBBLE.capacity } })
+        rig.worlds.setData({ planes, stars: STARS, swatches: SWATCHES })
+      }
+      const subject = rig.worlds.surfaces.find((s) => s.planeSlug === WOBBLE.slug)!
+      poseAt(rig.camera, subject.centre, subject.radius, WOBBLE.radii[frame % 2]!)
+      rig.tick()
+      seen.push(subject.threshold.effectiveThresholdPx.toFixed(2))
+    }
+    rig?.worlds.dispose()
+    return seen
+  }
+
+  /** The roster with one world on it. Non-world planes stay: `worldPlanesOf` filters them anyway. */
+  const lone = (slug: string): readonly PlaneRecord[] =>
+    PLANES.planes.filter((plane) => plane.slug === slug || !isWorldPlane(plane))
+
+  it('shows the boundary genuinely wobbles at these poses, so the hold branch has work to do', () => {
+    // The bound must bind. A fresh attachment per frame is a fresh `ThresholdMemory` per frame —
+    // the raw quantile with no hysteresis at all — and it alternates. Without this row the two
+    // below are assertions about a boundary that never moved.
+    const raw = thresholds(lone(WOBBLE.slug), true)
+    expect(new Set(raw).size, 'the raw quantile must move between these two poses').toBe(2)
+    expect(raw[0]).not.toBe(raw[1])
+    expect(raw[2]).toBe(raw[0])
+  })
+
+  it('holds the raised boundary for a world that is alone on the roster', () => {
+    const held = thresholds(lone(WOBBLE.slug), false)
+    // Frame 1 raises, and every later drop is within one bucket and is refused.
+    expect(new Set(held.slice(1)).size, `held: ${held.join(' ')}`).toBe(1)
+  })
+
+  it('holds it identically with forty-four other worlds updating in the same frame — F2', () => {
+    // The finding, on the shipped composition. §1.12's pool is shared and stays shared; before
+    // `ThresholdMemory` the *hysteresis* was shared with it, so the bucket the hold branch compared
+    // against was the previous SURFACE's, every preceding world reset it, and the subject fell back
+    // to its raw quantile every frame. On a 45-world roster there is always a preceding world, so
+    // the hold branch could not fire in the product at all — and `grep hysteresis test/` was empty,
+    // which is why all four mutation matrices ran clean through it.
+    expect(thresholds(roster().planes, false)).toEqual(thresholds(lone(WOBBLE.slug), false))
   })
 })
 

@@ -26,6 +26,14 @@
  * pool and a single set of cell attributes across the roster, and §1.2 keeps every world's sheet
  * resident because any number of them may be above the crossover at once. The per-world objects are
  * the surfaces; everything with a byte budget attached to it is shared and lives here.
+ *
+ * **Except §1.6's hysteresis, which is per-world and lives on the surface.** The shared
+ * {@link AdaptiveThreshold} below is the histogram and the quantile — per-frame scratch, and a
+ * quantile taken against the one pool's capacity, so sharing it is right. "The boundary must not
+ * oscillate" is not per-frame: it is a claim about *this world's previous frame*, and with 45
+ * surfaces running through one bucket it silently became a claim about the previous *surface*,
+ * which made the hold branch unreachable in the product (DEC-768 F2). See `ThresholdMemory` in
+ * `adaptiveThreshold.ts`; `WorldSurface` owns one and hands it to `end()`.
  */
 
 import {

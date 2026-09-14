@@ -555,7 +555,13 @@ print("\n§3.1 the roster counts are derived, not constants (DEC-751)")
 floors = {}
 for path in sorted(REPO.glob("web/public/data/*/planes.json")):
     rows = json.loads(path.read_text())["planes"]
-    floors[path.parent.name] = len([p for p in rows if p.get("cardCount", 0) > 0])
+    # `kind != "dust"` as well as `cardCount > 0`: W5 counts LABELS, and `PlaneLabels` filters the
+    # Blind Eternities out of the candidate list before projection (PRD 5.3.4), so the belt can
+    # never carry one. `planesWithCards` would leave the ceiling permanently one above anything
+    # reachable — slack in the direction a ceiling exists to refuse (CEO ruling, DEC-768 F4).
+    floors[path.parent.name] = len(
+        [p for p in rows if p.get("kind") != "dust" and p.get("cardCount", 0) > 0]
+    )
 print(f"        derived W5 floor per tracked dataset: {floors}")
 check("tracked datasets to derive the floor from", len(floors) > 1, True)
 check("...and it is not the same number for every dataset", len(set(floors.values())) > 1, True)
@@ -570,9 +576,10 @@ else:
     # 30th world, so the derived floor moves to 31". It was wrong by fifteen worlds, and it remains
     # the best argument in this file for deriving rather than predicting.
     check("v3 planes", len(v3), 88)
-    check("v3 worldsWithCards — W1 iterates these", len(v3_worlds), 45)
-    check("v3 planesWithCards — W5's floor on the dataset the gate runs on", len(v3_with_cards), 46)
-    check("...which is the worlds plus the belt", len(v3_with_cards) - len(v3_worlds), 1)
+    check("v3 worldsWithCards — W1 and W5 both iterate these", len(v3_worlds), 45)
+    check("v3 planesWithCards — the same set plus the belt, measured against by neither",
+          len(v3_with_cards), 46)
+    check("...and the belt is the whole of the difference", len(v3_with_cards) - len(v3_worlds), 1)
     check("v3 empty planes", len([p for p in v3 if p.get("cardCount", 0) == 0]), 42)
     check("v3 cards on worlds", sum(p["cardCount"] for p in v3_worlds), 24399)
     fr = [p for p in v3 if p.get("slug") == "forgotten-realms"]
@@ -637,10 +644,15 @@ else:
     shipped_asym = [s for s, w in PUBLISHED_V3.items() if w["rowCells"] != w["rowCells"][::-1]]
     check("...while the SHIPPED table breaks it on 30 of 45, by design", len(shipped_asym), 30)
 
-    # The W5 floor is derived from THIS dataset, never predicted from the last one.
+    # The W5 ceiling is derived from THIS dataset, never predicted from the last one.
     check("the refresh is NOT '29 worlds + 1'", len(v3_worlds), 45)
-    check("...so W5's floor is 46, and a gate pinned at 30 or 31 goes RED on correct behaviour",
-          len(v3_with_cards) not in (30, 31), True)
+    check("...so W5's ceiling is 45, and a gate pinned at 29 or 30 goes RED on correct behaviour",
+          len(v3_worlds) not in (29, 30), True)
+    # And it is the WORLDS' count, not the planes'. The belt is filtered before projection, so a
+    # ceiling of 46 could never bind — one label of permanent slack (CEO ruling, DEC-768 F4).
+    check("...and it is worldsWithCards, one below planesWithCards",
+          len(v3_worlds), len(v3_with_cards) - 1)
+    check("...which is what leg G's `homeLabelCeiling` ships", len(v3_worlds), 45)
 
 print("\n§3.1 W2's IQR(L*) half — why it is measured iso-shade (DEC-749, on DEC-752's finding)")
 

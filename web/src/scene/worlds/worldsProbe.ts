@@ -53,7 +53,17 @@ export const ART_SHOWN_AT = 1
 
 /** One cell, as leg G reads it. */
 export interface WorldsProbeCell {
-  /** The card's index within its world — the instance id, and the art pool's key. */
+  /**
+   * The **cell's** index within its world — the instance id, and the index every other field here
+   * is measured at.
+   *
+   * > **Not the art pool's key, and not always the card (DEC-768 F5).** The pool is one pool for the
+   * > whole multiverse, so its key is `artKeyBase + card` — see `WorldSurfaceSource.artKeyBase`, and
+   * > the aliasing bug that field exists to prevent. Cell and card are the identity on the shipped
+   * > path and are *not* under `?bands=shuffle`, which permutes cards across cells globally; a
+   * > reader that treated this as either a pool key or a card index would be right by coincidence
+   * > exactly until W3's control seam is engaged.
+   */
   readonly cell: number
   /** §3.1's screen-space rect: the bound of the projected sphere-following vertex grid. */
   readonly rect: ScreenRect
@@ -124,13 +134,19 @@ export interface WorldsProbe {
   /** CSS px. Must match the screenshot's dimensions at dpr 1, or every colour sample is off. */
   readonly viewport: { readonly width: number; readonly height: number }
   /**
-   * **Cells are reported for the focused plane only**, one entry per **card**.
+   * **Cells are reported for the focused plane only**, at most one entry per **card**.
    *
    * W1 flies to each world in turn and takes its statistic per plane; a single pooled array across
    * the system would make the per-plane median unrecoverable, and W1's verdict is the *worst* plane
-   * rather than the pooled one. One entry per card — never one per sub-quad — because §1.4
+   * rather than the pooled one. At most one per card — never one per sub-quad — because §1.4
    * subdivides the *base* geometry, so a payload that walked facets would multiply W1's sample
    * count by `k²` and divide its median height, on 32 of v3's 45 worlds at once.
+   *
+   * **"At most", and the bound is not decorative (DEC-768 F5).** `buildWorldsProbe` drops a cell
+   * whose projected rect is `null` — every vertex clipped — and one whose centre is behind the near
+   * plane, so `cells.length <= cardCount` with equality only at a pose that holds the whole world
+   * in frame. A gate asserting equality would go RED on a correct renderer at any close pose; the
+   * dropped cells are off-screen, so nothing W4 scores is missing from what is here.
    */
   readonly cells: readonly WorldsProbeCell[]
   readonly pool: WorldsProbePool

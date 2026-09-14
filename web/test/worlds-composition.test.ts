@@ -483,12 +483,14 @@ describe('§1.6 the art fade tracks residency, not a claimed layer', () => {
       surface.admissionHeightPx(subject),
       'the subject must be a cell that would want art',
     ).toBeGreaterThan(BASE_THRESHOLD_PX)
-    // But it is **not** admitted, and that is correct rather than a harness defect: the pool holds
-    // one layer, and §1.6's threshold is defined relative to capacity, so a one-layer pool raises
-    // the threshold above every bucket and admits nothing. It is exactly why these three rows drive
-    // the pool by hand instead of through the stream — and it is the same property that makes
-    // "shrink the pool" useless as W4's negative control.
-    expect(surface.wasAdmitted(subject)).toBe(false)
+    // It is admitted — it is the tallest cell on the world, so it is in the topmost non-empty
+    // bucket, and §1.6 admits that bucket rather than leaving a pool idle in front of demand
+    // (DEC-768 F1). **And it is still not resident**, which is the distinction these three rows
+    // exist for: `admitted` is the frame asking, `layerOf` is the pool answering, and a one-layer
+    // pool with no stream behind it never answers at all. The rows below drive the pool by hand
+    // for exactly that reason.
+    expect(surface.wasAdmitted(subject)).toBe(true)
+    expect(pool.layerOf(subject), 'admitted is not resident').toBeNull()
     return { pool, surface, world, subject, frame }
   }
 

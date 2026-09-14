@@ -21,7 +21,7 @@ import { Mesh, Vector3, type DataArrayTexture, type ShaderMaterial } from 'three
 
 import { IMAGE_FADE_MS } from '../tuning'
 
-import type { AdaptiveThreshold, ThresholdReport } from './adaptiveThreshold'
+import { ThresholdMemory, type AdaptiveThreshold, type ThresholdReport } from './adaptiveThreshold'
 import { LAYER_FREE } from './artPool'
 import type { ArtPool } from './artPool'
 import { facesCamera, withinFrustum } from './cellSelection'
@@ -184,6 +184,16 @@ export class WorldSurface {
   private readonly fade: Float32Array
 
   private frameIndex = 0
+  /**
+   * §1.6's hysteresis, for **this** world (DEC-768 F2).
+   *
+   * Constructed here and handed out nowhere, which is the point: the {@link AdaptiveThreshold} is
+   * shared across the roster because §1.12's pool is, and before this field the bucket the
+   * hysteresis held was shared with it — so on a 45-world roster every surface's "previous frame"
+   * was the previous *surface*, and the hold branch could not fire at all. See
+   * {@link ThresholdMemory}.
+   */
+  private readonly thresholdMemory = new ThresholdMemory()
   private thresholdReport: ThresholdReport
   private crossoverValue: CrossoverState
   private medianHeightPxValue = 0
@@ -248,7 +258,7 @@ export class WorldSurface {
     this.onScreen = new Uint8Array(cardCount)
     this.fade = new Float32Array(cardCount)
 
-    this.thresholdReport = options.threshold.end(options.pool.layers)
+    this.thresholdReport = options.threshold.end(options.pool.layers, this.thresholdMemory)
     this.crossoverValue = crossoverState(0)
   }
 
@@ -375,7 +385,7 @@ export class WorldSurface {
       if (front && on) threshold.offer(height)
     }
 
-    this.thresholdReport = threshold.end(pool.layers)
+    this.thresholdReport = threshold.end(pool.layers, this.thresholdMemory)
     const effective = this.thresholdReport.effectiveThresholdPx
     const fadeStep = ART_FADE_S > 0 ? frame.deltaSeconds / ART_FADE_S : 1
 
