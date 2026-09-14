@@ -107,6 +107,15 @@ export interface FrameLoopOptions {
   readonly requestFrame?: (callback: (now: number) => void) => number
   readonly cancelFrame?: (handle: number) => void
   readonly now?: () => number
+  /**
+   * Called once after every step in a tick has run, with the CPU time they took.
+   *
+   * A hook rather than a `quality`-phase subscriber because "last" is the whole point and a phase
+   * cannot express it: subscriptions within a phase run in insertion order, so anything that
+   * subscribed to `quality` later would run *after* a step that claimed to measure the tick. This
+   * is the one measurement whose correctness depends on nothing else being appendable behind it.
+   */
+  readonly onTickEnd?: (timing: FrameTiming, cpuMs: number) => void
 }
 
 export class FrameLoop {
@@ -126,12 +135,14 @@ export class FrameLoop {
   private readonly requestFrame: (callback: (now: number) => void) => number
   private readonly cancelFrame: (handle: number) => void
   private readonly now: () => number
+  private readonly onTickEnd: ((timing: FrameTiming, cpuMs: number) => void) | null
 
   constructor(options: FrameLoopOptions = {}) {
     this.requestFrame =
       options.requestFrame ?? ((callback) => requestAnimationFrame((now) => callback(now)))
     this.cancelFrame = options.cancelFrame ?? ((handle) => cancelAnimationFrame(handle))
     this.now = options.now ?? (() => performance.now())
+    this.onTickEnd = options.onTickEnd ?? null
   }
 
   get running(): boolean {
@@ -182,7 +193,20 @@ export class FrameLoop {
     this.timing.frame = ++this.frame
 
     const steps = this.steps
-    for (let i = 0; i < steps.length; i += 1) steps[i]!(this.timing)
+    const end = this.onTickEnd
+    if (end === null) {
+      for (let i = 0; i < steps.length; i += 1) steps[i]!(this.timing)
+      return
+    }
+
+    // In a `finally` so a throwing step is still measured and still reported: the frame it broke is
+    // exactly the frame worth having a number for, and `schedule` has already booked the next one.
+    const started = this.now()
+    try {
+      for (let i = 0; i < steps.length; i += 1) steps[i]!(this.timing)
+    } finally {
+      end(this.timing, this.now() - started)
+    }
   }
 
   /** The phase-ordered step list, for `test/frame-loop.test.ts`. */
