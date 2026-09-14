@@ -170,18 +170,22 @@ describe('collision priority (PRD 5.3.10)', () => {
   }
 
   it('makes the plane with fewer cards yield', () => {
+    // The keys are chosen so the alphabetical tie-break *opposes* the card counts: `a-few-cards`
+    // sorts first but must still yield to `z-many-cards`. With the original `big` / `small` the two
+    // rules agreed, so deleting the priority comparison outright left this test green — it was
+    // asserting the tie-break, not PRD 5.3.10 (DEC-752).
     const out: LabelPlacement[] = []
     const count = layoutLabels(
       [
-        { ...base, key: 'big', text: 'Dominaria', priority: 5000, x: 500, y: 500 },
-        { ...base, key: 'small', text: 'Segovia', priority: 12, x: 505, y: 505 },
+        { ...base, key: 'z-many-cards', text: 'Dominaria', priority: 5000, x: 500, y: 500 },
+        { ...base, key: 'a-few-cards', text: 'Segovia', priority: 12, x: 505, y: 505 },
       ],
       out,
       VIEWPORT,
     )
     expect(count).toBe(2)
-    const big = out.find((p) => p.key === 'big')!
-    const small = out.find((p) => p.key === 'small')!
+    const big = out.find((p) => p.key === 'z-many-cards')!
+    const small = out.find((p) => p.key === 'a-few-cards')!
     // The high-count plane sits where it wanted to; the low-count one moved.
     expect(big.y).toBeCloseTo(500 + base.radiusPx + big.fontPx * 1.3 * 0.5 + 6, 5)
     expect(small.x === 505 && small.y === 505 + base.radiusPx + small.fontPx * 0.65 + 6).toBe(false)
@@ -448,5 +452,85 @@ describe('chronology band labels (PRD 5.4.5)', () => {
     expect(out[0]!.key).toBe('plane')
     expect(out[1]!.key).toBe('band')
     expect(out[1]!.y).not.toBeCloseTo(out[0]!.y, 1)
+  })
+})
+
+/**
+ * DEC-752's negative-control matrix, sharpening a finding routed by DEC-751.
+ *
+ * R3 measured that monotone re-scaling of `priority` is a byte-identical no-op — `sqrt` and `log1p`
+ * of the card counts give the same layout — and concluded that "a mutant that re-weights priority
+ * will score GREEN and prove nothing". The first half reproduces. The conclusion is too broad, and
+ * the matrix would inherit the gap: it is not monotonicity that makes a re-weight inert.
+ *
+ * `layoutLabels` reads `priority` at exactly one site, the comparator:
+ *
+ *     if (ca.priority !== cb.priority) return cb.priority - ca.priority
+ *     return rank(ca.key) - rank(cb.key)
+ *
+ * — so it reads it through the *equality* relation as well as through the order. A re-weight is
+ * inert iff it preserves both, i.e. iff it is order-preserving **and injective on the counts that
+ * actually occur**. `sqrt` and `log1p` are; a re-weight that *merges* distinct counts into buckets
+ * is not, because every merge converts a priority-decided comparison into an alphabetical one.
+ *
+ * That distinction is the one the matrix needs, because the re-weight someone would plausibly write
+ * is a tiering one — the shape `?quality=N`'s tiers already have.
+ */
+describe('a priority re-weight as a negative control (DEC-752, on DEC-751)', () => {
+  const reweighted = (map: (cardCount: number) => number): LabelPlacement[] => {
+    // A fresh array per arm: `rankCollation` memoises the tie-break on array identity.
+    const candidates = homeViewCandidates().map((c) => ({ ...c, priority: map(c.priority) }))
+    const out: LabelPlacement[] = []
+    const count = layoutLabels(candidates, out, VIEWPORT)
+    return out.slice(0, count).map((p) => ({ ...p }))
+  }
+
+  /** What a reviewer would diff: identity, position, size, opacity. */
+  const bytes = (ps: readonly LabelPlacement[]): string =>
+    JSON.stringify(ps.map((p) => [p.key, p.x, p.y, p.fontPx, p.opacity, p.occluded]))
+
+  const shipped = bytes(reweighted((n) => n))
+
+  it('is inert under an injective monotone re-weight, as DEC-751 reported', () => {
+    expect(bytes(reweighted((n) => Math.sqrt(n)))).toBe(shipped)
+    expect(bytes(reweighted((n) => Math.log1p(n)))).toBe(shipped)
+    // Any strictly increasing injective map, not just the two that were measured.
+    expect(bytes(reweighted((n) => n * 3 + 1))).toBe(shipped)
+  })
+
+  it('is NOT inert under a monotone re-weight that merges distinct counts', () => {
+    // Non-decreasing in the count, so still "monotone" in the sense the finding was stated — but it
+    // collapses the roster onto four values, and the layout moves.
+    const tiered = bytes(reweighted((n) => (n >= 1000 ? 3 : n >= 300 ? 2 : n >= 50 ? 1 : 0)))
+    expect(tiered).not.toBe(shipped)
+    const decades = bytes(reweighted((n) => Math.floor(Math.log10(Math.max(1, n)))))
+    expect(decades).not.toBe(shipped)
+  })
+
+  it('pins the mechanism: a merge of two *adjacent* counts is enough to move the layout', () => {
+    // An earlier form of this test raised one low-count plane to the roster's highest count, which
+    // also lets it overtake every plane in between — so a difference would not have isolated the
+    // tie. Merging two *adjacent* distinct values cannot reorder anything except by creating a tie,
+    // which is the mechanism this test is for.
+    const base = homeViewCandidates()
+    const values = [...new Set(base.map((c) => c.priority))].sort((a, b) => b - a)
+
+    // One worked merge can move the layout by luck, so sweep every adjacent pair and count.
+    let moved = 0
+    for (let i = 0; i + 1 < values.length; i += 1) {
+      const [high, low] = [values[i]!, values[i + 1]!]
+      const merged = base.map((c) => (c.priority === low ? { ...c, priority: high } : { ...c }))
+      const out: LabelPlacement[] = []
+      const count = layoutLabels(merged, out, VIEWPORT)
+      if (bytes(out.slice(0, count).map((p) => ({ ...p }))) !== shipped) moved += 1
+    }
+
+    // Not every adjacent merge moves it — two planes can tie without ever contesting a box, and the
+    // tie-break can also happen to agree with the counts. Measured on fixture-scale: 41 of the 76
+    // adjacent merges move the layout. The bound is a ratio rather than that count so it neither
+    // goes stale on the next roster change nor quietly widens to the `> 0` that any single lucky
+    // pair would satisfy.
+    expect(values.length).toBeGreaterThan(10)
+    expect(moved / (values.length - 1)).toBeGreaterThan(0.2)
   })
 })
