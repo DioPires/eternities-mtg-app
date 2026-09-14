@@ -693,6 +693,12 @@ tick positions, not with a capture. See §5, Q5.
   > drawn** (`eldraine`, `kamigawa`) below it, to a worst of **~20.6 px**. Those counts move with the
   > sweep and with `home`; see the warning below.
   >
+  > **Most of that shortfall is not the floor's to fix, and that is why no overlap rule is adopted.**
+  > Re-run with the neighbours' floors switched off, so only a disk something really draws can take a
+  > pixel, and **13 of the 19 fall short anyway** — they are behind nearer geometry, which is
+  > ordinary occlusion. Only the remaining **6** are floor-on-floor, so that is the entire budget any
+  > tie-break, Voronoi or otherwise, could ever recover.
+  >
   > **Conformance basis.** WCAG 2.5.8 is where the 24 px constant comes from, and it is not what
   > makes the product conform. Conformance rests on the criterion's **Equivalent** exception: every
   > plane is indexed in the search path as a `kind: 'plane'` hit (`web/src/search/index.ts`) and is
@@ -702,11 +708,13 @@ tick positions, not with a capture. See §5, Q5.
   > argument. The proxy floor is a usability improvement layered on top of it.
   >
   > **Rejected alternatives (R1 ruling, DEC-749).** A nearest-proxy-centre (Voronoi) tie-break was
-  > measured and is **not** adopted: it lifts the worst case but takes the under-24 count from 19 to
-  > 26 of 33 and regresses three worlds, because screen area is conserved and a tie-break only moves
-  > it. Reaching a real 24 px target means separating worlds *on screen* — a layout change to the
-  > `home` law in §1.3/§2, outside both R1 and R3, tracked separately. Do not retune the tie-break to
-  > make this section's wording true.
+  > measured and is **not** adopted. Three reasons, in order of weight: it can reach only 6 of the 19
+  > short worlds at all (above); it takes the under-24 count from 19 to 26 of 33 and regresses three
+  > worlds, because screen area is conserved and a tie-break only moves it; and the plain floor
+  > already regresses two worlds, so "it regresses worlds" is a cost both options carry rather than a
+  > discriminator. Reaching a real 24 px target means separating worlds *on screen* — a layout change
+  > to the `home` law in §1.3/§2, outside both R1 and R3, tracked separately. Do not retune the
+  > tie-break to make this section's wording true.
   >
   > The obvious objection does not hold: inflating the proxy does not make small worlds steal their
   > neighbours' picks. Over the 15 worlds that the *world-space* pass on `3ce85aed` found floored,
