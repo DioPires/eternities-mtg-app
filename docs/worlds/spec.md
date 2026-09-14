@@ -266,10 +266,10 @@ carry the contract consequence.
 > `q_r = N·sin θ_r / Σ sin θ`, floor it at 1, and hand out the residual `N − Σ⌊q⌋` by **largest
 > fractional remainder**, ties broken by `min(r, rows−1−r)` then `r`; reclaim deficits the same way
 > in reverse, never below 1. It holds `Σ = N` at **every** N in 1…7000, and against the published v3
-> table (`3ce85aed`, vendored at `docs/worlds/rowcells-v3.json`) it agrees on **rows and dφ 45 of
-> 45** and on the counts **to ±1 cell per row, never more**: 575 of 777 rows match exactly, 101 run
-> one cell high and 101 one cell low. Its aspect cost is a wash — 81 of its 777 rows fall outside
-> ±10% of 4:3 against the published table's 86. Two limits on how far to trust it. It reproduces a
+> table (`c9468f11`, vendored at `docs/worlds/rowcells-v3.json`) it agrees on **rows and dφ 45 of
+> 45** and on the counts **to ±1 cell per row, never more**: 579 of 777 rows match exactly, 99 run
+> one cell high and 99 one cell low. Its aspect cost is a wash — 81 of its 777 rows fall outside
+> ±10% of 4:3 against the published table's 87. Two limits on how far to trust it. It reproduces a
 > published table exactly on only **15 of 45 worlds, and those are the six one-card worlds, the eight
 > two-card worlds and one four-card world** — *every* world of 30 cards or more disagrees somewhere.
 > But the ±1 slack is **derivation-safe for §1.4**: computing the subdivision from the N-only table
@@ -277,6 +277,31 @@ carry the contract consequence.
 > 13 unsubdivided worlds holding 19,497 cells, the same 38,887-sub-quad roster total and the same
 > 1,130 worst case. Use it to sanity-check a table or to size geometry; never to generate a table.
 >
+> **Normative — `round` here means half-to-EVEN, and `Math.round` is not it (DEC-749).** Every
+> `round(...)` in this section is the pipeline's, and the pipeline is Python, whose `round` breaks a
+> half toward the even integer. JavaScript's `Math.round` breaks it away from zero. The two readings
+> of this one word disagree on **1,138 of the 7,000** card counts in N = 1…7000 — the TypeScript and
+> Python halves of the same conformance check disagreed about what the emitter does until this was
+> pinned. Nothing on the render path rounds at all, because the client reads the published table; but
+> anything that *checks* the table has to round the way the emitter does or it is measuring itself.
+>
+> **Normative — the residual's tie-break needs mirrored weights, or it does not run (DEC-749).**
+> The rule above breaks ties by `min(r, rows−1−r)`, which can only decide anything when two rows'
+> fractional remainders are **equal**. `sin θ_r` and `sin θ_(rows−1−r)` are equal in exact arithmetic
+> and *not* equal in doubles: the two arguments differ, so the results land up to ~1.5 ulp apart. On
+> bloomburrow's 18 rows only **3 of the 9** mirrored pairs came out bit-identical, so the residual was
+> being handed out by floating-point accident rather than by the stated rule — and not even
+> reproducibly, since libm and V8 order that world's rows 4 and 13 oppositely. So the weights are
+> computed once per mirrored pair and **assigned to both rows**, which makes every pair tie exactly
+> and lets the documented tie-break decide. This is a sibling of the inert-rule failure in §1.3's own
+> lever table: a tie-break is inert wherever its key never ties.
+>
+> One consequence is worth recording because an earlier revision of this spec recorded its opposite:
+> at N = 3 the table is **`[2, 1]`**, the residual landing in the *northern* row as the tie-break
+> says it should. The `[1, 2]` a previous draft quoted was the answer the unmirrored noise happened
+> to give. No world on the v3 roster carries three cards — the counts step 2 → 4 → 30 — so nothing
+> shipped moves either way, and every dataset-derived figure in this section is unchanged by the fix.
+
 > > **Corrected.** An earlier revision of this block claimed the N-only form "reproduces Dominaria's
 > > published `rowCells` verbatim" at 6,266. It does not, and there is nothing at 6,266 to reproduce:
 > > the check behind that sentence compared the N-only form against the **closed form**, not against
@@ -292,8 +317,12 @@ carry the contract consequence.
 > form and is false of the shipped grid**, because the pipeline apportions per band. Measured against
 > v3: strict `rowCells == reversed(rowCells)` fails on **30 of 45** worlds (not the 14 an N-only
 > reading predicts), the `≤ 1 pair` form fails on the same 30, **Dominaria differs in 15 mirrored
-> pairs**, and eight worlds — innistrad, zendikar, theros, arcavios, avishkar, amonkhet,
-> thunder-junction, mercadia — carry a pair differing by **two**. This is correct behaviour: the
+> pairs**, and eight worlds — innistrad, zendikar, theros, fiora, avishkar, amonkhet,
+> thunder-junction, new-phyrexia — carry a pair differing by **two**. (The *count* of eight is stable
+> across both v3 datasets; the *membership* is not — the `3ce85aed` → `c9468f11` move swapped
+> arcavios and mercadia out for fiora and new-phyrexia. Which worlds land here is a property of the
+> hue histogram, not of the law, which is one more reason to assert no bound.) This is correct
+> behaviour: the
 > pipeline's `_north_first` alternates a mirrored class's odd card by set-index parity on purpose, so
 > that the north band does not accumulate ~20 extra cards across a large plane's odd-count groups
 > (leg P, DEC-748; copied to DEC-752, where such an assertion would go RED on a correct renderer).
@@ -327,9 +356,9 @@ carry the contract consequence.
 > > **Corrected by the exact-N apportionment above.** An earlier revision of this block argued the
 > > lift was *monotone in N* — "a continuum, not a cliff" — and that N = 3–5 sat at a benign 1.41
 > > aspect. Both were artefacts of the closed form's over-allocation. Under exact-N a small
-> > world's residual lands in one row, so at N = 3 the table is `[1, 2]` (no three-card world is on
+> > world's residual lands in one row, so at N = 3 the table is `[2, 1]` (no three-card world is on
 > > the v3 roster — its counts step 2 → 4 → 30 — so this is the check's reading, not a shipped
-> > table): its northern row is a
+> > table): one of its two rows is a
 > > single cell wrapping the full circumference, at aspect **2.83** and a lift of **156%** — *above*
 > > N = 2's 144%. The lift is monotone in a cell's **solid angle**, not in N, and it is a sawtooth in
 > > N (it rises at N = 2→3, 5→6, 11→12, 28→29, 38→39, 40→41 and 52→53). This does not change what
@@ -393,6 +422,16 @@ the tiling reads as masonry with grout rather than as a skin.
 > world in the sheet's unit test, over the dataset under test — a subdivided world that exceeds it
 > is a `k` computed from the wrong axis.
 >
+> > **Normative — the envelope binds on SUBDIVIDED worlds only, and dropping that qualifier sends
+> > the gate RED on correct behaviour (DEC-749, measured on `c9468f11`).** At `k = (1, 1)` a cell
+> > *is* one facet, so an unsubdivided world's facet total is simply its card count, and **four of
+> > v3's 45 worlds exceed 1,263 legitimately**: dominaria (6,271), ravnica (2,304), innistrad
+> > (1,655) and new-phyrexia (1,405). That is not over-subdivision — it is a large world drawn at
+> > one quad per card, which is the geometry this whole section is trying to get back to. The
+> > envelope is a statement about how finely the sphere can be cut, so it binds only where cutting
+> > happens. `worlds-surface-law.test.ts` asserts both halves: no subdivided world over the
+> > envelope, and exactly those four unsubdivided ones over it.
+>
 > **The winding rule below applies per sub-quad**, and the subdivision is where a "tidy" rewrite is
 > most likely to reintroduce it: a grid generator that emits CCW triangles inverts every cell.
 
@@ -439,6 +478,18 @@ against is that one.
 > pipeline artefact would add a fourth binary and a fourth budget row to buy nothing. Rasterising
 > every world's cells into its own layer — 23,607 into 29 on the 87-plane roster, 24,399 into 45 on
 > v3 — is one pass over the swatch buffer.
+
+> **Normative — longitude is `atan2(x, z)`, and the other spelling mirrors the world (DEC-749).**
+> §1.4 places a cell vertex at "longitude `λ_c + u·(π / rowCells[r])`" and winds the quad with
+> `east` as its `+u`. Those two sentences are consistent under exactly one convention:
+> `east = normalize(cross(Y, n))` runs along **increasing `atan2(x, z)`**, and along *decreasing*
+> `atan2(z, x)`. (Relatedly, `north = cross(east, n)` points toward increasing *colatitude* — south
+> — which is what makes `v` agree with "colatitude `θ_c + v·(dφ/2)`".) A bake that indexes its
+> columns by increasing `atan2(z, x)` — the spelling that looks natural — runs its texels opposite to
+> the sheet's `u`, and the world is **mirrored east-west between its two LOD representations**. It
+> does not announce itself: inside the crossover band both passes draw and cross-fade, so it reads as
+> a smear rather than as an obvious flip, and outside the band each representation is
+> self-consistent. Pin the handedness on `eastOf` directly, not on the bake.
 
 **Crossover.** Below **4 CSS px** median cell height a world draws as §1.2 step 2 — one instance of
 the system icosphere mesh, textured from its equirect layer — and its cell sheet is skipped
