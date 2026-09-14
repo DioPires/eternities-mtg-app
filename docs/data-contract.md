@@ -23,6 +23,7 @@ web/public/data/<dataHash>/
   manifest.json
   planes.json
   stars.bin
+  swatches.bin          # contract v3 only (§5.1)
   search.json
   sets.bin
   planes/<slug>.<n>.json
@@ -41,8 +42,8 @@ web/public/data/<dataHash>/
 | Offset | Type | Field |
 |---|---|---|
 | 0 | `uint8[4]` | magic `E T R N` (`0x45 0x54 0x52 0x4E`) |
-| 4 | `uint8` | kind: `1` = stars, `2` = sets |
-| 5 | `uint8` | `contractVersion` = `2` |
+| 4 | `uint8` | kind: `1` = stars, `2` = sets, `3` = swatches (v3, §5.1) |
+| 5 | `uint8` | `contractVersion` = `3`. A build **writes** one version and **reads** a set of them: v3 readers accept v2 as well, for the reason in §11's v3 entry |
 | 6 | `uint16` | flags (see per-file notes; `0` today) |
 | 8 | `uint32` | `recordCount` |
 | 12 | `uint32` | reserved, `0` |
@@ -96,10 +97,9 @@ Loaded first, with `manifest.json`. Drives plane glows, labels, and the per-plan
 
 ```jsonc
 {
-  "contractVersion": 2,
+  "contractVersion": 3,
   "shardSize": 2000,
   "multiverseRadius": 100.0,       // R of PRD 8.6.1
-  "discThickness": 15.0,           // 0.15 R
   "planes": [{
     "index": 0,                     // == planeIndex in the star record; == row in the DataTexture
     "slug": "blind-eternities",
@@ -115,8 +115,7 @@ Loaded first, with `manifest.json`. Drives plane glows, labels, and the per-plan
     "spinPeriodS": 0.0,             // 0 = no spin (PRD 8.3: the Blind Eternities has zero spin)
     "spinDirection": 1,             // +1 or -1
     "driftAmplitude": 0.0, "driftPeriodS": 0.0, "driftPhase": 0.0,
-    "shearAmplitude": 0.0, "shearPeriodS": 0.0, "shearPhase": 0.0,   // PRD 5.4.13, radians
-    "armPitch": 0.0, "discThickness": 0.05, "bar": false,            // PRD 8.6.2 seeded params
+    "rowCells": [2, 7, 12, 17],     // v3 only; absent on the belt and on an empty plane
     "palette": [0.14, 0.2, 0.17, 0.18, 0.16, 0.1, 0.05],             // W U B R G multi colourless weights, sums to 1
     "nebulaTint": [0.32, 0.38, 0.55],                                // linear RGB, PRD 5.3.5
     "firstYear": 1993, "lastYear": 2026,
@@ -126,6 +125,12 @@ Loaded first, with `manifest.json`. Drives plane glows, labels, and the per-plan
 ```
 
 `sets[].id` indexes the global set dictionary of `search.json` §7, which is the same id space as `sets.bin` §6.3. The list is in chronological order and is the chronology-band order of PRD 5.4.2, so band `b` of a plane is `sets[b]`.
+
+**`radius` changed meaning in v3** without changing type. It is now `0.126 · √cardCount` — constant *area* per card — or the moon floor `0.55` for a plane with no cards; the Blind Eternities still carries `R` for the belt. PRD 5.3.2's `log N` curve and its `[r_min, r_max]` clamp are gone, and with them the run report's radius-headroom table: there is nothing left to saturate (worlds spec §1.3, §1.8).
+
+**`rowCells` (v3)** is the surface grid's per-row cell count, north to south. `rowCells.length` is the row count, row latitudes are equal-angle with `dφ = π / rows` and centres at `(i + ½)·dφ`, and the counts sum to `cardCount`. A client matches a cell to its row by **nearest** colatitude and never by `floor()` — §5's float16 spacing leaves a margin of 3.08× at the pole for nearest-centre and half that for `floor()`. It is shipped rather than derived because the grid is relaxed to the *population*, so no closed form describes it. The key is **absent**, not empty, on the belt and on every empty plane: those have no grid, and a present-but-empty array invites a reader to take `length` as a row count.
+
+**Seven fields retired in v3**: `shearAmplitude`/`PeriodS`/`Phase`, `armPitch`, the per-plane `discThickness`, `bar`, and the top-level `discThickness`. All seven are laws of a spiral disc (PRD 5.4.13, 8.6.2), and a world is a sphere. A v2 dataset still carries them and a v3 reader still reads v2, so a consumer of these must treat them as optional and default them — `undefined` written into a `Float32Array` is `NaN`, and a NaN in the plane table is a plane that vanishes rather than one that stops shearing.
 
 The Blind Eternities is row 0 with the identity transform, radius `R` and zero spin, so its stars' local coordinates are multiverse coordinates scaled by `1/R` and the shader path is identical for every star (PRD 8.3).
 
@@ -137,17 +142,41 @@ Header kind `1`, `recordCount` = star count. Flags bit `0` is reserved for a flo
 
 | Offset | Type | Field | Notes |
 |---|---|---|---|
-| 0 | `float16` | `x` | plane-local, within the frame radius 1.2 (PRD 8.6.2) |
+| 0 | `float16` | `x` | **v2:** plane-local, within the frame radius 1.2 (PRD 8.6.2). **v3:** the unit-sphere cell centre, `\|p\| = 1`, for a plane with cards; the belt position for dust, in the same local frame |
 | 2 | `float16` | `y` | |
 | 4 | `float16` | `z` | |
 | 6 | `uint8` | `planeIndex` | row in `planes.json` and in the `DataTexture` |
 | 7 | `uint8` | `colour` | packed: `hueClass` in bits 0-2, `colourIdentity` in bits 3-7 (amendment A3) |
 | 8 | `uint8` | `sizeClass` | |
 | 9 | `uint8` | `brightness` | quantised log printing count, capped at the plane's 98th percentile (PRD 5.4.10) |
-| 10 | `uint8` | `twinklePhase` | phase = `v / 256 · 2π` |
+| 10 | `uint8` | `twinklePhase` | **v2:** phase = `v / 256 · 2π`. **v3:** reserved, written `0` — there is no twinkle on a mosaic |
 | 11 | `uint8` | `typeMask` | |
 
 30 000 records = 360 016 bytes on the wire before compression.
+
+**v3 keeps all twelve bytes and changes what six of them mean.** The 16-byte header, the stride-12 interleaved upload and every offset are unchanged. Bytes 8-9 (`sizeClass`, `brightness`) stay *written* even though the worlds renderer reads neither, so that a v3 dataset would still render on the galaxy path if the dual-scene period ever needs it; reclaiming them is a v4 conversation. Only `twinklePhase` becomes reserved.
+
+The unit-sphere point gives a cell's centre and, through `east = normalize(cross(Y, n))`, its tangent frame. It does **not** give the cell's half-extents: those come from `planes.json`'s `rowCells` (§4), and the longitudinal one is an *arc length*, `(π / rowCells[r]) · sin θ_r`, not an angle. Dropping that `sin θ_r` draws the polar row of a 6 266-card world 51.6× too wide — a quad wider than the globe it sits on.
+
+**float16 and the row match.** Spacing on `[0.5, 1)` is `2⁻¹¹` = 4.883 × 10⁻⁴, so the round-trip error is at most 2.44 × 10⁻⁴. On an 81-row world the gap between the two polar rows is 1.504 × 10⁻³ in `cos θ`: a margin of **3.08×** for nearest-centre matching and **1.54×** for a `floor()` against the boundary below. At the equator both are slack (79×), so the pole is the whole safety factor and the factor of two is not spare. The pipeline asserts, on the encoded bytes, that every star still resolves to the row it was generated from.
+
+### 5.1 `swatches.bin` (v3)
+
+Header kind `3`, `recordCount` = star count. One record per card, **in star order**, so a lookup is `starIndex · 8 + 16` — no map, no offset table.
+
+```
+16-byte standard header, then starCount × 8 bytes:
+  4 × uint16 RGB565, the card's art downsampled to 2×2, in reading order:
+  [top-left, top-right, bottom-left, bottom-right]
+```
+
+RGB565 is `(r & 0xF8) << 8 | (g & 0xFC) << 3 | b >> 3`; green is the six-bit field, which is the one an RGB555 packing gets wrong. The samples are **averaged in linear light** and re-encoded to sRGB — a byte-space average darkens every mixed quadrant, and a mosaic of tens of thousands of cells is where a systematic darkening reads as a bug rather than as art. The quadrant split is `width // 2` / `height // 2`, so an odd dimension gives the extra pixel to the right and bottom halves; arbitrary, but fixed, because a content hash needs *a* rule.
+
+The source is Scryfall's `art_crop` of **printing index 0** — the card's earliest-released printing, which is the one a cell draws and credits (§9). `small` would be the whole card, frame included, and a 2×2 of that is dominated by frame colour, which *is* the colour identity, which is `hueClass` again.
+
+It is its own file and deliberately **not** a fourth section of `sets.bin`: PRD 7.2 budgets `search.json` + `sets.bin` together at 700 KB and that pair is at 96% of it, which is the project's one genuinely tight row. Fetched with `stars.bin` instead, on the before-intro row, which has 3 MB (§8).
+
+On production: 28 603 × 8 + 16 = **228 840 bytes raw, 191.9 KB brotli — 86% of it survives compression.** Four uncorrelated 16-bit samples per card are close to incompressible, which is the expected result and is why the file gets a budget row of its own rather than being assumed away.
 
 ### Byte 7 — the packed colour (amendment A3)
 
@@ -254,6 +283,34 @@ Two things to read the table with:
 |---|---|---|
 | Largest single plane detail shard, encoded | ≤ 1.5 MB | 2.5 MB |
 
+### 8.1 What contract v3 cost, measured
+
+The v3 production dataset is `83c4f65875f037c8` — the same 28 603 cards from the same pinned
+2026-09-14 bulk file as `dabe2c9a68b4d799` above, so the two columns differ only by the contract.
+
+| Row | Target | v2 `dabe2c9a…` | v3 `83c4f658…` |
+|---|---|---|---|
+| `search.json` + `sets.bin` | 700 KB / 1.5 MB ceiling | 669.0 KB (95.6%) | **669.0 KB — unchanged** |
+| First frame (`manifest` + `planes`) | — | 16.9 KB | 15.9 KB |
+| Before intro (+ `stars.bin`, + `swatches.bin`) | 3 MB | 254.6 KB | **347.4 KB (11%)** |
+| Largest plane shard | 1.5 MB / 2.5 MB ceiling | 339.9 KB | 361.0 KB (24%) |
+
+Four things a reviewer should read off it rather than take on trust.
+
+1. **The constrained row does not move by a single byte.** `search.json` and `sets.bin` are
+   byte-identical across the two datasets, which is what §5.1's "its own file" decision buys.
+   Folding `swatches.bin` in as a section would have put the pair at ≈ 861 KB — 23% *over* a
+   reported target, on the one row with 31 KB of headroom.
+2. **`swatches.bin` compresses about as badly as expected**: 223.5 KB raw → 191.9 KB brotli, 86%
+   surviving. The worlds spec estimated ~90% and budgeted 455 KB for the before-intro row; the
+   measured figure is 347.4 KB, so the row comes in *under* the estimate and the conclusion — 11%
+   of a 3 MB target — never depended on it.
+3. **`stars.bin` got dramatically cheaper**: 237.7 → 139.6 KB brotli, −41%. Unit vectors on a
+   regular grid have far less entropy than seeded spiral positions, and the file is the same 12
+   bytes per star either way. That is where most of `swatches.bin`'s cost was already paid for.
+4. **The largest shard grew 21.1 KB** (6.2%), which is the `artist` field arriving inline on
+   16 042 printings of `dominaria.0.json`. Against a 1.5 MB target that is a 24% row.
+
 ## 9. Plane detail — `planes/<slug>.<n>.json`
 
 **Amendment A1:** *every* plane shards at `shardSize` = 2000 cards per file, not only the Blind Eternities. The filename always carries the shard number, including for a one-shard plane, so the loader has one code path. A card's shard is `floor(localIndex / 2000)` and needs no lookup table (PRD 8.3), where `localIndex = starIndex - plane.starOffset`.
@@ -275,12 +332,18 @@ Two things to read the table with:
     "ci": "",                                       // colour identity letters, "" = colourless
     "r": 2,                                         // first-printing size class
     "l": "normal",                                  // Scryfall layout, a closed union (below)
-    "p": [["91fdb56b-…", 12, "u", 1783903215, "266"]]  // printings
+    "p": [["91fdb56b-…", 12, "u", 1783903215, "266", "Mark Tedin"]]  // printings
   }]
 }
 ```
 
-A printing is a fixed tuple `[id, setId, rarityChar, imageTs, collectorNumber]`, ordered by release date — the planet order of PRD 5.6.7. `rarityChar` is one of `c u r m` (already normalised per PRD 4.8).
+A printing is a fixed tuple `[id, setId, rarityChar, imageTs, collectorNumber, artist]`, ordered by release date — the planet order of PRD 5.6.7. `rarityChar` is one of `c u r m` (already normalised per PRD 4.8).
+
+**`artist` is v3 (worlds spec §2.3)** and is a five-element tuple in v2. It is per *printing*, not per card, because art differs between printings, and `""` where Scryfall has none — present and empty, never absent, so the tuple's length is fixed. It is an inline string rather than an id into a dictionary: a dictionary is the smaller encoding, but its only sensible home is `search.json`, which is half of the 96%-full pair, and the shards have 4.4× headroom. The cost goes where the headroom is. Across production it is ≈ 1.2 MB raw over 93 shards and +21 KB brotli on the largest.
+
+It is in the contract because concept B shows tens of thousands of `art_crop`s with no card in sight. Scryfall's terms ask that an art crop be shown with the artist and copyright in the same interface *or* the full card alongside; the focused-card planets satisfy the alternative clause today and a mosaic of cells does not. **Printing index 0** is the one a cell draws (§5.1) and `p[0][5]` is therefore the credit.
+
+**Ordering, and a trap.** `p` is sorted by the *printing's* set release date, so `p[0]` is the earliest-released printing and is **not** necessarily the card's debut printing — a promo or a list reprint whose set shipped earlier sorts ahead of the set the card first appeared in. The swatch stage and the shard writer share one function so the art and the credit cannot disagree.
 
 `imageTs` moves on Scryfall's schedule rather than the product's, so a refresh that changes nothing
 a user could see still rewrites the shards that contain those cards. That churn was measured and
@@ -347,6 +410,59 @@ The card's plane is not repeated in the shard; the URL's plane slug and the `pla
 - Adding a field is a minor change and bumps `pipelineVersion`. Changing a byte layout, a section id, an enum value, or a filename bumps `contractVersion` and requires a review by the Frontend Engineer and the Interactive Tools Engineer.
 
 ## 11. Change log
+
+### v3, `pipelineVersion` 0.5.0 — concept B "worlds", 2026-09-14
+
+One bump carrying three changes, because all three are a pipeline re-run plus a data PR and there is
+no reason to pay for that three times. `docs/worlds/spec.md` §2 is the spec; this is what shipped.
+
+- **`stars.bin` keeps all twelve bytes and changes what six of them mean.** Bytes 0-5 are now a
+  unit-sphere cell centre rather than a plane-local spiral position, and byte 10 (`twinklePhase`)
+  is reserved, written `0`. Bytes 8-9 stay written. No offset moves and the stride-12 interleaved
+  upload is untouched (§5).
+- **`swatches.bin` arrives** (§5.1): a per-card 2×2 RGB565 statistic of the card's own art. The
+  enabler for the whole concept — the contract carried `hueClass`, which is a seven-way
+  classification of colour *identity* and not a pixel statistic.
+- **`planes.json` trades seven spiral fields for `rowCells`** and `radius` changes meaning (§4);
+  **the printing tuple gains `artist`** (§9).
+
+**This bump is a break in one direction only, and that is deliberate.** A v2 decoder reading a v3
+file would read spiral positions that are unit vectors and shear fields that are not there: silent,
+which is what §10's rule exists for. But a **v3 decoder still reads v2**, by design and by test.
+`web/src/data/types.ts` carries `CONTRACT_VERSION` — the version this build *writes* — beside
+`READABLE_CONTRACT_VERSIONS`, the set it *accepts*, and both `decode.ts` and `load.ts` gate on the
+set. The reason is the dual-scene period: a data directory is content-hashed and immutable and
+`web/datasets.json` names which one a build uses, so the v3 dataset was published as a **new
+directory** with `active` left on the v2 one. A build that refused v2 would have broken what is
+deployed on the very first v3 commit. The pair closes when the galaxy retires; until then a
+consumer that needs a v3-only field checks for the **field**, not the version — `rowCells` is
+absent on exactly the planes that have no grid, which makes that check meaningful.
+
+The test that guards the version gate had to change with it. `CONTRACT_VERSION - 1` is 2 and v2 is
+now readable, so the mutant is version `1`, and a second case asserts the v2 row *loads* — a gate
+that accepted everything and a gate that accepted only v3 would both have passed a test that only
+ever mutated to v2.
+
+**Data.** The 88-plane roster of DEC-745, 28 603 cards, 45 worlds and 42 dark moons — not the 29/57
+split the spec illustrates, which predates PR #41's overrides being baked into a dataset. Every
+artefact re-hashes: the test vector moved from `contract/test-vectors/v2/` to `v3/`, the fixtures
+are `c791f8d91a9ee048` and `d8d18ad21236561c`, and production is `83c4f65875f037c8` with
+`dabe2c9a68b4d799` kept on disk and still named by `active`. §8.1 has the measured budget.
+
+Three things a reviewer should check rather than take on trust:
+
+1. **The surface law is exact, not approximate.** The run report's assignment table must read
+   `N / 0 / 0` for every world. The grid relaxes to the population — only the per-row *cell counts*
+   move — and the pipeline fails its own invariant test if a card is displaced. The closed form
+   `round(2π·sin θ / (aspect·dφ))` disagrees with the card count on 33 of the 45 worlds, which is
+   why §4 ships `rowCells` rather than a formula.
+2. **`θ` is colatitude and the row formula carries `sin`.** Read as latitude the counts run
+   `+1 → −1` down the sphere and an 81-row world sums to **zero** cells. Pinned by a test that
+   asserts the degenerate reading is degenerate, not only that the correct one is correct.
+3. **The swatch is a statistic, not a copy.** 8 bytes per card, decoded at fetch time; no image is
+   ever stored. The fetch is resumable and keyed by `(printing id, imageTs)`, so a refresh costs
+   only what Scryfall actually changed — the first cold warm was 28 583 requests and 2.32 GB over
+   24 minutes, and the second run of the same build made zero.
 
 ### v2, `pipelineVersion` 0.4.0 — colour identity in the star record, 2026-09-05
 
