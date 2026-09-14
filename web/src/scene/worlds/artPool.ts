@@ -191,6 +191,27 @@ export class ArtPool {
     return layer
   }
 
+  /**
+   * The fetch was dropped or cancelled: the reservation goes back, and the key stays askable.
+   *
+   * > **Not {@link ArtPool.fail}, and the difference is a session-long one (§1.6).** "It failed" and
+   * > "you stopped wanting it" are different facts — `cards/imageQueue`'s header makes the same
+   * > distinction and gives the same reason. A cell that drifted out of the admitted set while its
+   * > fetch waited must be fetchable when the camera comes back, so its key must not enter
+   * > {@link ArtPool.hasFailed}'s set; but the layer it claimed has to go back, or a dropped request
+   * > holds one for the rest of the session and the pool leaks a layer per drop.
+   *
+   * Only ever releases a RESERVED layer. A key that has since resolved is resident and keeps its
+   * layer — a late cancellation must not evict a picture that already landed.
+   */
+  release(key: number): void {
+    const layer = this.byKey.get(key)
+    if (layer === undefined || this.state[layer] !== LAYER_RESERVED) return
+    this.state[layer] = LAYER_FREE
+    this.byKey.delete(key)
+    this.reservedCount -= 1
+  }
+
   /** The fetch failed: the layer goes back, and the key is never asked for again this session. */
   fail(key: number): void {
     const layer = this.byKey.get(key)

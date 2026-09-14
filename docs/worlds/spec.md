@@ -608,6 +608,42 @@ worth keeping), cache-busted by the contract's own `imageTs`, a failed key never
 session, and a per-session byte budget that degrades to swatch-only when exceeded. Eviction is LRU
 with a 30-frame grace: a layer wanted this frame is never evicted.
 
+> **Normative — four of those five rules are the card tier's queue, and the worlds path reuses it
+> rather than opening a second one (DEC-749).** PRD 7.2's "concurrent image requests to Scryfall: 6"
+> is a budget against the *origin*: thumbnails, the focused card and the worlds surface share one
+> queue, and three queues of six would be eighteen. `cors`/`omit`, the concurrency cap and the
+> no-retry rule live in `scene/cards/imageQueue`; the `imageTs` cache-bust lives in `data/images`'
+> `imageUri`. Only the **byte budget** is new, and it is the one rule that could not be inherited —
+> a budget against the network cannot be read off a decoded `ImageBitmap`, whose footprint is a
+> constant `128*96*4` whatever crossed the wire. The queue therefore reports `Blob.size` on its
+> result, on the **failure** variant as well as the success one: a body that arrived and then failed
+> to decode has been paid for, and a budget that charged only successes would under-count exactly
+> the traffic it exists to bound.
+>
+> **Normative — degrading is not tearing down.** Over budget the stream stops *asking*. Layers
+> already resident keep drawing their art and are not evicted; §1.4's shading path degrades to the
+> swatch only for cells that never got one. The probe reports `swatchOnly` so the gate can read it
+> before it reads W4 — a session that went swatch-only part-way has a legitimate reason for a low
+> art count, and scoring that as a threshold failure is W4 being carried by the wrong signal.
+>
+> **Normative — a dropped request is not a failed one, and conflating them is a session-long bug
+> (DEC-749).** The pool needs a fourth transition beside `reserve`/`resolve`/`fail`: a **release**
+> that hands a RESERVED layer back *without* entering the never-retry set. `imageQueue` already
+> distinguishes `'failed'` from `'dropped'`/`'cancelled'` for this reason — a cell that drifted out
+> of the admitted set while its request waited must be fetchable when the camera comes back. Marking
+> it failed makes it unfetchable for the session; leaving the reservation in place leaks a layer per
+> drop. Release only ever takes back a RESERVED layer, so a cancellation arriving after the fetch
+> landed is inert and cannot evict a picture that already exists.
+
+**Letterboxing is a decode-time decision, not a draw-time one (DEC-749).** `art_crop` is 626x457 and
+a layer is 128x96 — `1.370` against `1.333`, a **2.7%** horizontal stretch, which reads as a subtly
+fat card face repeated across a hemisphere. `createImageBitmap` scales to exactly the width and
+height it is given and does not preserve aspect, so the fitted size (`128x93`, centred with a
+one-texel bar) is what the decode must be *asked* for; handing it the full `128x96` bakes the
+stretch in where nothing downstream can undo it. Fit to whole texels, so the residual aspect error
+is **under 0.5%** rather than zero — that is the quantity to assert, since an exact-equality
+assertion fails on the correct implementation.
+
 ### 1.7 Lighting and the atmosphere rim
 
 > **Normative — the key light is camera-relative**, offset +0.72 rad in azimuth and +0.38 rad in
