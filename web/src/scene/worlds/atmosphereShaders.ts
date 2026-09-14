@@ -98,6 +98,19 @@ void main() {
  * > drawn additively over the world. It does not read as a wrong falloff — it reads as a world that
  * > has been washed out by bloom, which is exactly the thing §1.1 deleted the post chain to stop.
  * > §1.7 writes the absolute value for this reason and this shader keeps it.
+ *
+ * > **Normative — `rgb` here is a *premultiplied* colour, and `atmosphere.ts` sets
+ * > `premultipliedAlpha: true` to match (DEC-773 F1).** The shipped blend is then
+ * > `blendFunc(ONE, ONE)` and the `colour` below is added to the frame verbatim, so §1.7's falloff
+ * > is applied exactly **once**. Under three's default `premultipliedAlpha: false` the same
+ * > `AdditiveBlending` is `blendFunc(SRC_ALPHA, ONE)`, which multiplies `colour` by `alpha` a second
+ * > time — and because both channels carry `intensity * lit`, the 2.6 exponent composites as 5.2 and
+ * > the night floor as `0.55² = 0.3025`. Nothing about the picture says which of the two is running;
+ * > it reads as a thin hard ring at the silhouette rather than as a wrong exponent.
+ * >
+ * > So the two writes below are the premultiplied pair — `colour` is `alpha · (vTint ·
+ * > RIM_STRENGTH)` — and the dither goes into **both**, which keeps that relation true and puts the
+ * > de-banding noise in the channel that is actually composited.
  */
 export const ATMOSPHERE_FRAGMENT_SHADER = /* glsl */ `
 ${ATMOSPHERE_DEFINE_BLOCK}

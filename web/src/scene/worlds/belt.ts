@@ -153,7 +153,14 @@ export function buildBelt(options: BeltOptions): Points {
   // A card past the last set's share (see `setOfCard`) is drawn at the cold end rather than dropped:
   // the position is real — the pipeline emitted it — so hiding it would under-count the belt while
   // the arcs still looked complete.
+  //
+  // **Counted, because it is the shape `setOfCard`'s own doc comment refuses (DEC-773's note).**
+  // Painting an orphan with `perSet[0]` *is* a silent clamp, just onto the first set rather than the
+  // last, and it reads as a legitimately old arc. Today it never happens — 4,204 of 4,204 cards fall
+  // inside their own set's arc — and the whole point is to find out on the day it stops being true,
+  // rather than to look at a belt whose colours have quietly stopped meaning years.
   const orphan = perSet[0] ?? ([0.2, 0.3, 0.6] as const)
+  let orphans = 0
 
   for (let card = 0; card < count; card += 1) {
     const star = plane.starOffset + card
@@ -164,10 +171,20 @@ export function buildBelt(options: BeltOptions): Points {
     positions[card * 3 + 2] = stars.z(star) * multiverseRadius
 
     const set = setOfCard(plane.sets, card)
-    const colour = (set >= 0 ? perSet[set] : undefined) ?? orphan
+    const resolved = set >= 0 ? perSet[set] : undefined
+    if (!resolved) orphans += 1
+    const colour = resolved ?? orphan
     colours[card * 3] = colour[0]
     colours[card * 3 + 1] = colour[1]
     colours[card * 3 + 2] = colour[2]
+  }
+
+  if (orphans > 0) {
+    console.warn(
+      `${plane.slug}: ${orphans} of ${count} belt cards fall past the last set's share of ` +
+        `plane.sets (${plane.sets.length} sets, ${plane.sets.reduce((sum, set) => sum + set.cardCount, 0)} cards); ` +
+        `each is drawn with the FIRST set's colour, so the year ramp is wrong for them`,
+    )
   }
 
   const geometry = new BufferGeometry()
@@ -176,7 +193,7 @@ export function buildBelt(options: BeltOptions): Points {
   geometry.computeBoundingSphere()
 
   const uniforms: { [uniform: string]: IUniform } = {
-    uSizePx: { value: BELT_POINT_SIZE_PX * (options.pixelRatio ?? 1) },
+    uSizePx: { value: beltPointSize(options.pixelRatio ?? 1) },
   }
   const points = new Points(
     geometry,
@@ -194,10 +211,25 @@ export function buildBelt(options: BeltOptions): Points {
   return points
 }
 
+/**
+ * {@link BELT_POINT_SIZE_PX} in **device** px, which is what `gl_PointSize` is in.
+ *
+ * Floored at **1**, not at 0 (DEC-773's note): `gl_PointSize` 0 is a belt that is not drawn, and no
+ * display reports fewer than one device pixel per CSS pixel — so a ratio under 1 is a bad reading
+ * and the safe response to one is a belt that is slightly too large, not one that has disappeared in
+ * a way that reads as "the dust plane failed to load".
+ *
+ * One writer for both the build and the per-frame re-resolve, so the floor cannot hold on one path
+ * and not the other.
+ */
+function beltPointSize(pixelRatio: number): number {
+  return BELT_POINT_SIZE_PX * Math.max(pixelRatio, 1)
+}
+
 /** Re-resolve {@link BELT_POINT_SIZE_PX} against a new device pixel ratio. See `beltShaders.ts`. */
 export function setBeltPixelRatio(points: Points, pixelRatio: number): void {
   const material = points.material as ShaderMaterial
-  material.uniforms.uSizePx!.value = BELT_POINT_SIZE_PX * Math.max(pixelRatio, 0)
+  material.uniforms.uSizePx!.value = beltPointSize(pixelRatio)
 }
 
 /** Free the belt's buffers. The geometry and the material are both this pass's own. */

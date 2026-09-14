@@ -7,20 +7,27 @@
  *
  *  - **The far field produces coincident samples, and that is the design.** "When the camera is far
  *    the anchor relaxes onto the exit and the surface runs collapse to nothing — the far-field
- *    behaviour you want, at no special case." 48 of the 144 samples are then identical, their
- *    tangent is a zero vector, and a `normalize` on it emits `NaN` — which three propagates into the
- *    bounding sphere and takes the *whole* ribbon out, at exactly the distance where the tether is
- *    most of what is on screen.
- *  - **The width is CSS px, at every depth.** The ribbon spans a world's surface and 200 units of
- *    empty space in one strip, so a constant *world-space* half-width is invisible at one end and a
- *    bar at the other. The prototype sized against the drawing buffer, which is a half-width ribbon
- *    on every retina display and is identical to a correct one at the dpr 1 the gate runs at.
+ *    behaviour you want, at no special case." 48 of the 144 samples are then identical and their
+ *    tangent is the zero vector. *Not* a `NaN` — `Vector3.normalize()` is `divideScalar(length() ||
+ *    1)`, so three never emits one here, and a row asserting "no NaN" measures a property three
+ *    already guarantees and cannot tell the zero-tangent guard from its absence (DEC-773 F6). What
+ *    the guard actually decides is the ribbon's **orientation**: without it those 48 samples fall
+ *    through to the `(0, 1, 0)` fallback side vector, which is a world axis and not square to the
+ *    eye, so the far field is drawn as a twisted strip. That is what is asserted below.
+ *  - **The width is CSS px, at every depth *and* everywhere in the frame.** The ribbon spans a
+ *    world's surface and 200 units of empty space in one strip, so a constant *world-space*
+ *    half-width is invisible at one end and a bar at the other. The prototype sized against the
+ *    drawing buffer, which is a half-width ribbon on every retina display and is identical to a
+ *    correct one at the dpr 1 the gate runs at. And `fovScale` inverts a projection whose
+ *    denominator is *view-space depth*, so sizing against the radial distance inflates the ribbon
+ *    off-axis (DEC-773 F7) — which is invisible to any row that divides by that same radial
+ *    distance to get its pixels. These rows project through the camera's own matrices instead.
  *  - **The surface run is a great circle.** `lerp().normalize()` looks equivalent and bunches
  *    samples at the two ends, which over a 24-sample run is a visibly uneven ribbon.
  */
 
 import { describe, expect, it } from 'vitest'
-import { PerspectiveCamera, Quaternion, Vector3, type ShaderMaterial } from 'three'
+import { PerspectiveCamera, Quaternion, Vector3, Vector4, type ShaderMaterial } from 'three'
 
 import { RENDER_ORDER_TETHER } from '../src/scene/worlds/passOrder'
 import {
@@ -36,7 +43,24 @@ import {
 } from '../src/scene/worlds/tether'
 import { SHADER_NAME_WORLD_TETHER, SHADER_NAME_WORLD_TETHER_PAD } from '../src/scene/shaderNames'
 
+const CSS_WIDTH = 1920
 const CSS_HEIGHT = 1080
+
+/**
+ * A world point in CSS pixels, from the camera's **own** matrices (DEC-773 F7).
+ *
+ * The rows below used to divide the strip's world-space width by the *radial* distance and call the
+ * result pixels, which is the same substitution the shipped `ribbonise` was making — so the test
+ * agreed with the defect by construction and read 2.1 px at every sample while the ribbon was 33%
+ * wide at the frame edge. Projecting the written vertices through `projectionMatrix` is the only
+ * spelling that cannot share an error with the code it measures.
+ */
+function pixelsOf(view: PerspectiveCamera, point: Vector3): [number, number] {
+  const clip = new Vector4(point.x, point.y, point.z, 1)
+    .applyMatrix4(view.matrixWorldInverse)
+    .applyMatrix4(view.projectionMatrix)
+  return [(clip.x / clip.w) * (CSS_WIDTH / 2), (clip.y / clip.w) * (CSS_HEIGHT / 2)]
+}
 
 function camera(position: Vector3, target: Vector3): PerspectiveCamera {
   const view = new PerspectiveCamera(55, 1920 / CSS_HEIGHT, 0.1, 5000)
@@ -93,6 +117,21 @@ describe('§1.9s geometry', () => {
     tether.dispose()
   })
 
+  it('composites what its shaders write, on the ribbon and on BOTH pads', () => {
+    // DEC-773 F1's arithmetic, applied here as tuning rather than as a spec correction: §1.9 names
+    // no falloff, so the double-apply was not a deviation — but `ends`, the travelling `flow` and
+    // the pads' `ring`/`core` were each being squared by `blendFunc(SRC_ALPHA, ONE)` and neither
+    // shader said so. Both pads, not just `pads[0]`: `padMaterial` is called twice.
+    const { tether } = pass()
+    expect((tether.ribbon.material as ShaderMaterial).premultipliedAlpha).toBe(true)
+    for (const pad of tether.pads) {
+      expect((pad.material as ShaderMaterial).premultipliedAlpha).toBe(true)
+    }
+    // The two are separate materials, so a single shared instance would make the loop above vacuous.
+    expect(tether.pads[0].material).not.toBe(tether.pads[1].material)
+    tether.dispose()
+  })
+
   it('is hidden until both ends are named, and hides again on null', () => {
     const tether = new TetherPass()
     expect(tether.active).toBe(false)
@@ -122,12 +161,14 @@ describe('the far field collapses the surface runs, and must not take the ribbon
     expect(anchorSlide(4)).toBeGreaterThan(anchorSlide(6))
   })
 
-  it('emits no NaN when 48 of the 144 samples are coincident', () => {
-    // **The row this file exists for.** Far out, both surface runs collapse to a point: 24 samples
-    // at each end are identical, `next − previous` is the zero vector, and `normalize()` on it is
-    // `NaN`. One `NaN` position makes three's bounding-sphere radius `NaN`, the frustum test then
-    // answers false for every frame, and the entire tether disappears — silently, and at the
-    // distance §1.9 says the tether is the far-field behaviour "you want".
+  it('keeps every collapsed sample square to the eye, which is what the zero-tangent guard buys', () => {
+    // **The row the guard is actually pinned by (DEC-773 F6).** Far out, both surface runs collapse
+    // to a point: 24 samples at each end are identical and `next − previous` is the zero vector.
+    // Removing the guard does *not* produce a `NaN` — three's `normalize()` divides by
+    // `length() || 1` — so the old "emits no NaN" row passed with the guard deleted. What removing
+    // it produces is a zero tangent, a zero cross product, and therefore the `(0, 1, 0)` fallback
+    // side vector on all 48 samples: a world axis, which is square to the eye at exactly one camera
+    // pose and is a twisted strip at every other.
     const { tether, a, b } = pass()
     const view = camera(new Vector3(110, 400, 900), new Vector3(110, 0, 0))
 
@@ -179,6 +220,51 @@ describe('the far field collapses the surface runs, and must not take the ribbon
     // And the run really did collapse — a ribbon still spanning the surface would clear `eps` by
     // orders of magnitude, so the bound above has to be shown to be tight rather than merely met.
     expect(eps).toBeLessThan(A_RADIUS * 1e-5)
+
+    // --- what the guard decides ---------------------------------------------------------------
+    //
+    // Every sample's half-offset is `±side`, and `side = normalise(tangent × view)` is perpendicular
+    // to the view direction **by construction** — that is what makes the strip face the camera.
+    // Carrying the last live tangent through a collapsed run keeps that true; the `(0, 1, 0)`
+    // fallback does not, and the fallback is exactly where a removed guard lands.
+    const sideUnit = (i: number): Vector3 =>
+      new Vector3(
+        array[i * 6 + 3]! - array[i * 6]!,
+        array[i * 6 + 4]! - array[i * 6 + 1]!,
+        array[i * 6 + 5]! - array[i * 6 + 2]!,
+      ).normalize()
+    const viewUnit = (i: number): Vector3 => {
+      const [cx, cy, cz] = centre(i)
+      return view.position.clone().sub(new Vector3(cx, cy, cz)).normalize()
+    }
+
+    const collapsed = [
+      ...Array.from({ length: TETHER_SURFACE_SAMPLES }, (_, i) => i),
+      ...Array.from(
+        { length: TETHER_SURFACE_SAMPLES },
+        (_, i) => TETHER_SURFACE_SAMPLES + TETHER_SPAN_SAMPLES + i,
+      ),
+    ]
+    expect(collapsed).toHaveLength(48)
+    for (const i of collapsed) {
+      expect(
+        Math.abs(sideUnit(i).dot(viewUnit(i))),
+        `collapsed sample ${i} is not square to the eye`,
+      ).toBeLessThan(1e-6)
+    }
+
+    // **The negative control.** The assertion above is only discriminating if the fallback fails it
+    // at this pose — at a pose where the camera happens to sit in the world's own equatorial plane,
+    // `(0, 1, 0)` is perpendicular to the view and a removed guard would score green.
+    const fallback = new Vector3(0, 1, 0)
+    for (const i of [0, TETHER_SAMPLES - 1]) {
+      expect(Math.abs(fallback.dot(viewUnit(i)))).toBeGreaterThan(0.3)
+    }
+
+    // And the far end's collapsed run carries the **last live tangent** rather than any perpendicular
+    // that happens to be square to the eye: its side vector is the one the last span sample wrote.
+    const lastLive = TETHER_SURFACE_SAMPLES + TETHER_SPAN_SAMPLES - 1
+    expect(sideUnit(TETHER_SAMPLES - 1).angleTo(sideUnit(lastLive))).toBeLessThan(1e-3)
     tether.dispose()
   })
 
@@ -217,32 +303,77 @@ describe('the far field collapses the surface runs, and must not take the ribbon
   })
 })
 
-describe('the ribbon holds a constant CSS width at every depth', () => {
-  it('scales its world-space half-width with the samples own depth', () => {
-    // The near end of the strip is on a world's surface and the far end is 220 units away, so a
-    // constant world-space width is the failure mode: invisible at one end, a bar at the other.
-    // Projected back through the same perspective, both must come out at 2.1 CSS px.
-    const { tether } = pass()
-    const view = camera(new Vector3(0, 40, 60), new Vector3(110, 0, 0))
-    for (let frame = 0; frame < 30; frame += 1) tether.update(view, CSS_HEIGHT, frame / 60, 1 / 60)
+/** Sample `i`'s half-width in CSS px and its centre's screen position, measured not derived. */
+function measureAt(
+  tether: TetherPass,
+  view: PerspectiveCamera,
+  i: number,
+): { halfWidthPx: number; screen: [number, number]; viewDepth: number; radial: number } {
+  const array = positions(tether)
+  const left = new Vector3(array[i * 6], array[i * 6 + 1], array[i * 6 + 2])
+  const right = new Vector3(array[i * 6 + 3], array[i * 6 + 4], array[i * 6 + 5])
+  const centre = left.clone().add(right).multiplyScalar(0.5)
+  const [lx, ly] = pixelsOf(view, left)
+  const [rx, ry] = pixelsOf(view, right)
+  const forward = new Vector3(0, 0, -1).applyQuaternion(view.quaternion)
+  return {
+    halfWidthPx: Math.hypot(rx - lx, ry - ly) / 2,
+    screen: pixelsOf(view, centre),
+    viewDepth: centre.clone().sub(view.position).dot(forward),
+    radial: centre.distanceTo(view.position),
+  }
+}
 
-    const fovScale = CSS_HEIGHT / (2 * Math.tan((view.fov * Math.PI) / 360))
-    const array = positions(tether)
-    const widths: number[] = []
-    const depths: number[] = []
-    // The middle of the span, away from the two flares at the ends.
-    for (let i = 50; i < 95; i += 5) {
-      const left = new Vector3(array[i * 6], array[i * 6 + 1], array[i * 6 + 2])
-      const right = new Vector3(array[i * 6 + 3], array[i * 6 + 4], array[i * 6 + 5])
-      const centre = left.clone().add(right).multiplyScalar(0.5)
-      const depth = view.position.distanceTo(centre)
-      widths.push(((left.distanceTo(right) / 2) * fovScale) / depth)
-      depths.push(depth)
+describe('the ribbon holds a constant CSS width at every depth and everywhere in the frame', () => {
+  it('measures 2.1 CSS px at every in-frame sample, on the axis and at the edge', () => {
+    // The near end of the strip is on a world's surface and the far end is 220 units away, so a
+    // constant world-space width is one failure mode: invisible at one end, a bar at the other.
+    // **Off-axis is the other one, and it is the one that shipped (DEC-773 F7):** `fovScale` inverts
+    // a projection whose denominator is view-space depth, and the radial distance the code used is
+    // `depth / cos θ`. The half-width then grows toward the frame edge while every sample still
+    // divides out to 2.1 under the same substitution — which is why this row projects.
+    const { tether } = pass()
+    // **Two poses, because one cannot carry both claims.** Broadside puts the span across the
+    // frame's whole width at a nearly constant depth (the off-axis half of the sweep); oblique runs
+    // it away from the eye and keeps it near the axis (the depth half). A row with only the second
+    // is the row that shipped, and it could not see F7.
+    const rows: ReturnType<typeof measureAt>[] = []
+    for (const [eye, at] of [
+      [new Vector3(110, 40, 150), new Vector3(110, 0, 0)],
+      [new Vector3(0, 40, 60), new Vector3(110, 0, 0)],
+    ] as const) {
+      const view = camera(eye.clone(), at.clone())
+      for (let frame = 0; frame < 30; frame += 1) tether.update(view, CSS_HEIGHT, frame / 60, 1 / 60)
+      // The middle of the span, away from the two flares at the ends.
+      for (let i = 30; i < 115; i += 1) {
+        const row = measureAt(tether, view, i)
+        if (row.viewDepth <= 0) continue
+        if (Math.abs(row.screen[0]) > CSS_WIDTH / 2 || Math.abs(row.screen[1]) > CSS_HEIGHT / 2) {
+          continue
+        }
+        rows.push(row)
+      }
     }
 
-    // The depths must actually differ, or "constant at every depth" is a claim about one depth.
+    // The two things that have to vary, or "constant at every depth / everywhere in frame" is a
+    // claim about one sample. The second bound is stated **as the defect's own size**: the shipped
+    // spelling divided by `radial` where the projection wants `viewDepth`, so its error factor at a
+    // sample is exactly `radial / viewDepth`. Requiring the sweep to reach 1.20 says the poses below
+    // include ones where the old code was at least 20% wide — which is what makes the 2.1 readings
+    // a refutation of it rather than a re-measurement near the axis, where it was always right.
+    expect(rows.length).toBeGreaterThan(10)
+    const depths = rows.map((row) => row.viewDepth)
     expect(Math.max(...depths) / Math.min(...depths)).toBeGreaterThan(1.5)
-    for (const width of widths) expect(width).toBeCloseTo(TETHER_HALF_WIDTH_PX, 6)
+    const inflation = rows.map((row) => row.radial / row.viewDepth)
+    expect(Math.max(...inflation), `worst pre-fix inflation swept`).toBeGreaterThan(1.2)
+
+    for (const row of rows) {
+      expect(
+        row.halfWidthPx,
+        `sample at (${row.screen[0].toFixed(0)}, ${row.screen[1].toFixed(0)}) px, ` +
+          `view depth ${row.viewDepth.toFixed(1)}`,
+      ).toBeCloseTo(TETHER_HALF_WIDTH_PX, 4)
+    }
     tether.dispose()
   })
 
@@ -251,18 +382,15 @@ describe('the ribbon holds a constant CSS width at every depth', () => {
     const view = camera(new Vector3(0, 40, 60), new Vector3(110, 0, 0))
     for (let frame = 0; frame < 30; frame += 1) tether.update(view, CSS_HEIGHT, frame / 60, 1 / 60)
 
-    const fovScale = CSS_HEIGHT / (2 * Math.tan((view.fov * Math.PI) / 360))
-    const widthAt = (i: number) => {
-      const left = new Vector3(array[i * 6], array[i * 6 + 1], array[i * 6 + 2])
-      const right = new Vector3(array[i * 6 + 3], array[i * 6 + 4], array[i * 6 + 5])
-      const depth = view.position.distanceTo(left.clone().add(right).multiplyScalar(0.5))
-      return ((left.distanceTo(right) / 2) * fovScale) / depth
-    }
-    const array = positions(tether)
-
-    expect(widthAt(0)).toBeCloseTo(TETHER_HALF_WIDTH_PX * TETHER_ANCHOR_FLARE, 5)
-    expect(widthAt(TETHER_SAMPLES - 1)).toBeCloseTo(TETHER_HALF_WIDTH_PX * TETHER_ANCHOR_FLARE, 5)
-    expect(widthAt(72)).toBeCloseTo(TETHER_HALF_WIDTH_PX, 5)
+    expect(measureAt(tether, view, 0).halfWidthPx).toBeCloseTo(
+      TETHER_HALF_WIDTH_PX * TETHER_ANCHOR_FLARE,
+      4,
+    )
+    expect(measureAt(tether, view, TETHER_SAMPLES - 1).halfWidthPx).toBeCloseTo(
+      TETHER_HALF_WIDTH_PX * TETHER_ANCHOR_FLARE,
+      4,
+    )
+    expect(measureAt(tether, view, 72).halfWidthPx).toBeCloseTo(TETHER_HALF_WIDTH_PX, 4)
     tether.dispose()
   })
 

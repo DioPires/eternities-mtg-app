@@ -20,7 +20,7 @@ import { describe, expect, it } from 'vitest'
 import { Color, type ShaderMaterial } from 'three'
 
 import { decodeStars } from '../src/data/decode'
-import type { PlanesFile } from '../src/data/types'
+import type { PlaneRecord, PlanesFile } from '../src/data/types'
 import {
   buildBelt,
   disposeBelt,
@@ -157,6 +157,40 @@ describe('the belt reads the positions the pipeline shipped (§1.8, §2.1)', () 
     disposeBelt(points)
   })
 
+  it('scales by multiverseRadius and not by the dust planes own radius', () => {
+    // **DEC-773 F8.** `multiverseRadius` was added to `WorldsData` precisely because the belt's
+    // frame is the *multiverse's* scale and `plane.radius` is the dust plane's own — but on every
+    // dataset the renderer has ever met the two are the same number, so a `buildBelt` rewired to
+    // `plane.radius` drew an identical belt and survived the whole suite. The field is only
+    // load-bearing at a roster where they diverge; this is that roster.
+    expect(DUST.radius, 'the coincidence this row exists for').toBe(PLANES.multiverseRadius)
+
+    const divergent: PlaneRecord = { ...DUST, radius: DUST.radius / 2 }
+    const points = buildBelt({
+      plane: divergent,
+      stars: STARS,
+      planes: PLANES.planes,
+      multiverseRadius: PLANES.multiverseRadius,
+      pixelRatio: 1,
+    })
+    const position = points.geometry.getAttribute('position')
+
+    let maxRadial = 0
+    for (let i = 0; i < position.count; i += 1) {
+      maxRadial = Math.max(maxRadial, Math.hypot(position.getX(i), position.getZ(i)))
+    }
+    const R = PLANES.multiverseRadius
+    const decodeSlack = R * 2 ** -11
+
+    // The belt is still at 1.12 R of the **multiverse**, with the plane's own radius halved beneath
+    // it. Both bounds, so a belt that had collapsed to nothing would fail the first.
+    expect(maxRadial).toBeGreaterThan(R * BELT_RADIUS_FACTOR * (1 - BELT_RADIAL_JITTER))
+    expect(maxRadial).toBeLessThanOrEqual(R * BELT_RADIUS_FACTOR * (1 + BELT_RADIAL_JITTER) + decodeSlack)
+    // And `plane.radius` cannot produce that: it is half, and the jitter is ±6%.
+    expect(maxRadial).toBeGreaterThan(divergent.radius * BELT_RADIUS_FACTOR * (1 + BELT_RADIAL_JITTER))
+    disposeBelt(points)
+  })
+
   it('colours a card by its own sets year, cold to warm', () => {
     const points = belt()
     const colour = points.geometry.getAttribute('aColour')
@@ -214,8 +248,35 @@ describe('trap 3: the belt is not size-attenuated (§1.8, §1.13)', () => {
     expect(material.name).toBe(SHADER_NAME_WORLD_BELT)
     expect(material.uniforms.uSizePx!.value).toBe(BELT_POINT_SIZE_PX * 2)
 
+    // **Re-asserted at 3, and 1 is only a waypoint (DEC-773 F4).** The row used to set the ratio to
+    // 1 and check for `BELT_POINT_SIZE_PX` — but `BELT_POINT_SIZE_PX * 1 === BELT_POINT_SIZE_PX`, so
+    // a `setBeltPixelRatio` that ignored its argument entirely satisfied it identically. One ratio
+    // where the operation is the identity is the one ratio that cannot tell a multiply from a
+    // constant. Three values, two of them non-identity, and the sequence runs down then up so a
+    // latch-once implementation fails too.
+    setBeltPixelRatio(points, 3)
+    expect(material.uniforms.uSizePx!.value).toBe(BELT_POINT_SIZE_PX * 3)
     setBeltPixelRatio(points, 1)
     expect(material.uniforms.uSizePx!.value).toBe(BELT_POINT_SIZE_PX)
+    setBeltPixelRatio(points, 1.5)
+    expect(material.uniforms.uSizePx!.value).toBe(BELT_POINT_SIZE_PX * 1.5)
+    disposeBelt(points)
+  })
+
+  it('floors the ratio at 1 rather than admitting a zero-size belt', () => {
+    // The clamp used to be `Math.max(pixelRatio, 0)`, which admits 0 — and `gl_PointSize` 0 is a
+    // belt that is not drawn. There is no display below 1 device px per CSS px, so 1 is the floor
+    // that fails safe: a bad reading costs a belt that is slightly too large for one frame rather
+    // than one that has vanished in a way that reads as "the dust plane failed to load".
+    const points = belt()
+    const material = points.material as ShaderMaterial
+    setBeltPixelRatio(points, 0)
+    expect(material.uniforms.uSizePx!.value).toBe(BELT_POINT_SIZE_PX)
+    setBeltPixelRatio(points, -4)
+    expect(material.uniforms.uSizePx!.value).toBe(BELT_POINT_SIZE_PX)
+    // Non-binding control: the floor must not be clamping the ratios that do occur.
+    setBeltPixelRatio(points, 2)
+    expect(material.uniforms.uSizePx!.value).toBe(BELT_POINT_SIZE_PX * 2)
     disposeBelt(points)
   })
 

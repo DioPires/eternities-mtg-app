@@ -31,14 +31,20 @@ import {
   SHADER_NAME_WORLD_SYSTEM,
 } from '../src/scene/shaderNames'
 import {
+  ATMOSPHERE_DEFINE_BLOCK,
   ATMOSPHERE_FRAGMENT_SHADER,
   RIM_RADIUS_SCALE,
 } from '../src/scene/worlds/atmosphereShaders'
 import { EQUIRECT_HEIGHT, EQUIRECT_WIDTH } from '../src/scene/worlds/lod'
 import { multiverseMeanPalette, PALETTE_GAIN, paletteTint } from '../src/scene/worlds/paletteTint'
 import { RENDER_ORDER_ATMOSPHERE, RENDER_ORDER_TETHER } from '../src/scene/worlds/passOrder'
-import { equirectUv } from '../src/scene/worlds/systemMesh'
-import { MOON_COLOUR, MOON_LAYER, UNDETAILED_DIM } from '../src/scene/worlds/systemShaders'
+import { equirectUv, SystemPass } from '../src/scene/worlds/systemMesh'
+import {
+  MOON_COLOUR,
+  MOON_LAYER,
+  SYSTEM_FRAGMENT_SHADER,
+  UNDETAILED_DIM,
+} from '../src/scene/worlds/systemShaders'
 import { worldRadius } from '../src/scene/worlds/surfaceLaw'
 import { worldPlanesOf } from '../src/scene/worlds/worldSource'
 import type { WorldsSeams } from '../src/scene/worlds/seams'
@@ -235,6 +241,66 @@ describe('§1.2 step 2: the instance count is planes below the band, not worlds 
     expect(smallest).toBeCloseTo(0.55, 12)
     rig.worlds.dispose()
   })
+
+  it('keys the flat colour on the LAYER, so a world whose layer never arrived is not tinted', () => {
+    // **DEC-773's M20 note, given the fixture it was missing.** The branch reads `layer < 0` and not
+    // `cardCount === 0`, with a stated reason: a plane that has cards but no equirect layer has
+    // nothing to sample, and tinting it by its palette would ship `iLayer = -1` — §1.8's *moon*
+    // spelling — alongside a world's colour. The shader takes the `vLayer < 0` branch and paints
+    // `vTint` flat, so that plane would be drawn as a moon **in its own palette colour**: a small
+    // coloured ball with no mosaic, which reads as a world that failed to load rather than as a
+    // wiring fault. On every shipped roster `layerOf` answers for every plane with cards, so the two
+    // spellings agree everywhere and only a constructed roster can tell them apart.
+    //
+    // `attachWorlds` itself can produce this: `layerOf` is `layerByPlane.get(plane.index) ?? -1`.
+    const withCards = WORLDS.find((plane) => plane.cardCount > 0)!
+    const reference = multiverseMeanPalette(PLANES.planes)
+    const palette = paletteTint(withCards, reference)
+    // The fixture is only discriminating if the two candidate colours differ.
+    expect(Math.abs(palette[0] - MOON_COLOUR[0])).toBeGreaterThan(0.05)
+
+    // A frame the pass can be driven with. `update` reads only the camera's position, the viewport
+    // height, the fov and the light, and nothing below depends on the pose — every entry is written
+    // because `drawsSystem` answers true and the layer branch does not consult it.
+    const camera = new PerspectiveCamera(55, 1920 / 1080, 0.1, 8000)
+    camera.position.set(0, 0, 400)
+    camera.updateMatrixWorld(true)
+    const frame = {
+      camera,
+      viewport: { width: 1920, height: 1080 },
+      fovRadians: (55 * Math.PI) / 180,
+      deltaSeconds: 1 / 60,
+      lightDirection: new Vector3(0, 0, 1),
+    }
+    const tintOf = (pass: SystemPass, index: number): [number, number, number] => {
+      pass.update(frame, () => 0, () => true)
+      const attribute = pass.mesh.geometry.getAttribute('iTint')
+      return [attribute.getX(index), attribute.getY(index), attribute.getZ(index)]
+    }
+
+    // Every plane's layer withheld — the state `attachWorlds` produces for a plane missing from
+    // `layerByPlane`.
+    const stranded = new SystemPass({ planes: PLANES.planes, equirect: null, layerOf: () => -1 })
+    const at = stranded.planes.findIndex((plane) => plane.index === withCards.index)
+    expect(at).toBeGreaterThanOrEqual(0)
+    const strandedTint = tintOf(stranded, at)
+    expect(strandedTint[0]).toBeCloseTo(MOON_COLOUR[0], 6)
+    expect(strandedTint[1]).toBeCloseTo(MOON_COLOUR[1], 6)
+    expect(strandedTint[2]).toBeCloseTo(MOON_COLOUR[2], 6)
+    stranded.dispose()
+
+    // **The control.** The same plane, with its layer present, takes its palette tint — so the row
+    // above is about the layer and not about the plane.
+    const wired = new SystemPass({
+      planes: PLANES.planes,
+      equirect: null,
+      layerOf: (plane) => WORLDS.findIndex((world) => world.index === plane.index),
+    })
+    const wiredTint = tintOf(wired, at)
+    expect(wiredTint[0]).toBeCloseTo(palette[0], 6)
+    expect(wiredTint[0]).not.toBeCloseTo(MOON_COLOUR[0], 6)
+    wired.dispose()
+  })
 })
 
 describe('§1.5: the equirect is indexed along atan2(x, z)', () => {
@@ -276,6 +342,30 @@ describe('§1.5: the equirect is indexed along atan2(x, z)', () => {
     expect(hits / sampled).toBeGreaterThan(0.6)
     expect(mirrored / sampled).toBeLessThan(0.15)
     rig.worlds.dispose()
+  })
+
+  it('spells it that way in the SHIPPED GLSL, which the round trip above never reads', () => {
+    // **DEC-773 F5.** The row above is a good measurement of `equirectUv` — real data, 400 samples,
+    // a discriminating control against the mirror — and `equirectUv` is the **CPU twin**. The string
+    // the GPU compiles is independent of it, so mirroring the GLSL alone left the whole suite green
+    // while every world drew its mosaic backwards inside §1.5's band. Two implementations of one
+    // law, inside one file: the same hazard `belt.ts`'s header refuses, and the same fix the rim's
+    // own `abs(dot(...))` guard uses.
+    //
+    // Written to fail on an **unparseable** site rather than to look for a known-bad one: the
+    // exact-count assertion means a second `atan` — or a longitude built some other way — is a red
+    // row and not a silent pass, which a `not.toMatch(/atan\(n\.z/)` would have been.
+    const calls = [...SYSTEM_FRAGMENT_SHADER.matchAll(/\batan\s*\(([^)]*)\)/g)]
+    expect(calls, 'the shipped fragment shader must build longitude in exactly one place').toHaveLength(1)
+    expect(calls[0]![1]!.replace(/\s+/g, '')).toBe('n.x,n.z')
+
+    // And its inverse: `bakeEquirectLayer` writes texel `u` at `((u + 0.5)/W)·2π − π`, so `u` comes
+    // back as `(lon + π)/2π`. A shader that read the longitude right and then mapped it to `u` the
+    // other way round is the same flip with a different author.
+    expect(SYSTEM_FRAGMENT_SHADER).toMatch(/\(\s*lon\s*\+\s*PI\s*\)\s*\/\s*TAU/)
+    // Colatitude, north pole at v = 0 — **not** flipped (§1.6's `UNPACK_FLIP_Y_WEBGL` note is about
+    // the art pool, and applying it here stands every world on its head).
+    expect(SYSTEM_FRAGMENT_SHADER).toMatch(/theta\s*\/\s*PI/)
   })
 })
 
@@ -381,6 +471,85 @@ describe('§1.7: the atmosphere rim', () => {
     // "Every world that is drawn at all gets one" — and no moon does, because §1.8's moons are
     // unlit and a rim is light.
     expect(atmosphere.drawnCount).toBe(WORLDS.length)
+    rig.worlds.dispose()
+  })
+
+  it('composites §1.7s falloff ONCE, at the 2.6 the spec writes and not at its square', () => {
+    // **DEC-773 F1, and the thing no gate row can see.** `AdditiveBlending` at three's default
+    // `premultipliedAlpha: false` is `blendFuncSeparate(SRC_ALPHA, ONE, ONE, ONE)`, so what reaches
+    // the frame is `rgb × a` — and this shader writes `intensity * lit` into **both** channels.
+    // The exponent §1.7 names then ships doubled and `RIM_NIGHT_FLOOR` ships squared, with a picture
+    // that reads as a thin hard ring rather than as a wrong number. A linking shader links either
+    // way, so the only place this is visible is the composite.
+    //
+    // The two constants below are read out of the **shipped define block**, not restated: they are
+    // what the GLSL is compiled with, and a tuning edit that moved one would otherwise leave this
+    // row asserting against a stale twin.
+    const defineOf = (name: string): number => {
+      const match = new RegExp(`^#define ${name} (\\S+)$`, 'm').exec(ATMOSPHERE_DEFINE_BLOCK)
+      expect(match, `${name} is not in the shipped define block`).not.toBeNull()
+      return Number(match![1])
+    }
+    const exponent = defineOf('RIM_FRESNEL_EXPONENT')
+    const strength = defineOf('RIM_STRENGTH')
+    const nightFloor = defineOf('RIM_NIGHT_FLOOR')
+
+    const rig = build()
+    poseHome(rig.camera)
+    rig.tick()
+    // The cheap rung, because it is §1.12's "one tap, no dither" — one lobe and no hash, so the
+    // ramp below is `pow(1 - |n·v|, e)` exactly and its slope in log-log **is** `e`.
+    rig.worlds.setRimQuality('cheap')
+    const material = rig.worlds.atmosphere!.mesh.material as ShaderMaterial
+
+    // The fragment shader's two writes, and then the blend three will issue for THIS material. The
+    // flag is read off the shipped material rather than assumed, which is what makes flipping it
+    // turn this row red.
+    const composite = (facing: number, lit: number): number => {
+      const intensity = (1 - facing) ** exponent
+      const colour = intensity * lit * strength
+      const alpha = Math.min(intensity * lit, 1)
+      return material.premultipliedAlpha ? colour : colour * alpha
+    }
+
+    // §1.7's exponent, measured as the slope of the composited ramp rather than restated.
+    const slope = (lit: number): number =>
+      Math.log(composite(0.1, lit) / composite(0.5, lit)) / Math.log(0.9 / 0.5)
+    expect(slope(1)).toBeCloseTo(exponent, 9)
+    expect(slope(nightFloor)).toBeCloseTo(exponent, 9)
+
+    // And `RIM_NIGHT_FLOOR` delivers itself, not its square: the night limb keeps 55% of the lit
+    // limb's rim, which is the whole reason §1.7 has a floor at all.
+    expect(composite(0.2, nightFloor) / composite(0.2, 1)).toBeCloseTo(nightFloor, 9)
+
+    // **The control, which is also the defect.** The same model under three's default flag reports
+    // the doubled exponent and the squared floor — so the two rows above are discriminating and not
+    // arithmetic that comes out right either way.
+    const straight = (facing: number, lit: number): number => {
+      const intensity = (1 - facing) ** exponent
+      return intensity * lit * strength * Math.min(intensity * lit, 1)
+    }
+    expect(
+      Math.log(straight(0.1, 1) / straight(0.5, 1)) / Math.log(0.9 / 0.5),
+    ).toBeCloseTo(exponent * 2, 9)
+    expect(straight(0.2, nightFloor) / straight(0.2, 1)).toBeCloseTo(nightFloor ** 2, 9)
+
+    rig.worlds.dispose()
+  })
+
+  it('sets premultipliedAlpha on both rim rungs, which is what makes the blend ONE, ONE', () => {
+    // Asserted on the material because that is the input three's `WebGLState` reads: at `false` it
+    // issues `blendFuncSeparate(SRC_ALPHA, ONE, ...)` and at `true` it issues `blendFunc(ONE, ONE)`.
+    // Both rungs, because `setRimQuality` **rebuilds** the material and a flag set in one of the two
+    // constructions would survive every test that never moves the rung.
+    const rig = build()
+    poseHome(rig.camera)
+    rig.tick()
+    expect((rig.worlds.atmosphere!.mesh.material as ShaderMaterial).premultipliedAlpha).toBe(true)
+    rig.worlds.setRimQuality('cheap')
+    expect((rig.worlds.atmosphere!.mesh.material as ShaderMaterial).premultipliedAlpha).toBe(true)
+    rig.worlds.setRimQuality('full')
+    expect((rig.worlds.atmosphere!.mesh.material as ShaderMaterial).premultipliedAlpha).toBe(true)
     rig.worlds.dispose()
   })
 

@@ -22,6 +22,28 @@
  * so {@link TETHER_HALF_WIDTH_PX} is resolved against the CSS viewport. §3.1's gate runs at dpr 1,
  * where the two are equal — so this is a defect no gate row can catch, and only a retina eye can.
  *
+ * **Premultiplied alpha, on the ribbon and on both pads — and here it is a tuning change, not a
+ * correction to a spec deviation (DEC-773 F1, DEC-775).** three's `AdditiveBlending` at its default
+ * `premultipliedAlpha: false` is `blendFunc(SRC_ALPHA, ONE)`, so the composited result is `rgb × a`.
+ * Both shaders in `tetherShaders.ts` put the *same* factors into both channels — `ends` and the
+ * travelling `flow` on the ribbon, `ring`/`core` on the pads — so every one of them was being applied
+ * twice. §1.7 makes that a **deviation** for the rim, because §1.7 names an exponent; §1.9 names no
+ * falloff at all, so the only thing the double-apply broke here was that the shaders did not say what
+ * they drew. Both are premultiplied now and the rgb each writes is what lands, which costs:
+ *
+ * | quantity | before (`rgb × a`) | after (`rgb`) |
+ * |---|---|---|
+ * | ribbon, pulse crest | 0.920 | 1.150 |
+ * | ribbon, pulse trough | 0.229 | 0.520 |
+ * | ribbon, crest ÷ trough | 4.02 | 2.21 |
+ * | pad, ring peak | 0.595 | 0.850 |
+ *
+ * So the ribbon reads brighter with a gentler pulse and the pads read brighter with a wider ring —
+ * both in the direction §1.9 argues for (*"invisible over a surface of card art"*, *"footed into
+ * ground"*), and neither is a number §1.9 states. Recorded rather than retuned back: a shader that
+ * composites what it writes is the property worth keeping, and the constants above are one edit away
+ * if the owner-judged capture says otherwise.
+ *
  * **What decides the two ends is not in this file, and not in §1.9.** The section specifies the
  * geometry of a tether between two worlds and says nothing about *which* two, or when one is shown;
  * §4's staffing table gives the product surfaces (§1.10–§1.12) to leg R3 and §1.9's geometry to R2.
@@ -139,6 +161,10 @@ const scratchDir = new Vector3()
 const scratchTangent = new Vector3()
 const scratchSide = new Vector3()
 const scratchView = new Vector3()
+const scratchOffset = new Vector3()
+const cameraRight = new Vector3()
+const cameraUp = new Vector3()
+const cameraForward = new Vector3()
 const controlA = new Vector3()
 const controlB = new Vector3()
 const exitPointA = new Vector3()
@@ -202,6 +228,8 @@ export class TetherPass {
         fragmentShader: TETHER_FRAGMENT_SHADER,
         transparent: true,
         blending: AdditiveBlending,
+        // Premultiplied — see the header. The rgb the fragment shader writes is what is added.
+        premultipliedAlpha: true,
         depthWrite: false,
         // The ribbon is one quad strip with no consistent winding — it twists as it turns to face
         // the camera — so a cull would drop whichever half happened to face away this frame.
@@ -314,20 +342,59 @@ export class TetherPass {
   /**
    * Expand the 144-point curve into a camera-facing strip of constant CSS width.
    *
-   * The half-width in world units is `halfWidthPx · depth / fovScale`, which is the inverse of a
-   * perspective projection at that depth — so the ribbon holds its pixel width whether it is on a
-   * world's surface or 200 units away across the span.
+   * **The scale is the projection's own derivative, not `halfWidthPx · r / fovScale` (DEC-773 F7).**
+   * `fovScale = h / (2·tan(fov/2))` inverts a perspective divide whose denominator is the
+   * **view-space depth**; the shipped spelling divided by the *radial* distance `|camera − point|`,
+   * which is `depth / cos θ`, so the ribbon grew by `1/cos θ` off-axis. Measured at 1920×1080 fov 55:
+   * 2.100 px on the axis and **2.799 px** near the horizontal frame edge, against §1.9's *"constant
+   * CSS-pixel width"*.
+   *
+   * Substituting the depth fixes that one measurement exactly and is still not the law, because the
+   * side vector is perpendicular to the **view ray** and not to the image plane: off-axis it has a
+   * component along the camera's forward axis, and moving a vertex toward the eye moves it on screen
+   * too. So the scale here is `|dπ(ŝ)|`, the screen-space length of a unit step along `ŝ` — for a
+   * projection `π(p) = fovScale · (p_r, p_u) / p_f`,
+   *
+   * ```
+   * dπ(ŝ) = (fovScale / d) · ( ŝ_r − (p_r/d)·ŝ_f ,  ŝ_u − (p_u/d)·ŝ_f )
+   * ```
+   *
+   * in the camera's own right/up/forward basis. On the axis the two right-hand terms vanish and this
+   * collapses to `fovScale / d` — the one-line fix, and exact for a side vector that lies in the
+   * image plane. It is **not** exact for one that does not, and half-width px at 1920×1080 fov 55,
+   * measured by projecting the written vertices back through the camera's own matrices:
+   *
+   * | side vector | on axis | horizontal edge | near the corner |
+   * |---|---|---|---|
+   * | `r` (shipped before this) | 2.102 | 2.772 | 3.533 |
+   * | `d` alone | 2.100 | 2.100 | 2.497 |
+   * | `\|dπ(ŝ)\|` (here) | 2.100 | 2.100 | 2.100 |
+   *
+   * `ŝ ⊥ (point − camera)` by construction, so `dπ(ŝ)` cannot be zero for a unit `ŝ` — the clamp
+   * below is against float underflow, not against a real case.
    *
    * **Coincident samples are the normal case, not an edge case.** §1.9's far field collapses both
-   * surface runs to a point, so 24 of the 144 samples at each end are identical and their tangent is
-   * a zero vector. Carrying the last good tangent forward is what makes that "cost no special case";
-   * normalising a zero vector emits `NaN` positions, which three then propagates into the bounding
-   * sphere and the whole ribbon disappears — at the distance the tether is most of what is on screen.
+   * surface runs to a point, so 24 of the 144 samples at each end are identical and `next − previous`
+   * is the zero vector. `Vector3.normalize()` is `divideScalar(length() || 1)`, so that yields a zero
+   * vector rather than a `NaN` (DEC-773 F6) — the guard is not there to stop a `NaN`, and three's
+   * bounding sphere is never at risk. What the guard buys is the **ribbon**: a zero tangent crosses
+   * to a zero side vector, that falls through to the `(0, 1, 0)` fallback below, and world `+Y` is
+   * not perpendicular to the view. The 48 collapsed samples would then be drawn edge-on by however
+   * much the camera is off the world's own `+Y`, at a width that is no longer 2.1 px. Carrying the
+   * last live tangent keeps every sample's side vector square to the eye, which is what makes §1.9's
+   * far field *"cost no special case"*.
    */
   private ribbonise(camera: PerspectiveCamera, viewportHeightPx: number): void {
     const fovScale = viewportHeightPx / (2 * Math.tan((camera.fov * Math.PI) / 360))
     const array = this.positions.array as Float32Array
     scratchTangent.set(0, 0, 1)
+
+    // The camera's own basis, from its world matrix: three looks down its **-z**, so forward is the
+    // negated third column. Read once — it is constant over the 144 samples.
+    const e = camera.matrixWorld.elements
+    cameraRight.set(e[0] ?? 1, e[1] ?? 0, e[2] ?? 0).normalize()
+    cameraUp.set(e[4] ?? 0, e[5] ?? 1, e[6] ?? 0).normalize()
+    cameraForward.set(-(e[8] ?? 0), -(e[9] ?? 0), -(e[10] ?? 1)).normalize()
 
     for (let i = 0; i < TETHER_SAMPLES; i += 1) {
       const point = this.points[i]!
@@ -336,18 +403,34 @@ export class TetherPass {
       scratchDir.copy(next).sub(previous)
       if (scratchDir.lengthSq() > 1e-12) scratchTangent.copy(scratchDir).normalize()
 
-      scratchView.copy(camera.position).sub(point)
-      const depth = Math.max(1e-3, scratchView.length())
-      scratchView.divideScalar(depth)
+      // `scratchOffset` is the point in the camera's frame; `scratchView` is the unit direction back
+      // toward the eye, which is what the ribbon turns to face.
+      scratchOffset.copy(point).sub(camera.position)
+      const depth = Math.max(1e-3, scratchOffset.dot(cameraForward))
+      scratchView.copy(scratchOffset).multiplyScalar(-1).normalize()
       scratchSide.crossVectors(scratchTangent, scratchView)
       // The tangent and the view are parallel when the curve runs straight at the eye, and the
       // ribbon has no width to give there; any perpendicular will do for one sample.
       if (scratchSide.lengthSq() < 1e-12) scratchSide.set(0, 1, 0)
+      scratchSide.normalize()
+
+      // `|dπ(ŝ)|` in px per world unit — see the doc comment above.
+      const offsetRight = scratchOffset.dot(cameraRight) / depth
+      const offsetUp = scratchOffset.dot(cameraUp) / depth
+      const sideForward = scratchSide.dot(cameraForward)
+      const screenPerUnit =
+        (fovScale / depth) *
+        Math.hypot(
+          scratchSide.dot(cameraRight) - offsetRight * sideForward,
+          scratchSide.dot(cameraUp) - offsetUp * sideForward,
+        )
 
       const t = i / (TETHER_SAMPLES - 1)
       const flare =
         1 + (TETHER_ANCHOR_FLARE - 1) * Math.max(0, 1 - Math.min(t, 1 - t) / FLARE_REACH)
-      scratchSide.normalize().multiplyScalar((TETHER_HALF_WIDTH_PX * flare * depth) / fovScale)
+      scratchSide.multiplyScalar(
+        (TETHER_HALF_WIDTH_PX * flare) / Math.max(screenPerUnit, 1e-9),
+      )
 
       array[i * 6] = point.x - scratchSide.x
       array[i * 6 + 1] = point.y - scratchSide.y
@@ -415,6 +498,8 @@ function padMaterial(colour: readonly [number, number, number]): ShaderMaterial 
     fragmentShader: TETHER_PAD_FRAGMENT_SHADER,
     transparent: true,
     blending: AdditiveBlending,
+    // Premultiplied — see the header. The ring's own profile composites, not its square.
+    premultipliedAlpha: true,
     depthWrite: false,
     side: DoubleSide,
   })

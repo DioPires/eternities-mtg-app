@@ -182,6 +182,18 @@ export class AtmospherePass {
       fragmentShader: ATMOSPHERE_FRAGMENT_SHADER,
       transparent: true,
       blending: AdditiveBlending,
+      // **`premultipliedAlpha`, and it is the difference between §1.7's 2.6 and a shipped 5.2**
+      // (DEC-773 F1). three's default is `false`, which makes `AdditiveBlending`
+      // `blendFuncSeparate(SRC_ALPHA, ONE, ONE, ONE)` — the composited result is `rgb × a`, not
+      // `rgb`. The fragment shader puts `intensity * lit` into **both** channels, so a shell written
+      // to §1.7's `pow(1 - |n·v|, 2.6)` composites at the square of it and `RIM_NIGHT_FLOOR` 0.55
+      // delivers 0.3025. `true` is `blendFunc(ONE, ONE)`: the rgb the shader wrote is what lands.
+      //
+      // The alternative — moving the falloff into alpha alone, the spelling `starfield/shaders.ts`
+      // uses — clamps at 1, and the full rim's core lobe peaks at `intensity` 1.45 exactly on the
+      // limb. That spelling is correct for a shell whose peak is under 1 and quietly discards the
+      // headroom here, so the two are not interchangeable and this one is the ruling (DEC-775).
+      premultipliedAlpha: true,
       // §1.7. An additive glow that wrote depth would occlude the world it surrounds — and every
       // world behind it — with a shell that is almost entirely transparent.
       depthWrite: false,

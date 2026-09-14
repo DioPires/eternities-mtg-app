@@ -122,7 +122,10 @@ export class SystemPass {
           layer,
           // A moon takes the flat colour with **no palette tint** (§1.8). The test is the layer, not
           // the card count: a plane with cards whose layer never arrived has no equirect to sample
-          // and would otherwise read layer -1 in the shader while carrying a world's tint.
+          // and would otherwise read layer -1 in the shader while carrying a world's tint — a
+          // coloured ball with no mosaic, which reads as a world that failed to load. `layerOf` is
+          // `layerByPlane.get(...) ?? -1` at the one call site, so that state is reachable, and
+          // `worlds-system.test.ts` now carries the fixture for it (DEC-775).
           tint: layer < 0 ? MOON_COLOUR : paletteTint(plane, reference),
         }
       })
@@ -231,13 +234,11 @@ export class SystemPass {
     uniforms.uLight.value.copy(frame.lightDirection)
   }
 
-  /** Point the pass at a newly composed equirect array, or at `null` on teardown. */
-  setEquirect(equirect: DataArrayTexture | null): void {
-    const uniforms = (this.mesh.material as ShaderMaterial).uniforms as unknown as {
-      uEquirect: { value: DataArrayTexture | null }
-    }
-    uniforms.uEquirect.value = equirect
-  }
+  // No `setEquirect`. It existed and had no caller anywhere in `src/` or `test/` (DEC-773's note):
+  // `attachWorlds.setData` tears the whole pass down and builds a new one against the new array,
+  // because the entry table is derived from the roster and a roster change invalidates it. A setter
+  // that can only ever be called with the array the constructor already took is a second way to
+  // establish one fact, and the day someone reaches for it they will not tear the entries down.
 
   dispose(): void {
     this.mesh.geometry.dispose()

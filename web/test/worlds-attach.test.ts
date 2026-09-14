@@ -17,7 +17,16 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { Matrix4, PerspectiveCamera, Scene, Vector2, Vector3, type WebGLRenderer } from 'three'
+import {
+  Matrix4,
+  PerspectiveCamera,
+  Scene,
+  Vector2,
+  Vector3,
+  type Points,
+  type ShaderMaterial,
+  type WebGLRenderer,
+} from 'three'
 
 import { decodeStars, decodeSwatches } from '../src/data/decode'
 import type { PlaneRecord, PlanesFile } from '../src/data/types'
@@ -26,6 +35,7 @@ import type { ImageQueue } from '../src/scene/cards/imageQueue'
 import { attachWorlds, DEFAULT_TIER_ART_LAYERS } from '../src/scene/worlds/attachWorlds'
 import { KEY_LIGHT_OFF_AXIS, keyLightDirection } from '../src/scene/worlds/keyLight'
 import { artPoolSize } from '../src/scene/worlds/artPool'
+import { BELT_POINT_SIZE_PX } from '../src/scene/worlds/beltShaders'
 import { CROSSOVER_HIGH_PX } from '../src/scene/worlds/lod'
 import { isWorldPlane, worldPlanesOf } from '../src/scene/worlds/worldSource'
 import { worldsProbeOf } from '../src/scene/worlds/worldsProbe'
@@ -337,6 +347,107 @@ describe('the frame the payload is measured on (§3.1)', () => {
     expect(after.camera.position).toEqual(measured)
     expect(after.camera.matrixWorldInverse).toEqual(measuredMatrix)
     expect(rig.camera.position.distanceTo(measured)).toBeGreaterThan(1)
+    rig.worlds.dispose()
+  })
+})
+
+/**
+ * The three §1.2 passes R2 added are wired through `runFrame`, and each takes a quantity the pass
+ * itself cannot check (DEC-773 F2, F3, M3).
+ *
+ * All three are the same shape: a pass that reports whatever the call site hands it, a unit test
+ * that hands it the right thing directly, and a call site nothing asserts. `worlds-tether` proves
+ * the ribbon halves nothing on a retina display *given a CSS height*; `worlds-surface-law` proves
+ * the crossover computes a `sheetMix`; `worlds-belt` proves `setBeltPixelRatio` multiplies. None of
+ * them can see the argument `attachWorlds` actually passes, and the stub here reports a **2x**
+ * display precisely so the CSS and device spellings are different numbers.
+ */
+describe('what runFrame hands R2s three passes (§1.7-§1.9)', () => {
+  it('hands the tether the CSS viewport height and never the drawing buffers', () => {
+    // **DEC-773 F3.** The prototype's defect was `viewport.y * gl.getPixelRatio()` at this call
+    // site — a half-width ribbon on every retina display, identical to a correct one at the dpr 1
+    // §3.1's gate runs at. `TetherPass.update` takes the height as a parameter and every row in
+    // `worlds-tether.test.ts` supplies it by hand, so the parameter was pinned and the argument was
+    // not.
+    const rig = build()
+    rig.worlds.setData(roster())
+    const update = vi.spyOn(rig.worlds.tether, 'update')
+    rig.tick()
+
+    expect(update).toHaveBeenCalled()
+    // Non-vacuous by construction: the stub's device height is twice its CSS height, so the two
+    // candidate arguments are 1080 and 2160 and the assertion separates them.
+    const ratio = rig.gl.gl.getPixelRatio()
+    expect(ratio).toBe(2)
+    expect(CSS_HEIGHT * ratio).not.toBe(CSS_HEIGHT)
+    for (const call of update.mock.calls) expect(call[1]).toBe(CSS_HEIGHT)
+    rig.worlds.dispose()
+  })
+
+  it('re-resolves the belts point size from the live ratio on every frame', () => {
+    // **DEC-773 M3.** `runFrame`'s in-source comment says a cached ratio "can be a rung behind" —
+    // the quality ladder moves rung 1, and the window crosses monitors — but commenting the call out
+    // entirely left the whole suite green, because the only thing that ever read the uniform was the
+    // build path. Driven here by *changing* the stub between ticks, which is the monitor change.
+    const rig = build()
+    rig.worlds.setData(roster())
+    const belt = rig.scene.getObjectByName('worlds-belt') as Points
+    expect(belt, 'the shipped roster has a dust plane, so there is a belt to measure').toBeDefined()
+    const uniforms = (belt.material as ShaderMaterial).uniforms
+
+    rig.tick()
+    expect(uniforms.uSizePx!.value).toBe(BELT_POINT_SIZE_PX * 2)
+
+    // The window moves to a 1x monitor. Nothing calls a setter; the next frame re-reads.
+    rig.gl.getPixelRatio.mockReturnValue(1)
+    rig.tick()
+    expect(uniforms.uSizePx!.value).toBe(BELT_POINT_SIZE_PX)
+
+    // And back up, so a write that only ever *lowered* the value fails too.
+    rig.gl.getPixelRatio.mockReturnValue(3)
+    rig.tick()
+    expect(uniforms.uSizePx!.value).toBe(BELT_POINT_SIZE_PX * 3)
+    rig.worlds.dispose()
+  })
+
+  it('writes §1.5s sheetMix into the uniform the shader reads, not just into the crossover', () => {
+    // **DEC-773 F2, and it is the R1 defect this leg exists to fix, one level up.** R1 computed
+    // `sheetMix` and nothing consumed it, so the sheet popped on at the band floor. Every assertion
+    // in the suite reads `surface.crossover.sheetMix` — the computed value — so replacing the
+    // uniform write with a constant `1` restores the pre-fix behaviour exactly and stays green.
+    // This row reads `material.uniforms.uSheetMix`, which is what `cellShaders.ts` dissolves by.
+    const rig = build()
+    rig.worlds.setData(roster())
+    const world = rig.worlds.surfaces.find((s) => s.planeSlug === 'dominaria')!
+    const mixAt = (): number =>
+      (world.material.uniforms as { uSheetMix: { value: number } }).uSheetMix.value
+
+    // Above the band the sheet is fully opaque — and the uniform's constructed default is also 1, so
+    // this pose alone proves nothing. It is here as the endpoint, not as the measurement.
+    poseAt(rig.camera, world.centre, world.radius, 2.2)
+    rig.tick()
+    expect(world.crossover.sheetMix).toBe(1)
+    expect(mixAt()).toBe(1)
+
+    // Inside the band, found by bisection because the crossover is a function of distance: this is
+    // the only pose where `sheetMix` is neither 0 nor 1 and the uniform can be told from a constant.
+    let near = 2.2
+    let far = 400
+    for (let i = 0; i < 60; i += 1) {
+      const mid = (near + far) / 2
+      poseAt(rig.camera, world.centre, world.radius, mid)
+      rig.tick()
+      if (world.crossover.sheetMix > 0 && world.crossover.sheetMix < 1) break
+      if (world.crossover.drawSheet) near = mid
+      else far = mid
+    }
+    expect(world.crossover.sheetMix).toBeGreaterThan(0)
+    expect(world.crossover.sheetMix).toBeLessThan(1)
+    expect(mixAt()).toBe(world.crossover.sheetMix)
+    // Stated against the constants too, so "the uniform equals the field" cannot be satisfied by a
+    // build that wrote the same constant into both.
+    expect(mixAt()).not.toBe(1)
+    expect(mixAt()).not.toBe(0)
     rig.worlds.dispose()
   })
 })
