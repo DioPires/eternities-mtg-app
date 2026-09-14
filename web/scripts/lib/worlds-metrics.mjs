@@ -139,7 +139,8 @@ export function rowsClosedForm(cardCount) {
  *
  * ## What is asserted, and what each one is worth
  *
- * Measured against the published v3 table (`3ce85aed`, vendored at `docs/worlds/rowcells-v3.json`),
+ * Measured against the published v3 table (`c9468f1125bcddff`, vendored at
+ * `docs/worlds/rowcells-v3.json`; re-measured after leg P moved the dataset off `3ce85aed`),
  * all three hold on 45 of 45 worlds — but they are not equally load-bearing and the gate should not
  * pretend otherwise:
  *
@@ -173,10 +174,20 @@ export function rowsClosedForm(cardCount) {
  * - **Row centres at `(i + ½)·dφ`.** This one is real — it is what separates §1.3's colatitude
  *   placement from the degenerate `i·dφ` form — but it is **not the gate's to measure**. The centres
  *   live in the emitted positions, not in any field the gate reads: checked directly against
- *   `stars.bin` on `3ce85aed`, the per-row populations reproduce `rowCells` on **45 of 45** worlds
- *   and every star sits within **0.0004 rad** of `(i + ½)·π/rows`, while the degenerate `i·dφ`
- *   grid fails on 44 of 45. That is a dataset conformance check and belongs beside the pipeline's,
- *   where it can be taken at full float precision (DEC-752, measured).
+ *   `stars.bin` on **`c9468f1125bcddff`**, the per-row populations reproduce `rowCells` on **45 of
+ *   45** worlds and every star sits within **0.000367 rad** of `(i + ½)·π/rows`, while the
+ *   degenerate `i·dφ` grid fails on **45 of 45**. That is a dataset conformance check and belongs
+ *   beside the pipeline's, where it can be taken at full float precision (DEC-752, measured).
+ *
+ *   Re-measured for DEC-749's warning that leg P redistributed 116 of 777 rows: the 45-of-45 half
+ *   survives the move, but the old note's "44 of 45" for the degenerate grid does **not** — it is
+ *   45 of 45 here, and `3ce85aed` is no longer on disk to re-run, so that figure is retracted
+ *   rather than reconciled. Two traps cost real time and are worth leaving written down:
+ *   `stars.bin` positions are **plane-local**, so subtracting `plane.home` (as a world-space
+ *   reading would) puts every star ~`|home|` from the origin and the populations reproduce on only
+ *   14 of 45; and `tilt` is a render-time transform that is **not** baked into the data, so
+ *   un-rotating by it drops the same measure to 16 of 45. Both wrong readings are quietly
+ *   *plausible* — they return a number rather than an error.
  */
 export function rowCellsFaults(planes) {
   const faults = [];
@@ -803,6 +814,14 @@ export function azimuthSpacingFault(azimuths, tolerance = W5_AZIMUTH_UNIFORMITY_
  * | labels visible (post-suppression) | 33 – 42 | 33 – 43 |
  * | worlds labelled | 33 – 42 of 45 | 33 – 43 of 45 |
  * | worlds **never** labelled, any azimuth | **0** | **0** |
+ *
+ * The v3 column was taken on `3ce85aed66e9dc3a`, which leg P has since superseded with
+ * `c9468f1125bcddff`. The hash is left as provenance rather than restamped, because restamping
+ * would claim a measurement that has not been re-run — the sweep needs R1's renderer, which has not
+ * landed. It carries over: DEC-749 confirms `rows` and `Σ rowCells` are identical on all 45 worlds
+ * and only 116 of 777 rows moved *within* their world, so world centres, radii and therefore label
+ * anchors are unchanged. What the move does invalidate is per-row figures, which this table has
+ * none of. Re-run it against `c9468f11` at the acceptance run regardless (DEC-752, DEC-749 §4a).
  *
  * ## Why the ceiling is a suppression check and nothing more
  *
