@@ -67,7 +67,7 @@ export const FLOORS = {
   artFraction: 0.9,
   /** W4: evictions per second, averaged over the last 2 s. A ceiling, not a floor. */
   evictionsPerSecond: 5,
-}
+};
 
 /**
  * W5's ceiling — **derived from the roster, never written down as a number.**
@@ -82,9 +82,24 @@ export const FLOORS = {
  *
  * So the gate reads the roster and computes this. A refresh that adds a plane moves the ceiling by
  * itself, and the next Forgotten Realms does not silently turn the criterion into a tripwire.
+ *
+ * ## The belt is in the roster and can never carry a label (DEC-752, measured)
+ *
+ * `belts` is **not** added. §3.1's parenthesis says "one per world plus the belt", but
+ * `labels/PlaneLabels.tsx:116` filters the candidate list by
+ * `plane.slug !== BLIND_ETERNITIES_SLUG` before anything is projected, so the belt has no label
+ * node at any camera, on any dataset. It is in `planesWithCards` — it carries 4,204 cards on
+ * `3ce85aed66e9dc3a`, which is why the derivation picked it up — but card count is not what makes
+ * a plane labellable here.
+ *
+ * Adding it buys the ceiling a permanent slack of exactly one: a renderer that labelled all 45
+ * worlds *and* wrongly resurrected the belt's label would read 46 against a ceiling of 46 and
+ * pass. The slack is small, but it is slack in the one direction a ceiling exists to refuse, so
+ * the belt comes out. The parameter stays in the signature so a roster that does label its belt
+ * can say so, and it is named for what it has to be rather than for what it is.
  */
-export function homeLabelCeiling({ worlds, belts }) {
-  return worlds + belts
+export function homeLabelCeiling({ worlds, labellableBelts = 0 }) {
+  return worlds + labellableBelts;
 }
 
 /**
@@ -93,10 +108,18 @@ export function homeLabelCeiling({ worlds, belts }) {
  * The gate takes these off `planes.json` at run time — this is the provenance record, not the
  * source of truth.
  */
-export const ROSTER_V3 = Object.freeze({ worlds: 45, belts: 1, moons: 42, planes: 88 })
+export const ROSTER_V3 = Object.freeze({
+  worlds: 45,
+  belts: 1,
+  // The belt exists and is not labellable: `PlaneLabels.tsx:116` drops it by slug. Both numbers are
+  // here so the roster stays a faithful description and the ceiling still comes out at 45.
+  labellableBelts: 0,
+  moons: 42,
+  planes: 88,
+});
 
 /** W2 only samples cells this tall or taller (§3.1). */
-export const W2_MIN_CELL_PX = 6
+export const W2_MIN_CELL_PX = 6;
 
 /**
  * W2's iso-shade subset is the cells within ±2.5% of the median reported `shade` (§3.1).
@@ -106,7 +129,7 @@ export const W2_MIN_CELL_PX = 6
  * *one* swatch — the sphere being lit, not the mosaic being tiled. Holding shade fixed leaves
  * swatch-to-swatch lightness, which is what W2 claims to measure.
  */
-export const W2_ISO_SHADE_TOLERANCE = 0.025
+export const W2_ISO_SHADE_TOLERANCE = 0.025;
 
 /**
  * W2 needs at least this many sampled cells before its statistics mean anything.
@@ -117,10 +140,10 @@ export const W2_ISO_SHADE_TOLERANCE = 0.025
  * comparison scores a correct render as RED and takes the matrix's expected-GREEN row down with it.
  * Four is the threshold because an IQR needs two quartiles to be a spread rather than a gap.
  */
-export const W2_MIN_SAMPLES = 4
+export const W2_MIN_SAMPLES = 4;
 
 /** W3 only compares a band pair when the smaller band holds at least this share of the plane. */
-export const W3_MIN_BAND_SHARE = 0.05
+export const W3_MIN_BAND_SHARE = 0.05;
 
 /**
  * A label counts toward W5 only above this opacity — **the DOM node count is not the measurement.**
@@ -138,7 +161,7 @@ export const W3_MIN_BAND_SHARE = 0.05
  * behind a nearer plane to 40%, and a dimmed label *is* on screen and *is* readable, so it counts.
  * Confirmed by DEC-751 against the shipped solver at `c83be44`.
  */
-export const LABEL_VISIBLE_MIN_OPACITY = 0.05
+export const LABEL_VISIBLE_MIN_OPACITY = 0.05;
 
 /**
  * The visible-label predicate, exported so the gate and its tests share one definition.
@@ -146,11 +169,11 @@ export const LABEL_VISIBLE_MIN_OPACITY = 0.05
  * `label` is `{ opacity }` as read off the rendered node.
  */
 export function isLabelVisible(label) {
-  return Number(label.opacity) > LABEL_VISIBLE_MIN_OPACITY
+  return Number(label.opacity) > LABEL_VISIBLE_MIN_OPACITY;
 }
 
 /** W4's eviction rate is averaged over this window, in seconds (§3.1). */
-export const W4_EVICTION_WINDOW_S = 2
+export const W4_EVICTION_WINDOW_S = 2;
 
 /**
  * The 13 bands north to south, from §1.3's `C G R B U W · Gold · W U B R G C`.
@@ -165,42 +188,42 @@ export const W4_EVICTION_WINDOW_S = 2
  * sphere with the entire mosaic between them.
  */
 export const BAND_ORDER = Object.freeze([
-  'colourless',
-  'green',
-  'red',
-  'black',
-  'blue',
-  'white',
-  'gold',
-  'white',
-  'blue',
-  'black',
-  'red',
-  'green',
-  'colourless',
-])
+  "colourless",
+  "green",
+  "red",
+  "black",
+  "blue",
+  "white",
+  "gold",
+  "white",
+  "blue",
+  "black",
+  "red",
+  "green",
+  "colourless",
+]);
 
 /** The index pairs W3 walks: every consecutive pair in `BAND_ORDER`. */
 export const BAND_ADJACENCY = Object.freeze(
   BAND_ORDER.slice(0, -1).map((_, i) => Object.freeze([i, i + 1])),
-)
+);
 
 // ------------------------------------------------------------------------------------------------
 // Colour
 // ------------------------------------------------------------------------------------------------
 
-const D65 = { x: 0.95047, y: 1.0, z: 1.08883 }
-const DELTA = 6 / 29
+const D65 = { x: 0.95047, y: 1.0, z: 1.08883 };
+const DELTA = 6 / 29;
 
 /** One sRGB channel, 0–255, to linear light. */
 function toLinear(v) {
-  const c = v / 255
-  return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+  const c = v / 255;
+  return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
 }
 
 /** CIELAB's cube-root companding, with the linear segment near black. */
 function f(t) {
-  return t > DELTA ** 3 ? Math.cbrt(t) : t / (3 * DELTA ** 2) + 4 / 29
+  return t > DELTA ** 3 ? Math.cbrt(t) : t / (3 * DELTA ** 2) + 4 / 29;
 }
 
 /**
@@ -211,24 +234,24 @@ function f(t) {
  * trusting the file.
  */
 export function srgbToLab([r, g, b]) {
-  const rl = toLinear(r)
-  const gl = toLinear(g)
-  const bl = toLinear(b)
+  const rl = toLinear(r);
+  const gl = toLinear(g);
+  const bl = toLinear(b);
 
-  const x = (0.4124564 * rl + 0.3575761 * gl + 0.1804375 * bl) / D65.x
-  const y = (0.2126729 * rl + 0.7151522 * gl + 0.072175 * bl) / D65.y
-  const z = (0.0193339 * rl + 0.119192 * gl + 0.9503041 * bl) / D65.z
+  const x = (0.4124564 * rl + 0.3575761 * gl + 0.1804375 * bl) / D65.x;
+  const y = (0.2126729 * rl + 0.7151522 * gl + 0.072175 * bl) / D65.y;
+  const z = (0.0193339 * rl + 0.119192 * gl + 0.9503041 * bl) / D65.z;
 
-  const fx = f(x)
-  const fy = f(y)
-  const fz = f(z)
+  const fx = f(x);
+  const fy = f(y);
+  const fz = f(z);
 
-  return { L: 116 * fy - 16, a: 500 * (fx - fy), b: 200 * (fy - fz) }
+  return { L: 116 * fy - 16, a: 500 * (fx - fy), b: 200 * (fy - fz) };
 }
 
 /** CIE76 ΔE — Euclidean distance in L\*a\*b\*. W2's distance. */
 export function deltaE76(p, q) {
-  return Math.hypot(p.L - q.L, p.a - q.a, p.b - q.b)
+  return Math.hypot(p.L - q.L, p.a - q.a, p.b - q.b);
 }
 
 /**
@@ -240,7 +263,7 @@ export function deltaE76(p, q) {
  * thing W3 is about — which is exactly what the lambert shade of §1.4 hands you for free.
  */
 export function deltaEab(p, q) {
-  return Math.hypot(p.a - q.a, p.b - q.b)
+  return Math.hypot(p.a - q.a, p.b - q.b);
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -249,10 +272,10 @@ export function deltaEab(p, q) {
 
 /** The median. Returns `null` for an empty sample rather than `NaN`, so callers must decide. */
 export function median(xs) {
-  if (xs.length === 0) return null
-  const s = [...xs].sort((p, q) => p - q)
-  const mid = s.length >> 1
-  return s.length % 2 === 1 ? s[mid] : (s[mid - 1] + s[mid]) / 2
+  if (xs.length === 0) return null;
+  const s = [...xs].sort((p, q) => p - q);
+  const mid = s.length >> 1;
+  return s.length % 2 === 1 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
 }
 
 /**
@@ -263,19 +286,19 @@ export function median(xs) {
  * verdict.
  */
 export function quantile(xs, q) {
-  if (xs.length === 0) return null
-  const s = [...xs].sort((p, r) => p - r)
-  if (s.length === 1) return s[0]
-  const pos = (s.length - 1) * q
-  const lo = Math.floor(pos)
-  const hi = Math.ceil(pos)
-  return lo === hi ? s[lo] : s[lo] + (s[hi] - s[lo]) * (pos - lo)
+  if (xs.length === 0) return null;
+  const s = [...xs].sort((p, r) => p - r);
+  if (s.length === 1) return s[0];
+  const pos = (s.length - 1) * q;
+  const lo = Math.floor(pos);
+  const hi = Math.ceil(pos);
+  return lo === hi ? s[lo] : s[lo] + (s[hi] - s[lo]) * (pos - lo);
 }
 
 /** The interquartile range, Q3 − Q1. */
 export function iqr(xs) {
-  if (xs.length === 0) return null
-  return quantile(xs, 0.75) - quantile(xs, 0.25)
+  if (xs.length === 0) return null;
+  return quantile(xs, 0.75) - quantile(xs, 0.25);
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -288,9 +311,31 @@ export function iqr(xs) {
  * `direction` is `'min'` when the floor is a lower bound and `'max'` when it is a ceiling. Spelling
  * it out beats inferring from the name: W4 carries one of each.
  */
-function measure(key, label, value, bound, direction, { insufficient = false, why = null } = {}) {
-  const status = insufficient ? 'insufficient' : value === null ? 'fail' : (direction === 'min' ? value >= bound : value <= bound) ? 'pass' : 'fail'
-  return { key, label, value, bound, direction, status, pass: status === 'pass', insufficientReason: why }
+function measure(
+  key,
+  label,
+  value,
+  bound,
+  direction,
+  { insufficient = false, why = null } = {},
+) {
+  const status = insufficient
+    ? "insufficient"
+    : value === null
+      ? "fail"
+      : (direction === "min" ? value >= bound : value <= bound)
+        ? "pass"
+        : "fail";
+  return {
+    key,
+    label,
+    value,
+    bound,
+    direction,
+    status,
+    pass: status === "pass",
+    insufficientReason: why,
+  };
 }
 
 /**
@@ -310,12 +355,12 @@ function measure(key, label, value, bound, direction, { insufficient = false, wh
  * unmeasured criterion has not passed. Anything deciding the *run's* verdict must read `status`.
  */
 function criterion(id, title, measures, extra = {}) {
-  const status = measures.some((m) => m.status === 'fail')
-    ? 'fail'
-    : measures.some((m) => m.status === 'insufficient')
-      ? 'insufficient'
-      : 'pass'
-  return { id, title, measures, status, pass: status === 'pass', ...extra }
+  const status = measures.some((m) => m.status === "fail")
+    ? "fail"
+    : measures.some((m) => m.status === "insufficient")
+      ? "insufficient"
+      : "pass";
+  return { id, title, measures, status, pass: status === "pass", ...extra };
 }
 
 /**
@@ -332,28 +377,35 @@ function criterion(id, title, measures, extra = {}) {
 export function evaluateW1(planes) {
   const perPlane = planes.map(({ slug, cells }) => ({
     slug,
-    medianHeightPx: median(cells.filter((c) => c.frontFacing).map((c) => c.height)),
-  }))
+    medianHeightPx: median(
+      cells.filter((c) => c.frontFacing).map((c) => c.height),
+    ),
+  }));
 
   const worst = perPlane.reduce(
-    (acc, p) => (acc === null || p.medianHeightPx === null || p.medianHeightPx < acc.medianHeightPx ? p : acc),
+    (acc, p) =>
+      acc === null ||
+      p.medianHeightPx === null ||
+      p.medianHeightPx < acc.medianHeightPx
+        ? p
+        : acc,
     null,
-  )
+  );
 
   return criterion(
-    'W1',
-    'Cells are resolvable at framing distance',
+    "W1",
+    "Cells are resolvable at framing distance",
     [
       measure(
-        'minMedianCellHeightPx',
+        "minMedianCellHeightPx",
         `median front-facing cell height, worst of ${planes.length} worlds`,
         worst === null ? null : worst.medianHeightPx,
         FLOORS.cellHeightPx,
-        'min',
+        "min",
       ),
     ],
     { perPlane, worstPlane: worst === null ? null : worst.slug },
-  )
+  );
 }
 
 /**
@@ -375,58 +427,66 @@ export function evaluateW1(planes) {
  * Below `W2_MIN_SAMPLES` cells both halves report `insufficient` rather than failing.
  */
 export function evaluateW2(samples) {
-  const kept = samples.filter((s) => s.frontFacing && s.height >= W2_MIN_CELL_PX)
-  const labs = kept.map((s) => srgbToLab(s.rgb))
-  const thin = kept.length < W2_MIN_SAMPLES
-  const why = thin ? `only ${kept.length} sampled cells, below W2's domain of ${W2_MIN_SAMPLES}` : null
+  const kept = samples.filter(
+    (s) => s.frontFacing && s.height >= W2_MIN_CELL_PX,
+  );
+  const labs = kept.map((s) => srgbToLab(s.rgb));
+  const thin = kept.length < W2_MIN_SAMPLES;
+  const why = thin
+    ? `only ${kept.length} sampled cells, below W2's domain of ${W2_MIN_SAMPLES}`
+    : null;
 
-  const neighbourDeltas = []
+  const neighbourDeltas = [];
   for (let i = 0; i < kept.length; i += 1) {
-    let best = Infinity
-    let bestAt = -1
+    let best = Infinity;
+    let bestAt = -1;
     for (let j = 0; j < kept.length; j += 1) {
-      if (i === j) continue
-      const d = (kept[i].x - kept[j].x) ** 2 + (kept[i].y - kept[j].y) ** 2
+      if (i === j) continue;
+      const d = (kept[i].x - kept[j].x) ** 2 + (kept[i].y - kept[j].y) ** 2;
       if (d < best) {
-        best = d
-        bestAt = j
+        best = d;
+        bestAt = j;
       }
     }
-    if (bestAt >= 0) neighbourDeltas.push(deltaE76(labs[i], labs[bestAt]))
+    if (bestAt >= 0) neighbourDeltas.push(deltaE76(labs[i], labs[bestAt]));
   }
 
   // The iso-shade ring: cells within ±2.5% of the median shade. A tonemap is monotone and
   // per-channel, so it maps every cell in the ring identically and cannot reintroduce a gradient.
-  const shades = kept.map((s) => s.shade)
-  const medianShade = median(shades)
+  const shades = kept.map((s) => s.shade);
+  const medianShade = median(shades);
   const isoShade =
     medianShade === null
       ? []
-      : labs.filter((_, i) => Math.abs(shades[i] - medianShade) <= W2_ISO_SHADE_TOLERANCE * medianShade)
+      : labs.filter(
+          (_, i) =>
+            Math.abs(shades[i] - medianShade) <=
+            W2_ISO_SHADE_TOLERANCE * medianShade,
+        );
 
   return criterion(
-    'W2',
-    'The mosaic reads as tiles, not as a wash',
+    "W2",
+    "The mosaic reads as tiles, not as a wash",
     [
       measure(
-        'medianNeighbourDeltaE',
-        'median ΔE to nearest on-screen neighbour',
+        "medianNeighbourDeltaE",
+        "median ΔE to nearest on-screen neighbour",
         median(neighbourDeltas),
         FLOORS.neighbourDeltaE,
-        'min',
+        "min",
         { insufficient: thin, why },
       ),
       measure(
-        'lightnessIqr',
+        "lightnessIqr",
         `IQR of L* across the iso-shade subset (${isoShade.length} of ${kept.length} cells)`,
         iqr(isoShade.map((l) => l.L)),
         FLOORS.lightnessIqr,
-        'min',
+        "min",
         { insufficient: thin, why },
       ),
     ],
     { sampled: kept.length, isoShadeSampled: isoShade.length, medianShade },
-  )
+  );
 }
 
 /**
@@ -439,57 +499,63 @@ export function evaluateW2(samples) {
  * The verdict is the *worst* qualifying adjacent pair, because §3.1 says "for every such pair".
  */
 export function evaluateW3(samples, bandShares) {
-  const byBand = new Map()
+  const byBand = new Map();
   for (const s of samples) {
-    if (!s.frontFacing) continue
-    if (!byBand.has(s.band)) byBand.set(s.band, [])
-    byBand.get(s.band).push(srgbToLab(s.rgb))
+    if (!s.frontFacing) continue;
+    if (!byBand.has(s.band)) byBand.set(s.band, []);
+    byBand.get(s.band).push(srgbToLab(s.rgb));
   }
 
-  const meanAb = new Map()
+  const meanAb = new Map();
   for (const [band, labs] of byBand) {
     meanAb.set(band, {
       a: labs.reduce((t, l) => t + l.a, 0) / labs.length,
       b: labs.reduce((t, l) => t + l.b, 0) / labs.length,
-    })
+    });
   }
 
-  const pairs = []
+  const pairs = [];
   for (const [i, j] of BAND_ADJACENCY) {
-    if (!meanAb.has(i) || !meanAb.has(j)) continue
-    const smaller = Math.min(bandShares[i] ?? 0, bandShares[j] ?? 0)
-    if (smaller < W3_MIN_BAND_SHARE) continue
+    if (!meanAb.has(i) || !meanAb.has(j)) continue;
+    const smaller = Math.min(bandShares[i] ?? 0, bandShares[j] ?? 0);
+    if (smaller < W3_MIN_BAND_SHARE) continue;
     pairs.push({
       bands: [i, j],
       classes: [BAND_ORDER[i], BAND_ORDER[j]],
       smallerShare: smaller,
       deltaE: deltaEab(meanAb.get(i), meanAb.get(j)),
-    })
+    });
   }
 
-  const worst = pairs.reduce((acc, p) => (acc === null || p.deltaE < acc.deltaE ? p : acc), null)
+  const worst = pairs.reduce(
+    (acc, p) => (acc === null || p.deltaE < acc.deltaE ? p : acc),
+    null,
+  );
 
   return criterion(
-    'W3',
-    'Latitude reads as colour',
+    "W3",
+    "Latitude reads as colour",
     [
       measure(
-        'minAdjacentBandDeltaE',
+        "minAdjacentBandDeltaE",
         `ΔE(a*b*) of the closest of ${pairs.length} qualifying adjacent band pairs`,
         worst === null ? null : worst.deltaE,
         FLOORS.bandDeltaE,
-        'min',
+        "min",
         {
           // Zero qualifying pairs is the criterion having nothing to say, not the criterion failing.
           // A one-card world populates a single band, so no adjacent pair exists to compare — and
           // "≥ 10 for every such pair" over an empty set is vacuous, which is neither red nor green.
           insufficient: pairs.length === 0,
-          why: pairs.length === 0 ? `no adjacent band pair holds ≥ ${W3_MIN_BAND_SHARE * 100}% on both sides` : null,
+          why:
+            pairs.length === 0
+              ? `no adjacent band pair holds ≥ ${W3_MIN_BAND_SHARE * 100}% on both sides`
+              : null,
         },
       ),
     ],
     { pairs, worstPair: worst },
-  )
+  );
 }
 
 /**
@@ -503,18 +569,18 @@ export function evaluateW3(samples, bandShares) {
  * `samples` is `[{ t, evictions }]`, `t` in seconds, cumulative counter, ascending.
  */
 export function evictionRate(samples, windowS = W4_EVICTION_WINDOW_S) {
-  if (samples.length < 2) return null
-  const end = samples[samples.length - 1]
-  const cutoff = end.t - windowS
+  if (samples.length < 2) return null;
+  const end = samples[samples.length - 1];
+  const cutoff = end.t - windowS;
   // The last sample at or before the cutoff, so the window is fully covered rather than clipped.
-  let start = samples[0]
+  let start = samples[0];
   for (const s of samples) {
-    if (s.t <= cutoff) start = s
-    else break
+    if (s.t <= cutoff) start = s;
+    else break;
   }
-  const span = end.t - start.t
-  if (span <= 0) return null
-  return (end.evictions - start.evictions) / span
+  const span = end.t - start.t;
+  if (span <= 0) return null;
+  return (end.evictions - start.evictions) / span;
 }
 
 /**
@@ -527,97 +593,185 @@ export function evictionRate(samples, windowS = W4_EVICTION_WINDOW_S) {
  * `?artThreshold=fixed24` starves the policy instead of the resource, and only that goes red.
  */
 export function evaluateW4(cells, evictionTimeline) {
-  const wanting = cells.filter((c) => c.frontFacing && c.onScreen && c.wantsArt)
-  const showing = wanting.filter((c) => c.showingArt)
+  const wanting = cells.filter(
+    (c) => c.frontFacing && c.onScreen && c.wantsArt,
+  );
+  const showing = wanting.filter((c) => c.showingArt);
 
   return criterion(
-    'W4',
-    'Art resolves without exhausting',
+    "W4",
+    "Art resolves without exhausting",
     [
       measure(
-        'artFraction',
+        "artFraction",
         `cells above the effective threshold showing art (${showing.length}/${wanting.length})`,
         wanting.length === 0 ? null : showing.length / wanting.length,
         FLOORS.artFraction,
-        'min',
+        "min",
       ),
       measure(
-        'evictionsPerSecond',
+        "evictionsPerSecond",
         `evictions/s over the last ${W4_EVICTION_WINDOW_S} s`,
         evictionRate(evictionTimeline),
         FLOORS.evictionsPerSecond,
-        'max',
+        "max",
       ),
     ],
     { wanting: wanting.length, showing: showing.length },
-  )
+  );
 }
 
 /**
- * **W5 — the home view is not a wall of labels.**
+ * W5 needs at least this many distinct azimuths before reachability means anything.
  *
- * The moons stay unlabelled until hover (§1.8, PRD 5.3.8 as amended in §6), so what may carry a
- * label is one per world plus the belt. On the v3 roster that is 45 + 1 = 46, against the 87 the
- * galaxy renders on the same dataset today.
+ * One frame is not a sweep, and the failure is silent in the dangerous direction: handed a single
+ * azimuth, `everUnlabelled` degenerates into exactly the single-frame coverage count this criterion
+ * exists to replace, and it reads as a *stronger* claim than it is. Twelve is the floor because the
+ * v3 miss pattern has structure at the scale of the spiral's arms — at eight samples `karsus`
+ * (labelled at 20.3% of azimuths) can be missed or caught by luck of the phase.
  *
- * `roster` is required rather than defaulted: a default would be a bare number wearing a hat, and
- * a bare number is exactly what went stale here.
- *
- * ## Why the ceiling alone is not W5
- *
- * A ceiling is satisfied by rendering *fewer* labels, and it does not care **which**. DEC-751
- * measured the shipped solver under §1.3's radius law and got 39 world labels — comfortably under
- * 46, and six worlds unlabelled: `bloomburrow` (299 cards), `capenna` (352), `thunder-junction`
- * (326), `gobakhan` (2), `shandalar` (1), `vryn` (2). The losses are collision losses, so they do
- * not track card count and the ceiling cannot distinguish "46 labels, one per world" from "39
- * labels, six of them the wrong ones". That is a measure carried by the wrong signal: the ceiling
- * reads GREEN either way.
- *
- * So W5 is a conjunction — a ceiling on how many labels appear and a floor on how many worlds are
- * *reachable*. The two halves fail in opposite directions, which is exactly why one control cannot
- * test both; see `checkControlRow`, and note that §3.1's one W5 control row (`labels forced on for
- * empty planes`) aims at `homeLabels` only. The coverage half is unfalsified until it gets a
- * control of its own.
- *
- * `coverageFloor` is a **required** fraction with no default, for the same reason `roster` is: the
- * floor is a product ruling about how many worlds may be unreachable at home, and it is not mine to
- * pick. DEC-751 suggested ≥ 0.9, but 39/45 = 0.867 — their own measurement is two labels under
- * their own floor, so adopting 0.9 as written scores the *compliant* renderer RED and takes the
- * matrix's expected-GREEN row with it. Routed to the CEO; until it is ruled, the gate must be
- * handed a floor explicitly rather than inheriting a guess from this module.
+ * The gate reports `insufficient` below it, never `pass` and never `fail`.
  */
-export function evaluateW5(renderedLabelCount, roster, coverage) {
-  const { worldsWithCards, labelledWorlds, coverageFloor } = coverage
-  const wanted = [...worldsWithCards]
-  const labelled = new Set(labelledWorlds)
-  // A label on a world outside the dataset's own world set is not coverage of anything — count the
-  // intersection, so a renderer cannot buy coverage by labelling moons.
-  const covered = wanted.filter((slug) => labelled.has(slug))
-  const missing = wanted.filter((slug) => !labelled.has(slug))
+export const W5_MIN_AZIMUTHS = 12;
+
+/**
+ * **W5 — the home view is not a wall of labels, and every world is reachable from it.**
+ *
+ * Both halves are measured over a **sweep of azimuths**, not at one frame. `motion.ts:247` rotates
+ * every plane by `multiverseAngle` each tick, so the home view is not a pose the harness can choose
+ * — it is a one-parameter family the scene is continuously moving through, and any measure read off
+ * a single frame is one draw from a distribution. Measured on `3ce85aed66e9dc3a` at 1920×1080,
+ * fov 55, over 360 azimuths (DEC-752):
+ *
+ * | | v3 `3ce85aed` | v2 `dabe2c9a` |
+ * |---|---|---|
+ * | labels visible (post-suppression) | 33 – 42 | 33 – 43 |
+ * | worlds labelled | 33 – 42 of 45 | 33 – 43 of 45 |
+ * | worlds **never** labelled, any azimuth | **0** | **0** |
+ *
+ * ## Why the ceiling is a suppression check and nothing more
+ *
+ * §1.8 leaves the moons unlabelled until hover, so after it lands the candidate list is the 45
+ * worlds — the belt is filtered by slug and can never be labelled (see `homeLabelCeiling`). The
+ * ceiling is 45 and at most 45 labels can exist, so it holds **360 of 360 azimuths, for every
+ * renderer, by construction**. Its bound does not bind: a bound-check is vacuous when the bound
+ * never binds.
+ *
+ * It is kept anyway, because it does bind on the one renderer that matters — the one where §1.8
+ * has regressed. Unsuppressed, the same sweep reads **66 – 77 labels and fails 360 of 360**. So
+ * `homeLabels` is a *regression check on the suppression rule*, not a measure of legibility, and
+ * this is the honest name for it. Do not read a green `homeLabels` as evidence that the home view
+ * is legible; it is evidence that the moons are quiet.
+ *
+ * ## Why coverage-at-a-frame is not the other half, and reachability is
+ *
+ * A ceiling is satisfied by rendering *fewer* labels and does not care **which**, so W5 needs a
+ * second half that does. DEC-751 proposed a coverage floor — ≥ 90% of worlds labelled, or ≤ 4
+ * missing. Over the sweep that floor is met at **17 of 360 azimuths (4.7%)** on the shipping
+ * dataset: it scores a renderer doing exactly what §1.8 and §2.4 ask as RED at 95% of the frames
+ * the harness might grab, and takes the matrix's expected-GREEN row with it. That is the third
+ * instance of one defect — the stale 30, the 0.9 floor, and now this — and the shape is always the
+ * same: a threshold read off one measurement of a moving system, then written down as a law.
+ *
+ * Coverage also does not buy the stability it was proposed for. Its whole argument was that it does
+ * not care which worlds win, but the *count* of winners swings 33 – 42 across azimuth, a band as
+ * wide as the label count's own. Changing which quantity is sampled does not stop it being a
+ * sample.
+ *
+ * What is invariant under the rotation is **reachability**: whether a world is labelled at *some*
+ * azimuth. It is the claim PRD 5.3.8 actually makes — every world reachable from home — it is 0
+ * never-labelled on both datasets, and unlike a count it distinguishes "hidden this frame" from
+ * "permanently lost", which is the defect a coverage cap cannot see.
+ *
+ * It is also falsifiable, on a seam the harness already owns: at 800×600 the same sweep leaves
+ * `thunder-junction` unlabelled at **all 360 azimuths**. That is W5's coverage control, and it
+ * needs nothing from R1 — see §3.1's matrix, where it closes the declared gap.
+ *
+ * `roster` and `minAzimuths` are required rather than defaulted, for the reason the 30 went stale:
+ * a threshold that matters does not get to arrive as a default.
+ *
+ * @param sweep - one entry per sampled azimuth:
+ *   `{ azimuth: number, labelCount: number, labelledWorlds: Iterable<string> }`.
+ */
+export function evaluateW5(sweep, roster, options) {
+  const { worldsWithCards, minAzimuths } = options;
+  const wanted = [...worldsWithCards];
+  const samples = [...sweep];
+
+  // Below the floor this is not a sweep, and reporting it as one would let a single frame wear
+  // reachability's much stronger claim. `null` is what `measure` renders as `insufficient`.
+  const enough = samples.length >= minAzimuths;
+  const why = enough
+    ? null
+    : `${samples.length} azimuth${samples.length === 1 ? "" : "s"} sampled, below the floor of ` +
+      `${minAzimuths}: one frame is not a sweep`;
+
+  // A label on a world outside the dataset's own world set is not coverage of anything — intersect,
+  // so a renderer cannot buy reachability by labelling moons.
+  const labelledAt = samples.map((s) => {
+    const set = new Set(s.labelledWorlds);
+    return wanted.filter((slug) => set.has(slug));
+  });
+
+  const everLabelled = new Set(labelledAt.flat());
+  const neverLabelled = wanted.filter((slug) => !everLabelled.has(slug));
+
+  // The ceiling's worst case over the sweep, which is the only reading a ceiling can honestly take.
+  const worstLabelCount =
+    samples.length === 0 ? null : Math.max(...samples.map((s) => s.labelCount));
+
+  // Evidence, not a criterion: how often each world is actually legible. The floor on *this* is the
+  // open ruling (v3's weakest is karsus at 20.3%, v2's is avishkar at 49.7%) and it is routed, not
+  // guessed — picking it here is how the 0.9 happened.
+  const shareLabelled = wanted
+    .map((slug) => ({
+      slug,
+      share:
+        samples.length === 0
+          ? null
+          : labelledAt.filter((l) => l.includes(slug)).length / samples.length,
+    }))
+    .sort((a, b) => (a.share ?? 0) - (b.share ?? 0));
 
   return criterion(
-    'W5',
-    'The home view is not a wall of labels',
+    "W5",
+    "The home view is not a wall of labels, and every world is reachable from it",
     [
       measure(
-        'homeLabels',
-        `plane labels visible at the home view (${roster.worlds} worlds + ${roster.belts} belt)`,
-        renderedLabelCount,
+        "homeLabels",
+        `worst-case plane labels over ${samples.length} azimuths — a regression check on §1.8's ` +
+          `suppression, not a legibility measure (ceiling ${homeLabelCeiling(roster)})`,
+        enough ? worstLabelCount : null,
         homeLabelCeiling(roster),
-        'max',
+        "max",
+        { insufficient: !enough, why },
       ),
       measure(
-        'worldLabelCoverage',
-        `worlds with cards carrying a visible label (${covered.length} of ${wanted.length})`,
-        wanted.length === 0 ? null : covered.length / wanted.length,
-        coverageFloor,
-        'min',
+        "worldsNeverLabelled",
+        `worlds with cards carrying no visible label at any of ${samples.length} azimuths ` +
+          `(${neverLabelled.length} of ${wanted.length})`,
+        enough && wanted.length > 0 ? neverLabelled.length : null,
+        0,
+        "max",
+        {
+          insufficient: !enough || wanted.length === 0,
+          why:
+            wanted.length === 0
+              ? "the dataset under test has no world with cards"
+              : why,
+        },
       ),
     ],
-    // The gate prints these: "six worlds missing" is a number to argue with, `bloomburrow capenna
-    // thunder-junction` is a defect to fix. DEC-751's finding was only legible because it named them.
-    { missingWorlds: missing, coveredWorlds: covered.length, wantedWorlds: wanted.length },
-  )
+    // The gate prints these: "three worlds unreachable" is a number to argue with,
+    // `thunder-junction` is a defect to fix. DEC-751's finding was only legible because it named them.
+    {
+      neverLabelledWorlds: neverLabelled,
+      wantedWorlds: wanted.length,
+      azimuths: samples.length,
+      minAzimuths,
+      weakestWorlds: shareLabelled.slice(0, 5),
+    },
+  );
 }
 
 /**
@@ -638,27 +792,38 @@ export function evaluateW5(renderedLabelCount, roster, coverage) {
  * expectation from GREEN precisely so that "not measured" can never be recorded as "measured and
  * fine", which is the failure mode the whole matrix exists to prevent.
  */
-export function checkControlRow(criteria, { criterion: id, measure: key, expect }) {
-  const found = criteria.find((c) => c.id === id)
-  if (found === undefined) return { ok: false, detail: `criterion ${id} was not run` }
+export function checkControlRow(
+  criteria,
+  { criterion: id, measure: key, expect },
+) {
+  const found = criteria.find((c) => c.id === id);
+  if (found === undefined)
+    return { ok: false, detail: `criterion ${id} was not run` };
 
-  const subject = key === undefined ? found : found.measures.find((m) => m.key === key)
-  if (subject === undefined) return { ok: false, detail: `${id} has no measure "${key}"` }
+  const subject =
+    key === undefined ? found : found.measures.find((m) => m.key === key);
+  if (subject === undefined)
+    return { ok: false, detail: `${id} has no measure "${key}"` };
 
-  const went = subject.status === 'insufficient' ? 'N/A' : subject.status === 'pass' ? 'GREEN' : 'RED'
-  const ok = went === expect
-  const what = key === undefined ? id : `${id}.${key}`
+  const went =
+    subject.status === "insufficient"
+      ? "N/A"
+      : subject.status === "pass"
+        ? "GREEN"
+        : "RED";
+  const ok = went === expect;
+  const what = key === undefined ? id : `${id}.${key}`;
   const value =
-    went === 'N/A'
-      ? ` (${subject.insufficientReason ?? 'out of domain'})`
+    went === "N/A"
+      ? ` (${subject.insufficientReason ?? "out of domain"})`
       : key === undefined
-        ? ''
-        : ` (value ${subject.value}, bound ${subject.bound})`
+        ? ""
+        : ` (value ${subject.value}, bound ${subject.bound})`;
 
   return {
     ok,
     detail: ok
       ? `${what} went ${expect} as expected${value}`
       : `${what} was expected ${expect} but went ${went}${value}`,
-  }
+  };
 }

@@ -10,7 +10,7 @@ five engineer-days, and a seam that lands in a shape the gate cannot read costs 
 through review to find out.
 
 So this document states what the gate will read, in the shape it will read it, while R1 is still
-unstarted. Nothing here adds a requirement to §3.1; it fixes the *spelling* of requirements §3.1
+unstarted. Nothing here adds a requirement to §3.1; it fixes the _spelling_ of requirements §3.1
 already makes, so that R1 can build against something checkable.
 
 The machine-readable half is `web/scripts/lib/worlds-metrics.d.mts` — `CellSample`, `ArtCell` and
@@ -27,7 +27,7 @@ reads `state()`; the worlds gate needs one more call, because per-cell data is f
 in the state object the status panel renders from.
 
 ```js
-window.__eternitiesProbe.worlds() // → WorldsProbe, or undefined on a build without the seam
+window.__eternitiesProbe.worlds(); // → WorldsProbe, or undefined on a build without the seam
 ```
 
 Returning `undefined` rather than throwing matters: the gate reports "the worlds probe is not
@@ -36,29 +36,29 @@ installed on this page" as a setup failure, which is a different verdict from a 
 ```ts
 interface WorldsProbe {
   /** The plane in focus, or null at the home view. */
-  planeSlug: string | null
+  planeSlug: string | null;
   /** Camera distance in units of the plane's radius — W1 and W4 are both specified at a pose. */
-  radii: number
+  radii: number;
   /** CSS pixels. Must match the screenshot's dimensions at dpr 1, or every sample is off. */
-  viewport: { width: number; height: number }
-  cells: ProbeCell[]
-  pool: ProbePool
+  viewport: { width: number; height: number };
+  cells: ProbeCell[];
+  pool: ProbePool;
   /** Per band index, that band's share of the plane's cards. Gates W3's 5% rule. */
-  bandShares: number[]
+  bandShares: number[];
 }
 
 interface ProbeCell {
   /** Cell centre in CSS pixels, origin at the viewport's top-left. */
-  x: number
-  y: number
+  x: number;
+  y: number;
   /** On-screen height in CSS pixels — the W1 statistic and the W2 ≥ 6 px cut. */
-  height: number
+  height: number;
   /** `dot(normal, toCamera) > 0.12`, §1.6's own facing test. */
-  frontFacing: boolean
+  frontFacing: boolean;
   /** Passed §1.6's frustum test. Reported, not filtered — W4's denominator needs it explicitly. */
-  onScreen: boolean
+  onScreen: boolean;
   /** Index into `BAND_ORDER`, the 13-band north-to-south chain of §1.3. Not a colour class. */
-  band: number
+  band: number;
   /**
    * §1.4's shade term as the renderer computed it:
    * `0.10 + 0.95·clamp(dot(n, light)·0.5 + 0.5, 0, 1)²`.
@@ -71,11 +71,11 @@ interface ProbeCell {
    * This is the one probe field that is a *derived* quantity rather than a state read, which is
    * why it is normative in §3.1 rather than being a gate-side convenience.
    */
-  shade: number
+  shade: number;
   /** Above the *effective* threshold this frame. Under §1.6's quantile this is not "height ≥ 24". */
-  wantsArt: boolean
+  wantsArt: boolean;
   /** Resolved to art and cross-faded in — `iArt` at 1, not merely a layer having been claimed. */
-  showingArt: boolean
+  showingArt: boolean;
 }
 
 interface ProbePool {
@@ -89,13 +89,13 @@ interface ProbePool {
    * §1.4's shading path already degrades to when no cell holds a layer. The gate treats 0 as a
    * measurement, not as a setup failure.
    */
-  layers: number
+  layers: number;
   /** Must satisfy `resident <= layers`; the prototype's 1,031-in-1,024 is the bug this catches. */
-  resident: number
+  resident: number;
   /** CSS px. Equals 24 exactly under `?artThreshold=fixed24`. */
-  effectiveThresholdPx: number
+  effectiveThresholdPx: number;
   /** Cumulative since page load, monotonic. The gate differences it; see §3 below. */
-  evictions: number
+  evictions: number;
 }
 ```
 
@@ -104,33 +104,33 @@ roster after DEC-745, and read off `planes.json` rather than hardcoded — and
 takes the statistic per plane; a single pooled array across the system would make the per-plane
 median unrecoverable, and W1's verdict is the worst plane, not the pooled one.
 
-**One entry per card, and `height` is the *subdivided* cell's extent (DEC-749's §1.4 amendment).**
+**One entry per card, and `height` is the _subdivided_ cell's extent (DEC-749's §1.4 amendment).**
 §1.4 now makes the base geometry a `(k_lon + 1) × (k_lat + 1)` vertex grid with one `k` per world,
 reaching `(1, 1)` only from 574 cards up — so **32 of v3's 45 worlds are subdivided**, and this is
 the roster's common case, not its edge. Two things that amendment must not change:
 
-- **Cardinality.** `cells` stays one entry per *card*. The sheet is still one instance per cell and
+- **Cardinality.** `cells` stays one entry per _card_. The sheet is still one instance per cell and
   `k` only re-tessellates the shared base geometry, so this falls out of the instancing for free —
   but a probe that walked sub-quads instead of instances would multiply W1's sample count by `k²`
   and divide its median height, and it would do so on 32 worlds at once while leaving Dominaria
   (already at `(1, 1)`) untouched. Report instances.
-- **What `height` measures.** The cell's on-screen extent as *rendered* — the spherical patch whose
+- **What `height` measures.** The cell's on-screen extent as _rendered_ — the spherical patch whose
   vertices §1.4 places on the lifted sphere — not the tangent quad that patch replaced. The two
   differ by exactly the corner lift the amendment exists to remove: 0.7% on Dominaria, 5.7% on
   Rabiah, 11.6% at 30 cards, **265% at N = 1**.
 
 **The gate cannot catch a `height` computed from the old tangent quad, and this is deliberate
 routing, not an oversight.** The error is an over-statement, W1 is a floor, and it is largest exactly
-where W1 has the most headroom: the subdivided worlds are the *small* ones, whose cells are enormous,
+where W1 has the most headroom: the subdivided worlds are the _small_ ones, whose cells are enormous,
 while W1's verdict binds on the largest world — Dominaria, at 25.3 px, which `k = (1, 1)` leaves
 flat anyway. So every W1 row stays green under both models, including §3.1's one-card
 `?plane=segovia` row, where the silhouette-sized cell clears 24 px whether it is measured as a patch
 or as a quad 3.65× too big. **That row is an expected-GREEN control that is insensitive to this
-defect** — it pins the gate's n = 1 *domain* handling and nothing about the geometry. The guard for
+defect** — it pins the gate's n = 1 _domain_ handling and nothing about the geometry. The guard for
 the geometry is R1's own: §1.4's 1,262-sub-quad envelope assertion in the sheet's unit test.
 
 **`band` is the band index, not the colour class.** §1.3's layout is `C G R B U W · Gold · W U B R
-G C`, thirteen bands over seven classes, and W3 compares bands adjacent *on the sphere*. Reporting a
+G C`, thirteen bands over seven classes, and W3 compares bands adjacent _on the sphere_. Reporting a
 class would merge the two ice caps — which sit at opposite poles — into one group and invent an
 adjacency the sphere does not have.
 
@@ -141,18 +141,18 @@ them and not a separate kind of thing: it is renderer surface the gate reads and
 **§3.1's ruling is that all five are R1's**; an earlier draft of this table put `?layers=N` on
 "R1/R3", and R3's rows (§1.10–§1.12) carry none of them.
 
-| Seam | Owner | What the gate needs to be true |
-|---|---|---|
-| `?probe=` | R1 | Installs `window.__eternitiesProbe.worlds()`, §1 above. Returns `undefined` on a build without the seam, which the gate reports as a setup failure rather than a red criterion. |
-| `?swatch=mean` | R1 | Every cell takes the plane's mean swatch. **The grid and `band` are unchanged** — only the colour moves. With §3.1's iso-shade subset this one row now falsifies **both** halves of W2. |
-| `?bands=shuffle` | R1 | **One global permutation of the plane's cards across the plane's cells.** The grid, the row latitudes, the band boundaries and each cell's reported `band` are all untouched; only which card sits in a cell moves. Three other readings all leave the criterion **green** — see below. |
-| `?artThreshold=fixed24` | R1 | A constant 24 CSS px threshold: no histogram, no hysteresis, pool allowed to exhaust. `pool.effectiveThresholdPx` must read exactly 24 so the gate can prove the seam took effect rather than assuming it. |
-| `?layers=N` | R1 | Pins the pool size alone, reported back **after** the `max(0, min(N, MAX_ARRAY_TEXTURE_LAYERS − 32))` clamp. **It is not `?quality=N`** — that one already exists (`adaptiveQuality.ts:360`) and moves five quantities at once (`pixelRatioCap`, `bloomScale`, `bloomLevels`, `thumbnailCapacity`, `glow`). Routed through the tier, the expected-GREEN `?layers=128` row would also be measuring dpr, bloom and glow. |
+| Seam                    | Owner | What the gate needs to be true                                                                                                                                                                                                                                                                                                                                                                                         |
+| ----------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `?probe=`               | R1    | Installs `window.__eternitiesProbe.worlds()`, §1 above. Returns `undefined` on a build without the seam, which the gate reports as a setup failure rather than a red criterion.                                                                                                                                                                                                                                        |
+| `?swatch=mean`          | R1    | Every cell takes the plane's mean swatch. **The grid and `band` are unchanged** — only the colour moves. With §3.1's iso-shade subset this one row now falsifies **both** halves of W2.                                                                                                                                                                                                                                |
+| `?bands=shuffle`        | R1    | **One global permutation of the plane's cards across the plane's cells.** The grid, the row latitudes, the band boundaries and each cell's reported `band` are all untouched; only which card sits in a cell moves. Three other readings all leave the criterion **green** — see below.                                                                                                                                |
+| `?artThreshold=fixed24` | R1    | A constant 24 CSS px threshold: no histogram, no hysteresis, pool allowed to exhaust. `pool.effectiveThresholdPx` must read exactly 24 so the gate can prove the seam took effect rather than assuming it.                                                                                                                                                                                                             |
+| `?layers=N`             | R1    | Pins the pool size alone, reported back **after** the `max(0, min(N, MAX_ARRAY_TEXTURE_LAYERS − 32))` clamp. **It is not `?quality=N`** — that one already exists (`adaptiveQuality.ts:360`) and moves five quantities at once (`pixelRatioCap`, `bloomScale`, `bloomLevels`, `thumbnailCapacity`, `glow`). Routed through the tier, the expected-GREEN `?layers=128` row would also be measuring dpr, bloom and glow. |
 
 ### 2a. One readback seam the gate is missing — `data-plane-slug` on a label node (R3)
 
-Not a control seam: nothing about it degrades the renderer. W5's coverage half (§3.1, added on
-DEC-751's measurement) has to answer *which* worlds carry a visible label, and **the DOM cannot say**.
+Not a control seam: nothing about it degrades the renderer. W5's reachability half (§3.1) has to
+answer _which_ worlds carry a visible label, at **each** sampled azimuth, and **the DOM cannot say**.
 `PlaneLabels.tsx:293` passes `key={candidate.key}`, and a React `key` is never written to the DOM; the
 node ships `className="label"` and a `<span class="label-name">` holding the plane's **display name**.
 
@@ -167,8 +167,14 @@ subtree.
 
 **Owner is R3 (DEC-751), not R1** — `labels/` is R3's surface under §1.10–§1.12, and this is the one
 seam in this document that does not sit behind a query parameter. Routed through the CEO per
-DEC-744 B1, the same way a missing R1 seam would be. Until it lands, `evaluateW5`'s coverage half is
-implemented and unit-tested but has nothing to feed it in a live run.
+DEC-744 B1, the same way a missing R1 seam would be. Until it lands, `evaluateW5`'s reachability
+half is implemented and unit-tested but has nothing to feed it in a live run.
+
+**This ask is unaffected by §3.1's control-seam withdrawal, and the two should not be confused.**
+DEC-752 withdrew the request for a _control_ seam that would move world coverage — the viewport does
+that, and it is the gate's own parameter. This is a _readback_ seam: it does not change what the
+renderer draws, it lets the gate read which world a label belongs to. Sweeping 12+ azimuths makes it
+more load-bearing, not less, because the identity has to be resolved per frame rather than once.
 
 **What `?bands=shuffle` must not be.** The gate cannot distinguish these from the outside by reading
 W3 alone, because all three go **green**:
@@ -177,7 +183,7 @@ W3 alone, because all three go **green**:
    merely relabelled, so every adjacent-pair ΔE stays large.
 2. **Permuting the band → colour-class map** — each band is still one class, so adjacent bands are
    still different classes and still far apart in a\*b\*.
-3. **Permuting within each band** — the band's contents are unchanged *as a set*, so its mean is
+3. **Permuting within each band** — the band's contents are unchanged _as a set_, so its mean is
    unchanged exactly.
 
 The distinguishing assertion belongs in R1's unit test for the seam, not in the gate: **under the
@@ -210,7 +216,7 @@ This document previously answered the finding with a sixth, gate-side row — a 
 **DEC-749 repaired it in the renderer instead, and that is the better fix:** §3.1's lightness half
 is now measured over the iso-shade subset, where `?swatch=mean` drives it to ≈ 0, so one real
 control row falsifies both halves and the gate-side row is gone. R1's re-derivation also showed the
-un-subsetted measure could not fail *at all* — 12.6–21.6 for any single swatch — which is a stronger
+un-subsetted measure could not fail _at all_ — 12.6–21.6 for any single swatch — which is a stronger
 statement than "it stayed green on this control". The gate-side workaround did not survive its own
 finding.
 

@@ -6,22 +6,22 @@
  * too — so it needs a declaration to stay type-safe on the test side.
  */
 
-export type Rgb = readonly [number, number, number]
+export type Rgb = readonly [number, number, number];
 
 export interface Lab {
-  readonly L: number
-  readonly a: number
-  readonly b: number
+  readonly L: number;
+  readonly a: number;
+  readonly b: number;
 }
 
 /** A cell as the `?probe=` seam reports it, in CSS pixels, plus the colour sampled at its centre. */
 export interface CellSample {
-  readonly x: number
-  readonly y: number
-  readonly height: number
-  readonly frontFacing: boolean
-  readonly band: number
-  readonly rgb: Rgb
+  readonly x: number;
+  readonly y: number;
+  readonly height: number;
+  readonly frontFacing: boolean;
+  readonly band: number;
+  readonly rgb: Rgb;
   /**
    * §1.4's shade term for this cell, as the renderer computed it — `0.10 + 0.95·s²`.
    *
@@ -29,22 +29,22 @@ export interface CellSample {
    * The gate does not re-derive it from the normal: doing so would assert against the gate's model
    * of the light rather than against the shipped one.
    */
-  readonly shade: number
+  readonly shade: number;
 }
 
 export interface ArtCell {
-  readonly frontFacing: boolean
-  readonly onScreen: boolean
+  readonly frontFacing: boolean;
+  readonly onScreen: boolean;
   /** Above the *effective* threshold this frame, which under §1.6's quantile is not 24 px. */
-  readonly wantsArt: boolean
-  readonly showingArt: boolean
+  readonly wantsArt: boolean;
+  readonly showingArt: boolean;
 }
 
 export interface EvictionSample {
   /** Seconds. */
-  readonly t: number
+  readonly t: number;
   /** The pool's cumulative eviction counter, not a per-interval delta. */
-  readonly evictions: number
+  readonly evictions: number;
 }
 
 /**
@@ -54,94 +54,117 @@ export interface EvictionSample {
  * and is not a kind of failure. Anything deciding a run's overall verdict must branch on this
  * rather than on `pass`.
  */
-export type Verdict = 'pass' | 'fail' | 'insufficient'
+export type Verdict = "pass" | "fail" | "insufficient";
 
 export interface Measure {
-  readonly key: string
-  readonly label: string
-  readonly value: number | null
-  readonly bound: number
-  readonly direction: 'min' | 'max'
-  readonly status: Verdict
+  readonly key: string;
+  readonly label: string;
+  readonly value: number | null;
+  readonly bound: number;
+  readonly direction: "min" | "max";
+  readonly status: Verdict;
   /** `status === 'pass'`. Kept for callers that only branch on success. */
-  readonly pass: boolean
+  readonly pass: boolean;
   /** Why the subject was out of domain, when `status` is `insufficient`. */
-  readonly insufficientReason: string | null
+  readonly insufficientReason: string | null;
 }
 
 export interface Criterion {
-  readonly id: string
-  readonly title: string
-  readonly measures: readonly Measure[]
-  readonly status: Verdict
+  readonly id: string;
+  readonly title: string;
+  readonly measures: readonly Measure[];
+  readonly status: Verdict;
   /** `status === 'pass'`. An unmeasured criterion has not passed. */
-  readonly pass: boolean
+  readonly pass: boolean;
 }
 
 export interface W1Criterion extends Criterion {
-  readonly perPlane: ReadonlyArray<{ readonly slug: string; readonly medianHeightPx: number | null }>
-  readonly worstPlane: string | null
+  readonly perPlane: ReadonlyArray<{
+    readonly slug: string;
+    readonly medianHeightPx: number | null;
+  }>;
+  readonly worstPlane: string | null;
 }
 
 export interface W2Criterion extends Criterion {
-  readonly sampled: number
+  readonly sampled: number;
   /** How many of `sampled` fell in the iso-shade ring the lightness half is measured over. */
-  readonly isoShadeSampled: number
-  readonly medianShade: number | null
+  readonly isoShadeSampled: number;
+  readonly medianShade: number | null;
 }
 
 export interface BandPair {
-  readonly bands: readonly [number, number]
-  readonly classes: readonly [string, string]
-  readonly smallerShare: number
-  readonly deltaE: number
+  readonly bands: readonly [number, number];
+  readonly classes: readonly [string, string];
+  readonly smallerShare: number;
+  readonly deltaE: number;
 }
 
 export interface W3Criterion extends Criterion {
-  readonly pairs: readonly BandPair[]
-  readonly worstPair: BandPair | null
+  readonly pairs: readonly BandPair[];
+  readonly worstPair: BandPair | null;
 }
 
 export interface W4Criterion extends Criterion {
-  readonly wanting: number
-  readonly showing: number
+  readonly wanting: number;
+  readonly showing: number;
 }
 
 export interface W5Criterion extends Criterion {
   /** The worlds with cards that carry no visible label — named, not just counted. */
-  readonly missingWorlds: readonly string[]
-  readonly coveredWorlds: number
-  readonly wantedWorlds: number
+  readonly neverLabelledWorlds: readonly string[];
+  readonly wantedWorlds: number;
+  readonly azimuths: number;
+  readonly minAzimuths: number;
+  /** The five least-often-labelled worlds, as evidence behind the open share ruling. */
+  readonly weakestWorlds: ReadonlyArray<{
+    readonly slug: string;
+    readonly share: number | null;
+  }>;
 }
 
 /** A rendered label as the gate reads it back off the DOM. */
 export interface RenderedLabel {
-  readonly opacity: number
+  readonly opacity: number;
 }
 
-export interface W5Coverage {
+/** One sampled azimuth of the home view. `motion.ts:247` is why there is more than one. */
+export interface W5AzimuthSample {
+  /** The scene's `multiverseAngle`, in radians, at which this frame was read. */
+  readonly azimuth: number;
+  /** Plane labels passing `isLabelVisible` at this azimuth. */
+  readonly labelCount: number;
+  /** The slugs carrying such a label at this azimuth. */
+  readonly labelledWorlds: readonly string[];
+}
+
+export interface W5Options {
   /** Every world with at least one card, by slug — derived from the dataset under test. */
-  readonly worldsWithCards: readonly string[]
-  /** The slugs carrying a label that passes `isLabelVisible`. */
-  readonly labelledWorlds: readonly string[]
+  readonly worldsWithCards: readonly string[];
   /**
-   * Required, deliberately undefaulted: this is a product ruling, not a measurement. See
-   * `evaluateW5` — DEC-751's suggested 0.9 fails on DEC-751's own 39/45 = 0.867.
+   * Required, deliberately undefaulted: one frame is not a sweep, and handed one the reachability
+   * measure silently degenerates into the single-frame coverage count it replaces. See
+   * `W5_MIN_AZIMUTHS`.
    */
-  readonly coverageFloor: number
+  readonly minAzimuths: number;
 }
 
 export interface ControlExpectation {
-  readonly criterion: string
+  readonly criterion: string;
   /** Omit to assert on the criterion's overall verdict rather than one of its halves. */
-  readonly measure?: string
+  readonly measure?: string;
   /** `'N/A'` asserts the criterion was out of its domain — the one-card-world row uses it. */
-  readonly expect: 'RED' | 'GREEN' | 'N/A'
+  readonly expect: "RED" | "GREEN" | "N/A";
 }
 
 export interface Roster {
-  readonly worlds: number
-  readonly belts: number
+  readonly worlds: number;
+  /**
+   * Belts that can actually carry a label — **0 on every roster shipped so far**.
+   * `PlaneLabels.tsx:116` filters the Blind Eternities by slug, so its 4,204 cards put it in
+   * `planesWithCards` without ever making it labellable. See `homeLabelCeiling`.
+   */
+  readonly labellableBelts?: number;
 }
 
 /**
@@ -149,67 +172,75 @@ export interface Roster {
  * `homeLabelCeiling`, because the published "≤ 30" was a stale reading of "worlds plus the belt".
  */
 export declare const FLOORS: {
-  readonly cellHeightPx: number
-  readonly neighbourDeltaE: number
-  readonly lightnessIqr: number
-  readonly bandDeltaE: number
-  readonly artFraction: number
-  readonly evictionsPerSecond: number
-}
+  readonly cellHeightPx: number;
+  readonly neighbourDeltaE: number;
+  readonly lightnessIqr: number;
+  readonly bandDeltaE: number;
+  readonly artFraction: number;
+  readonly evictionsPerSecond: number;
+};
 
-export declare function homeLabelCeiling(roster: Roster): number
+export declare function homeLabelCeiling(roster: Roster): number;
 
-export declare const ROSTER_V3: {
-  readonly worlds: number
-  readonly belts: number
-  readonly moons: number
-  readonly planes: number
-}
+export declare const ROSTER_V3: Roster & {
+  /** Belts in the roster, labellable or not. `labellableBelts` is the one the ceiling uses. */
+  readonly belts: number;
+  readonly moons: number;
+  readonly planes: number;
+};
 
-export declare const W2_MIN_CELL_PX: number
-export declare const W2_ISO_SHADE_TOLERANCE: number
-export declare const W2_MIN_SAMPLES: number
-export declare const W3_MIN_BAND_SHARE: number
-export declare const LABEL_VISIBLE_MIN_OPACITY: number
-export declare function isLabelVisible(label: RenderedLabel): boolean
-export declare const W4_EVICTION_WINDOW_S: number
-export declare const BAND_ORDER: readonly string[]
-export declare const BAND_ADJACENCY: ReadonlyArray<readonly [number, number]>
+export declare const W2_MIN_CELL_PX: number;
+export declare const W2_ISO_SHADE_TOLERANCE: number;
+export declare const W2_MIN_SAMPLES: number;
+export declare const W3_MIN_BAND_SHARE: number;
+export declare const LABEL_VISIBLE_MIN_OPACITY: number;
+export declare function isLabelVisible(label: RenderedLabel): boolean;
+export declare const W4_EVICTION_WINDOW_S: number;
+export declare const BAND_ORDER: readonly string[];
+export declare const BAND_ADJACENCY: ReadonlyArray<readonly [number, number]>;
 
-export declare function srgbToLab(rgb: Rgb): Lab
-export declare function deltaE76(p: Lab, q: Lab): number
-export declare function deltaEab(p: Lab, q: Lab): number
+export declare function srgbToLab(rgb: Rgb): Lab;
+export declare function deltaE76(p: Lab, q: Lab): number;
+export declare function deltaEab(p: Lab, q: Lab): number;
 
-export declare function median(xs: readonly number[]): number | null
-export declare function quantile(xs: readonly number[], q: number): number | null
-export declare function iqr(xs: readonly number[]): number | null
+export declare function median(xs: readonly number[]): number | null;
+export declare function quantile(
+  xs: readonly number[],
+  q: number,
+): number | null;
+export declare function iqr(xs: readonly number[]): number | null;
 
 export declare function evaluateW1(
   planes: ReadonlyArray<{
-    readonly slug: string
-    readonly cells: ReadonlyArray<{ readonly height: number; readonly frontFacing: boolean }>
+    readonly slug: string;
+    readonly cells: ReadonlyArray<{
+      readonly height: number;
+      readonly frontFacing: boolean;
+    }>;
   }>,
-): W1Criterion
-export declare function evaluateW2(samples: readonly CellSample[]): W2Criterion
+): W1Criterion;
+export declare function evaluateW2(samples: readonly CellSample[]): W2Criterion;
 export declare function evaluateW3(
   samples: readonly CellSample[],
   bandShares: readonly number[],
-): W3Criterion
+): W3Criterion;
 export declare function evictionRate(
   samples: readonly EvictionSample[],
   windowS?: number,
-): number | null
+): number | null;
 export declare function evaluateW4(
   cells: readonly ArtCell[],
   evictionTimeline: readonly EvictionSample[],
-): W4Criterion
+): W4Criterion;
+export declare const W5_MIN_AZIMUTHS: number;
+
 export declare function evaluateW5(
-  renderedLabelCount: number,
+  sweep: readonly W5AzimuthSample[],
   roster: Roster,
-  coverage: W5Coverage,
-): W5Criterion
+  options: W5Options,
+): W5Criterion;
 
 export declare function checkControlRow(
   criteria: readonly Criterion[],
   expectation: ControlExpectation,
-): { readonly ok: boolean; readonly detail: string }
+): { readonly ok: boolean; readonly detail: string };
