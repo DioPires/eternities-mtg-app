@@ -89,7 +89,17 @@ def grid(card_count: int) -> tuple[float, int, list[int]]:
     _seed_dphi, rows, _ = closed_form(card_count)
     rows = max(1, min(rows, card_count))  # §1.3's floor: never more rows than cards
     dphi = math.pi / rows
-    weight = [math.sin((i + 0.5) * dphi) for i in range(rows)]
+    # The weights are MIRRORED, not computed per row. sin(theta_r) and sin(theta_(rows-1-r)) are
+    # equal in exact arithmetic and NOT equal in doubles -- up to ~1.5 ulp apart, because the two
+    # arguments differ. On bloomburrow's 18 rows only 3 of the 9 mirrored pairs came out
+    # bit-identical, which silently disables the tie-break below: `min(r, rows-1-r)` only runs when
+    # the fractional remainders TIE, and last-bit noise means they almost never do. Worse, it is not
+    # stable across implementations -- libm and V8 order bloomburrow's rows 4 and 13 oppositely,
+    # which is how this was found (this file and its TypeScript half disagreed on one world).
+    # Mirroring makes every pair tie exactly, so the documented rule decides and both agree.
+    weight = [0.0] * rows
+    for i in range((rows + 1) // 2):
+        weight[i] = weight[rows - 1 - i] = math.sin((i + 0.5) * dphi)
     total = sum(weight)
     quota = [card_count * w / total for w in weight]
     cells = [max(1, math.floor(q)) for q in quota]
@@ -383,12 +393,21 @@ check("one card is the same physical area on every world", [round(a, 3) for a in
 # The aspect deviation at N <= 2 is real, bounded, and NOT where the law breaks: art letterboxes.
 check("slot aspect at N = 1", round(slot_aspect(1), 3), 2.000, tol=0.001)
 check("slot aspect at N = 2", round(slot_aspect(2), 3), 1.000, tol=0.001)
-# The exact-N relaxation lands a small world's residual in ONE row, so N = 3 ships [1, 2] and its
-# northern row is a single cell wrapping the circumference. The closed form's benign 1.414 was an
-# artefact of over-allocating to [2, 2].
-check("slot aspect at N = 3, under the relaxation", round(slot_aspect(3), 3), 2.828, tol=0.001)
+# The exact-N relaxation lands a small world's residual in ONE row, so N = 3 ships a two-cell row
+# and a ONE-cell row whose single cell wraps the full circumference. The closed form's benign 1.414
+# was an artefact of over-allocating to [2, 2].
+#
+# WHICH row carries the single cell is decided by the tie-break, and is not a durable fact: at
+# rows = 2 the two rows have identical quotas, so `min(r, rows-1-r)` ties as well and the residual
+# falls to the lower index -- [2, 1]. An earlier revision recorded [1, 2] here, which was the
+# opposite answer produced by last-bit noise in `sin` before the weights were mirrored. The claim
+# that matters is about the WORST row, so that is what is measured; the hemisphere is not.
+_dphi3, _rows3, cells_3 = grid(3)
+check("N = 3 ships one two-cell row and one single-cell row", sorted(cells_3), [1, 2])
+worst_aspect_3 = max(slot_aspect(3, r) for r in range(len(cells_3)))
+check("worst slot aspect at N = 3, under the relaxation", round(worst_aspect_3, 3), 2.828, tol=0.001)
 check("...which is FURTHER from 4:3 than Dominaria's own polar row",
-      abs(slot_aspect(3) / ASPECT - 1) > abs(aspects[0] / ASPECT - 1), True)
+      abs(worst_aspect_3 / ASPECT - 1) > abs(aspects[0] / ASPECT - 1), True)
 
 # What does break is §1.4's tangent quad.
 lifts = {}
