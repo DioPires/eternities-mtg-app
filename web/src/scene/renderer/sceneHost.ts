@@ -166,6 +166,13 @@ export class SceneHost {
   /** {@link attachDrive}'s one-shot guard, the same shape as `cardTierHandle` is for the tier. */
   private driveAttached = false
   private starsComplete = false
+  /**
+   * PRD 5.9's setting, held so {@link buildCardTier} can replay it (DEC-751).
+   *
+   * The same reason {@link tier}'s thumbnail capacity is held and replayed: the card tier is built
+   * late, and every `setX` that arrives before it exists hits a `?.` and is gone.
+   */
+  private reducedMotion = false
   private warmupStarted = false
   private warmupResult: ProgramWarmupResult | null = null
   private tier: QualityTier = QUALITY_TIERS[0]!
@@ -409,6 +416,9 @@ export class SceneHost {
 
   /** PRD 5.9, from the settings store laid over the OS preference. */
   setReducedMotion(reduced: boolean): void {
+    // Recorded before it is forwarded, because the card tier may not exist yet. See
+    // {@link reducedMotion} and {@link buildCardTier}.
+    this.reducedMotion = reduced
     this.starSceneHandle.setReducedMotion(reduced)
     this.cardTierHandle?.setReducedMotion(reduced)
     this.navigation?.api.setReducedMotion(reduced)
@@ -487,6 +497,21 @@ export class SceneHost {
     // The tier is built after the starting tier was announced, so the rung it missed is applied
     // here rather than waiting for the ladder to move.
     this.cardTierHandle.setThumbnailCapacity(this.tier.thumbnailCapacity)
+    /*
+     * And PRD 5.9's setting, for exactly the same reason (DEC-751).
+     *
+     * `setReducedMotion` runs from a mount effect, long before `planes.json` lands and this tier
+     * is built, so its `this.cardTierHandle?.` was a no-op for every user whose preference was
+     * already set when the page loaded — which is every user who has the preference at all. The
+     * tier then kept its own `reducedMotion = false` default for the rest of the session, and the
+     * card went on tilting and the ring went on orbiting.
+     *
+     * **It could only ever come right by accident**: the value is re-sent on *change*, so the one
+     * way to get a correct scene was to toggle the OS setting after the scene had loaded. That is
+     * why a browser check could confirm the setting "works" and the shipped path still be wrong —
+     * measured both ways in DEC-751, frozen = false before load and true after.
+     */
+    this.cardTierHandle.setReducedMotion(this.reducedMotion)
   }
 
   private maybeWarm(): void {

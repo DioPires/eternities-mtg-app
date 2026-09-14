@@ -311,6 +311,86 @@ test('9e reduced motion: the duration tokens collapse to zero and nothing animat
 })
 
 /**
+ * 9e (scene). The CSS half above cannot see the scene, and the scene is where PRD 5.9 mostly lives.
+ *
+ * **This caught a shipped defect (DEC-751).** `SceneHost.setReducedMotion` forwards to the card
+ * tier through `this.cardTierHandle?.`, and the card tier is built late — after `planes.json` lands.
+ * The setting arrives from a mount effect, so for every user who already had the preference when
+ * the page loaded, the forward hit a `null` and was gone; the tier kept its own `reducedMotion =
+ * false` default for the whole session and PRD 5.6.3's tilt and PRD 5.6.7's orbit ran anyway. The
+ * value is only re-sent on *change*, so the single way to get a correct scene was to toggle the OS
+ * setting after load — which is exactly what a hand check does, and why this was invisible.
+ *
+ * So the media state is set **before `goto`**, which is the shipped order and the broken one.
+ *
+ * The negative control is doing real work rather than decorating: "the planets did not move" is
+ * also what a page with no focused card, a dead probe or a stalled render loop reports, and all
+ * three would score this green with the freeze removed. The unreduced run has to show the same
+ * planets moving through the same seam before the reduced run's stillness means anything.
+ */
+test('9e reduced motion: the scene stops too, even when the preference precedes the page', async ({
+  page,
+}) => {
+  const planetsOverTime = async (): Promise<[unknown, unknown]> => {
+    await page.waitForFunction(() => Boolean(window.__eternitiesProbe), null, { timeout: 60_000 })
+    const planes = await page.evaluate(() => window.__eternitiesProbe!.planes().slice(0, 1))
+    await page.evaluate((slug) => window.__eternitiesProbe!.focusPlane(slug), planes[0]!.slug)
+    // `focusCard` genuinely fails until the plane's shards are in, so this polls rather than sleeps.
+    await page.waitForFunction(() => window.__eternitiesProbe!.focusCard() !== -1, null, {
+      timeout: 90_000,
+    })
+    await page.evaluate(() => window.__eternitiesProbe!.focusCard())
+    const read = (): Promise<unknown> =>
+      page.evaluate(() => [0, 1, 2].map((i) => window.__eternitiesProbe!.planetScreen(i)))
+    /*
+     * Wait for the ring to be *laid out* before sampling, which is not the same as waiting for the
+     * card to be focused.
+     *
+     * `rebuildPlanets` adds the meshes at their constructed origin and the frame loop moves them to
+     * their phase positions on the next tick, so a read taken immediately after `focusCard` finds
+     * all 24 planets stacked on the card's centre. That is a *stiller* scene than a frozen one, so
+     * sampling it would have made the reduced run fail and — worse — would have made the control
+     * pass for the wrong reason.
+     */
+    await page.waitForFunction(
+      () => {
+        const probe = window.__eternitiesProbe!
+        const [a, b] = [probe.planetScreen(0), probe.planetScreen(1)]
+        return Boolean(a && b) && (a!.x !== b!.x || a!.y !== b!.y)
+      },
+      null,
+      { timeout: 30_000 },
+    )
+    const first = await read()
+    // A quarter of PRD 5.6.7's 60 s revolution would be ideal and is far too slow for a smoke; 3 s
+    // is 18 degrees of orbit, which moves a planet by tens of pixels.
+    await page.waitForTimeout(3_000)
+    return [first, await read()]
+  }
+
+  // Control first: with motion on, these planets move. Without this row, the assertion below
+  // passes on a scene that never started.
+  await page.goto('/?probe=1')
+  const [movingA, movingB] = await planetsOverTime()
+  expect(movingA, 'the probe reported no planet at all, so the control cannot run').not.toEqual([
+    null,
+    null,
+    null,
+  ])
+  expect(movingB, 'PRD 5.6.7s ring did not orbit with motion on').not.toEqual(movingA)
+
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.goto('/?probe=1')
+  const [stillA, stillB] = await planetsOverTime()
+  expect(stillA, 'the probe reported no planet at all in the reduced run').not.toEqual([
+    null,
+    null,
+    null,
+  ])
+  expect(stillB, 'PRD 5.6.7s ring kept orbiting under prefers-reduced-motion').toEqual(stillA)
+})
+
+/**
  * 9f. The one this port exists for.
  *
  * `write-vercel-json.mjs --check` already proves `vercel.json` matches `security-headers.mjs`; what
