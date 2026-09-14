@@ -317,6 +317,29 @@ check("...and 19x smaller in silhouette", round((MOON_FLOOR / RADIUS_K) ** 2, 1)
 check("floored, that cohort is moon-sized and is told apart by colour", world_radius(1), MOON_FLOOR)
 check("above 19 cards the constant-area law is untouched", round(world_radius(6266), 3), 9.974, tol=0.001)
 
+# §1.3's ruling on DEC-751's WCAG finding: raising the floor is the WRONG lever. A floor F swallows
+# the constant-area law for every world under (F/RADIUS_K)^2 cards. The point is that this is
+# disqualifying at EVERY magnitude, not only at the 6.32x the worst one-card world happens to need,
+# so the ruling does not rest on R3's pixel figures being exact.
+def swallowed_by(floor: float) -> float:
+    """Card count below which a radius floor of `floor` replaces the constant-area law."""
+    return (floor / RADIUS_K) ** 2
+
+
+check("a 1.5x floor already swallows the law below 43 cards", round(swallowed_by(1.5 * MOON_FLOOR)), 43)
+check("a 2x floor, below 76", round(swallowed_by(2 * MOON_FLOOR)), 76)
+check("a 4x floor, below 305", round(swallowed_by(4 * MOON_FLOOR)), 305)
+# 24 px / 3.8 px, the worst one-card world R3 measured on leg P's shipping 3ce85aed.
+WCAG_LEVER = 24 / 3.8
+check("...and the 6.32x that would actually reach 24 px, below 761",
+      round(swallowed_by(WCAG_LEVER * MOON_FLOOR)), 761, tol=1)
+check("...which is a floor of 3.48, larger than an empty moon by that same factor",
+      round(WCAG_LEVER * MOON_FLOOR, 2), 3.48, tol=0.01)
+# Inverting §1.8 is what makes the lever wrong in KIND: the floor exists to stop a world being drawn
+# SMALLER than an empty moon, and this "fix" would draw it 6.3x LARGER than one.
+check("...so the floor that would fix the pick inverts the relationship the floor exists to preserve",
+      WCAG_LEVER > 1, True)
+
 print("\n§2.1 float16 nearest-row matching")
 gap = math.cos(0.5 * dphi_dom) - math.cos(1.5 * dphi_dom)
 half_ulp = 2 ** -11 / 2
@@ -393,6 +416,37 @@ else:
         check("v3 worlds the radius floor binds on (§1.3)", len(small), 15)
         check("...six of which carry exactly one card",
               len([p for p in v3_worlds if p["cardCount"] == 1]), 6)
+
+        # §1.3's lever table, on the roster rather than on the closed form.
+        for mult, expected in ((1.5, 16), (2.0, 17), (4.0, 23), (WCAG_LEVER, 36)):
+            limit = swallowed_by(mult * MOON_FLOOR)
+            check(f"v3 worlds losing the constant-area law at a {mult:.2f}x floor",
+                  len([p for p in v3_worlds if p["cardCount"] < limit]), expected)
+
+        # §1.11's screen-space pick floor: inflating the PICK proxy does not steal neighbours' picks.
+        # Clearance is world-space, so it bounds the angular case only for depth-similar pairs.
+        # Radii come from the LAW, never from p["radius"]: dabe2c9a still ships the old log-N radii
+        # (one-card worlds at 3.605), so reading the field would measure the dataset, not §1.3.
+        PICK_PROXY = 1.15
+        pickable = [p for p in v3 if p.get("kind") != "dust"]
+        headroom = {}
+        for p in small:
+            nearest = min((q for q in pickable if q is not p),
+                          key=lambda q: math.dist(p["home"], q["home"]))
+            gap = math.dist(p["home"], nearest["home"])
+            r_self = world_radius(p["cardCount"])
+            r_near = world_radius(nearest.get("cardCount", 0)) if nearest.get("cardCount", 0) else MOON_FLOOR
+            headroom[p["slug"]] = (gap - r_near * PICK_PROXY) / (r_self * PICK_PROXY)
+        worst_slug = min(headroom, key=headroom.get)
+        worst = headroom[worst_slug]
+        # NOT pinned to a constant: `home` moves between dataset refreshes, and the tightest world
+        # moves with it (3ce85aed 7.9x on karsus; dabe2c9a 17.6x on vryn). Only the invariant is
+        # durable, so that is what is asserted and the headroom is reported.
+        print(f"        tightest pick-inflation headroom: {worst:.1f}x on {worst_slug} "
+              f"(needs {WCAG_LEVER:.2f}x)")
+        check("...no floored world's pick disk collides at the inflation 24 px requires",
+              len([h for h in headroom.values() if h < WCAG_LEVER]), 0)
+        check("...so the screen-space floor does not steal neighbours' picks", worst > WCAG_LEVER, True)
 
         # §1.3's exact-N claim, on the roster the gate actually runs on rather than on a sweep.
         deltas = {p["slug"]: sum(closed_form(p["cardCount"])[2]) - p["cardCount"] for p in v3_worlds}

@@ -134,6 +134,36 @@ detail and had no equirect rung at all; 27 is a prototype count and is not produ
   silhouette than a dark moon**, which is §1.8's sentence "emptiness becomes a colour and not a
   size" read backwards. Floored, that cohort is moon-sized and is told apart by colour, which is
   what §1.8 claims. Above 19 cards the constant-area law is untouched.
+
+  > **Normative — the floor is a world-space floor, and it is not the pick target (DEC-751).** R3
+  > measured leg P's shipping `3ce85aed` at 24 camera azimuths: **24–29 of 45 worlds** sit under
+  > WCAG 2.5.8's 24 px pick diameter at *every* azimuth, and the six one-card worlds hold **3.8–9.2
+  > px** and never reach 24 px at any azimuth (`dabe2c9a`: **0 of 45**, always). **This section is
+  > the cause.** The two datasets carry the same 88/45/24,399 roster; what changed is the radius law.
+  > `dabe2c9a` still carries the old `log N` law — its six one-card worlds sit at r **3.605** — and
+  > `3ce85aed` is the first to carry this section's `max(0.126·√N, 0.55)`, which puts them at
+  > **0.55**, a uniform **6.55× shrink**. So the WCAG regression is not leg P's pipeline; it is the
+  > constant-area law arriving, and the ruling on it is §1.3's to make even though the fix is not.
+  > (Homes also moved between the two datasets — median 4.4%, but `segovia` 69 → 19 — so px is not
+  > the radius ratio alone. `radius/distance` predicts a worst case of **3.7 px** against R3's
+  > measured **3.8**, and the home moves are what spread the cohort to 9.2.) **Do not fix this by
+  > raising `0.55`.** On-screen diameter goes as `radius / distance`, so no world-space constant
+  > pins a pixel floor across the camera's range at all — and the arithmetic disqualifies the lever
+  > on its own. Raising the floor to `F` swallows the constant-area law for every world under
+  > `(F/0.126)²` cards:
+  >
+  > | floor `F` | × moon | N swallowed | v3 worlds losing the law |
+  > |---|---|---|---|
+  > | 0.83 | 1.5× | 43 | 16 of 45 |
+  > | 1.10 | 2.0× | 76 | 17 of 45 |
+  > | 2.20 | 4.0× | 305 | 23 of 45 |
+  > | 3.48 | 6.3× | 761 | **36 of 45** |
+  >
+  > The last row is what the worst one-card world needs to reach 24 px. It deletes the constant-area
+  > law for **80% of the roster** and draws every small world **6.3× an empty moon**, inverting the
+  > §1.8 relationship this floor exists to preserve. Even a 2× raise costs 17 worlds. The ruling does
+  > not depend on the exact pixel figure — the lever is wrong in kind at every magnitude. **The pick
+  > floor is screen-space and belongs to §1.11.**
 - **Bands.** Seven classes — W, U, B, R, G, gold, colourless — laid out **mirrored about the
   equator**: colourless is split between the two ice caps, each mono colour is a matched pair of
   bands, gold is the single equatorial belt. North to south:
@@ -589,6 +619,27 @@ tick positions, not with a capture. See §5, Q5.
   renders `gl_InstanceID + 1` into the pick target, and the instance index maps to a card through
   the same instance-order array the sheet is built from. Cell picking replaces star picking at plane
   level; card focus and the printing ring pick as they do today.
+
+  > **Normative — the plane-level pick proxy carries a screen-space floor (§1.3, DEC-751).** Below
+  > the art threshold a world is picked as a *plane*, through a world-space `radius × 1.15` proxy,
+  > and that proxy cannot express a pixel target (§1.3 rules out raising the radius floor to chase
+  > one). The plane-level proxy is therefore floored **in screen space** at **24 CSS px of
+  > diameter** (WCAG 2.5.8), applied after projection, per frame, per world. It floors the *pick*
+  > proxy only — it never scales the drawn world, so §1.3's radius law and §1.8's moon relationship
+  > are untouched.
+  >
+  > The obvious objection does not hold: inflating the proxy does not make small worlds steal their
+  > neighbours' picks. Over the 15 floored worlds on `3ce85aed`, clearance to the nearest pickable
+  > neighbour admits **7.9× – 33×** inflation before the disks touch, against the **6.3×** the worst
+  > one-card world needs — so nothing collides, but `karsus` at 7.9× leaves only ~25% headroom.
+  >
+  > **That margin is not a durable constant, and must not be treated as one.** It is a function of
+  > `home`, which moves on every dataset refresh: the same 15 worlds on `dabe2c9a` clear at 17.6×,
+  > with a different world (`vryn`) tightest. The invariant that survives a refresh is only *no
+  > collision at the required inflation* — that is what `surface-law-check.py` asserts, and it
+  > reports the headroom rather than pinning it. **The clearance is also world-space**: two worlds at
+  > very different depths can still project together. The screen-space check, the implementation, and
+  > the tie-break between overlapping proxies are R3's.
 - **Labels.** The label solver is kept. Under worlds its home-view subject count is
   `planesWithCards.length`, not the plane count, because the moons are unlabelled until hover
   (§1.8): **30 of 87** on today's roster, **46 of 88** on v3. The label tick stays after the final
