@@ -25,11 +25,12 @@ import {
   samePick,
   type PickResult,
 } from './picking/scenePicker'
-import { detectPostCapabilities } from './post/capabilities'
+import { detectPlatformCapabilities } from './platform/capabilities'
 import {
   QualityMonitor,
   pinnedQualityTier,
   qualityOptionsFor,
+  type GlowQuality,
   type QualityTier,
 } from './quality/adaptiveQuality'
 import { selfCheckRequested } from './selfCheck.url'
@@ -76,6 +77,15 @@ export interface StarSceneProps {
    * post chain has to be told the same value in the same frame, and one owner of it is the point.
    */
   readonly bloomScale: number
+  /**
+   * The live tier's glow program (PRD 8.5.11's new bottom rung, DEC-739).
+   *
+   * A prop for the same reason `bloomScale` is one: the ladder has exactly one owner and it is the
+   * monitor inside this component, which announces a tier upwards; the scene resolves the tier into
+   * its rungs and hands each one back to whoever applies it. Applied in an effect rather than per
+   * frame because it is a pointer write on a mesh, not a uniform.
+   */
+  readonly glowQuality: GlowQuality
   /** PRD 5.4.12 hover and PRD 5.7.2 click. `null` means the pointer is over empty space. */
   readonly onHover?: (pick: PickResult) => void
   readonly onSelect?: (pick: PickResult) => void
@@ -101,6 +111,7 @@ export function StarScene({
   starsComplete = false,
   reducedMotion,
   bloomScale,
+  glowQuality,
   onHover,
   onSelect,
   onQualityChange,
@@ -119,15 +130,13 @@ export function StarScene({
    *
    * Keyed on `gl` because the floor comes off the GL context: without `EXT_color_buffer_float` the
    * bloom source is quantised to eight bits and the top two rungs stop meaning what they say, so
-   * the ladder starts two rungs down instead. See `../post/capabilities` and `qualityOptionsFor` —
-   * a `?quality=` pin still wins, because a pin has to be able to name any tier.
+   * the ladder starts two rungs down instead. See `./platform/capabilities` and `qualityOptionsFor`
+   * — a `?quality=` pin still wins, because a pin has to be able to name any tier.
    */
+  const capabilities = useMemo(() => detectPlatformCapabilities(gl), [gl])
   const quality = useMemo(
-    () =>
-      new QualityMonitor(
-        qualityOptionsFor(pinnedQualityTier(), detectPostCapabilities(gl).minTierIndex),
-      ),
-    [gl],
+    () => new QualityMonitor(qualityOptionsFor(pinnedQualityTier(), capabilities.minTierIndex)),
+    [capabilities],
   )
   /**
    * `?selfcheck=1`, read **once** (DEC-692 R7).
@@ -336,6 +345,13 @@ export function StarScene({
     [background, idPicker],
   )
 
+  // PRD 8.5.11's bottom rung (DEC-739): swap the glow's fragment program. An effect rather than a
+  // per-frame write because it is one assignment on a mesh, and re-running it every frame would
+  // mean the ladder's cheapest rung was the one that touched the scene graph most.
+  useEffect(() => {
+    resources?.field.setGlowQuality(glowQuality)
+  }, [resources, glowQuality])
+
   // PRD 8.5.6 and 8.5.7, checked against each other on a real GPU. Diagnostic only, and only when
   // the URL asks — which nothing does automatically since DEC-708. See `./selfCheck`.
   useEffect(() => {
@@ -384,6 +400,9 @@ export function StarScene({
         ((camera as PerspectiveCamera).fov * Math.PI) / 180,
         gl.getPixelRatio(),
         bloomScale,
+        // `ALIASED_POINT_SIZE_RANGE`'s ceiling, so the sizes the shader asks for are sizes the
+        // driver will give (DEC-739). See `StarField.update`.
+        capabilities.pointSizeRange[1],
       )
       advanceBackground(background.group, table.multiverseAngle)
 

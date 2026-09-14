@@ -195,7 +195,11 @@ describe('shader names (DEC-700)', () => {
   it('finds the material sites it is about to check', () => {
     // Guards the parser, not the product: if `materialSites` silently matched nothing, every
     // assertion below would pass over an empty list and report the scene fully named.
-    expect(SITES.length).toBeGreaterThanOrEqual(16)
+    // 17 since DEC-739 added the ladder's cheap glow variant. A `>=` because the number this
+    // guards is "the scanner found the sites", not "the scene has exactly this many materials" —
+    // but raise it whenever a site is added, or a *replacement* that removed one and added another
+    // would leave the total unmoved and this backstop would report nothing (DEC-731).
+    expect(SITES.length).toBeGreaterThanOrEqual(17)
     expect(
       new Set(SITES.map((site) => site.kind)),
       'a material class this test has not seen before. If the new class is meant to be here, add ' +
@@ -261,15 +265,21 @@ describe('shader names (DEC-700)', () => {
 
   it('covers every material the scene builds, one name per program', () => {
     // A count, not a list: adding a material and leaving it out of `SHADER_NAMES` should be a
-    // deliberate act. There are 16 sites and 15 names, and the gap is the point of this test.
+    // deliberate act. There are 17 sites and 16 names, and the gap is the point of this test.
     //
     // Two *sites* share `SHADER_NAME_STAR_FIELD`: the drawn star field and the bloom source's copy
     // of it differ only in the values bound to five uniforms, which are not in the program cache
-    // key, so three.js links one program for both (DEC-703). A sixteenth name would be a roster row
-    // for a program that never exists.
+    // key, so three.js links one program for both (DEC-703). A seventeenth name would be a roster
+    // row for a program that never exists.
     //
     // The two `faceMaterial()` *calls* also share one name for the same underlying reason, but they
     // do not widen this gap — they are one source site, so the scanner counts them once.
-    expect(SHADER_NAMES).toHaveLength(15)
+    //
+    // **The seventeenth site and sixteenth name are DEC-739's.** The quality ladder's new bottom
+    // rung swaps the plane glow for a one-tap, no-dither variant. That variant is a different
+    // *fragment source*, so `getProgramCacheKey` gives it a program of its own — unlike the bloom
+    // copy above — and it therefore earns a name of its own. A shared name would put one roster row
+    // in front of the Windows kit for two programs, reporting whichever linked first.
+    expect(SHADER_NAMES).toHaveLength(16)
   })
 })

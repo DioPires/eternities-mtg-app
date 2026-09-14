@@ -59,6 +59,16 @@ export const SHADER_NAME_STAR_FIELD_PICK = 'StarFieldPick'
 /** The per-plane nebula/glow quads — `starfield/starFieldObjects.ts`. */
 export const SHADER_NAME_PLANE_GLOW = 'PlaneGlow'
 
+/**
+ * The same quads under the quality ladder's bottom rung — one noise tap, no dither (DEC-739).
+ *
+ * Its **own** name, unlike the bloom source's copy of the star field: this is a different fragment
+ * source, so `getProgramCacheKey` gives it a different program, and a shared name would put one row
+ * in the kit's roster for two programs — with the compile cost of whichever linked first. The
+ * distinction this file's header draws is source identity, and these two do not share source.
+ */
+export const SHADER_NAME_PLANE_GLOW_CHEAP = 'PlaneGlowCheap'
+
 /** Instanced card thumbnails sampling the atlas — `cards/thumbnailTier.ts`. */
 export const SHADER_NAME_THUMBNAIL_TIER = 'ThumbnailTier'
 
@@ -122,6 +132,7 @@ export const SHADER_NAMES = [
   SHADER_NAME_STAR_FIELD,
   SHADER_NAME_STAR_FIELD_PICK,
   SHADER_NAME_PLANE_GLOW,
+  SHADER_NAME_PLANE_GLOW_CHEAP,
   SHADER_NAME_THUMBNAIL_TIER,
   SHADER_NAME_THUMBNAIL_TIER_PICK,
   SHADER_NAME_CARD_FACE,

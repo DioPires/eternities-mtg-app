@@ -28,7 +28,8 @@ import { Vector2 } from 'three'
 
 import { BLOOM_INTENSITY } from '../tuning'
 
-import { detectPostCapabilities } from './capabilities'
+import { detectPlatformCapabilities } from '../platform/capabilities'
+
 import { PostChain } from './postChain'
 
 export interface PostEffectsProps {
@@ -75,7 +76,7 @@ export function PostEffects({
 
   // Per renderer, not per render: the capabilities probe touches the GL context and the chain owns
   // GPU memory. A new canvas is the only thing that justifies either.
-  const chain = useMemo(() => new PostChain(gl, detectPostCapabilities(gl)), [gl])
+  const chain = useMemo(() => new PostChain(gl, detectPlatformCapabilities(gl)), [gl])
 
   useEffect(() => () => chain.dispose(), [chain])
 
