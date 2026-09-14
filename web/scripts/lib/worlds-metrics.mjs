@@ -688,6 +688,15 @@ export function evictionRate(samples, windowS = W4_EVICTION_WINDOW_S) {
 }
 
 /**
+ * The smallest pool capacity the renderer ever ships (§1.6, DEC-749).
+ *
+ * §1.6's clamp is `max(0, min(tierLayers, maxLayers - 32))`: tier 4 — the smallest rung — is 128,
+ * and tiers 0-3 land on 224 at WebGL 2's spec-minimum `MAX_ARRAY_TEXTURE_LAYERS` of 256. Anything
+ * below 128 is a harness, not a configuration a browser can be in.
+ */
+export const SMALLEST_SHIPPED_POOL_LAYERS = 128;
+
+/**
  * **W4 — art resolves without exhausting.** At the surface view, 2.2× radius, after a 5 s settle.
  *
  * `cells` is `{ frontFacing, onScreen, wantsArt, showingArt }` — `wantsArt` meaning above the
@@ -695,8 +704,21 @@ export function evictionRate(samples, windowS = W4_EVICTION_WINDOW_S) {
  * is the substance of the criterion and the reason `?layers=128` is an expected-GREEN row: shrink
  * the pool and the threshold rises until demand matches capacity, so the ratio stays ≈ 1. Only
  * `?artThreshold=fixed24` starves the policy instead of the resource, and only that goes red.
+ *
+ * > **Normative (§3.1, DEC-749).** `pool` is **required**, and the verdict carries `poolLayers`,
+ * > because the adaptive quantile is taken *relative to capacity*: a W4 count is only a reading of
+ * > the renderer if the capacity it was taken at is one the renderer ships. This is not a
+ * > hypothetical — the gate's own seam contract recorded `wantsArt && !frontFacing` as non-empty on
+ * > 30 of 45 worlds without saying that 64 was the pool, and the same sweep reads 37/45 at tier 4
+ * > and 42/45 at 224. An optional parameter would default the provenance back off, which is the
+ * > defect, so it is positional and required.
+ *
+ * `belowShippedPool` marks the count as a reading of the harness. It deliberately does **not** move
+ * the status: at 64 layers the policy still works and `artFraction` is still a true measurement of
+ * it, so scoring it `insufficient` would call a real measurement absent. What it forbids is sourcing
+ * a *reachability* claim — "this row has a subject on N worlds" — from a sub-shipped capacity.
  */
-export function evaluateW4(cells, evictionTimeline) {
+export function evaluateW4(cells, evictionTimeline, pool) {
   const wanting = cells.filter(
     (c) => c.frontFacing && c.onScreen && c.wantsArt,
   );
@@ -721,7 +743,12 @@ export function evaluateW4(cells, evictionTimeline) {
         "max",
       ),
     ],
-    { wanting: wanting.length, showing: showing.length },
+    {
+      wanting: wanting.length,
+      showing: showing.length,
+      poolLayers: pool.layers,
+      belowShippedPool: pool.layers < SMALLEST_SHIPPED_POOL_LAYERS,
+    },
   );
 }
 

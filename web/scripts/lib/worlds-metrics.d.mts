@@ -108,6 +108,10 @@ export interface W3Criterion extends Criterion {
 export interface W4Criterion extends Criterion {
   readonly wanting: number;
   readonly showing: number;
+  /** The capacity the count was taken at — the quantile is relative to it, so it is provenance. */
+  readonly poolLayers: number;
+  /** `true` below tier 4's 128: a reading of the harness, not of any browser. */
+  readonly belowShippedPool: boolean;
 }
 
 export interface W5Criterion extends Criterion {
@@ -242,9 +246,12 @@ export declare function evictionRate(
   samples: readonly EvictionSample[],
   windowS?: number,
 ): number | null;
+export declare const SMALLEST_SHIPPED_POOL_LAYERS: number;
+/** `pool` is required on purpose: a W4 count without its capacity is not a reading of the renderer. */
 export declare function evaluateW4(
   cells: readonly ArtCell[],
   evictionTimeline: readonly EvictionSample[],
+  pool: { readonly layers: number },
 ): W4Criterion;
 export declare const W5_MIN_AZIMUTHS: number;
 export declare const W5_AZIMUTH_UNIFORMITY_TOLERANCE: number;

@@ -217,26 +217,58 @@ behaviour. Measured at 2.2 radii over the shipped 45-world roster, dropping the 
 alara's denominator from 111 to 499 under `?artThreshold=fixed24` — a 4.5× collapse in
 `artFraction`, far below the 0.9 floor.
 
-**How load-bearing each term is, measured, because it decides what the live matrix can assert:**
+**How load-bearing each term is, measured, because it decides what the live matrix can assert.**
+The adaptive quantile is taken *relative to pool capacity*, so **capacity is an axis of this table,
+not a constant**, and a row without it is a reading of the harness. Measured over the shipped
+45-world roster at W4's own 2.2-radii pose, on R1's `caa3c4f`:
 
-| term | adaptive quantile | `?artThreshold=fixed24` |
-|---|---|---|
-| `wantsArt && !frontFacing` | non-empty on **30 of 45** worlds, 1,768 cells | non-empty on **45 of 45**, 12,771 cells |
-| `wantsArt && !onScreen` | **empty on all 45** | **empty on all 45** |
+| `pool.layers` | `wantsArt && !frontFacing` | `wantsArt && !onScreen` | threshold still at the 24 px floor |
+|---|---|---|---|
+| 16 | 18 of 45 worlds, 111 cells | empty on all 45 | 17 of 45 |
+| 64 — *below every shipped rung* | 30 of 45, 1,768 | empty on all 45 | 21 of 45 |
+| **128** — tier 4, the smallest shipped | **37 of 45, 4,313** | empty on all 45 | 32 of 45 |
+| **224** — tiers 0–3 at WebGL 2's spec minimum | **42 of 45, 8,256** | empty on all 45 | 39 of 45 |
+| 1,024 — tier 0 on this Mac | 45 of 45, 12,771 | empty on all 45 | 45 of 45 |
+| `?artThreshold=fixed24` (capacity-independent) | 45 of 45, 12,771 | empty on all 45 | n/a |
 
-Two consequences, and they point opposite ways. R1's warning that the adaptive quantile makes a
-visibility row vacuous is **right in practice but not as a law** — back-facing cells do clear the
-adaptive threshold on two thirds of the roster. What is true is that it is vacuous *per world*: on
-the worlds whose threshold rises highest (alara, arcavios, avishkar, eldraine, all at 93.9 px) the
-excluded set is empty, and **alara is the world R1's composition tests use throughout**, which is
-the likelier mechanism behind the two mutants that walked through their suite. `?artThreshold=fixed24`
-makes the case reachable on every world, so the matrix's W4 control row already sits at the only
-pose that can test this.
+**An earlier revision of this table reported the 64-layer row alone, without saying 64 was the
+pool** — and 64 is below every configuration the renderer ships. The correction is R1's (DEC-749),
+independently re-measured here; §3.1 now requires `pool.layers` beside any such count, and
+`evaluateW4` takes the pool as a **required** argument and records `poolLayers` so a count cannot be
+written down without its provenance.
 
-The `onScreen` half is the one that cannot be reached at all: at 2.2 radii the world subtends far
-less than the frustum, under either threshold policy, so **no live control row can redden it** and
-the unit test in `worlds-metrics.test.ts` is its only guard. That row is therefore not a duplicate
-of the live matrix and must not be retired as one.
+**The mechanism is capacity, and the mechanism this document previously gave was wrong on its own
+evidence.** It claimed the excluded set goes empty on the worlds whose threshold rises highest —
+"alara, arcavios, avishkar, eldraine, all at 93.9 px". That is refuted from inside its own 64-layer
+reading: `amonkhet`, `avishkar` and `capenna` sit at *exactly* the same 93.94 px as alara and
+eldraine and have 6, 8 and 16 excluded cells, so **avishkar was listed as empty while measuring 8**.
+An identical threshold with opposite outcomes cannot be the threshold. It fails from the other end
+too — `dominaria` has the *lowest* risen threshold on the roster at 32.50 px and is empty, while
+`bloomburrow` at 35.06 px has 222. What actually moves the count is the pool: the quantile is
+relative to capacity, so an undersized pool raises the threshold past what any back-facing cell
+reaches. At 1,024 the policy meets `fixed24` exactly, because the threshold never leaves the floor.
+
+**The two terms are therefore not the same kind of claim, and only one needed the qualifier.**
+`AdaptiveThreshold` floors the quantile at `BASE_THRESHOLD_PX`: `offer()` drops anything under 24 px,
+the chosen bucket is never negative, and `bucketEdgePx(0)` is 24. So `wantsArt` under the quantile,
+at *any* capacity, is a subset of `wantsArt` under `fixed24` — verified across all five capacities
+above, 39,254 adaptive-wanting cells, **zero** outside the fixed24 set. That makes the fixed24 column
+the **envelope**, and it is capacity-independent:
+
+- `wantsArt && !onScreen` is empty under fixed24, and fixed24 dominates every capacity, so it is
+  empty at every pool size. Its unreachability is a **proof, not a reading**: at 2.2 radii the world
+  subtends far less than the frustum, **no live control row can redden it at any capacity**, and the
+  unit test in `worlds-metrics.test.ts` is its only guard. That row is not a duplicate of the live
+  matrix and must not be retired as one.
+- `wantsArt && !frontFacing` is bounded above by fixed24's 45/45 but is otherwise a function of
+  `pool.layers`, and must be quoted with it.
+
+**What this changes in the matrix: nothing that is asserted, only what is written down.** Checked
+rather than assumed — no row, criterion or fixture was ever scoped to "the 30 worlds"; the number
+appeared in this document's prose and one test block comment, both corrected. In particular the
+`?layers=128` **expected-GREEN** row is unaffected and keeps its subject: 37 of 45 worlds have
+back-facing wanters at tier 4. The two coincidental `30 of 45`s elsewhere in the spec are a
+*different* quantity — `rowCells` mirror asymmetry, DEC-757's ruling — and are not this count.
 
 **This block was vacuous in the gate's own suite until it was measured.** All three mutants of the
 denominator — drop both terms, drop `frontFacing`, drop `onScreen` — survived 62/62 green, because

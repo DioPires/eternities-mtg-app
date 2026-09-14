@@ -31,6 +31,7 @@ import {
   evaluateW4,
   evaluateW5,
   evictionRate,
+  SMALLEST_SHIPPED_POOL_LAYERS,
   W5_MIN_AZIMUTHS,
   homeLabelCeiling,
   iqr,
@@ -612,6 +613,9 @@ describe("W4 — art resolves without exhausting", () => {
     { t: 5, evictions: at },
   ];
 
+  /** The prototype's own pool — Appendix A's `tether-surface` drew 1,024 layers. */
+  const PROTOTYPE_POOL = { layers: 1_024 };
+
   it("goes RED on its control — ?artThreshold=fixed24 — reproducing tether-surface", () => {
     const { drawn, wanted, evicted } = PROTOTYPE.tetherSurface;
     // The pool is exhausted and churning: the prototype reached this pose "with no sign of
@@ -621,7 +625,7 @@ describe("W4 — art resolves without exhausting", () => {
       { t: 2.5, evictions: evicted - 120 },
       { t: 5, evictions: evicted },
     ];
-    const w4 = evaluateW4(cells(wanted, drawn), churning);
+    const w4 = evaluateW4(cells(wanted, drawn), churning, PROTOTYPE_POOL);
 
     expect(w4.pass).toBe(false);
     const fraction = w4.measures.find((m) => m.key === "artFraction");
@@ -644,7 +648,7 @@ describe("W4 — art resolves without exhausting", () => {
    */
   it("reads 925 cumulative evictions as passing once the pool has settled", () => {
     const { drawn, wanted, evicted } = PROTOTYPE.tetherSurface;
-    const w4 = evaluateW4(cells(wanted, drawn), settled(evicted));
+    const w4 = evaluateW4(cells(wanted, drawn), settled(evicted), PROTOTYPE_POOL);
     expect(w4.measures.find((m) => m.key === "evictionsPerSecond")?.value).toBe(
       0,
     );
@@ -656,14 +660,14 @@ describe("W4 — art resolves without exhausting", () => {
     // §1.6 defines demand relative to pool capacity, so a 128-layer pool does not starve: the
     // effective threshold rises until ~128 cells want art and ~128 resolve. Condemning this row
     // would be condemning the low-end device the ladder exists to protect.
-    const w4 = evaluateW4(cells(128, 128), settled(4_100));
+    const w4 = evaluateW4(cells(128, 128), settled(4_100), { layers: 128 });
     expect(w4.pass).toBe(true);
     expect(w4.measures.find((m) => m.key === "artFraction")?.value).toBe(1);
   });
 
   it("passes the unexhausted prototype pose, dominaria-frame at 333/333", () => {
     const { drawn, wanted, evicted } = PROTOTYPE.dominariaFrame;
-    const w4 = evaluateW4(cells(wanted, drawn), settled(evicted));
+    const w4 = evaluateW4(cells(wanted, drawn), settled(evicted), PROTOTYPE_POOL);
     expect(w4.pass).toBe(true);
   });
 
@@ -695,10 +699,16 @@ describe("W4 — art resolves without exhausting", () => {
    * survive on the other's row.
    *
    * **The `onScreen` row is not a duplicate of the live matrix — it is the only guard that half
-   * has.** Measured over the shipped 45-world roster at W4's own 2.2-radii pose, on R1's `1edf715`:
-   * `wantsArt && !onScreen` is **empty on all 45 worlds**, under the adaptive quantile *and* under
-   * `?artThreshold=fixed24` alike. No live control row can redden it. `frontFacing` does bind live,
-   * but only on some worlds — see the block comment on the matrix.
+   * has, and that is a proof rather than a reading.** `AdaptiveThreshold` floors the quantile at
+   * `BASE_THRESHOLD_PX`: `offer()` drops anything under 24 px, the chosen bucket is never negative,
+   * and `bucketEdgePx(0)` is 24. So `wantsArt` under the quantile, *at any capacity*, is a subset of
+   * `wantsArt` under `?artThreshold=fixed24` — verified over the roster at 16/64/128/224/1,024
+   * layers, 39,254 adaptive-wanting cells, **zero** outside the fixed24 set. `wantsArt && !onScreen`
+   * is empty on all 45 worlds under fixed24, and fixed24 dominates every capacity, so **no live
+   * control row can redden it at any pool size** — this row is the half's only guard, permanently.
+   *
+   * `frontFacing` is the opposite case: it binds live, but *how widely* is a function of pool
+   * capacity, not a constant — see the row below that records it.
    */
   const visible = (n: number) =>
     Array.from({ length: n }, () => ({
@@ -720,7 +730,7 @@ describe("W4 — art resolves without exhausting", () => {
         showingArt: false,
       })),
     ];
-    const w4 = evaluateW4(cells, settled(0));
+    const w4 = evaluateW4(cells, settled(0), PROTOTYPE_POOL);
 
     expect(w4.wanting).toBe(90);
     expect(w4.showing).toBe(90);
@@ -740,13 +750,79 @@ describe("W4 — art resolves without exhausting", () => {
         showingArt: false,
       })),
     ];
-    const w4 = evaluateW4(cells, settled(0));
+    const w4 = evaluateW4(cells, settled(0), PROTOTYPE_POOL);
 
     expect(w4.wanting).toBe(90);
     expect(w4.showing).toBe(90);
     expect(w4.wanting).toBeLessThan(cells.length);
     expect(w4.measures.find((m) => m.key === "artFraction")?.value).toBe(1);
     expect(w4.pass).toBe(true);
+  });
+
+  /**
+   * **The capacity a W4 count was taken at is part of the count** (§3.1, DEC-749).
+   *
+   * The adaptive quantile is taken *relative to* pool capacity, so the same roster at the same pose
+   * yields a different answer per capacity — `wantsArt && !frontFacing` is non-empty on 18/45
+   * worlds at 16 layers, 30/45 at 64, 37/45 at 128, 42/45 at 224 and 45/45 at 1,024, where it meets
+   * `?artThreshold=fixed24`'s 12,771 cells exactly because the threshold never leaves its 24 px
+   * floor. Measured on R1's `caa3c4f` over the shipped 45-world roster at 2.2 radii.
+   *
+   * This bit this leg: the seam contract recorded the 30/45 without recording that 64 was the pool,
+   * and 64 is below every rung the renderer ships. An unlabelled count reads as a property of the
+   * renderer when it is a property of the harness.
+   */
+  it("records the capacity beside the count, because the quantile is relative to it", () => {
+    const w4 = evaluateW4(visible(90), settled(0), { layers: 224 });
+    expect(w4.poolLayers).toBe(224);
+    expect(w4.belowShippedPool).toBe(false);
+  });
+
+  it("refuses to produce a count at all when the capacity is not supplied", () => {
+    // The provenance is positional and required rather than optional: an optional parameter
+    // defaults the label back off, and a silently unlabelled count is the whole defect.
+    expect(() =>
+      (evaluateW4 as unknown as (c: unknown, e: unknown) => unknown)(
+        visible(90),
+        settled(0),
+      ),
+    ).toThrow();
+  });
+
+  it("flags a sub-shipped capacity as a harness reading without calling the measurement absent", () => {
+    // Tier 4's 128 is the smallest rung; 64 is below every configuration a browser can be in.
+    const harness = evaluateW4(visible(90), settled(0), { layers: 64 });
+    const shipped = evaluateW4(visible(90), settled(0), {
+      layers: SMALLEST_SHIPPED_POOL_LAYERS,
+    });
+
+    expect(harness.belowShippedPool).toBe(true);
+    expect(shipped.belowShippedPool, "128 is tier 4, and tier 4 ships").toBe(
+      false,
+    );
+    // The flag is provenance, not a verdict. At 64 layers the policy still works and `artFraction`
+    // is still a true measurement of it — scoring it `insufficient` would call a real measurement
+    // absent, which is the opposite error. Both rows must agree on the status.
+    expect(harness.status).toBe(shipped.status);
+    expect(harness.status).toBe("pass");
+    expect(harness.measures.find((m) => m.key === "artFraction")?.value).toBe(
+      shipped.measures.find((m) => m.key === "artFraction")?.value,
+    );
+  });
+
+  it("puts the boundary at tier 4 itself, not one layer either side of it", () => {
+    // A bound-check is vacuous when the bound never binds, so both sides of it are named.
+    expect(
+      evaluateW4(visible(1), settled(0), {
+        layers: SMALLEST_SHIPPED_POOL_LAYERS - 1,
+      }).belowShippedPool,
+    ).toBe(true);
+    expect(
+      evaluateW4(visible(1), settled(0), {
+        layers: SMALLEST_SHIPPED_POOL_LAYERS,
+      }).belowShippedPool,
+    ).toBe(false);
+    expect(SMALLEST_SHIPPED_POOL_LAYERS).toBe(128);
   });
 });
 
