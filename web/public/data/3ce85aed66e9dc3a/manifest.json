@@ -2,7 +2,7 @@
   "contractVersion": 3,
   "pipelineVersion": "0.5.0",
   "dataset": "production",
-  "dataHash": "83c4f65875f037c8",
+  "dataHash": "3ce85aed66e9dc3a",
   "asOf": "2026-09-14",
   "generatedAt": "2026-09-14T00:00:00Z",
   "scryfallBulkUpdatedAt": "2026-09-14T09:05:27.256+00:00",
@@ -111,8 +111,8 @@
   "files": [
     {
       "path": "planes.json",
-      "bytes": 66048,
-      "sha256": "f7de6d5964a4a83dced3707b8b0ece87a86d5e1e8e16e3cfc4622e4f6abe2d97"
+      "bytes": 66009,
+      "sha256": "46c4893147dd663e99d8c54d80587a8291b58fd32f0f9c3ef1d1d7f1c8e60bbf"
     },
     {
       "path": "planes/abyss.0.json",

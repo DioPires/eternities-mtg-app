@@ -54,7 +54,14 @@ needs none — area per card is the invariant, so there is nothing to saturate (
 
 MOON_RADIUS: Final = 0.55
 """§1.8: ``sqrt(0) = 0``, so the empty planes take a floor and become dark moons — present, unlit
-and unlabelled until hover. Emptiness becomes a colour, not a size."""
+and unlabelled until hover. Emptiness becomes a colour, not a size.
+
+**It is a floor on every plane, not a special case for the empty ones** (DEC-749). Applied only
+where ``cardCount == 0`` the law *inverts*: ``0.126 * sqrt(N)`` does not reach 0.55 until
+**N = 20**, so a one-card world came out at radius 0.126 — under a quarter of the empty moon
+beside it — and **15 of the v3 roster's 45 worlds** were drawn smaller than a plane holding
+nothing. "Emptiness
+becomes a colour, not a size" is the claim, and a moon that outsizes a world falsifies it."""
 
 BAND_ORDER: Final[tuple[HueClass, ...]] = (
     HueClass.COLOURLESS,
@@ -87,10 +94,8 @@ _MIRRORED: Final[frozenset[HueClass]] = frozenset(
 
 
 def visual_radius(card_count: int) -> float:
-    """§1.3's constant-area-per-card radius, or §1.8's moon floor for an empty plane."""
-    if card_count <= 0:
-        return MOON_RADIUS
-    return RADIUS_PER_ROOT_CARD * math.sqrt(card_count)
+    """§1.3's constant-area-per-card radius, under §1.8's moon floor. Never below the floor."""
+    return max(RADIUS_PER_ROOT_CARD * math.sqrt(max(card_count, 0)), MOON_RADIUS)
 
 
 def row_count(card_count: int) -> int:

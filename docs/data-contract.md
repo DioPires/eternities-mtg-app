@@ -126,7 +126,7 @@ Loaded first, with `manifest.json`. Drives plane glows, labels, and the per-plan
 
 `sets[].id` indexes the global set dictionary of `search.json` §7, which is the same id space as `sets.bin` §6.3. The list is in chronological order and is the chronology-band order of PRD 5.4.2, so band `b` of a plane is `sets[b]`.
 
-**`radius` changed meaning in v3** without changing type. It is now `0.126 · √cardCount` — constant *area* per card — or the moon floor `0.55` for a plane with no cards; the Blind Eternities still carries `R` for the belt. PRD 5.3.2's `log N` curve and its `[r_min, r_max]` clamp are gone, and with them the run report's radius-headroom table: there is nothing left to saturate (worlds spec §1.3, §1.8).
+**`radius` changed meaning in v3** without changing type. It is now `max(0.126 · √cardCount, 0.55)` — constant *area* per card, under §1.8's moon floor; the Blind Eternities still carries `R` for the belt. **The floor binds on every plane, not only the empty ones**: `0.126 · √N` does not reach 0.55 until N = 20, so applied only where `cardCount == 0` the law inverts and a one-card world is drawn smaller than a plane holding nothing — which falsifies the one reading §1.8 asks for. On the v3 roster the floor binds on 15 of 45 worlds. PRD 5.3.2's `log N` curve and its `[r_min, r_max]` clamp are gone, and with them the run report's radius-headroom table: there is nothing left to saturate (worlds spec §1.3, §1.8).
 
 **`rowCells` (v3)** is the surface grid's per-row cell count, north to south. `rowCells.length` is the row count, row latitudes are equal-angle with `dφ = π / rows` and centres at `(i + ½)·dφ`, and the counts sum to `cardCount`. A client matches a cell to its row by **nearest** colatitude and never by `floor()` — §5's float16 spacing leaves a margin of 3.08× at the pole for nearest-centre and half that for `floor()`. It is shipped rather than derived because the grid is relaxed to the *population*, so no closed form describes it. The key is **absent**, not empty, on the belt and on every empty plane: those have no grid, and a present-but-empty array invites a reader to take `length` as a row count.
 
@@ -285,10 +285,10 @@ Two things to read the table with:
 
 ### 8.1 What contract v3 cost, measured
 
-The v3 production dataset is `83c4f65875f037c8` — the same 28 603 cards from the same pinned
+The v3 production dataset is `3ce85aed66e9dc3a` — the same 28 603 cards from the same pinned
 2026-09-14 bulk file as `dabe2c9a68b4d799` above, so the two columns differ only by the contract.
 
-| Row | Target | v2 `dabe2c9a…` | v3 `83c4f658…` |
+| Row | Target | v2 `dabe2c9a…` | v3 `3ce85aed…` |
 |---|---|---|---|
 | `search.json` + `sets.bin` | 700 KB / 1.5 MB ceiling | 669.0 KB (95.6%) | **669.0 KB — unchanged** |
 | First frame (`manifest` + `planes`) | — | 16.9 KB | 15.9 KB |
@@ -446,7 +446,7 @@ ever mutated to v2.
 **Data.** The 88-plane roster of DEC-745, 28 603 cards, 45 worlds and 42 dark moons — not the 29/57
 split the spec illustrates, which predates PR #41's overrides being baked into a dataset. Every
 artefact re-hashes: the test vector moved from `contract/test-vectors/v2/` to `v3/`, the fixtures
-are `c791f8d91a9ee048` and `d8d18ad21236561c`, and production is `83c4f65875f037c8` with
+are `c791f8d91a9ee048` and `68c6a190b1c78d64`, and production is `3ce85aed66e9dc3a` with
 `dabe2c9a68b4d799` kept on disk and still named by `active`. §8.1 has the measured budget.
 
 Three things a reviewer should check rather than take on trust:

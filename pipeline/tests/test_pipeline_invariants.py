@@ -569,14 +569,40 @@ def test_the_radius_law_is_constant_area_per_card(dataset: Dataset):
     9.1x against Rabiah where PRD 5.3.2's ``log N`` gave 1.568x. Asserted as area-per-card being
     the same constant on every world, which is the property the ratio follows from.
     """
+    moons = 0
     for plane in dataset.planes:
         if plane.slug == BLIND_ETERNITIES_SLUG:
             assert plane.radius == MULTIVERSE_RADIUS
-        elif plane.card_count == 0:
-            assert plane.radius == surface.MOON_RADIUS
-        else:
+            continue
+        # §1.8's floor binds on every plane, not only the empty ones (DEC-749). Applied only where
+        # `cardCount == 0` the law inverts — `0.126*sqrt(N)` does not reach 0.55 until N = 20 — and
+        # a one-card world came out smaller than the empty moon beside it.
+        assert plane.radius >= surface.MOON_RADIUS, f"{plane.slug} is under the moon floor"
+        if plane.card_count >= 20:
             per_card = plane.radius**2 / plane.card_count
             assert math.isclose(per_card, surface.RADIUS_PER_ROOT_CARD**2, rel_tol=1e-9)
+        else:
+            moons += 1
+            assert plane.radius == surface.MOON_RADIUS
+    assert moons, "the fixture must hold a plane the floor actually binds on"
+
+
+def test_no_world_is_drawn_smaller_than_an_empty_moon(dataset: Dataset):
+    """§1.8's claim, as a claim: "emptiness becomes a colour, not a size".
+
+    The negative control for the floor. Before DEC-749's ruling 15 of the v3 roster's 45 worlds
+    were smaller than a plane holding nothing, which inverts the one reading §1.8 asks for — and it
+    passed every other invariant here, because the law *was* `0.126*sqrt(N)` exactly as written.
+    """
+    smallest_moon = min(
+        (p.radius for p in dataset.planes if p.card_count == 0), default=surface.MOON_RADIUS
+    )
+    for plane in dataset.planes:
+        if plane.slug == BLIND_ETERNITIES_SLUG or plane.card_count == 0:
+            continue
+        assert plane.radius >= smallest_moon, (
+            f"{plane.slug} holds {plane.card_count} cards and is smaller than an empty plane"
+        )
 
 
 def test_the_closed_form_is_only_a_starting_point():
