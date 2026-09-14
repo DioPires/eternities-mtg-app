@@ -2264,10 +2264,21 @@ pool still passes W4.
 > Implementing the rung is R3's row (§1.10–§1.12), relayed on DEC-751; it is what would make the
 > two spellings agree.
 
-> **The effective threshold moves with capacity, and here are the readings (DEC-752, main
-> `f049dca`, dominaria, 2.2 radii, 1920×1080).** `pool.layers` 1,024 → **24.00 px** (the
-> `BASE_THRESHOLD_PX` floor), 128 → **27.93 px**, 0 → **30.13 px**. The `layers=0` figure is the one
-> that supersedes the stale 32.50 px flagged as DEC-770's note N2.
+> **The effective threshold moves with capacity — live readings, and a one-bucket gap that is the
+> gate's own problem to close (DEC-752, main `f049dca`, dominaria, 1920×1080).** Off the live
+> renderer, `pool.layers` 1,024 → **24.00 px** (the `BASE_THRESHOLD_PX` floor), 128 → **27.93 px**,
+> 0 → **30.13 px**.
+>
+> §1.6's note above gives dominaria **30.13 px at 16, 64 and 128 layers alike** at this same
+> 2.2-radii pose, so the live 128-layer reading sits **one bucket low**. The likely cause is not a
+> renderer disagreement but the gate's own camera: `focusPlane('dominaria')` settles at
+> **`radii` ≈ 2.14**, not 2.2, and ~3% nearer makes every cell ~3% taller, which is enough to cross
+> one bucket edge. **The driver must therefore drive the camera to the specified pose and assert
+> `worlds().radii` before reading any threshold-dependent number, rather than accepting wherever
+> `focusPlane` settles** — a criterion specified "at 2.2 radii" that is in fact measured at 2.14 is
+> a number taken at a pose the spec does not name. Recorded as a discrepancy to close by
+> re-measuring at a pinned pose, **not** as a defect in either figure: the offline sweep and this
+> reading have not yet been taken at the same distance.
 
 > **Normative — W4 is unmeasurable until the art stream is connected, and the matrix must not be
 > read as passing before then (DEC-752 → DEC-772).** On main the worlds art stream is never asked:
