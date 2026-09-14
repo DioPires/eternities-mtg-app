@@ -21,6 +21,27 @@ REPO = Path(__file__).resolve().parents[2]
 
 ASPECT = 4 / 3  # §1.3: an `art_crop` letterboxes into 4:3 without being stretched.
 
+# Datasets are resolved by ROLE, never by hash. Three hashes have already moved under this file --
+# the 87-plane roster, `3ce85aed` and `dabe2c9a` -- and every move turned a real check into a dead
+# path that printed FAIL for a reason that had nothing to do with the surface law. `datasets.json`
+# is the contract's own pointer and it moves with the dataset.
+DATASETS = json.loads((REPO / "web/datasets.json").read_text())
+
+
+def dataset_path(role: str) -> Path | None:
+    """`planes.json` for a role in `web/datasets.json`, or None when that file is not on the tree."""
+    name = DATASETS.get(role)
+    if not isinstance(name, str):
+        return None
+    path = REPO / "web/public/data" / name / "planes.json"
+    return path if path.is_file() else None
+
+
+def contract_three() -> list[Path]:
+    """Every contract-3 `planes.json` on the tree, production and fixture alike."""
+    return [p for p in sorted(REPO.glob("web/public/data/*/planes.json"))
+            if json.loads(p.read_text()).get("contractVersion") == 3]
+
 failures: list[str] = []
 
 
@@ -252,7 +273,11 @@ check("the N-only form gets rows (and so dphi) right on every world", rows_agree
 check("...but the CELL COUNTS on only 15 of 45", cells_agree, 15)
 check("...all fifteen being one-, two- and four-card worlds — nothing at production size",
       max(w["cardCount"] for s, w in PUBLISHED_V3.items() if grid(w["cardCount"])[2] == w["rowCells"]), 4)
-check("...missing 202 of 777 rows", (rows_differing, rows_total), (202, 777))
+# 198, not the 202 an earlier revision recorded: leg P's merge moved the worlds dataset
+# 3ce85aed -> c9468f11 and redistributed 116 of the 777 rows WITHIN their worlds. `rows` and
+# `sum(rowCells)` are identical on all 45, so every §1.4 derivation below is unmoved; only this
+# agreement count and the by-two roster are dataset-shaped, and both are measurements, not laws.
+check("...missing 198 of 777 rows", (rows_differing, rows_total), (198, 777))
 check("...but never by more than ONE cell — it is a +-1 check, not an emitter", worst_row_delta, 1)
 
 # The ±1 slack has to be harmless for everything §1.4 derives, or "check" would still be too strong.
@@ -277,24 +302,64 @@ check("...not the 14 an N-only reading predicts",
       sum(1 for w in PUBLISHED_V3.values() if grid(w["cardCount"])[2] != grid(w["cardCount"])[2][::-1]), 14)
 check("...and the <=1-pair relaxation fails on the same 30", len(le_one), 30)
 check("...Dominaria differing in 15 mirrored pairs", len(mirrored_pairs(PUBLISHED_V3["dominaria"]["rowCells"])), 15)
+# Still eight worlds, but not the same eight: the dataset move swapped arcavios and mercadia out
+# for fiora and new-phyrexia. Which worlds land here is a property of the hue histogram, not of the
+# law -- the count is stable at eight across both datasets, the membership is not.
 check("...with eight worlds carrying a pair that differs by TWO",
       sorted(s for s, w in PUBLISHED_V3.items() if max(mirrored_pairs(w["rowCells"]), default=0) >= 2),
-      ["amonkhet", "arcavios", "avishkar", "innistrad", "mercadia", "theros", "thunder-junction", "zendikar"])
+      ["amonkhet", "avishkar", "fiora", "innistrad", "new-phyrexia", "theros", "thunder-junction", "zendikar"])
 # 2 is the observed maximum over 45 worlds, not a derived bound -- asserting <=2 would repeat the
 # mistake this section corrects, one notch further out. It is recorded, not checked.
 print("        observed max mirrored-pair delta: "
       f"{max(max(mirrored_pairs(w['rowCells']), default=0) for w in PUBLISHED_V3.values())} "
       "(a measurement over 45 worlds; NOT a bound — do not assert it)")
 
-# The fixture is a copy, so it can rot. Any contract-3 dataset on the tree must match it verbatim.
-live = [p for p in sorted(REPO.glob("web/public/data/*/planes.json"))
-        if json.loads(p.read_text()).get("contractVersion") == 3]
-if not live:
-    print("        (no contract-3 dataset on this tree — the fixture's source arrives with PR #47)")
+# The fixture is a copy, so it can rot. The dataset it is a copy OF is the one `datasets.json`
+# names `worlds`, and that one must match it verbatim.
+#
+# An earlier revision asserted the fixture against EVERY contract-3 dataset on the tree. That rule
+# was wrong in kind and went RED the moment PR #47 landed: the scale and small fixtures are
+# different ROSTERS (80 and 3 worlds against the production roster's 45), so a production table can
+# never match them and the check could only ever fail. Naming a rule "the fixture cannot rot
+# silently" does not make that its predicate. What every contract-3 dataset must satisfy is the
+# LAW, which is checked immediately below -- wider real coverage than the broken rule ever had.
+worlds_path = dataset_path("worlds")
+if worlds_path is None:
+    # Deliberately a failure, not a skip: a check that silently passes when its input moved is the
+    # rubber stamp §3.1's negative-control note exists to forbid.
+    check("datasets.json names a `worlds` dataset that is on the tree", False, True)
+else:
+    shipped = {p["slug"]: p["rowCells"]
+               for p in json.loads(worlds_path.read_text())["planes"] if "rowCells" in p}
+    vendored = {s: w["rowCells"] for s, w in PUBLISHED_V3.items()}
+    # Reported as the list of worlds that DISAGREE, not as the tables themselves: `check` prints
+    # `got`, and printing 777 numbers on success buries every other line in this file.
+    check(f"the vendored fixture still matches {worlds_path.parent.name} verbatim",
+          sorted(set(shipped) ^ set(vendored)) or
+          sorted(s for s in shipped if shipped[s] != vendored.get(s)), [])
+
+# §1.3's normative invariants, over every contract-3 roster on the tree. The denominator is always
+# printed, so "no violations" can never be confused with "I could not look".
+live = contract_three()
+check("contract-3 datasets found to measure the law on", len(live) > 0, True)
 for path in live:
-    shipped = {p["slug"]: p["rowCells"] for p in json.loads(path.read_text())["planes"] if "rowCells" in p}
-    check(f"the vendored fixture still matches {path.parent.name} verbatim",
-          shipped, {s: w["rowCells"] for s, w in PUBLISHED_V3.items()})
+    shipped_worlds = [p for p in json.loads(path.read_text())["planes"] if "rowCells" in p]
+    name = path.parent.name
+    print(f"        {name}: {len(shipped_worlds)} worlds, "
+          f"{sum(len(p['rowCells']) for p in shipped_worlds)} rows")
+    check(f"  {name}: sum(rowCells) == cardCount on every world",
+          [p["slug"] for p in shipped_worlds if sum(p["rowCells"]) != p["cardCount"]], [])
+    check(f"  {name}: rowCells[r] >= 1 on every row",
+          [p["slug"] for p in shipped_worlds if min(p["rowCells"]) < 1], [])
+    check(f"  {name}: rows == max(1, min(rows_closed, N))",
+          [p["slug"] for p in shipped_worlds
+           if len(p["rowCells"]) != max(1, min(closed_form(p["cardCount"])[1], p["cardCount"]))], [])
+    # §1.3/§1.8/§2.4's amendment: the floor is on EVERY plane, not an empty-plane special case.
+    # The belt is the one carve-out -- §1.8 sizes the dust by hand, and it ships at a flat 130.
+    planes_ = [p for p in json.loads(path.read_text())["planes"] if p.get("kind") != "dust"]
+    check(f"  {name}: radius == max(0.126*sqrt(N), 0.55) on every non-dust plane",
+          [p["slug"] for p in planes_
+           if abs(p["radius"] - max(RADIUS_K * math.sqrt(p.get("cardCount", 0)), MOON_FLOOR)) > 5e-6], [])
 
 print("\n§1.3 the small-world floor (DEC-751's n = 1 finding, re-derived)")
 
@@ -460,114 +525,103 @@ check("unanswered limit (0) floors at 0, never -32", [pool_size(t, 0) for t in T
 check("...which the unfloored formula gets wrong", min(TIERS[0], 0 - 32), -32)
 
 print("\n§3.1 the roster counts are derived, not constants (DEC-751)")
-PROD = REPO / "web/public/data/6d4779695fde33ea/planes.json"
-if not PROD.is_file():
-    # Deliberately a failure, not a skip: a check that silently passes when its input moved is
-    # the rubber stamp §3.1's negative-control note exists to forbid.
-    check(f"production planes.json is readable at {PROD}", False, True)
+# The 87-plane roster this block used to measure (`6d4779695fde33ea`) is no longer on the tree, and
+# neither is `3ce85aed`. Both were named by hash. The roster figures for that dataset are kept in
+# §1.3's prose as history; what is CHECKED is whatever `datasets.json` currently points the worlds
+# path at, because that is the dataset the gate actually runs on.
+#
+# The point of the derivation survives the move intact, and is the reason nothing here is a
+# literal: the same code gives a different W5 floor on every dataset, so a constant in the gate is
+# a statement about one file rather than about correct behaviour.
+floors = {}
+for path in sorted(REPO.glob("web/public/data/*/planes.json")):
+    rows = json.loads(path.read_text())["planes"]
+    floors[path.parent.name] = len([p for p in rows if p.get("cardCount", 0) > 0])
+print(f"        derived W5 floor per tracked dataset: {floors}")
+check("tracked datasets to derive the floor from", len(floors) > 1, True)
+check("...and it is not the same number for every dataset", len(set(floors.values())) > 1, True)
+
+if worlds_path is None:
+    check("datasets.json names a `worlds` dataset that is on the tree", False, True)
 else:
-    planes = json.loads(PROD.read_text())["planes"]
-    worlds_with_cards = [p for p in planes if p.get("kind") != "dust" and p.get("cardCount", 0) > 0]
-    planes_with_cards = [p for p in planes if p.get("cardCount", 0) > 0]
-    check("87 planes on the production roster", len(planes), 87)
-    check("worldsWithCards — W1 iterates these", len(worlds_with_cards), 29)
-    check("planesWithCards — W5's floor IS this length", len(planes_with_cards), 30)
-    check("...which is the worlds plus the belt", len(planes_with_cards) - len(worlds_with_cards), 1)
-    check("empty planes carry no cards", len([p for p in planes if p.get("cardCount", 0) == 0]), 57)
-    check("cards on worlds (D3)", sum(p["cardCount"] for p in worlds_with_cards), 23607)
+    v3 = json.loads(worlds_path.read_text())["planes"]
+    v3_worlds = [p for p in v3 if p.get("kind") != "dust" and p.get("cardCount", 0) > 0]
+    v3_with_cards = [p for p in v3 if p.get("cardCount", 0) > 0]
+    # An earlier revision of this file PREDICTED the next dataset here: "Forgotten Realms lands as a
+    # 30th world, so the derived floor moves to 31". It was wrong by fifteen worlds, and it remains
+    # the best argument in this file for deriving rather than predicting.
+    check("v3 planes", len(v3), 88)
+    check("v3 worldsWithCards — W1 iterates these", len(v3_worlds), 45)
+    check("v3 planesWithCards — W5's floor on the dataset the gate runs on", len(v3_with_cards), 46)
+    check("...which is the worlds plus the belt", len(v3_with_cards) - len(v3_worlds), 1)
+    check("v3 empty planes", len([p for p in v3 if p.get("cardCount", 0) == 0]), 42)
+    check("v3 cards on worlds", sum(p["cardCount"] for p in v3_worlds), 24399)
+    fr = [p for p in v3 if p.get("slug") == "forgotten-realms"]
     # `afr` is the SET code; the roster keys on PLANE slugs, and the plane is `forgotten-realms`.
-    check("Forgotten Realms is NOT in today's roster",
-          any(p.get("slug") == "forgotten-realms" for p in planes), False)
-    check("...and `afr` is a set code, not a plane slug, in either dataset",
-          any(p.get("slug") == "afr" for p in planes), False)
+    check("Forgotten Realms is in v3, as the plane `forgotten-realms`", len(fr), 1)
+    check("...carrying the 664 cards DEC-745 mapped", fr[0]["cardCount"] if fr else 0, 664)
+    check("...and `afr` is a set code, never a plane slug",
+          any(p.get("slug") == "afr" for p in v3), False)
+    small = [p for p in v3_worlds if world_radius(p["cardCount"]) == MOON_FLOOR]
+    check("v3 worlds the radius floor binds on (§1.3)", len(small), 15)
+    check("...six of which carry exactly one card",
+          len([p for p in v3_worlds if p["cardCount"] == 1]), 6)
 
-    # The point of the derivation: the same code gives a different floor on a different dataset, so
-    # a literal 30 in the gate is a statement about one file rather than about correct behaviour.
-    floors = {}
-    for path in sorted(REPO.glob("web/public/data/*/planes.json")):
-        rows = json.loads(path.read_text())["planes"]
-        floors[path.parent.name] = len([p for p in rows if p.get("cardCount", 0) > 0])
-    print(f"        derived W5 floor per tracked dataset: {floors}")
-    check("...and it is not the same number for every dataset", len(set(floors.values())) > 1, True)
+    # §1.3's lever table, on the roster rather than on the closed form.
+    for mult, expected in ((1.5, 16), (2.0, 17), (4.0, 23), (WCAG_LEVER, 36)):
+        limit = swallowed_by(mult * MOON_FLOOR)
+        check(f"v3 worlds losing the constant-area law at a {mult:.2f}x floor",
+              len([p for p in v3_worlds if p["cardCount"] < limit]), expected)
 
-    # An earlier revision of this file predicted the next dataset here: "Forgotten Realms lands as a
-    # 30th world, so the derived floor moves to 31". It was wrong by fifteen worlds, and it is the
-    # best argument in this file for deriving rather than predicting. The v3 dataset is now
-    # MEASURED (DEC-745 PR #46 head 311b87d, dataset dabe2c9a68b4d799, re-measured on DEC-749):
-    # the refresh is the first to bake in PR #41's plane overrides, so it changes the roster's
-    # shape, not its size.
-    V3 = {"planes": 88, "worlds": 45, "planesWithCards": 46, "empty": 42, "cardsOnWorlds": 24399}
-    v3_path = REPO / "web/public/data/dabe2c9a68b4d799/planes.json"
-    if v3_path.is_file():
-        v3 = json.loads(v3_path.read_text())["planes"]
-        v3_worlds = [p for p in v3 if p.get("kind") != "dust" and p.get("cardCount", 0) > 0]
-        v3_with_cards = [p for p in v3 if p.get("cardCount", 0) > 0]
-        check("v3 planes", len(v3), V3["planes"])
-        check("v3 worldsWithCards", len(v3_worlds), V3["worlds"])
-        check("v3 planesWithCards — W5's floor on the dataset the gate runs on", len(v3_with_cards),
-              V3["planesWithCards"])
-        check("v3 empty planes", len([p for p in v3 if p.get("cardCount", 0) == 0]), V3["empty"])
-        check("v3 cards on worlds", sum(p["cardCount"] for p in v3_worlds), V3["cardsOnWorlds"])
-        fr = [p for p in v3 if p.get("slug") == "forgotten-realms"]
-        check("Forgotten Realms is in v3, as the plane `forgotten-realms`", len(fr), 1)
-        check("...carrying the 664 cards DEC-745 mapped", fr[0]["cardCount"] if fr else 0, 664)
-        small = [p for p in v3_worlds if world_radius(p["cardCount"]) == MOON_FLOOR]
-        check("v3 worlds the radius floor binds on (§1.3)", len(small), 15)
-        check("...six of which carry exactly one card",
-              len([p for p in v3_worlds if p["cardCount"] == 1]), 6)
+    # §1.11's screen-space pick floor: inflating the PICK proxy does not steal neighbours' picks.
+    # Clearance is world-space, so it bounds the angular case only for depth-similar pairs.
+    # Radii come from the LAW, never from p["radius"]: a dataset can ship a retired radius law
+    # (dabe2c9a still carries log-N, one-card worlds at 3.605), and reading the field would measure
+    # the dataset rather than §1.3.
+    PICK_PROXY = 1.15
+    pickable = [p for p in v3 if p.get("kind") != "dust"]
+    headroom = {}
+    for p in small:
+        nearest = min((q for q in pickable if q is not p),
+                      key=lambda q: math.dist(p["home"], q["home"]))
+        gap = math.dist(p["home"], nearest["home"])
+        r_self = world_radius(p["cardCount"])
+        r_near = world_radius(nearest.get("cardCount", 0)) if nearest.get("cardCount", 0) else MOON_FLOOR
+        headroom[p["slug"]] = (gap - r_near * PICK_PROXY) / (r_self * PICK_PROXY)
+    worst_slug = min(headroom, key=headroom.get)
+    worst = headroom[worst_slug]
+    # NOT pinned to a constant: `home` moves between dataset refreshes, and the tightest world moves
+    # with it (3ce85aed 7.9x on karsus; dabe2c9a 17.6x on vryn). Only the invariant is durable, so
+    # that is what is asserted and the headroom is reported.
+    print(f"        tightest pick-inflation headroom: {worst:.1f}x on {worst_slug} "
+          f"(needs {WCAG_LEVER:.2f}x)")
+    check("...no floored world's pick disk collides at the inflation 24 px requires",
+          len([h for h in headroom.values() if h < WCAG_LEVER]), 0)
+    check("...so the screen-space floor does not steal neighbours' picks", worst > WCAG_LEVER, True)
 
-        # §1.3's lever table, on the roster rather than on the closed form.
-        for mult, expected in ((1.5, 16), (2.0, 17), (4.0, 23), (WCAG_LEVER, 36)):
-            limit = swallowed_by(mult * MOON_FLOOR)
-            check(f"v3 worlds losing the constant-area law at a {mult:.2f}x floor",
-                  len([p for p in v3_worlds if p["cardCount"] < limit]), expected)
+    # §1.3's exact-N claim, on the roster the gate actually runs on rather than on a sweep.
+    deltas = {p["slug"]: sum(closed_form(p["cardCount"])[2]) - p["cardCount"] for p in v3_worlds}
+    check("v3 worlds the CLOSED FORM under-allocates", len([d for d in deltas.values() if d < 0]), 18)
+    check("...over-allocates", len([d for d in deltas.values() if d > 0]), 15)
+    check("...and gets exactly right", len([d for d in deltas.values() if d == 0]), 12)
+    check("v3 cards with no cell under the closed form",
+          -sum(d for d in deltas.values() if d < 0), 207)
+    check("...including 5 on Dominaria itself", -deltas["dominaria"], 5)
+    check("the relaxation loses none of them",
+          [p["slug"] for p in v3_worlds if sum(grid(p["cardCount"])[2]) != p["cardCount"]], [])
+    check("...at the cost of strict symmetry on 14 of the 45 (a property of the N-ONLY form)",
+          len([p for p in v3_worlds
+               if grid(p["cardCount"])[2] != grid(p["cardCount"])[2][::-1]]), 14)
+    # ...and the SHIPPED table obeys no such bound: it breaks strict symmetry on 30 of 45 by
+    # design. Both numbers are checked side by side precisely because a gate that read the 14 off
+    # the N-only form would go RED on a correct renderer (DEC-748's `_north_first`).
+    shipped_asym = [s for s, w in PUBLISHED_V3.items() if w["rowCells"] != w["rowCells"][::-1]]
+    check("...while the SHIPPED table breaks it on 30 of 45, by design", len(shipped_asym), 30)
 
-        # §1.11's screen-space pick floor: inflating the PICK proxy does not steal neighbours' picks.
-        # Clearance is world-space, so it bounds the angular case only for depth-similar pairs.
-        # Radii come from the LAW, never from p["radius"]: dabe2c9a still ships the old log-N radii
-        # (one-card worlds at 3.605), so reading the field would measure the dataset, not §1.3.
-        PICK_PROXY = 1.15
-        pickable = [p for p in v3 if p.get("kind") != "dust"]
-        headroom = {}
-        for p in small:
-            nearest = min((q for q in pickable if q is not p),
-                          key=lambda q: math.dist(p["home"], q["home"]))
-            gap = math.dist(p["home"], nearest["home"])
-            r_self = world_radius(p["cardCount"])
-            r_near = world_radius(nearest.get("cardCount", 0)) if nearest.get("cardCount", 0) else MOON_FLOOR
-            headroom[p["slug"]] = (gap - r_near * PICK_PROXY) / (r_self * PICK_PROXY)
-        worst_slug = min(headroom, key=headroom.get)
-        worst = headroom[worst_slug]
-        # NOT pinned to a constant: `home` moves between dataset refreshes, and the tightest world
-        # moves with it (3ce85aed 7.9x on karsus; dabe2c9a 17.6x on vryn). Only the invariant is
-        # durable, so that is what is asserted and the headroom is reported.
-        print(f"        tightest pick-inflation headroom: {worst:.1f}x on {worst_slug} "
-              f"(needs {WCAG_LEVER:.2f}x)")
-        check("...no floored world's pick disk collides at the inflation 24 px requires",
-              len([h for h in headroom.values() if h < WCAG_LEVER]), 0)
-        check("...so the screen-space floor does not steal neighbours' picks", worst > WCAG_LEVER, True)
-
-        # §1.3's exact-N claim, on the roster the gate actually runs on rather than on a sweep.
-        deltas = {p["slug"]: sum(closed_form(p["cardCount"])[2]) - p["cardCount"] for p in v3_worlds}
-        check("v3 worlds the CLOSED FORM under-allocates", len([d for d in deltas.values() if d < 0]), 18)
-        check("...over-allocates", len([d for d in deltas.values() if d > 0]), 15)
-        check("...and gets exactly right", len([d for d in deltas.values() if d == 0]), 12)
-        check("v3 cards with no cell under the closed form",
-              -sum(d for d in deltas.values() if d < 0), 207)
-        check("...including 5 on Dominaria itself", -deltas["dominaria"], 5)
-        check("the relaxation loses none of them",
-              [p["slug"] for p in v3_worlds if sum(grid(p["cardCount"])[2]) != p["cardCount"]], [])
-        check("...at the cost of strict symmetry on 14 of the 45",
-              len([p for p in v3_worlds
-                   if grid(p["cardCount"])[2] != grid(p["cardCount"])[2][::-1]]), 14)
-    else:
-        # Not a silent skip: the figures and their provenance are printed, and the +1 prediction
-        # this replaced is gone either way.
-        print(f"        PENDING — v3 dataset not on this branch (lands with PR #46): {V3}")
-    check("the refresh is NOT '29 worlds + 1'", V3["worlds"], 45)
-    check("...so W5's floor moves 30 -> 46, not 30 -> 31", V3["planesWithCards"], 46)
-    check("...and a gate pinned at either literal goes RED on correct behaviour",
-          V3["planesWithCards"] != len(planes_with_cards), True)
+    # The W5 floor is derived from THIS dataset, never predicted from the last one.
+    check("the refresh is NOT '29 worlds + 1'", len(v3_worlds), 45)
+    check("...so W5's floor is 46, and a gate pinned at 30 or 31 goes RED on correct behaviour",
+          len(v3_with_cards) not in (30, 31), True)
 
 print("\n§3.1 W2's IQR(L*) half — why it is measured iso-shade (DEC-749, on DEC-752's finding)")
 
