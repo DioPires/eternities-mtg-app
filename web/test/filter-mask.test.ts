@@ -33,7 +33,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import type { BufferAttribute } from 'three'
+import type { InterleavedBufferAttribute } from 'three'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { applyFilterMask, bindFilterMask } from '../src/app/filterMask'
@@ -46,6 +46,7 @@ import {
 } from '../src/data'
 import { evaluateFilters, type FilterEvaluation } from '../src/filters/evaluate'
 import { EMPTY_FILTERS, type FilterState } from '../src/filters/types'
+import { STAR_VERTEX_SHADER } from '../src/scene/starfield/shaders'
 import { StarGeometry } from '../src/scene/starfield/starGeometry'
 import { useStore } from '../src/store/store'
 import { fixturePath } from './fixtures'
@@ -71,18 +72,35 @@ function loadedGeometry(): StarGeometry {
 }
 
 /**
- * The `aFilter` attribute. `getAttribute` is typed as the union with
- * `InterleavedBufferAttribute` — the record attributes in this geometry are interleaved — but this
- * one is a plain `BufferAttribute` by construction, and the cast is narrowed here rather than at
- * four call sites.
+ * The attribute the filter mask travels in.
+ *
+ * **`aClass.w` since DEC-739, where it used to be an `aFilter` attribute of its own.** The mask is
+ * now the fourth lane of the repacked class vector — review §3.5's 16-byte aligned repack folded
+ * the two stride-1 mask attributes into the spare lanes of the two `u8x4` vectors, because a stride
+ * of one is the worst-aligned thing in the old layout and ANGLE repacks the buffer on the CPU for
+ * it. The *contract* this file is about is unchanged: a passing star is `FILTER_MASK_PASS` and a
+ * dimmed one is 0, wherever the byte sits.
  */
-function filterAttribute(geometry: StarGeometry): BufferAttribute {
-  return geometry.geometry.getAttribute('aFilter') as BufferAttribute
+function filterAttribute(geometry: StarGeometry): InterleavedBufferAttribute {
+  return geometry.geometry.getAttribute('aClass') as InterleavedBufferAttribute
 }
 
-/** The `aFilter` bytes as the GPU would see them — the array the attribute actually owns. */
+/**
+ * The filter bytes as the GPU would see them: the `w` lane of every `aClass`, gathered.
+ *
+ * A gather rather than a view, so every assertion below stays written as `bytes[i]` and keeps
+ * reading as "star i's mask byte". The stride arithmetic is done once, here, against the attribute
+ * three itself would upload — not against `PACKED_*` constants — so a layout change that moved the
+ * lane without moving the constants would still be caught.
+ */
 function filterBytes(geometry: StarGeometry): Uint8Array {
-  return filterAttribute(geometry).array as Uint8Array
+  const attribute = filterAttribute(geometry)
+  const array = attribute.data.array as Uint8Array
+  const stride = attribute.data.stride
+  const lane = attribute.offset + 3
+  const bytes = new Uint8Array(STARS.count)
+  for (let i = 0; i < STARS.count; i += 1) bytes[i] = array[i * stride + lane]!
+  return bytes
 }
 
 function whiteOnly(): FilterEvaluation {
@@ -126,14 +144,34 @@ describe('the filter mask reaches the geometry (PRD 5.8, review F1)', () => {
   })
 
   /**
-   * The attribute has to stay normalised for {@link FILTER_MASK_PASS} to be the right value at all.
-   * If someone denormalises it, 255 becomes 255.0 in the shader and the dimming inverts into a
-   * 255x brightening — so the constant and this flag are one decision, pinned together.
+   * Something has to turn 255 into 1.0 for {@link FILTER_MASK_PASS} to be the right value at all.
+   * If nothing does, 255 stays 255.0 in the shader and PRD 5.8.1's dimming inverts into a 255x
+   * brightening — so the constant and whatever divides it are one decision, pinned together.
+   *
+   * **That job moved in DEC-739 and this test moved with it.** It used to be the attribute's
+   * `normalized` flag; the mask now shares a `u8x4` vector with the plane row, the colour byte and
+   * the size class, all of which are read as *raw* byte values, and a buffer is normalised or it is
+   * not. So the vertex shader divides, and this asserts the division rather than the flag —
+   * including asserting the flag is **off**, because a normalised buffer plus the shader's own
+   * divide would dim every passing star to 1/255 of itself, which is the original F1 bug rebuilt
+   * from the other side.
    */
-  it('uploads through a normalised attribute, which is what makes 255 mean 1.0', () => {
+  it('turns 255 into 1.0 exactly once, in the shader (DEC-739)', () => {
     const attribute = filterAttribute(loadedGeometry())
-    expect(attribute.normalized).toBe(true)
-    expect(attribute.itemSize).toBe(1)
+    expect(attribute.itemSize).toBe(4)
+    expect(attribute.normalized).toBe(false)
+    // The divide, in the one line of GLSL that reads the lane.
+    expect(STAR_VERTEX_SHADER).toContain('float pass = aClass.w * (1.0 / 255.0);')
+    // ...and PRD 5.5.3's thumbnail byte, which rides the other vector's spare lane and needs the
+    // same treatment for the same reason.
+    expect(STAR_VERTEX_SHADER).toContain('(aStyle.w * (1.0 / 255.0))')
+    // No *declaration* of either old mask attribute survives. A leftover one would compile to an
+    // attribute the geometry no longer supplies, which reads as zeros — every star dimmed to
+    // `FILTER_DIM` and unpickable, which is precisely the shape of the F1 bug. Matched as a
+    // declaration rather than as a substring because the shader's comments still name the old
+    // attributes, and they should: the comment is the record of where the lane came from.
+    expect(STAR_VERTEX_SHADER).not.toMatch(/\battribute\s+\w+\s+aFilter\b/)
+    expect(STAR_VERTEX_SHADER).not.toMatch(/\battribute\s+\w+\s+aThumb\b/)
   })
 
   it('a null evaluation clears the filter rather than dimming everything', () => {
@@ -154,13 +192,16 @@ describe('the filter mask reaches the geometry (PRD 5.8, review F1)', () => {
     for (let i = 0; i < STARS.count; i += 1) expect(bytes[i]).toBe(FILTER_MASK_PASS)
   })
 
-  it('marks the attribute for upload, or the bytes never leave the CPU', () => {
+  it('marks the buffer for upload, or the bytes never leave the CPU', () => {
     const geometry = loadedGeometry()
-    const attribute = filterAttribute(geometry)
-    attribute.needsUpdate = false
+    // The `InterleavedBuffer`, not the attribute: an `InterleavedBufferAttribute` owns no array and
+    // no version, and three reads `needsUpdate` off the buffer it is a view into. Setting the flag
+    // on the attribute would be writing to an object three never consults — a silent no-upload.
+    const buffer = filterAttribute(geometry).data
+    buffer.needsUpdate = false
     applyFilterMask(geometry, whiteOnly())
     // three resets `needsUpdate` to false as it uploads and exposes the write as `version`.
-    expect(attribute.version).toBeGreaterThan(0)
+    expect(buffer.version).toBeGreaterThan(0)
   })
 })
 

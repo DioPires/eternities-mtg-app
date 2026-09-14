@@ -20,6 +20,7 @@ import type { SetsSidecar, Stars } from '../data/decode'
 import { LOAD_ATTEMPTS, loadManifest, loadPlanes, loadSearch, loadSets } from '../data/load'
 import type { Manifest, PlanesFile, SearchFile } from '../data/types'
 import { sceneErrors } from './errors'
+import { bootPositionMode } from './platform/capabilities'
 import { createNebulaTexture } from './starfield/nebulaTexture'
 import { PlaneTable } from './starfield/planeTable'
 import { createStarField, type StarField } from './starfield/starFieldObjects'
@@ -120,6 +121,43 @@ export function useSceneData(): SceneDataState {
     async function run(): Promise<void> {
       lines.push(`data directory ${dataRootSafe()}`)
       patch({})
+
+      /*
+       * Ask the GPU about half-float vertex attributes while the first two artefacts are in flight
+       * (DEC-739, `scene/platform/halfFloatProbe`).
+       *
+       * The answer is needed below, at the moment the `StarGeometry` is built, and asking for it
+       * there would be the worst available time: `resolvePositionMode` is synchronous, and the
+       * probe costs a context, two shader compiles and a `readPixels` — **measured at 68 ms on this
+       * M5 Pro through ANGLE Metal**, not the ~1 ms review §3.5 estimates, because a synchronous
+       * readback is a full pipeline flush however small the target. Paid at the call site that is
+       * two network round trips deep, that is 68 ms of dead main thread between `planes.json`
+       * landing and the first star being drawable.
+       *
+       * Paid *here*, one frame in, it is 68 ms of a main thread that is otherwise waiting on the
+       * network — and `bootPositionMode` caches, so the call below is free. If the fetches somehow
+       * win the race the probe simply runs at its old moment; nothing depends on the ordering for
+       * correctness, only for when the cost lands.
+       *
+       * **Two corrections to the paragraph above, from DEC-747 N1.**
+       *
+       * First, the 68 ms is wall-clock for the whole of `bootPositionMode` and it is *not* what the
+       * bench's `halfFloatProbeMs` reports. That field's clock starts inside
+       * `probeHalfFloatAttributes`, so it excludes the `getContext('webgl2')` — two different
+       * numbers, both wanted: this one decides *when* to run the probe, the bench field compares
+       * GPUs at the readback. `e2e/quality.spec.ts` bounds the field, not the wall-clock.
+       *
+       * Second, **68 ms does not reproduce.** Measured in situ against this scheduling, on an M5
+       * Pro through Chrome 141 on a `vite preview` build: `getContext` 2.2 ms, probe 3.3 ms, ~5.5 ms
+       * end to end. It is not context-creation cost hiding on a cold page either — the *first*
+       * WebGL2 context of a fresh page timed 1.8 ms and the second 1.2 ms. The 68 ms is left on the
+       * record rather than deleted because it is what the deferral was designed against and the
+       * conditions that produced it are not known; what is measured is that on this machine the
+       * probe is cheap wherever it runs, and the ordering here costs nothing to keep.
+       */
+      void afterFirstFrame().then(() => {
+        if (!signal.aborted) bootPositionMode()
+      })
 
       const manifest = await loadManifest({ signal }).catch(failing('manifest.json'))
       lines.push(

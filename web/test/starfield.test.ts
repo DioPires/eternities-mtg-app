@@ -18,9 +18,15 @@ import {
   CONTRACT_VERSION,
   HUE_CLASS_MASK,
   HueClass,
+  PACKED_ATTRIBUTE_BYTES,
+  PACKED_CLASS_OFFSET,
+  PACKED_POSITION_HALVES,
+  PACKED_STYLE_OFFSET,
   STAR_RECORD_BYTES,
   type PlaneRecord,
 } from '../src/data/types'
+import type { InterleavedBuffer, InterleavedBufferAttribute } from 'three'
+
 import { SceneErrorHub } from '../src/scene/errors'
 import {
   DEFAULT_REFRESH_MS,
@@ -46,7 +52,11 @@ import {
 } from '../src/scene/starfield/motion'
 import { PlaneTable } from '../src/scene/starfield/planeTable'
 import { STAR_VERTEX_SHADER } from '../src/scene/starfield/shaders'
-import { StarGeometry, resolvePositionMode } from '../src/scene/starfield/starGeometry'
+import {
+  StarGeometry,
+  resolvePositionMode,
+  type PositionMode,
+} from '../src/scene/starfield/starGeometry'
 import { SHEAR_RADIAL_PHASE, TWINKLE_AMPLITUDE } from '../src/scene/tuning'
 
 function plane(overrides: Partial<PlaneRecord> = {}): PlaneRecord {
@@ -334,11 +344,145 @@ describe('star geometry (PRD 8.5.1, 8.7.3)', () => {
     expect(full.positionMode).toBe('float32')
   })
 
-  it('reads the position mode from the URL, then storage, then the default', () => {
-    expect(resolvePositionMode('?positions=float32', undefined)).toBe('float32')
-    expect(resolvePositionMode('', { getItem: () => 'float32' })).toBe('float32')
-    expect(resolvePositionMode('?positions=nonsense', undefined)).toBe('float16')
-    expect(resolvePositionMode('', undefined)).toBe('float16')
+  /**
+   * The 16-byte aligned repack of review §3.5 (DEC-739).
+   *
+   * Every number here is an *alignment* claim, and alignment is the only thing the repack is for:
+   * D3D11 wants each vertex element's offset within its stride to be a multiple of four and the
+   * stride itself to be a multiple of four, and ANGLE answers a buffer that breaks either by
+   * repacking it on the CPU — once per plane as `stars.bin` streams, on the Windows laptops review
+   * §9 is about and nobody has measured. None of that is observable from here, which is exactly why
+   * the layout is asserted rather than the effect: this is the only place the claim can be checked
+   * at all, so it is checked as arithmetic.
+   *
+   * The shipped layout broke the rule in four places at once and is listed in each assertion below,
+   * so a future reader can see what moved.
+   */
+  it('uploads a 16-byte, four-byte-aligned layout (DEC-739, review §3.5)', () => {
+    const geometry = new StarGeometry(4).geometry
+    const position = geometry.getAttribute('position') as InterleavedBufferAttribute
+    const aClass = geometry.getAttribute('aClass') as InterleavedBufferAttribute
+    const aStyle = geometry.getAttribute('aStyle') as InterleavedBufferAttribute
+
+    // Positions: four halves, stride 8 bytes, offset 0. Was three halves at a stride of *6*, so
+    // every odd-indexed star began two bytes off a four-byte boundary.
+    expect(position.data.stride).toBe(PACKED_POSITION_HALVES)
+    expect(position.data.array).toBeInstanceOf(Uint16Array)
+    expect(position.itemSize).toBe(3)
+    expect(position.offset).toBe(0)
+    const positionStrideBytes = position.data.stride * Uint16Array.BYTES_PER_ELEMENT
+    expect(positionStrideBytes).toBe(8)
+    expect(positionStrideBytes % 4).toBe(0)
+
+    /*
+     * And the half-float flag, which is the one place this code reaches into three's internals.
+     * `WebGLAttributes.createBuffer` maps a `Uint16Array` to `UNSIGNED_SHORT` unless this flag is
+     * set, in which case `HALF_FLOAT`; there is no `Float16InterleavedBuffer` in r170 to use
+     * instead. Without the flag every position would upload as an unsigned short and the field
+     * would be a smear of integers at the origin — loud, but only on a GPU, and nothing else in
+     * this suite has one. A three upgrade that renames the flag fails here.
+     */
+    expect(
+      (position.data as InterleavedBuffer & { isFloat16BufferAttribute?: boolean })
+        .isFloat16BufferAttribute,
+    ).toBe(true)
+
+    // The byte attributes: two `u8x4` vectors in one 8-byte stride, at offsets 0 and 4. Was
+    // `aClass` at 6 and `aStyle` at 9 — neither a multiple of four — inside the on-disk record.
+    for (const attribute of [aClass, aStyle]) {
+      expect(attribute.data.array).toBeInstanceOf(Uint8Array)
+      expect(attribute.data.stride).toBe(PACKED_ATTRIBUTE_BYTES)
+      expect(attribute.itemSize).toBe(4)
+      expect(attribute.offset % 4).toBe(0)
+    }
+    expect(aClass.offset).toBe(PACKED_CLASS_OFFSET)
+    expect(aStyle.offset).toBe(PACKED_STYLE_OFFSET)
+    // One buffer for both, or they would not share a stride.
+    expect(aStyle.data).toBe(aClass.data)
+
+    // The two masks are lanes now, not attributes. A stride of 1 is the worst-aligned thing in the
+    // old layout, and both vectors had a spare lane.
+    expect(geometry.getAttribute('aFilter')).toBeUndefined()
+    expect(geometry.getAttribute('aThumb')).toBeUndefined()
+
+    // Sixteen bytes a star, which is review §3.5's number — and four fewer than the 20 the shipped
+    // layout uploaded (12 + 6 + 1 + 1).
+    expect(positionStrideBytes + PACKED_ATTRIBUTE_BYTES).toBe(16)
+  })
+
+  it('repacks the record into the lanes the shader reads, losslessly', () => {
+    // The repack is a transcription, and a transcription is exactly the kind of change that can be
+    // green everywhere while putting the size class where the colour byte should be. So this reads
+    // every derived field back and compares it against the record bytes `body()` wrote.
+    const geometry = new StarGeometry(8)
+    geometry.append(body(8), 8)
+    for (let i = 0; i < 8; i += 1) {
+      expect(geometry.planeRowOf(i), `star ${i} plane row`).toBe(0)
+      expect(geometry.sizeClassOf(i), `star ${i} size class`).toBe(i % 4)
+      // Byte 7 packs hue in bits 0-2 and identity in bits 3-7; `body()` writes `i % 7`, so the hue
+      // is that value and the identity is zero.
+      expect(geometry.hueClassOf(i), `star ${i} hue`).toBe(i % 7)
+      expect(geometry.colourIdentityOf(i), `star ${i} identity`).toBe(0)
+      // Everything passes until a filter says otherwise, and nothing has a thumbnail yet.
+      expect(geometry.passesFilter(i)).toBe(true)
+      expect(geometry.hasThumbnail(i)).toBe(false)
+    }
+    // The padded stride is the easiest thing in this change to get wrong, and it goes wrong
+    // silently: a `* 3` where a `* 4` belongs reads star N's position from between stars.
+    const local = vec()
+    geometry.localPosition(7, local)
+    expect(local.x).toBeCloseTo(1, 6)
+    expect(local.y).toBeCloseTo(0, 6)
+    expect(local.z).toBeCloseTo(0, 6)
+  })
+
+  it('keeps the two mask lanes independent of each other and of their neighbours', () => {
+    // Both masks live in the `w` lane of a vector whose other three lanes are record data, so a
+    // scatter that got the stride or the offset wrong would corrupt a plane row or a brightness
+    // rather than failing. This writes each mask and re-reads everything around it.
+    const geometry = new StarGeometry(4)
+    geometry.append(body(4), 4)
+
+    geometry.setFilterMask(Uint8Array.from([255, 0, 255, 0]))
+    geometry.setThumbnailPresent(1, true)
+    geometry.setThumbnailPresent(3, true)
+
+    for (let i = 0; i < 4; i += 1) {
+      expect(geometry.passesFilter(i), `star ${i} filter`).toBe(i % 2 === 0)
+      expect(geometry.hasThumbnail(i), `star ${i} thumbnail`).toBe(i % 2 === 1)
+      // ...and the record lanes either side of them are untouched.
+      expect(geometry.planeRowOf(i), `star ${i} plane row`).toBe(0)
+      expect(geometry.sizeClassOf(i), `star ${i} size class`).toBe(i % 4)
+      expect(geometry.hueClassOf(i), `star ${i} hue`).toBe(i % 7)
+    }
+  })
+
+  it('reads the position mode from the URL, then storage, then the GPU probe', () => {
+    // The last step is DEC-739's: the default used to be the literal `'float16'`, with
+    // `?positions=float32` as PRD risk 6's entire mitigation — a mitigation the user on the broken
+    // driver has no reason to know exists (review §3.7, "float16 is a manual switch"). The probe
+    // (`scene/platform/halfFloatProbe`) now decides, and the parameter is an override.
+    //
+    // Both probe answers are driven, which is the point of the injection: the float32 fallback has
+    // never been exercisable in a unit test before, because reaching it needed a GPU that gets
+    // half-float attributes wrong.
+    const passes = (): PositionMode => 'float16'
+    const fails = (): PositionMode => 'float32'
+
+    // An explicit request wins over everything, in both directions — including asking for float16
+    // on a machine whose probe failed, which is what PRD 7.1.2's cross-browser pass needs to be
+    // able to do.
+    expect(resolvePositionMode('?positions=float32', undefined, passes)).toBe('float32')
+    expect(resolvePositionMode('?positions=float16', undefined, fails)).toBe('float16')
+    // Then a stored setting.
+    expect(resolvePositionMode('', { getItem: () => 'float32' }, passes)).toBe('float32')
+    // A typo is not a request, so it falls through to the probe rather than degrading anything.
+    expect(resolvePositionMode('?positions=nonsense', undefined, passes)).toBe('float16')
+    expect(resolvePositionMode('?positions=nonsense', undefined, fails)).toBe('float32')
+    // Nothing asked: the probe is the answer, and it is the *only* thing that can select float32
+    // for a user who has never heard of the query parameter.
+    expect(resolvePositionMode('', undefined, passes)).toBe('float16')
+    expect(resolvePositionMode('', undefined, fails)).toBe('float32')
   })
 
   it('dims stars that fail the filter and leaves the rest alone (PRD 5.8.1)', () => {
@@ -463,11 +607,23 @@ describe('adaptive quality (PRD 8.5.11)', () => {
     expect(QUALITY_TIERS[2]!.bloomLevels).toBeLessThan(QUALITY_TIERS[1]!.bloomLevels)
     expect(QUALITY_TIERS[3]!.bloomLevels).toBe(QUALITY_TIERS[2]!.bloomLevels)
     expect(QUALITY_TIERS[3]!.thumbnailCapacity).toBeLessThan(QUALITY_TIERS[2]!.thumbnailCapacity)
+    // Rung 4 (DEC-739, review §3.5's "new tier 4 cheap glow variant"): the glow program, and
+    // nothing else. Asserted in both directions — it is the only rung that moves `glow`, and it
+    // moves nothing the rungs above it moved, which is what keeps each rung isolable in
+    // `e2e/quality.spec.ts`.
+    expect(QUALITY_TIERS[4]!.glow).toBe('cheap')
+    expect(QUALITY_TIERS[3]!.glow).toBe('full')
+    for (let i = 0; i < 4; i += 1) expect(QUALITY_TIERS[i]!.glow).toBe('full')
+    expect(QUALITY_TIERS[4]!.pixelRatioCap).toBe(QUALITY_TIERS[3]!.pixelRatioCap)
+    expect(QUALITY_TIERS[4]!.bloomScale).toBe(QUALITY_TIERS[3]!.bloomScale)
+    expect(QUALITY_TIERS[4]!.bloomLevels).toBe(QUALITY_TIERS[3]!.bloomLevels)
+    expect(QUALITY_TIERS[4]!.thumbnailCapacity).toBe(QUALITY_TIERS[3]!.thumbnailCapacity)
     // Nothing in a tier can reach the star count or the motion.
     for (const tier of QUALITY_TIERS) {
       expect(Object.keys(tier).sort()).toEqual([
         'bloomLevels',
         'bloomScale',
+        'glow',
         'label',
         'pixelRatioCap',
         'thumbnailCapacity',
@@ -542,9 +698,13 @@ describe('adaptive quality (PRD 8.5.11)', () => {
   it('reads the pin off the URL, and ignores anything that is not a tier', () => {
     expect(pinnedQualityTier('?quality=0')).toBe(0)
     expect(pinnedQualityTier('?quality=3')).toBe(3)
+    // 4 is a real tier since DEC-739 added the cheap-glow rung, and `e2e/quality.spec.ts` pins it.
+    // The bound is `QUALITY_TIERS.length`, so it followed the ladder without an edit here — which
+    // is why the first out-of-range case below is 5 rather than a number chosen once and forgotten.
+    expect(pinnedQualityTier('?quality=4')).toBe(4)
     // Out of the ladder, negative, fractional, empty, absent, or a word: all ignored, so a typo
     // degrades nothing rather than degrading to the floor.
-    for (const search of ['?quality=4', '?quality=-1', '?quality=1.5', '?quality=', '', '?q=2', '?quality=full']) {
+    for (const search of ['?quality=5', '?quality=-1', '?quality=1.5', '?quality=', '', '?q=2', '?quality=full']) {
       expect(pinnedQualityTier(search)).toBeNull()
     }
   })

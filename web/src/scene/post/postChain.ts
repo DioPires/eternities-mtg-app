@@ -58,7 +58,8 @@ import {
 import { BLOOM_INTENSITY } from '../tuning'
 
 import { BLOOM_LAYER } from './bloomLayer'
-import type { PostCapabilities } from './capabilities'
+import type { PostCapabilities } from '../platform/capabilities'
+import type { ProgramWarmupSpec } from '../platform/programWarmup'
 import {
   POST_COMPOSITE_FRAGMENT_SHADER,
   POST_DOWNSAMPLE_FRAGMENT_SHADER,
@@ -216,9 +217,27 @@ export class PostChain {
     return this.levels.length
   }
 
-  /** Whether the chain got the float targets it asked for. See `./capabilities`. */
+  /** Whether the chain got the float targets it asked for. See `../platform/capabilities`. */
   get floatTargets(): boolean {
     return this.capabilities.floatTargets
+  }
+
+  /**
+   * The chain's four programs, for the boot-time warm-up (`../platform/programWarmup`, DEC-739).
+   *
+   * All four run on one quad that carries one material at a time, so nothing can find them by
+   * traversing a scene — and all four are linked on the *first frame the chain renders*, which is
+   * the frame the user is waiting on. Three of them are full-screen passes over a mip chain, so
+   * they are exactly the programs whose compile cost is worth moving off that frame.
+   */
+  get warmupSpecs(): ProgramWarmupSpec[] {
+    const geometry = this.quad.geometry
+    return [
+      this.prefilterMaterial,
+      this.downsampleMaterial,
+      this.upsampleMaterial,
+      this.compositeMaterial,
+    ].map((material) => ({ geometry, material }))
   }
 
   /**

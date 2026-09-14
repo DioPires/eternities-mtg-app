@@ -29,6 +29,8 @@ import {
   ColourBit,
   HUE_CLASS_MASK,
   HueClass,
+  PACKED_ATTRIBUTE_BYTES,
+  PACKED_CLASS_OFFSET,
   STAR_RECORD_BYTES,
   type StarIndex,
 } from './types'
@@ -42,6 +44,22 @@ export const COLOUR_BYTE_OFFSET = 7
  */
 export function colourByteOf(records: Uint8Array, index: StarIndex): number {
   return records[index * STAR_RECORD_BYTES + COLOUR_BYTE_OFFSET] ?? 0
+}
+
+/**
+ * Where the same byte sits in the **repacked** attribute buffer: `aClass.y` (contract `PACKED_*`,
+ * DEC-739).
+ *
+ * A second accessor rather than a stride parameter on {@link colourByteOf}, and the reason is this
+ * module's whole premise. The rule is "the offset arithmetic lives here and nowhere else", enforced
+ * by a scan of `web/src` in `test/colour-byte.test.ts`; a caller that had to supply a stride and an
+ * offset would be doing the arithmetic at its own call site again, which is exactly the shape that
+ * shipped the PR #10 bug. Two layouts, two named readers, both here.
+ */
+export const PACKED_COLOUR_BYTE_LANE = PACKED_CLASS_OFFSET + 1
+
+export function colourByteOfPacked(attributes: Uint8Array, index: StarIndex): number {
+  return attributes[index * PACKED_ATTRIBUTE_BYTES + PACKED_COLOUR_BYTE_LANE] ?? 0
 }
 
 /** PRD 5.4.8's hue class, bits 0-2. Always 0-6, whatever the identity bits above it hold. */

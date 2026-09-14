@@ -23,7 +23,9 @@ import {
 } from 'three'
 
 import { PICK_LAYER } from '../picking/idPicker'
+import type { ProgramWarmupSpec } from '../platform/programWarmup'
 import { BLOOM_LAYER } from '../post/bloomLayer'
+import type { GlowQuality } from '../quality/adaptiveQuality'
 import {
   EMPTY_GLOW_CORE,
   EMPTY_GLOW_OPACITY,
@@ -39,12 +41,14 @@ import {
 } from '../tuning'
 import {
   SHADER_NAME_PLANE_GLOW,
+  SHADER_NAME_PLANE_GLOW_CHEAP,
   SHADER_NAME_STAR_FIELD,
   SHADER_NAME_STAR_FIELD_PICK,
 } from '../shaderNames'
 import { PlaneKindCode } from './motion'
 import type { PlaneTable } from './planeTable'
 import {
+  GLOW_CHEAP_FRAGMENT_SHADER,
   GLOW_FRAGMENT_SHADER,
   GLOW_VERTEX_SHADER,
   STAR_FRAGMENT_SHADER,
@@ -82,6 +86,14 @@ export interface StarField {
    * `pixelRatio` keeps the minimum and maximum sizes fixed in CSS pixels as the ratio adapts
    * (PRD 8.5.11). `bloomScale` is the live tier's, and sizes the same quantities for the bloom
    * source, which is a smaller target — see the uniform block in `createStarField`.
+   *
+   * `maxPointSizePx` is `ALIASED_POINT_SIZE_RANGE`'s upper bound, from
+   * `../platform/capabilities` (DEC-739, review §3.7). Every size below is clamped to it rather
+   * than merely asked for: `gl_PointSize` is silently clamped by the driver, and the three
+   * platforms in scope report 1024 (ANGLE D3D11), 511 (ANGLE Metal) and **64** (Firefox on Apple's
+   * native GL). At dpr 4 the app's own 22 CSS-pixel ceiling asks for 88, which that last platform
+   * would quietly refuse — drawing every large mythic at the same size with nothing saying so.
+   * Clamping here makes the app's number and the driver's number the same number.
    */
   update(
     motion: number,
@@ -89,6 +101,7 @@ export interface StarField {
     fovRadians: number,
     pixelRatio: number,
     bloomScale: number,
+    maxPointSizePx: number,
   ): void
 
   /** PRD 5.4.12: the star under the pointer brightens by 30%. `-1` for none. */
@@ -103,6 +116,28 @@ export interface StarField {
    * the star. The check narrows the sprite so that what it measures is position agreement.
    */
   setPickSpriteFloorPx(px: number | null): void
+
+  /**
+   * The quality ladder's bottom rung (DEC-739): which of the two glow programs the mesh draws with.
+   *
+   * A material swap, not a define flip. Setting `defines` on a live material and raising
+   * `needsUpdate` re-links the program *on the next draw*, which is precisely the synchronous
+   * first-use stall DEC-645 measured at 322-362 ms and `../platform/programWarmup` exists to move
+   * off the frame path — so a rung meant to *recover* frames would cost several hundred
+   * milliseconds the moment it fired. Both programs are built here and linked at boot; this
+   * assignment is a pointer write.
+   */
+  setGlowQuality(quality: GlowQuality): void
+
+  /**
+   * Every program this field owns, for the boot-time warm-up (`../platform/programWarmup`).
+   *
+   * Listed here rather than gathered by traversing the objects, because two of the five are not
+   * reachable that way: the glow's cheap variant is attached to nothing until the ladder's bottom
+   * rung fires, and that is the rung whose whole purpose is to *recover* frames — linking a program
+   * at the moment the monitor decides the machine is struggling is the worst available time.
+   */
+  readonly warmupSpecs: readonly ProgramWarmupSpec[]
 
   dispose(): void
 }
@@ -242,7 +277,7 @@ export function createStarField(
   bloomPoints.matrixAutoUpdate = false
   bloomPoints.layers.set(BLOOM_LAYER)
 
-  const glow = createGlowMesh(table, noise, {
+  const { mesh: glow, materials: glowMaterials } = createGlowMesh(table, noise, {
     uPlaneTable,
     uTime,
     uMultiverseAngle,
@@ -254,15 +289,33 @@ export function createStarField(
     pickPoints,
     bloomPoints,
     glow,
-    update(motion, drawingBufferHeight, fovRadians, pixelRatio, bloomScale) {
+    // The star geometry for the three point programs, the glow's own instanced geometry for the
+    // two quad ones. `bloomMaterial` shares a program with `material` (same source, same absent
+    // defines — see `shaderNames.ts`), so warming it is a cache hit; it is listed anyway because
+    // "the bloom copy happens to share a program" is a fact about three's cache key, not a promise
+    // this file is making.
+    warmupSpecs: [
+      { geometry: geometry.geometry, material, points: true },
+      { geometry: geometry.geometry, material: idMaterial, points: true },
+      { geometry: geometry.geometry, material: bloomMaterial, points: true },
+      { geometry: glow.geometry, material: glowMaterials.full },
+      { geometry: glow.geometry, material: glowMaterials.cheap },
+    ],
+    update(motion, drawingBufferHeight, fovRadians, pixelRatio, bloomScale, maxPointSizePx) {
       uTime.value = table.time
       uMultiverseAngle.value = table.multiverseAngle
       uMotion.value = motion
       // World units to device pixels at one unit of depth. The vertex shader divides by -z.
       uSizeScale.value = drawingBufferHeight / (2 * Math.tan(fovRadians / 2))
-      uMinPixels.value = STAR_MIN_PX * pixelRatio
-      uMaxPixels.value = STAR_MAX_PX * pixelRatio
-      uPickMinPixels.value = (pickSpriteFloorPx ?? PICK_MIN_PX) * pixelRatio
+      // Every sprite size is in device pixels and every one of them is clamped to what the driver
+      // will actually rasterise. See the note on `maxPointSizePx` in the interface above; the floor
+      // is clamped too, because a floor above the driver's ceiling is a floor the driver ignores.
+      uMinPixels.value = Math.min(STAR_MIN_PX * pixelRatio, maxPointSizePx)
+      uMaxPixels.value = Math.min(STAR_MAX_PX * pixelRatio, maxPointSizePx)
+      uPickMinPixels.value = Math.min(
+        (pickSpriteFloorPx ?? PICK_MIN_PX) * pixelRatio,
+        maxPointSizePx,
+      )
       // PRD 5.5.1's threshold is 24 CSS pixels; `pixels` in the shader is device pixels, so the
       // band scales with the ratio exactly as the star size floors above it do.
       uThumbStartPx.value = THUMBNAIL_FADE_START_PX * pixelRatio
@@ -282,12 +335,18 @@ export function createStarField(
     setPickSpriteFloorPx(px) {
       pickSpriteFloorPx = px
     },
+    setGlowQuality(quality) {
+      glow.material = quality === 'cheap' ? glowMaterials.cheap : glowMaterials.full
+    },
     dispose() {
       material.dispose()
       idMaterial.dispose()
       bloomMaterial.dispose()
       glow.geometry.dispose()
-      ;(glow.material as ShaderMaterial).dispose()
+      // Both, not `glow.material`: the mesh holds whichever rung was last in force, and disposing
+      // only that one leaks the other's program and uniforms for the life of the context.
+      glowMaterials.full.dispose()
+      glowMaterials.cheap.dispose()
     },
   }
 }
@@ -299,14 +358,25 @@ interface SharedUniforms {
   uMotion: Uniform<number>
 }
 
+/** The mesh and both of its interchangeable fragment programs. See {@link StarField.setGlowQuality}. */
+interface GlowMesh {
+  readonly mesh: Mesh
+  readonly materials: { readonly full: ShaderMaterial; readonly cheap: ShaderMaterial }
+}
+
 /**
  * One camera-facing quad per plane that has a glow — every plane except the Blind Eternities,
  * whose "radius" is the whole multiverse and which is drawn as dust instead.
  *
  * Drawn twice per frame since DEC-703 — once into the picture and once into the bloom source —
  * from one mesh on two layers. See the layer enable at the end of this function.
+ *
+ * **Two materials since DEC-739.** The ladder's bottom rung swaps the fragment program for a
+ * one-tap, no-dither variant; both are built here so that both are linked at boot and the swap
+ * costs nothing. They share every uniform *object*, so the rung changes which program runs and
+ * nothing about what it is told.
  */
-function createGlowMesh(table: PlaneTable, noise: Texture, shared: SharedUniforms): Mesh {
+function createGlowMesh(table: PlaneTable, noise: Texture, shared: SharedUniforms): GlowMesh {
   const rows = table.planes
     .filter((state) => state.kind !== PlaneKindCode.Dust)
     .map((state) => state.record.index)
@@ -333,16 +403,40 @@ function createGlowMesh(table: PlaneTable, noise: Texture, shared: SharedUniform
     uEmptyCore: new Uniform(EMPTY_GLOW_CORE),
   }
 
-  const material = new ShaderMaterial({
-    name: SHADER_NAME_PLANE_GLOW,
+  /*
+   * Everything except the name and the fragment source is identical between the ladder's two glow
+   * programs, so it is written once and spread into both: a rung that accidentally changed the
+   * blending or the side would change the picture in a way nothing here is measuring.
+   *
+   * Spread into two inline literals rather than returned from a `glowMaterial(name, source)`
+   * factory, and `test/shader-names.test.ts` is why. That test reads `material.name` **out of the
+   * source text** — it has no GL context to ask — so a site whose name arrives through a parameter
+   * is a site it cannot check, and its own failure message says to give the site an inline literal
+   * rather than to relax the match. Two `name:` literals here is the price of the guard staying
+   * able to see them.
+   */
+  const glowShared = {
+    // The same uniform *objects*, by reference, so the per-frame writes in `update` reach whichever
+    // program the ladder has selected without the caller knowing which that is.
     uniforms: glowUniforms,
     vertexShader: GLOW_VERTEX_SHADER,
-    fragmentShader: GLOW_FRAGMENT_SHADER,
     transparent: true,
     blending: AdditiveBlending,
     depthWrite: false,
     depthTest: false,
     side: DoubleSide,
+  } as const
+
+  const material = new ShaderMaterial({
+    name: SHADER_NAME_PLANE_GLOW,
+    fragmentShader: GLOW_FRAGMENT_SHADER,
+    ...glowShared,
+  })
+
+  const cheapMaterial = new ShaderMaterial({
+    name: SHADER_NAME_PLANE_GLOW_CHEAP,
+    fragmentShader: GLOW_CHEAP_FRAGMENT_SHADER,
+    ...glowShared,
   })
 
   const mesh = new Mesh(geometry, material)
@@ -358,5 +452,5 @@ function createGlowMesh(table: PlaneTable, noise: Texture, shared: SharedUniform
   // field cannot do this — see `uBloomSizeScale` and the sprite sizes in `createStarField`.
   mesh.layers.enable(BLOOM_LAYER)
 
-  return mesh
+  return { mesh, materials: { full: material, cheap: cheapMaterial } }
 }

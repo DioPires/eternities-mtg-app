@@ -53,12 +53,65 @@
  * needs the refresh estimate to be a running *minimum*, which was tried and measured doing real
  * damage on an adaptive-refresh display — see {@link REFRESH_QUANTILE}. 60 fps is the floor the app
  * is judged against, so the trade lands on not degrading a machine that is meeting it.
+ *
+ * ---
+ *
+ * ## Audit against review §3.5 (DEC-739 item 3)
+ *
+ * DEC-739 asks for "an audit of what W1.1 (PR #36) already landed against the section 3.5 spec, and
+ * only the gaps implemented". §3.5's sentence is:
+ *
+ * > The monitor measures the display's refresh (median rAF interval over 60 frames) and defines
+ * > "fine" as p90 ≤ one vsync + 0.5 ms; degrade at p90 > 1.05 vsync over 1.5 s.
+ *
+ * Four clauses. Three were already landed and one was a gap:
+ *
+ * | Clause | State after W1.1 | DEC-739 |
+ * |---|---|---|
+ * | refresh from a 60-frame window | landed — {@link REFRESH_ESTIMATE_FRAMES} is 60 | kept |
+ * | **median** of that window | **p20**, not the median | **closed**: {@link REFRESH_QUANTILE} is 0.5 |
+ * | degrade window of 1.5 s | landed — `DEFAULTS.degradeWindowS` | kept |
+ * | thresholds at 1.05 vsync / vsync + 0.5 ms | **deliberately diverged** — 1.45 and 1.20 | kept, see below |
+ *
+ * **The threshold divergence is kept, and this is the second time it has been examined.** W1.1
+ * recorded two measured reasons and neither has expired. The first is arithmetic: "1.05 vsync" and
+ * "one vsync + 0.5 ms" *invert* below a 10 ms period — at 120 Hz, 1.05 × 8.33 = 8.75 is under
+ * 8.33 + 0.5 = 8.83 — so the same p90 would both degrade and restore on a panel the app supports.
+ * The second is measurement: thresholds that close to the period fire on the jitter of a healthy
+ * vsync-locked run, and a 1.05 trigger was observed walking a coping machine down all three rungs
+ * (see {@link RESTORE_FACTOR}). Re-deriving the review's numbers would reintroduce both. What the
+ * review was *asking* for — a band relative to the display rather than to a constant, ordered, with
+ * a dead zone — is what is implemented; the constants differ and the reasons are measurements.
+ *
+ * Two further §3.5 items that touch this file are **out of scope here and named so they are not
+ * mistaken for oversights**: `EXT_disjoint_timer_query_webgl2` per-pass GPU timing is described as a
+ * bench facility rather than a monitor input, and belongs with `scripts/bench.mjs`; and the ladder's
+ * *rungs* — including DEC-739's new tier 4 — are {@link QUALITY_TIERS}' business, not the monitor's.
+ * The monitor's only relationship to the rung count is `maxTier`, which is derived from the ladder's
+ * length and so took the fifth tier without an edit.
  */
 
 import {
   BLOOM_LEVELS_FULL as FULL,
   BLOOM_LEVELS_REDUCED as REDUCED,
 } from '../post/postTuning'
+
+/**
+ * How the plane glow's fragment shader is spelled at a given rung (DEC-739, review §3.5's "new 4:
+ * a cheap glow variant (one tap, no dither)").
+ *
+ * `'full'` is PRD 5.3.19's two-tap drifting noise with the dither that keeps eighty-three additive
+ * quads off the 8-bit contour rings. `'cheap'` drops to one tap and no dither, which is the second
+ * largest item in review §3.3's frame budget after the post chain: the focused plane's glow quad
+ * spans 4.2 plane radii, so at plane level it covers most of the screen, and §3.3 prices the
+ * overdraw at 32 MB per frame on a 1080p Iris Xe against the post chain's ~360.
+ *
+ * A variant rather than a uniform, because the saving is the *texture tap* and the *hash*, and a
+ * branch that skipped them per fragment would still pay for the register pressure and would defeat
+ * the point on a driver that flattens it. Two programs, both linked at boot by `../platform/
+ * programWarmup`, and the rung swaps which one the mesh is drawn with.
+ */
+export type GlowQuality = 'full' | 'cheap'
 
 export interface QualityTier {
   /** PRD 7.1.3: the pixel-ratio cap is also what bounds the cost of a 4K display. */
@@ -76,16 +129,44 @@ export interface QualityTier {
   readonly bloomLevels: number
   /** PRD 8.5.8's default atlas capacity. Phase 3 reads it; Phase 2a only carries it. */
   readonly thumbnailCapacity: number
+  /** Which glow program this rung draws with (DEC-739). See {@link GlowQuality}. */
+  readonly glow: GlowQuality
   readonly label: string
 }
 
+/**
+ * The ladder, top rung first. Each rung turns **exactly one knob** relative to the one above it,
+ * which is what lets `e2e/quality.spec.ts` isolate a rung by comparing adjacent tiers.
+ *
+ * *One knob*, not one number (DEC-747 N3). Rung 2's knob is the bloom chain and it is two fields —
+ * `bloomScale` 0.5 → 0.25 *and* `bloomLevels` 8 → 7 — because the chain's cost is the product of a
+ * source size and a mip count, and moving only one of them is what made this rung inert before
+ * (finding R3). The invariant the spec relies on is that no rung touches a knob another rung owns,
+ * and that still holds: the four knobs are the pixel ratio, the bloom chain, the atlas capacity and
+ * the glow program, and each belongs to one rung.
+ *
+ * Rung 4 is DEC-739's addition. Review §3.5 asked for it by name — "new 4: a cheap glow variant
+ * (one tap, no dither) because glow overdraw is the second cost" — and it is the bottom of the
+ * ladder because it is the first rung that changes the picture rather than its resolution: the
+ * three above it all draw the same image at fewer pixels, and this one draws a different, flatter
+ * nebula. A machine that has walked down to here is a machine that was not going to hold 60 fps
+ * with the picture it asked for.
+ */
 export const QUALITY_TIERS: readonly QualityTier[] = [
-  { pixelRatioCap: 1.5, bloomScale: 0.5, bloomLevels: FULL, thumbnailCapacity: 512, label: 'full' },
+  {
+    pixelRatioCap: 1.5,
+    bloomScale: 0.5,
+    bloomLevels: FULL,
+    thumbnailCapacity: 512,
+    glow: 'full',
+    label: 'full',
+  },
   {
     pixelRatioCap: 1.0,
     bloomScale: 0.5,
     bloomLevels: FULL,
     thumbnailCapacity: 512,
+    glow: 'full',
     label: 'pixel-ratio',
   },
   {
@@ -93,6 +174,7 @@ export const QUALITY_TIERS: readonly QualityTier[] = [
     bloomScale: 0.25,
     bloomLevels: REDUCED,
     thumbnailCapacity: 512,
+    glow: 'full',
     label: 'bloom',
   },
   {
@@ -100,7 +182,16 @@ export const QUALITY_TIERS: readonly QualityTier[] = [
     bloomScale: 0.25,
     bloomLevels: REDUCED,
     thumbnailCapacity: 256,
+    glow: 'full',
     label: 'thumbnails',
+  },
+  {
+    pixelRatioCap: 1.0,
+    bloomScale: 0.25,
+    bloomLevels: REDUCED,
+    thumbnailCapacity: 256,
+    glow: 'cheap',
+    label: 'glow',
   },
 ]
 
@@ -183,17 +274,31 @@ const REFRESH_PERIODS_MS = [1000 / 120, 1000 / 100, 1000 / 90, 1000 / 75, DEFAUL
  * ratchet R5 exists to remove, moved from 60 Hz to 90. It was observed doing it — a probe run
  * finished pinned at the bottom `thumbnails` tier on an idle machine.
  *
- * A low quantile of the window tracks the cadence the browser is *sustaining* instead, and is let
- * to move in both directions. The direction that would be dangerous — trouble inflating the
- * estimate until the monitor stops caring — is bounded by {@link DEFAULT_REFRESH_MS}: the loosest
- * band reachable is the one derived from 60 Hz, which is the floor the app is held to anyway.
+ * A quantile of the window tracks the cadence the browser is *sustaining* instead, and is let to
+ * move in both directions. The direction that would be dangerous — trouble inflating the estimate
+ * until the monitor stops caring — is bounded by {@link DEFAULT_REFRESH_MS}: the loosest band
+ * reachable is the one derived from 60 Hz, which is the floor the app is held to anyway.
  *
  * The cost of that bound: a 120 Hz panel locked to exactly 60 fps reads as a 60 Hz panel and is
  * accepted. The review named that as a case worth catching, and catching it requires the minimum,
  * which is measurably harmful here. Meeting the 60 fps floor is the stated contract, so this errs
  * towards not degrading a machine that is meeting it.
+ *
+ * **The median, since DEC-739, and it was a p20 before.** Review §3.5 says the refresh is "the
+ * median rAF interval over 60 frames"; DEC-692 implemented the *shape* of that — a quantile of a
+ * 60-frame window, snapped — but took the 20th percentile rather than the 50th. Nothing in DEC-692's
+ * reasoning argues for 20 specifically: the argument it records is the one above, minimum versus
+ * quantile, and a p20 is the *closer* of the two to the minimum it was chosen to get away from. So
+ * this is now the median the review asked for.
+ *
+ * On the distribution the harm was measured against, the change moves nothing: the review machine's
+ * rAF intervals were min 11.4 ms, median 13.3, p90 13.8, and both 13.0 (p20) and 13.3 (median) snap
+ * to the same 13.33 ms 75 Hz period. What it buys is margin in the safe direction — the median can
+ * only ever sit *above* the p20, so the band can only ever be looser, and "looser" is the direction
+ * bounded by the 60 Hz cap while "tighter" is the direction that ratcheted a healthy machine to the
+ * bottom tier.
  */
-const REFRESH_QUANTILE = 0.2
+const REFRESH_QUANTILE = 0.5
 const REFRESH_ESTIMATE_FRAMES = 60
 
 /** Tolerance on the snap, so a 8.30 ms interval reads as the 8.33 ms period it came from. */
