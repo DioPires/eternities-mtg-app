@@ -59,6 +59,26 @@ export function builtDataset(): string {
   return match[1]
 }
 
+/**
+ * Whether the built dataset is a **worlds** (v3) one — §2.4's `rowCells` is the field to test for
+ * (DEC-751).
+ *
+ * Derived from the data rather than from `ETERNITIES_DATASET`, because that variable is consumed at
+ * *build* time into `dist/index.html`'s meta tag and need not be set in the shell running the
+ * tests. The one thing this must never do is answer "no" because it could not look: a missing
+ * `dist/` throws out of `builtDataset` rather than returning false, so "not a worlds build" and
+ * "nobody built" stay distinguishable. A spec that silently skipped its whole subject is the shape
+ * of defect §1.12's rung assertion exists to prevent in the first place.
+ */
+export function isWorldsDataset(): boolean {
+  const planes = readJson<{ planes: { rowCells?: number[] }[] }>(
+    'data',
+    builtDataset(),
+    'planes.json',
+  ).planes
+  return planes.some((plane) => Array.isArray(plane.rowCells) && plane.rowCells.length > 0)
+}
+
 export function routeTargets(): RouteTargets {
   const hash = builtDataset()
   const planes = readJson<{ planes: PlaneSummary[] }>('data', hash, 'planes.json').planes
