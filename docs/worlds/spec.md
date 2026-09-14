@@ -198,6 +198,36 @@ shipped grid. Rabiah is the proof that the difference bites: the closed form giv
 cards** (the prototype's 78, with 3 bare); the relaxed invariant demands exactly 75. §2.1 and §2.4
 carry the contract consequence.
 
+> **Normative — the construction, and why the closed form cannot be it (DEC-752's finding, widened).**
+> Leg G observed that `sum(rowCells) == cardCount` is "a Dominaria fact rather than a law". It is not
+> even that. Rounding each row independently — `rowCells[r] = round(2π·sin θ_r / (aspect·dφ))` — hits
+> `cardCount` exactly at **85 of the 7,000** card counts in `N = 1…7000`. Dominaria's 6,266 is one of
+> the 85, which is the whole reason the spec's worked example reads as a law; **v3 moves Dominaria to
+> 6,271, and at 6,271 the closed form yields 6,266 cells and five cards have nowhere to go.**
+>
+> The failure is two-sided, and the side the prototype never saw is the dangerous one. Rabiah
+> over-allocates (78 slots, 75 cards → 3 bare cells, visible). But **3,487 of those 7,000 counts
+> *under*-allocate**, and an under-allocated world drops cards silently. Of v3's 45 worlds, **18
+> under-allocate, 15 over-allocate and only 12 are exact — 207 cards have no cell at all**, led by
+> new-phyrexia (−27), rath (−23), thunder-junction (−20) and forgotten-realms (−18). "Zero bare"
+> (§2.1) cannot detect this: a dropped card leaves no bare cell to count.
+>
+> So the per-row count is **apportioned, not rounded**. Give row `r` the quota
+> `q_r = N·sin θ_r / Σ sin θ`, floor it at 1, and hand out the residual `N − Σ⌊q⌋` by **largest
+> fractional remainder**, ties broken by `min(r, rows−1−r)` then `r`. Deficits are reclaimed the same
+> way in reverse, never below 1. Additionally `rows = max(1, min(rows_closed, N))`, which is what
+> makes `rowCells[r] ≥ 1` provable rather than hopeful. This holds `Σ rowCells == N` at **every** N,
+> and — measured, not assumed — **reproduces Dominaria's published `rowCells` verbatim at 6,266**, so
+> the worked example above is unchanged.
+>
+> **The one invariant that does move is exact symmetry.** A closed surface's equator-symmetric
+> partition has an even cell count in every mirrored pair, so it cannot sum to an arbitrary odd `N`:
+> exact-N and strict symmetry are incompatible, and exact-N wins because the alternative is losing
+> cards. The relaxation is tight and is itself normative: **at most one mirrored pair differs, and it
+> differs by at most one cell** (`|rowCells[r] − rowCells[rows−1−r]| ≤ 1`, measured over N = 1…8000).
+> A gate assertion of *strict* `rowCells == reversed(rowCells)` is therefore wrong and will go RED on
+> a correct renderer for **14 of v3's 45 worlds**, Dominaria among them. Assert the ≤ 1 form.
+
 > **Normative — the floor: n = 1 and n = 2 (DEC-751's finding, re-derived).** Six v3 worlds carry
 > exactly one card and eight carry two (§1.2), so the bottom of the law ships. It is stated, not
 > left to resolve:
@@ -211,19 +241,27 @@ carry the contract consequence.
 >   world is the same physical size as one card on Dominaria. The cell wraps because the world is
 >   small, not because the law failed. (With the §1.3 radius floor the drawn world is larger than
 >   that; the floor is the compromise, not the wrap.)
-> - **The 4:3 target is exempt at N ≤ 2, and this costs nothing.** A closed surface cannot be tiled
+> - **The 4:3 target is exempt at small N, and this costs nothing.** A closed surface cannot be tiled
 >   by one or two 4:3 cells: the slot aspect is `2π·sin θ / (rowCells·dφ)`, which at `rows = 1` is
 >   **2.00** for N = 1 and **1.00** for N = 2. Neither stretches any art — §1.4 letterboxes art into
->   the slot, so a non-4:3 slot costs slot *area* and never geometry. Nor is the deviation special:
->   N = 3–5 gives **1.41**, *closer* to 4:3 than the **1.571** polar row every world including
->   Dominaria already carries.
+>   the slot, so a non-4:3 slot costs slot *area* and never geometry.
 >
-> **What actually breaks at small N is §1.4's tangent quad, and it is a continuum, not a cliff** —
-> see §1.4's subdivision rule. A cell's corner sits `√(1.006² + α² + β²) − 1` above the unit sphere:
-> **0.7%** of the radius on Dominaria, **5.7%** on Rabiah, **11.6%** on a 30-card world (shenmeng,
-> the one irregular world on the 87-plane roster), **69%** at N = 3, **144%** at N = 2 and **265%**
-> at N = 1, where the "cell" is a flat billboard 2.6× the globe it is meant to tile. Reading the
-> failure as an aspect-ratio problem points at the harmless half.
+> **What actually breaks at small N is §1.4's tangent quad** — see §1.4's subdivision rule. A cell's
+> corner sits `√(1.006² + α² + β²) − 1` above the unit sphere: **0.7%** of the radius on Dominaria,
+> **5.7%** on Rabiah, **13.0%** on a 30-card world (shenmeng), **156%** at N = 3, **144%** at N = 2
+> and **265%** at N = 1, where the "cell" is a flat billboard 2.6× the globe it is meant to tile.
+> Reading the failure as an aspect-ratio problem points at the harmless half.
+>
+> > **Corrected by the exact-N apportionment above.** An earlier revision of this block argued the
+> > lift was *monotone in N* — "a continuum, not a cliff" — and that N = 3–5 sat at a benign 1.41
+> > aspect. Both were artefacts of the closed form's over-allocation. Under the relaxation a small
+> > world's residual lands in one row, so N = 3 ships `rowCells = [1, 2]`: its northern row is a
+> > single cell wrapping the full circumference, at aspect **2.83** and a lift of **156%** — *above*
+> > N = 2's 144%. The lift is monotone in a cell's **solid angle**, not in N, and it is a sawtooth in
+> > N (it rises at N = 2→3, 5→6, 11→12, 28→29, 38→39, 40→41 and 52→53). This does not change what
+> > §1.4 must do — subdivision is sized per world from the cell's own extents, so it absorbs the
+> > sawtooth without knowing about it — but a reviewer checking "does the lift fall as N rises"
+> > against the shipped grid would be checking a false claim.
 
 ### 1.4 The cell sheet
 

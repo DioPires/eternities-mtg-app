@@ -31,20 +31,60 @@ def check(label: str, got: object, want: object, tol: float | None = None) -> No
         failures.append(label)
 
 
-def grid(card_count: int) -> tuple[float, int, list[int]]:
-    """§1.3's closed form. Returns (dphi, rows, cells-per-row north to south).
+def closed_form(card_count: int) -> tuple[float, int, list[int]]:
+    """§1.3's CLOSED FORM — the per-row independent rounding. Not the shipped grid.
 
     D1: the angle is COLATITUDE theta, centres at (i + 1/2)*dphi, and a row's circumference is
     2*pi*sin(theta). Reading theta as latitude and writing `cos` is the degenerate form.
+
+    Kept because §1.3 argues *from* its failure: it hits card_count exactly at only 85 of the
+    7,000 counts in 1..7000, and under-allocates at 3,487 of them.
     """
     dphi_seed = math.sqrt(4 * math.pi / (ASPECT * card_count))
-    rows = max(1, round(math.pi / dphi_seed))  # §1.3's floor: one row, and every row holds >= 1 cell
+    rows = max(1, round(math.pi / dphi_seed))
     dphi = math.pi / rows
     cells = [max(1, round(2 * math.pi * math.sin((i + 0.5) * dphi) / (ASPECT * dphi))) for i in range(rows)]
-    if card_count <= 2:
-        # The relaxation's exact-N invariant: the closed form offers [2] slots at both N = 1 and
-        # N = 2, and a one-card world takes one of them (§1.3's floor).
-        cells = [card_count]
+    return dphi, rows, cells
+
+
+def grid(card_count: int) -> tuple[float, int, list[int]]:
+    """§1.3's relaxation, as shipped. Returns (dphi, rows, cells-per-row north to south).
+
+    Largest-remainder apportionment of `card_count` over the rows, weighted by row circumference
+    (sin theta_r), floored at one cell per row. This is what makes `sum(rowCells) == cardCount`
+    hold at EVERY N rather than at the 85 where the closed form happens to land (DEC-752).
+
+    Exact-N costs strict equatorial symmetry, which is arithmetically unavailable for odd N: at
+    most one mirrored pair differs, by at most one cell.
+    """
+    _seed_dphi, rows, _ = closed_form(card_count)
+    rows = max(1, min(rows, card_count))  # §1.3's floor: never more rows than cards
+    dphi = math.pi / rows
+    weight = [math.sin((i + 0.5) * dphi) for i in range(rows)]
+    total = sum(weight)
+    quota = [card_count * w / total for w in weight]
+    cells = [max(1, math.floor(q)) for q in quota]
+    residual = card_count - sum(cells)
+
+    def frac(r: int) -> float:
+        return quota[r] - math.floor(quota[r])
+
+    if residual > 0:  # hand out by largest fractional remainder; symmetric, deterministic tie-break
+        order = sorted(range(rows), key=lambda r: (-frac(r), min(r, rows - 1 - r), r))
+        i = 0
+        while residual > 0:
+            cells[order[i % rows]] += 1
+            residual -= 1
+            i += 1
+    elif residual < 0:  # reclaim the same way in reverse, never below the floor of 1
+        order = sorted(range(rows), key=lambda r: (frac(r), min(r, rows - 1 - r), r))
+        i = 0
+        while residual < 0:
+            r = order[i % rows]
+            if cells[r] > 1:
+                cells[r] += -1
+                residual += 1
+            i += 1
     return dphi, rows, cells
 
 
@@ -106,9 +146,10 @@ degenerate = [round(2 * math.pi * math.cos((i + 0.5) * dphi_dom) / (ASPECT * dph
 check("...and the latitude misreading sums to 0 cells", sum(degenerate), 0)
 check("...with negative counts in the southern rows", min(degenerate) < 0, True)
 
-dphi_rab, rows_rab, cells_rab = grid(75)
+_dphi_rab_cf, rows_rab, cells_rab_cf = closed_form(75)
 check("Rabiah rows", rows_rab, 9)
-check("Rabiah closed-form slots (§1.3: 78 for 75 cards)", sum(cells_rab), 78)
+check("Rabiah closed-form slots (§1.3: 78 for 75 cards)", sum(cells_rab_cf), 78)
+check("...which the relaxation brings to exactly 75", sum(grid(75)[2]), 75)
 
 print("\n§2.1 iSize (D2 — arc length, not angle)")
 lon_corrected, lat = i_size(cells_dom, dphi_dom, 0)
@@ -130,6 +171,31 @@ off = sum(cells_dom[i] for i, a in enumerate(aspects) if abs(a / ASPECT - 1) > 0
 check("Dominaria cells outside +/-10% of 4:3", off, 4)
 # ...and without the conversion the ratio is aspect / sin(theta), which is 81 at the pole.
 check("aspect at the pole with sin dropped", round(2 * math.pi / (cells_dom[0] * dphi_dom), 1), 81.0, tol=0.1)
+
+print("\n§1.3 exact-N: the apportionment, and the closed form it replaces (DEC-752's finding)")
+SWEEP = range(1, 7001)
+cf_exact = [n for n in SWEEP if sum(closed_form(n)[2]) == n]
+cf_under = [n for n in SWEEP if sum(closed_form(n)[2]) < n]
+check("closed form hits exact-N at only 85 of 7,000 counts", len(cf_exact), 85)
+check("...and Dominaria's 6,266 is one of them — which is why it reads as a law", 6266 in cf_exact, True)
+check("...while v3's Dominaria (6,271) is NOT", 6271 in cf_exact, False)
+check("...where it drops 5 cards", 6271 - sum(closed_form(6271)[2]), 5)
+check("closed form UNDER-allocates at 3,487 of them (cards with no cell)", len(cf_under), 3487)
+# The repair. This is the assertion the whole section exists for.
+check("the relaxation is exact at EVERY N in 1..7000", [n for n in SWEEP if sum(grid(n)[2]) != n], [])
+check("...with every row holding at least one cell", min(min(grid(n)[2]) for n in SWEEP) >= 1, True)
+check("...and it reproduces Dominaria's published rowCells verbatim", grid(6266)[2], closed_form(6266)[2])
+# Exact-N costs strict symmetry. The relaxation is bounded, and the bound is normative.
+pair_defect = 0
+asym_pairs = 0
+for n in SWEEP:
+    cells_n = grid(n)[2]
+    width = len(cells_n)
+    pair_defect = max(pair_defect, max(abs(cells_n[r] - cells_n[width - 1 - r]) for r in range(width)))
+    asym_pairs = max(asym_pairs, sum(1 for r in range(width // 2) if cells_n[r] != cells_n[width - 1 - r]))
+check("at most ONE mirrored pair differs, ever", asym_pairs, 1)
+check("...and it differs by at most ONE cell", pair_defect, 1)
+check("...so a strict-symmetry gate assertion is wrong", grid(6271)[2] == grid(6271)[2][::-1], False)
 
 print("\n§1.3 the small-world floor (DEC-751's n = 1 finding, re-derived)")
 
@@ -153,11 +219,14 @@ check("one card is the same physical area on every world", [round(a, 3) for a in
 # The aspect deviation at N <= 2 is real, bounded, and NOT where the law breaks: art letterboxes.
 check("slot aspect at N = 1", round(slot_aspect(1), 3), 2.000, tol=0.001)
 check("slot aspect at N = 2", round(slot_aspect(2), 3), 1.000, tol=0.001)
-check("slot aspect at N = 3", round(slot_aspect(3), 3), 1.414, tol=0.001)
-check("...which is CLOSER to 4:3 than Dominaria's own polar row",
-      abs(slot_aspect(3) / ASPECT - 1) < abs(aspects[0] / ASPECT - 1), True)
+# The exact-N relaxation lands a small world's residual in ONE row, so N = 3 ships [1, 2] and its
+# northern row is a single cell wrapping the circumference. The closed form's benign 1.414 was an
+# artefact of over-allocating to [2, 2].
+check("slot aspect at N = 3, under the relaxation", round(slot_aspect(3), 3), 2.828, tol=0.001)
+check("...which is FURTHER from 4:3 than Dominaria's own polar row",
+      abs(slot_aspect(3) / ASPECT - 1) > abs(aspects[0] / ASPECT - 1), True)
 
-# What does break is §1.4's tangent quad, and it is a continuum rather than a cliff at N = 2.
+# What does break is §1.4's tangent quad.
 lifts = {}
 for n in (6266, 75, 30, 3, 2, 1):
     dphi_n, _rows_n, cells_n = grid(n)
@@ -165,11 +234,21 @@ for n in (6266, 75, 30, 3, 2, 1):
 print(f"        tangent-quad corner lift, % of radius: {[(n, round(v * 100, 1)) for n, v in lifts.items()]}")
 check("Dominaria's worst cell floats 0.7% above the sphere", round(lifts[6266] * 100, 1), 0.7)
 check("Rabiah 5.7%", round(lifts[75] * 100, 1), 5.7)
-check("a 30-card world (shenmeng) 11.6%", round(lifts[30] * 100, 1), 11.6)
+check("a 30-card world (shenmeng) 13.0%", round(lifts[30] * 100, 1), 13.0)
+check("N = 3 is 156%", round(lifts[3] * 100, 1), 156.2)
 check("N = 2 is 144%", round(lifts[2] * 100, 1), 143.9)
 check("N = 1 is 265% — the 'cell' is a billboard 2.6x the globe", round(lifts[1] * 100, 1), 265.4)
-check("...so the lift is monotone in N, not a special case at the bottom",
-      all(lifts[a] > lifts[b] for a, b in zip([1, 2, 3, 30, 75], [2, 3, 30, 75, 6266])), True)
+# The lift is NOT monotone in N: it is a sawtooth, because a row gaining its first cell costs more
+# than the extra card saves. Stated as the spec states it, so the false version cannot come back.
+check("the lift is NOT monotone in N — N = 3 exceeds N = 2", lifts[3] > lifts[2], True)
+all_lifts = []
+for n in range(1, 60):
+    dphi_n, _rows_n, cells_n = grid(n)
+    all_lifts.append(max(corner_lift(*i_size(cells_n, dphi_n, r)) for r in range(len(cells_n))))
+rises = [n for n, (a, b) in enumerate(zip(all_lifts, all_lifts[1:]), start=1) if b > a]
+check("...rising at exactly these N below 60", rises, [2, 5, 11, 28, 38, 40, 52])
+check("...but monotone in the worst cell's solid angle, which is what §1.4 sizes from",
+      all(lifts[a] > lifts[b] for a, b in zip([1, 30, 75], [30, 75, 6266])), True)
 
 print("\n§1.4 the subdivision that bounds it")
 check("tolerance: sag <= 1% of radius at gamma_max", round(LIFT * (1 - math.cos(GAMMA_MAX)) * 100, 3), 1.000, tol=0.001)
@@ -283,6 +362,20 @@ else:
         check("v3 worlds the radius floor binds on (§1.3)", len(small), 15)
         check("...six of which carry exactly one card",
               len([p for p in v3_worlds if p["cardCount"] == 1]), 6)
+
+        # §1.3's exact-N claim, on the roster the gate actually runs on rather than on a sweep.
+        deltas = {p["slug"]: sum(closed_form(p["cardCount"])[2]) - p["cardCount"] for p in v3_worlds}
+        check("v3 worlds the CLOSED FORM under-allocates", len([d for d in deltas.values() if d < 0]), 18)
+        check("...over-allocates", len([d for d in deltas.values() if d > 0]), 15)
+        check("...and gets exactly right", len([d for d in deltas.values() if d == 0]), 12)
+        check("v3 cards with no cell under the closed form",
+              -sum(d for d in deltas.values() if d < 0), 207)
+        check("...including 5 on Dominaria itself", -deltas["dominaria"], 5)
+        check("the relaxation loses none of them",
+              [p["slug"] for p in v3_worlds if sum(grid(p["cardCount"])[2]) != p["cardCount"]], [])
+        check("...at the cost of strict symmetry on 14 of the 45",
+              len([p for p in v3_worlds
+                   if grid(p["cardCount"])[2] != grid(p["cardCount"])[2][::-1]]), 14)
     else:
         # Not a silent skip: the figures and their provenance are printed, and the +1 prediction
         # this replaced is gone either way.
