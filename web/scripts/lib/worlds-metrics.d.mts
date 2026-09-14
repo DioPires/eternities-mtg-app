@@ -189,6 +189,20 @@ export declare const ROSTER_V3: Roster & {
   readonly planes: number;
 };
 
+/** A plane as `planes.json` carries it, in the fields `rowCellsFaults` reads. */
+export interface PlaneRecord {
+  readonly slug: string;
+  readonly kind: string;
+  readonly cardCount: number;
+  /** Present on worlds only — absent, not empty, on the belt and the moons (§2.4). */
+  readonly rowCells?: readonly number[];
+}
+
+export declare const WORLD_KINDS: readonly string[];
+export declare function rowsClosedForm(cardCount: number): number;
+/** One fault string per violation of §1.3's checkable table invariants; empty when clean. */
+export declare function rowCellsFaults(planes: readonly PlaneRecord[]): string[];
+
 export declare const W2_MIN_CELL_PX: number;
 export declare const W2_ISO_SHADE_TOLERANCE: number;
 export declare const W2_MIN_SAMPLES: number;

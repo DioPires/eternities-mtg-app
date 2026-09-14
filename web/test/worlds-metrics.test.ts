@@ -12,6 +12,9 @@
  * frame in which every cell took the mean swatch fails W2 is settled here.
  */
 
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -34,6 +37,8 @@ import {
   isLabelVisible,
   median,
   quantile,
+  rowCellsFaults,
+  rowsClosedForm,
   srgbToLab,
   LABEL_VISIBLE_MIN_OPACITY,
   type Criterion,
@@ -1242,5 +1247,132 @@ describe("the negative-control matrix", () => {
     );
     expect(mistyped.ok).toBe(false);
     expect(mistyped.detail).toContain("no measure");
+  });
+});
+
+describe("§1.3's rowCells table", () => {
+  /**
+   * The published v3 table, vendored on DEC-749's `ab6f5a3` so this runs on a tree without the
+   * dataset. It is the *expected-GREEN* row of this section: every mutant below is a one-field edit
+   * to it, so a checker that had become always-red would be caught here rather than read as a guard.
+   */
+  interface PublishedWorld {
+    readonly cardCount: number;
+    readonly rowCells: readonly number[];
+  }
+  const PUBLISHED = (
+    JSON.parse(
+      readFileSync(
+        fileURLToPath(new URL("../../docs/worlds/rowcells-v3.json", import.meta.url)),
+        "utf8",
+      ),
+    ) as { worlds: Record<string, PublishedWorld> }
+  ).worlds;
+
+  const published = (slug: string): PublishedWorld => {
+    const world = PUBLISHED[slug];
+    if (!world) throw new Error(`${slug} is not in the vendored v3 table`);
+    return world;
+  };
+
+  const worlds = () =>
+    Object.entries(PUBLISHED).map(([slug, w]) => ({
+      slug,
+      kind: "spiral",
+      cardCount: w.cardCount,
+      rowCells: [...w.rowCells],
+    }));
+
+  /**
+   * The roster with one world's table replaced — every mutant below is Alara's 510 cards over 23
+   * rows, edited one way, so each fault is attributable to the assertion it was aimed at.
+   */
+  const mutate = (edit: (cells: readonly number[]) => number[]) => {
+    const planes = worlds();
+    const alara = planes.find((w) => w.slug === "alara");
+    if (!alara) throw new Error("alara is not in the vendored v3 table");
+    return planes.map((p) => (p === alara ? { ...p, rowCells: edit(p.rowCells) } : p));
+  };
+  const at = (cells: readonly number[], i: number) => cells[i] ?? 0;
+
+  it("passes on the published table, and on the belt and moons that carry none", () => {
+    expect(rowCellsFaults(worlds())).toEqual([]);
+    expect(Object.keys(PUBLISHED)).toHaveLength(ROSTER_V3.worlds);
+
+    expect(
+      rowCellsFaults([
+        { slug: "blind-eternities", kind: "dust", cardCount: 4204 },
+        { slug: "a-moon", kind: "moon", cardCount: 12 },
+      ]),
+    ).toEqual([]);
+  });
+
+  it("asserts no equatorial symmetry, on the worlds that break every form of it", () => {
+    // DEC-749's ruling, as a test rather than a comment: these are the real published tables, and a
+    // gate asserting strict symmetry — or the ≤1-pair relaxation, or ≤2 — goes RED on all of them
+    // against a correct renderer. Dominaria differs in 15 mirrored pairs; the other four carry a
+    // pair differing by two.
+    const asymmetric = ["dominaria", "innistrad", "zendikar", "theros", "thunder-junction"];
+    for (const slug of asymmetric) {
+      const cells = published(slug).rowCells;
+      const pairs = cells.filter((c, i) => c !== cells[cells.length - 1 - i]);
+      expect(pairs.length).toBeGreaterThan(0);
+      expect(rowCellsFaults(worlds().filter((w) => w.slug === slug))).toEqual([]);
+    }
+  });
+
+  // One mutant per assertion, each moving that assertion's own precondition and nothing else — a
+  // mutant that broke the table wholesale would die at the first check and prove only that one.
+  it("catches a dropped card, which is §1.3's silent direction", () => {
+    // One fewer card placed; rows, the floor and the row count are all still right.
+    const faults = rowCellsFaults(mutate((cells) => cells.map((c, i) => (i === 4 ? c - 1 : c))));
+    expect(faults).toHaveLength(1);
+    expect(faults[0]).toContain("Σ rowCells is 509 against 510 cards");
+  });
+
+  it("catches an empty row", () => {
+    // Σ stays intact, so this is the floor's own mutant and not the exact-N check firing again.
+    const faults = rowCellsFaults(
+      mutate((cells) =>
+        cells.map((c, i) => (i === 0 ? 0 : i === 10 ? c + at(cells, 0) : c)),
+      ),
+    );
+    expect(faults).toHaveLength(1);
+    expect(faults[0]).toContain("row 0 holds 0 cells");
+  });
+
+  it("catches a row count the closed form does not give", () => {
+    // Fold the last row into its neighbour: Σ holds, every row stays ≥ 1, only `rows` moves.
+    const faults = rowCellsFaults(
+      mutate((cells) =>
+        cells
+          .slice(0, -1)
+          .map((c, i, a) => (i === a.length - 1 ? c + at(cells, cells.length - 1) : c)),
+      ),
+    );
+    expect(faults).toHaveLength(1);
+    expect(faults[0]).toContain("22 rows against the closed form's 23");
+  });
+
+  it("catches a table on a plane that has no cell sheet, and a world with none", () => {
+    expect(rowCellsFaults([{ slug: "a-moon", kind: "moon", cardCount: 2, rowCells: [2] }])).toEqual([
+      "a-moon: kind moon carries a rowCells table",
+    ]);
+    expect(rowCellsFaults([{ slug: "ergamon", kind: "irregular", cardCount: 1 }])).toEqual([
+      "ergamon: world with no rowCells table",
+    ]);
+  });
+
+  it("records that the closed form's `min(rows, N)` clamp is unreachable", () => {
+    // §1.3 writes `rows = max(1, min(rows_closed, N))`. The clamp never binds — so the gate's third
+    // assertion is `rows == rows_closed` on every input, and this is the sweep that says so. A
+    // reader scoring that clause as a tested guard is reading a decoration (DEC-752 → DEC-749).
+    const binding = [];
+    for (let n = 1; n <= 200_000; n += 1) if (rowsClosedForm(n) > n) binding.push(n);
+    expect(binding).toEqual([]);
+
+    // ...and the control for that sweep: the floor's *other* half, `max(1, ·)`, does bind — at
+    // N = 1 and N = 2 the closed form gives one row, which is what §1.3's small-N block ships.
+    expect([1, 2, 3].map(rowsClosedForm)).toEqual([1, 1, 2]);
   });
 });

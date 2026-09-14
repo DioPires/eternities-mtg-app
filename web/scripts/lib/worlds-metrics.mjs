@@ -118,6 +118,99 @@ export const ROSTER_V3 = Object.freeze({
   planes: 88,
 });
 
+/** The plane kinds §6 collapses into one `world`, and the only kinds that carry a `rowCells`. */
+export const WORLD_KINDS = Object.freeze(["spiral", "irregular"]);
+
+/**
+ * §1.3's row count, the closed form — `max(1, round(π / √(4π / (aspect·N))))`.
+ *
+ * Here so `rowCellsFaults` can check the shipped table's row count without importing the pipeline.
+ * This is the *only* part of §1.3's closed form the gate reproduces: the cell counts it derives are
+ * not the shipped ones and must never be asserted (DEC-748, and see `rowCellsFaults`).
+ */
+export function rowsClosedForm(cardCount) {
+  return Math.max(1, Math.round(Math.PI / Math.sqrt((4 * Math.PI) / ((4 / 3) * cardCount))));
+}
+
+/**
+ * **§1.3's `rowCells` table, checked against the three things that are actually true of it.**
+ *
+ * `planes` is `planes.json`'s array. Returns one fault string per violation, empty when clean.
+ *
+ * ## What is asserted, and what each one is worth
+ *
+ * Measured against the published v3 table (`3ce85aed`, vendored at `docs/worlds/rowcells-v3.json`),
+ * all three hold on 45 of 45 worlds — but they are not equally load-bearing and the gate should not
+ * pretend otherwise:
+ *
+ * 1. **`Σ rowCells == cardCount`.** The real one. §1.3's exact-N law is what stops the grid dropping
+ *    cards *silently*, and the closed form hits it at only 85 of 7,000 counts.
+ * 2. **`rowCells[r] ≥ 1`.** Nearly vacuous, kept because it is free. The minimum cell count over the
+ *    39 multi-card worlds is **2**; the only worlds where the floor binds are the six one-card
+ *    worlds, where check 1 already forces `[1]`. It cannot fail unless check 1 does.
+ * 3. **`rows == max(1, min(rows_closed, N))`.** The `min(·, N)` clamp — §1.3's "never more rows than
+ *    cards" floor — is **unreachable**: `rows_closed ≈ √(1.047·N)`, which is below `N` for every
+ *    `N ≥ 2` and rounds to 1 at `N = 1`. Swept over `N = 1…200,000`, `rows_closed > N` at **zero**
+ *    of them, so on every input this is `rows == rows_closed` and the clamp is decoration. It is
+ *    written in the spec's form anyway, and this note is why a reader must not score it as a tested
+ *    guard (DEC-752, routed to DEC-749).
+ *
+ * Plus one structural check with real teeth: `rowCells` is present on exactly the world planes and
+ * **absent** — not empty — on the belt and the moons, which is what §2.4 emits.
+ *
+ * ## What is deliberately NOT asserted
+ *
+ * - **Any equatorial-symmetry bound.** DEC-749's §1.3 ruling, reproduced here from the published
+ *   table: strict `rowCells == reversed(rowCells)` fails on **30 of 45** worlds, the `≤ 1 mirrored
+ *   pair by ≤ 1 cell` relaxation fails on the **same 30**, Dominaria differs in **15** pairs, and
+ *   eight worlds carry a pair differing by two. The asymmetry is `_north_first` alternating a
+ *   mirrored class's odd card by set-index parity, on purpose. Asserting any of these forms would
+ *   go RED on a correct renderer, and `≤ 2` would only be wrong less often — 2 is the observed
+ *   maximum over 45 worlds, not a derived bound.
+ * - **`dφ == π / rows`.** It has no independent referent: `planes.json` carries no `dφ` field and
+ *   neither does the probe payload, so the only available reading is `π/len(rowCells)` compared
+ *   against itself.
+ * - **Row centres at `(i + ½)·dφ`.** This one is real — it is what separates §1.3's colatitude
+ *   placement from the degenerate `i·dφ` form — but it is **not the gate's to measure**. The centres
+ *   live in the emitted positions, not in any field the gate reads: checked directly against
+ *   `stars.bin` on `3ce85aed`, the per-row populations reproduce `rowCells` on **45 of 45** worlds
+ *   and every star sits within **0.0004 rad** of `(i + ½)·π/rows`, while the degenerate `i·dφ`
+ *   grid fails on 44 of 45. That is a dataset conformance check and belongs beside the pipeline's,
+ *   where it can be taken at full float precision (DEC-752, measured).
+ */
+export function rowCellsFaults(planes) {
+  const faults = [];
+  for (const plane of planes) {
+    const isWorld = WORLD_KINDS.includes(plane.kind);
+    const has = Object.hasOwn(plane, "rowCells");
+    if (!isWorld) {
+      // Absent, not empty: an empty array would read as "a world with no rows" downstream.
+      if (has) faults.push(`${plane.slug}: kind ${plane.kind} carries a rowCells table`);
+      continue;
+    }
+    if (!has) {
+      faults.push(`${plane.slug}: world with no rowCells table`);
+      continue;
+    }
+    const cells = plane.rowCells;
+    const total = cells.reduce((a, b) => a + b, 0);
+    if (total !== plane.cardCount) {
+      faults.push(
+        `${plane.slug}: Σ rowCells is ${total} against ${plane.cardCount} cards — ` +
+          `§1.3's exact-N law, and the direction that drops cards silently`,
+      );
+    }
+    const empty = cells.findIndex((c) => c < 1);
+    if (empty !== -1) faults.push(`${plane.slug}: row ${empty} holds ${cells[empty]} cells`);
+
+    const want = Math.max(1, Math.min(rowsClosedForm(plane.cardCount), plane.cardCount));
+    if (cells.length !== want) {
+      faults.push(`${plane.slug}: ${cells.length} rows against the closed form's ${want}`);
+    }
+  }
+  return faults;
+}
+
 /** W2 only samples cells this tall or taller (§3.1). */
 export const W2_MIN_CELL_PX = 6;
 

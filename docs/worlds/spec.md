@@ -1817,6 +1817,33 @@ in §1 rather than being a gate-side patch.
 > That touches the ladder's one-quantity-per-rung invariant and is **DEC-753's** ruling, not R1's;
 > R1 owes the seam and the clamped read-back either way.
 
+> **Normative — the gate checks §1.3's table, and checks three things about it (DEC-752, measured).**
+> The gate reads `planes.json` for its rosters anyway, so `rowCellsFaults` asserts the table there:
+> `Σ rowCells == cardCount`, `rowCells[r] ≥ 1`, `rows == max(1, min(rows_closed, N))`, and that
+> `rowCells` is **present on worlds and absent — not empty — everywhere else**. All hold on 45 of 45
+> published worlds (`3ce85aed`). **It asserts no equatorial-symmetry bound in any form**, per §1.3.
+>
+> Two of these are weaker than they look, and are recorded as such rather than quietly counted:
+>
+> - The `≥ 1` floor cannot fail unless the exact-N check already has. The minimum cell count over
+>   the 39 multi-card worlds is **2**; the six one-card worlds are the only place it binds, and
+>   there `Σ == 1` already forces `[1]`.
+> - **§1.3's `min(rows_closed, N)` clamp is unreachable.** `rows_closed ≈ √(1.047·N)`, which is
+>   below `N` for every `N ≥ 2` and rounds to 1 at `N = 1`; swept over `N = 1…200,000` it never
+>   binds. The assertion is `rows == rows_closed` on every input, and the clamp is decoration — a
+>   reader must not score that clause as a tested guard. Routed to DEC-749 as a §1.3 wording matter.
+>
+> **Row centres are not the gate's to measure, and do not need to be.** `(i + ½)·dφ` is the one
+> offered invariant with real content — it is what separates §1.3's colatitude placement from the
+> degenerate `i·dφ` form — but neither `planes.json` nor the probe payload carries a `dφ` or a row
+> index, so the gate's only reading of `dφ = π/rows` is `π/len(rowCells)` against itself. The
+> centres live in the **emitted positions**: decoded straight out of `stars.bin` on `3ce85aed`, the
+> per-row populations reproduce `rowCells` on **45 of 45** worlds and every star sits within
+> **0.0004 rad** of `(i + ½)·π/rows`, while the same test against `i·dφ` fails on 44 of 45 — a live
+> negative control, so the check is worth having where it can be taken at full precision, beside the
+> pipeline's own. (The tolerance must scale with `dφ`: at a fixed 0.02 rad Dominaria's 81 rows put
+> the two grids `dφ/2 = 0.019` apart and the degenerate form passes.) **No new seam is requested.**
+
 Five criteria assert. The rest stay owner-judged, because they are about feel and 9.3 never asked for
 an assertion there.
 
