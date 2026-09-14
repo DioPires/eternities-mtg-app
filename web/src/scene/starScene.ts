@@ -162,6 +162,8 @@ export function attachStarScene({
 
   // Per-tick scratch. Allocated once, reused for the life of the scene (PRD 7.3.2).
   const ndc = new Vector2()
+  /** Scratch for the renderer's CSS size, which §1.11's pick floor is expressed in. */
+  const cssSize = new Vector2()
   const mirror = new Vector3()
   const pointer: PointerState = {
     x: 0,
@@ -241,7 +243,10 @@ export function attachStarScene({
             (pointer.x / gl.domElement.width) * 2 - 1,
             -((pointer.y / gl.domElement.height) * 2 - 1),
           )
-          return planePicker.pick(ndc, camera, table, reducedMotion ? 0 : 1)
+          // CSS pixels, never the drawing buffer's: §1.11's floor is a CSS-pixel target, and on a
+          // 2x display `getDrawingBufferSize` would halve it while the picture stayed identical.
+          gl.getSize(cssSize)
+          return planePicker.pick(ndc, camera, table, reducedMotion ? 0 : 1, cssSize.y)
         },
       )
       // The id buffer was not consulted. Leave hover and focus exactly as they were and let the

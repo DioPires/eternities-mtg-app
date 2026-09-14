@@ -35,15 +35,12 @@ const HUE_CLASSES = 7
 /**
  * A plane that has a surface: `rowCells` present, which §2.4 makes the field to test for.
  *
- * Testing `rowCells` rather than the contract version is deliberate and is the contract's own
- * wording: an empty plane and the belt carry no grid at all and are absent from this set on a v3
- * dataset, so a version check would admit 43 planes that have no surface to build.
+ * Defined in `data/types.ts` and re-exported here, because §1.11's label subject asks the same
+ * question from a path that must not import three (DEC-751). One spelling of the predicate, two
+ * callers — the alternative is two `rowCells` tests that can drift apart silently.
  */
-export type WorldPlane = PlaneRecord & { readonly rowCells: readonly number[] }
-
-export function isWorldPlane(plane: PlaneRecord): plane is WorldPlane {
-  return Array.isArray(plane.rowCells) && plane.rowCells.length > 0
-}
+export { isWorldPlane, type WorldPlane } from '../../data/types'
+import { isWorldPlane, type WorldPlane } from '../../data/types'
 
 export interface WorldSourceOptions {
   /**

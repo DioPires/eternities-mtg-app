@@ -84,12 +84,64 @@ export function pickedStarIndex(pick: PickResult): number {
  */
 const PLANE_PICK_MARGIN = 1.15
 
+/**
+ * Worlds spec §1.11, normative: the plane-level pick proxy is floored at **24 CSS px of diameter**,
+ * after projection, per frame, per plane.
+ *
+ * **Why a screen-space floor rather than a bigger radius.** Under §1.3's radius law 26 of v3's 45
+ * worlds project below 24 px of pick diameter at the home view — the smallest at 3.8 px, where the
+ * galaxy today has none under 24. §1.3 rules out raising the world-space floor to chase a pixel
+ * target, and is right to: the rescale is non-uniform (1.07× on Dominaria against 6.55× on a
+ * one-card world), so no world-space constant absorbs it. A pixel target has to be spelled in
+ * pixels.
+ *
+ * **What it guarantees, and what it does not.** A 24 px *proxy*, not a 24 px *target*. Floored
+ * proxies overlap each other and {@link PlanePicker.pick} awards a pixel to the nearest disk, so a
+ * world in a crowd keeps less than its proxy: measured over a turn, 19 of the 33 worlds the floor
+ * lifts fall under 24 px of *effective* diameter somewhere, and the floor pushes two worlds that
+ * already cleared 24 px below it. §1.11 records those as residual exposure rather than as a
+ * guarantee, rules out the Voronoi tie-break that would only move the shortfall around (screen area
+ * is conserved), and rests conformance on WCAG 2.5.8's **Equivalent** exception — every plane is
+ * reachable by name through the search path. The floor is a usability improvement on top of that,
+ * and what it is *not* allowed to do is bury a world that was pickable before, which is the
+ * property `test/pick-floor-screen-space.test.ts` measures.
+ *
+ * Applied to every pickable plane rather than only to the 45 worlds: the empty planes and the moons
+ * shrink under the same law, they are the same gesture, and it is the configuration the measurement
+ * above was made in. On a v2 dataset it is inert — nothing there projects under 24 px — so it costs
+ * the galaxy nothing before the cutover.
+ */
+export const PLANE_PICK_FLOOR_PX = 24
+
+/**
+ * The world-space radius that projects to {@link PLANE_PICK_FLOOR_PX} of diameter at `depth`.
+ *
+ * `labels/project.ts`'s projection, inverted: one world unit at one unit of depth covers
+ * `halfHeight / tan(fov / 2)` pixels, so a pixel radius `r` needs `r · depth · tan(fov/2) /
+ * halfHeight` world units. **CSS pixels** — which is why the caller passes the renderer's
+ * `getSize` height and never its drawing-buffer height. On a 2× display the two differ by a factor
+ * of two, and the wrong one halves or doubles the floor while every picture stays correct, which is
+ * the same trap §1.5's crossover band carries (`attachWorlds`'s viewport note).
+ *
+ * A depth behind the camera has no projection, so it floors to nothing.
+ */
+export function planePickFloorRadius(
+  depth: number,
+  fovRadians: number,
+  viewportHeightPx: number,
+): number {
+  if (depth <= 0 || viewportHeightPx <= 0) return 0
+  return ((PLANE_PICK_FLOOR_PX / 2) * depth * Math.tan(fovRadians / 2)) / (viewportHeightPx / 2)
+}
+
 export class PlanePicker {
   private readonly ray = new Ray()
   private readonly sphere = new Sphere()
   private readonly hit = new Vector3()
   private readonly origin = new Vector3()
   private readonly direction = new Vector3()
+  private readonly forward = new Vector3()
+  private readonly toCentre = new Vector3()
 
   /**
    * The nearest plane whose bounding sphere the pointer ray enters, or `-1`.
@@ -97,11 +149,25 @@ export class PlanePicker {
    * `ndc` is the pointer in normalised device coordinates. The Blind Eternities is skipped: its
    * radius is the whole multiverse, so a sphere test would swallow every click. Dust is picked as
    * stars are, through the id buffer, which is also what gives PRD 5.3.4 the anchor point.
+   *
+   * `viewportHeightPx` is the viewport in **CSS** pixels, and it is required rather than optional
+   * because it is what §1.11's floor is expressed in: a default would let a caller silently switch
+   * the floor off, and a pick target that is quietly 3.8 px looks exactly like one that is 24.
    */
-  pick(ndc: Vector2, camera: PerspectiveCamera, table: PlaneTable, motion: number): number {
+  pick(
+    ndc: Vector2,
+    camera: PerspectiveCamera,
+    table: PlaneTable,
+    motion: number,
+    viewportHeightPx: number,
+  ): number {
     this.origin.setFromMatrixPosition(camera.matrixWorld)
     this.direction.set(ndc.x, ndc.y, 0.5).unproject(camera).sub(this.origin).normalize()
     this.ray.set(this.origin, this.direction)
+    // The view axis, for the depth §1.11's floor is a function of. Column 2 of the camera's world
+    // matrix is its +Z, and a camera looks down its own -Z.
+    this.forward.setFromMatrixColumn(camera.matrixWorld, 2).negate()
+    const fovRadians = (camera.fov * Math.PI) / 180
 
     let best = -1
     let bestDistance = Infinity
@@ -119,7 +185,13 @@ export class PlanePicker {
         motion,
         this.sphere.center,
       )
-      this.sphere.radius = state.record.radius * PLANE_PICK_MARGIN
+      // §1.11's floor, applied to the proxy and to nothing else: the drawn world is untouched, so
+      // §1.3's radius law and §1.8's moon relationship are exactly as they were.
+      const depth = this.toCentre.subVectors(this.sphere.center, this.origin).dot(this.forward)
+      this.sphere.radius = Math.max(
+        state.record.radius * PLANE_PICK_MARGIN,
+        planePickFloorRadius(depth, fovRadians, viewportHeightPx),
+      )
 
       if (this.ray.intersectSphere(this.sphere, this.hit) === null) continue
       const distance = this.hit.distanceToSquared(this.origin)

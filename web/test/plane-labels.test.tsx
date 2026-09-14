@@ -24,7 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { emptyTether } from '../src/camera/framing'
 import { CameraRig } from '../src/camera/rig'
-import { BLIND_ETERNITIES_SLUG } from '../src/data/types'
+import { BLIND_ETERNITIES_SLUG, isWorldPlane, type PlanesFile } from '../src/data/types'
 import { PlaneLabels } from '../src/labels/PlaneLabels'
 import { Projector } from '../src/labels/project'
 import { FrameLoop } from '../src/scene/renderer/frameLoop'
@@ -32,8 +32,17 @@ import { FrameLoop } from '../src/scene/renderer/frameLoop'
 import { loadFixturePlanes } from './fixtures'
 
 const planes = loadFixturePlanes('scale')
-/** PRD 5.3.8: the dust plane carries no label, so it is not in the per-frame projection either. */
-const LABELLED = planes.planes.filter((plane) => plane.slug !== BLIND_ETERNITIES_SLUG).length
+/**
+ * The overlay's subject count, derived the way the overlay derives it (worlds spec §1.11).
+ *
+ * PRD 5.3.8: the dust plane carries no label, so it is not in the per-frame projection either.
+ * On a worlds dataset the subject narrows again to the worlds — the moons are unlabelled until
+ * hover and take no seat in the solver — so this counts what the fixture actually is rather than
+ * restating a number. `labelSubjectCount` below pins the *rule*; this is its consequence.
+ */
+const withoutBelt = planes.planes.filter((plane) => plane.slug !== BLIND_ETERNITIES_SLUG)
+const LABELLED = (withoutBelt.some(isWorldPlane) ? withoutBelt.filter(isWorldPlane) : withoutBelt)
+  .length
 
 /**
  * The loop the overlay subscribes to. Never started: `requestFrame` is a no-op, so the only ticks
@@ -66,6 +75,92 @@ function rigAtHome(): CameraRig {
 
 afterEach(() => {
   vi.useRealTimers()
+})
+
+/**
+ * §1.11's label subject, pinned as a rule rather than as a count (DEC-751).
+ *
+ * `LABELLED` above derives the count the same way the component does, so on its own it would go on
+ * agreeing with any rule the component happened to implement — including no rule at all. These two
+ * rows drive the *same* component with two rosters that differ in exactly one property and assert
+ * that the subject set changes, which is a claim the derivation cannot make about itself.
+ *
+ * The DOM is the subject because that is also leg G's instrument: W5 sweeps `[data-plane-slug]`.
+ */
+describe('§1.11 the label subject narrows to the worlds on a worlds dataset', () => {
+  /** Every plane slug the overlay put a *plane* label in the DOM for. */
+  function renderedSlugs(file: PlanesFile): string[] {
+    const rig = new CameraRig(file)
+    rig.snapTo({ tether: rig.framing.multiverse(emptyTether()), durationS: 0, holdS: 0 })
+    rig.update(1 / 60)
+    const view = render(
+      <PlaneLabels loop={loop} planes={file} rig={rig} focusedPlaneSlug={null} level="multiverse" enabled />,
+    )
+    const slugs = [...view.container.querySelectorAll('[data-plane-slug]')].map(
+      (node) => node.getAttribute('data-plane-slug')!,
+    )
+    view.unmount()
+    return slugs
+  }
+
+  /** The same roster with every `rowCells` stripped — which is exactly what a v2 dataset is. */
+  const asV2: PlanesFile = {
+    ...planes,
+    contractVersion: 2,
+    planes: planes.planes.map((plane) => {
+      const copy: Record<string, unknown> = { ...plane }
+      delete copy.rowCells
+      return copy as unknown as (typeof planes.planes)[number]
+    }),
+  }
+
+  it('labels the worlds and not the moons on v3, and every plane on v2', () => {
+    const worlds = planes.planes.filter(isWorldPlane)
+    const moons = planes.planes.filter(
+      (plane) => !isWorldPlane(plane) && plane.slug !== BLIND_ETERNITIES_SLUG,
+    )
+    // The fixture has to contain both kinds or neither row below can fail.
+    expect(worlds.length).toBeGreaterThan(0)
+    expect(moons.length).toBeGreaterThan(0)
+
+    const v3 = new Set(renderedSlugs(planes))
+    expect(v3).toEqual(new Set(worlds.map((plane) => plane.slug)))
+    for (const moon of moons) expect(v3.has(moon.slug), moon.slug).toBe(false)
+
+    // The v2 arm, which is the control: the same component, the same roster, one field removed,
+    // and PRD 5.3.4's rule unchanged. Without it, a component that labelled nothing but worlds
+    // *always* would pass the assertions above while regressing the shipping galaxy.
+    const v2 = new Set(renderedSlugs(asV2))
+    expect(v2.size).toBe(planes.planes.length - 1)
+    for (const moon of moons) expect(v2.has(moon.slug), moon.slug).toBe(true)
+  })
+
+  it('never puts a band label in the world sweep, however the plane is keyed', () => {
+    // The `tier` guard. A band's key is `${slug}:${code}`, so dropping the guard adds one
+    // `data-plane-slug` per set of the focused plane — and W5 would score them as worlds.
+    const focused = planes.planes.find((plane) => isWorldPlane(plane) && plane.sets.length > 0)
+    expect(focused).toBeDefined()
+    const rig = new CameraRig(planes)
+    rig.snapTo({ tether: rig.framing.plane(emptyTether(), focused!), durationS: 0, holdS: 0 })
+    rig.update(1 / 60)
+    const view = render(
+      <PlaneLabels
+        loop={loop}
+        planes={planes}
+        rig={rig}
+        focusedPlaneSlug={focused!.slug}
+        level="plane"
+        enabled
+      />,
+    )
+    const slugs = [...view.container.querySelectorAll('[data-plane-slug]')].map((node) =>
+      node.getAttribute('data-plane-slug'),
+    )
+    // The bands are in the DOM — otherwise this row proves nothing about the guard.
+    expect(view.container.querySelectorAll('.label-band').length).toBeGreaterThan(0)
+    expect(slugs.some((slug) => slug!.includes(':'))).toBe(false)
+    view.unmount()
+  })
 })
 
 describe('the label overlay frame path (PRD 8.4.4)', () => {

@@ -44,6 +44,24 @@ export const FRAME_RADIUS = 1.2
 export const BLIND_ETERNITIES_SLUG = 'blind-eternities'
 
 /**
+ * A plane that has a surface: `rowCells` present, which §2.4 makes the field to test for.
+ *
+ * Testing `rowCells` rather than the contract version is deliberate and is the contract's own
+ * wording: an empty plane and the belt carry no grid at all and are absent from this set on a v3
+ * dataset, so a version check would admit 43 planes that have no surface to build. On a v2 dataset
+ * the set is empty, which is what makes it usable as the "is this page on worlds" question
+ * (`labels/PlaneLabels.tsx`, worlds spec §1.11) without a version constant anywhere.
+ *
+ * It lives here rather than with the renderer because two paths need it and one of them is
+ * deliberately three-free: `scene/worlds/worldSource.ts` re-exports it for the renderer's callers.
+ */
+export type WorldPlane = PlaneRecord & { readonly rowCells: readonly number[] }
+
+export function isWorldPlane(plane: PlaneRecord): plane is WorldPlane {
+  return Array.isArray(plane.rowCells) && plane.rowCells.length > 0
+}
+
+/**
  * PRD 5.8/8.5.1's filter mask byte for a star that passes, on both sides of the GPU boundary.
  *
  * It lives here, in the contract module, because it is a contract between two files that never
