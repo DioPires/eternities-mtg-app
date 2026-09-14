@@ -482,8 +482,28 @@ test('the art pool steps with the ladder, at the size the driver grants (§1.12)
     'the art pool is a worlds-dataset object; build with ETERNITIES_DATASET=worlds to run this',
   )
 
-  const readPool = async (): Promise<{ layers: number; maxLayers: number }> =>
-    page.evaluate(() => {
+  /**
+   * Wait for the roster to compose before reading the pool off it (DEC-779 X4).
+   *
+   * `pinnedTier` waits on the star field and the bloom chain — both galaxy-path readiness signals,
+   * neither of which says anything about the worlds roster. `worlds()` is `null` until a surface
+   * exists *and* a tick has run, so reading it straight after the field completes is a race the
+   * page wins only when the shards happen to land first. It lost that race on this runner and the
+   * failure reads as a flake rather than as "the test asked too early".
+   *
+   * Polled rather than slept, and still a **setup failure and never a skip** when the roster never
+   * arrives: a page with no worlds on it must not score this green. That is why the poll ends in
+   * the same throw it replaced instead of in a `test.skip`.
+   */
+  const readPool = async (): Promise<{ layers: number; maxLayers: number }> => {
+    await expect
+      .poll(async () => page.evaluate(() => window.__eternitiesProbe?.worlds() != null), {
+        timeout: 30_000,
+        message: 'the worlds roster never composed on this page',
+      })
+      .toBe(true)
+
+    return page.evaluate(() => {
       const probe = window.__eternitiesProbe
       if (!probe) throw new Error('?probe=1 did not install the probe')
       const worlds = probe.worlds()
@@ -494,6 +514,7 @@ test('the art pool steps with the ladder, at the size the driver grants (§1.12)
         maxLayers: probe.state().platform.maxArrayTextureLayers,
       }
     })
+  }
 
   const pools: { layers: number; maxLayers: number }[] = []
   for (let index = 0; index < TIER_LABELS.length; index += 1) {
