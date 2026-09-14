@@ -64,10 +64,12 @@ chain.
 Drawn in this order, every frame:
 
 1. **Backdrop** — the existing three-layer parallax background, unchanged.
-2. **System** — one `InstancedMesh` of icospheres, one instance per plane that is *not* drawing a
-   cell sheet this frame (§1.5's LOD ladder decides; dust is excluded, it is step 3). A world
-   instance samples its baked equirect swatch layer through a per-instance `iLayer`; a dark moon
-   carries `iLayer = -1` and the flat moon colour (§1.8).
+2. **System** — one `InstancedMesh` of icospheres, one instance per plane that is *below* §1.5's
+   upper crossover threshold, which includes every plane inside the crossover band — those draw here
+   **and** in step 4 and the two cross-fade (§1.5). Only a plane fully above the band is absent from
+   this pass. Dust is excluded; it is step 3. A world instance samples its baked equirect swatch
+   layer through a per-instance `iLayer`; a dark moon carries `iLayer = -1` and the flat moon colour
+   (§1.8).
 3. **Belt** — the Blind Eternities, one `Points` draw, one arc per set (§1.8).
 4. **Worlds with sheets** — for each world above the LOD crossover: the globe shell, then the cell
    sheet — one `InstancedBufferGeometry`, one quad, N instances (§1.4).
@@ -89,7 +91,10 @@ atmosphere must not depth-reject the tether passing in front of it.
 
 **Population on production.** 87 planes: 57 empty, 1 dust, **29 worlds with cards**. At the home
 view every world is far below the crossover, so step 2 draws **29 + 57 = 86 instances** and step 4
-draws nothing; with one world near enough for its sheet, step 2 draws 28 worlds + 57 moons. (The
+draws nothing; with one world fully above the band, step 2 draws 28 worlds + 57 moons — and with
+that world *inside* the band it is 29 + 57 again, because it draws in both passes. Step 2's instance
+count is therefore not `29 − (sheets drawn)`; it is a count of planes below the band's top, and a
+renderer that derives one from the other will be one instance short through every approach. (The
 prototype's `captures.json` reports `system.worlds = 27` because it drew Dominaria and Rabiah in
 detail and had no equirect rung at all; 27 is a prototype count and is not production's.)
 
@@ -114,11 +119,21 @@ detail and had no equirect rung at all; 27 is a prototype count and is not produ
   taking its share of 360°. A single-set plane is one slice covering the whole sphere and looks
   complete, not 97% missing.
 - **The grid** starts from the standard equal-area sphere tiling:
-  `rows = round(π / √(4π / (aspect · N)))`, each row at constant latitude height `dφ = π/rows`,
-  holding `round(2π·cos φ / (aspect·dφ))` cells, alternate rows staggered by half a cell so the
+  `rows = round(π / √(4π / (aspect · N)))`, each row at constant angular height `dφ = π/rows`,
+  holding `round(2π·sin θ / (aspect·dφ))` cells, alternate rows staggered by half a cell so the
   tiling reads as masonry and not as a graticule. **The row count and the row latitudes are final;
   the per-row cell counts are only a starting point** — the relaxation below replaces them, which is
   why the client is shipped the counts rather than this formula (§2.1).
+
+  > **Normative — one angle, defined once: `θ` is COLATITUDE.** `θ ∈ [0, π]` measured from the north
+  > pole, so row `i`'s centre is `θ_i = (i + ½)·dφ` and latitude is `π/2 − θ`. Every angular formula
+  > in this spec — here, §1.4's `iSize`, §2.1's half-extents and nearest-row match — is written in
+  > `θ`. The circumference of a row is `2π·sin θ`, which is why the cell count carries **`sin`** and
+  > not `cos`. An earlier draft used the single symbol `φ` for both readings in this one paragraph:
+  > as latitude in `round(2π·cos φ / (aspect·dφ))` and as colatitude in "centres at `(i + ½)·dφ`".
+  > Taken literally that pair is not merely ambiguous, it is degenerate — `cos((i + ½)·dφ)` runs
+  > `+1 → −1` down the sphere, so Dominaria's southern rows get **negative** cell counts and the
+  > 81 rows sum to **0 cells**. Read as `sin θ` they sum to exactly 6,266, which is `cardCount`.
 - **Cell aspect is 4:3**, because that is what an `art_crop` letterboxes into without being
   stretched. Scryfall's terms forbid stretching card art and review §4.4 flags the current planet
   shader for exactly this class of problem; 4:3 is how concept B avoids inheriting it.
@@ -163,7 +178,9 @@ One `InstancedBufferGeometry`, one unit quad, N instances, one draw per world. R
 this at "~2,000 opaque textured quads ≈ 2–3 ms"; Dominaria puts 6,266 in the draw.
 
 Per-instance attributes: `iNormal` (vec3, the unit-sphere point), `iEast` (vec3), `iSize` (vec2,
-half-extents in units of world radius), `iSwatch` (vec3, linear RGB), `iLayer` (float, dynamic),
+half-extents in units of world radius — **arc length, not angle**; the longitudinal component is
+`(π / rowCells[r])·sin θ_r` and §2.1 carries the derivation and the 51.6× failure that drops the
+`sin θ_r`), `iSwatch` (vec3, linear RGB), `iLayer` (float, dynamic),
 `iArt` (float, dynamic cross-fade). 52 bytes per cell; **1.42 MiB** for all 28,587 cards.
 
 The vertex shader builds `north = cross(east, n)` and places the quad at `n · radius · 1.006`, lifted
@@ -246,6 +263,19 @@ the pool is an array texture and not an atlas canvas.
 > spheres, which concept B deletes, and it names W4.4 as its own successor). The worlds path must
 > read the real limit and clamp the pool to `min(tierLayers, maxLayers − 32)`. A pool that silently
 > fails to allocate is a black world.
+>
+> **Normative — the clamp needs a floor, because `maxLayers` can be 0 (DEC-749).** W4.1's
+> `capabilities.ts` (PR #45) reports `maxArrayTextureLayers` as **0**, not as a large number, on two
+> reachable paths: a non-WebGL2 context (`webgl2 ? getParameter(...) : 0`) and a context that has
+> been lost, where `numberParameter`'s `try/catch` returns its `0` fallback. `min(tierLayers,
+> 0 − 32)` is **−32 layers at every tier**, so the formula as written turns the one case it exists to
+> protect into a negative allocation. The pool size is
+> `max(0, min(tierLayers, maxLayers − 32))`, and a pool of 0 is a legal, swatch-only world — which is
+> what §1.4's shading path already degrades to when no cell holds a layer — not a black one. R1 reads
+> `arrayLayersAffordable` / `webgl2` to decide *whether* to build the pool at all, and never
+> subtracts from an unanswered limit. Assert the 0 case in the pool's unit test alongside
+> `resident <= layers`; on this Mac the limit is slack and neither bound can bind, so an
+> injected-limit test is the only thing that can fail here (DEC-739's vacuous-clamp finding).
 >
 > **The −32 is driver slack, not accounting.** `MAX_ARRAY_TEXTURE_LAYERS` is a **per-array-texture**
 > limit, not a global layer pool: the 29-layer equirect array is a separate texture object and takes
@@ -448,7 +478,8 @@ every step:
 | 3 | 256 | 12.00 | LOD crossover 4 px → 8 px |
 | 4 | 128 | 6.00 | cheap rim (one tap, no dither) |
 
-All five are clamped by `min(tierLayers, MAX_ARRAY_TEXTURE_LAYERS − 32)` (§1.6). `e2e/quality.spec.ts`
+All five are clamped by `max(0, min(tierLayers, MAX_ARRAY_TEXTURE_LAYERS − 32))` (§1.6 — the outer
+`max` is load-bearing: an unanswered limit reports 0 and the inner expression is then −32). `e2e/quality.spec.ts`
 must assert the pool size actually changes with the tier, the way W4.1 asserts its own rungs — and
 it must assert against the **clamped** value the renderer reports, not against the constant in this
 table. On a spec-minimum 256-layer device tiers 0–3 all clamp to 224 and only tier 4 is distinct, so
@@ -468,6 +499,9 @@ Every one of these cost real time in the prototype and every one of them is sile
 | 5 | A `DataArrayTexture` ignores `UNPACK_FLIP_Y_WEBGL` — flip V in the shader | §1.6 |
 | 6 | A fixed world-space light puts the subject on its night side half the time | §1.7 |
 | 7 | `MAX_ARRAY_TEXTURE_LAYERS` has a spec minimum of 256, not 1,024 | §1.6 |
+| 7b | …and W4.1 reports it as **0** on a WebGL1 or lost context, so `maxLayers − 32` is −32 layers | §1.6 |
+| 9 | `iSize` is arc length: drop `sin θ` from the longitudinal half-extent and the polar row is 51.6× too wide | §2.1 |
+| 10 | `θ` is colatitude everywhere; read as latitude the row formula sums to 0 cells | §1.3 |
 | 8 | `renderer.copyTextureToTexture` changed argument order at three r165 | §1.6 |
 
 ---
@@ -505,8 +539,35 @@ Bytes 8–9 stay written rather than being reclaimed, so that a v3 dataset would
 galaxy path if the dual-scene period ever needs it. Reclaiming them is a v4 conversation.
 
 **Derivation on the client.** The unit-sphere point gives the cell centre and, through
-`east = normalize(cross(Y, n))`, its tangent frame. It does **not** give the cell's half-extents:
-those are `(π / rowCells[r], dφ / 2)` in angle, where `r` is the cell's row.
+`east = normalize(cross(Y, n))`, its tangent frame. It does **not** give the cell's half-extents.
+In **angle**, for a cell in row `r`, they are `(π / rowCells[r], dφ / 2)`.
+
+> **Normative — `iSize` is arc length, not angle, and the longitudinal component carries `sin θ_r`.**
+> §1.4's `iSize` is in **units of world radius**; the pair above is in **angle**. The two differ by
+> the conversion from an angle to the arc it subtends, and that conversion is not the same on both
+> axes. A row is a small circle of radius `sin θ_r`, not a great circle, so a longitude angle `Δλ`
+> subtends `Δλ·sin θ_r` of surface; a colatitude angle subtends itself. Therefore
+>
+> ```
+> iSize = vec2( (π / rowCells[r]) · sin θ_r ,   dφ / 2 )
+> //                               ^^^^^^^^^ dropping this is the bug below
+> ```
+>
+> **Dropping the factor draws Dominaria's polar row 51.6× too wide** — `rowCells[0] = 2`, so the
+> uncorrected half-extent is `π/2 = 1.571` *world radii*, a quad wider than the globe it sits on,
+> against a correct `0.0305`. The tell is geometric and total, not a subtle stretch.
+>
+> The conversion is also exactly what makes §1.3's **4:3 cell aspect** true. A cell's full width over
+> its full height is `2π·sin θ_r / (rowCells[r]·dφ)`, and since `rowCells[r] ≈ 2π·sin θ_r/(aspect·dφ)`
+> that ratio is `aspect` at every latitude — measured 1.31–1.35 across Dominaria's 81 rows. Without
+> the factor the same ratio is `aspect / sin θ_r`: **81.0 at the pole**. The two bugs are one bug.
+>
+> **Where the aspect law genuinely cannot hold** is the polar rows, and it is integer quantisation
+> rather than this conversion: `rowCells` is a whole number, and at `rowCells = 2` the aspect is
+> `π/2 = 1.571`, 18% above 4:3. That is **4 cells of Dominaria's 6,266** (0.1%) and 4 of Rabiah's
+> (5.1%). The renderer must therefore letterbox art into the cell's **own** rect (§1.4, §1.6) and
+> may not assume 4:3 anywhere; a shader that hard-codes the ratio mis-frames the ice caps of every
+> small plane.
 
 > **Normative — the per-row cell counts are shipped, not derived.** §1.3's relaxation makes a row's
 > cell count population-derived, so it is **not** a function of `cardCount` and a row count and the
@@ -699,9 +760,19 @@ counter. Geometry comes from the probe; **colour is sampled from the captured PN
 criterion below measures the frame after tonemap and vignette at presentation scale — which is the
 thing T7 said was missing.
 
-The gate also depends on four **control seams** in the shipped renderer — `?swatch=mean`,
-`?bands=shuffle`, `?artThreshold=fixed24` (§1.6) and `?layers=N` — which is why they are normative in
-§1 rather than being a gate-side patch. Legs R1 and R3 own them.
+The gate also depends on **control seams** in the shipped renderer, which is why they are normative
+in §1 rather than being a gate-side patch.
+
+> **Normative — seam ownership, and there are five of them, not four (DEC-749).** The five are
+> `?probe=`, `?swatch=mean`, `?bands=shuffle`, `?artThreshold=fixed24` (§1.6) and `?layers=N`.
+> `?probe=` is one of them: the paragraph above introduces it separately as the gate's geometry
+> source, but it is the same kind of object — normative renderer surface the gate reads and does not
+> build. **All five are owned by leg R1**, which builds them as part of §1.3–§1.6. **Leg G consumes
+> them; it does not build them, and it may not patch the build to get them.** An earlier draft said
+> "legs R1 and R3 own them" here while §4's R1 row already listed all five under R1; R1 is the
+> ruling, and R3's row (§1.10–§1.12) carries none of them. This matters beyond tidiness: a seam
+> built gate-side is a seam that is not in the shipped renderer, and §3.1's whole argument for W4's
+> control is that the control must exercise the *shipped* policy.
 
 Five criteria assert. The rest stay owner-judged, because they are about feel and 9.3 never asked for
 an assertion there.
