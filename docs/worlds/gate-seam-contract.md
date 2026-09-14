@@ -134,6 +134,61 @@ G C`, thirteen bands over seven classes, and W3 compares bands adjacent _on the 
 class would merge the two ice caps — which sit at opposite poles — into one group and invent an
 adjacency the sphere does not have.
 
+### 1a. As served — the reconciliation with R1's `b267426`
+
+The payload above is what this document *asked for*. R1 served it at `dec749-r1-spec-fixes`
+`b267426`, and the shipped declaration is `web/src/scene/worlds/worldsProbe.ts` — `WorldsProbe`,
+`WorldsProbeCell`, `WorldsProbePool`. **That declaration is normative and this section records where
+it differs, so the two documents cannot quietly drift into disagreeing.**
+
+The gate reads the payload through `web/scripts/lib/worlds-probe-read.mjs` and nowhere else, and
+that module's declaration imports `WorldsProbe` from the renderer rather than restating it. A field
+R1 renames is then a `tsc` error in this leg's own suite instead of an `undefined` arriving inside a
+criterion — which would compare false against every floor and score the frame RED for the wrong
+reason. `web/tsconfig.json` sets `skipLibCheck`, so the import alone proves nothing; the pin is
+exercised from `test/worlds-probe-read.test.ts`, and it is verified by mutation — renaming
+`bandShares` on R1's interface fails that file in four places.
+
+**Two additive differences, both accepted.**
+
+1. **`rect` survives alongside `x`/`y`/`height`.** §3.1 asks for a screen-space rect and this
+   document asked only for the centre and the height. Both ship, `height === rect.height` by
+   construction, and the reader checks it anyway: it is the one field the contract duplicates, so it
+   is the one field where a payload assembled from two different frames would show a seam.
+2. **`seams` is on the payload** — this leg's own ask, adopted. See the witness table in §2.
+
+**One substantive difference, and the reason for it is not the obvious one.** `x`/`y` is the
+*projected cell centre*, not the centre of `rect`. R1 measured the two a mean 1.3–10.3% of a cell
+height apart, worst **27.8%** (Ravnica, row 42 of 49, at 3.5 radii), because a spherical patch
+projects to a curved outline whose bounding box is not centred on it. The tempting justification —
+that the rect's centre samples a *neighbouring* cell — was tested and **refuted**: point-in-polygon
+against the projected outline over four worlds at two poses is 0 of 4,803 samples off-cell, with a
+negative control (the same point pushed down one cell height) reading off-cell 4,803 of 4,803. The
+reason that survives is W2's: `shade` is evaluated at `(x, y)` and the gate samples the capture at
+`(x, y)`, and W2's lightness half pairs those two *per cell* over the iso-shade subset. They have to
+be readings of the same point. The reader samples at `(x, y)` and a test pins it against a fixture
+that paints a different colour at each of the two candidates.
+
+**A correction to this document's own §1 cardinality claim.** "One entry per card" is exact about
+the *subdivision* — `k` re-tessellates shared base geometry and never multiplies the instance count —
+and it is not exact about the array's length. `buildWorldsProbe` skips any cell whose subdivided grid
+is wholly inside the near plane and any cell whose centre is, so the invariant is
+`cells.length <= cardCount` with ascending ids. It is an equality at both poses §3.1 measures at,
+because the camera is outside the sphere at 2.2 and 3.5 radii. **The consequence is not the one it
+looks like**: a dropped cell also fails `withinFrustum` on the same `z > -near` test, so it reads
+`onScreen: false` and was never in W4's denominator. What it does move is W1, which filters on
+`frontFacing` alone — the set loses the cells nearest the camera, the tallest there are, so the
+median falls, which is toward RED and therefore the safe direction for a floor. The real cost is
+blindness rather than bias: **the payload carries no `cardCount`**, so a run measuring 480 of a
+world's 500 cards is indistinguishable from one measuring all 500. Until R1 publishes that one
+field, `cellCardinality()` takes the count from the dataset — the same number §2.4 publishes — and
+the gate refuses a frame that dropped anything.
+
+**Two shapes the served payload settles that this document left open.** `bandShares` has exactly 13
+entries and sums to **1, or to 0 on an empty plane** — the reader accepts those two and nothing
+between them, because a single `≈ 1` check rejects the degenerate plane and a plain `≤ 1` accepts a
+payload that silently dropped a band. And `pool.layers` of 0 is a measurement, not a setup failure.
+
 ## 2. The control seams — five owned by R1, plus one readback seam owed by R3
 
 Straight from §3.1 and §1.6; restated only as what the gate asserts of each. `?probe=` is one of
@@ -148,6 +203,31 @@ them and not a separate kind of thing: it is renderer surface the gate reads and
 | `?bands=shuffle`        | R1    | **One global permutation of the plane's cards across the plane's cells.** The grid, the row latitudes, the band boundaries and each cell's reported `band` are all untouched; only which card sits in a cell moves. Three other readings all leave the criterion **green** — see below.                                                                                                                                |
 | `?artThreshold=fixed24` | R1    | A constant 24 CSS px threshold: no histogram, no hysteresis, pool allowed to exhaust. `pool.effectiveThresholdPx` must read exactly 24 so the gate can prove the seam took effect rather than assuming it.                                                                                                                                                                                                             |
 | `?layers=N`             | R1    | Pins the pool size alone, reported back **after** the `max(0, min(N, MAX_ARRAY_TEXTURE_LAYERS − 32))` clamp. **It is not `?quality=N`** — that one already exists (`adaptiveQuality.ts:360`) and moves five quantities at once (`pixelRatioCap`, `bloomScale`, `bloomLevels`, `thumbnailCapacity`, `glow`). Routed through the tier, the expected-GREEN `?layers=128` row would also be measuring dpr, bloom and glow. |
+
+**The read-backs are not equally strong, and the gate records which kind each row got.** `seams` on
+the payload is R1's adoption of this leg's finding — a seam that silently fails to parse its own
+query parameter runs the *unmodified* policy, its criterion passes, and the matrix records a
+*passing control*. But `seams` is a read of the URL: it witnesses that the parameter **parsed**, not
+that the policy **engaged**. Two of the four have a second, stronger witness in the payload:
+
+| Seam                    | Witness                                     | Strength                            |
+| ----------------------- | ------------------------------------------- | ----------------------------------- |
+| `?artThreshold=fixed24` | `pool.effectiveThresholdPx === 24`          | **policy** — the renderer ran it    |
+| `?layers=N`             | `pool.layers` moved off the baseline run's  | **policy**, given a baseline run    |
+| `?swatch=mean`          | `seams.swatchMean`                          | echo — the parameter parsed         |
+| `?bands=shuffle`        | `seams.bandsShuffle`                        | echo                                |
+
+An echo separates "the parameter did not parse" from the other two failures, and it cannot separate
+"the policy did not engage" from "the criterion is insensitive to it". **Nothing in the shipped
+matrix rests on an echo alone**: both echo-only seams carry expected-RED rows, where the row going
+red is itself evidence that the policy engaged. That argument is a property of *today's matrix*, not
+of the seam, and it expires the moment a row is added — so `seamEvidence()` reports the strength per
+row rather than a bare boolean, and the runbook prints it.
+
+The `?layers=N` witness is conditional and the gate says so: without a no-seam baseline probe from
+the same page there is no number for `pool.layers` to have moved *off*, and the row is downgraded to
+an echo. The `?artThreshold=fixed24` witness holds in the set direction only — an unseamed run's
+quantile may land on 24 px by coincidence, so `!== 24` is not something the baseline can promise.
 
 ### 2a. One readback seam the gate is missing — `data-plane-slug` on a label node (R3)
 
