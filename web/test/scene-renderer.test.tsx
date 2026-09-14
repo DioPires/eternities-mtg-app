@@ -285,20 +285,43 @@ describe('SceneRenderer frame stats', () => {
   let gl: FakeGl
   let observer: ReturnType<typeof installResizeObserver>
 
+  /**
+   * Every renderer this block mounts, stopped in `afterEach`.
+   *
+   * `mount()` calls `loop.start()`, which books a real `requestAnimationFrame` that no test body
+   * cancels — and a pending rAF firing *after* its test has finished still runs the steps that
+   * test subscribed. The throwing step below therefore escaped as an unhandled `Error: boom`,
+   * outside any test, and failed the whole run while all 650 cases were still reported green.
+   *
+   * It only reproduced where the suite runs slowly enough for jsdom to reach the callback: red on
+   * CI at ~15 s, green in three consecutive local runs at ~1.7 s. That asymmetry is the reason it
+   * survived both the implementer's and the reviewer's gate runs, and it was red at `25ea346` too
+   * — the ticks here are manual, so stopping the loop costs the assertions nothing.
+   */
+  const mounted: SceneRenderer[] = []
+
+  /** A mounted renderer on the fake GL, registered for teardown. */
+  const mountRenderer = (): SceneRenderer => {
+    const renderer = new SceneRenderer({
+      createRenderer: () => gl as unknown as WebGLRenderer,
+    })
+    mounted.push(renderer)
+    renderer.mount(container(800, 600))
+    return renderer
+  }
+
   beforeEach(() => {
     gl = fakeRenderer()
     observer = installResizeObserver()
   })
   afterEach(() => {
+    for (const renderer of mounted.splice(0)) renderer.unmount()
     observer.restore()
     document.body.innerHTML = ''
   })
 
   it('records the frame interval in milliseconds', () => {
-    const renderer = new SceneRenderer({
-      createRenderer: () => gl as unknown as WebGLRenderer,
-    })
-    renderer.mount(container(800, 600))
+    const renderer = mountRenderer()
 
     renderer.loop.tick(1000)
     renderer.loop.tick(1016)
@@ -307,10 +330,7 @@ describe('SceneRenderer frame stats', () => {
   })
 
   it('still records the tick that threw', () => {
-    const renderer = new SceneRenderer({
-      createRenderer: () => gl as unknown as WebGLRenderer,
-    })
-    renderer.mount(container(800, 600))
+    const renderer = mountRenderer()
     // Ticked once before the throwing step joins, so the 32 ms below is measured across the frame
     // that broke rather than across the pair.
     renderer.loop.tick(1000)
