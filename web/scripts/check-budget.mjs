@@ -4,13 +4,36 @@
  *
  * Measures **encoded transferred size**, not disk size. `.bin` artefacts are not text, and a CDN
  * may or may not compress them; the browser's cost is what the edge actually sends, so this
- * compresses with brotli at the quality Vercel's edge uses and reports that.
+ * compresses the built files with brotli at quality 11 and reports that.
  *
  * Ceilings fail the build. Targets are reported, matching PRD 9.1.2's split between what is a
  * commitment and what is an aspiration. A row within 10% of its target is warned about, so the
  * run before the one that misses is visible rather than reading like any other pass.
  *
  *   node scripts/check-budget.mjs [--dataset small|scale|<hash>] [--dist dist]
+ *
+ * ## Basis of record — settled by DEC-766, do not re-open
+ *
+ * Evidence: DEC-741 comment `6e9487de`. Also recorded in `docs/data-contract.md` §8.2.
+ *
+ * 1. **The blocking gate stays on local brotli q11** — the measure below. It is hermetic: no
+ *    deployment and no credential, so it runs on every PR.
+ *
+ * 2. **The edge does not compress at q11, and that gap is an observation, not a correction.** On
+ *    the search pair this script reads ~669 KB while production serves 724.2 KB on the same
+ *    dataset hash, so local under-reported by 55.2 KB there. That is one reading on one pair. It
+ *    is written down so nobody rediscovers it and concludes the gate is broken — it is
+ *    deliberately **not** baked in as an offset, a fudge factor, or a second threshold. The
+ *    numbers this script prints stay the numbers this script measures.
+ *
+ * 3. **Served bytes are the truth-instrument, and they are production-only.** The owner declined
+ *    a Vercel Protection Bypass for Automation token (DEC-766), so there is no per-PR preview
+ *    measurement and there is not going to be one. Served bytes are re-measured against
+ *    production after merge, whenever a wave touches a budgeted payload.
+ *
+ * 4. **The search pair's overage is deferred on purpose.** 724.2 KB served against the 700 KB
+ *    target is documented and non-blocking. Raise-the-target versus diet-the-payload is ruled
+ *    when a wave next touches the search pair; re-measure served bytes at that point.
  */
 
 import { brotliCompressSync, constants } from 'node:zlib'
