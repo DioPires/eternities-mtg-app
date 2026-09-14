@@ -89,7 +89,10 @@ atmosphere must not depth-reject the tether passing in front of it.
 > with both ends near is the ordinary case — so nothing in the pass list may be written as "the
 > focused world" versus "the rest".
 
-**Population on production.** 87 planes: 57 empty, 1 dust, **29 worlds with cards**. At the home
+**Population on production, as of today's roster** (`worldsWithCards` / `planesWithCards` per §3.1;
+Forgotten Realms makes it 88 planes and 30 worlds, and every count in this paragraph moves by one —
+it is a worked example, not a set of constants). 87 planes: 57 empty, 1 dust, **29 worlds with
+cards**. At the home
 view every world is far below the crossover, so step 2 draws **29 + 57 = 86 instances** and step 4
 draws nothing; with one world fully above the band, step 2 draws 28 worlds + 57 moons — and with
 that world *inside* the band it is 29 + 57 again, because it draws in both passes. Step 2's instance
@@ -346,8 +349,8 @@ gets one; it is what replaces full-scene bloom.
 LOD crossover, scaled by the same `0.126·√N` law. Its colour comes from the world's equirect layer
 (§1.5) and, below 6 px of on-screen radius, from `planes.json`'s own `palette` — a real
 WUBRG-multi-colourless weight vector, so the colour at system distance is a statistic of the plane's
-cards. At the home view that is all **29** worlds; with one world near enough for its cell sheet it
-is 28.
+cards. At the home view that is all of `worldsWithCards` (§3.1) — **29** on today's roster, 30 once
+Forgotten Realms lands; with one world near enough for its cell sheet it is one fewer.
 
 > Mixed straight, all 29 come out the same grey, because Magic's colour pie is balanced — the same
 > finding that makes the shipped arm-skew law inert (review §4.1). So the mix runs on the
@@ -774,16 +777,58 @@ in §1 rather than being a gate-side patch.
 > built gate-side is a seam that is not in the shipped renderer, and §3.1's whole argument for W4's
 > control is that the control must exercise the *shipped* policy.
 
+> **Normative — `?layers=N` pins the art pool and nothing else; it is not `?quality=N` (DEC-751).**
+> The two are easy to conflate because §1.12 makes the pool a rung of the same ladder, and one of
+> them already exists: W4.1 ships **`?quality=N`** (`web/src/scene/quality/adaptiveQuality.ts:360`)
+> and there is no `?layers=` anywhere on `dec739-platform-layer` — this seam is genuinely new
+> surface R1 builds.
+>
+> They must not be aliased. `?quality=4` selects a whole rung of `QUALITY_TIERS`, which moves
+> **five** quantities at once — `pixelRatioCap` 1.0, `bloomScale` 0.25, `bloomLevels` REDUCED,
+> `thumbnailCapacity` 256 and `glow: 'cheap'` — where `?layers=128` must move the pool alone. The
+> matrix row below is "`?layers=128` — tier 4's pool, **unmodified policy**", and it is one of only
+> two expected-GREEN rows. Routed through the tier it would also be measuring dpr, bloom and glow,
+> and would stop asserting what the paragraph under the matrix says it asserts.
+>
+> **The renderer reports the pool size back clamped**, `max(0, min(requested, MAX_ARRAY_TEXTURE_LAYERS − 32))`
+> (§1.6), and §1.12's assertion is against that reported value rather than against the requested N
+> or the tier constant — on a spec-minimum 256-layer device tiers 0–3 all clamp to 224 and only tier
+> 4 is distinct. So `?layers=N` is a *request*, and the reported figure is the answer.
+>
+> What this note does **not** decide is whether a quality tier may set the pool size as its rung.
+> That touches the ladder's one-quantity-per-rung invariant and is **DEC-753's** ruling, not R1's;
+> R1 owes the seam and the clamped read-back either way.
+
 Five criteria assert. The rest stay owner-judged, because they are about feel and 9.3 never asked for
 an assertion there.
 
+> **Normative — the roster counts are derived from `planes.json` at runtime, never hard-coded
+> (DEC-751).** Two sets, and every count below is one of their sizes:
+>
+> ```
+> worldsWithCards  = planes.filter(p => p.kind !== 'dust' && p.cardCount > 0)   // 29 today
+> planesWithCards  = planes.filter(p => p.cardCount > 0)                        // 30 today
+> ```
+>
+> W1 iterates `worldsWithCards`; **W5's floor is `planesWithCards.length`** — that set is exactly
+> "the worlds plus the belt", which is where W5's 30 comes from. The numbers written in this section
+> are today's production roster (verified against `web/public/data/6d4779695fde33ea/planes.json`:
+> 87 planes = 29 worlds + 1 dust + 57 empty, 23,607 cards on worlds), not constants to compile in.
+>
+> **This is a gate threshold, so hard-coding it fails the gate on correct behaviour.** DEC-710's
+> curation sign-off is already answered and adds Forgotten Realms (`afr`, absent from the roster
+> today) as a **30th world**; it lands in the v3 dataset leg P publishes, which is the dataset this
+> gate runs on. A W5 pinned at 30 goes **RED the moment that data lands**, against a renderer doing
+> exactly what this section asks — and the failure will be read as a renderer regression. Derived,
+> Forgotten Realms joining is a data change and the gate stays honest.
+
 | # | Criterion | Measurement | Floor |
 |---|---|---|---|
-| **W1** | **Cells are resolvable at framing distance.** | At the plane-level settle for each of the **29 worlds**, the median on-screen height of front-facing cells. Not the Blind Eternities: it has cards but no cell sheet (§1.8), so the statistic is undefined there — "every plane with cards" would be 30 and would include it. | **≥ 24 CSS px.** Binds on the largest plane: Dominaria measured 25.3 px at 3× radius. |
+| **W1** | **Cells are resolvable at framing distance.** | At the plane-level settle for each of `worldsWithCards` (**29 today**), the median on-screen height of front-facing cells. Not the Blind Eternities: it has cards but no cell sheet (§1.8), so the statistic is undefined there — `planesWithCards` would be 30 and would include it. | **≥ 24 CSS px.** Binds on the largest plane: Dominaria measured 25.3 px at 3× radius. |
 | **W2** | **The mosaic reads as tiles, not as a wash.** This is T7's replacement. | Sample the captured frame at the centre of every front-facing cell ≥ 6 px tall, convert to CIELAB. Report the median ΔE to a cell's nearest on-screen neighbour, and the interquartile range of L\*. | **median neighbour ΔE ≥ 6** and **IQR(L\*) ≥ 8**. |
 | **W3** | **Latitude reads as colour.** | Group the same samples by band. For every pair of bands adjacent on the sphere where the smaller holds ≥ 5% of the plane's cards, the ΔE between their mean a\*b\*. | **≥ 10** for every such pair. |
 | **W4** | **Art resolves without exhausting.** | At the surface view (2.2× radius), after a 5 s settle: the fraction of on-screen front-facing cells above the effective threshold that are showing art, and evictions per second over the last 2 s. | **≥ 90%** showing art, **≤ 5 evictions/s**. |
-| **W5** | **The home view is not a wall of labels.** | Count rendered plane labels in the DOM at the home view. | **≤ 30** (29 worlds plus the belt; today it is 82). |
+| **W5** | **The home view is not a wall of labels.** | Count rendered plane labels in the DOM at the home view. | **≤ `planesWithCards.length`** — the worlds plus the belt, **30 on today's roster** and 31 once Forgotten Realms lands. Read it from the dataset under test; today the view renders 82. |
 
 **Owner-judged, carried over from 9.3 unchanged:** motion perceptible within 3 s of arriving at any
 level; no aliasing shimmer on slow camera moves (recordings cast at the drawing buffer's own

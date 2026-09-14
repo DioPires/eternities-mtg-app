@@ -12,8 +12,12 @@ Every assertion below is one the spec states in words. The four that were *wrong
 8b731de..b0ff90c draft, and that DEC-749 corrects, are marked D1/D2/D4 and N1.
 """
 
+import json
 import math
 import sys
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[2]
 
 ASPECT = 4 / 3  # §1.3: an `art_crop` letterboxes into 4:3 without being stretched.
 
@@ -111,6 +115,38 @@ check("WebGL2 spec-minimum 256: tiers 0-3 clamp to 224", [pool_size(t, 256) for 
 check("...so only tier 4 stays distinct there", len(set(pool_size(t, 256) for t in TIERS)), 2)
 check("unanswered limit (0) floors at 0, never -32", [pool_size(t, 0) for t in TIERS], [0, 0, 0, 0, 0])
 check("...which the unfloored formula gets wrong", min(TIERS[0], 0 - 32), -32)
+
+print("\n§3.1 the roster counts are derived, not constants (DEC-751)")
+PROD = REPO / "web/public/data/6d4779695fde33ea/planes.json"
+if not PROD.is_file():
+    # Deliberately a failure, not a skip: a check that silently passes when its input moved is
+    # the rubber stamp §3.1's negative-control note exists to forbid.
+    check(f"production planes.json is readable at {PROD}", False, True)
+else:
+    planes = json.loads(PROD.read_text())["planes"]
+    worlds_with_cards = [p for p in planes if p.get("kind") != "dust" and p.get("cardCount", 0) > 0]
+    planes_with_cards = [p for p in planes if p.get("cardCount", 0) > 0]
+    check("87 planes on the production roster", len(planes), 87)
+    check("worldsWithCards — W1 iterates these", len(worlds_with_cards), 29)
+    check("planesWithCards — W5's floor IS this length", len(planes_with_cards), 30)
+    check("...which is the worlds plus the belt", len(planes_with_cards) - len(worlds_with_cards), 1)
+    check("empty planes carry no cards", len([p for p in planes if p.get("cardCount", 0) == 0]), 57)
+    check("cards on worlds (D3)", sum(p["cardCount"] for p in worlds_with_cards), 23607)
+    check("Forgotten Realms is NOT in today's roster", any(p.get("slug") == "afr" for p in planes), False)
+
+    # The point of the derivation: the same code gives a different floor on a different dataset, so
+    # a literal 30 in the gate is a statement about one file rather than about correct behaviour.
+    floors = {}
+    for path in sorted(REPO.glob("web/public/data/*/planes.json")):
+        rows = json.loads(path.read_text())["planes"]
+        floors[path.parent.name] = len([p for p in rows if p.get("cardCount", 0) > 0])
+    print(f"        derived W5 floor per tracked dataset: {floors}")
+    check("...and it is not the same number for every dataset", len(set(floors.values())) > 1, True)
+
+    # Forgotten Realms lands as a 30th world (DEC-710's curation sign-off, already answered).
+    after_fr = len(planes_with_cards) + 1
+    check("once FR lands the derived floor moves to 31", after_fr, 31)
+    check("...so a hard-coded 30 would go RED on correct behaviour", after_fr > 30, True)
 
 print("\n§1.4 the winding (DEC-694 trap 1) — derived, not asserted")
 
