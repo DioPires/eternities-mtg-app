@@ -57,8 +57,10 @@ export function Drawer(): ReactElement | null {
         </span>
       </button>
 
-      {/* React 18 renders `inert` only from a string; `undefined` omits the attribute. */}
-      <div className="drawer-scroll" {...(open ? {} : { inert: '' })}>
+      {/* React 19 knows `inert`: it writes the bare attribute for `true` and omits it for `false`.
+          React 18 did not, which is why this used to spread a string in — passing a boolean there
+          would have rendered `inert="false"`, and HTML makes any value inert, including that. */}
+      <div className="drawer-scroll" inert={!open}>
         {isCard ? (
           detail.card !== null && detail.plane !== null ? (
             <CardPanel card={detail.card} plane={detail.plane} dimmed={dimmed} />

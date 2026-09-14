@@ -151,12 +151,19 @@ export class StarGeometry {
        * `isFloat16BufferAttribute` is set on the `InterleavedBuffer` by hand, and it is the one
        * piece of this file that reaches into three's internals. three picks a vertex attribute's GL
        * type from the array backing its buffer — `WebGLAttributes.createBuffer` maps `Uint16Array`
-       * to `UNSIGNED_SHORT` *unless* that flag is set, in which case `HALF_FLOAT`
-       * (`three.module.js:13680-13690`) — and it resolves an `InterleavedBufferAttribute` to its
-       * `.data` before asking. There is no `Float16InterleavedBuffer` to use instead; the flag is
-       * the only way to get a padded half-float stride out of three r170. `test/starfield.test.ts`
-       * asserts the flag is set, so an upgrade that renames it fails a test rather than silently
-       * uploading every position as an unsigned short.
+       * to `UNSIGNED_SHORT` *unless* that flag is set, in which case `HALF_FLOAT` — and it resolves
+       * an `InterleavedBufferAttribute` to its `.data` before asking. There is no
+       * `Float16InterleavedBuffer` to use instead; the flag is the only way to get a padded
+       * half-float stride out of three. `test/starfield.test.ts` asserts the flag is set, so an
+       * upgrade that renames it fails a test rather than silently uploading every position as an
+       * unsigned short.
+       *
+       * Re-verified at **0.186.0** by DEC-741 (audit item N4): `createBuffer` still maps
+       * `Uint16Array` to `UNSIGNED_SHORT` unless this flag selects `HALF_FLOAT`, and the
+       * interleaved resolution to `.data` is unchanged. r186 added a branch for a native
+       * `Float16Array` *above* this one, which does not touch the `Uint16Array` path taken here.
+       * The build line numbers this comment used to cite are dropped: they moved between r170 and
+       * r186 while the behaviour did not, so they dated the comment without protecting anything.
        */
       this.positionStride = PACKED_POSITION_HALVES
       const buffer = new InterleavedBuffer(
