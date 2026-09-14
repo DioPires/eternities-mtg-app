@@ -131,15 +131,27 @@ export interface WorldsBudgetReport {
   readonly withinCeiling: boolean
 }
 
+/**
+ * §1.10's ring: the cap's worth of `small` quads, at whatever size that image is.
+ *
+ * **A function of its dimensions rather than an expression inlined below, so the row can be proved
+ * to respond to them.** This row is the one row of the budget that takes no varying input — the
+ * other four move with `artPoolLayers`, `worldsWithCards`, `cells` and `doubleFaced`, so a constant
+ * transcribed into any of those shows up the moment a test varies one. Here `PLANET_CAP *
+ * textureBytes(146, 204)` and a typed `8,577,792` are the same number, and no assertion comparing
+ * the row against that product can tell them apart: it was tried, and the mutant that replaced the
+ * row with its literal value survived. Giving the row an input is what makes the difference
+ * observable.
+ */
+export function printingRingBytesFor(imageWidth: number, imageHeight: number): number {
+  return PLANET_CAP * textureBytes(imageWidth, imageHeight)
+}
+
 export function worldsBudgetReport(input: WorldsBudgetInput): WorldsBudgetReport {
   const artPoolBytes = input.artPoolLayers * textureBytes(ART_LAYER_WIDTH, ART_LAYER_HEIGHT)
   const equirectBytes = input.worldsWithCards * textureBytes(EQUIRECT_WIDTH, EQUIRECT_HEIGHT)
   const cellBytes = input.cells * CELL_INSTANCE_BYTES
-  // §1.10's flat quads: 72 `small` images (146 × 204) at their own size, 8.18 MiB. This row was
-  // 13.15 MiB while the ring still uploaded `art_crop` at PRD 8.5.10's 256 px, and it moved on its
-  // own when the conversion landed — it is computed from the constant the renderer allocates with,
-  // which is the rule stated above this function.
-  const printingRingBytes = PLANET_CAP * textureBytes(PRINTING_IMAGE_WIDTH, PRINTING_IMAGE_HEIGHT)
+  const printingRingBytes = printingRingBytesFor(PRINTING_IMAGE_WIDTH, PRINTING_IMAGE_HEIGHT)
   const focusedCardBytes =
     textureBytes(CARD_IMAGE_WIDTH, CARD_IMAGE_HEIGHT) * (input.doubleFaced ? 2 : 1)
   const totalBytes =

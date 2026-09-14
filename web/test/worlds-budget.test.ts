@@ -22,6 +22,7 @@ import { PRINTING_IMAGE_HEIGHT, PRINTING_IMAGE_WIDTH } from '../src/scene/cards/
 import {
   GPU_TARGET_BYTES,
   MEGABYTE,
+  printingRingBytesFor,
   worldsBudgetReport,
   worstCaseReport,
 } from '../src/scene/cards/gpuMemory'
@@ -125,19 +126,47 @@ describe('§1.12 the worlds budget', () => {
   it('takes the ring row from the image the ring actually uploads', () => {
     /*
      * The row is 8.18 MiB either because it is computed from the quad's texture size or because
-     * someone typed 8,577,792 — and those two are indistinguishable from the number alone. So
-     * assert the *provenance*: the row is exactly the cap times the bytes of the image
-     * `rebuildPlanets` requests, both read from the modules that own them.
+     * someone typed 8,577,792, and **the number alone cannot tell those apart**. The first version
+     * of this row asserted `printingRingBytes === PLANET_CAP * W * H * 4` and called that
+     * provenance; the mutant that replaced the row's body with its own literal value survived it,
+     * because both sides of that equation are the same constant.
      *
-     * This is the row's only defence. The other four rows are guarded by inputs that vary
-     * (`artPoolLayers`, `worldsWithCards`, `cells`, `doubleFaced`), so a transcribed constant shows
-     * up there the moment a test moves one. The ring row takes no input at all.
+     * So the row goes through `printingRingBytesFor`, and what is asserted is that the function
+     * **responds to its dimensions** — with a non-binding control row, since a function that
+     * returned a constant would satisfy any single call of it.
      */
     expect(v3().printingRingBytes).toBe(
-      PLANET_CAP * PRINTING_IMAGE_WIDTH * PRINTING_IMAGE_HEIGHT * 4,
+      printingRingBytesFor(PRINTING_IMAGE_WIDTH, PRINTING_IMAGE_HEIGHT),
     )
+    // Doubling both sides is 4x the texels. A row with a number typed into it does not move.
+    expect(printingRingBytesFor(PRINTING_IMAGE_WIDTH * 2, PRINTING_IMAGE_HEIGHT * 2)).toBe(
+      v3().printingRingBytes * 4,
+    )
+    // And the cap is in it: one 1x1 image per printing is 4 bytes each.
+    expect(printingRingBytesFor(1, 1)).toBe(PLANET_CAP * 4)
     expect(PRINTING_IMAGE_WIDTH).toBe(146)
     expect(PRINTING_IMAGE_HEIGHT).toBe(204)
+  })
+
+  it('computes the ring row rather than carrying its value, which only the source can show', () => {
+    /*
+     * The residual exposure the row above cannot reach, closed lexically and knowingly.
+     *
+     * The rows above kill a helper that returns a constant, a helper that drops the cap, and a row
+     * fed the wrong dimensions. What none of them can kill is the **call site** being replaced by
+     * `8577792` while the helper stays correct: the report's row and the helper's return are then
+     * the same number for the one set of dimensions that ships, and no value comparison separates
+     * them. Measured, not assumed — that mutant survived the whole behavioural set.
+     *
+     * So this reads the source. **It is a lexical guard and its limits are the usual ones**: it
+     * sees a renamed call, a re-spelled one or a computation moved inline as a failure, and it
+     * cannot see a wrong value flowing *into* a correctly-spelled call — which is what the
+     * dimension rows above are for. The two together are what make the row falsifiable.
+     */
+    const source = readFileSync(resolve(__dirname, '../src/scene/cards/gpuMemory.ts'), 'utf8')
+    expect(source).toContain(
+      'const printingRingBytes = printingRingBytesFor(PRINTING_IMAGE_WIDTH, PRINTING_IMAGE_HEIGHT)',
+    )
   })
 
   it('got cheaper for the conversion, which is the saving §1.12 records', () => {
