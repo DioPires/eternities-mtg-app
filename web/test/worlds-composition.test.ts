@@ -177,6 +177,18 @@ function frameLookingAway(world: World, radii: number): WorldFrame {
   }
 }
 
+/**
+ * A pool capacity the renderer actually runs at.
+ *
+ * §1.6's clamp is `max(0, min(tierLayers, maxLayers - 32))`, so on a device at WebGL 2's *spec
+ * minimum* `MAX_ARRAY_TEXTURE_LAYERS` of 256 every one of tiers 0-3 lands on 224, and tier 4 — the
+ * smallest rung — is 128. **64 is below every shipped configuration**, and that matters here rather
+ * than being a detail of the fixture: the adaptive threshold is a quantile taken *relative to
+ * capacity*, so an undersized pool raises it, and a raised threshold is what makes §1.6's visibility
+ * terms untestable. See the exclusion row below, which measures the whole curve.
+ */
+const SHIPPED_POOL_LAYERS = 224
+
 function surfaceFor(
   world: World,
   options: { seams?: WorldsSeams; pool?: ArtPool; threshold?: AdaptiveThreshold } = {},
@@ -333,41 +345,90 @@ describe('§1.6 demand, admission and the threshold', () => {
     expect(report.wanting).toBeLessThan(world.cardCount / 2)
   })
 
-  it('counts exactly the visible cells over the floor, on a frame where the exclusion binds', () => {
-    // The row above is a range check and two mutants walked through it: offering every cell to the
-    // histogram, and dropping the visibility terms from the admission rule, both stayed green
-    // because **no hidden cell ever cleared the threshold at those poses**. A bound that never
-    // binds tests nothing. This row pins the threshold at 24 with `?artThreshold=fixed24` — the
-    // adaptive quantile otherwise rises until only the most face-on cells survive, which is what
-    // made the distinguishing case unreachable — and asserts the exact counts on both sides.
-    const world = bySlug('alara')
-    const surface = surfaceFor(world, {
+  /**
+   * The two configurations §1.6's visibility terms have to hold under.
+   *
+   * The row above is a range check and two mutants walked through it — offering every cell to the
+   * histogram, and dropping the visibility terms from the admission rule — because **no hidden cell
+   * ever cleared the threshold**, so both sides of the exclusion were empty and the assertions were
+   * vacuous. The first entry here is the one that matters: it runs the **shipped** policy with no
+   * control seam engaged, so §1.6's terms are pinned by the default configuration rather than by a
+   * debug flag. The second keeps the seam covered.
+   */
+  const EXCLUSION_CASES = [
+    {
+      name: 'the shipped adaptive quantile, no seam engaged',
+      seams: NO_SEAMS,
+      adaptive: true,
+    },
+    {
+      name: '?artThreshold=fixed24',
       seams: { ...NO_SEAMS, artThresholdFixed24: true },
-      threshold: new AdaptiveThreshold(false),
+      adaptive: false,
+    },
+  ] as const
+
+  for (const useCase of EXCLUSION_CASES) {
+    it(`counts exactly the visible cells over the floor, under ${useCase.name}`, () => {
+      const world = bySlug('alara')
+      const surface = surfaceFor(world, {
+        seams: useCase.seams,
+        pool: new ArtPool(SHIPPED_POOL_LAYERS),
+        threshold: new AdaptiveThreshold(useCase.adaptive),
+      })
+      const frame = frameAtRadii(world, 2.2)
+      surface.update(frame)
+      const probe = buildWorldsProbe(surface.probeSource(frame))
+      expect(probe.cells.length, 'no cell may be missing from the payload at this pose').toBe(
+        world.cardCount,
+      )
+
+      const overFloor = probe.cells.filter((cell) => cell.height >= BASE_THRESHOLD_PX)
+      const visible = overFloor.filter((cell) => cell.frontFacing && cell.onScreen)
+      const hidden = overFloor.filter((cell) => !cell.frontFacing || !cell.onScreen)
+
+      // The bound must bind, or the two assertions after it are vacuous again.
+      expect(hidden.length, 'no hidden cell clears the floor: the exclusion is untestable here')
+        .toBeGreaterThan(0)
+      expect(visible.length, 'and neither side may be empty').toBeGreaterThan(0)
+
+      expect(surface.threshold.wanting, 'demand is the visible cells alone').toBe(visible.length)
+      for (const cell of hidden) {
+        expect(surface.wasAdmitted(cell.cell), `hidden cell ${cell.cell} must not ask`).toBe(false)
+      }
+      for (const cell of visible) {
+        expect(surface.wasAdmitted(cell.cell), `visible cell ${cell.cell} must ask`).toBe(true)
+      }
     })
-    const frame = frameAtRadii(world, 2.2)
-    surface.update(frame)
-    const probe = buildWorldsProbe(surface.probeSource(frame))
-    expect(probe.cells.length, 'no cell may be missing from the payload at this pose').toBe(
-      world.cardCount,
-    )
+  }
 
-    const overFloor = probe.cells.filter((cell) => cell.height >= BASE_THRESHOLD_PX)
-    const visible = overFloor.filter((cell) => cell.frontFacing && cell.onScreen)
-    const hidden = overFloor.filter((cell) => !cell.frontFacing || !cell.onScreen)
-
-    // The bound must bind, or the two assertions after it are vacuous again.
-    expect(hidden.length, 'no hidden cell clears the floor: the exclusion is untestable here')
-      .toBeGreaterThan(0)
-    expect(visible.length, 'and neither side may be empty').toBeGreaterThan(0)
-
-    expect(surface.threshold.wanting, 'demand is the visible cells alone').toBe(visible.length)
-    for (const cell of hidden) {
-      expect(surface.wasAdmitted(cell.cell), `hidden cell ${cell.cell} must not ask`).toBe(false)
+  it('makes the exclusion reachable at every capacity the renderer ships, and says where it is not', () => {
+    // Why the row above can drop the seam, and the guard against anyone restoring the 64-layer pool
+    // that made it vacuous. The subject is the *harness knob*, not the policy: the quantile is taken
+    // relative to capacity, so an undersized pool raises the threshold past the point where any
+    // hidden cell can clear it. A back-facing cell is at most ~0.82x as tall as the world's tallest
+    // front-facing one at this pose, so the exclusion binds exactly while the threshold sits below
+    // that — which it does, on the whole roster, at any capacity the renderer actually uses.
+    const reach = (capacity: number) => {
+      let worlds = 0
+      for (const world of WORLDS) {
+        const surface = surfaceFor(world, { pool: new ArtPool(capacity) })
+        const frame = frameAtRadii(world, 2.2)
+        surface.update(frame)
+        const probe = buildWorldsProbe(surface.probeSource(frame))
+        if (probe.cells.some((cell) => cell.wantsArt && !cell.frontFacing)) worlds += 1
+        surface.dispose()
+      }
+      return worlds
     }
-    for (const cell of visible) {
-      expect(surface.wasAdmitted(cell.cell), `visible cell ${cell.cell} must ask`).toBe(true)
-    }
+
+    // Tier 4 is the smallest rung, and 224 is where tiers 0-3 land at WebGL 2's spec minimum.
+    expect(reach(128), 'tier 4, the smallest shipped pool').toBeGreaterThanOrEqual(37)
+    expect(reach(SHIPPED_POOL_LAYERS), 'tiers 0-3 at the spec minimum').toBeGreaterThanOrEqual(42)
+    // The negative control, and the reason this row is not a tautology: below every shipped
+    // capacity the exclusion genuinely does go unreachable on a third of the roster, so "it binds"
+    // above is a measurement of the pool size and not a property of the sweep.
+    expect(reach(16), 'an undersized pool starves the policy of its own subject').toBeLessThan(25)
   })
 
   it('reports exactly 24 px under ?artThreshold=fixed24, which is how the gate proves the seam took', () => {

@@ -627,6 +627,26 @@ fetches (≈ 170 MB) for one camera pose.
 > Starving the resource the policy adapts to makes the criterion GREEN; the control has to starve
 > the **policy**.
 >
+> **Normative — anything measuring this policy must drive the pool at a capacity the renderer ships
+> (DEC-749, answering DEC-752).** The same relative definition that disqualifies a shrunken pool as
+> a *control* disqualifies an undersized pool as a *harness*, and it is the sharper of the two
+> because it is silent. Measured over the 45-world roster at §3.1's 2.2-radii pose, the set
+> `wantsArt && !frontFacing` — the only set that can distinguish demand from visibility — is
+> non-empty on **18/45 worlds at 16 layers, 30/45 at 64, 37/45 at 128, 42/45 at 224 and 45/45 at
+> 1,024**, and at 1,024 it is the *same 12,771 cells* `?artThreshold=fixed24` reaches, because the
+> threshold never leaves the 24 px floor. §1.6's clamp puts tiers 0-3 at **224** on a device at
+> WebGL 2's spec-minimum `MAX_ARRAY_TEXTURE_LAYERS` of 256 and tier 4 — the smallest rung — at
+> **128**, so **any capacity below 128 is below every shipped configuration** and shrinks the
+> testable set without failing anything. A harness at 64 layers leaves both of §1.6's visibility
+> terms unpinned on the default path while every assertion about them still passes.
+>
+> The mechanism is not a property of any one world, and in particular it is **not** "the worlds whose
+> threshold rises highest go empty": dominaria has the *lowest* risen threshold on the roster (32.50
+> px) and goes empty, while bloomburrow at 35.06 px does not. A back-facing cell projects at most
+> ~0.82x the height of the world's tallest front-facing cell at this pose — near-constant across the
+> roster — so the exclusion binds exactly while the threshold sits below that fraction, and the
+> threshold is set by **demand against capacity**, nothing else.
+>
 > **Normative — the seam reports itself engaged (DEC-752).** Under `?artThreshold=fixed24` the
 > probe's `effectiveThresholdPx` reads **exactly 24**, and the gate asserts that before it reads
 > W4's criterion. Under the quantile it reads the bucket edge the histogram chose, which is
@@ -1489,6 +1509,13 @@ policy makes it red.** Worse, 128 layers is **tier 4 of §1.12's ladder**, a shi
 row that went red there would be condemning the exact low-end device the ladder exists to protect.
 So `?layers=128` stays in the matrix — as an **expected-GREEN** row asserting that tier 4 still
 passes W4.
+
+The same relative definition has a second consequence, this one for the gate's own *readings* rather
+than its rows, and §1.6 states it normatively: **how much of W4's subject is even reachable is a
+function of the pool capacity the measurement runs at.** The set that separates demand from
+visibility, `wantsArt && !frontFacing`, is non-empty on 30 of 45 worlds at 64 layers and on 45 of 45
+at 1,024 — and 64 layers is below tier 4. A number taken at a capacity the renderer never ships is
+a reading of the harness. Report `pool.layers` alongside any such count.
 
 The two green rows are the ones that matter most and the ones most often left out: in a matrix where
 everything is red, a broken baseline scores identically to a perfect guard. **Only the rows expected
