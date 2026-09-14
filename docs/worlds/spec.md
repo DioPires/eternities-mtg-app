@@ -2172,8 +2172,11 @@ no equirect rung; production's home view has 29 worlds (45 on v3) and no cell sh
 The prototype's 57 moons and 4,980 belt points are likewise the roster it was built on: v3 has 42
 moons, and the belt's population moves with the curation refresh (DEC-745).
 
-The `drawn / wanted` column is the case for §1.6's adaptive threshold, and the two 900+ eviction rows
-are the case for criterion W4.
+The `drawn / wanted` column is the case for §1.6's adaptive threshold, and `tether-surface`'s 925
+evictions — the one row above 900, the next being `rabiah-near` at 515 — are the case for criterion
+W4. Note that this column is a **cumulative** counter, not a rate: W4's second half is specified as
+evictions per second over a 2 s window (§3.1), which is a measurement the gate takes and not one
+this table can be read off.
 
 Frames: branch `dec694-worlds-prototype` at `8c5fa25`, tag `worlds-prototype-dec694`, under
 `review/dec694-worlds/`. They are not copied onto `main`: review §6.6 already counts 31 MB of review
