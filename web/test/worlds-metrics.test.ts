@@ -30,9 +30,13 @@ import {
   evictionRate,
   homeLabelCeiling,
   iqr,
+  isLabelVisible,
   median,
   quantile,
   srgbToLab,
+  LABEL_VISIBLE_MIN_OPACITY,
+  type Criterion,
+  type Measure,
   type CellSample,
   type Rgb,
 } from '../scripts/lib/worlds-metrics.mjs'
@@ -582,6 +586,30 @@ describe('W4 — art resolves without exhausting', () => {
 describe('W5 — the home view is not a wall of labels', () => {
   const ceiling = homeLabelCeiling(ROSTER_V3)
 
+  /** 45 world slugs, standing in for the v3 roster's `worldsWithCards`. */
+  const WORLDS = Array.from({ length: ROSTER_V3.worlds }, (_, i) => `world-${i + 1}`)
+
+  /** Every world labelled, which is what the ceiling half alone can never confirm. */
+  const allCovered = (coverageFloor = 0.9) => ({
+    worldsWithCards: WORLDS,
+    labelledWorlds: WORLDS,
+    coverageFloor,
+  })
+
+  /**
+   * DEC-751's measurement of the shipped solver under §1.3's radius law: 39 of 45 worlds labelled,
+   * the six losses being collision losses at mid card counts (`bloomburrow` 299, `capenna` 352,
+   * `thunder-junction` 326) rather than the small worlds anyone would predict.
+   */
+  const dec751 = (coverageFloor = 0.9) => ({
+    worldsWithCards: WORLDS,
+    labelledWorlds: WORLDS.slice(0, 39),
+    coverageFloor,
+  })
+
+  const measureOf = (c: Criterion, key: string): Measure =>
+    c.measures.find((m) => m.key === key)!
+
   it('derives its ceiling from the roster rather than carrying a number', () => {
     // §3.1 published "≤ 30 (29 worlds plus the belt)". DEC-745 / PR #46 took the v3 dataset to 45
     // worlds and 1 belt, so the same derivation gives 46. Held at 30, W5 would be unsatisfiable by
@@ -591,23 +619,100 @@ describe('W5 — the home view is not a wall of labels', () => {
   })
 
   it('passes at one label per world plus the belt', () => {
-    expect(evaluateW5(ceiling, ROSTER_V3).pass).toBe(true)
+    expect(evaluateW5(ceiling, ROSTER_V3, allCovered()).pass).toBe(true)
   })
 
   it('goes RED on its control — labels forced on for the empty planes', () => {
     // Every plane labelled: 45 worlds, the belt, and the 42 that become unlabelled moons (§1.8).
-    expect(evaluateW5(ROSTER_V3.planes, ROSTER_V3).pass).toBe(false)
+    expect(evaluateW5(ROSTER_V3.planes, ROSTER_V3, allCovered()).pass).toBe(false)
   })
 
   it("goes RED on today's galaxy, which renders 87 on this dataset", () => {
-    expect(evaluateW5(87, ROSTER_V3).pass).toBe(false)
+    expect(evaluateW5(87, ROSTER_V3, allCovered()).pass).toBe(false)
   })
 
   it('would have gone RED on a passing frame under the stale ceiling', () => {
     // The regression the derivation removes: 46 labels is the correct answer and the old bare 30
     // rejects it.
-    expect(evaluateW5(46, { worlds: 29, belts: 1 }).pass).toBe(false)
-    expect(evaluateW5(46, ROSTER_V3).pass).toBe(true)
+    expect(evaluateW5(46, { worlds: 29, belts: 1 }, allCovered()).pass).toBe(false)
+    expect(evaluateW5(46, ROSTER_V3, allCovered()).pass).toBe(true)
+  })
+
+  // ----------------------------------------------------------------------------------------------
+  // The coverage half (DEC-751)
+  // ----------------------------------------------------------------------------------------------
+
+  it('cannot tell a good frame from a lossy one on the ceiling alone', () => {
+    // The defect's shape: a ceiling is satisfied by rendering *fewer* labels and does not care
+    // which. DEC-751's 39 is further under the ceiling than the correct 45, so the ceiling half
+    // reads GREEN *more* comfortably on the worse frame. Without a coverage half, W5 rewards the
+    // loss.
+    const lossy = evaluateW5(39, ROSTER_V3, dec751())
+    const good = evaluateW5(45, ROSTER_V3, allCovered())
+    expect(measureOf(lossy, 'homeLabels').status).toBe('pass')
+    expect(measureOf(good, 'homeLabels').status).toBe('pass')
+    // ...and only the coverage half separates them.
+    expect(measureOf(lossy, 'worldLabelCoverage').status).toBe('fail')
+    expect(measureOf(good, 'worldLabelCoverage').status).toBe('pass')
+  })
+
+  it("names the worlds that lost their label, rather than only counting them", () => {
+    const c = evaluateW5(39, ROSTER_V3, dec751())
+    expect(c.missingWorlds).toEqual(WORLDS.slice(39))
+    expect(c.coveredWorlds).toBe(39)
+    expect(c.wantedWorlds).toBe(45)
+  })
+
+  it("holds DEC-751's own arithmetic: 39/45 is under the 0.9 they proposed", () => {
+    // Pinned because it is the open ruling, not a passing detail. 39/45 = 0.8667, so adopting 0.9
+    // as suggested scores the *compliant* renderer RED and takes the matrix's expected-GREEN row
+    // with it. Either the floor drops or R3 fixes placement first — the CEO's call, and this test
+    // fails loudly if the floor is quietly set to 0.9 while the renderer still lands at 39.
+    expect(39 / 45).toBeCloseTo(0.8667, 4)
+    expect(evaluateW5(39, ROSTER_V3, dec751(0.9)).pass).toBe(false)
+    // The same frame clears a floor set where the shipped solver actually lands.
+    expect(evaluateW5(39, ROSTER_V3, dec751(0.86)).pass).toBe(true)
+  })
+
+  it('does not let labelled moons buy coverage of a world', () => {
+    // Coverage is the intersection with `worldsWithCards`. A renderer that labels 45 things, six of
+    // them moons, has not covered 45 worlds.
+    const c = evaluateW5(45, ROSTER_V3, {
+      worldsWithCards: WORLDS,
+      labelledWorlds: [...WORLDS.slice(0, 39), 'moon-a', 'moon-b', 'moon-c', 'moon-d', 'moon-e', 'moon-f'],
+      coverageFloor: 0.9,
+    })
+    expect(measureOf(c, 'worldLabelCoverage').value).toBeCloseTo(39 / 45, 6)
+    expect(c.missingWorlds).toHaveLength(6)
+  })
+
+  it('takes its floor from the caller, with no default to inherit', () => {
+    // The floor is a product ruling about how many worlds may be unreachable at home. The same
+    // frame passes or fails on it, so it cannot live in this module as a guess.
+    expect(evaluateW5(39, ROSTER_V3, dec751(0.85)).pass).toBe(true)
+    expect(evaluateW5(39, ROSTER_V3, dec751(0.95)).pass).toBe(false)
+  })
+})
+
+describe('the W5 visibility predicate', () => {
+  it('reads opacity, because the node count is a constant', () => {
+    // `labels/layout.ts` places every candidate and signals the drop with opacity alone, so
+    // `querySelectorAll('.label').length` is 87 on v3 for *every* renderer — a criterion that cannot
+    // vary with its subject. A faded-out label is not on screen.
+    expect(isLabelVisible({ opacity: 0 })).toBe(false)
+    expect(isLabelVisible({ opacity: 1 })).toBe(true)
+  })
+
+  it('counts a label dimmed by occlusion, which is visible and readable', () => {
+    // PRD 5.3.11 dims a plane behind a nearer plane to 40%. Thresholding anywhere at or above 0.4
+    // would silently drop those from W5 and flatter the ceiling half.
+    expect(LABEL_VISIBLE_MIN_OPACITY).toBeLessThan(0.4)
+    expect(isLabelVisible({ opacity: 0.4 })).toBe(true)
+  })
+
+  it('sits above zero rather than at it', () => {
+    expect(LABEL_VISIBLE_MIN_OPACITY).toBeGreaterThan(0)
+    expect(isLabelVisible({ opacity: LABEL_VISIBLE_MIN_OPACITY })).toBe(false)
   })
 })
 
@@ -657,29 +762,64 @@ describe('the negative-control matrix', () => {
       'artFraction',
       'evictionsPerSecond',
       'homeLabels',
+      'worldLabelCoverage',
     ])
     for (const row of MATRIX) {
       if ('measure' in row) expect(EMITTED.has(row.measure)).toBe(true)
     }
   })
 
+  it("records that W5's coverage half has no control row of its own", () => {
+    // Not a passing detail — a declared gap. Every other conjunction in the matrix contributes one
+    // row per half (W2, W4) precisely so a half cannot be scored green by its partner. W5's
+    // coverage half, added on DEC-751's measurement, has no seam that moves it: the one W5 control
+    // (`labels forced on for empty planes`) leaves world coverage at 39 either way — it adds moon
+    // labels, it does not take world labels away — so it tests the ceiling and nothing else.
+    //
+    // This fails the moment a coverage row is added, which is the point: the gap closes by deleting
+    // this test, not by forgetting it. Routed to the CEO with the floor ruling.
+    const targeted: readonly string[] = MATRIX.flatMap((r) => ('measure' in r ? [r.measure] : []))
+    expect(targeted).not.toContain('worldLabelCoverage')
+    expect(targeted.filter((k) => k === 'homeLabels')).toHaveLength(1)
+  })
+
+  /** Full world coverage, so these rows turn on the ceiling half alone. */
+  const COVERED = {
+    worldsWithCards: Array.from({ length: ROSTER_V3.worlds }, (_, i) => `world-${i + 1}`),
+    labelledWorlds: Array.from({ length: ROSTER_V3.worlds }, (_, i) => `world-${i + 1}`),
+    coverageFloor: 0.9,
+  }
+
   it('scores a row against the measure it names', () => {
-    const red = [evaluateW5(87, ROSTER_V3)]
+    const red = [evaluateW5(87, ROSTER_V3, COVERED)]
     expect(checkControlRow(red, { criterion: 'W5', measure: 'homeLabels', expect: 'RED' }).ok).toBe(true)
     expect(checkControlRow(red, { criterion: 'W5', measure: 'homeLabels', expect: 'GREEN' }).ok).toBe(false)
 
-    const green = [evaluateW5(homeLabelCeiling(ROSTER_V3), ROSTER_V3)]
+    const green = [evaluateW5(homeLabelCeiling(ROSTER_V3), ROSTER_V3, COVERED)]
     expect(checkControlRow(green, { criterion: 'W5', measure: 'homeLabels', expect: 'GREEN' }).ok).toBe(true)
+  })
+
+  it("scores W5's halves apart, so the ceiling cannot carry the coverage row", () => {
+    // The conjunction guard, at the level the matrix consumes it. DEC-751's frame passes the
+    // ceiling and fails coverage; a row asserted at criterion level would read the whole of W5 as
+    // RED and never say which half, which is how `?swatch=mean` came to look like a working control
+    // for both halves of W2.
+    const lossy = [
+      evaluateW5(39, ROSTER_V3, { ...COVERED, labelledWorlds: COVERED.labelledWorlds.slice(0, 39) }),
+    ]
+    expect(checkControlRow(lossy, { criterion: 'W5', measure: 'homeLabels', expect: 'GREEN' }).ok).toBe(true)
+    expect(checkControlRow(lossy, { criterion: 'W5', measure: 'worldLabelCoverage', expect: 'RED' }).ok).toBe(true)
+    expect(checkControlRow(lossy, { criterion: 'W5', expect: 'GREEN' }).ok).toBe(false)
   })
 
   it('fails loudly rather than passing when a criterion or measure is missing', () => {
     // A control row that silently matched nothing would be the `verify-browser --dataset all`
     // failure again: a matrix printing seven greens while running none of them.
-    const absent = checkControlRow([evaluateW5(46, ROSTER_V3)], { criterion: 'W4', expect: 'GREEN' })
+    const absent = checkControlRow([evaluateW5(46, ROSTER_V3, COVERED)], { criterion: 'W4', expect: 'GREEN' })
     expect(absent.ok).toBe(false)
     expect(absent.detail).toContain('was not run')
 
-    const mistyped = checkControlRow([evaluateW5(46, ROSTER_V3)], {
+    const mistyped = checkControlRow([evaluateW5(46, ROSTER_V3, COVERED)], {
       criterion: 'W5',
       measure: 'labelCount',
       expect: 'GREEN',

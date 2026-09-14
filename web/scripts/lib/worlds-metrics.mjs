@@ -122,6 +122,33 @@ export const W2_MIN_SAMPLES = 4
 /** W3 only compares a band pair when the smaller band holds at least this share of the plane. */
 export const W3_MIN_BAND_SHARE = 0.05
 
+/**
+ * A label counts toward W5 only above this opacity — **the DOM node count is not the measurement.**
+ *
+ * §3.1 words W5 as "count rendered plane labels in the DOM", and read literally that is
+ * `querySelectorAll('.label').length`, which is **87 on v3 no matter what the solver decides**.
+ * `labels/layout.ts` gives *every* candidate a placement and signals the drop through opacity alone
+ * — its own comment says so: "every candidate still gets a placement, faded or not". A label the
+ * solver gave up on (`opacity = 0` after `MAX_SHIFTS`) is still a node, so the literal reading makes
+ * W5 a constant: it would read 87 against 46 and fail forever, for every renderer, including a
+ * correct one. A criterion that cannot vary with its subject is not measuring it.
+ *
+ * The threshold sits above 0 rather than at it because opacity is a float the solver writes and the
+ * gate reads back through the DOM. It sits well below 0.4 deliberately: PRD 5.3.11 dims a plane
+ * behind a nearer plane to 40%, and a dimmed label *is* on screen and *is* readable, so it counts.
+ * Confirmed by DEC-751 against the shipped solver at `c83be44`.
+ */
+export const LABEL_VISIBLE_MIN_OPACITY = 0.05
+
+/**
+ * The visible-label predicate, exported so the gate and its tests share one definition.
+ *
+ * `label` is `{ opacity }` as read off the rendered node.
+ */
+export function isLabelVisible(label) {
+  return Number(label.opacity) > LABEL_VISIBLE_MIN_OPACITY
+}
+
 /** W4's eviction rate is averaged over this window, in seconds (§3.1). */
 export const W4_EVICTION_WINDOW_S = 2
 
@@ -535,17 +562,62 @@ export function evaluateW4(cells, evictionTimeline) {
  *
  * `roster` is required rather than defaulted: a default would be a bare number wearing a hat, and
  * a bare number is exactly what went stale here.
+ *
+ * ## Why the ceiling alone is not W5
+ *
+ * A ceiling is satisfied by rendering *fewer* labels, and it does not care **which**. DEC-751
+ * measured the shipped solver under §1.3's radius law and got 39 world labels — comfortably under
+ * 46, and six worlds unlabelled: `bloomburrow` (299 cards), `capenna` (352), `thunder-junction`
+ * (326), `gobakhan` (2), `shandalar` (1), `vryn` (2). The losses are collision losses, so they do
+ * not track card count and the ceiling cannot distinguish "46 labels, one per world" from "39
+ * labels, six of them the wrong ones". That is a measure carried by the wrong signal: the ceiling
+ * reads GREEN either way.
+ *
+ * So W5 is a conjunction — a ceiling on how many labels appear and a floor on how many worlds are
+ * *reachable*. The two halves fail in opposite directions, which is exactly why one control cannot
+ * test both; see `checkControlRow`, and note that §3.1's one W5 control row (`labels forced on for
+ * empty planes`) aims at `homeLabels` only. The coverage half is unfalsified until it gets a
+ * control of its own.
+ *
+ * `coverageFloor` is a **required** fraction with no default, for the same reason `roster` is: the
+ * floor is a product ruling about how many worlds may be unreachable at home, and it is not mine to
+ * pick. DEC-751 suggested ≥ 0.9, but 39/45 = 0.867 — their own measurement is two labels under
+ * their own floor, so adopting 0.9 as written scores the *compliant* renderer RED and takes the
+ * matrix's expected-GREEN row with it. Routed to the CEO; until it is ruled, the gate must be
+ * handed a floor explicitly rather than inheriting a guess from this module.
  */
-export function evaluateW5(renderedLabelCount, roster) {
-  return criterion('W5', 'The home view is not a wall of labels', [
-    measure(
-      'homeLabels',
-      `plane labels in the DOM at the home view (${roster.worlds} worlds + ${roster.belts} belt)`,
-      renderedLabelCount,
-      homeLabelCeiling(roster),
-      'max',
-    ),
-  ])
+export function evaluateW5(renderedLabelCount, roster, coverage) {
+  const { worldsWithCards, labelledWorlds, coverageFloor } = coverage
+  const wanted = [...worldsWithCards]
+  const labelled = new Set(labelledWorlds)
+  // A label on a world outside the dataset's own world set is not coverage of anything — count the
+  // intersection, so a renderer cannot buy coverage by labelling moons.
+  const covered = wanted.filter((slug) => labelled.has(slug))
+  const missing = wanted.filter((slug) => !labelled.has(slug))
+
+  return criterion(
+    'W5',
+    'The home view is not a wall of labels',
+    [
+      measure(
+        'homeLabels',
+        `plane labels visible at the home view (${roster.worlds} worlds + ${roster.belts} belt)`,
+        renderedLabelCount,
+        homeLabelCeiling(roster),
+        'max',
+      ),
+      measure(
+        'worldLabelCoverage',
+        `worlds with cards carrying a visible label (${covered.length} of ${wanted.length})`,
+        wanted.length === 0 ? null : covered.length / wanted.length,
+        coverageFloor,
+        'min',
+      ),
+    ],
+    // The gate prints these: "six worlds missing" is a number to argue with, `bloomburrow capenna
+    // thunder-junction` is a defect to fix. DEC-751's finding was only legible because it named them.
+    { missingWorlds: missing, coveredWorlds: covered.length, wantedWorlds: wanted.length },
+  )
 }
 
 /**

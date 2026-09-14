@@ -1861,7 +1861,7 @@ an assertion there.
 | **W2** | **The mosaic reads as tiles, not as a wash.** This is T7's replacement. | Sample the captured frame at the centre of every front-facing cell ≥ 6 px tall, convert to CIELAB. Report the median ΔE to a cell's nearest on-screen neighbour, and the interquartile range of L\* **across the iso-shade subset** — the cells whose reported `shade` lies within ±2.5% of the median shade. | **median neighbour ΔE ≥ 6** and **iso-shade IQR(L\*) ≥ 8**. |
 | **W3** | **Latitude reads as colour.** | Group the same samples by band. For every pair of bands adjacent **in §1.3's 13-band chain** (a chain, not a cycle: the two ice caps are its two ends and are the furthest apart of any pair) where the smaller holds ≥ 5% of the plane's cards, the ΔE between their mean a\*b\*. | **≥ 10** for every such pair. |
 | **W4** | **Art resolves without exhausting.** | At the surface view (2.2× radius), after a 5 s settle: the fraction of on-screen front-facing cells above the effective threshold that are showing art, and evictions per second over the last 2 s. | **≥ 90%** showing art, **≤ 5 evictions/s**. |
-| **W5** | **The home view is not a wall of labels.** | Count rendered plane labels in the DOM at the home view. | **≤ `worldsWithCards.length`** — **29** on the 87-plane roster and **45** on v3 (measured, not predicted — §1.2). Not the Blind Eternities, the same exclusion W1 makes and for the matching reason: `PlaneLabels` drops it before projection (PRD 5.3.4), so it can never carry a label — `planesWithCards` would be 30 / 46 and would leave the ceiling one short of ever binding. Read it from the dataset under test; today the view renders 82. |
+| **W5** | **The home view is not a wall of labels**, and every world is still reachable from it. | Two halves. **Ceiling:** count plane labels **at opacity > 0.05** at the home view — a node count is not a measurement here, see below. **Coverage:** the share of `worldsWithCards` carrying such a label, reported with the missing slugs named. | **Ceiling ≤ `worldsWithCards.length`** — **29** on the 87-plane roster and **45** on v3 (measured, not predicted — §1.2). Not the Blind Eternities, the same exclusion W1 makes and for the matching reason: `PlaneLabels` drops it before projection (PRD 5.3.4), so it can never carry a label — `planesWithCards` would be 30 / 46 and would leave the ceiling one short of ever binding. Read it from the dataset under test, never as a literal; today the view renders 82. **Coverage ≥ a floor this table does not yet set** — see the ruling note below. |
 
 > **Normative — W1's pose is the *plane-level settle*, which §1.3 now makes per-world, and it is
 > **not** W4's 2.2-radii surface view (DEC-818).** The two are one row apart in this table and were
@@ -1891,6 +1891,37 @@ an assertion there.
 > new law gives dominaria 25.56–31.15 and ravnica 26.63–34.52 `[tilted]`, both clear. **Do not
 > compare an offline `HOME_POLAR` figure to a gate artefact without pricing the 2%.**
 
+> **Normative — W5 counts labels by opacity, not by DOM node, and the literal reading is a
+> constant (DEC-751's measurement, DEC-752).** This row used to say "count rendered plane labels in
+> the DOM", which reads as `querySelectorAll('.label').length`. That number is **87 on v3 for every
+> renderer**: `labels/layout.ts` gives *every* candidate a placement and signals the drop through
+> opacity alone — its own comment says "every candidate still gets a placement, faded or not" — so a
+> label the solver gave up on after `MAX_SHIFTS` is still a node. Read literally, W5 would compare 87
+> against 46 and fail forever, including on a correct render. **The predicate is `opacity > 0.05`.**
+> It sits above 0 because the gate reads a float back through the DOM, and well below 0.4 because
+> PRD 5.3.11 dims an occluded plane label to 40% and a dimmed label is still on screen and still
+> readable. Do not "simplify" this to a node count.
+>
+> **Normative — W5 is a conjunction, because a ceiling does not care which labels survive
+> (DEC-751, DEC-752).** A ceiling is satisfied by rendering *fewer* labels. DEC-751 ran the shipped
+> solver (`labels/project.ts` + `layout.ts` at `c83be44`, unmodified) over `dabe2c9a68b4d799` at the
+> home view under §1.3's radius law and measured **39 world labels of 45 — comfortably under the
+> ceiling, with six worlds unlabelled**: `bloomburrow` (299 cards), `capenna` (352),
+> `thunder-junction` (326), `gobakhan` (2), `shandalar` (1), `vryn` (2). The losses are *collision*
+> losses, so they do not track card count and are not predictable from the roster — three of the six
+> are mid-size worlds. The ceiling reads GREEN on that frame and **more** comfortably than on a
+> correct one, so the ceiling alone scores "39 labels, six of them the wrong ones" as better than
+> "45, one per world". Hence the coverage half, which reports the missing slugs by name.
+>
+> **The coverage floor is an open ruling and is deliberately not a number here.** DEC-751 suggested
+> ≥ 90%, but their own measurement is **39/45 = 86.7%** — two labels under that floor, so adopting
+> 0.9 as written scores the compliant renderer RED and takes this section's expected-GREEN row down
+> with it, which is W5's own stale-30 failure repeating. Either the floor lands where the shipped
+> solver actually reaches, or R3 (DEC-751) fixes placement so 0.9 is reachable *before* the gate
+> adopts it; the ordering is the CEO's call. `evaluateW5` therefore takes `coverageFloor` as a
+> **required argument with no default** — the same treatment `roster` gets, and for the same reason:
+> a bare number wearing a hat is exactly what went stale the first time.
+>
 > **Normative — W2's IQR(L\*) half is measured on an iso-shade subset, and the un-subsetted version
 > it replaces could not fail (DEC-749, on DEC-752's finding).** §1.4's shade runs
 > `0.10 + 0.95·s²` with `s = clamp(dot(n, light)·0.5 + 0.5, 0, 1)`, and §1.7 puts the key light
@@ -1970,7 +2001,7 @@ events; the focused card's tilt feels physical; and, new, **the tether reads as 
 | W3 | `minAdjacentBandDeltaE` | `?bands=shuffle` — cards permuted across the plane's cells, grid and reported `band` unchanged | **RED** |
 | W4 | `artFraction` | `?artThreshold=fixed24` — §1.6's seam: the prototype's constant threshold, no quantile | **RED** |
 | W4 | `evictionsPerSecond` | `?artThreshold=fixed24` — same row, second half | **RED** |
-| W5 | `homeLabels` | labels forced on for empty planes | **RED** |
+| W5 | `homeLabels` | labels forced on for empty planes — **expect ~77, which is *above* the unmodified build's count; see the note** | **RED** |
 | W1, W4 | `minMedianCellHeightPx`, `artFraction` | a **one-card world** (`?plane=segovia`) at its own settle — the n = 1 extreme, never rendered in any tracked dataset before v3 | **GREEN** |
 | W4 | both | `?layers=128` — tier 4's pool, unmodified policy | **GREEN** |
 | all | all | the unmodified build on the v3 production dataset | **GREEN** |
@@ -1980,8 +2011,29 @@ events; the focused card's tilt feels physical; and, new, **the tether reads as 
 > one a criterion actually returned, so a typo here surfaces as a failing row with a confusing
 > detail rather than as a silent pass — safe, but only once. The seven keys are
 > `minMedianCellHeightPx`, `medianNeighbourDeltaE`, `lightnessIqr`, `minAdjacentBandDeltaE`,
-> `artFraction`, `evictionsPerSecond`, `homeLabels`. Two rows above named `medianCellHeightPx` and
-> `worstBandPairDeltaE`, which no criterion emits; both are corrected.
+> `artFraction`, `evictionsPerSecond`, `homeLabels`, `worldLabelCoverage`. Two rows above named
+> `medianCellHeightPx` and `worstBandPairDeltaE`, which no criterion emits; both are corrected.
+
+> **On W5's control reading *higher* than the build it is a control for (DEC-751's measurement).**
+> Every other RED row in this table degrades a number downward, so a reviewer reads "control below
+> baseline" as normal. This one goes the other way and it is not a regression. §1.3's worlds are
+> **smaller spheres** than today's galaxy dots, and `layout.ts` anchors a label at
+> `y + radiusPx + halfHeight + 6` — so a smaller radius pulls each label *closer* to the thing it
+> names, fewer boxes collide, and **more** labels survive. DEC-751 measured 72 visible today
+> (40 worlds + 32 moons) against **77 under the worlds law** (39 + 38) at an idealised static home
+> camera; the spec's 82 elsewhere is a different camera, so take the direction and the margin, not
+> the digit. The control still fires — 77 is far above the 46 ceiling — and what it tests is exactly
+> one thing: **moon suppression is the entire distance from RED to PASS (77 → 39)**, not one
+> contributor among several.
+>
+> **Known gap — W5's `worldLabelCoverage` half has no control row.** Every other conjunction here
+> contributes one row per half (W2, W4) precisely so that a half cannot be scored green by its
+> partner. Coverage has no seam that moves it: the `labels forced on for empty planes` control
+> *adds* moon labels, it does not take world labels away, and DEC-751 measured world coverage at 39
+> either way. Per DEC-744 B1 / DEC-746 D5 the control seams are R1's normative renderer surface, so
+> a coverage seam is an R1 request routed through the CEO, not something leg G builds. Until it
+> exists the half is unfalsified, and `worlds-metrics.test.ts` asserts the gap explicitly so it
+> closes by deletion rather than by being forgotten.
 
 > **On the one-card-world row (DEC-752, raised by DEC-751).** It is an expected-**GREEN** row and it
 > is not redundant with the last row: the whole-multiverse capture *averages over* a degenerate

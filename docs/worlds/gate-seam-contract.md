@@ -134,7 +134,7 @@ G C`, thirteen bands over seven classes, and W3 compares bands adjacent *on the 
 class would merge the two ice caps — which sit at opposite poles — into one group and invent an
 adjacency the sphere does not have.
 
-## 2. The control seams — five, all owned by R1
+## 2. The control seams — five owned by R1, plus one readback seam owed by R3
 
 Straight from §3.1 and §1.6; restated only as what the gate asserts of each. `?probe=` is one of
 them and not a separate kind of thing: it is renderer surface the gate reads and does not build.
@@ -148,6 +148,27 @@ them and not a separate kind of thing: it is renderer surface the gate reads and
 | `?bands=shuffle` | R1 | **One global permutation of the plane's cards across the plane's cells.** The grid, the row latitudes, the band boundaries and each cell's reported `band` are all untouched; only which card sits in a cell moves. Three other readings all leave the criterion **green** — see below. |
 | `?artThreshold=fixed24` | R1 | A constant 24 CSS px threshold: no histogram, no hysteresis, pool allowed to exhaust. `pool.effectiveThresholdPx` must read exactly 24 so the gate can prove the seam took effect rather than assuming it. |
 | `?layers=N` | R1 | Pins the pool size alone, reported back **after** the `max(0, min(N, MAX_ARRAY_TEXTURE_LAYERS − 32))` clamp. **It is not `?quality=N`** — that one already exists (`adaptiveQuality.ts:360`) and moves five quantities at once (`pixelRatioCap`, `bloomScale`, `bloomLevels`, `thumbnailCapacity`, `glow`). Routed through the tier, the expected-GREEN `?layers=128` row would also be measuring dpr, bloom and glow. |
+
+### 2a. One readback seam the gate is missing — `data-plane-slug` on a label node (R3)
+
+Not a control seam: nothing about it degrades the renderer. W5's coverage half (§3.1, added on
+DEC-751's measurement) has to answer *which* worlds carry a visible label, and **the DOM cannot say**.
+`PlaneLabels.tsx:293` passes `key={candidate.key}`, and a React `key` is never written to the DOM; the
+node ships `className="label"` and a `<span class="label-name">` holding the plane's **display name**.
+
+Matching display text back to a slug is not a substitute. It inverts a mapping the gate does not own,
+it breaks on any renaming or truncation, and `label-band` nodes share the class — the gate would be
+re-deriving the renderer's own identity from its presentation, which is the kind of second model
+§3.1 exists to avoid.
+
+**The ask: one `data-plane-slug={candidate.slug}` attribute on the label element**, present for
+`tier === 'plane'`. Nothing else changes; it is inert at runtime and `aria-hidden` already covers the
+subtree.
+
+**Owner is R3 (DEC-751), not R1** — `labels/` is R3's surface under §1.10–§1.12, and this is the one
+seam in this document that does not sit behind a query parameter. Routed through the CEO per
+DEC-744 B1, the same way a missing R1 seam would be. Until it lands, `evaluateW5`'s coverage half is
+implemented and unit-tested but has nothing to feed it in a live run.
 
 **What `?bands=shuffle` must not be.** The gate cannot distinguish these from the outside by reading
 W3 alone, because all three go **green**:

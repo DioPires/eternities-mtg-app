@@ -107,6 +107,30 @@ export interface W4Criterion extends Criterion {
   readonly showing: number
 }
 
+export interface W5Criterion extends Criterion {
+  /** The worlds with cards that carry no visible label — named, not just counted. */
+  readonly missingWorlds: readonly string[]
+  readonly coveredWorlds: number
+  readonly wantedWorlds: number
+}
+
+/** A rendered label as the gate reads it back off the DOM. */
+export interface RenderedLabel {
+  readonly opacity: number
+}
+
+export interface W5Coverage {
+  /** Every world with at least one card, by slug — derived from the dataset under test. */
+  readonly worldsWithCards: readonly string[]
+  /** The slugs carrying a label that passes `isLabelVisible`. */
+  readonly labelledWorlds: readonly string[]
+  /**
+   * Required, deliberately undefaulted: this is a product ruling, not a measurement. See
+   * `evaluateW5` — DEC-751's suggested 0.9 fails on DEC-751's own 39/45 = 0.867.
+   */
+  readonly coverageFloor: number
+}
+
 export interface ControlExpectation {
   readonly criterion: string
   /** Omit to assert on the criterion's overall verdict rather than one of its halves. */
@@ -146,6 +170,8 @@ export declare const W2_MIN_CELL_PX: number
 export declare const W2_ISO_SHADE_TOLERANCE: number
 export declare const W2_MIN_SAMPLES: number
 export declare const W3_MIN_BAND_SHARE: number
+export declare const LABEL_VISIBLE_MIN_OPACITY: number
+export declare function isLabelVisible(label: RenderedLabel): boolean
 export declare const W4_EVICTION_WINDOW_S: number
 export declare const BAND_ORDER: readonly string[]
 export declare const BAND_ADJACENCY: ReadonlyArray<readonly [number, number]>
@@ -177,7 +203,11 @@ export declare function evaluateW4(
   cells: readonly ArtCell[],
   evictionTimeline: readonly EvictionSample[],
 ): W4Criterion
-export declare function evaluateW5(renderedLabelCount: number, roster: Roster): Criterion
+export declare function evaluateW5(
+  renderedLabelCount: number,
+  roster: Roster,
+  coverage: W5Coverage,
+): W5Criterion
 
 export declare function checkControlRow(
   criteria: readonly Criterion[],
