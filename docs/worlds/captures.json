@@ -5,6 +5,11 @@
   "hardware": "Apple Silicon Mac, headless Chrome --use-angle=metal. Not a Windows measurement.",
   "tool": "scripts/worlds-capture.mjs",
   "note": "Concept B prototype captures for DEC-694 / review \u00a74.2. dpr is stated per capture; every PNG is at true CSS scale.",
+  "specNotes": [
+    "DEC-744: `system.worlds` = 27 is the PROTOTYPE's count. It drew Dominaria and Rabiah in detail and had no equirect LOD rung at all. Production has 87 planes \u2014 57 empty, 1 dust, 29 worlds with cards \u2014 and at the home view draws all 29 as undetailed instances. Do not carry 27 into the spec; see spec \u00a71.2.",
+    "DEC-744: `tether-surface` (1,024 drawn / 2,759 wanted / 925 evicted, art threshold a CONSTANT 24 CSS px, pool 1,024) is the reference frame for acceptance criterion W4's negative control, spec \u00a73.1 `?artThreshold=fixed24`. 1,024/2,759 = 37% showing art against W4's 90% floor. It is the frame W4 exists to make impossible.",
+    "DEC-744: `layout.rabiah.slots` = 78 for 75 cards is the closed-form grid. Production's relaxed grid (spec \u00a71.3) demands exactly 75, which is why per-row cell counts are shipped as `rowCells` rather than derived (spec \u00a72.1/\u00a72.4)."
+  ],
   "viewport": {
     "width": 1920,
     "height": 1080,

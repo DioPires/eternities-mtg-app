@@ -64,30 +64,45 @@ chain.
 Drawn in this order, every frame:
 
 1. **Backdrop** — the existing three-layer parallax background, unchanged.
-2. **System** — one `InstancedMesh` of icospheres for every plane that is not the focused world and
-   is not dust: 27 undetailed worlds plus 57 dark moons on the production dataset (§1.8).
+2. **System** — one `InstancedMesh` of icospheres, one instance per plane that is *not* drawing a
+   cell sheet this frame (§1.5's LOD ladder decides; dust is excluded, it is step 3). A world
+   instance samples its baked equirect swatch layer through a per-instance `iLayer`; a dark moon
+   carries `iLayer = -1` and the flat moon colour (§1.8).
 3. **Belt** — the Blind Eternities, one `Points` draw, one arc per set (§1.8).
-4. **Worlds, far** — for each world below the LOD crossover, the globe sphere textured with its
-   baked equirect swatch layer (§1.5).
-5. **Worlds, near** — for each world above the crossover: the globe shell, then the cell sheet —
-   one `InstancedBufferGeometry`, one quad, N instances (§1.4).
-6. **Tether** — the ribbon and its two anchor pads (§1.9).
-7. **Printing ring** — at card focus only: flat `small` quads (§1.10).
-8. **Focused card** — the existing card mesh, unchanged.
-9. **Atmosphere** — every visible world's air shell, additive, `depthWrite: false`, `BackSide`,
+4. **Worlds with sheets** — for each world above the LOD crossover: the globe shell, then the cell
+   sheet — one `InstancedBufferGeometry`, one quad, N instances (§1.4).
+5. **Tether** — the ribbon and its two anchor pads (§1.9).
+6. **Printing ring** — at card focus only: flat `small` quads (§1.10).
+7. **Focused card** — the existing card mesh, unchanged.
+8. **Atmosphere** — every visible world's air shell, additive, `depthWrite: false`, `BackSide`,
    drawn after all opaque geometry (§1.7).
-10. **Composite** — tonemap + vignette.
+9. **Composite** — tonemap + vignette.
 
-Steps 2–5 are opaque and depth-tested. Steps 6, 7, 9 are transparent; 9 is last because an
+Steps 2–4 are opaque and depth-tested. Steps 5, 6, 8 are transparent; 8 is last because an
 atmosphere must not depth-reject the tether passing in front of it.
+
+> **Normative — there is one partition, and it is §1.5's crossover, not "the focused world".** A
+> world appears in step 2 *or* step 4, except inside the crossover band where it appears in both and
+> the two cross-fade (§1.5). More than one world can be above the crossover at once — a tether view
+> with both ends near is the ordinary case — so nothing in the pass list may be written as "the
+> focused world" versus "the rest".
+
+**Population on production.** 87 planes: 57 empty, 1 dust, **29 worlds with cards**. At the home
+view every world is far below the crossover, so step 2 draws **29 + 57 = 86 instances** and step 4
+draws nothing; with one world near enough for its sheet, step 2 draws 28 worlds + 57 moons. (The
+prototype's `captures.json` reports `system.worlds = 27` because it drew Dominaria and Rabiah in
+detail and had no equirect rung at all; 27 is a prototype count and is not production's.)
 
 ### 1.3 The surface law (normative)
 
 **Latitude is colour. Longitude is time.** Both are per plane, never global.
 
 - **Radius.** `radius = 0.126 · √cardCount`. Constant area per card, which is what makes Dominaria's
-  22% share visible: r 9.97 against Rabiah's 1.09, a 9.1× ratio where today's `log N` law gives 1.3×
-  (review §4.1). Empty planes take a floor radius instead (§1.8).
+  22% share visible: r 9.97 against Rabiah's 1.09, a **9.1×** ratio where today's `log N` law gives
+  **1.568×** for the same pair (`visual_radius` in `pipeline/src/eternities/fixtures/layout.py`:
+  10.633 against 6.781). Review §4.1's oft-quoted 1.3× is a *different* pair — Dominaria against
+  Mercadia, 20× the cards, 10.633 / 8.008 = 1.328 — and is not the comparand for this sentence.
+  Empty planes take a floor radius instead (§1.8).
 - **Bands.** Seven classes — W, U, B, R, G, gold, colourless — laid out **mirrored about the
   equator**: colourless is split between the two ice caps, each mono colour is a matched pair of
   bands, gold is the single equatorial belt. North to south:
@@ -98,9 +113,12 @@ atmosphere must not depth-reject the tether passing in front of it.
 - **Longitude** is sliced per plane by the plane's own `sets` array in chronological order, each set
   taking its share of 360°. A single-set plane is one slice covering the whole sphere and looks
   complete, not 97% missing.
-- **The grid** is the standard equal-area sphere tiling: `rows = round(π / √(4π / (aspect · N)))`,
-  each row at constant latitude height `dφ = π/rows`, holding `round(2π·cos φ / (aspect·dφ))` cells,
-  alternate rows staggered by half a cell so the tiling reads as masonry and not as a graticule.
+- **The grid** starts from the standard equal-area sphere tiling:
+  `rows = round(π / √(4π / (aspect · N)))`, each row at constant latitude height `dφ = π/rows`,
+  holding `round(2π·cos φ / (aspect·dφ))` cells, alternate rows staggered by half a cell so the
+  tiling reads as masonry and not as a graticule. **The row count and the row latitudes are final;
+  the per-row cell counts are only a starting point** — the relaxation below replaces them, which is
+  why the client is shipped the counts rather than this formula (§2.1).
 - **Cell aspect is 4:3**, because that is what an `art_crop` letterboxes into without being
   stretched. Scryfall's terms forbid stretching card art and review §4.4 flags the current planet
   shader for exactly this class of problem; 4:3 is how concept B avoids inheriting it.
@@ -123,6 +141,22 @@ left Dominaria at 5,372 exact / 694 colour-only / 200 displaced / 0 bare, and Ra
 > pipeline fails its own invariant test if any card is displaced (§2.1). A displaced card is a card
 > in the wrong place on a map whose entire claim is that position means something.
 
+> **Normative — what the relaxation does *not* move.** Only the per-row **cell count** is
+> population-derived. The **row latitudes stay equal-angle**: `rows` rows of constant `dφ = π/rows`,
+> centres at `(i + ½)·dφ`, unchanged from the closed form. This matters twice. It is what lets the
+> client match a cell to its row by nearest latitude at all (§2.1), and it is what keeps rows and
+> bands independent: bands are equal-*area* in `sin(lat)` and rows are equal-*angle*, so a band
+> boundary generally falls **mid-row**. That is legal and intended — **a row straddling a band
+> boundary splits its cells between the two bands in proportion to the area each band takes of that
+> row**, which is the same proportional rule the paragraph above states, applied within a row rather
+> than across rows. Band boundaries are never snapped to rows: snapping would quantise a colour's
+> area to `1/rows` and break §1.3's central claim that a band's area *is* that colour's share.
+
+Because the counts move and the latitudes do not, the closed form is no longer a description of the
+shipped grid. Rabiah is the proof that the difference bites: the closed form gives **78 slots for 75
+cards** (the prototype's 78, with 3 bare); the relaxed invariant demands exactly 75. §2.1 and §2.4
+carry the contract consequence.
+
 ### 1.4 The cell sheet
 
 One `InstancedBufferGeometry`, one unit quad, N instances, one draw per world. Review §4.2 costs
@@ -130,7 +164,7 @@ this at "~2,000 opaque textured quads ≈ 2–3 ms"; Dominaria puts 6,266 in the
 
 Per-instance attributes: `iNormal` (vec3, the unit-sphere point), `iEast` (vec3), `iSize` (vec2,
 half-extents in units of world radius), `iSwatch` (vec3, linear RGB), `iLayer` (float, dynamic),
-`iArt` (float, dynamic cross-fade). 52 bytes per cell; 1.5 MB for all 28,587 cards.
+`iArt` (float, dynamic cross-fade). 52 bytes per cell; **1.42 MiB** for all 28,587 cards.
 
 The vertex shader builds `north = cross(east, n)` and places the quad at `n · radius · 1.006`, lifted
 just off the globe so it beats depth precision at system distance, with edges pulled in to 0.93 so
@@ -167,18 +201,29 @@ sub-pixel size is not a cost problem — it is an aliasing problem, and a sub-pi
 shimmers under any camera motion.
 
 So every world carries a **256×128 baked swatch texture**, one layer of a `DataArrayTexture` with
-one layer per world with cards — 29 layers on production, 256·128·4·29 = **3.8 MB**, which is review
-§4.2's "~4 MB for all worlds".
+one layer per world with cards — 29 layers on production, 256·128·4·29 = 3,801,088 B = **3.62 MiB**
+(3.80 decimal MB), which is review §4.2's "~4 MB for all worlds". Units here and in §1.12 are **MiB**
+throughout, because `gpuMemory.ts:29` sets `MEGABYTE = 1024 * 1024` and the budget these are checked
+against is that one.
 
 > **Normative — the bake is client-side, at load, in the worker.** It is a pure function of
 > `swatches.bin` (§2.2) plus the surface law, which both sides already have; shipping it as a
 > pipeline artefact would add a fourth binary and a fourth budget row to buy nothing. Rasterising
 > 28,587 cells into 29 layers is one pass over the swatch buffer.
 
-**Crossover.** Below **4 CSS px** median cell height a world draws as globe + equirect layer and its
-cell sheet is skipped entirely; above **8 px** it draws as the cell sheet; between the two both draw
-and cross-fade on the same `iArt`-style mix. The band, not a hard switch, is what stops a pop on
-approach. A world below the crossover costs one instanced sphere and no per-cell CPU work.
+**Crossover.** Below **4 CSS px** median cell height a world draws as §1.2 step 2 — one instance of
+the system icosphere mesh, textured from its equirect layer — and its cell sheet is skipped
+entirely; above **8 px** it draws as the cell sheet (step 4); between the two both draw and
+cross-fade on the same `iArt`-style mix. The band, not a hard switch, is what stops a pop on
+approach. A world below the crossover costs one instance in an existing draw and no per-cell CPU
+work. **This crossover is the scene's only LOD partition** (§1.2): any number of worlds may be above
+it at once.
+
+Far below the crossover the equirect layer stops carrying information — at the home view a world is
+a few pixels across, the sampler returns something close to the layer's own mean, and a mean over a
+balanced colour pie is grey for every plane (§1.8). So a distant instance mixes from its equirect
+sample toward §1.8's stretched palette-deviation tint as its on-screen radius falls below **6 px**.
+That is where §1.8's ×3.2 stretch lives and the only place it applies.
 
 ### 1.6 The art stream
 
@@ -198,9 +243,17 @@ the pool is an array texture and not an atlas canvas.
 
 > **Normative — query `MAX_ARRAY_TEXTURE_LAYERS` and clamp.** WebGL 2's *specification minimum* is
 > **256**, not 1,024. W4.1's `capabilities.ts` asserts only `>= 72` (it was sized for the printing
-> spheres, which concept B deletes). The worlds path must read the real limit and clamp the pool to
-> `min(tierLayers, maxLayers - 32)`, reserving headroom for the 29-layer equirect array. A pool that
-> silently fails to allocate is a black world.
+> spheres, which concept B deletes, and it names W4.4 as its own successor). The worlds path must
+> read the real limit and clamp the pool to `min(tierLayers, maxLayers − 32)`. A pool that silently
+> fails to allocate is a black world.
+>
+> **The −32 is driver slack, not accounting.** `MAX_ARRAY_TEXTURE_LAYERS` is a **per-array-texture**
+> limit, not a global layer pool: the 29-layer equirect array is a separate texture object and takes
+> nothing from the art pool's allowance. Sitting one notch below an implementation's stated maximum
+> is cheap insurance (1.5 MiB at tier 0) against drivers that report a limit they will not actually
+> allocate at 128×96×4; it is not headroom being reserved for anything. **Knock-on:** on a
+> spec-minimum 256-layer device tiers 0, 1, 2 and 3 all clamp to 224, so §1.12's ladder assertion
+> must be written against the *clamped* value, not against the tier constant.
 
 **Selection.** Each frame, for every cell on a world above the LOD crossover: reject if
 `dot(normal, toCamera) <= 0.12`; reject if off-screen — transform by `camera.matrixWorldInverse`,
@@ -226,9 +279,17 @@ fetches (≈ 170 MB) for one camera pose.
 > the running count crosses capacity, with one bucket of hysteresis so the boundary does not
 > oscillate. The result is the same picture — a ring of art around the sub-camera point — reached by
 > design rather than by exhaustion, with a bounded fetch count and near-zero steady-state eviction.
-> Acceptance criterion **W4** (§3.1) measures exactly this, and the prototype's `tether-surface`
-> capture is its negative control: an instrument that passes on that frame is not measuring
-> anything.
+> Acceptance criterion **W4** (§3.1) measures exactly this.
+
+> **Normative — ship the seam that turns the quantile off: `?artThreshold=fixed24`.** It restores
+> the prototype's behaviour exactly — a constant 24 CSS px threshold, no histogram, no hysteresis,
+> let the pool run out — and it is W4's negative control (§3.1). This has to be a seam in the
+> shipped renderer rather than a patched build, for the reason §3.1 gives: W4's whole subject is the
+> *absence* of exhaustion, and the only frame known to exhaust is the prototype's `tether-surface`.
+> Note what the control may **not** be: shrinking the pool does not work. The threshold is defined
+> relative to pool capacity, so a smaller pool simply raises the threshold and the criterion passes.
+> Starving the resource the policy adapts to makes the criterion GREEN; the control has to starve
+> the **policy**.
 
 Fetch discipline: `mode: 'cors'`, `credentials: 'omit'`, at most 6 concurrent (PRD 7.2's politeness
 cap — the `*.scryfall.io` origins have no rate limit, `docs/scryfall-policy.md` §4, but the cap is
@@ -251,11 +312,14 @@ gets one; it is what replaces full-scene bloom.
 
 ### 1.8 The system: undetailed worlds, dark moons, the belt
 
-**Undetailed worlds.** One `InstancedMesh` of an icosphere, one instance per plane, scaled by the
-same `0.126·√N` law, coloured from `planes.json`'s own `palette` — a real WUBRG-multi-colourless
-weight vector, so the colour at system distance is a statistic of the plane's cards.
+**Undetailed worlds.** The step-2 `InstancedMesh` of icospheres, one instance per plane below the
+LOD crossover, scaled by the same `0.126·√N` law. Its colour comes from the world's equirect layer
+(§1.5) and, below 6 px of on-screen radius, from `planes.json`'s own `palette` — a real
+WUBRG-multi-colourless weight vector, so the colour at system distance is a statistic of the plane's
+cards. At the home view that is all **29** worlds; with one world near enough for its cell sheet it
+is 28.
 
-> Mixed straight, all 27 come out the same grey, because Magic's colour pie is balanced — the same
+> Mixed straight, all 29 come out the same grey, because Magic's colour pie is balanced — the same
 > finding that makes the shipped arm-skew law inert (review §4.1). So the mix runs on the
 > **deviation from the card-weighted multiverse mean**, amplified ×3.2: a plane at the average is
 > grey, a plane that is unusual is unusual in the direction it is unusual in. Alara's 58% gold and
@@ -302,19 +366,34 @@ are what make it read as footed into ground rather than laid across a photograph
 ### 1.10 The flat printing ring
 
 Replaces the 72 printing spheres (PRD 5.6.7–5.6.8, `web/src/scene/cards/planets.ts`,
-`tuning.ts:236-247`). Printings orbit the focused card as flat `small` quads at their own aspect
+`web/src/scene/tuning.ts:236-247`). Printings orbit the focused card as flat `small` quads at their own aspect
 ratio, ordered by release date, one revolution per 60 s, the active printing marked by a brighter rim.
 
 This resolves review §10 Q3 and the §4.4 distortion finding in one move: a flat quad showing a full
 `small` card is undistorted, unshaded, and satisfies Scryfall's alternative attribution clause
 without needing the artist beside it.
 
-**The cap, and what it hides.** PRD 5.6.8 caps at 72 (three rings of 24) and the shipped code drops
-the remainder silently (`planets.ts:48`). On the production dataset that cap binds on **669 cards**,
-and the worst case is **Swamp at 570 printings**. The ring inherits the cap for v1 — this spec does
-not widen product scope — but it must stop hiding it: when printings exceed the cap, the ring shows
-the cap's worth as quads and the remainder as 1 px ticks at their own release angle, and the card
-panel states the true count. See §5, Q5.
+**The cap, and the one thing it actually hides.** PRD 5.6.8 caps at 72 (three rings of 24).
+`planets.ts:48` computes `const shown = Math.min(printings, PLANET_CAP)`, and the remainder is *not*
+dropped: `planets.ts:35-37` declares `overflow` — "Printings past the 72 the rings can hold. PRD
+5.6.8 sends these to the card panel" — `planetLayout` returns it, `focusedCard.ts:261` exposes it as
+`printingOverflow`, and `ui/CardPanel.tsx:181` already renders `Printings ({printings.length})`, the
+true count, with `:184` listing **every** printing uncapped. All 570 Swamp rows are in the panel
+today. So "the card panel states the true count" is not a requirement this spec introduces; it
+shipped.
+
+Counted over all 93 production shards, the cap binds on **5 cards** — the five basic lands, Swamp
+570, Mountain 565, Forest 563, Plains 537, Island 535 — and nothing else comes within 12 of it (next
+is Sol Ring at 60). It is a five-card edge case, not a 669-card one; 669 is the count of cards with
+more than **9** printings, a different predicate.
+
+What is genuinely missing is the visual tie between the ring and the tail: nothing in the scene
+marks *which* printings the ring dropped, or that it dropped any. The ring inherits the cap for v1 —
+this spec does not widen product scope — and adds only that: **when printings exceed the cap, the
+ring shows the cap's worth as quads and the remainder as 1 px ticks at their own release angle.**
+The ticks are the requirement; the panel already holds up its end. On production this draws on five
+cards, so it is cheap to build and cheap to get wrong unnoticed — pin it with a unit test on the
+tick positions, not with a capture. See §5, Q5.
 
 ### 1.11 Picking, labels, filters
 
@@ -337,31 +416,44 @@ PRD 7.2's GPU budget is ≤ 96 MB target / 160 MB ceiling (`web/src/scene/cards/
 the 64 MB thumbnail atlas dominates it. Concept B **retires the atlas** — the card-sheet tier it
 feeds is what the world surface replaces — and spends the room on the art pool instead:
 
-| Resident texture | Bytes |
-|---|---|
-| Art pool, 1,024 × 128 × 96 × 4, no mips | 48.0 MB |
-| Equirect swatch array, 29 × 256 × 128 × 4 | 3.8 MB |
-| Cell instance attributes, 28,587 × 52 B | 1.5 MB |
-| Printing ring, 72 × `small` (146×204×4) | 8.6 MB |
-| Focused card, `large` | 2.5 MB |
-| **Total** | **≈ 64.4 MB** |
+**Units are MiB.** `gpuMemory.ts:29` sets `MEGABYTE = 1024 * 1024`, so 96/160 are MiB and so is the
+83 MB worst case this is compared against; a table that mixed decimal MB into it would not be
+comparable to the thing it is being compared to.
 
-Under target with 31 MB of headroom, and **lower than today's worst case** — which is the first place
-concept B pays for itself rather than costing.
+| Resident texture | Bytes | MiB |
+|---|---|---|
+| Art pool, 1,024 × 128 × 96 × 4, no mips | 50,331,648 | 48.00 |
+| Equirect swatch array, 29 × 256 × 128 × 4 | 3,801,088 | 3.62 |
+| Cell instance attributes, 28,587 × 52 B | 1,486,524 | 1.42 |
+| Printing ring, 72 × `small` (146×204×4) | 8,577,792 | 8.18 |
+| Focused card, `large` (672×936×4), one face | 2,515,968 | 2.40 |
+| **Total** | **66,713,020** | **63.62** |
+
+Under target with **32.4 MiB** of headroom, and **lower than today's worst case** — which is the
+first place concept B pays for itself rather than costing.
+
+> The focused-card row counts one face. Today's worst case counts two, because a double-faced card
+> uploads both (`focusedCard.ts:752`, and `worstCaseCardBytes` multiplies by 2). A DFC in focus adds
+> 2.40 MiB for **66.02 MiB** and 30.0 MiB of headroom; the conclusion is untouched either way, but
+> the DFC figure is the one to assert against, because it is the one `gpuMemory.ts` computes.
 
 The art pool is the worlds path's contribution to W4.1's quality ladder, and it is a real rung at
 every step:
 
-| Tier | Art pool layers | Bytes | Other |
+| Tier | Art pool layers | MiB | Other |
 |---|---|---|---|
-| 0 | 1,024 | 48.0 MB | dpr cap 1.5 |
-| 1 | 1,024 | 48.0 MB | dpr cap 1.0 |
-| 2 | 512 | 24.0 MB | — |
-| 3 | 256 | 12.0 MB | LOD crossover 4 px → 8 px |
-| 4 | 128 | 6.0 MB | cheap rim (one tap, no dither) |
+| 0 | 1,024 | 48.00 | dpr cap 1.5 |
+| 1 | 1,024 | 48.00 | dpr cap 1.0 |
+| 2 | 512 | 24.00 | — |
+| 3 | 256 | 12.00 | LOD crossover 4 px → 8 px |
+| 4 | 128 | 6.00 | cheap rim (one tap, no dither) |
 
-All five are clamped by `min(tierLayers, MAX_ARRAY_TEXTURE_LAYERS - 32)`. `e2e/quality.spec.ts` must
-assert the pool size actually changes with the tier, the way W4.1 asserts its own rungs.
+All five are clamped by `min(tierLayers, MAX_ARRAY_TEXTURE_LAYERS − 32)` (§1.6). `e2e/quality.spec.ts`
+must assert the pool size actually changes with the tier, the way W4.1 asserts its own rungs — and
+it must assert against the **clamped** value the renderer reports, not against the constant in this
+table. On a spec-minimum 256-layer device tiers 0–3 all clamp to 224 and only tier 4 is distinct, so
+an assertion written against the tier constants passes on this Mac and fails on the hardware W0.1 is
+about to measure.
 
 ### 1.13 The prototype's traps, as a checklist
 
@@ -413,23 +505,45 @@ Bytes 8–9 stay written rather than being reclaimed, so that a v3 dataset would
 galaxy path if the dual-scene period ever needs it. Reclaiming them is a v4 conversation.
 
 **Derivation on the client.** The unit-sphere point gives the cell centre and, through
-`east = normalize(cross(Y, n))`, its tangent frame. It does **not** give the cell's half-extents. The
-client recovers those by rebuilding the grid from `cardCount` and the new per-plane `rows` field
-(§2.4) and matching the cell to its **nearest row latitude**.
+`east = normalize(cross(Y, n))`, its tangent frame. It does **not** give the cell's half-extents:
+those are `(π / rowCells[r], dφ / 2)` in angle, where `r` is the cell's row.
 
-> **Normative — match the nearest row, never `floor()`.** float16 spacing near `|y| = 1` is
-> 4.9 × 10⁻⁴. The latitude gap between Dominaria's two polar rows is ≈ 2 × 10⁻³ in `sin φ`, a margin
-> of only 4×; at the equator it is 0.022, a margin of 45×. Nearest-row matching tolerates twice the
-> error a `floor()` does, and the pipeline asserts on every emitted star that the float16 round-trip
-> of `y` still resolves to the row it was generated from. The contract test vector pins one complete
-> small world — every slot, every band, every set slice.
+> **Normative — the per-row cell counts are shipped, not derived.** §1.3's relaxation makes a row's
+> cell count population-derived, so it is **not** a function of `cardCount` and a row count and the
+> closed form `round(2π·cos φ / (aspect·dφ))` no longer describes the shipped grid (Rabiah: 78 slots
+> from the closed form, 75 cells in fact). The v3 contract therefore carries a per-plane **`rowCells`
+> table** — one `uint` cell count per row, in north-to-south order — in place of the scalar `rows`
+> (§2.4). `rowCells.length` is the row count; row latitudes are equal-`dφ` with `dφ = π /
+> rowCells.length` and centres at `(i + ½)·dφ` (§1.3), so the client's only remaining derivation is
+> matching a cell to its row by latitude.
+
+Counting stars per row would also recover the counts, and would be sound — but only *because* §1.3
+mandates zero bare cells. The table is 734 numbers across all 29 production worlds (81 for
+Dominaria, 162 B as `uint16`, ≈ 3 KB raw as JSON against `planes.json`'s 11.6 KB brotli), which is
+too cheap to buy a contract whose correctness depends on a rendering invariant holding forever. The
+counting path is kept as a **check** rather than as the mechanism: the pipeline asserts per plane
+that the stars it emitted group into exactly `rowCells`, which is what makes "zero bare" verifiable
+at the artefact rather than load-bearing and invisible.
+
+> **Normative — match the nearest row, never `floor()`.** float16 spacing on `[0.5, 1)` is
+> 2⁻¹¹ = **4.883 × 10⁻⁴** (round-trip error ≤ 2.44 × 10⁻⁴). For Dominaria — `dφ = √(4π/((4/3)·6266))`
+> = 0.038783, 81 rows — the latitude gap between the two polar rows is
+> `cos(½dφ) − cos(³⁄₂dφ)` = **1.504 × 10⁻³** in `sin φ`, a margin of **3.08×**; at the equator the
+> gap is ≈ `dφ` = **0.0388**, a margin of 79×. Nearest-row matching tolerates twice the error a
+> `floor()` does, and at 3.08× at the pole that factor of two is the whole safety margin — this is
+> 23% tighter than an earlier draft of this section claimed, which is more reason to forbid
+> `floor()`, not less. The pipeline asserts on every emitted star that the float16 round-trip of `y`
+> still resolves to the row it was generated from. The contract test vector pins one complete small
+> world — every slot, every band, every set slice, and its `rowCells`.
 
 **New pipeline invariant tests** (`pipeline/tests/test_pipeline_invariants.py`):
 
 - every star's position is unit length within float16 tolerance;
 - every card lands on a cell whose band matches its colour class and whose longitude falls in its own
   set's slice — **zero displaced, zero bare** (§1.3);
-- cell count equals card count per plane;
+- cell count equals card count per plane, and the emitted stars group by nearest row into exactly
+  the plane's shipped `rowCells` (§2.4) — the check that makes "zero bare" verifiable at the
+  artefact;
 - the band area fractions equal the plane's colour-class fractions within 1%;
 - the dust plane's stars lie in the belt's radial and vertical bounds.
 
@@ -461,8 +575,12 @@ Star order means a swatch lookup is `starIndex × 8 + 16` with no map and no tab
 > `sets.bin` is a sectioned container and adding section id 4 would be the tidier-looking choice. It
 > is the wrong one: PRD 7.2 budgets the pair `search.json` + `sets.bin` at ≤ 700 KB target, and that
 > pair is at **668.5 KB — 95% of target** on production today (`docs/data-contract.md` §8). Another
-> 200 KB breaks the one budget in this project that is actually tight. As its own file fetched with
-> `stars.bin`, it lands on the *before-intro* row instead: 253.9 KB → ≈ 455 KB against a 3 MB target.
+> ~200 KB puts it at ~870 KB: 24% *over* the reported target, though still well under the 1.5 MB
+> ceiling, which is the only one of the two that fails the build (`docs/data-contract.md` §8:
+> "Only the 1.5 MB ceiling fails the build; the target is reported"). So this would overshoot a
+> reported target rather than break one — and that is still the wrong trade, because it spends the
+> project's one genuinely tight row to save a file. As its own file fetched with `stars.bin`, it
+> lands on the *before-intro* row instead: 253.9 KB → ≈ 455 KB against a 3 MB target (§2.5).
 
 **Which image the swatch comes from is an open question (§5, Q1).** Review §4.2 says fetch each
 card's `small`. `small` is the whole card — frame, border, text box — so a 2×2 of it is dominated by
@@ -516,12 +634,13 @@ cell's caption therefore credits `p[0][5]`.
 | `shearAmplitude`, `shearPeriodS`, `shearPhase` | **retire** — PRD 5.4.13 shear is a spiral-disc law |
 | `armPitch`, `bar`, per-plane `discThickness` | **retire** — PRD 8.6.2 seeded spiral params |
 | top-level `discThickness` | **retire** |
-| `rows` *(new, `uint`)* | the surface grid's row count, so the client rebuilds the exact grid the pipeline assigned against (§2.1) |
+| `rowCells` *(new, `uint[]`)* | the surface grid's per-row cell counts, north to south. `rowCells.length` is the row count; row latitudes are equal-`dφ`, `dφ = π / rowCells.length`, centres at `(i + ½)·dφ`. Shipped rather than derived because §1.3's relaxation makes the counts population-derived (§2.1). Empty planes and the belt omit it |
 
 `radius` stays but changes meaning: it is now `0.126 · √cardCount`, or the moon floor 0.55 for an
-empty plane, and the Blind Eternities keeps `R` for the belt. Retiring seven fields and adding one
-makes `planes.json` slightly smaller; it is 11.6 KB brotli today, so this is noise in the budget and
-is listed for completeness, not for savings.
+empty plane, and the Blind Eternities keeps `R` for the belt. Seven fields retire and one arrives;
+the arriving one is an array, so `planes.json` grows rather than shrinks — 734 numbers across the 29
+worlds, ≈ 3 KB raw against 11.6 KB brotli today. Either way it is noise in the budget and is listed
+for completeness, not for savings.
 
 ### 2.5 Budget summary
 
@@ -531,21 +650,29 @@ is listed for completeness, not for savings.
 | First frame (`manifest` + `planes`) | — | 16.2 KB | ≈ 16 KB |
 | Before intro (+ `stars.bin`, + `swatches.bin`) | 3 MB | 253.9 KB | ≈ 455 KB (15%) |
 | Largest plane shard | 1.5 MB / 2.5 MB ceiling | 339.8 KB | ≈ 365 KB |
-| GPU resident | 96 MB / 160 MB ceiling | 83 MB worst case | ≈ 64 MB (§1.12) |
+| GPU resident (MiB) | 96 / 160 ceiling | 83 worst case | **63.6**, 66.0 with a DFC in focus (§1.12) |
 
-The tight row does not move. Nothing here needs a budget amendment.
+**Basis.** Every KB figure in this table except the GPU row is **encoded transferred size at brotli
+11**, which is what `docs/data-contract.md` §8 reports and what `check-budget` compares; the GPU row
+is MiB (§1.12). That makes the before-intro estimate an assumption worth stating out loud:
+`swatches.bin` is **223.4 KB raw**, and 455 − 253.9 = **201 KB** implies ~90% of it survives brotli.
+That is the right expectation for 2×2 RGB565 art statistics — four uncorrelated 16-bit samples per
+card, close to incompressible — but it is an estimate doing real work in a budget table, and it is
+the estimate to replace with a measurement the moment leg P emits the first `swatches.bin`. The
+worst case, zero compression, is 477 KB, still 16% of a 3 MB target, so the row's *conclusion* does
+not depend on the assumption. Nothing here needs a budget amendment.
 
 ### 2.6 Pipeline work, concretely
 
 1. `contract/` — bump `CONTRACT_VERSION` to 3; add the `swatches.bin` encoder/decoder pair and the
    artist field to the printing tuple on both sides; regenerate `contract/test-vectors/v3/`. The
    byte-level Python↔TypeScript freeze stays the strongest thing in the repo and must stay green.
-2. `pipeline/fixtures/layout.py` — replace the spiral generator with the surface law of §1.3,
+2. `pipeline/src/eternities/fixtures/layout.py` — replace the spiral generator with the surface law of §1.3,
    including the per-row relaxation that gets displaced to zero.
 3. A new image-fetch stage for swatches, with a `(id, imageTs)`-keyed disk cache, resumable, 6
    concurrent, and a report line for cache hits / fetches / failures.
-4. `assemble.py` — emit unit-sphere positions and `rows`; drop the retired fields; drop review §6.1
-   group D's dead code.
+4. `assemble.py` — emit unit-sphere positions and the per-plane `rowCells` table (§2.4); drop the
+   retired fields; drop review §6.1 group D's dead code.
 5. `report.py` — add the assignment report (exact / displaced / bare per plane, which must read
    `N / 0 / 0`) and the swatch-fetch summary. PRD 9.2's pipeline report is where a data regression
    should be visible.
@@ -567,20 +694,25 @@ building it.
 So concept B owes a definition of "legible" for a mosaic, and a measurement. This is it:
 **`web/scripts/worlds-gate.mjs`**, same puppeteer-core stack as `visual-gate.mjs`, driving the
 product route with a `?probe=` seam that reports, per visible cell, its screen-space rect, its band,
-and whether it resolved to art. Geometry comes from the probe; **colour is sampled from the captured
-PNG**, so every criterion below measures the frame after tonemap and vignette at presentation scale —
-which is the thing T7 said was missing.
+and whether it resolved to art, plus the art pool's resident count, effective threshold and eviction
+counter. Geometry comes from the probe; **colour is sampled from the captured PNG**, so every
+criterion below measures the frame after tonemap and vignette at presentation scale — which is the
+thing T7 said was missing.
+
+The gate also depends on four **control seams** in the shipped renderer — `?swatch=mean`,
+`?bands=shuffle`, `?artThreshold=fixed24` (§1.6) and `?layers=N` — which is why they are normative in
+§1 rather than being a gate-side patch. Legs R1 and R3 own them.
 
 Five criteria assert. The rest stay owner-judged, because they are about feel and 9.3 never asked for
 an assertion there.
 
 | # | Criterion | Measurement | Floor |
 |---|---|---|---|
-| **W1** | **Cells are resolvable at framing distance.** | At the plane-level settle for every plane with cards, the median on-screen height of front-facing cells. | **≥ 24 CSS px.** Binds on the largest plane: Dominaria measured 25.3 px at 3× radius. |
+| **W1** | **Cells are resolvable at framing distance.** | At the plane-level settle for each of the **29 worlds**, the median on-screen height of front-facing cells. Not the Blind Eternities: it has cards but no cell sheet (§1.8), so the statistic is undefined there — "every plane with cards" would be 30 and would include it. | **≥ 24 CSS px.** Binds on the largest plane: Dominaria measured 25.3 px at 3× radius. |
 | **W2** | **The mosaic reads as tiles, not as a wash.** This is T7's replacement. | Sample the captured frame at the centre of every front-facing cell ≥ 6 px tall, convert to CIELAB. Report the median ΔE to a cell's nearest on-screen neighbour, and the interquartile range of L\*. | **median neighbour ΔE ≥ 6** and **IQR(L\*) ≥ 8**. |
 | **W3** | **Latitude reads as colour.** | Group the same samples by band. For every pair of bands adjacent on the sphere where the smaller holds ≥ 5% of the plane's cards, the ΔE between their mean a\*b\*. | **≥ 10** for every such pair. |
 | **W4** | **Art resolves without exhausting.** | At the surface view (2.2× radius), after a 5 s settle: the fraction of on-screen front-facing cells above the effective threshold that are showing art, and evictions per second over the last 2 s. | **≥ 90%** showing art, **≤ 5 evictions/s**. |
-| **W5** | **The home view is not a wall of labels.** | Count rendered plane labels in the DOM at the home view. | **≤ 30** (production has 30 planes with cards; today it is 82). |
+| **W5** | **The home view is not a wall of labels.** | Count rendered plane labels in the DOM at the home view. | **≤ 30** (29 worlds plus the belt; today it is 82). |
 
 **Owner-judged, carried over from 9.3 unchanged:** motion perceptible within 3 s of arriving at any
 level; no aliasing shimmer on slow camera moves (recordings cast at the drawing buffer's own
@@ -597,11 +729,28 @@ events; the focused card's tilt feels physical; and, new, **the tether reads as 
 | W1 | capture at 6× radius instead of the settle (prototype measured 10.1 px there) | **RED** |
 | W2 | `?swatch=mean` — every cell takes the plane's mean swatch | **RED** |
 | W3 | `?bands=shuffle` — band assignment permuted, grid unchanged | **RED** |
-| W4 | `?layers=128` — pool pinned below demand | **RED** |
+| W4 | `?artThreshold=fixed24` — §1.6's seam: the prototype's constant threshold, no quantile | **RED** |
 | W5 | labels forced on for empty planes | **RED** |
+| W4 | `?layers=128` — tier 4's pool, unmodified policy | **GREEN** |
 | all | the unmodified build on the v3 production dataset | **GREEN** |
 
-That last row is the one that matters most and the one most often left out: in a matrix where
+**On W4's control specifically.** `fixed24` is the control because it is the configuration the
+prototype actually measured failing: at `tether-surface`, 1,024 drawn against 2,759 wanted is **37%
+showing art** against W4's 90% floor, and the pose was reached by evicting 925 layers with no sign
+of settling — both halves of W4 go red, and they go red for the reason W4 exists.
+
+Shrinking the pool is **not** a control here, and the near-miss is worth writing down because it is
+the shape of mistake that survives review. `?layers=128` reads like "pool pinned below demand", but
+§1.6 defines demand *relative to pool capacity*: with 128 layers the effective threshold simply
+rises until ~128 cells want art, ~128 resolve, and steady-state eviction goes to ~0. W4 measures the
+fraction above the *effective* threshold that resolved — ≈100% — and evictions/s — ≈0. The row
+passes. **Starving the resource a policy adapts to makes the criterion green; only starving the
+policy makes it red.** Worse, 128 layers is **tier 4 of §1.12's ladder**, a shipped configuration: a
+row that went red there would be condemning the exact low-end device the ladder exists to protect.
+So `?layers=128` stays in the matrix — as an **expected-GREEN** row asserting that tier 4 still
+passes W4.
+
+The two green rows are the ones that matter most and the ones most often left out: in a matrix where
 everything is red, a broken baseline scores identically to a perfect guard. **Only the rows expected
 to stay green can falsify the instrument.**
 
@@ -615,7 +764,7 @@ comparable. It is added to `docs/refresh-runbook.md` as the per-refresh instrume
 The galaxy ships until **all four** of these hold:
 
 1. `worlds-gate.mjs` passes W1–W5 on the v3 production dataset, with the negative-control matrix
-   showing the expected five red and one green;
+   showing the expected **five red and two green** (§3.1);
 2. the owner accepts the judged criteria of §3.1 on the capture set;
 3. the W0.1 Windows field reports confirm concept B's cost class on the Iris Xe and the 780M — or the
    owner explicitly waives the hardware gate. This is the outstanding item the W2.3 record names, and
@@ -655,7 +804,7 @@ Five legs, ≈ **18 engineer-days**. The critical path is R1 → R2/R3 → G; le
 | Leg | Content | Days | Starts | Role |
 |---|---|---|---|---|
 | **P — pipeline and contract** | §2 in full: contract v3, `swatches.bin`, `artist`, the surface law in Python, the swatch fetch stage, invariants, report lines, a published v3 dataset | **4** | **now — no renderer dependency at all** | pipeline/data engineer |
-| **R1 — renderer core** | §1.3–§1.6: surface law on the client, the cell sheet, the equirect bake and LOD crossover, the art pool with the three-state LRU and the adaptive threshold | **5** | on W4.2's merge | graphics engineer (prototype author) |
+| **R1 — renderer core** | §1.3–§1.6: surface law on the client, the cell sheet, the equirect bake and LOD crossover, the art pool with the three-state LRU and the adaptive threshold — **including the `?probe=`, `?swatch=mean`, `?bands=shuffle`, `?artThreshold=fixed24` and `?layers=N` seams §3.1's gate is built on** | **5** | on W4.2's merge | graphics engineer (prototype author) |
 | **R2 — system, belt, tether** | §1.7–§1.9: undetailed worlds, dark moons, the belt, the atmosphere rim, the surface-following tether | **3** | on R1's merge | graphics engineer |
 | **R3 — product surfaces** | §1.10–§1.12: the flat printing ring, picking, labels, filters, GPU budget and the ladder rungs, feature parity | **3** | on R1's merge, parallel with R2 | frontend engineer |
 | **G — gate and cutover** | §3: `worlds-gate.mjs`, the negative-control matrix, runbook and PRD amendments, the archival tag | **3** | on R1's merge (needs the probe seam), lands after R3 | the engineer who built `visual-gate.mjs` |
@@ -706,10 +855,17 @@ the reticle is showing art, plus a persistent Wizards/Scryfall attribution line 
 About view.** This is a compliance judgement rather than an engineering one, which is why it is here
 rather than decided in §2.3.
 
-**Q5 — Does the printing ring keep PRD 5.6.8's cap of 72?** 669 production cards exceed it and Swamp
-has 570 printings; the shipped code drops the remainder silently. §1.10 keeps the cap for v1 but
-stops hiding it (ticks for the tail, true count in the panel). Raising the cap is a product decision
-with a real texture-memory cost. **Recommendation: keep 72 for v1, revisit after the cutover.**
+**Q5 — Does the printing ring keep PRD 5.6.8's cap of 72?** On the production dataset the cap binds
+on **five cards** — the basic lands, Swamp 570 down to Island 535 — and the next card down is Sol
+Ring at 60, so there is nothing in between to trade off against. (An earlier draft of this batch put
+that number at 669; 669 is the count of cards with more than *nine* printings, and the two questions
+have different answers. If you have already answered against the old number, please re-read against
+this one.) The remainder is not lost today: the card panel already lists every printing (§1.10). The
+only thing the scene hides is *which* printings the ring dropped, and §1.10 fixes that with 1 px
+ticks whatever this answer is. Raising the cap has a real texture cost — 570 `small` quads is
+64.8 MiB, two thirds of the whole GPU target on its own — and buys a readable ring for nobody, because 570
+quads on one orbit is not readable either. **Recommendation: keep 72 for v1, revisit after the
+cutover.** This is now a much smaller question than it looked.
 
 **Q6 — Camera-relative key light, or a real sun?** §1.7 chooses camera-relative, which is why the
 prototype captures are all lit. A fixed star is more honest to a solar system and puts half the
@@ -759,9 +915,11 @@ From `captures.json`, production dataset `6d4779695fde33ea`, 1920×1080 CSS, dpr
 | `rabiah-near` | 1.64 | 1.5 | 910.1 px | 1,024 | 515 | 33 / 33 |
 
 Radii: Dominaria 9.97 (6,266 cells), Rabiah 1.09 (75 cells) — a 9.1× ratio where the shipped `log N`
-law gives 1.3×. Cells cross the 24 px art threshold at ≈ 3× radius, which is about where a world
-fills the frame, so the all-swatch state exists only *further out* than framing distance. System:
-27 undetailed worlds, 57 moons, 4,980 belt points.
+law gives **1.568×** for that same pair (§1.3; review §4.1's 1.3× is Dominaria against Mercadia).
+Cells cross the 24 px art threshold at ≈ 3× radius, which is about where a world fills the frame, so
+the all-swatch state exists only *further out* than framing distance. System: 27 undetailed worlds,
+57 moons, 4,980 belt points — **27 because the prototype drew Dominaria and Rabiah in detail and had
+no equirect rung; production's home view has 29 worlds and no cell sheets at all** (§1.2).
 
 The `drawn / wanted` column is the case for §1.6's adaptive threshold, and the two 900+ eviction rows
 are the case for criterion W4.
