@@ -4,14 +4,38 @@
  */
 
 /**
- * Bumped for any byte-layout, section-id, enum-value or filename change.
- * v2 is amendment A3: star-record byte 7 packs the colour identity into the hue class's
- * spare bits, so a v1 reader of a v2 file sees hue classes as large as 253.
+ * Bumped for any byte-layout, section-id, enum-value or filename change. This is the version this
+ * build *writes* and prefers; {@link READABLE_CONTRACT_VERSIONS} is what it accepts.
+ *
+ * v2 is amendment A3: star-record byte 7 packs the colour identity into the hue class's spare
+ * bits, so a v1 reader of a v2 file sees hue classes as large as 253.
+ *
+ * v3 is concept B "worlds" (`docs/worlds/spec.md` §2): `stars.bin` keeps its 12 bytes and changes
+ * what bytes 0-5 *mean* — a unit-sphere cell centre rather than a plane-local spiral position —
+ * `swatches.bin` arrives, the printing tuple gains an `artist`, and `planes.json` trades seven
+ * spiral fields for `rowCells`.
  */
-export const CONTRACT_VERSION = 2
+export const CONTRACT_VERSION = 3
+
+/**
+ * Every contract version this build can decode.
+ *
+ * **Both, and this is load-bearing, not laxity.** Worlds spec §2 publishes a v3 dataset beside the
+ * v2 one and deliberately does *not* move `datasets.json`'s `active`, so that the galaxy build
+ * keeps fetching the dataset it already fetches and the v3 publish carries zero deploy risk. That
+ * argument is only true if a build that speaks v3 still *reads* v2 — a single-version check would
+ * make the very first v3 commit reject the dataset the deployed app is pointed at.
+ *
+ * The pair is not permanent: it closes when the galaxy retires (§3.2). Until then, a consumer that
+ * needs a v3-only field must check for the field, not the version — `rowCells` is the one that
+ * matters, and `planes.json` omits it on exactly the planes that have no grid.
+ */
+export const READABLE_CONTRACT_VERSIONS: ReadonlySet<number> = new Set([2, 3])
 
 export const BINARY_HEADER_BYTES = 16
 export const STAR_RECORD_BYTES = 12
+/** `swatches.bin`: four uint16 RGB565 samples, the card's art downsampled to 2x2 (§2.2). */
+export const SWATCH_RECORD_BYTES = 8
 export const BINARY_MAGIC = 'ETRN'
 /** Amendment A1: every plane's detail file shards at this many cards. */
 export const SHARD_SIZE = 2000
@@ -33,7 +57,7 @@ export const BLIND_ETERNITIES_SLUG = 'blind-eternities'
  */
 export const FILTER_MASK_PASS = 255
 
-export const BinaryKind = { Stars: 1, Sets: 2 } as const
+export const BinaryKind = { Stars: 1, Sets: 2, Swatches: 3 } as const
 export type BinaryKind = (typeof BinaryKind)[keyof typeof BinaryKind]
 
 /** PRD 5.4.8. A card carries exactly one class; hues are never mixed. */
@@ -146,12 +170,30 @@ export interface PlaneRecord {
   readonly driftAmplitude: number
   readonly driftPeriodS: number
   readonly driftPhase: number
-  readonly shearAmplitude: number
-  readonly shearPeriodS: number
-  readonly shearPhase: number
-  readonly armPitch: number
-  readonly discThickness: number
-  readonly bar: boolean
+  /**
+   * v2 only — `shearAmplitude`/`PeriodS`/`Phase`, `armPitch`, `discThickness` and `bar` are laws of
+   * a spiral disc and retire with it (worlds spec §2.4). Optional rather than removed for the
+   * length of the dual-scene period: the galaxy renderer reads them and is still pointed at a v2
+   * dataset, and a v3 dataset simply does not carry them.
+   */
+  readonly shearAmplitude?: number
+  readonly shearPeriodS?: number
+  readonly shearPhase?: number
+  readonly armPitch?: number
+  readonly discThickness?: number
+  readonly bar?: boolean
+  /**
+   * v3 (§2.4): the surface grid's per-row cell counts, north to south.
+   *
+   * `rowCells.length` is the row count; row latitudes are equal-angle with `dphi = PI / rows` and
+   * centres at `(i + 1/2) * dphi`, so the only derivation left on this side is matching a cell to
+   * its row by nearest colatitude — **nearest, never `floor()`** (§2.1).
+   *
+   * Shipped rather than derived because §1.3's relaxation makes the counts population-derived: the
+   * closed form no longer describes the shipped grid. Absent on an empty plane and on the belt,
+   * which have no grid at all — so this is the field to test for, not the contract version.
+   */
+  readonly rowCells?: readonly number[]
   /** W U B R G multicolour colourless weights, summing to 1 (PRD 5.3.5). */
   readonly palette: readonly number[]
   readonly nebulaTint: readonly [number, number, number]
@@ -165,7 +207,8 @@ export interface PlanesFile {
   readonly contractVersion: number
   readonly shardSize: number
   readonly multiverseRadius: number
-  readonly discThickness: number
+  /** v2 only: the top-level disc thickness retires with the spiral disc (§2.4). */
+  readonly discThickness?: number
   readonly planes: readonly PlaneRecord[]
 }
 
@@ -200,8 +243,23 @@ export interface SearchFile {
   readonly backNames: ReadonlyArray<readonly [StarIndex, string]>
 }
 
-/** `[id, setId, rarityChar, imageTs, collectorNumber]` — ordered by release date (PRD 5.6.7). */
-export type PrintingTuple = readonly [string, SetId, string, number, string]
+/**
+ * `[id, setId, rarityChar, imageTs, collectorNumber, artist?]` — ordered by release date
+ * (PRD 5.6.7), so index 0 is the earliest-released printing.
+ *
+ * The sixth element is contract v3 (§2.3) and is optional only because a v2 shard has five. It is
+ * inline rather than an id into a dictionary because the only sensible home for a dictionary is
+ * `search.json`, which is half of the 95%-full `search.json` + `sets.bin` pair, while the shards
+ * have 4.4x headroom.
+ *
+ * It is in the contract at all because concept B shows tens of thousands of art crops with no card
+ * in sight, so the app stops satisfying the alternative clause of Scryfall's terms that the
+ * focused-card planets satisfy today: show the artist and the copyright, *or* show the full card
+ * alongside. Index 0's artist is the credit for the art a cell draws.
+ */
+export type PrintingTuple =
+  | readonly [string, SetId, string, number, string]
+  | readonly [string, SetId, string, number, string, string]
 
 /**
  * Every Scryfall `layout` value. Closed on purpose: `l` is this union, and whether a printing

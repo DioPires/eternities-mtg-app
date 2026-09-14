@@ -306,7 +306,14 @@ describe('the two-stage card fly-to (PRD 6.2.3)', () => {
       rig.update(dt)
     }, 120, flyS * 0.55 + 0.2)
     expect(rig.currentTether.planeIndex).toBe(plane.index)
-    expect(rig.distanceToTether).toBeGreaterThan(cardTether.maxDistance)
+    // Further out than the *card* it is about to close on, which is what "framing the plane" means
+    // here. Compared against the card tether's own framing distance rather than its `maxDistance`:
+    // contract v3's radius law (worlds spec §1.3) is `0.126*sqrt(N)` with no `r_min`, so a fixture
+    // plane is up to 5.5x smaller than under PRD 5.3.2's `log N` and framing one now sits *inside*
+    // `cardTether.maxDistance` — which made the old bound a statement about the radius law rather
+    // than about the two stages being distinct.
+    const framedPlane = rig.distanceToTether
+    expect(framedPlane).toBeGreaterThan(cardTether.minDistance)
 
     step((dt) => {
       rig.update(dt)

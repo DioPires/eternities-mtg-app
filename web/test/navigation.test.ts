@@ -681,15 +681,24 @@ describe('the scene transport', () => {
     }
 
     // Both of these are two-stage: neither start is inside Innistrad (PRD 6.2.3, not 6.2.4).
-    const fromKaldheim = flightMs({ kind: 'plane', slug: 'kaldheim' })
+    //
+    // The near start is `cabralin`, Innistrad's nearest neighbour in `fixture-scale` at 19.7 units.
+    // It was `kaldheim` at 154 units, and under contract v3 that stopped being a near start at
+    // all: §1.3's radius law has no `r_min`, so every fixture plane is up to 5.5x smaller, every
+    // framing distance is longer, and a 154-unit hop now saturates PRD 6.2.3's 3.5 s cap — which
+    // would leave `fromHome > fromNear` comparing two capped flights and passing on nothing.
+    const fromNear = flightMs({ kind: 'plane', slug: 'cabralin' })
     const fromHome = flightMs(null)
 
     // PRD 6.2.3's 3.5 s is a *cap* on the combined flight. Before DEC-606 both of these took it in
     // full, because the scene returned the cap unconditionally for every two-stage fly-to.
-    expect(fromKaldheim).toBeLessThan(3400)
-    expect(fromKaldheim).toBeGreaterThan(1200) // still two legs and a hold, not one hop
-    // PRD 5.7.3: further is slower, and the cap still binds at the far end.
-    expect(fromHome).toBeGreaterThan(fromKaldheim)
+    expect(fromNear).toBeLessThan(3400)
+    expect(fromNear).toBeGreaterThan(1200) // still two legs and a hold, not one hop
+    // PRD 5.7.3: further is slower, and the cap still binds at the far end. This is the assertion
+    // that catches DEC-606's regression — a scene returning the cap unconditionally makes the two
+    // equal — so it only means something while the near start is genuinely under the cap, which
+    // the bound above is what holds.
+    expect(fromHome).toBeGreaterThan(fromNear)
     expect(fromHome).toBeLessThan(3600) // 3.5 s plus the frame it settles on
 
     // PRD 6.2.4: from inside the plane it is one stage, and the cap has nothing to do with it.

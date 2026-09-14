@@ -222,11 +222,17 @@ export class SceneMotion {
    * distance from the plane's centre — the same `length(p.xy)` the vertex shader takes.
    */
   private shearAngle(plane: PlaneRecord, lx: number, ly: number): number {
-    if (plane.shearAmplitude === 0 || plane.shearPeriodS === 0 || this.reducedMotion) return 0
+    // PRD 5.4.13's shear is a spiral-disc law and retires in contract v3 (worlds spec §2.4), so a
+    // v3 `planes.json` simply does not carry these three fields. This is the galaxy path, which is
+    // pointed at a v2 dataset for the whole dual-scene period — but "absent" must mean "no shear"
+    // rather than `NaN` propagating into a rotation, which is what reading them unguarded would do.
+    const amplitude = plane.shearAmplitude ?? 0
+    const periodS = plane.shearPeriodS ?? 0
+    if (amplitude === 0 || periodS === 0 || this.reducedMotion) return 0
     const r = Math.hypot(lx, ly)
     const phase =
-      (2 * Math.PI * this.elapsed) / plane.shearPeriodS + plane.shearPhase + r * SHEAR_RADIAL_PHASE
-    return plane.shearAmplitude * Math.sin(phase)
+      (2 * Math.PI * this.elapsed) / periodS + (plane.shearPhase ?? 0) + r * SHEAR_RADIAL_PHASE
+    return amplitude * Math.sin(phase)
   }
 
   /** World position of a plane's centre — its tether point (PRD 5.7.1). */

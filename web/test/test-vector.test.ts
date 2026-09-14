@@ -16,6 +16,7 @@ import {
   COLOUR_IDENTITY_SHIFT,
   CONTRACT_VERSION,
   ContractError,
+  READABLE_CONTRACT_VERSIONS,
   HUE_CLASS_MASK,
   HueClass,
   SHARD_SIZE,
@@ -24,6 +25,7 @@ import {
   colourIdentityBits,
   decodeSets,
   decodeStars,
+  decodeSwatches,
   float16ToNumber,
   hasBackImage,
   hueClassFromIdentity,
@@ -47,7 +49,7 @@ import {
 } from '../src/data'
 import { StarGeometry } from '../src/scene/starfield/starGeometry'
 
-const VECTOR_DIR = resolve(__dirname, '../../contract/test-vectors/v2')
+const VECTOR_DIR = resolve(__dirname, '../../contract/test-vectors/v3')
 
 interface VectorStar {
   index: number
@@ -77,11 +79,24 @@ interface VectorUri {
   page: string
 }
 
+interface VectorFloat16 {
+  bits: number
+  value: number
+}
+
 interface Vector {
   contractVersion: number
   dataHash: string
   starCount: number
   stars: VectorStar[]
+  /** v3 §2.2: four RGB565 samples per star, in star order. */
+  swatches: number[][]
+  /** v3 §2.4: plane slug -> the shipped per-row cell counts. Only planes that have a grid. */
+  rowCells: Record<string, number[]>
+  /** v3 §2.3: the artist of every printing of every card, in shard order. */
+  artists: string[][]
+  /** The float16 edge cases v2 pinned through star positions (§5); see `vector_summary`. */
+  float16Checks: VectorFloat16[]
   oracleIds: string[]
   setIdsPerStar: number[][]
   planeShards: Record<string, number>
@@ -131,6 +146,97 @@ describe('shared contract test vector', () => {
       expect(stars.brightness(i)).toBe(expected.brightness)
       expect(stars.twinklePhase(i)).toBe(expected.twinklePhase)
       expect(stars.typeMask(i)).toBe(expected.typeMask)
+    }
+  })
+
+  it('decodes swatches.bin to the exact samples the encoder recorded (§2.2)', () => {
+    const swatches = decodeSwatches(bytes('swatches.bin'))
+    expect(swatches.count).toBe(vector.starCount)
+    expect(vector.swatches).toHaveLength(vector.starCount)
+    vector.swatches.forEach((expected, i) => {
+      expect([...swatches.samples(i)]).toEqual(expected)
+    })
+  })
+
+  it('indexes swatches by star index alone, with no table (§2.2)', () => {
+    // The whole encoding is that `swatches.bin` is parallel to `stars.bin`: the lookup is
+    // `starIndex * 8 + 16`. Asserted against the raw bytes rather than through the decoder, so a
+    // decoder that quietly introduced an offset table would fail here.
+    const raw = new DataView(bytes('swatches.bin'))
+    vector.swatches.forEach((expected, i) => {
+      for (let corner = 0; corner < 4; corner += 1) {
+        expect(raw.getUint16(16 + i * 8 + corner * 2, true)).toBe(expected[corner])
+      }
+    })
+  })
+
+  it('converts a swatch sample to linear light with the 6-bit green field intact (§1.4)', () => {
+    const swatches = decodeSwatches(bytes('swatches.bin'))
+    // Star 5's four samples are all 0xFFFF, star 6's all 0x0000: the two ends, exactly.
+    expect(swatches.linear(5, 0)).toEqual([1, 1, 1])
+    expect(swatches.linear(6, 0)).toEqual([0, 0, 0])
+    // Star 0 corner 2 is 0xF800 — pure red — and corner 3 is 0x001F, pure blue. Green is the
+    // six-bit field an RGB555 packing would get wrong, so 0x07E0 has to come out pure green.
+    expect(swatches.linear(0, 2)).toEqual([1, 0, 0])
+    expect(swatches.linear(0, 3)).toEqual([0, 0, 1])
+    expect(swatches.linear(1, 0)).toEqual([0, 1, 0])
+  })
+
+  it('rejects a star index outside the swatch file', () => {
+    const swatches = decodeSwatches(bytes('swatches.bin'))
+    expect(() => swatches.samples(-1)).toThrow(ContractError)
+    expect(() => swatches.samples(vector.starCount)).toThrow(ContractError)
+  })
+
+  it('ships rowCells on every world and omits it everywhere else (§2.4)', () => {
+    const planes = json<PlanesFile>('planes.json')
+    for (const plane of planes.planes) {
+      const hasGrid = plane.slug !== 'blind-eternities' && plane.cardCount > 0
+      expect(plane.rowCells === undefined).toBe(!hasGrid)
+      if (!hasGrid) continue
+      const rowCells = plane.rowCells!
+      expect(vector.rowCells[plane.slug]).toEqual([...rowCells])
+      // `rowCells.length` is the row count and the counts sum to the card count — the two claims
+      // a client derives everything else from.
+      expect(rowCells.reduce((a, b) => a + b, 0)).toBe(plane.cardCount)
+      expect(rowCells.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('places every world cell on the unit sphere (§2.1)', () => {
+    // v3 bytes 0-5 are a unit-sphere cell centre, not a plane-local position. Read back through
+    // the float16 round trip, which is the only length a client ever sees.
+    const stars = decodeStars(bytes('stars.bin'))
+    const planes = json<PlanesFile>('planes.json')
+    for (const plane of planes.planes) {
+      if (plane.rowCells === undefined) continue
+      for (let i = plane.starOffset; i < plane.starOffset + plane.starCount; i += 1) {
+        const length = Math.hypot(stars.x(i), stars.y(i), stars.z(i))
+        expect(length).toBeGreaterThan(1 - 2e-3)
+        expect(length).toBeLessThan(1 + 2e-3)
+      }
+    }
+  })
+
+  it('carries the artist as the sixth printing-tuple element, empty string and all (§2.3)', () => {
+    const shards = ['blind-eternities', 'dominaria', 'ravnica'].map((slug) =>
+      json<PlaneShardFile>(`planes/${slug}.0.json`),
+    )
+    const artists = shards.flatMap((shard) => shard.cards.map((c) => c.p.map((t) => t[5])))
+    expect(artists).toEqual(vector.artists)
+    // One printing has `""`. The element must be *present* and empty, not absent: an encoder that
+    // dropped it would shorten exactly one tuple and nothing else would notice.
+    expect(artists.flat()).toContain('')
+    for (const shard of shards) {
+      for (const card of shard.cards) {
+        for (const tuple of card.p) expect(tuple).toHaveLength(6)
+      }
+    }
+  })
+
+  it('decodes every pinned float16 bit pattern the same way (§5)', () => {
+    for (const check of vector.float16Checks) {
+      expect(float16ToNumber(check.bits)).toBe(check.value)
     }
   })
 
@@ -519,27 +625,47 @@ describe('loud failures', () => {
     expect(() => decodeStars(buffer.buffer)).toThrow(/float32 positions/)
   })
 
-  // The §11 argument for bumping to v2 is that a v1 file read by a v2 build fails *silently*
-  // without the bump. The code that makes it loud was itself unpinned: `it('is the version this
-  // build speaks')` compares two constants and passes even with the gate at `decode.ts:54` deleted
-  // outright. These four assert the gate, not the constant. (DEC-646 N1.)
-  const PREVIOUS_VERSION = CONTRACT_VERSION - 1
+  // The §11 argument for bumping the version is that an older file read by a newer build fails
+  // *silently* without the bump. The code that makes it loud was itself unpinned: `it('is the
+  // version this build speaks')` compares two constants and passes even with the gate at
+  // `decode.ts` deleted outright. These assert the gate, not the constant. (DEC-646 N1.)
+  //
+  // **v3 changed what the mutant has to be.** `CONTRACT_VERSION - 1` is 2, and v2 is now a version
+  // this build deliberately *reads* — worlds spec §2's dual-scene period needs it to. So the
+  // rejected version is one no build has ever written, and the readable pair gets an assertion of
+  // its own below: a gate that accepted everything and a gate that accepted only v3 would both
+  // pass a test that only ever mutates to v2.
+  const UNREADABLE_VERSION = 1
   /** Binary header (§6): `ETRN`, kind, then the contract version. */
   const VERSION_BYTE = 5
 
   it.each([
     ['stars.bin', decodeStars],
     ['sets.bin', decodeSets],
-  ] as const)('rejects a stale-contract header in %s', (name, decode) => {
+    ['swatches.bin', decodeSwatches],
+  ] as const)('rejects an unreadable-contract header in %s', (name, decode) => {
     const buffer = new Uint8Array(bytes(name))
     expect(buffer[VERSION_BYTE]).toBe(CONTRACT_VERSION)
-    buffer[VERSION_BYTE] = PREVIOUS_VERSION
+    buffer[VERSION_BYTE] = UNREADABLE_VERSION
 
-    expect(() => decode(buffer.buffer)).toThrow(
-      `contract version ${PREVIOUS_VERSION}, this build speaks ${CONTRACT_VERSION}`,
-    )
+    expect(() => decode(buffer.buffer)).toThrow(ContractError)
+    expect(() => decode(buffer.buffer)).toThrow(/contract version 1/)
     // The unmutated bytes decode, so the throw is that one byte and not the mutation itself.
     expect(() => decode(bytes(name))).not.toThrow()
+  })
+
+  it.each([
+    ['stars.bin', decodeStars],
+    ['sets.bin', decodeSets],
+  ] as const)('still reads a v2 header in %s, for the dual-scene period', (name, decode) => {
+    // The negative control for the test above, and the assertion worlds spec §2's "zero deploy
+    // risk" argument actually rests on: `datasets.json` keeps `active` on the last v2 dataset
+    // while the v3 one is published beside it, so a build that refused v2 would break what is
+    // deployed on the first v3 commit. Not applicable to `swatches.bin`, which v2 never had.
+    const buffer = new Uint8Array(bytes(name))
+    buffer[VERSION_BYTE] = 2
+    expect(READABLE_CONTRACT_VERSIONS.has(2)).toBe(true)
+    expect(() => decode(buffer.buffer)).not.toThrow()
   })
 
   // `load.assertContractVersion` gates all four JSON artefacts and had no test on any path.
@@ -561,11 +687,13 @@ describe('loud failures', () => {
     ['planes.json', (o: RetryOptions) => loadPlanes(o)],
     ['search.json', (o: RetryOptions) => loadSearch(o)],
     ['planes/dominaria.0.json', (o: RetryOptions) => loadPlaneShard('dominaria', 0, o)],
-  ] as const)('rejects a stale-contract %s', async (name, load) => {
-    await expect(load(servingVersion(PREVIOUS_VERSION))).rejects.toThrow(
-      `${name} is contract v${PREVIOUS_VERSION}, this build speaks v${CONTRACT_VERSION}`,
+  ] as const)('rejects an unreadable-contract %s', async (name, load) => {
+    await expect(load(servingVersion(UNREADABLE_VERSION))).rejects.toThrow(
+      `${name} is contract v${UNREADABLE_VERSION}, this build reads`,
     )
-    // The same artefact at the current version loads, so the gate is the version and nothing else.
+    // The same artefact at either readable version loads, so the gate is the version and nothing
+    // else — and the v2 row is what the deployed galaxy build is doing right now.
     await expect(load(servingVersion(CONTRACT_VERSION))).resolves.toBeDefined()
+    await expect(load(servingVersion(2))).resolves.toBeDefined()
   })
 })

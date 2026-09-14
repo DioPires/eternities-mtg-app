@@ -8,7 +8,7 @@
 
 import { ContractError, decodeSets, StarStreamReader, type SetsSidecar, type Stars } from './decode'
 import type { Manifest, PlaneShardFile, PlanesFile, SearchFile } from './types'
-import { BINARY_HEADER_BYTES, CONTRACT_VERSION, SHARD_SIZE } from './types'
+import { BINARY_HEADER_BYTES, READABLE_CONTRACT_VERSIONS, SHARD_SIZE } from './types'
 
 /** The build writes this into `index.html`; see `web/vite.config.ts`. */
 const DATA_META_NAME = 'eternities:data'
@@ -134,9 +134,13 @@ async function fetchWithRetry(path: string, options: RetryOptions): Promise<Resp
 }
 
 function assertContractVersion(file: string, version: number): void {
-  if (version !== CONTRACT_VERSION) {
+  // Every version this build can decode, not only the one it writes. See
+  // `READABLE_CONTRACT_VERSIONS`: the worlds publish lands a v3 dataset beside the v2 one without
+  // moving `active`, so a v3 build has to keep reading the v2 artefacts the deployed app fetches.
+  if (!READABLE_CONTRACT_VERSIONS.has(version)) {
     throw new ContractError(
-      `${file} is contract v${version}, this build speaks v${CONTRACT_VERSION}`,
+      `${file} is contract v${version}, this build reads ` +
+        `v${[...READABLE_CONTRACT_VERSIONS].join(', v')}`,
     )
   }
 }
