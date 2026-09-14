@@ -29,11 +29,12 @@ import { useEffect, useMemo, useRef, type ReactElement } from 'react'
 
 import type { CameraRig } from '../camera/rig'
 import { vec, type MutVec3 } from '../camera/vec'
-import type { PlaneRecord, PlanesFile } from '../data/types'
+import type { PlanesFile } from '../data/types'
 import { BLIND_ETERNITIES_SLUG, isWorldPlane } from '../data/types'
 import type { Level } from '../navigation/types'
 import type { FrameLoop } from '../scene/renderer/frameLoop'
 
+import { candidateFor, type MutableCandidate } from './candidate'
 import { layoutLabels, type LabelCandidate, type LabelPlacement } from './layout'
 import { createProjected, Projector } from './project'
 
@@ -53,38 +54,6 @@ export interface PlaneLabelsProps {
   readonly enabled?: boolean
   /** Vertical field of view in degrees; must match the canvas camera's. */
   readonly fov?: number
-}
-
-/** A mutable candidate record, reused every frame (PRD 7.3.2). */
-interface MutableCandidate {
-  key: string
-  text: string
-  sub: string | null
-  tier: 'plane' | 'band'
-  priority: number
-  x: number
-  y: number
-  radiusPx: number
-  depth: number
-  onScreen: boolean
-  widthPx: number
-}
-
-function candidateFor(plane: PlaneRecord): MutableCandidate {
-  return {
-    key: plane.slug,
-    text: plane.displayName,
-    // PRD 5.3.12: the card count sits beneath the name, and a zero-card plane shows none.
-    sub: plane.cardCount > 0 ? `${plane.cardCount}` : null,
-    tier: 'plane',
-    priority: plane.cardCount,
-    x: 0,
-    y: 0,
-    radiusPx: 0,
-    depth: 0,
-    onScreen: false,
-    widthPx: 0,
-  }
 }
 
 export function PlaneLabels({

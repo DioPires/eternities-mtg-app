@@ -30,8 +30,9 @@ import { describe, expect, it } from 'vitest'
 import { emptyTether } from '../src/camera/framing'
 import { CameraRig } from '../src/camera/rig'
 import { vec, type MutVec3 } from '../src/camera/vec'
-import type { PlanesFile } from '../src/data/types'
+import type { PlaneRecord, PlanesFile } from '../src/data/types'
 import { BLIND_ETERNITIES_SLUG } from '../src/data/types'
+import { candidateFor } from '../src/labels/candidate'
 import { layoutLabels, type LabelCandidate, type LabelPlacement } from '../src/labels/layout'
 import { createProjected, Projector } from '../src/labels/project'
 
@@ -63,8 +64,16 @@ const worldSlugs = new Set(
   labelled.filter((p) => p.kind === 'spiral' || p.kind === 'irregular').map((p) => p.slug),
 )
 
-/** Every label seated across the sweep, as `slug@azimuth` keys, under one priority mapping. */
-function seatedUnder(priorityOf: (cardCount: number) => number): Set<string> {
+/**
+ * Every label seated across the sweep, as `slug@azimuth` keys, under one priority mapping.
+ *
+ * The non-priority half of every candidate comes from the shipped {@link candidateFor}, and the
+ * shipped arm below takes its priority from there too (DEC-779 X2). Restating `plane.cardCount`
+ * here instead made the "shipped" arm a copy of what this file remembers `PlaneLabels` doing:
+ * the line the whole file is about could be set to a constant, or to the inverted order the third
+ * row measures as the *worst* of the three, and every row stayed green.
+ */
+function seatedUnder(priorityOf: (plane: PlaneRecord) => number): Set<string> {
   const rig = new CameraRig(planes)
   rig.snapTo({ tether: rig.framing.multiverse(emptyTether()), durationS: 0, holdS: 0 })
   rig.update(1 / 60)
@@ -92,11 +101,8 @@ function seatedUnder(priorityOf: (cardCount: number) => number): Set<string> {
       rig.motion.planePosition(point, plane)
       projector.project(projected, point)
       candidates.push({
-        key: plane.slug,
-        text: plane.displayName,
-        sub: plane.cardCount > 0 ? `${plane.cardCount}` : null,
-        tier: 'plane',
-        priority: priorityOf(plane.cardCount),
+        ...candidateFor(plane),
+        priority: priorityOf(plane),
         x: projected.x,
         y: projected.y,
         radiusPx: projector.radiusPx(plane.radius, projected.depth),
@@ -114,7 +120,7 @@ function seatedUnder(priorityOf: (cardCount: number) => number): Set<string> {
   return seated
 }
 
-const shipped = seatedUnder((cardCount) => cardCount)
+const shipped = seatedUnder((plane) => candidateFor(plane).priority)
 
 /** How many of those seats went to worlds. */
 function worldsIn(seated: ReadonlySet<string>): number {
@@ -137,15 +143,15 @@ describe('label priority is an order, not a weight (PRD 5.3.10)', () => {
     // they permute nothing — and the solver reads `priority` only through `cb.priority -
     // ca.priority`'s sign and an equality test. Softening the weight is not a smaller version of
     // the tiering; it is a no-op, and a remedy proposed in those terms will measure as one.
-    expect([...seatedUnder((c) => Math.sqrt(c))].sort()).toEqual([...shipped].sort())
-    expect([...seatedUnder((c) => Math.log1p(c))].sort()).toEqual([...shipped].sort())
+    expect([...seatedUnder((p) => Math.sqrt(p.cardCount))].sort()).toEqual([...shipped].sort())
+    expect([...seatedUnder((p) => Math.log1p(p.cardCount))].sort()).toEqual([...shipped].sort())
   })
 
   it('is nonetheless load-bearing: on worlds, descending beats flat beats inverted', () => {
     // The control for the test above. If priority genuinely did not matter these three would be
     // equal too, and "re-scaling changes nothing" would be saying nothing about the solver.
     const flat = seatedUnder(() => 0)
-    const inverted = seatedUnder((c) => -c)
+    const inverted = seatedUnder((p) => -p.cardCount)
     expect(worldsIn(shipped)).toBeGreaterThan(worldsIn(flat))
     expect(worldsIn(flat)).toBeGreaterThan(worldsIn(inverted))
   })

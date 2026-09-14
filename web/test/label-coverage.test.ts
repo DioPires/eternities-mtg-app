@@ -33,6 +33,7 @@ import { CameraRig } from '../src/camera/rig'
 import { vec, type MutVec3 } from '../src/camera/vec'
 import type { PlanesFile } from '../src/data/types'
 import { BLIND_ETERNITIES_SLUG } from '../src/data/types'
+import { candidateFor } from '../src/labels/candidate'
 import { layoutLabels, type LabelCandidate, type LabelPlacement } from '../src/labels/layout'
 import { createProjected, Projector } from '../src/labels/project'
 
@@ -98,13 +99,10 @@ function readAt(angleRad: number): Reading {
     rig.motion.planePosition(point, plane)
     projector.project(projected, point)
     if (!projected.onScreen && plane.kind !== 'empty') offScreen.push(plane.slug)
+    // Built by the *shipped* `candidateFor`, not by a copy of it: a harness that restates the
+    // record cannot see the product's own fields move (DEC-779 X2).
     candidates.push({
-      key: plane.slug,
-      text: plane.displayName,
-      // What `PlaneLabels.candidateFor` builds: the bare count, not "N cards".
-      sub: plane.cardCount > 0 ? `${plane.cardCount}` : null,
-      tier: 'plane',
-      priority: plane.cardCount,
+      ...candidateFor(plane),
       x: projected.x,
       y: projected.y,
       radiusPx: projector.radiusPx(plane.radius, projected.depth),
