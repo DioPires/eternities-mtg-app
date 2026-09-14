@@ -77,7 +77,7 @@ export function nextFocusIndex(count: number, current: number, backwards: boolea
  * element — is right for a sheet whose first control is its subject, and wrong for the search box,
  * where the input is what the user came for and is not first in the DOM.
  */
-export function useDialog<T extends HTMLElement>(autoFocus?: string): RefObject<T> {
+export function useDialog<T extends HTMLElement>(autoFocus?: string): RefObject<T | null> {
   const ref = useRef<T>(null)
 
   useEffect(() => {
