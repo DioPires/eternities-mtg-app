@@ -169,6 +169,9 @@ export function attachCardTier({
     camera.getWorldDirection(forward)
     view.sizeScale = gl.domElement.height / (2 * Math.tan((camera.fov * Math.PI) / 360))
     view.pixelRatio = gl.getPixelRatio()
+    // §1.10's ticks are sized in CSS pixels and `gl_PointSize` is in device pixels. One read of
+    // the ratio, two consumers.
+    card.setPixelRatio(view.pixelRatio)
 
     // Every tick, focused or not: a decoded image that arrives as focus is released still has to
     // reach the GPU and let its bitmap go.

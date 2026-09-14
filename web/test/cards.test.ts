@@ -10,7 +10,8 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import type { BufferGeometry, Texture, Vector4, WebGLRenderer } from 'three'
+import { Vector3 } from 'three'
+import type { BufferGeometry, Points, Texture, Vector4, WebGLRenderer } from 'three'
 
 import { ATLAS_BYTES, ATLAS_CELLS, ATLAS_COLUMNS, ThumbnailAtlas } from '../src/scene/cards/atlas'
 import {
@@ -48,6 +49,8 @@ import {
   IMAGE_CONCURRENCY,
   PLANETS_PER_RING,
   PLANET_CAP,
+  PLANET_PERIOD_S,
+  PLANET_TICK_RADIUS,
   THUMBNAIL_FADE_FULL_PX,
   THUMBNAIL_GRACE_S,
 } from '../src/scene/tuning'
@@ -983,5 +986,206 @@ describe('PRD 5.6.2 card geometry', () => {
     }
     // Float32 attribute storage, so six places is the whole of the available precision here.
     expect(maxZ - minZ).toBeCloseTo(0.02, 6)
+  })
+})
+
+/**
+ * §1.10's overflow ticks, pinned as positions (worlds spec §1.10, DEC-751).
+ *
+ * The section asks for this by name — "pin it with a unit test on the tick positions, not with a
+ * capture" — and gives the reason: on the production roster this draws on **five cards**, so a
+ * defect here is invisible in every screenshot anyone would think to take.
+ *
+ * What is being pinned is a *mapping*, not a picture: each dropped printing gets one tick, at its
+ * own fraction of the release order, on a ring outside the quads. The digits below are all derived
+ * from that sentence rather than transcribed from a run.
+ */
+describe('§1.10 the ring marks the printings it dropped', () => {
+  it('draws no ticks at all until the cap actually binds', () => {
+    // The cap binds on five cards. Everything else must be untouched by this change, and the
+    // boundary is the interesting row: 72 is not overflow, 73 is one.
+    expect(planetLayout(1).ticks).toHaveLength(0)
+    expect(planetLayout(24).ticks).toHaveLength(0)
+    expect(planetLayout(PLANET_CAP).ticks).toHaveLength(0)
+    expect(planetLayout(PLANET_CAP).overflow).toBe(0)
+    expect(planetLayout(PLANET_CAP + 1).ticks).toHaveLength(1)
+  })
+
+  it('draws exactly one tick per dropped printing, and names which', () => {
+    // Swamp, the worst case on the roster: 570 printings, 72 quads, 498 ticks.
+    const layout = planetLayout(570)
+    expect(layout.slots).toHaveLength(PLANET_CAP)
+    expect(layout.overflow).toBe(498)
+    expect(layout.ticks).toHaveLength(498)
+    // Every dropped printing, once, and no printing that the ring already shows. A tick set that
+    // merely had the right *count* would pass a `toHaveLength` and still mark the wrong printings.
+    expect(layout.ticks.map((tick) => tick.printing)).toEqual(
+      Array.from({ length: 498 }, (_, i) => PLANET_CAP + i),
+    )
+    const shown = new Set(layout.slots.map((slot) => slot.printing))
+    expect(layout.ticks.some((tick) => shown.has(tick.printing))).toBe(false)
+  })
+
+  it('places a tick at its own fraction of the release order, not of the tail', () => {
+    // The distinguishing assertion (§1.10). Spacing the ticks evenly over the *tail* would put the
+    // first one at angle 0 and spread 498 marks around the whole circle, saying nothing about
+    // where in the card's history they fall. Placed against the whole sequence, printing 72 of 570
+    // sits about an eighth of the way round — just past the quads it follows.
+    const layout = planetLayout(570)
+    const first = layout.ticks[0]!
+    expect(first.printing).toBe(72)
+    expect(first.phase).toBeCloseTo((2 * Math.PI * 72) / 570, 12)
+    expect(first.phase).toBeGreaterThan(0)
+    // The last printing is nearly all the way round, and strictly short of a full turn — a tick at
+    // exactly 2*PI would sit on top of printing 0.
+    const last = layout.ticks[layout.ticks.length - 1]!
+    expect(last.printing).toBe(569)
+    expect(last.phase).toBeCloseTo((2 * Math.PI * 569) / 570, 12)
+    expect(last.phase).toBeLessThan(2 * Math.PI)
+    // Monotonic in release order, which is what makes the ring readable as a clock.
+    for (let i = 1; i < layout.ticks.length; i += 1) {
+      expect(layout.ticks[i]!.phase).toBeGreaterThan(layout.ticks[i - 1]!.phase)
+    }
+  })
+
+  it('puts the ticks outside every quad ring, so the tail reads as a tail', () => {
+    const layout = planetLayout(570)
+    for (const tick of layout.ticks) {
+      expect(tick.radius).toBe(PLANET_TICK_RADIUS)
+      for (const slot of layout.slots) expect(tick.radius).toBeGreaterThan(slot.radius)
+    }
+  })
+
+  it('orbits a tick on the same clock as the quads (PRD 5.6.7)', () => {
+    // One angular law for both, or the tail drifts against the ring it belongs to. Asserted as an
+    // *equality of angular advance* rather than as coordinates, because that is the claim.
+    const layout = planetLayout(570)
+    const tick = layout.ticks[0]!
+    const slot = layout.slots[0]!
+    const at = (thing: { phase: number; radius: number }, t: number) => {
+      const out = { x: 0, y: 0, z: 0 }
+      planetPosition(thing, t, 1, out)
+      return Math.atan2(out.x, out.y)
+    }
+    const quarter = PLANET_PERIOD_S / 4
+    const advance = (thing: { phase: number; radius: number }) => {
+      const before = at(thing, 0)
+      const after = at(thing, quarter)
+      return (after - before + 2 * Math.PI) % (2 * Math.PI)
+    }
+    expect(advance(tick)).toBeCloseTo(Math.PI / 2, 10)
+    expect(advance(tick)).toBeCloseTo(advance(slot), 10)
+    // And it is on the tick ring while it does it — the radius survives the orbit.
+    const out = { x: 0, y: 0, z: 0 }
+    planetPosition(tick, 12.3, 1, out)
+    expect(Math.hypot(out.x, out.y)).toBeCloseTo(PLANET_TICK_RADIUS, 10)
+  })
+
+  it('stops moving under reduced motion, as the quads do (PRD 5.9)', () => {
+    const tick = planetLayout(570).ticks[0]!
+    const a = { x: 0, y: 0, z: 0 }
+    const b = { x: 0, y: 0, z: 0 }
+    planetPosition(tick, 0, 0, a)
+    planetPosition(tick, 30, 0, b)
+    expect(b).toEqual(a)
+  })
+})
+
+/**
+ * §1.10's ticks reaching the scene graph (DEC-751).
+ *
+ * The layout rows above are arithmetic and would all stay green with nothing drawn at all — which
+ * is the exact shape of DEC-768's F3, where two worlds wiring lines could be deleted with the
+ * whole suite still passing. So this drives the real {@link FocusedCard} and asks the scene graph
+ * what is in it.
+ */
+describe('§1.10 the tick tail is in the scene, not only in the layout', () => {
+  function cardWith(printings: number): CardRecord {
+    const p: PrintingTuple[] = Array.from({ length: printings }, (_, i) => [
+      `0aeebaf5-8c7d-4636-9e82-${String(i).padStart(12, '0')}`,
+      1,
+      '1',
+      1700000000,
+      `${i}`,
+    ])
+    return { u: 'o-1', n: 'Basic', m: '{0}', t: 'Land', o: '', b: null, ci: 'C', r: 0, l: 'normal', p }
+  }
+
+  function tickPointsOf(card: FocusedCard): Points | null {
+    let found: Points | null = null
+    card.root.traverse((node) => {
+      if ((node as Points).isPoints) found = node as Points
+    })
+    return found
+  }
+
+  function queueStub(): ImageQueue {
+    return new ImageQueue({
+      fetchImpl: () => new Promise<Response>(() => {}),
+      decode: () => new Promise<ImageBitmap>(() => {}),
+    })
+  }
+
+  it('adds one point per dropped printing, and nothing when the cap does not bind', () => {
+    const queue = queueStub()
+    const card = new FocusedCard(queue)
+
+    // A card the cap does not touch draws no tail at all — the common path on the roster, and the
+    // control that stops the next assertion passing on a permanently-present object.
+    card.show(cardWith(24), 0, 0)
+    expect(tickPointsOf(card)).toBeNull()
+
+    // Swamp's shape: 570 printings, 72 quads, 498 marks.
+    card.show(cardWith(570), 0, 0)
+    const points = tickPointsOf(card)
+    expect(points).not.toBeNull()
+    expect(points!.geometry.getAttribute('position').count).toBe(498)
+
+    // And it goes away again when a card that does not overflow takes focus.
+    card.show(cardWith(24), 0, 0)
+    expect(tickPointsOf(card)).toBeNull()
+
+    card.dispose()
+    queue.dispose()
+  })
+
+  it('turns the tail on the orbit, and holds it still under reduced motion (PRD 5.9)', () => {
+    const queue = queueStub()
+    const card = new FocusedCard(queue)
+    card.show(cardWith(570), 0, 0)
+    const origin = { x: 0, y: 0, z: 0 }
+
+    const points = tickPointsOf(card)!
+    expect(points.rotation.z).toBe(0)
+
+    // A quarter of the orbit period turns the tail a quarter turn, in the same direction the
+    // quads go: `planetPosition` advances a phase, and the object's rotation is that advance.
+    card.update(PLANET_PERIOD_S / 4, origin, { x: 0, y: 0, z: 10 }, 1, false)
+    expect(points.rotation.z).toBeCloseTo(-Math.PI / 2, 10)
+
+    // Reduced motion freezes it where it stands rather than resetting it — `planeTable.advance`'s
+    // rule, and the reason the orbit clock is scaled as it accumulates rather than at the point of
+    // use. Scaling at the point of use sends the ring back to its t=0 phase when motion goes off
+    // and teleports it forward when it comes back: it jumps twice. The quads had that defect and
+    // this row covers them too, which is why the planet's position is asserted beside the tail's
+    // rotation — one clock, so one assertion could not have told them apart.
+    const held = points.rotation.z
+    const before = new Vector3()
+    card.root.updateMatrixWorld(true)
+    expect(card.planetWorldPosition(0, before)).toBe(true)
+
+    card.update(PLANET_PERIOD_S / 4, origin, { x: 0, y: 0, z: 10 }, 0, true)
+    expect(points.rotation.z).toBe(held)
+    const after = new Vector3()
+    card.root.updateMatrixWorld(true)
+    card.planetWorldPosition(0, after)
+    expect(after.distanceTo(before)).toBeLessThan(1e-9)
+
+    // And it picks up from where it stopped, rather than from the beginning.
+    card.update(PLANET_PERIOD_S / 4, origin, { x: 0, y: 0, z: 10 }, 1, false)
+    expect(points.rotation.z).toBeCloseTo(-Math.PI, 10)
+
+    card.dispose()
+    queue.dispose()
   })
 })

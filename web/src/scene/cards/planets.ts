@@ -18,7 +18,13 @@
  * of nothing in the plane table.
  */
 
-import { PLANETS_PER_RING, PLANET_CAP, PLANET_PERIOD_S, PLANET_RING_RADII } from '../tuning'
+import {
+  PLANETS_PER_RING,
+  PLANET_CAP,
+  PLANET_PERIOD_S,
+  PLANET_RING_RADII,
+  PLANET_TICK_RADIUS,
+} from '../tuning'
 
 export interface PlanetSlot {
   /** Index into the card's printings array. */
@@ -29,11 +35,31 @@ export interface PlanetSlot {
   readonly radius: number
 }
 
+/**
+ * A dropped printing, marked at its own place in the release order (worlds spec §1.10).
+ *
+ * Structurally a {@link PlanetSlot} minus the ring, and deliberately so: {@link planetPosition}
+ * takes both, because a tick orbits on exactly the same clock as the quads. One angular law, not
+ * two — a tick drifting against the ring it belongs to would read as a bug.
+ */
+export interface PrintingTick {
+  /** Index into the card's printings array. Always `>= PLANET_CAP`. */
+  readonly printing: number
+  readonly phase: number
+  readonly radius: number
+}
+
 export interface PlanetLayout {
   readonly slots: readonly PlanetSlot[]
   /** Printings past the 72 the rings can hold. PRD 5.6.8 sends these to the card panel. */
   readonly overflow: number
   readonly rings: number
+  /**
+   * One tick per dropped printing (§1.10), on a ring outside the outermost planet ring.
+   *
+   * Empty whenever nothing is dropped, which is all but five cards on the production roster.
+   */
+  readonly ticks: readonly PrintingTick[]
 }
 
 /**
@@ -43,7 +69,7 @@ export interface PlanetLayout {
  * orbiting a card would read as a second card rather than as "this printing is the only one".
  */
 export function planetLayout(printings: number): PlanetLayout {
-  if (printings <= 1) return { slots: [], overflow: 0, rings: 0 }
+  if (printings <= 1) return { slots: [], overflow: 0, rings: 0, ticks: [] }
 
   const shown = Math.min(printings, PLANET_CAP)
   const rings = Math.ceil(shown / PLANETS_PER_RING)
@@ -64,7 +90,32 @@ export function planetLayout(printings: number): PlanetLayout {
     }
   }
 
-  return { slots, overflow: printings - shown, rings }
+  /*
+   * §1.10's ticks: **the ring is a clock of the release order**, and a tick sits where its own
+   * printing falls on it — `2π · i / printings` for printing `i` of `printings`.
+   *
+   * The angle cannot come from a date, and this is a fact about the contract rather than a
+   * shortcut: a `PrintingTuple` is `[id, setId, rarity, imageTs, collectorNumber, artist?]` and
+   * carries no release date at all. What it carries is its *position*, because the tuples arrive
+   * ordered by release (PRD 5.6.7, contract §7). So the release order is the array order, and
+   * "its own release angle" is its own fraction of that order.
+   *
+   * That makes the quads and the ticks two different spacings on purpose. A quad is evenly spaced
+   * within the ring it landed in — PRD 5.6.8's rule, unchanged — while a tick is placed against
+   * the *whole* uncapped sequence. Spacing the ticks by `i - PLANET_CAP` instead would spread 498
+   * dropped Swamp printings evenly around the circle and say nothing about where in the card's
+   * history they sit, which is the one thing §1.10 wants shown.
+   */
+  const ticks: PrintingTick[] = []
+  for (let printing = shown; printing < printings; printing += 1) {
+    ticks.push({
+      printing,
+      phase: (2 * Math.PI * printing) / printings,
+      radius: PLANET_TICK_RADIUS,
+    })
+  }
+
+  return { slots, overflow: printings - shown, rings, ticks }
 }
 
 /**
@@ -74,7 +125,7 @@ export function planetLayout(printings: number): PlanetLayout {
  * angle 0 the planet is straight up, and as the angle grows it moves to the right.
  */
 export function planetPosition(
-  slot: PlanetSlot,
+  slot: Pick<PlanetSlot, 'phase' | 'radius'>,
   timeS: number,
   motionScale: number,
   out: { x: number; y: number; z: number },

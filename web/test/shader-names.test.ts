@@ -265,7 +265,7 @@ describe('shader names (DEC-700)', () => {
 
   it('covers every material the scene builds, one name per program', () => {
     // A count, not a list: adding a material and leaving it out of `SHADER_NAMES` should be a
-    // deliberate act. There are 18 sites and 17 names, and the gap is the point of this test.
+    // deliberate act. There are 19 sites and 18 names, and the gap is the point of this test.
     //
     // Two *sites* share `SHADER_NAME_STAR_FIELD`: the drawn star field and the bloom source's copy
     // of it differ only in the values bound to five uniforms, which are not in the program cache
@@ -285,6 +285,19 @@ describe('shader names (DEC-700)', () => {
     // site and one name for all 45 worlds — two sheets differ only in per-instance attributes and in
     // the value bound to `uRadius`, neither of which is in the program cache key — so it moves both
     // counts by one and leaves the gap where it was.
-    expect(SHADER_NAMES).toHaveLength(17)
+    //
+    // **The nineteenth site and eighteenth name are DEC-751's**: worlds §1.10's overflow ticks, a
+    // built-in `PointsMaterial`. One site, one name and one `Points` object for a whole card's
+    // dropped tail — 498 of them on Swamp.
+    //
+    // **This one is named against the rule above, and the exception is recorded rather than
+    // hidden.** It is a `PointsMaterial` with the same defines as the background shells —
+    // `sizeAttenuation: false`, no map — and blending is render state rather than a program cache
+    // key input, so three links **one** program for both and this name is a second roster row for
+    // it. The alternative is worse in the other direction: reusing `SHADER_NAME_BACKGROUND_LAYER`
+    // would label the printing ring's tail as a background shell wherever a name is read by a
+    // person. Flagged to DEC-700's owner to rule; the count stands either way, and if the ruling
+    // is to share, this name and one of the two counts come back out together.
+    expect(SHADER_NAMES).toHaveLength(18)
   })
 })

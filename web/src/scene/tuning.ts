@@ -248,6 +248,22 @@ export const PLANET_RING_RADII: readonly number[] = [0.82, 1.12, 1.42]
 /** PRD 8.5.10: `art_crop` textures downscaled on decode to 256 px on the long side. */
 export const PLANET_TEXTURE_PX = 256
 
+/**
+ * Worlds spec §1.10: the ring's overflow, as 1 px ticks on a ring of their own.
+ *
+ * PRD 5.6.8 caps the ring at 72 and sends the remainder to the card panel, which
+ * `ui/CardPanel.tsx` has always done — it renders the true count and lists every printing
+ * uncapped. What has never existed is the *visual* tie: nothing in the scene says the ring dropped
+ * any, or which. §1.10 adds exactly that and widens nothing else.
+ *
+ * On production this draws on **five cards** — Swamp 570, Mountain 565, Forest 563, Plains 537,
+ * Island 535, with the next card at 60 printings — so it is cheap to build and cheap to get wrong
+ * unnoticed, which is why §1.10 asks for a unit test on the tick positions rather than a capture.
+ */
+export const PLANET_TICK_RADIUS = 1.62
+/** One CSS pixel, per §1.10. Not scaled by distance: a tick is a mark, not an object. */
+export const PLANET_TICK_PX = 1
+
 /** PRD 5.6.9: the active printing's planet is marked. A brighter rim, not a different shape. */
 export const PLANET_ACTIVE_GAIN = 1.8
 

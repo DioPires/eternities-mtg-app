@@ -93,6 +93,20 @@ export const SHADER_NAME_CARD_PLANET = 'FocusedCardPlanet'
 /** The planets drawn to the id buffer through the shared id shaders — `cards/focusedCard.ts`. */
 export const SHADER_NAME_CARD_PLANET_PICK = 'FocusedCardPlanetPick'
 
+/**
+ * The printing ring's overflow ticks — a built-in `PointsMaterial`, `cards/focusedCard.ts`.
+ *
+ * Worlds spec §1.10: one 1 px mark per printing the 72-quad cap dropped, at its own place in the
+ * release order. One material and one `Points` object for the whole tail.
+ *
+ * **Shares a program with {@link SHADER_NAME_BACKGROUND_LAYER}** — same material class, same
+ * defines, and blending is not a cache-key input — so this is a second roster row for one program,
+ * which is the thing this file otherwise avoids. Named anyway because the alternative labels the
+ * printing ring's tail "BackgroundLayer" for every human who reads a roster. See the note in
+ * `test/shader-names.test.ts`; DEC-700's owner rules.
+ */
+export const SHADER_NAME_CARD_PRINTING_TICKS = 'FocusedCardPrintingTicks'
+
 /** The atlas' blit quad — a built-in `MeshBasicMaterial`, `cards/atlas.ts`. */
 export const SHADER_NAME_ATLAS_BLIT = 'AtlasBlit'
 
@@ -149,6 +163,7 @@ export const SHADER_NAMES = [
   SHADER_NAME_CARD_EDGE,
   SHADER_NAME_CARD_PLANET,
   SHADER_NAME_CARD_PLANET_PICK,
+  SHADER_NAME_CARD_PRINTING_TICKS,
   SHADER_NAME_ATLAS_BLIT,
   SHADER_NAME_BACKGROUND_LAYER,
   SHADER_NAME_POST_PREFILTER,
