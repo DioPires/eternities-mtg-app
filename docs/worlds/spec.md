@@ -1231,6 +1231,44 @@ scale — which is the thing T7 said was missing.
 > read; it is normative anyway, because the gate may not re-derive it (it would then be asserting
 > against its own model of the light rather than against the shipped one).
 
+> **Normative — how the payload is served, and the one thing `undefined` means (DEC-749).** The seam
+> is `window.__eternitiesProbe.worlds()`, an addition to the existing `?probe=` seam rather than a
+> second one, installed only when the URL asks. It returns **`undefined` when no world is composed**
+> and a payload when one is. That distinction is load-bearing and the gate branches on it:
+> `undefined` is *"the worlds probe is not installed on this page"*, a **setup failure**, while an
+> empty `cells[]` is a world that drew nothing, which is a **measurement**. Collapsing the two lets a
+> page with no worlds on it score a green matrix — the `verify-browser --dataset all` shape of
+> failure, where two fixtures printed "all datasets verified" and neither had been read.
+
+> **Normative — a cell's `(x, y)` is the PROJECTED CENTRE, not the centre of its rect (DEC-749).**
+> The payload carries both the rect above and the `(x, y, height)` triple the gate reads, with
+> `height ≡ rect.height`. The two centres are not the same point: measured over v3 at 1920×1080 the
+> rect's centre sits a mean **1.3–10.3%** of a cell height from the projected centre and as far as
+> **27.8%** (Ravnica, row 42 of 49, at 3.5 radii), because a spherical patch projects to a *curved*
+> outline whose bounding box is not centred on it.
+>
+> > The reason is not that one pixel is more correct in the abstract. **`shade` is evaluated at this
+> > point and the gate samples the captured PNG at this point**, and W2's lightness half pairs those
+> > two readings per cell over the iso-shade subset — so they have to be readings of the same place,
+> > or the pairing is between a shade here and a colour somewhere else.
+> >
+> > **What this is not: a wrong sample.** The alternative was checked rather than assumed. Point-in-
+> > polygon against the projected patch outline over Dominaria, Ravnica, Alara and Rabiah at 2.2 and
+> > 3.5 radii puts the rect's centre outside its own cell in **0 of 4,803** samples, with a negative
+> > control — the same point pushed down one cell height — reading outside **4,803 of 4,803**. So the
+> > bounding-box centre would *not* have sampled a neighbouring cell, and this is recorded as a
+> > consistency fix rather than as the repair of a defect that was never demonstrated.
+
+> **Normative — §1.3's band index is published by the renderer, and it is not a colour class
+> (DEC-749, on DEC-752's pin).** `bandShares[]` is the thirteen-band chain's share vector and each
+> cell carries its `band` index into it. The chain is `C G R B U W · Gold · W U B R G C`, so every
+> mono class appears **twice** and only gold appears once; reporting the class instead would merge
+> the two ice caps — which sit at opposite poles and are the chain's two *ends* — into one group and
+> invent an adjacency the sphere does not have. W3 walks this as a **chain, not a cycle**. The
+> boundaries are equal-**area** in `cos θ`, which is what makes a colour's area *be* its share of the
+> plane, and the client's implementation is asserted bit-for-bit against the pipeline's own
+> `surface.py` rather than against arithmetic recomputed in TypeScript.
+
 The gate also depends on **control seams** in the shipped renderer, which is why they are normative
 in §1 rather than being a gate-side patch.
 

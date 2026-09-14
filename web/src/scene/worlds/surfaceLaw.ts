@@ -19,6 +19,8 @@
  * uses. See {@link rowOfUnitY}.
  */
 
+import { HueClass } from '../../data/types'
+
 /**
  * Constant area per card: `radius = 0.126 * sqrt(cardCount)`.
  *
@@ -229,4 +231,90 @@ export function cellDrawAngles(rowCells: readonly number[], row: number): CellAn
  */
 export function drawRadius(radius: number): number {
   return radius * CELL_LIFT
+}
+
+/**
+ * §1.3's thirteen latitude bands, north to south: `C G R B U W · Gold · W U B R G C`.
+ *
+ * > **Normative — a band index is not a colour class (§3.1, DEC-752's pin).** Seven classes are laid
+ * > out **mirrored about the equator**, so every mono class appears **twice** and only gold appears
+ * > once. Reporting the class instead of the index would merge the two ice caps — which sit at
+ * > opposite poles and are the two *ends* of the chain — into one group, and invent an adjacency the
+ * > sphere does not have. W3 compares bands adjacent **on the sphere**, so it walks this array as a
+ * > **chain, not a cycle**: index 0 and index 12 are the furthest apart of any pair, not neighbours.
+ */
+export const BAND_ORDER: readonly HueClass[] = [
+  HueClass.Colourless,
+  HueClass.Green,
+  HueClass.Red,
+  HueClass.Black,
+  HueClass.Blue,
+  HueClass.White,
+  HueClass.Multicolour,
+  HueClass.White,
+  HueClass.Blue,
+  HueClass.Black,
+  HueClass.Red,
+  HueClass.Green,
+  HueClass.Colourless,
+]
+
+/** The one class that is **not** mirrored: gold takes its whole share in the equatorial belt. */
+export const GOLD_BAND = BAND_ORDER.indexOf(HueClass.Multicolour)
+
+/**
+ * Each band's share of the plane's cards. Thirteen values summing to 1.
+ *
+ * A mono class's count is **halved** across its matched pair; gold's is not. `hueCounts` is indexed
+ * by {@link HueClass}, so it has seven entries however many bands there are.
+ *
+ * Returns thirteen zeros on an empty plane rather than dividing by zero — §1.8's moons have no
+ * sheet at all, and a caller that reached here with one should get a degenerate answer, not a NaN
+ * that propagates silently into every boundary below.
+ */
+export function bandShares(hueCounts: readonly number[]): number[] {
+  let total = 0
+  for (const count of hueCounts) total += count
+  if (!(total > 0)) return BAND_ORDER.map(() => 0)
+  return BAND_ORDER.map((hue) => {
+    const share = (hueCounts[hue] ?? 0) / total
+    return hue === HueClass.Multicolour ? share : share / 2
+  })
+}
+
+/**
+ * The band edges in `cos θ`, north (`+1`) to south (`−1`). Fourteen values for thirteen bands.
+ *
+ * > **Equal-*area*, not equal-angle (§1.3).** A spherical zone between two colatitudes has area
+ * > `2π·(cos a − cos b)`, so a band's share of the `cos θ` range — which spans 2 — *is* its share of
+ * > the plane's cards. That is the whole point of the law: the area a colour covers is the fraction
+ * > of the plane that colour is. Equal-*angle* bands would make a polar class look as big as an
+ * > equatorial one holding six times the cards.
+ *
+ * The last edge is written as `−1` rather than accumulated, so the south pole is exact however the
+ * thirteen shares rounded on the way down.
+ */
+export function bandBoundaries(hueCounts: readonly number[]): number[] {
+  const edges = [1]
+  for (const share of bandShares(hueCounts)) edges.push(edges[edges.length - 1]! - 2 * share)
+  edges[edges.length - 1] = -1
+  return edges
+}
+
+/**
+ * The band a point at colatitude `θ` falls in, given the plane's edges.
+ *
+ * Takes `cos θ` rather than `θ` because the boundaries are in `cos θ` and converting at the call
+ * site is where a `sin`/`cos` slip would hide (§1.3's D1 defect was exactly that substitution).
+ *
+ * A zero-width band — a class the plane holds none of — can never be entered, which is correct:
+ * `cosTheta` cannot be strictly inside an empty interval. The scan is north-to-south and returns
+ * the **first** band whose lower edge it clears, so a point landing exactly on a boundary goes to
+ * the northern band, deterministically.
+ */
+export function bandOfCosTheta(cosTheta: number, edges: readonly number[]): number {
+  for (let band = 0; band < edges.length - 1; band += 1) {
+    if (cosTheta >= edges[band + 1]!) return band
+  }
+  return edges.length - 2
 }
