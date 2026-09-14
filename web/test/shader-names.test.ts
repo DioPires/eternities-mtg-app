@@ -298,6 +298,11 @@ describe('shader names (DEC-700)', () => {
     // would label the printing ring's tail as a background shell wherever a name is read by a
     // person. Flagged to DEC-700's owner to rule; the count stands either way, and if the ruling
     // is to share, this name and one of the two counts come back out together.
-    expect(SHADER_NAMES).toHaveLength(18)
+    //
+    // **The twentieth site and nineteenth name are DEC-751's §1.11 pick pass**: the cell sheet
+    // compiled with `ID_PASS`. Unlike the bloom copy above it genuinely is a second program —
+    // `defines` *is* a program cache key input — so it earns its own name under the rule rather
+    // than against it, and the gap stays where it was.
+    expect(SHADER_NAMES).toHaveLength(19)
   })
 })

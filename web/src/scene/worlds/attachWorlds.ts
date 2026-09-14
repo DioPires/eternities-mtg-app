@@ -281,6 +281,9 @@ export function attachWorlds(options: WorldsAttachmentOptions): WorldsAttachment
   function teardownSurfaces(): void {
     for (const surface of surfaces) {
       group.remove(surface.mesh)
+      // Both meshes, or the old roster stays pickable after its geometry is disposed: the pick
+      // camera would keep rendering 45 orphans whose buffers three has already deleted.
+      group.remove(surface.pickMesh)
       surface.dispose()
     }
     surfaces = []
@@ -357,6 +360,10 @@ export function attachWorlds(options: WorldsAttachmentOptions): WorldsAttachment
       surface.setFilterMask(filterMask)
       surfaces.push(surface)
       group.add(surface.mesh)
+      // §1.11: the same sheet on PICK_LAYER. It has to be in the graph for the pick camera to see
+      // it at all, and being in the graph costs the drawn frame nothing -- the frame camera renders
+      // layer 0, so this is skipped there by the same mechanism that selects it here.
+      group.add(surface.pickMesh)
       if (equirectArray) writeEquirectLayer(equirectArray, index, surface.equirect)
     }
   }

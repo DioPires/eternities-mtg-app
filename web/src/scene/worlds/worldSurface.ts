@@ -25,8 +25,9 @@ import { ThresholdMemory, type AdaptiveThreshold, type ThresholdReport } from '.
 import { LAYER_FREE } from './artPool'
 import type { ArtPool } from './artPool'
 import { facesCamera, withinFrustum } from './cellSelection'
-import { createCellMaterial } from './cellMaterial'
+import { createCellMaterial, createCellPickMaterial, type CellUniforms } from './cellMaterial'
 import { buildCellSheet, type CellSheet } from './cellSheet'
+import { PICK_LAYER } from '../picking/idPicker'
 import {
   bakeEquirectLayer,
   buildRowIndex,
@@ -140,6 +141,10 @@ export class WorldSurface {
   readonly sheet: CellSheet
   readonly material: ShaderMaterial
   readonly mesh: Mesh
+  /** §1.11's pick material — the same GLSL with `ID_PASS`, sharing {@link material}'s uniforms. */
+  readonly pickMaterial: ShaderMaterial
+  /** The sheet on {@link PICK_LAYER}, so PRD 8.5.6's id pass hits cells (§1.11). */
+  readonly pickMesh: Mesh
   /** The world's 256x128 equirect bake, for §1.5's far LOD. Written once, at build. */
   readonly equirect: Uint8Array
   /**
@@ -218,6 +223,9 @@ export class WorldSurface {
       normals: source.normals,
       rows: source.rows,
       swatches: drawSwatches,
+      // §1.11's pick id, through `cardOfCell` and off `artKeyBase` — the same two terms
+      // `setFilterMask` composes, because they are the same question: which card is in this cell.
+      stars: buildCellStars(source.artKeyBase, this.cardOfCell),
       radius: source.radius,
     })
     this.material = createCellMaterial(source.radius, options.artTexture)
@@ -225,6 +233,15 @@ export class WorldSurface {
     // `frustumCulled` stays on: `buildCellSheet` sets the bounding sphere by hand precisely so that
     // three can cull this correctly, and turning it off here would waste that.
     this.mesh.position.copy(source.centre)
+
+    // §1.11's pick pass. The SAME geometry, so the two can never disagree about where a cell is,
+    // and the draw material's own uniforms object, so they can never disagree about `uRadius`.
+    this.pickMaterial = createCellPickMaterial(this.material.uniforms as CellUniforms)
+    this.pickMesh = new Mesh(this.sheet.geometry, this.pickMaterial)
+    this.pickMesh.position.copy(source.centre)
+    // The pick camera renders this layer and nothing else (`idPicker.ts`), which is also what keeps
+    // the pick mesh out of the drawn frame -- it is never "hidden", it is simply not in that pass.
+    this.pickMesh.layers.set(PICK_LAYER)
 
     // The bake reads the SAME swatches the sheet draws, so a control seam moves both LOD
     // representations together. Baking the unpermuted array would leave `?swatch=mean` and
@@ -558,6 +575,8 @@ export class WorldSurface {
   dispose(): void {
     this.sheet.geometry.dispose()
     this.material.dispose()
+    // Its own program, so its own disposal — the shared uniforms object is not a shared material.
+    this.pickMaterial.dispose()
   }
 }
 
@@ -605,6 +624,30 @@ function buildDrawSwatches(
     out[cell * 3] = swatches[card * 3] ?? 0
     out[cell * 3 + 1] = swatches[card * 3 + 1] ?? 0
     out[cell * 3 + 2] = swatches[card * 3 + 2] ?? 0
+  }
+  return out
+}
+
+/**
+ * Per cell, the star index of the card it draws — §1.11's pick id (DEC-751).
+ *
+ * The composition is `artKeyBase + cardOfCell[cell]`, and both terms are load-bearing in a way that
+ * is worth stating because each fails silently on its own:
+ *
+ *  - **without `cardOfCell`**, `?bands=shuffle` makes the pick name the card whose *cell* the
+ *    pointer is over rather than the card it is *looking at*. The seam permutes the swatch and the
+ *    art but not the id, so the page draws one card and focuses another, and only under a control
+ *    seam nothing else on the page reacts to;
+ *  - **without `artKeyBase`**, all 45 sheets number from 0 and the id buffer cannot say which world
+ *    wrote the pixel. Cell 5 of every world is star 5, so the picker resolves every world's sixth
+ *    card to the first world's sixth card. This is exactly the aliasing `artKeyBase`'s own doc
+ *    comment describes for the art pool, and it is silent for the same reason: the id is a valid
+ *    star index, so nothing downstream can tell it is the wrong one.
+ */
+function buildCellStars(artKeyBase: number, cardOfCell: Uint32Array): Float32Array {
+  const out = new Float32Array(cardOfCell.length)
+  for (let cell = 0; cell < cardOfCell.length; cell += 1) {
+    out[cell] = artKeyBase + cardOfCell[cell]!
   }
   return out
 }

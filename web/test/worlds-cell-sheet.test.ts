@@ -96,9 +96,16 @@ function sheetFor(world: Plane & { rowCells: number[]; cardCount: number }) {
     normals,
     rows,
     swatches: new Float32Array(cardCount * 3).fill(0.5),
+    // Deliberately NOT `cell`. A base of zero is the one value that makes a cell index and a star
+    // index agree, which is exactly the aliasing §1.11 keys the pick id off `artKeyBase` to avoid —
+    // so an assertion that would pass under identity and fails here is the one worth having.
+    stars: Float32Array.from({ length: cardCount }, (_, cell) => SHEET_STAR_BASE + cell),
     radius: worldRadius(cardCount),
   })
 }
+
+/** An `artKeyBase` unlike any cell index in this file, for the reason `sheetFor` states. */
+const SHEET_STAR_BASE = 9000
 
 describe('§1.4 the sheet is one instance per card, at every subdivision', () => {
   it('finds the worlds it is supposed to measure', () => {
@@ -197,18 +204,19 @@ describe('§2.1 iSize is arc length, and the shader divides sin(theta_r) back ou
 
   it('no longer ships iEast, and the byte budget says so', () => {
     // §1.4's 52 bytes counted a tangent basis the sphere-following grid derives instead, and
-    // §1.11's filter has since added one float back (DEC-751). The budget is PROVED from the
-    // geometry rather than restated: an added or removed attribute moves both sides of it.
+    // §1.11 has since added two floats back (DEC-751): the filter's dim, and picking's star id.
+    // The budget is PROVED from the geometry rather than restated: an added or removed attribute
+    // moves both sides of it.
     const sheet = sheetFor(bySlug('dominaria'))
-    const names = ['iNormal', 'iSize', 'iSwatch', 'iLayer', 'iArt', 'iFiltered']
+    const names = ['iNormal', 'iSize', 'iSwatch', 'iLayer', 'iArt', 'iFiltered', 'iStar']
     expect(Object.keys(sheet.geometry.attributes).sort()).toEqual([...names, 'aCell'].sort())
     const bytes = names.reduce((n, key) => n + sheet.geometry.getAttribute(key).itemSize * 4, 0)
     expect(bytes).toBe(CELL_INSTANCE_BYTES)
 
     const rosterCells = WORLDS.reduce((n, w) => n + w.cardCount, 0)
     expect(rosterCells).toBe(24399)
-    expect(rosterCells * CELL_INSTANCE_BYTES).toBe(1073556)
-    expect((rosterCells * CELL_INSTANCE_BYTES) / 1024 / 1024).toBeCloseTo(1.024, 3)
+    expect(rosterCells * CELL_INSTANCE_BYTES).toBe(1171152)
+    expect((rosterCells * CELL_INSTANCE_BYTES) / 1024 / 1024).toBeCloseTo(1.117, 3)
   })
 })
 

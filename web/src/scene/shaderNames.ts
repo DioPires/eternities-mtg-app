@@ -146,6 +146,16 @@ export const SHADER_NAME_POST_COMPOSITE = 'PostComposite'
 export const SHADER_NAME_WORLD_CELL = 'WorldCell'
 
 /**
+ * The same sheet compiled with `ID_PASS` for PRD 8.5.6's pick pass (DEC-751, spec §1.11).
+ *
+ * A distinct name because it is a distinct **program**: `getProgramCacheKey` keys on `defines`, so
+ * the pick material links its own. Sharing `WorldCell` would leave the two indistinguishable in a
+ * capture — and the draw/pick split is exactly the pair a frame profile needs to tell apart, since
+ * one runs once per frame over the whole viewport and the other once per pointer move over 11x11.
+ */
+export const SHADER_NAME_WORLD_CELL_PICK = 'WorldCellPick'
+
+/**
  * Every name above, for the test that enforces the rules in this file's header.
  *
  * Deliberately a hand-written list rather than a re-export of the module namespace: the point is to
@@ -171,4 +181,5 @@ export const SHADER_NAMES = [
   SHADER_NAME_POST_UPSAMPLE,
   SHADER_NAME_POST_COMPOSITE,
   SHADER_NAME_WORLD_CELL,
+  SHADER_NAME_WORLD_CELL_PICK,
 ] as const

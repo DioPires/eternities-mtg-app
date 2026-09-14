@@ -993,25 +993,35 @@ comparable to the thing it is being compared to.
 |---|---|---|
 | Art pool, 1,024 × 128 × 96 × 4, no mips | 50,331,648 | 48.00 |
 | Equirect swatch array, 45 × 256 × 128 × 4 | 5,898,240 | 5.62 |
-| Cell instance attributes, 24,399 × 44 B | 1,073,556 | 1.02 |
+| Cell instance attributes, 24,399 × 48 B | 1,171,152 | 1.12 |
 | Printing ring, 72 × `small` (146×204×4) | 8,577,792 | 8.18 |
 | Focused card, `large` (672×936×4), one face | 2,515,968 | 2.40 |
-| **Total** | **68,397,204** | **65.23** |
+| **Total** | **68,494,800** | **65.32** |
 
-Under target with **30.8 MiB** of headroom, and **lower than today's worst case** — which is the
+Under target with **30.7 MiB** of headroom, and **lower than today's worst case** — which is the
 first place concept B pays for itself rather than costing.
 
-> **The cell row is 44 B, amending DEC-749's 40 (DEC-751).** §1.11's filter needs one float per
-> cell, and it is a separate attribute rather than a sentinel packed into `iArt` because the two
-> have different writers — the art stream owns `iArt` every frame, the store's evaluation owns the
-> filter on change — and one array with two writers is the defect the pool's three states exist to
-> prevent one level down. `test/worlds-cell-sheet.test.ts` proves the figure from the geometry
-> rather than restating it, so the next attribute moves this row automatically.
+> **The cell row is 48 B, amending DEC-749's 40 (DEC-751).** §1.11 adds two floats to it, and they
+> are separate attributes rather than sentinels packed into `iArt` for the same reason in both
+> cases — different writers, and one array with two writers is the defect the pool's three states
+> exist to prevent one level down.
+>
+> - **the filter's dim**, written by the store's evaluation on change where the art stream owns
+>   `iArt` every frame;
+> - **picking's `iStar`**, written once at build. Note that this one is *not* §1.11's
+>   `gl_InstanceID`: that is 0-based per sheet, and §1.2 keeps all 45 sheets resident, so it would
+>   alias every world's cell *n* onto every other world's cell *n* in a buffer that carries no way
+>   to tell which mesh wrote the pixel. It carries `artKeyBase + cardOfCell[cell]` — the card's
+>   star index — which is the same cure `artKeyBase` applies to the art pool one level down, and
+>   which lands the pick in the id space `scenePicker.resolvePick` already resolves.
+>
+> `test/worlds-cell-sheet.test.ts` proves the figure from the geometry rather than restating it, so
+> the next attribute moves this row automatically.
 
 > **The printing-ring row prices §1.10's flat quads, which have not landed.** The ticks have
 > (DEC-751); the sphere-to-quad conversion has not, so the ring still uploads 72 `art_crop`
 > textures at PRD 8.5.10's 256 px and costs **13.15 MiB**, not 8.18. Today's real total is
-> therefore **70.20 MiB** — still under target with 25.8 MiB to spare, so the conclusion holds
+> therefore **70.29 MiB** — still under target with 25.7 MiB to spare, so the conclusion holds
 > either way and the conversion is a saving rather than a prerequisite.
 > `test/worlds-budget.test.ts` asserts the allocation, not this table, and says so in that row.
 

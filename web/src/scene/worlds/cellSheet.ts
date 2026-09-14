@@ -38,8 +38,17 @@ import { CELL_LIFT, cellSizeArc } from './surfaceLaw'
  * > owns this one on change. Packing them would put two writers on one array, which is the shape
  * > of defect the three-state pool exists to prevent one level down. The cost is 0.09 MiB on v3
  * > (0.93 → 1.02), and §1.12's total moves with it.
+ *
+ * > **Amended to 48 by §1.11's picking (DEC-751).** The pick pass needs to name what it hit, and
+ * > the name has to be **multiverse-wide** rather than the `gl_InstanceID` §1.11's prose reaches
+ * > for. `gl_InstanceID` is 0-based *per sheet*, and §1.2 keeps all 45 sheets resident at once, so
+ * > two worlds' cell 5 would write the same id and the picker — which reads one integer out of a
+ * > pixel and has no idea which mesh wrote it — would resolve both to whichever world the consumer
+ * > guessed. That is the same aliasing `WorldSurfaceSource.artKeyBase` exists to prevent one level
+ * > down, and it takes the same cure: this attribute carries `artKeyBase + cardOfCell[cell]`, which
+ * > is the card's **star index**. Costs 0.09 MiB on v3 (1.02 → 1.11); §1.12's total moves with it.
  */
-export const CELL_INSTANCE_BYTES = 44
+export const CELL_INSTANCE_BYTES = 48
 
 /** What one world hands the sheet builder. All per-cell arrays are indexed by the card's cell id. */
 export interface CellSheetSource {
@@ -53,6 +62,15 @@ export interface CellSheetSource {
   readonly rows: Int32Array
   /** Linear RGB per cell, three floats in 0..1 (§2.2). */
   readonly swatches: Float32Array
+  /**
+   * Per cell, the **star index** of the card it draws — `artKeyBase + cardOfCell[cell]` (§1.11).
+   *
+   * Required rather than derived here, for the reason `cardOfCell` exists: `?bands=shuffle`
+   * permutes which card a cell draws, so the identity has to come from the surface that owns the
+   * permutation. Exact as a `Float32Array` — a float32 represents every integer below 2^24 and the
+   * multiverse has 28,587 stars, four orders of magnitude clear.
+   */
+  readonly stars: Float32Array
   /** The world's radius in scene units — `worldRadius(cardCount)`, or §1.8's floor. */
   readonly radius: number
 }
@@ -85,7 +103,7 @@ export interface CellSheet {
  * > times on a one-card world.
  */
 export function buildCellSheet(source: CellSheetSource): CellSheet {
-  const { cardCount, rowCells, normals, rows, swatches, radius } = source
+  const { cardCount, rowCells, normals, rows, swatches, stars, radius } = source
   const subdivision = subdivisionFor(rowCells)
 
   const geometry = new InstancedBufferGeometry()
@@ -117,6 +135,8 @@ export function buildCellSheet(source: CellSheetSource): CellSheet {
   geometry.setAttribute('iLayer', layers)
   geometry.setAttribute('iArt', art)
   geometry.setAttribute('iFiltered', filtered)
+  // Static: a cell draws the same card for the life of the sheet. The pick pass is the only reader.
+  geometry.setAttribute('iStar', new InstancedBufferAttribute(stars, 1))
   geometry.instanceCount = cardCount
 
   // By hand, because three would compute it from a `position` attribute this geometry does not have

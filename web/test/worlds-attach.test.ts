@@ -17,7 +17,15 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { Matrix4, PerspectiveCamera, Scene, Vector2, Vector3, type WebGLRenderer } from 'three'
+import {
+  Matrix4,
+  PerspectiveCamera,
+  Scene,
+  Vector2,
+  Vector3,
+  type ShaderMaterial,
+  type WebGLRenderer,
+} from 'three'
 
 import { decodeStars, decodeSwatches } from '../src/data/decode'
 import { FILTER_MASK_PASS, type PlaneRecord, type PlanesFile } from '../src/data/types'
@@ -27,10 +35,14 @@ import { QUALITY_TIERS } from '../src/scene/quality/adaptiveQuality'
 import { attachWorlds, DEFAULT_TIER_ART_LAYERS } from '../src/scene/worlds/attachWorlds'
 import { KEY_LIGHT_OFF_AXIS, keyLightDirection } from '../src/scene/worlds/keyLight'
 import { artPoolSize } from '../src/scene/worlds/artPool'
+import { PICK_LAYER } from '../src/scene/picking/idPicker'
 import { CROSSOVER_HIGH_PX } from '../src/scene/worlds/lod'
 import { isWorldPlane, worldPlanesOf } from '../src/scene/worlds/worldSource'
 import { worldsProbeOf } from '../src/scene/worlds/worldsProbe'
 import type { WorldsSeams } from '../src/scene/worlds/seams'
+
+/** three's default layer — what the frame camera renders. Named so the asserts below read. */
+const DRAW_LAYER = 0
 
 const DATA = resolve(__dirname, '../public/data')
 
@@ -172,8 +184,30 @@ describe('the worlds pass reaches the frame (§1.1, §1.2)', () => {
 
     const group = rig.scene.getObjectByName('worlds')
     expect(group).toBeDefined()
-    expect(group!.children).toHaveLength(WORLDS.length)
-    for (const surface of rig.worlds.surfaces) expect(surface.mesh.parent).toBe(group)
+    // Two meshes per world since DEC-751: the drawn sheet and §1.11's pick sheet.
+    expect(group!.children).toHaveLength(WORLDS.length * 2)
+    for (const surface of rig.worlds.surfaces) {
+      expect(surface.mesh.parent).toBe(group)
+      expect(surface.pickMesh.parent).toBe(group)
+      // The layer assignment is the whole of the draw/pick split, and it is silent in BOTH
+      // directions: a pick mesh left on layer 0 draws a flat id-coloured shell over the world, and
+      // a drawn mesh moved to PICK_LAYER vanishes from the frame while every test that only counts
+      // children stays green. Assert each mesh is on its own layer and NOT on the other's.
+      expect(surface.pickMesh.layers.isEnabled(PICK_LAYER)).toBe(true)
+      expect(surface.pickMesh.layers.isEnabled(DRAW_LAYER)).toBe(false)
+      expect(surface.mesh.layers.isEnabled(DRAW_LAYER)).toBe(true)
+      expect(surface.mesh.layers.isEnabled(PICK_LAYER)).toBe(false)
+      // Same geometry, so the pick target cannot drift from the picture; different material, so
+      // one of them can carry ID_PASS.
+      expect(surface.pickMesh.geometry).toBe(surface.mesh.geometry)
+      expect(surface.pickMesh.material).not.toBe(surface.mesh.material)
+      // ...and the SAME uniforms object, not a copy: `uRadius` is an input to where the shader puts
+      // a cell, so a copy would leave the pick target correct on frame one and silently wrong after
+      // any writer moved it — the picture stays right and only the clicks land on the wrong card.
+      expect((surface.pickMesh.material as ShaderMaterial).uniforms).toBe(
+        (surface.mesh.material as ShaderMaterial).uniforms,
+      )
+    }
     rig.worlds.dispose()
   })
 
@@ -477,7 +511,10 @@ describe('the shared art pool (§1.6, §1.12)', () => {
     // disposed array texture — which draws a plausible picture until the driver reclaims it.
     expect(rig.worlds.pool).not.toBe(before)
     expect(rig.worlds.surfaces).toHaveLength(WORLDS.length)
-    expect(rig.scene.getObjectByName('worlds')!.children).toHaveLength(WORLDS.length)
+    // Two per world: the drawn sheet and §1.11's pick sheet. A rung step recomposes the roster, so
+    // this also catches a rebuild that forgot to re-add the pick mesh — which would leave the
+    // worlds unpickable from the first quality step onward, with the picture unchanged.
+    expect(rig.scene.getObjectByName('worlds')!.children).toHaveLength(WORLDS.length * 2)
 
     // And back up: the rung is not one-way, and PRD 8.5.11's restore step walks it.
     rig.worlds.setArtLayers(QUALITY_TIERS[0]!.artPoolLayers)
