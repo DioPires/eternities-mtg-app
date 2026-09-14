@@ -166,7 +166,19 @@ async function readQuality(page: Page): Promise<Quality> {
   })
 }
 
-const TIER_LABELS = ['full', 'pixel-ratio', 'bloom', 'thumbnails'] as const
+const TIER_LABELS = ['full', 'pixel-ratio', 'bloom', 'thumbnails', 'glow'] as const
+
+/**
+ * The ladder has exactly this many rungs, asserted before anything else uses `TIER_LABELS`.
+ *
+ * Without it, adding a tier and forgetting this list would silently shrink the test's coverage to
+ * the tiers it still knew about — every assertion below would pass while the new rung went
+ * unwatched, which is the failure mode PRD 9.1.4 exists to prevent in the first place.
+ */
+test('the spec covers every rung the ladder has', () => {
+  expect(QUALITY_TIERS).toHaveLength(TIER_LABELS.length)
+  expect(QUALITY_TIERS.map((tier) => tier.label)).toEqual([...TIER_LABELS])
+})
 
 test('every rung of the quality ladder lands, and only its own rung (PRD 8.5.11, 9.1.4)', async ({
   page,
@@ -175,7 +187,13 @@ test('every rung of the quality ladder lands, and only its own rung (PRD 8.5.11,
   for (let index = 0; index < TIER_LABELS.length; index += 1) {
     tiers.push(await pinnedTier(page, index))
   }
-  const [full, pixelRatio, bloom, thumbnails] = tiers as [Quality, Quality, Quality, Quality]
+  const [full, pixelRatio, bloom, thumbnails, glow] = tiers as [
+    Quality,
+    Quality,
+    Quality,
+    Quality,
+    Quality,
+  ]
 
   // Rung 1 — the pixel-ratio cap, 1.5 → 1.0. Asserted as the exact ratio and the exact drawing
   // buffer each cap produces, at every tier, because the `dpr` range prop is now the only writer.
@@ -234,6 +252,33 @@ test('every rung of the quality ladder lands, and only its own rung (PRD 8.5.11,
   expect(bloom.thumbnailCapacity).toBe(full.thumbnailCapacity)
   expect(pixelRatio.thumbnailCapacity).toBe(full.thumbnailCapacity)
 
+  // Rung 4 — the cheap glow program (DEC-739, review §3.5's "new tier 4 cheap glow variant, one
+  // tap, no dither").
+  //
+  // Asserted as the name of the program the **live mesh** is drawn with, not as the tier's `glow`
+  // field. That distinction is the point of the whole spec: every rung in this ladder has at some
+  // stage reported an intention it did not deliver — the `dpr` prop was inert (R2),
+  // `resolutionScale` was inert (R3), the selection mask was inert (R4) — and reading a tier's own
+  // description back is how all three stayed hidden. `shaderNames.ts` gives the two glow programs
+  // distinct names so that this comparison can exist.
+  //
+  // A material *swap* rather than a define flip is what makes this observable at all: flipping
+  // `defines` on a live material re-links the program on the next draw, which is the several-hundred
+  // millisecond first-use stall the boot warm-up exists to remove — so a rung meant to recover
+  // frames would cost them.
+  expect(glow.glowShader, 'rung 4 draws the cheap glow program').not.toBe(thumbnails.glowShader)
+  expect(glow.glowShader).toBe('PlaneGlowCheap')
+  // ...and every rung above it draws the full one. Both directions, because a spec that only
+  // checked the bottom rung would pass on a build where *every* tier drew the cheap glow.
+  for (const tier of [full, pixelRatio, bloom, thumbnails]) {
+    expect(tier.glowShader, `${tier.tier} must keep the full glow`).toBe('PlaneGlow')
+  }
+  // Rung 4 moves the glow and nothing else: the three quantities the rungs above it own are held.
+  expect(glow.drawingBuffer).toEqual(thumbnails.drawingBuffer)
+  expect(glow.bloomSource).toEqual(thumbnails.bloomSource)
+  expect(glow.bloomLevels).toBe(thumbnails.bloomLevels)
+  expect(glow.thumbnailCapacity).toBe(thumbnails.thumbnailCapacity)
+
   // The structural promise: "geometry and motion are never degraded". Same stars drawn, same
   // `uMotion`, at every rung including the bottom one.
   expect(full.starsDrawn).toBeGreaterThan(0)
@@ -261,6 +306,127 @@ test('the monitor judges against the display, not against a constant (DEC-692 R5
   // must not cross — the two ways the shipped constants were wrong.
   expect(quality.restoreMs).toBeGreaterThan(quality.refreshMs)
   expect(quality.degradeMs).toBeGreaterThan(quality.restoreMs)
+})
+
+/**
+ * The platform layer answered the GPU's questions, and the app acted on the answers (DEC-739,
+ * review §3.5 and §3.7).
+ *
+ * **What this can and cannot assert, stated plainly.** The three capabilities this covers describe
+ * a machine the team does not own, and the CI runner is not that machine — so an assertion that
+ * `pointSizeMax` is 64 or that the half-float probe failed would be an assertion about the runner,
+ * not about the app. What is checkable anywhere is the *relationship* between what the driver said
+ * and what the app then did: the sprite ceiling never exceeds the reported range, the position
+ * format is the one the probe chose, and the boot warm-up ran. Those are the wires, and a wire that
+ * is not connected is exactly the class of defect review §3.7 is a list of.
+ */
+test('the platform layer asks the GPU and the app acts on the answer (review §3.5, §3.7)', async ({
+  page,
+}) => {
+  await page.goto('/?probe=1&motion=1')
+  await waitForField(page)
+
+  /*
+   * Wait for the warm-up rather than reading it the instant the field completes.
+   *
+   * It is asynchronous by construction — `compileAsync` resolves when the driver says the programs
+   * are ready — so a bare read is a race that this test lost the first time it ran in a full-suite
+   * pass and won when it ran alone. The wait is not a papering-over: "warmed during the 4 s intro"
+   * is exactly the claim review §3.5 makes, and a bound of ten seconds from the field completing is
+   * a genuine assertion that the warm-up finishes inside the window the intro gives it, on a
+   * SwiftShader runner that compiles far slower than any machine in scope.
+   */
+  await expect
+    .poll(
+      // `!= null` rather than `!== null`: the optional chain yields `undefined` when the seam is
+      // not installed, and `undefined !== null` is `true` — which would have declared the warm-up
+      // finished on a page that never had a probe at all.
+      async () => page.evaluate(() => window.__eternitiesProbe?.state().programWarmup != null),
+      {
+        timeout: 10_000,
+        message: 'the boot-time program warm-up never completed',
+      },
+    )
+    .toBe(true)
+
+  const state = await page.evaluate(() => {
+    const probe = window.__eternitiesProbe
+    if (!probe) throw new Error('?probe=1 did not install the probe')
+    const snapshot = probe.state()
+    return {
+      platform: snapshot.platform,
+      backingStore: snapshot.backingStore,
+      warmup: snapshot.programWarmup,
+    }
+  })
+
+  // The scene's shaders are GLSL ES 3.0, so anything drawing at all is on WebGL2.
+  expect(state.platform.webgl2).toBe(true)
+
+  // `ALIASED_POINT_SIZE_RANGE` was never queried before this (review §3.7's "All" row). The
+  // assertion is the *clamp*, not the value: a driver silently clamps `gl_PointSize` and says
+  // nothing, so the only observable half is that the app stopped asking for more than it can get.
+  expect(state.platform.pointSizeMax).toBeGreaterThanOrEqual(1)
+  expect(state.platform.starMaxPixels).toBeGreaterThan(0)
+  expect(
+    state.platform.starMaxPixels,
+    'the star shader must never ask for a sprite larger than the driver will rasterise',
+  ).toBeLessThanOrEqual(state.platform.pointSizeMax)
+
+  // PRD 8.5.8's atlas is 4096 square, and `MAX_TEXTURE_SIZE` was assumed rather than asked.
+  expect(state.platform.maxTextureSize).toBeGreaterThanOrEqual(4096)
+  expect(state.platform.atlasAffordable).toBe(true)
+  // Queried for W4.4 rather than consumed here; asserted only as "the query returned something",
+  // because the WebGL2 minimum is 256 and every context in scope clears PRD 5.6.8's 72.
+  expect(state.platform.maxArrayTextureLayers).toBeGreaterThanOrEqual(72)
+
+  // The half-float probe ran, took roughly the millisecond review §3.5 budgets for it, and — this
+  // is the wire — its verdict is the format the star buffer was actually built in. Not asserted as
+  // `ok: true`: a software rasteriser is allowed to fail it, and the app's job then is to fall back,
+  // which is what this equality checks in either direction.
+  expect(state.platform.halfFloatProbeMs).toBeLessThan(50)
+  expect(state.platform.positionMode).toBe(
+    state.platform.halfFloatProbeOk ? 'float16' : 'float32',
+  )
+
+  /*
+   * The `device-pixel-content-box` observer fired and reported a box for the canvas.
+   *
+   * **Deliberately not asserted against `DEVICE_SCALE`, and this is a measured finding rather than
+   * a softened assertion.** Under Chromium's device emulation — which is what Playwright's
+   * `deviceScaleFactor` is, and what every CI run of this app uses — the canvas reports a
+   * `devicePixelContentBoxSize` equal to its *CSS* box while `window.devicePixelRatio` reports 2.
+   * The first draft of `PixelRatioHost` derived the ladder's cap from that box; it resolved every
+   * tier to 1.0, halved the resolution and made rung 1 unobservable, and this assertion is what
+   * caught it. The fix was to take the cap from `devicePixelRatio` — which is what review §3.5
+   * specifies to the letter — and leave this box as the *size* signal it is.
+   *
+   * So what is checkable here is that the observer is wired and reporting a self-consistent box.
+   * The cap's correctness is asserted by the drawing-buffer equalities in the rung test above,
+   * which read the renderer rather than the observer.
+   */
+  expect(state.backingStore, 'the ResizeObserver never fired').not.toBeNull()
+  expect(state.backingStore!.devicePixelWidth).toBeGreaterThan(0)
+  expect(state.backingStore!.devicePixelHeight).toBeGreaterThan(0)
+  expect(state.backingStore!.cssWidth).toBe(VIEWPORT.width)
+  expect(state.backingStore!.ratio).toBeCloseTo(
+    state.backingStore!.devicePixelWidth / state.backingStore!.cssWidth,
+    5,
+  )
+  // Not `toBe(true)`: this records which of the two readings the run was measured under, and a
+  // browser without the box would still size correctly through the CSS-pixel path. `true` is what
+  // a modern Chromium gives, so a `false` here is worth investigating rather than failing on.
+  expect(typeof state.backingStore!.exact).toBe('boolean')
+
+  // The warm-up linked every program without error. A failure here means those programs are back
+  // to linking on their first draw — the 322-362 ms stalls DEC-645 measured, in the middle of a
+  // navigation.
+  expect(state.warmup!.error).toBeNull()
+  // At least the fifteen distinct programs the scene builds at boot: three star, two glow, two
+  // thumbnail, two card face/edge, two planet, four post. A `>=` rather than an equality because
+  // the count is a floor on coverage — but it must be a real floor, or a warm-up that silently
+  // found nothing would pass.
+  expect(state.warmup!.specs).toBeGreaterThanOrEqual(15)
 })
 
 test('an unpinned scene starts at full quality and reports no pin', async ({ page }) => {

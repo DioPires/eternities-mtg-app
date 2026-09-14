@@ -17,6 +17,9 @@ import type { CardRecord } from '../data'
 import type { CardTierHandle } from './cards/CardTier'
 import { gpuMemoryReport } from './cards/gpuMemory'
 import { pickLoadedCard } from './cards/pickCard'
+import type { BackingStoreSize } from './platform/backingStore'
+import { detectPlatformCapabilities } from './platform/capabilities'
+import type { ProgramWarmupResult } from './platform/programWarmup'
 import type { PostChain } from './post/postChain'
 import { QUALITY_TIERS, type QualityTier } from './quality/adaptiveQuality'
 import type { Probe, ProbeState } from './probe'
@@ -45,6 +48,10 @@ export interface ProbeSeamDeps {
   readonly cameraRef: RefObject<PerspectiveCamera | null>
   readonly rendererRef: RefObject<WebGLRenderer | null>
   readonly chainRef: RefObject<PostChain | null>
+  /** The last `device-pixel-content-box` observation, from `platform/PixelRatioHost` (DEC-739). */
+  readonly backingStoreRef: MutableRefObject<BackingStoreSize | null>
+  /** What the boot-time program warm-up did, from `platform/ProgramWarmupHost` (DEC-739). */
+  readonly warmupRef: MutableRefObject<ProgramWarmupResult | null>
   readonly tierRef: MutableRefObject<QualityTier>
   readonly focusedStarRef: MutableRefObject<number>
   readonly focusedSlugRef: MutableRefObject<string | null>
@@ -89,6 +96,30 @@ export function useProbeSeam(deps: ProbeSeamDeps): void {
         refreshMs: band?.refreshMs ?? 0,
         degradeMs: band?.degradeMs ?? 0,
         restoreMs: band?.restoreMs ?? 0,
+        // Off the live mesh, so this reports the program that is drawn rather than the one the
+        // tier asked for. See `ProbeState.quality.glowShader`.
+        glowShader: (resources.field.glow.material as ShaderMaterial).name,
+      }
+    }
+
+    /** What the GPU answered at boot, plus the one number the app clamped because of it. */
+    const platformState = (): ProbeState['platform'] => {
+      const renderer = deps.rendererRef.current
+      // `detectPlatformCapabilities` caches per renderer, so this is a map lookup — the probe seam
+      // is polled by the browser checks and must not re-run a half-float probe each time.
+      const capabilities = renderer ? detectPlatformCapabilities(renderer) : null
+      const maxPixels = (resources.field.points.material as ShaderMaterial).uniforms['uMaxPixels']
+      return {
+        webgl2: capabilities?.webgl2 ?? false,
+        maxTextureSize: capabilities?.maxTextureSize ?? 0,
+        atlasAffordable: capabilities?.atlasAffordable ?? false,
+        pointSizeMax: capabilities?.pointSizeRange[1] ?? 0,
+        maxArrayTextureLayers: capabilities?.maxArrayTextureLayers ?? 0,
+        parallelShaderCompile: capabilities?.parallelShaderCompile ?? false,
+        positionMode: resources.positionMode,
+        halfFloatProbeOk: capabilities?.halfFloatProbe.ok ?? false,
+        halfFloatProbeMs: capabilities?.halfFloatProbe.durationMs ?? 0,
+        starMaxPixels: typeof maxPixels?.value === 'number' ? maxPixels.value : -1,
       }
     }
 
@@ -141,6 +172,9 @@ export function useProbeSeam(deps: ProbeSeamDeps): void {
           withinCeiling: memoryNow.withinCeiling,
         },
         quality: qualityState(),
+        platform: platformState(),
+        backingStore: deps.backingStoreRef.current,
+        programWarmup: deps.warmupRef.current,
         card:
           record && cardState && cardState.visible
             ? {

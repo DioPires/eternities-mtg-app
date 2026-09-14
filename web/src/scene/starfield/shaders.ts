@@ -242,11 +242,20 @@ export const STAR_VERTEX_SHADER = /* glsl */ `
 ${DEFINE_BLOCK}
 ${MOTION_GLSL}
 
-attribute vec3 aClass;   // planeIndex, colour byte, sizeClass  (0-255)
-attribute vec3 aStyle;   // brightness, twinklePhase, typeMask (0-255)
-attribute float aFilter; // PRD 8.5.1's uint8 filter mask, normalised: 1 passes, 0 fails
-/** PRD 5.5.3: 1 once this star's thumbnail is in the atlas. Until then the star never fades out. */
-attribute float aThumb;
+/*
+ * The two repacked vertex attributes (DEC-739; layout in the PACKED_ block of ../../data/types).
+ *
+ * No backticks anywhere in this template literal: it is a TypeScript template string, and one
+ * backtick in a GLSL comment ends the shader at that character (DEC-648).
+ *
+ * vec4, not vec3, and the fourth lane of each is what used to be a stride-1 attribute of its own:
+ * PRD 8.5.1's filter mask and PRD 5.5.3's "this star's thumbnail is in the atlas". Both arrive as
+ * RAW BYTES rather than normalised, because the other three lanes of each vector are raw byte
+ * values and a buffer is normalised or it is not — so the two divisions by 255 below are what the
+ * attribute's normalized flag used to do, written out.
+ */
+attribute vec4 aClass;   // planeIndex, colour byte, sizeClass, filter mask (0-255)
+attribute vec4 aStyle;   // brightness, twinklePhase, typeMask, thumbnail present (0-255)
 
 uniform vec3 uHues[7];
 uniform float uRaritySize[4];
@@ -274,7 +283,10 @@ void main() {
   gl_Position = projectionMatrix * mvPosition;
 
   vec4 fade = planeTexel(row, PT_FADE_TEXEL);
-  float pass = aFilter;
+  // Exactly what the old normalised aFilter attribute delivered. A step() would be wrong: pass
+  // feeds a mix() below as well as the > 0.5 gate, so an intermediate mask byte dims by a
+  // proportion rather than snapping, and that is PRD 5.8.1's behaviour.
+  float pass = aClass.w * (1.0 / 255.0);
 
   // PRD 5.8.3: a dimmed card does not respond to hover and is not focusable, and a plane that has
   // not faded in has nothing to click yet.
@@ -306,7 +318,7 @@ void main() {
   // PRD 5.5.1 and 5.5.4: the star cross-fades into its thumbnail as it grows past the band, and
   // back out again on the way away. Timed by the drawn size above, which is camera distance and
   // rarity, so the transition is never keyed to when an image arrived (PRD 7.3.4, 7.3.5).
-  float crossFade = smoothstep(uThumbStartPx, uThumbFullPx, pixels) * aThumb;
+  float crossFade = smoothstep(uThumbStartPx, uThumbFullPx, pixels) * (aStyle.w * (1.0 / 255.0));
 
   // Byte 7 is packed (amendment A3): hue class in bits 0-2, colour identity in bits 3-7. Take
   // the low three bits, or a mono-green star (byte 132) indexes uHues far past its seventh and
@@ -408,6 +420,27 @@ void main() {
 }
 `
 
+/**
+ * The glow's fragment shader, in two spellings selected by the `CHEAP_GLOW` define (DEC-739).
+ *
+ * Review §3.3 prices glow overdraw as the frame's second cost after the post chain — the focused
+ * plane's quad spans 4.2 plane radii, so at plane level this shader runs over most of the screen —
+ * and review §3.5 makes "a cheap glow variant (one tap, no dither)" the ladder's new bottom rung.
+ * Under `CHEAP_GLOW` the two drifting noise taps become one and the dither hash goes away, which
+ * removes one dependent texture fetch and the six integer multiplies of `hashU32` from every
+ * covered fragment.
+ *
+ * **What the cheap variant costs, stated plainly.** The dither exists because eighty-three of these
+ * quads overlap additively at very low alpha and an 8-bit output quantises the sum into visible
+ * contour rings around every plane; without it, the rings come back. That is a real regression in
+ * the picture, and it is why this is the *bottom* rung — a machine that has descended four steps is
+ * choosing a flatter nebula over a dropped frame. The single tap is sampled at the *lower* of the
+ * two frequencies and given the whole weight, so the cloud keeps its large-scale structure and
+ * loses only the fine detail the second tap contributed.
+ *
+ * `HASH_GLSL` is included only in the full variant. It is otherwise dead code in the cheap program,
+ * and a driver is free to keep dead code — this way there is nothing to keep.
+ */
 export const GLOW_FRAGMENT_SHADER = /* glsl */ `
 precision highp float;
 ${HASH_GLSL}
@@ -456,6 +489,59 @@ void main() {
   // keyed to the pixel breaks the rings up; it is invisible at this amplitude.
   float dither = (hash01(ivec3(gl_FragCoord.xy, 0)) - 0.5) * (1.0 / 320.0);
   float alpha = cloud * vFade + dither;
+  if (alpha < 0.003) discard;
+  gl_FragColor = vec4(vTint, alpha);
+}
+`
+
+/**
+ * The ladder's bottom rung: the same glow with one tap and no dither. See {@link
+ * GLOW_FRAGMENT_SHADER} for what that buys and what it costs.
+ *
+ * Written out rather than assembled from the full shader with `#ifdef`s. The two differ in three
+ * lines out of thirty, and a preprocessor-spliced pair would be harder to diff by eye than two
+ * files are — while `test/starfield.test.ts` pins the parts that must stay identical (the ellipse
+ * squash, the cubed falloff, the empty-glow core) as string equalities, so drift between them is a
+ * red test rather than a picture nobody compared.
+ */
+export const GLOW_CHEAP_FRAGMENT_SHADER = /* glsl */ `
+precision highp float;
+
+uniform sampler2D uNoise;
+uniform float uTime;
+uniform float uNebulaOpacity;
+uniform float uEmptyOpacity;
+uniform float uEmptyCore;
+uniform float uMotion;
+
+varying vec2 vQuad;
+varying vec3 vTint;
+varying float vFade;
+varying float vEmpty;
+varying vec3 vEllipse;
+
+void main() {
+  if (vFade <= 0.001) discard;
+
+  vec2 axis = vEllipse.xy;
+  float along = dot(vQuad, axis) / vEllipse.z;
+  float across = dot(vQuad, vec2(-axis.y, axis.x));
+  float r = length(vec2(along, across));
+  if (r > 1.0) discard;
+
+  float base = 1.0 - smoothstep(0.0, 1.0, r);
+  // One tap, at the lower of the two frequencies and carrying the whole weight, so the cloud keeps
+  // its large-scale structure and loses only the detail the second tap added.
+  vec2 uv = vQuad * 0.5 + 0.5;
+  float drift = uTime * 0.004 * uMotion;
+  float noise = texture2D(uNoise, uv * 1.3 + vec2(drift, drift * 0.6)).r;
+
+  float falloff = base * base * base;
+  float cloud = falloff * mix(uNebulaOpacity, uEmptyOpacity, vEmpty) * (0.45 + 1.1 * noise);
+  cloud += pow(base, 6.0) * uEmptyCore * vEmpty;
+
+  // No dither: the contour rings it suppresses come back, and that is the deal this rung offers.
+  float alpha = cloud * vFade;
   if (alpha < 0.003) discard;
   gl_FragColor = vec4(vTint, alpha);
 }

@@ -20,6 +20,7 @@ import type { SetsSidecar, Stars } from '../data/decode'
 import { LOAD_ATTEMPTS, loadManifest, loadPlanes, loadSearch, loadSets } from '../data/load'
 import type { Manifest, PlanesFile, SearchFile } from '../data/types'
 import { sceneErrors } from './errors'
+import { bootPositionMode } from './platform/capabilities'
 import { createNebulaTexture } from './starfield/nebulaTexture'
 import { PlaneTable } from './starfield/planeTable'
 import { createStarField, type StarField } from './starfield/starFieldObjects'
@@ -120,6 +121,27 @@ export function useSceneData(): SceneDataState {
     async function run(): Promise<void> {
       lines.push(`data directory ${dataRootSafe()}`)
       patch({})
+
+      /*
+       * Ask the GPU about half-float vertex attributes while the first two artefacts are in flight
+       * (DEC-739, `scene/platform/halfFloatProbe`).
+       *
+       * The answer is needed below, at the moment the `StarGeometry` is built, and asking for it
+       * there would be the worst available time: `resolvePositionMode` is synchronous, and the
+       * probe costs a context, two shader compiles and a `readPixels` — **measured at 68 ms on this
+       * M5 Pro through ANGLE Metal**, not the ~1 ms review §3.5 estimates, because a synchronous
+       * readback is a full pipeline flush however small the target. Paid at the call site that is
+       * two network round trips deep, that is 68 ms of dead main thread between `planes.json`
+       * landing and the first star being drawable.
+       *
+       * Paid *here*, one frame in, it is 68 ms of a main thread that is otherwise waiting on the
+       * network — and `bootPositionMode` caches, so the call below is free. If the fetches somehow
+       * win the race the probe simply runs at its old moment; nothing depends on the ordering for
+       * correctness, only for when the cost lands.
+       */
+      void afterFirstFrame().then(() => {
+        if (!signal.aborted) bootPositionMode()
+      })
 
       const manifest = await loadManifest({ signal }).catch(failing('manifest.json'))
       lines.push(

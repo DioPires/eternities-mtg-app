@@ -36,6 +36,7 @@ import {
 import { cardBackImageUri, printingImageUri, CARD_BACK_URI } from '../../data/images'
 import type { CardRecord } from '../../data/types'
 import { PICK_LAYER } from '../picking/idPicker'
+import type { ProgramWarmupSpec } from '../platform/programWarmup'
 import {
   CARD_CORNER_RADIUS,
   CARD_FLIP_S,
@@ -167,6 +168,23 @@ export class FocusedCard {
   private readonly faceGeometries: BufferGeometry[] = []
   private readonly planetGeometry = new SphereGeometry(PLANET_RADIUS, 24, 16)
   private readonly planets: Planet[] = []
+
+  /**
+   * One planet material of each kind, held solely so the boot-time warm-up has something to link
+   * against (DEC-739, `../platform/programWarmup`).
+   *
+   * The planets themselves are rebuilt per card in {@link rebuildPlanets}, so at boot there is no
+   * planet in the scene graph and a traversal finds nothing — while `FocusedCardPlanet` and
+   * `FocusedCardPlanetPick` are among the last programs the app links and therefore land their
+   * first-draw stall in the middle of PRD 6.2.3's fly-to-card, which review §3.7 names as one of
+   * the two likely hitches on ANGLE D3D11.
+   *
+   * These cost two `ShaderMaterial` objects and **no extra program**: `getProgramCacheKey` reads
+   * the interned sources and the defines, both of which these share with every real planet, so
+   * warming through them warms the program the real planets will be drawn with.
+   */
+  private readonly warmupPlanetMaterial = planetMaterial(0)
+  private readonly warmupPlanetPickMaterial = planetPickMaterial(PLANET_ID_BASE + 1)
 
   private card: CardRecord | null = null
   private starIndexValue = -1
@@ -569,38 +587,11 @@ export class FocusedCard {
       const printing = card.p[slot.printing]
       if (!printing) continue
 
-      const material = new ShaderMaterial({
-        // Every slot's material compiles to the same program, so they all carry the same name.
-        name: SHADER_NAME_CARD_PLANET,
-        uniforms: {
-          uImage: { value: null },
-          uHasImage: { value: 0 },
-          uImageFade: { value: 0 },
-          uGlow: { value: new Color(0.16, 0.17, 0.22) },
-          uActive: { value: slot.printing === this.activePrintingValue ? 1 : 0 },
-          uHover: { value: 0 },
-        },
-        vertexShader: PLANET_VERTEX_SHADER,
-        fragmentShader: PLANET_FRAGMENT_SHADER,
-      })
+      const material = planetMaterial(slot.printing === this.activePrintingValue ? 1 : 0)
       const mesh = new Mesh(this.planetGeometry, material)
       mesh.layers.set(0)
 
-      const id = PLANET_ID_BASE + i + 1
-      const pickMaterial = new ShaderMaterial({
-        name: SHADER_NAME_CARD_PLANET_PICK,
-        uniforms: {
-          uIdColour: {
-            value: new Color(
-              (id % 256) / 255,
-              (Math.floor(id / 256) % 256) / 255,
-              (Math.floor(id / 65536) % 256) / 255,
-            ),
-          },
-        },
-        vertexShader: ID_VERTEX_SHADER,
-        fragmentShader: ID_FRAGMENT_SHADER,
-      })
+      const pickMaterial = planetPickMaterial(PLANET_ID_BASE + i + 1)
       const pickMesh = new Mesh(this.planetGeometry, pickMaterial)
       pickMesh.layers.set(PICK_LAYER)
 
@@ -695,7 +686,65 @@ export class FocusedCard {
     this.planetGeometry.dispose()
     this.frontMaterial.dispose()
     this.backMaterial.dispose()
+    this.warmupPlanetMaterial.dispose()
+    this.warmupPlanetPickMaterial.dispose()
   }
+
+  /**
+   * The two planet programs, for the boot-time warm-up. See {@link warmupPlanetMaterial}.
+   *
+   * The card's own faces and edge are not here: they are mounted under {@link root} from the
+   * constructor, so a traversal of the live scene already finds them.
+   */
+  get warmupSpecs(): ProgramWarmupSpec[] {
+    return [
+      { geometry: this.planetGeometry, material: this.warmupPlanetMaterial },
+      { geometry: this.planetGeometry, material: this.warmupPlanetPickMaterial },
+    ]
+  }
+}
+
+/**
+ * PRD 5.6.7's orbiting printing sphere. One program for all of them — same sources, no defines — so
+ * every slot's material carries the same name.
+ *
+ * Extracted from `rebuildPlanets` so the boot-time warm-up can build one without a card
+ * (`FocusedCard.warmupSpecs`, DEC-739). A factory rather than a shared singleton because each
+ * planet owns its own texture and its own `uActive`/`uHover`, which are uniform *values* and
+ * therefore outside `getProgramCacheKey` — same program, different bindings.
+ */
+function planetMaterial(active: number): ShaderMaterial {
+  return new ShaderMaterial({
+    name: SHADER_NAME_CARD_PLANET,
+    uniforms: {
+      uImage: { value: null },
+      uHasImage: { value: 0 },
+      uImageFade: { value: 0 },
+      uGlow: { value: new Color(0.16, 0.17, 0.22) },
+      uActive: { value: active },
+      uHover: { value: 0 },
+    },
+    vertexShader: PLANET_VERTEX_SHADER,
+    fragmentShader: PLANET_FRAGMENT_SHADER,
+  })
+}
+
+/** The same sphere into the id buffer (PRD 8.5.6), with its slot's id as a colour. */
+function planetPickMaterial(id: number): ShaderMaterial {
+  return new ShaderMaterial({
+    name: SHADER_NAME_CARD_PLANET_PICK,
+    uniforms: {
+      uIdColour: {
+        value: new Color(
+          (id % 256) / 255,
+          (Math.floor(id / 256) % 256) / 255,
+          (Math.floor(id / 65536) % 256) / 255,
+        ),
+      },
+    },
+    vertexShader: ID_VERTEX_SHADER,
+    fragmentShader: ID_FRAGMENT_SHADER,
+  })
 }
 
 /** PRD 7.2's worst case: a 72-printing card, both faces loaded and every planet textured. */

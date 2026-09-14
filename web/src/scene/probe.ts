@@ -115,7 +115,77 @@ export interface ProbeState {
     readonly refreshMs: number
     readonly degradeMs: number
     readonly restoreMs: number
+    /**
+     * The name of the glow program the mesh is actually drawn with — the ladder's bottom rung
+     * (DEC-739, review §3.5's "new tier 4 cheap glow variant").
+     *
+     * `material.name`, read off the live mesh, and not the tier's `glow` field. That distinction is
+     * the whole reason this is here: the tier's field is what was *asked for*, and every previous
+     * rung in this ladder has at some point reported an intention it did not deliver — the `dpr`
+     * prop (R2), `resolutionScale` (R3), the selection mask (R4). `shaderNames.ts` gives the two
+     * glow programs different names precisely so this can tell them apart.
+     */
+    readonly glowShader: string
   }
+  /**
+   * What the platform layer found when it asked the GPU, at boot (DEC-739, review §3.5, §3.7).
+   *
+   * Everything here describes hardware the team does not own, which is why it is on the probe at
+   * all: a `?probe=1` run from a Windows laptop is only readable if it says which answers it was
+   * measured under. The same object goes into the bench JSON through `capabilitiesForBench`.
+   */
+  readonly platform: {
+    readonly webgl2: boolean
+    readonly maxTextureSize: number
+    /** `MAX_TEXTURE_SIZE >= 4096`, which PRD 8.5.8's atlas needs. */
+    readonly atlasAffordable: boolean
+    /** `ALIASED_POINT_SIZE_RANGE`, which the star field clamps `uMaxPixels` and the pick floor to. */
+    readonly pointSizeMax: number
+    readonly maxArrayTextureLayers: number
+    readonly parallelShaderCompile: boolean
+    /** Chosen by the half-float probe, not by `?positions=`, unless the URL overrode it. */
+    readonly positionMode: string
+    readonly halfFloatProbeOk: boolean
+    readonly halfFloatProbeMs: number
+    /**
+     * The largest sprite the star shader will ask for, in device pixels, after the clamp.
+     *
+     * The clamp is unobservable from outside — a driver silently clamps `gl_PointSize` and says
+     * nothing — so the *app's* side of it is reported instead: this is `uMaxPixels` read off the
+     * live material, and it must never exceed {@link pointSizeMax}.
+     */
+    readonly starMaxPixels: number
+  }
+  /**
+   * The backing store the compositor is giving the canvas, from `device-pixel-content-box`
+   * (DEC-739). `null` before the first `ResizeObserver` callback.
+   *
+   * `exact` says whether the numbers came from that box or were reconstructed from the CSS box and
+   * `devicePixelRatio` — two different claims, and a fallback that pretended to be the first would
+   * make this whole reading unverifiable.
+   */
+  readonly backingStore: {
+    readonly cssWidth: number
+    readonly cssHeight: number
+    readonly devicePixelWidth: number
+    readonly devicePixelHeight: number
+    readonly ratio: number
+    readonly exact: boolean
+  } | null
+  /**
+   * What the boot-time program warm-up did (DEC-739, DEC-645). `null` until it has finished.
+   *
+   * `specs` is the number of distinct (geometry, material) pairs linked, deduped — so it counts
+   * programs rather than scene-graph nodes. A run where this stays `null` after the intro is a run
+   * where every program is still linking on its first draw, which is the 322-362 ms stall DEC-645
+   * measured and this exists to move.
+   */
+  readonly programWarmup: {
+    readonly specs: number
+    readonly durationMs: number
+    readonly parallel: boolean
+    readonly error: string | null
+  } | null
   readonly card: ProbeCardState | null
   /**
    * How far the focused card is drawn from the point the camera is looking at, in world units.

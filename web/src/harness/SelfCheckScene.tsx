@@ -101,6 +101,7 @@ export function SelfCheckScene(): ReactElement {
           starsComplete={data.starsComplete}
           reducedMotion={reducedMotion}
           bloomScale={tier.tier.bloomScale}
+          glowQuality={tier.tier.glow}
           onHover={setHover}
           onSelect={setSelected}
           onQualityChange={onQualityChange}

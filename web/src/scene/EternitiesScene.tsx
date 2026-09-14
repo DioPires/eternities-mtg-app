@@ -49,6 +49,11 @@ import { motionOverride } from './motionOverride'
 import { MotionSync } from './MotionSync'
 import type { PickResult } from './picking/scenePicker'
 import { PlanetHoverLabel } from './PlanetHoverLabel'
+import type { BackingStoreSize } from './platform/backingStore'
+import { resolvePixelRatio } from './platform/backingStore'
+import { PixelRatioHost } from './platform/PixelRatioHost'
+import { ProgramWarmupHost } from './platform/ProgramWarmupHost'
+import type { ProgramWarmupResult } from './platform/programWarmup'
 import { PostEffects } from './post/PostEffects'
 import type { PostChain } from './post/postChain'
 import { probeRequested } from './probe'
@@ -164,6 +169,16 @@ export function SceneView({
   // Both for the `?probe=1` quality block only; see `ProbeState.quality`.
   const rendererRef = useRef<WebGLRenderer | null>(null)
   const chainRef = useRef<PostChain | null>(null)
+  /**
+   * What the boot-time program warm-up did, for the `?probe=1` seam and the bench (DEC-739).
+   *
+   * A ref, not state: a value that arrives once, seconds after mount, read only by a probe, must
+   * not re-render the component that owns the `<Canvas>` — that was review finding R1 and it is
+   * exactly the shape of mistake this scene keeps making.
+   */
+  const warmupRef = useRef<ProgramWarmupResult | null>(null)
+  /** The last `device-pixel-content-box` observation, for the `?probe=1` seam (DEC-739). */
+  const backingStoreRef = useRef<BackingStoreSize | null>(null)
 
   useEffect(() => sceneErrors.subscribe(setToast), [])
 
@@ -378,6 +393,8 @@ export function SceneView({
     cameraRef,
     rendererRef,
     chainRef,
+    backingStoreRef,
+    warmupRef,
     tierRef,
     focusedStarRef,
     focusedSlugRef,
@@ -432,22 +449,40 @@ export function SceneView({
           preserveDrawingBuffer: probeWanted,
         }}
         flat
-        onCreated={({ gl, camera }) => {
-          gl.toneMapping = NoToneMapping
-          cameraRef.current = camera as PerspectiveCamera
-          rendererRef.current = gl
+        onCreated={(state) => {
+          state.gl.toneMapping = NoToneMapping
+          cameraRef.current = state.camera as PerspectiveCamera
+          rendererRef.current = state.gl
+          // **The first and only write of the pixel ratio that is not `PixelRatioHost`'s**
+          // (DEC-739). With `dpr={0}` below, R3F's store starts at a ratio of 0 and its resize
+          // subscription would hand the renderer a zero-sized drawing buffer before any child of
+          // the `<Canvas>` has mounted. This runs after `configure` and before the first
+          // `requestAnimationFrame`, so no frame is ever drawn at 0.
+          state.setDpr(
+            resolvePixelRatio(
+              QUALITY_TIERS[pinnedTier ?? 0]!.pixelRatioCap,
+              typeof window === 'undefined' ? 1 : window.devicePixelRatio,
+            ),
+          )
         }}
-        // **The pixel-ratio rung, and the only writer of it (DEC-692 R2).** A range rather than a
-        // number on purpose: R3F re-reads this prop on every render, so a bare `cap` raced the
-        // ladder and the first rung never landed. See `docs/star-renderer.md` §6.1.
-        dpr={[0.5, tier.tier.pixelRatioCap]}
+        // **The pixel-ratio rung is not a prop any more (DEC-739, review §3.5).** `0` is falsy, so
+        // R3F's `if (dpr && state.viewport.dpr !== calculateDpr(dpr))` never fires and its writer
+        // is dead. `PixelRatioHost` below owns the number, resolves it against
+        // `device-pixel-content-box` and a re-armed `matchMedia`, and pushes it into the renderer.
+        // DEC-692's `[0.5, cap]` range fixed the race this had; it could not see a monitor change,
+        // because a prop only updates when React renders.
+        dpr={0}
         style={{ background: SKY_COLOUR }}
       >
+        {/* PRD 8.5.11's first rung. Mounted first so the cap is resolved before anything sizes
+            itself off the drawing buffer. See `platform/PixelRatioHost`. */}
+        <PixelRatioHost tierCap={tier.tier.pixelRatioCap} sizeRef={backingStoreRef} />
         <StarScene
           resources={data.resources}
           starsComplete={data.starsComplete}
           reducedMotion={reducedMotion}
           bloomScale={tier.tier.bloomScale}
+          glowQuality={tier.tier.glow}
           onHover={setHover}
           onSelect={onSelect}
           onQualityChange={onQualityChange}
@@ -498,6 +533,18 @@ export function SceneView({
           bloomLevels={tier.tier.bloomLevels}
           bloomIntensity={bloomIntensity}
           chainRef={chainRef}
+        />
+        {/* After `PostEffects` on purpose: sibling effects run in mount order, and this one reads
+            `chainRef.current` to reach the four post programs, which `PostEffects` has just set.
+            DEC-739 — nothing links on a first draw. */}
+        <ProgramWarmupHost
+          field={data.resources?.field ?? null}
+          chainRef={chainRef}
+          extraSpecs={() => cardTier.current?.card.warmupSpecs ?? []}
+          ready={data.starsComplete}
+          onComplete={(result: ProgramWarmupResult) => {
+            warmupRef.current = result
+          }}
         />
       </Canvas>
 

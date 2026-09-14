@@ -33,6 +33,65 @@ export const BLIND_ETERNITIES_SLUG = 'blind-eternities'
  */
 export const FILTER_MASK_PASS = 255
 
+/*
+ * ---------------------------------------------------------------------------------------------
+ * The **client-side** repack of the star record (DEC-739, review §3.5).
+ *
+ * > Repack the star record client-side into a 16-byte aligned buffer (position 3x half + pad, class
+ * > 3x u8, style 3x u8, filter u8, thumb u8) so ANGLE/D3D11 does not repack the current 12-byte
+ * > record with byte attributes at offsets 6 and 9; the data contract does not change.
+ *
+ * **Nothing above this block moves.** `stars.bin` is still 12-byte records, `STAR_RECORD_BYTES` is
+ * still 12, and `decodeStars` still reads them. What changes is only the layout
+ * `scene/starfield/starGeometry.ts` uploads, which used to be the on-disk record *as-is* plus three
+ * side buffers. The constants live here beside the record they are a repack of, so the two layouts
+ * can be read against each other in one file.
+ *
+ * **Why alignment is the whole point.** D3D11 requires a vertex element's offset within its stride
+ * to be a multiple of four, and the stride itself to be a multiple of four. The shipped layout
+ * breaks that in four places at once: `aClass` at offset 6, `aStyle` at offset 9, the half-float
+ * positions at a stride of 6, and the filter and thumbnail masks at a stride of 1. ANGLE's response
+ * is not to fail but to **repack every buffer on the CPU** on its way to the GPU — and the star
+ * buffer is `DynamicDrawUsage`, written by `bufferSubData` once per plane as `stars.bin` streams, so
+ * that cost is paid 87 times during load on exactly the integrated-GPU Windows laptops review §9 is
+ * about. It is invisible on Metal, which is where every measurement was taken.
+ *
+ * **The two buffers, and why it is two and not one.** three derives a vertex attribute's GL type
+ * from the array backing its buffer, so one `InterleavedBuffer` is one type — there is no way to
+ * express half-floats and bytes in a single three buffer. So the repack is two buffers whose
+ * strides are both powers of two and whose every offset is a multiple of four:
+ *
+ *   - positions, 4 x half = **8 bytes** (xyz + one pad half, which is what makes the stride 8
+ *     rather than an unaligned 6);
+ *   - the byte attributes, 2 x u8x4 = **8 bytes** — `aClass` as (planeIndex, colourByte, sizeClass,
+ *     filter) at offset 0 and `aStyle` as (brightness, twinklePhase, typeMask, thumb) at offset 4.
+ *
+ * Sixteen bytes a star in total, which is the review's number, and **less** than the 20 the shipped
+ * layout uploads (12 + 6 + 1 + 1). The filter and thumbnail masks are folded into the spare fourth
+ * component of the two byte attributes rather than kept as stride-1 attributes of their own: a
+ * stride of one is the worst-aligned thing in the old layout, and the two vectors had a free lane
+ * each.
+ * ---------------------------------------------------------------------------------------------
+ */
+
+/** Bytes per star in the repacked **position** buffer: xyz as half floats, plus one pad half. */
+export const PACKED_POSITION_HALVES = 4
+
+/** Bytes per star in the repacked **byte-attribute** buffer: two `u8x4` vectors. */
+export const PACKED_ATTRIBUTE_BYTES = 8
+
+/** `aClass` — (planeIndex, colourByte, sizeClass, filter). Offset 0, so four-byte aligned. */
+export const PACKED_CLASS_OFFSET = 0
+
+/** `aStyle` — (brightness, twinklePhase, typeMask, thumbnailPresent). Offset 4, likewise aligned. */
+export const PACKED_STYLE_OFFSET = 4
+
+/** Where PRD 5.8's filter mask sits inside `aClass`: its `w` lane. */
+export const PACKED_FILTER_LANE = PACKED_CLASS_OFFSET + 3
+
+/** Where PRD 5.5.1's "thumbnail is in the atlas" byte sits inside `aStyle`: its `w` lane. */
+export const PACKED_THUMB_LANE = PACKED_STYLE_OFFSET + 3
+
 export const BinaryKind = { Stars: 1, Sets: 2 } as const
 export type BinaryKind = (typeof BinaryKind)[keyof typeof BinaryKind]
 
