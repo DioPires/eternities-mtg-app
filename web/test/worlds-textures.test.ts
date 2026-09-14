@@ -17,6 +17,7 @@ import { resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import {
   ClampToEdgeWrapping,
+  type DataArrayTexture,
   LinearFilter,
   LinearMipmapLinearFilter,
   NoColorSpace,
@@ -38,6 +39,20 @@ import { artPoolSize } from '../src/scene/worlds/artPool'
 
 const MiB = 1024 * 1024
 
+/**
+ * The byte count of an allocation, having first asserted there *is* one.
+ *
+ * `@types/three` 0.186 widened `DataArrayTexture.image.data` to nullable — a texture may now legally
+ * carry a descriptor with no buffer behind it. That is exactly the failure these budget rows exist
+ * to catch, so the nullability is asserted rather than suppressed with a `!`: an allocator that
+ * returned a bufferless texture would fail here instead of throwing on a property of `null`.
+ */
+function allocatedBytes(texture: DataArrayTexture | null): number {
+  expect(texture).not.toBeNull()
+  expect(texture!.image.data).not.toBeNull()
+  return texture!.image.data!.byteLength
+}
+
 function worldsWithCards(role: string): number {
   const datasets = JSON.parse(
     readFileSync(resolve(__dirname, '../datasets.json'), 'utf8'),
@@ -56,8 +71,8 @@ describe('§1.12 the allocations, and the budget rows that depend on them', () =
     expect(pool.image.width).toBe(ART_LAYER_WIDTH)
     expect(pool.image.height).toBe(ART_LAYER_HEIGHT)
     expect(pool.image.depth).toBe(1024)
-    expect(pool.image.data.byteLength).toBe(50331648)
-    expect(pool.image.data.byteLength / MiB).toBeCloseTo(48.0, 6)
+    expect(allocatedBytes(pool)).toBe(50331648)
+    expect(allocatedBytes(pool) / MiB).toBeCloseTo(48.0, 6)
   })
 
   it('allocates the equirect array from the DATASET, not from a constant', () => {
@@ -69,17 +84,17 @@ describe('§1.12 the allocations, and the budget rows that depend on them', () =
     expect(array.image.depth).toBe(45)
     expect(array.image.width).toBe(EQUIRECT_WIDTH)
     expect(array.image.height).toBe(EQUIRECT_HEIGHT)
-    expect(array.image.data.byteLength).toBe(5898240)
-    expect(array.image.data.byteLength / MiB).toBeCloseTo(5.62, 2)
+    expect(allocatedBytes(array)).toBe(5898240)
+    expect(allocatedBytes(array) / MiB).toBeCloseTo(5.62, 2)
 
     // The 87-plane roster's row, for the same allocation — 29 layers / 3.62 MiB.
-    expect(createEquirectArray(29)!.image.data.byteLength / MiB).toBeCloseTo(3.62, 2)
+    expect(allocatedBytes(createEquirectArray(29)) / MiB).toBeCloseTo(3.62, 2)
   })
 
   it('reproduces the §1.12 total from the parts it allocates', () => {
     // Everything except the two rows this module does not own (printing ring, focused card).
-    const pool = createArtPoolTexture(1024)!.image.data.byteLength
-    const equirect = createEquirectArray(45)!.image.data.byteLength
+    const pool = allocatedBytes(createArtPoolTexture(1024))
+    const equirect = allocatedBytes(createEquirectArray(45))
     const cells = 24399 * 40
     const ring = 72 * 146 * 204 * 4
     const card = 672 * 936 * 4
