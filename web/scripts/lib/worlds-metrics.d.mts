@@ -233,6 +233,16 @@ export declare function evaluateW4(
   evictionTimeline: readonly EvictionSample[],
 ): W4Criterion;
 export declare const W5_MIN_AZIMUTHS: number;
+export declare const W5_AZIMUTH_UNIFORMITY_TOLERANCE: number;
+
+/**
+ * `null` when the azimuths are evenly spaced around the turn, or the reason they are not. A sweep
+ * that fails this reports `insufficient`: bad sampling is the harness's defect, not the renderer's.
+ */
+export declare function azimuthSpacingFault(
+  azimuths: readonly number[],
+  tolerance?: number,
+): string | null;
 
 export declare function evaluateW5(
   sweep: readonly W5AzimuthSample[],

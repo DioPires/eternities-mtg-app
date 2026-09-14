@@ -1929,6 +1929,22 @@ an assertion there.
 > `homeLabels` is evidence that the moons are quiet, **not** evidence that the home view is legible.
 > Do not read it as the latter.
 >
+> **Normative — a label count quoted against this ceiling must name its candidate list (DEC-752,
+> measured on DEC-751's branch).** DEC-751 read 66 – 75 visible plane labels today and 75 – 85 under
+> their separation epsilon, against a ceiling of 45, and raised it as a ruling that the ceiling is
+> unreachable. It is the same sweep over a different population — theirs the **pre-§1.8 list of 87
+> planes**, the ceiling's the **post-§1.8 list of 45 worlds** — and §1.8 is exactly the transform
+> between them. Measured at 1920×1080, 360 azimuths, both arms through the shipped solver:
+>
+> | candidates                  | pre-fix | with the epsilon |
+> | --------------------------- | ------- | ---------------- |
+> | 87 planes (today, pre-§1.8) | 64 – 78 | 75 – 85          |
+> | 45 worlds (post-§1.8)       | 33 – 42 | 40 – 45          |
+>
+> There is no ruling to make: the ceiling is not violated on the tree the gate runs against. The
+> epsilon does take its slack from 3 labels to **0** — 45 against 45 — which is tight but still
+> unexceedable, since 45 candidates cannot make 46 labels. The bound stays non-binding.
+>
 > **Normative — the second half is reachability, not coverage-at-a-frame, and DEC-751's proposed
 > coverage floor is not adopted (DEC-752, measured).** A ceiling is satisfied by rendering _fewer_
 > labels and does not care which, so W5 needs a half that does. DEC-751 proposed ≥ 90% of worlds
@@ -1958,6 +1974,37 @@ an assertion there.
 > retuned here — picking a number alongside the measurement is exactly how the 0.9 happened.
 > `evaluateW5` takes `minAzimuths` as a **required argument with no default**, for the reason the
 > 30 went stale.
+>
+> **Normative — the sweep must be evenly spaced around the turn, and the gate checks it (DEC-752,
+> measured).** `minAzimuths` bounds how many samples a sweep has; this bounds _where they are_, and
+> the second turns out to be load-bearing. Reachability survives a sweep as sparse as 12 only
+> because the miss pattern has arc structure at the scale of the spiral's arms and an evenly-spaced
+> comb crosses every arm. Against the 360-azimuth hit matrix on `3ce85aed66e9dc3a` — every strided
+> sweep enumerated exactly, random ones over 2,000 trials:
+>
+> | sampling                   | N = 12      | N = 24  | N = 36  |
+> | -------------------------- | ----------- | ------- | ------- |
+> | evenly spaced (all phases) | **0 of 30** | 0 of 15 | 0 of 10 |
+> | random                     | **2.5%**    | 0.1%    | 0.0%    |
+>
+> Every one of those is a **false RED** — the renderer reaches all 45 worlds and the sweep says
+> otherwise. A gate that flakes 1 run in 40 gets its reds explained away, which costs more than the
+> criterion is worth, so `azimuthSpacingFault` makes uniformity a precondition rather than a
+> convention. It reports `insufficient`, never `fail`: a badly sampled sweep is the harness's defect
+> and not the renderer's.
+>
+> **Normative — W5's 800×600 control expires when DEC-751's separation epsilon lands, and the row
+> moves to 320×240 (DEC-752, measured).** The reachability half is falsifiable today at 800×600,
+> where the sweep leaves `thunder-junction` unlabelled at all 360 azimuths. Applying DEC-751's
+> 0.01 px epsilon to the shipped solver and re-running the same sweep takes that to **0 worlds never
+> labelled** — the control goes green and the half is left with nothing that can turn it red. The
+> replacement is the same seam pushed further: at **320×240** five worlds (`amonkhet`, `gobakhan`,
+> `muraganda`, `shandalar`, `tolvada`) are unlabelled at every azimuth, while 640×480, 480×360 and
+> 400×300 are all still 0 — so the row moves to 320×240 and not to the next size down.
+>
+> Switch the row **when the epsilon lands, not before**: on today's tree both viewports are red, and
+> 800×600 is the honest one. A control row whose expiry is known and unrecorded is how a gate keeps
+> a green it has stopped earning.
 >
 > **Normative — W2's IQR(L\*) half is measured on an iso-shade subset, and the un-subsetted version
 > it replaces could not fail (DEC-749, on DEC-752's finding).** §1.4's shade runs

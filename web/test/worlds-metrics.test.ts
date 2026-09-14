@@ -919,6 +919,46 @@ describe("W5 — the home view is not a wall of labels, and every world is reach
     expect(one.pass).toBe(false);
   });
 
+  it("reports insufficient when the sweep is clustered rather than spread around the turn", () => {
+    // Enough samples, wrong places. Twelve azimuths bunched into a 30-degree arc is the shape that
+    // flakes: measured on `3ce85aed66e9dc3a`, random 12-azimuth sweeps report a world unreachable
+    // 2.5% of the time on a renderer that reaches all 45, while every one of the 30 evenly-spaced
+    // 12-sweeps reports 0. The count floor cannot see the difference, so the spacing is checked.
+    const clustered = perfect(W5_MIN_AZIMUTHS).map((s, i) => ({
+      ...s,
+      azimuth: (i / W5_MIN_AZIMUTHS) * (Math.PI / 6),
+    }));
+    expect(
+      measureOf(evaluateW5(clustered, ROSTER_V3, opts()), "worldsNeverLabelled")
+        .status,
+    ).toBe("insufficient");
+    expect(evaluateW5(clustered, ROSTER_V3, opts()).pass).toBe(false);
+
+    // The negative control, without which the row above scores identically on a guard that simply
+    // refused every sweep: the same count, evenly spaced, still passes.
+    expect(evaluateW5(perfect(W5_MIN_AZIMUTHS), ROSTER_V3, opts()).pass).toBe(
+      true,
+    );
+  });
+
+  it("accepts a uniform sweep that is offset, wrapped past a turn, or out of order", () => {
+    // The guard bounds where the samples are, not how the sampler spelled them. All three of these
+    // are the same comb: refusing one would make the criterion a property of the harness's phase.
+    const base = perfect(W5_MIN_AZIMUTHS);
+    const shifted = base.map((s, i) => ({
+      ...s,
+      azimuth: (i / W5_MIN_AZIMUTHS) * Math.PI * 2 + 0.3,
+    }));
+    const wrapped = base.map((s, i) => ({
+      ...s,
+      azimuth: (i / W5_MIN_AZIMUTHS) * Math.PI * 2 + Math.PI * 4,
+    }));
+    const shuffled = [...base].reverse();
+    for (const sweep of [shifted, wrapped, shuffled]) {
+      expect(evaluateW5(sweep, ROSTER_V3, opts()).pass).toBe(true);
+    }
+  });
+
   it("does not score a lossy renderer green just because the sweep was too short", () => {
     // The control on the control: a single azimuth at which every world happens to be labelled is
     // not evidence of reachability, even though the numbers all look right.

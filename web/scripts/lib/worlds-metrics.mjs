@@ -635,6 +635,68 @@ export function evaluateW4(cells, evictionTimeline) {
 export const W5_MIN_AZIMUTHS = 12;
 
 /**
+ * How far a sweep's azimuth spacing may drift from uniform, as a fraction of the ideal spacing.
+ *
+ * See `azimuthSpacingFault`. One percent is far tighter than any real sampler's float error and far
+ * looser than the clustering the guard exists to refuse, so nothing lands near the boundary.
+ */
+export const W5_AZIMUTH_UNIFORMITY_TOLERANCE = 0.01;
+
+/**
+ * **A sweep must be evenly spaced around the turn, or reachability is not measuring the renderer.**
+ *
+ * `W5_MIN_AZIMUTHS` bounds *how many* samples a sweep has; this bounds *where they are*, and the
+ * second is load-bearing in a way that is easy to miss. Reachability survives a sweep as sparse as
+ * 12 only because the miss pattern has arc structure at the scale of the spiral's arms, and an
+ * evenly-spaced comb crosses every arm. Scatter the same 12 samples at random and it stops working.
+ *
+ * Measured on `3ce85aed66e9dc3a` at 1920×1080, §1.8 suppression on, against the 360-azimuth hit
+ * matrix (DEC-752). A sweep of N evenly-spaced azimuths is one of the 360/N phase offsets of that
+ * grid, so every possible strided sweep can be enumerated rather than sampled:
+ *
+ * | sampling                 | N = 12          | N = 24        | N = 36 |
+ * |--------------------------|-----------------|---------------|--------|
+ * | evenly spaced (all phases) | **0 of 30**   | 0 of 15       | 0 of 10 |
+ * | random (2,000 trials)      | **2.5%**      | 0.1%          | 0.0%  |
+ *
+ * Every one of those is a **false RED**: the renderer reaches all 45 worlds, and the sweep says it
+ * does not. A gate that flakes 1 run in 40 gets its reds explained away, which costs more than the
+ * criterion is worth. So uniformity is a precondition the gate checks, not a convention it hopes
+ * its caller followed — and the check reports `insufficient`, never `fail`, because a badly sampled
+ * sweep is the harness's defect and not the renderer's.
+ *
+ * Holds on both push arithmetics: pre-fix (0 of 30 at N = 12) and under DEC-751's separation
+ * epsilon (0 of 30, and the weakest world rises from 28.3% of azimuths to 71.7%).
+ *
+ * Returns `null` when the spacing is fine, or the reason it is not.
+ */
+export function azimuthSpacingFault(azimuths, tolerance = W5_AZIMUTH_UNIFORMITY_TOLERANCE) {
+  const turn = Math.PI * 2;
+  const n = azimuths.length;
+  if (n < 2) return null;
+
+  // Fold onto [0, 2π) first: a sampler that walks past a full turn is still uniform, and a sampler
+  // that reports negative angles is too. `%` keeps the sign in JS, so add a turn before folding.
+  const sorted = azimuths.map((a) => ((a % turn) + turn) % turn).sort((x, y) => x - y);
+
+  const ideal = turn / n;
+  const slack = ideal * tolerance;
+  for (let i = 0; i < n; i += 1) {
+    // The last gap wraps: it is what makes a comb covering only half the turn fail rather than read
+    // as n−1 perfect gaps.
+    const gap = i === n - 1 ? sorted[0] + turn - sorted[i] : sorted[i + 1] - sorted[i];
+    if (Math.abs(gap - ideal) > slack) {
+      return (
+        `azimuths are not evenly spaced around the turn (gap ${gap.toFixed(4)} rad against an ` +
+        `ideal of ${ideal.toFixed(4)}): a clustered sweep reads as reachability but is not — ` +
+        `random 12-azimuth sweeps report a false unreachable world 2.5% of the time`
+      );
+    }
+  }
+  return null;
+}
+
+/**
  * **W5 — the home view is not a wall of labels, and every world is reachable from it.**
  *
  * Both halves are measured over a **sweep of azimuths**, not at one frame. `motion.ts:247` rotates
@@ -687,6 +749,51 @@ export const W5_MIN_AZIMUTHS = 12;
  * `thunder-junction` unlabelled at **all 360 azimuths**. That is W5's coverage control, and it
  * needs nothing from R1 — see §3.1's matrix, where it closes the declared gap.
  *
+ * ## The 800×600 control does not survive DEC-751's separation epsilon (DEC-752, measured)
+ *
+ * **This control has a known expiry, and it is not a hypothetical.** DEC-751 found PRD 5.3.10's
+ * shift budget inert — the push lands on exactly the separating distance and `overlaps`' strict `<`
+ * reads the float residual — and proposes a 0.01 px separation epsilon. Applying that epsilon to
+ * the shipped solver on `dec751-r3-surfaces` @ `85bec45` and re-running the same 360-azimuth sweep:
+ *
+ * | 1920×1080, §1.8 on      | pre-fix | with epsilon |
+ * |-------------------------|---------|--------------|
+ * | labels (ceiling 45)     | 33 – 42 | **40 – 45**  |
+ * | worlds never labelled   | 0       | 0            |
+ * | weakest world           | `karsus` 28.3% | `thunder-junction` 71.7% |
+ *
+ * | 800×600, §1.8 on — **the control**  | pre-fix | with epsilon |
+ * |-------------------------------------|---------|--------------|
+ * | worlds never labelled               | **1** (`thunder-junction`, 0.0% of 360) | **0** |
+ *
+ * So the epsilon takes W5's only falsifier green, and the reachability half would be left with no
+ * control at all — a criterion nothing can turn red. The replacement is the same seam pushed
+ * further: at **320×240** the post-fix sweep leaves **five** worlds unlabelled at every azimuth
+ * (`amonkhet`, `gobakhan`, `muraganda`, `shandalar`, `tolvada`). 640×480, 480×360 and 400×300 are
+ * all still 0, so the row moves to 320×240 and not to the next size down from 800×600.
+ *
+ * The matrix must switch rows **when the epsilon lands, not before** — on today's tree 320×240 and
+ * 800×600 are both red, but 800×600 is the honest one. Tracked as the open item on DEC-751's fix.
+ *
+ * ## The ceiling's population is the post-§1.8 list, which is what DEC-751's 66 – 85 is not
+ *
+ * DEC-751 reads **66 – 75 visible plane labels today and 75 – 85 under the epsilon**, against a
+ * ceiling of 45, and raised it as a ruling that the ceiling is unreachable. It is the same sweep
+ * counting a different population: theirs is the **pre-§1.8 candidate list of 87 planes**, and the
+ * ceiling scores the **post-§1.8 list of 45 worlds**. Both arms, measured here on their own branch
+ * through the shipped solver, 360 azimuths at 1920×1080:
+ *
+ * | candidates                    | pre-fix | with epsilon |
+ * |-------------------------------|---------|--------------|
+ * | 87 planes (today, pre-§1.8)   | 64 – 78 | 75 – 85      |
+ * | 45 worlds (post-§1.8)         | 33 – 42 | 40 – 45      |
+ *
+ * §1.8 *is* the transform between the two rows, so the ceiling is never violated on the tree the
+ * gate runs against and there is no ruling to make. What the epsilon does do is take the ceiling
+ * from 3 labels of slack to **0** — 45 against a ceiling of 45 — which is tight but still cannot be
+ * exceeded, since 45 candidates cannot produce 46 labels. The bound stays non-binding, and
+ * `homeLabels` stays what it is named: a regression check on the suppression rule.
+ *
  * `roster` and `minAzimuths` are required rather than defaulted, for the reason the 30 went stale:
  * a threshold that matters does not get to arrive as a default.
  *
@@ -700,11 +807,15 @@ export function evaluateW5(sweep, roster, options) {
 
   // Below the floor this is not a sweep, and reporting it as one would let a single frame wear
   // reachability's much stronger claim. `null` is what `measure` renders as `insufficient`.
-  const enough = samples.length >= minAzimuths;
-  const why = enough
-    ? null
-    : `${samples.length} azimuth${samples.length === 1 ? "" : "s"} sampled, below the floor of ` +
-      `${minAzimuths}: one frame is not a sweep`;
+  // Count is necessary but not sufficient: 12 samples bunched into one arm of the spiral flake red
+  // 2.5% of the time on a renderer that reaches everything, so the spacing is checked too.
+  const spacingFault = azimuthSpacingFault(samples.map((s) => s.azimuth));
+  const enough = samples.length >= minAzimuths && spacingFault === null;
+  const why =
+    samples.length < minAzimuths
+      ? `${samples.length} azimuth${samples.length === 1 ? "" : "s"} sampled, below the floor of ` +
+        `${minAzimuths}: one frame is not a sweep`
+      : spacingFault;
 
   // A label on a world outside the dataset's own world set is not coverage of anything — intersect,
   // so a renderer cannot buy reachability by labelling moons.
