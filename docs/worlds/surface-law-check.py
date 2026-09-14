@@ -48,14 +48,22 @@ def closed_form(card_count: int) -> tuple[float, int, list[int]]:
 
 
 def grid(card_count: int) -> tuple[float, int, list[int]]:
-    """§1.3's relaxation, as shipped. Returns (dphi, rows, cells-per-row north to south).
+    """§1.3's N-ONLY apportionment — a CHECK on a published table, never the emitter (DEC-748).
 
-    Largest-remainder apportionment of `card_count` over the rows, weighted by row circumference
-    (sin theta_r), floored at one cell per row. This is what makes `sum(rowCells) == cardCount`
-    hold at EVERY N rather than at the 85 where the closed form happens to land (DEC-752).
+    Returns (dphi, rows, cells-per-row north to south). Largest-remainder apportionment of
+    `card_count` over the rows, weighted by row circumference (sin theta_r), floored at one cell per
+    row. This is what makes `sum(rowCells) == cardCount` hold at EVERY N rather than at the 85 where
+    the closed form happens to land (DEC-752).
 
-    Exact-N costs strict equatorial symmetry, which is arithmetically unavailable for odd N: at
-    most one mirrored pair differs, by at most one cell.
+    It is NOT the shipped construction. The pipeline apportions per COLOUR BAND and then splits sets
+    (`build_grid`, §2.1), so `rowCells` is not a function of `card_count`: the same N under different
+    hue histograms gives different tables. Measured against the published v3 table below, this form
+    is exact on rows and dphi and within +-1 cell on every row -- good enough to size geometry
+    (identical `k` on 45 of 45 worlds), not good enough to generate a table.
+
+    Exact-N costs strict equatorial symmetry, which is arithmetically unavailable for odd N. THIS
+    form relaxes it to at most one mirrored pair by at most one cell; the SHIPPED table obeys no
+    such bound (30 of 45 worlds break it). See PUBLISHED_V3 below.
     """
     _seed_dphi, rows, _ = closed_form(card_count)
     rows = max(1, min(rows, card_count))  # §1.3's floor: never more rows than cards
@@ -114,8 +122,13 @@ def corner_lift(lon_half: float, lat_half: float) -> float:
 
 
 def subdivision(card_count: int) -> tuple[int, int, int]:
-    """§1.4: the per-world (k_lon, k_lat) and the world's total sub-quad count."""
-    dphi, _rows, cells = grid(card_count)
+    """§1.4: the per-world (k_lon, k_lat) and the world's total sub-quad count, from N alone."""
+    return subdivision_of(grid(card_count)[2])
+
+
+def subdivision_of(cells: list[int]) -> tuple[int, int, int]:
+    """§1.4, from a world's actual `rowCells` — which is what the client has (§2.4)."""
+    dphi = math.pi / len(cells)
     k_lon = k_lat = 1
     for r in range(len(cells)):
         lon_half, lat_half = i_size(cells, dphi, r)
@@ -134,12 +147,29 @@ def pool_size(tier_layers: int, max_layers: int) -> int:
     return max(0, min(tier_layers, max_layers - 32))
 
 
+# The `rowCells` table AS PUBLISHED by leg P (contract v3, dataset 3ce85aed66e9dc3a). Vendored
+# because the dataset itself only reaches main with PR #47, and §1.3's claims are about the SHIPPED
+# grid — measuring them against `grid()` would be measuring this file against itself. The live
+# cross-check at the bottom of the §1.3 section keeps the fixture from going stale silently.
+PUBLISHED_V3: dict[str, dict] = json.loads((REPO / "docs/worlds/rowcells-v3.json").read_text())["worlds"]
+
+
+def mirrored_pairs(cells: list[int]) -> list[int]:
+    """Per-pair |north - south| for the rows that differ, north half only."""
+    width = len(cells)
+    return [abs(cells[r] - cells[width - 1 - r]) for r in range(width // 2) if cells[r] != cells[width - 1 - r]]
+
+
 print("§1.3 the grid (D1 — theta is colatitude, the formula carries sin)")
-dphi_dom, rows_dom, cells_dom = grid(6266)
+# Dominaria's numbers come from the PUBLISHED table, not from grid(): §2.1's contract and §1.4's
+# geometry are written against what ships, and the two differ in 16 of these 81 rows.
+cells_dom = PUBLISHED_V3["dominaria"]["rowCells"]
+rows_dom = len(cells_dom)
+dphi_dom = math.pi / rows_dom
 check("Dominaria rows", rows_dom, 81)
 check("Dominaria dphi", round(dphi_dom, 6), 0.038785, tol=5e-6)
-check("Dominaria sum(rowCells) == cardCount", sum(cells_dom), 6266)
-check("Dominaria rowCells is symmetric about the equator", cells_dom, cells_dom[::-1])
+check("Dominaria sum(rowCells) == cardCount", sum(cells_dom), 6271)
+check("Dominaria's published rowCells is NOT symmetric about the equator", cells_dom == cells_dom[::-1], False)
 
 # The literal 'cos((i + 1/2)*dphi)' reading the draft could be parsed into.
 degenerate = [round(2 * math.pi * math.cos((i + 0.5) * dphi_dom) / (ASPECT * dphi_dom)) for i in range(rows_dom)]
@@ -182,20 +212,89 @@ check("...while v3's Dominaria (6,271) is NOT", 6271 in cf_exact, False)
 check("...where it drops 5 cards", 6271 - sum(closed_form(6271)[2]), 5)
 check("closed form UNDER-allocates at 3,487 of them (cards with no cell)", len(cf_under), 3487)
 # The repair. This is the assertion the whole section exists for.
-check("the relaxation is exact at EVERY N in 1..7000", [n for n in SWEEP if sum(grid(n)[2]) != n], [])
+check("exact-N holds at EVERY N in 1..7000", [n for n in SWEEP if sum(grid(n)[2]) != n], [])
 check("...with every row holding at least one cell", min(min(grid(n)[2]) for n in SWEEP) >= 1, True)
-check("...and it reproduces Dominaria's published rowCells verbatim", grid(6266)[2], closed_form(6266)[2])
-# Exact-N costs strict symmetry. The relaxation is bounded, and the bound is normative.
+# The N-only form's own symmetry relaxation. Scoped ON PURPOSE: this is a fact about this function,
+# NOT about the shipped table, which apportions per band and obeys no symmetry bound (next section).
 pair_defect = 0
 asym_pairs = 0
 for n in SWEEP:
-    cells_n = grid(n)[2]
-    width = len(cells_n)
-    pair_defect = max(pair_defect, max(abs(cells_n[r] - cells_n[width - 1 - r]) for r in range(width)))
-    asym_pairs = max(asym_pairs, sum(1 for r in range(width // 2) if cells_n[r] != cells_n[width - 1 - r]))
-check("at most ONE mirrored pair differs, ever", asym_pairs, 1)
+    diffs = mirrored_pairs(grid(n)[2])
+    pair_defect = max(pair_defect, max(diffs, default=0))
+    asym_pairs = max(asym_pairs, len(diffs))
+check("in the N-ONLY form at most one mirrored pair differs, ever", asym_pairs, 1)
 check("...and it differs by at most ONE cell", pair_defect, 1)
-check("...so a strict-symmetry gate assertion is wrong", grid(6271)[2] == grid(6271)[2][::-1], False)
+check("...so even there, a strict-symmetry assertion is wrong", grid(6271)[2] == grid(6271)[2][::-1], False)
+
+print("\n§1.3 the SHIPPED table: rowCells is not a function of cardCount (DEC-748's finding)")
+# An earlier revision asserted "reproduces Dominaria's published rowCells verbatim" by comparing
+# grid(6266) against closed_form(6266) — two N-only constructions, neither of them a dataset. There
+# is nothing at 6,266 to reproduce: rowCells is a v3 field, no v2 build has one, and both the v2 and
+# v3 builds of the 45-world roster put Dominaria at 6,271. This section reads the real table instead.
+check("45 worlds carry a published rowCells table", len(PUBLISHED_V3), 45)
+check("...summing to cardCount on every one", [s for s, w in PUBLISHED_V3.items() if sum(w["rowCells"]) != w["cardCount"]], [])
+check("...with every row holding at least one cell", min(min(w["rowCells"]) for w in PUBLISHED_V3.values()), 1)
+check("...and Dominaria at 6,271 over 81 rows, not the spec's prototype-era 6,266",
+      (PUBLISHED_V3["dominaria"]["cardCount"], len(PUBLISHED_V3["dominaria"]["rowCells"])), (6271, 81))
+
+rows_agree = cells_agree = rows_total = rows_differing = 0
+worst_row_delta = 0
+for slug, world in PUBLISHED_V3.items():
+    published = world["rowCells"]
+    _dphi_n, rows_n, cells_n = grid(world["cardCount"])
+    rows_total += len(published)
+    rows_agree += rows_n == len(published)
+    cells_agree += cells_n == published
+    if rows_n == len(published):
+        rows_differing += sum(1 for a, b in zip(cells_n, published) if a != b)
+        worst_row_delta = max(worst_row_delta, max(abs(a - b) for a, b in zip(cells_n, published)))
+check("the N-only form gets rows (and so dphi) right on every world", rows_agree, 45)
+check("...but the CELL COUNTS on only 15 of 45", cells_agree, 15)
+check("...all fifteen being one-, two- and four-card worlds — nothing at production size",
+      max(w["cardCount"] for s, w in PUBLISHED_V3.items() if grid(w["cardCount"])[2] == w["rowCells"]), 4)
+check("...missing 202 of 777 rows", (rows_differing, rows_total), (202, 777))
+check("...but never by more than ONE cell — it is a +-1 check, not an emitter", worst_row_delta, 1)
+
+# The ±1 slack has to be harmless for everything §1.4 derives, or "check" would still be too strong.
+check("subdivision k from the N-only table equals k from the published table on all 45",
+      [s for s, w in PUBLISHED_V3.items()
+       if subdivision_of(w["rowCells"])[:2] != subdivision_of(grid(w["cardCount"])[2])[:2]], [])
+check("...same 13 unsubdivided worlds",
+      sum(1 for w in PUBLISHED_V3.values() if subdivision_of(w["rowCells"])[:2] == (1, 1)), 13)
+check("...holding the same 19,497 cells",
+      sum(w["cardCount"] for w in PUBLISHED_V3.values() if subdivision_of(w["rowCells"])[:2] == (1, 1)), 19497)
+check("...and the same 1,130 worst case, under the sphere's 1,262 envelope",
+      max(subdivision_of(w["rowCells"])[2] for w in PUBLISHED_V3.values()
+          if subdivision_of(w["rowCells"])[:2] != (1, 1)), 1130)
+
+# Symmetry: the N-only bound above is FALSE of the shipped grid. `_north_first` alternates a
+# mirrored class's odd card by set-index parity so the north band does not accumulate ~20 extra
+# cards on a large plane; the result is asymmetric on purpose. A gate must assert no bound at all.
+strict = [s for s, w in PUBLISHED_V3.items() if w["rowCells"] != w["rowCells"][::-1]]
+le_one = [s for s, w in PUBLISHED_V3.items() if len(mirrored_pairs(w["rowCells"])) > 1 or max(mirrored_pairs(w["rowCells"]), default=0) > 1]
+check("strict symmetry fails on 30 of 45 published worlds", len(strict), 30)
+check("...not the 14 an N-only reading predicts",
+      sum(1 for w in PUBLISHED_V3.values() if grid(w["cardCount"])[2] != grid(w["cardCount"])[2][::-1]), 14)
+check("...and the <=1-pair relaxation fails on the same 30", len(le_one), 30)
+check("...Dominaria differing in 15 mirrored pairs", len(mirrored_pairs(PUBLISHED_V3["dominaria"]["rowCells"])), 15)
+check("...with eight worlds carrying a pair that differs by TWO",
+      sorted(s for s, w in PUBLISHED_V3.items() if max(mirrored_pairs(w["rowCells"]), default=0) >= 2),
+      ["amonkhet", "arcavios", "avishkar", "innistrad", "mercadia", "theros", "thunder-junction", "zendikar"])
+# 2 is the observed maximum over 45 worlds, not a derived bound -- asserting <=2 would repeat the
+# mistake this section corrects, one notch further out. It is recorded, not checked.
+print("        observed max mirrored-pair delta: "
+      f"{max(max(mirrored_pairs(w['rowCells']), default=0) for w in PUBLISHED_V3.values())} "
+      "(a measurement over 45 worlds; NOT a bound — do not assert it)")
+
+# The fixture is a copy, so it can rot. Any contract-3 dataset on the tree must match it verbatim.
+live = [p for p in sorted(REPO.glob("web/public/data/*/planes.json"))
+        if json.loads(p.read_text()).get("contractVersion") == 3]
+if not live:
+    print("        (no contract-3 dataset on this tree — the fixture's source arrives with PR #47)")
+for path in live:
+    shipped = {p["slug"]: p["rowCells"] for p in json.loads(path.read_text())["planes"] if "rowCells" in p}
+    check(f"the vendored fixture still matches {path.parent.name} verbatim",
+          shipped, {s: w["rowCells"] for s, w in PUBLISHED_V3.items()})
 
 print("\n§1.3 the small-world floor (DEC-751's n = 1 finding, re-derived)")
 

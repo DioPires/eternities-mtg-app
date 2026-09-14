@@ -242,21 +242,60 @@ carry the contract consequence.
 > new-phyrexia (−27), rath (−23), thunder-junction (−20) and forgotten-realms (−18). "Zero bare"
 > (§2.1) cannot detect this: a dropped card leaves no bare cell to count.
 >
-> So the per-row count is **apportioned, not rounded**. Give row `r` the quota
-> `q_r = N·sin θ_r / Σ sin θ`, floor it at 1, and hand out the residual `N − Σ⌊q⌋` by **largest
-> fractional remainder**, ties broken by `min(r, rows−1−r)` then `r`. Deficits are reclaimed the same
-> way in reverse, never below 1. Additionally `rows = max(1, min(rows_closed, N))`, which is what
-> makes `rowCells[r] ≥ 1` provable rather than hopeful. This holds `Σ rowCells == N` at **every** N,
-> and — measured, not assumed — **reproduces Dominaria's published `rowCells` verbatim at 6,266**, so
-> the worked example above is unchanged.
+> So the per-row count is **apportioned, not rounded** — and the apportionment of record is the
+> pipeline's, which is not a function of `cardCount` at all. `build_grid` (§2.1) apportions a row's
+> cells **within each colour band** and then splits each band's share between sets, returning the
+> counts *and* the placements from one pass; that pairing is what makes "zero displaced, zero bare"
+> checkable, so the emitter stays in the pipeline and is not lifted into this section (leg P,
+> DEC-748). The consequence is normative: **`rowCells` is not a function of `cardCount`.** The same
+> N under different hue histograms yields different tables — leg P measured **three distinct tables
+> from four compositions** at N = 306, 931 and 6,271, where varying the chronology-band count moved
+> nothing and only colour did (pinned as `test_row_cells_is_not_a_function_of_card_count_alone`,
+> `b2bf0b5`). DEC-744's B2 ruling already makes the **published table the contract**; the client
+> reads it and derives no cell count of its own (§2.4).
 >
-> **The one invariant that does move is exact symmetry.** A closed surface's equator-symmetric
-> partition has an even cell count in every mirrored pair, so it cannot sum to an arbitrary odd `N`:
-> exact-N and strict symmetry are incompatible, and exact-N wins because the alternative is losing
-> cards. The relaxation is tight and is itself normative: **at most one mirrored pair differs, and it
-> differs by at most one cell** (`|rowCells[r] − rowCells[rows−1−r]| ≤ 1`, measured over N = 1…8000).
-> A gate assertion of *strict* `rowCells == reversed(rowCells)` is therefore wrong and will go RED on
-> a correct renderer for **14 of v3's 45 worlds**, Dominaria among them. Assert the ≤ 1 form.
+> **What is normative about the counts** — and what the published v3 table satisfies on all 45
+> worlds — is: `Σ rowCells == cardCount`; `rowCells[r] ≥ 1`; `rows = max(1, min(rows_closed, N))`,
+> which is what makes that floor provable rather than hopeful; `dφ = π / rows`; centres at
+> `(i + ½)·dφ`.
+>
+> **The N-only apportionment below is a check, not the construction.** Give row `r` the quota
+> `q_r = N·sin θ_r / Σ sin θ`, floor it at 1, and hand out the residual `N − Σ⌊q⌋` by **largest
+> fractional remainder**, ties broken by `min(r, rows−1−r)` then `r`; reclaim deficits the same way
+> in reverse, never below 1. It holds `Σ = N` at **every** N in 1…7000, and against the published v3
+> table (`3ce85aed`, vendored at `docs/worlds/rowcells-v3.json`) it agrees on **rows and dφ 45 of
+> 45** and on the counts **to ±1 cell per row, never more**: 575 of 777 rows match exactly, 101 run
+> one cell high and 101 one cell low. Its aspect cost is a wash — 81 of its 777 rows fall outside
+> ±10% of 4:3 against the published table's 86. Two limits on how far to trust it. It reproduces a
+> published table exactly on only **15 of 45 worlds, and those are the six one-card worlds, the eight
+> two-card worlds and one four-card world** — *every* world of 30 cards or more disagrees somewhere.
+> But the ±1 slack is **derivation-safe for §1.4**: computing the subdivision from the N-only table
+> instead of the published one gives the identical `(k_lon, k_lat)` on **45 of 45** worlds, the same
+> 13 unsubdivided worlds holding 19,497 cells, the same 38,887-sub-quad roster total and the same
+> 1,130 worst case. Use it to sanity-check a table or to size geometry; never to generate a table.
+>
+> > **Corrected.** An earlier revision of this block claimed the N-only form "reproduces Dominaria's
+> > published `rowCells` verbatim" at 6,266. It does not, and there is nothing at 6,266 to reproduce:
+> > the check behind that sentence compared the N-only form against the **closed form**, not against
+> > any dataset, and no published dataset carries a `rowCells` table at that count — `rowCells` is a
+> > v3 field, the v2 builds have none, and both the v2 and v3 builds of the 45-world roster put
+> > Dominaria at **6,271**.
+>
+> **There is no symmetry bound on the shipped table, and the gate must assert none.** A closed
+> surface's equator-symmetric partition has an even cell count in every mirrored pair, so it cannot
+> sum to an arbitrary odd `N`: exact-N and strict symmetry are incompatible, and exact-N wins because
+> the alternative is losing cards. The N-only form relaxes symmetry minimally — at most one mirrored
+> pair differs, by at most one cell, over N = 1…8000 — but **that bound is a property of the N-only
+> form and is false of the shipped grid**, because the pipeline apportions per band. Measured against
+> v3: strict `rowCells == reversed(rowCells)` fails on **30 of 45** worlds (not the 14 an N-only
+> reading predicts), the `≤ 1 pair` form fails on the same 30, **Dominaria differs in 15 mirrored
+> pairs**, and eight worlds — innistrad, zendikar, theros, arcavios, avishkar, amonkhet,
+> thunder-junction, mercadia — carry a pair differing by **two**. This is correct behaviour: the
+> pipeline's `_north_first` alternates a mirrored class's odd card by set-index parity on purpose, so
+> that the north band does not accumulate ~20 extra cards across a large plane's odd-count groups
+> (leg P, DEC-748; copied to DEC-752, where such an assertion would go RED on a correct renderer).
+> The maxima above are **measurements over 45 worlds, not bounds** — nothing in this spec derives
+> them, so a gate row asserting `≤ 2` would be as wrong as `≤ 1`, only less often.
 
 > **Normative — the floor: n = 1 and n = 2 (DEC-751's finding, re-derived).** Six v3 worlds carry
 > exactly one card and eight carry two (§1.2), so the bottom of the law ships. It is stated, not
@@ -284,8 +323,10 @@ carry the contract consequence.
 >
 > > **Corrected by the exact-N apportionment above.** An earlier revision of this block argued the
 > > lift was *monotone in N* — "a continuum, not a cliff" — and that N = 3–5 sat at a benign 1.41
-> > aspect. Both were artefacts of the closed form's over-allocation. Under the relaxation a small
-> > world's residual lands in one row, so N = 3 ships `rowCells = [1, 2]`: its northern row is a
+> > aspect. Both were artefacts of the closed form's over-allocation. Under exact-N a small
+> > world's residual lands in one row, so at N = 3 the table is `[1, 2]` (no three-card world is on
+> > the v3 roster — its counts step 2 → 4 → 30 — so this is the check's reading, not a shipped
+> > table): its northern row is a
 > > single cell wrapping the full circumference, at aspect **2.83** and a lift of **156%** — *above*
 > > N = 2's 144%. The lift is monotone in a cell's **solid angle**, not in N, and it is a sawtooth in
 > > N (it rises at N = 2→3, 5→6, 11→12, 28→29, 38→39, 40→41 and 52→53). This does not change what
@@ -314,7 +355,7 @@ the tiling reads as masonry with grout rather than as a skin.
 > DEC-751's n = 1 finding).** A flat quad tangent at the cell centre is only a surface patch while
 > the cell is small. Its corner sits at `√(1.006² + α² + β²)` from the world centre against the
 > surface's 1, where `(α, β)` are §1.4's `iSize` in radius units — **0.7% of the radius on
-> Dominaria, 5.7% on Rabiah, 11.6% on a 30-card world, 265% at N = 1** (§1.3). Past a few percent
+> Dominaria, 5.7% on Rabiah, 13.0% on a 30-card world, 265% at N = 1** (§1.3). Past a few percent
 > the cell stops reading as masonry and starts reading as a billboard that parallaxes off its globe;
 > at N ≤ 2 it is larger than the globe.
 >
@@ -334,7 +375,9 @@ the tiling reads as masonry with grout rather than as a skin.
 > is the two axes combining at a facet corner.
 >
 > **The cost is bounded by the sphere, not by the card count**, which is what makes this affordable
-> at the bottom of the roster where every cell is huge. `k` is `(1, 1)` — one quad per cell, today's
+> at the bottom of the roster where every cell is huge. `k` is computed from the world's **published**
+> `rowCells` (§2.4) like every other client-side derivation, though §1.3 records that the N-only
+> check agrees on `k` for 45 of 45 worlds. It is `(1, 1)` — one quad per cell, today's
 > geometry — for every world of **574 cards or more**: 13 of v3's 45 worlds, holding **19,497 of its
 > 24,399 cells**. It is `(3, 2)` at Rabiah's 75, `(5, 3)` at 30 cards, and
 > `(32, 16)` at N = 1, where the entire world is **512 sub-quads** against Dominaria's 6,271 cells at
