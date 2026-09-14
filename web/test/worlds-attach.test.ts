@@ -20,9 +20,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Matrix4, PerspectiveCamera, Scene, Vector2, Vector3, type WebGLRenderer } from 'three'
 
 import { decodeStars, decodeSwatches } from '../src/data/decode'
-import type { PlaneRecord, PlanesFile } from '../src/data/types'
+import { FILTER_MASK_PASS, type PlaneRecord, type PlanesFile } from '../src/data/types'
 import { FrameLoop, TICK_PHASES } from '../src/scene/renderer/frameLoop'
-import type { ImageQueue } from '../src/scene/cards/imageQueue'
+import { ImageQueue } from '../src/scene/cards/imageQueue'
 import { QUALITY_TIERS } from '../src/scene/quality/adaptiveQuality'
 import { attachWorlds, DEFAULT_TIER_ART_LAYERS } from '../src/scene/worlds/attachWorlds'
 import { KEY_LIGHT_OFF_AXIS, keyLightDirection } from '../src/scene/worlds/keyLight'
@@ -732,6 +732,214 @@ describe('§3.2s coexistence, which has to actually cost nothing', () => {
     expect(rig.scene.getObjectByName('worlds')?.children).toHaveLength(0)
     // A payload assembled after a teardown would be one from the previous roster.
     expect(rig.worlds.probeSource()).toBeNull()
+    rig.worlds.dispose()
+  })
+})
+
+/**
+ * PRD 5.8's dimming, under worlds (§1.11, DEC-751).
+ *
+ * The rule is simpler here than it was for thumbnails and the simplification is the requirement:
+ * *a filtered cell never resolves to art at all*. So there are two halves to check and they fail
+ * differently — admission (the cell never asks the stream and never holds a layer) and release (a
+ * cell filtered while it already held one drops back to its swatch instead of waiting for the LRU).
+ * The second is the one that looks fine in a screenshot taken a moment too early.
+ *
+ * Driven through the shipped composition against the shipped dataset, because the mask is indexed
+ * by **star** and the cells are indexed by card: the two only line up through `artKeyBase`, which a
+ * hand-built fixture would let us get wrong in agreement with the code.
+ */
+describe('§1.11 a filtered cell drops to its swatch, and never to art', () => {
+  /** A mask that dims exactly the cards of `slug`, in the store's per-star encoding. */
+  function maskExcluding(slug: string): Uint8Array {
+    const mask = new Uint8Array(STARS.count).fill(FILTER_MASK_PASS)
+    const plane = PLANES.planes.find((p) => p.slug === slug)!
+    for (let i = 0; i < plane.starCount; i += 1) mask[plane.starOffset + i] = 0
+    return mask
+  }
+
+  function surfaceOf(rig: Rig, slug: string) {
+    return rig.worlds.surfaces.find((s) => s.planeSlug === slug)!
+  }
+
+  /** Put the camera on a world close enough that its cells clear the art threshold. */
+  function focus(rig: Rig, slug: string): void {
+    const world = surfaceOf(rig, slug)
+    poseAt(rig.camera, world.centre, world.radius, 1.8)
+    rig.tick()
+  }
+
+  it('marks the filtered world’s cells and leaves every other world alone', () => {
+    const rig = build({ capabilities: { webgl2: true, maxArrayTextureLayers: 2048 } })
+    rig.worlds.setData(roster())
+    rig.worlds.setFilterMask(maskExcluding('dominaria'))
+
+    const dominaria = surfaceOf(rig, 'dominaria')
+    const other = surfaceOf(rig, 'innistrad')
+    const flags = dominaria.sheet.filtered.array as Float32Array
+    expect(flags.length).toBe(dominaria.cardCount)
+    expect([...flags].every((f) => f === 1)).toBe(true)
+    // The other world is the control: a `setFilterMask` that ignored `artKeyBase` and dimmed by
+    // cell index would light up every roster world's first N cells and pass the row above.
+    expect([...(other.sheet.filtered.array as Float32Array)].every((f) => f === 0)).toBe(true)
+    rig.worlds.dispose()
+  })
+
+  it('never admits a filtered cell, so it never asks the pool for a layer', () => {
+    /*
+     * **Asserted on the pool, not on the cell's attributes**, and that distinction is the whole
+     * row. A filtered cell is cleared twice over — admission skips it *and* the release branch
+     * below zeroes it — so an assertion on `iLayer`/`iArt` is satisfied by either half alone and
+     * cannot tell which is working. Deleting the admission term left every such assertion green.
+     * A reservation is produced by admission and by nothing else.
+     */
+    // A real Scryfall-shaped id: the URL builder rejects a short one, and a rejected fetch is a
+    // rejection this test would then have to swallow rather than a reservation it can count.
+    const printing = { printingId: '0000a1b2-3c4d-5e6f-7a8b-9c0d1e2f3a4b', imageTs: 1 }
+    /*
+     * A queue whose fetch never settles. The subject is the *reservation*, which `ArtStream.request`
+     * makes synchronously before it fetches — so the network never needs to answer, and a queue
+     * left to reach the real `fetch` fills the run with unhandled rejections instead.
+     */
+    const options = () => ({
+      capabilities: { webgl2: true, maxArrayTextureLayers: 2048 },
+      cardOf: () => printing,
+      queue: new ImageQueue({ fetchImpl: () => new Promise<Response>(() => {}) }),
+    })
+
+    const control = build(options())
+    control.worlds.setData(roster())
+    focus(control, 'dominaria')
+    const reservedUnfiltered = control.worlds.pool.report().reserved
+    // The control row. Without it a build that reserved nothing at all — no `cardOf`, a
+    // swatch-only stream, a pose too far for the threshold — passes the filtered row for free.
+    expect(reservedUnfiltered).toBeGreaterThan(0)
+    control.worlds.dispose()
+
+    const rig = build(options())
+    rig.worlds.setData(roster())
+    rig.worlds.setFilterMask(maskExcluding('dominaria'))
+    focus(rig, 'dominaria')
+    expect(rig.worlds.pool.report().reserved).toBe(0)
+
+    /*
+     * And the probe agrees, which is a second observable rather than a restatement. `wasAdmitted`
+     * is what §3.1's payload reports per cell, and the two halves of this section reach it by
+     * different routes: the release branch below stops a filtered cell *requesting*, so the
+     * reservation count above is satisfied by either half — only this line is produced by the
+     * admission term alone. A probe that called a filtered cell admitted would put cells that can
+     * never receive art into W4's numerator, and the gate would read the filter as a renderer
+     * failure.
+     */
+    const world = surfaceOf(rig, 'dominaria')
+    const admitted = Array.from({ length: world.cardCount }, (_, cell) => world.wasAdmitted(cell))
+    expect(admitted.some(Boolean)).toBe(false)
+
+    // The control for *that* field, on the unfiltered arm: without it, a `wasAdmitted` that is
+    // false everywhere at this pose would satisfy the line above for the wrong reason.
+    const control2 = build(options())
+    control2.worlds.setData(roster())
+    focus(control2, 'dominaria')
+    const unfiltered = surfaceOf(control2, 'dominaria')
+    expect(
+      Array.from({ length: unfiltered.cardCount }, (_, cell) => unfiltered.wasAdmitted(cell)).some(
+        Boolean,
+      ),
+    ).toBe(true)
+    control2.worlds.dispose()
+    rig.worlds.dispose()
+  })
+
+  it('releases a layer a cell was already holding when the filter arrives', () => {
+    // The half admission cannot cover. `ArtPool.claimLayer` refuses eviction within
+    // EVICTION_GRACE_FRAMES, so a cell that stopped being admitted keeps its RESIDENT layer for a
+    // while — and without an explicit release it goes on drawing the card at full art.
+    //
+    // Residency is made through the pool's own `reserve` + `resolve`, which is what the stream
+    // does when a fetch lands. Writing a layer index into the attribute by hand does not work and
+    // is worth recording: the pool would still answer `layerOf` with `null`, the existing
+    // not-resident branch would clear the cell, and the test would pass with the release deleted.
+    const rig = build({ capabilities: { webgl2: true, maxArrayTextureLayers: 2048 } })
+    rig.worlds.setData(roster())
+    focus(rig, 'dominaria')
+    const world = surfaceOf(rig, 'dominaria')
+    const key = world.artKeyBase + 0
+    expect(rig.worlds.pool.reserve(key, 0)).not.toBeNull()
+    expect(rig.worlds.pool.resolve(key)).not.toBeNull()
+    expect(rig.worlds.pool.layerOf(key)).not.toBeNull()
+
+    // Unfiltered, the resident layer reaches the cell — the control that makes the next lines a
+    // measurement of the filter rather than of an empty pool.
+    focus(rig, 'dominaria')
+    const layers = world.sheet.layers.array as Float32Array
+    const art = world.sheet.art.array as Float32Array
+    expect(layers[0]).toBeGreaterThanOrEqual(0)
+    expect(art[0]).toBeGreaterThan(0)
+
+    rig.worlds.setFilterMask(maskExcluding('dominaria'))
+    focus(rig, 'dominaria')
+    expect(layers[0]).toBeLessThan(0)
+    expect(art[0]).toBe(0)
+    rig.worlds.dispose()
+  })
+
+  it('dims the cell drawing the card, not the cell at the card’s index', () => {
+    /*
+     * The two identities are the same number until `?bands=shuffle` permutes them (§3.1's W3
+     * control), and under that seam a mask applied by cell index dims the wrong cards — a control
+     * seam that quietly changes a second thing, which is the failure `seams.ts` exists to prevent.
+     * Every row above passes under the wrong spelling, because `cardOfCell` is the identity.
+     */
+    const rig = build({
+      seams: { ...NO_SEAMS, bandsShuffle: true },
+      capabilities: { webgl2: true, maxArrayTextureLayers: 2048 },
+    })
+    rig.worlds.setData(roster())
+    const world = surfaceOf(rig, 'dominaria')
+
+    const mask = new Uint8Array(STARS.count).fill(FILTER_MASK_PASS)
+    mask[world.artKeyBase] = 0 // exactly one card: this world's card 0
+    rig.worlds.setFilterMask(mask)
+
+    const flagged = [...(world.sheet.filtered.array as Float32Array)]
+      .map((value, cell) => (value === 1 ? cell : -1))
+      .filter((cell) => cell >= 0)
+    expect(flagged).toHaveLength(1)
+    // Under the wrong spelling this is cell 0. The permutation is seeded and deterministic, so
+    // this is a fixed fact about the shipped shuffle rather than a probabilistic one.
+    expect(flagged[0]).not.toBe(0)
+    rig.worlds.dispose()
+  })
+
+  it('clears on a null mask, which is also "no filter"', () => {
+    const rig = build({ capabilities: { webgl2: true, maxArrayTextureLayers: 2048 } })
+    rig.worlds.setData(roster())
+    rig.worlds.setFilterMask(maskExcluding('dominaria'))
+    rig.worlds.setFilterMask(null)
+    const flags = surfaceOf(rig, 'dominaria').sheet.filtered.array as Float32Array
+    expect([...flags].every((f) => f === 0)).toBe(true)
+    rig.worlds.dispose()
+  })
+
+  it('dims a world composed after the filter was set', () => {
+    // The ordering the shipped boot actually takes: a deep link carries filters in the URL and the
+    // evaluation runs before `planes.json` lands. A push-only attachment would compose this world
+    // undimmed and stay that way until the user touched a filter chip.
+    const rig = build({ capabilities: { webgl2: true, maxArrayTextureLayers: 2048 } })
+    rig.worlds.setFilterMask(maskExcluding('dominaria'))
+    rig.worlds.setData(roster())
+    const flags = surfaceOf(rig, 'dominaria').sheet.filtered.array as Float32Array
+    expect([...flags].every((f) => f === 1)).toBe(true)
+    rig.worlds.dispose()
+  })
+
+  it('keeps the filter across a quality rung, which recomposes the roster', () => {
+    const rig = build({ capabilities: { webgl2: true, maxArrayTextureLayers: 2048 } })
+    rig.worlds.setData(roster())
+    rig.worlds.setFilterMask(maskExcluding('dominaria'))
+    rig.worlds.setArtLayers(QUALITY_TIERS[3]!.artPoolLayers)
+    const flags = surfaceOf(rig, 'dominaria').sheet.filtered.array as Float32Array
+    expect([...flags].every((f) => f === 1)).toBe(true)
     rig.worlds.dispose()
   })
 })

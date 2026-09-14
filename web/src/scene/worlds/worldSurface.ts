@@ -295,6 +295,35 @@ export class WorldSurface {
     return this.source.artKeyBase
   }
 
+  /**
+   * PRD 5.8's dimming mask, for this world's cells (§1.11).
+   *
+   * `mask` is the store's per-**star** evaluation — one byte per star over the whole multiverse,
+   * `FILTER_MASK_PASS` where the card matches — so this world's window into it starts at
+   * {@link artKeyBase}, the identity `swatches.bin` and the art pool are already keyed by. `null`
+   * clears, which is both "no filter" and "the filter was removed": one state, not two paths.
+   *
+   * Reads a card's byte through `cardOfCell` rather than through the cell index, because
+   * `?bands=shuffle` permutes which card a cell draws (§3.1's W3 control). Under that seam the two
+   * identities differ, and dimming by cell index would dim the wrong cards — a control that
+   * quietly changes a second thing is exactly what `seams.ts` is written against.
+   */
+  setFilterMask(mask: Uint8Array | null): void {
+    const filtered = this.sheet.filtered.array as Float32Array
+    const base = this.source.artKeyBase
+    for (let cell = 0; cell < filtered.length; cell += 1) {
+      if (mask === null) {
+        filtered[cell] = 0
+        continue
+      }
+      const star = base + this.cardOfCell[cell]!
+      // A star past the end of the mask is not "filtered out" — it is a mask that disagrees with
+      // the roster, and the honest reading of an absent byte is that nothing excluded this card.
+      filtered[cell] = star < mask.length && mask[star] === 0 ? 1 : 0
+    }
+    this.sheet.filtered.needsUpdate = true
+  }
+
   /** The per-world scalar §1.5's crossover and §3.1's W1 are both written against. */
   get medianCellHeightPx(): number {
     return this.medianHeightPxValue
@@ -391,13 +420,30 @@ export class WorldSurface {
 
     const layers = this.sheet.layers.array as Float32Array
     const art = this.sheet.art.array as Float32Array
+    const filterMask = this.sheet.filtered.array as Float32Array
 
     for (let cell = 0; cell < cardCount; cell += 1) {
+      // §1.11: a filtered cell never resolves to art **at all**. That is the whole rule under
+      // worlds, and it is simpler than the thumbnail-era one: the cell is excluded from admission
+      // rather than admitted and then dimmed, so it never asks the stream for a printing and never
+      // holds a pool layer a visible cell could use. The dim is the shader's half.
       const admit =
+        filterMask[cell] === 0 &&
         this.frontFacing[cell] === 1 &&
         this.onScreen[cell] === 1 &&
         this.heightPx[cell]! >= effective
       this.admitted[cell] = admit ? 1 : 0
+
+      // A cell filtered *while* it held a layer keeps that layer until the pool evicts it, so
+      // admission alone is not enough: without this the card stays on screen, at full art, for as
+      // long as the LRU leaves it resident. §1.11 says a filtered cell shows its swatch, so it is
+      // dropped back to the swatch here and the layer is released to the cells that can use it.
+      if (filterMask[cell] !== 0) {
+        layers[cell] = LAYER_FREE
+        this.fade[cell] = 0
+        art[cell] = 0
+        continue
+      }
 
       const card = this.cardOfCell[cell]!
       // The **pool's** key, not this world's card index. One pool serves the whole multiverse, so a

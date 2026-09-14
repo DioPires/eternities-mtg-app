@@ -73,10 +73,11 @@ import type { ProbeCamera, WorldsProbeSource } from './worldsProbe'
 /**
  * Tier 0's art-pool layers (§1.12's table).
  *
- * The **starting** size only. §1.12's rung — 1,024 / 1,024 / 512 / 256 / 128 — belongs to R3 with
- * the rest of that section, and it reaches this module through {@link WorldsAttachment.setArtLayers}
- * rather than by this file reading `QUALITY_TIERS`. Two readers of the ladder is how a caller ends
- * up allocating tier 0's pool against tier 2's other four rungs (DEC-747's finding, in the small).
+ * The **starting** size only. §1.12's rung — 1,024 on the top three tiers and 128 on the bottom
+ * two, stepping once, at tier 3 (DEC-753's ruling) — reaches this module through
+ * {@link WorldsAttachment.setArtLayers} rather than by this file reading `QUALITY_TIERS`. Two
+ * readers of the ladder is how a caller ends up allocating tier 0's pool against tier 2's other
+ * four rungs (DEC-747's finding, in the small).
  */
 export const DEFAULT_TIER_ART_LAYERS = 1024
 
@@ -131,8 +132,15 @@ export interface WorldsAttachment {
    * branches on, which is the correct reading of "the tick has not started".
    */
   probeSource: () => WorldsProbeSource | null
-  /** §1.12's rung, for R3's ladder. See the method's note — it is not implemented here. */
+  /** §1.12's rung (DEC-751). Resizing the pool recomposes the roster — see the implementation. */
   setArtLayers: (tierLayers: number) => void
+  /**
+   * PRD 5.8's dimming mask, pushed at every composed world (§1.11).
+   *
+   * Held as well as forwarded: a world composed *after* the filter was set must arrive dimmed, and
+   * a roster that recomposes — which §1.12's rung now does — must not silently drop the filter.
+   */
+  setFilterMask: (mask: Uint8Array | null) => void
   /** The composed worlds, in roster order. For the tests and for R2's system pass. */
   readonly surfaces: readonly WorldSurface[]
   /** §1.5's far LOD: one baked 256x128 layer per world with cards. R2's step-2 pass samples it. */
@@ -217,6 +225,18 @@ export function attachWorlds(options: WorldsAttachmentOptions): WorldsAttachment
    * is something to allocate.
    */
   let tierArtLayers = options.tierArtLayers ?? DEFAULT_TIER_ART_LAYERS
+
+  /**
+   * The live filter mask (§1.11), or `null` for "no filter".
+   *
+   * Retained for the same reason the rung is: composition is not simultaneous with the store. A
+   * deep link can carry filters in the URL and have them evaluated before `planes.json` lands, and
+   * a rung change recomposes the whole roster — in both cases the surfaces are built after the
+   * last push, so the attachment has to be able to answer "what is the filter?" rather than wait
+   * to be told again. The array itself is the store's and is **reused between evaluations**
+   * (`filters/evaluate.ts`), so it is read on arrival and never treated as a snapshot.
+   */
+  let filterMask: Uint8Array | null = null
 
   function allocatePool(): void {
     pool = new ArtPool(resolveLayers(tierArtLayers))
@@ -334,6 +354,7 @@ export function attachWorlds(options: WorldsAttachmentOptions): WorldsAttachment
         ),
         { seams, pool, threshold, stream, artTexture },
       )
+      surface.setFilterMask(filterMask)
       surfaces.push(surface)
       group.add(surface.mesh)
       if (equirectArray) writeEquirectLayer(equirectArray, index, surface.equirect)
@@ -394,6 +415,11 @@ export function attachWorlds(options: WorldsAttachmentOptions): WorldsAttachment
      * the number requested. A rung clamped away by `MAX_ARRAY_TEXTURE_LAYERS` therefore reads back
      * as the clamp, which is what §1.12 tells `e2e/quality.spec.ts` to assert against.
      */
+    setFilterMask: (mask) => {
+      filterMask = mask
+      for (const surface of surfaces) surface.setFilterMask(mask)
+    },
+
     setArtLayers: (tierLayers) => {
       tierArtLayers = tierLayers
       if (resolveLayers(tierLayers) === pool.layers) return

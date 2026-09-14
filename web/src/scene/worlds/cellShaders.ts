@@ -15,6 +15,7 @@
 import { SHADE_AMBIENT, SHADE_GAIN } from './probePayload'
 import { CELL_INSET, CELL_LIFT } from './surfaceLaw'
 import { glslFloat } from '../starfield/shaders'
+import { FILTER_DIM } from '../tuning'
 
 /**
  * The floor under `sin(theta)` before it is divided into `iSize.x`.
@@ -33,6 +34,9 @@ const DEFINES = [
   ['SHADE_AMBIENT', SHADE_AMBIENT],
   ['SHADE_GAIN', SHADE_GAIN],
   ['SIN_THETA_FLOOR', SIN_THETA_FLOOR],
+  // PRD 5.8's dimming, shared with the star field's shader rather than restated: one constant, so
+  // a filtered star and a filtered cell dim by the same amount on the same page (spec 1.11).
+  ['FILTER_DIM', FILTER_DIM],
 ] as const
 
 /** The shared `#define` block, written from the TypeScript constants above. */
@@ -74,6 +78,7 @@ attribute vec2 iSize;    // arc-length half-extents, units of world radius (NOT 
 attribute vec3 iSwatch;  // linear RGB
 attribute float iLayer;  // art pool layer, or < 0 for none
 attribute float iArt;    // cross-fade, 0 = swatch, 1 = art
+attribute float iFiltered; // PRD 5.8 / spec 1.11: 1 = excluded by the filter
 
 uniform float uRadius;
 
@@ -82,6 +87,7 @@ varying vec3 vSwatch;
 varying vec3 vNormal;
 varying float vLayer;
 varying float vArt;
+varying float vFiltered;
 
 void main() {
   vec3 n = normalize(iNormal);
@@ -110,6 +116,7 @@ void main() {
   vNormal = n;
   vLayer = iLayer;
   vArt = iArt;
+  vFiltered = iFiltered;
 
   gl_Position = projectionMatrix * modelViewMatrix * vec4(p * (uRadius * CELL_LIFT), 1.0);
 }
@@ -134,6 +141,7 @@ varying vec3 vSwatch;
 varying vec3 vNormal;
 varying float vLayer;
 varying float vArt;
+varying float vFiltered;
 
 uniform sampler2DArray uArt;
 uniform vec3 uLight;
@@ -148,6 +156,14 @@ void main() {
   shade = SHADE_AMBIENT + SHADE_GAIN * shade * shade;
 
   vec3 colour = vSwatch * shade + uAmbient;
+
+  // PRD 5.8 / spec 1.11: a filtered cell drops to its swatch and dims. The dim multiplies the
+  // SWATCH term and is applied BEFORE the art mix, which is what makes "never dims its art"
+  // structural rather than a convention -- at vArt = 1 the mix below returns the art unchanged
+  // however dim this is. Dimming a card image is a colour shift, which Scryfall's terms forbid
+  // (docs/scryfall-policy.md 5). The renderer also never admits a filtered cell to the art pool,
+  // so the two paths agree: a filtered cell has no art to dim in the first place.
+  colour *= mix(1.0, FILTER_DIM, clamp(vFiltered, 0.0, 1.0));
 
   if (vArt > 0.0 && vLayer >= 0.0) {
     // V is flipped here, not on upload: a DataArrayTexture ignores UNPACK_FLIP_Y_WEBGL, so the only

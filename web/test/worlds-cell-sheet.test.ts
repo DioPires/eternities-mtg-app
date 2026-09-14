@@ -196,18 +196,19 @@ describe('§2.1 iSize is arc length, and the shader divides sin(theta_r) back ou
   })
 
   it('no longer ships iEast, and the byte budget says so', () => {
-    // §1.4's 52 bytes counted a tangent basis the sphere-following grid derives instead. The budget
-    // is PROVED from the geometry rather than restated: a re-added attribute moves both sides.
+    // §1.4's 52 bytes counted a tangent basis the sphere-following grid derives instead, and
+    // §1.11's filter has since added one float back (DEC-751). The budget is PROVED from the
+    // geometry rather than restated: an added or removed attribute moves both sides of it.
     const sheet = sheetFor(bySlug('dominaria'))
-    const names = ['iNormal', 'iSize', 'iSwatch', 'iLayer', 'iArt']
+    const names = ['iNormal', 'iSize', 'iSwatch', 'iLayer', 'iArt', 'iFiltered']
     expect(Object.keys(sheet.geometry.attributes).sort()).toEqual([...names, 'aCell'].sort())
     const bytes = names.reduce((n, key) => n + sheet.geometry.getAttribute(key).itemSize * 4, 0)
     expect(bytes).toBe(CELL_INSTANCE_BYTES)
 
     const rosterCells = WORLDS.reduce((n, w) => n + w.cardCount, 0)
     expect(rosterCells).toBe(24399)
-    expect(rosterCells * CELL_INSTANCE_BYTES).toBe(975960)
-    expect((rosterCells * CELL_INSTANCE_BYTES) / 1024 / 1024).toBeCloseTo(0.931, 3)
+    expect(rosterCells * CELL_INSTANCE_BYTES).toBe(1073556)
+    expect((rosterCells * CELL_INSTANCE_BYTES) / 1024 / 1024).toBeCloseTo(1.024, 3)
   })
 })
 
