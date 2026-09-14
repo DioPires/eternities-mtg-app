@@ -79,6 +79,21 @@ export interface StarSceneHandle {
   setGlowQuality: (quality: GlowQuality) => void
   /** Every record of `stars.bin` is drawable. Gates the GPU self-check; nothing else needs it. */
   setStarsComplete: (complete: boolean) => void
+  /**
+   * Send `onQualityChange` the tier the monitor is starting on.
+   *
+   * **Separate from construction on purpose, and it is not a style choice.** The starting
+   * announcement used to fire synchronously from inside `attachStarScene`, which meant the
+   * caller's handler ran *before* `attachStarScene` had returned — so `SceneHost.applyTier`, whose
+   * job is to push the tier at the star field among others, reached a `starSceneHandle` that was
+   * still `undefined` and threw on the first frame of every page load. Nothing in the unit suite
+   * could see it: building a `SceneHost` needs a GL context, so the whole construction path is
+   * e2e-only, and `e2e/a11y.spec.ts`'s page-error assertion is what caught it.
+   *
+   * The caller assigns the handle, then calls this. The monitor is still the one authority for the
+   * starting tier — this only moves *when* it speaks, not who decides.
+   */
+  announceStartingTier: () => void
   dispose: () => void
 }
 
@@ -358,7 +373,6 @@ export function attachStarScene({
    * targets, so the monitor is the authority and this is where it says so.
    */
   const unsubscribeQuality = quality.subscribe((tier, index) => onQualityChange?.(tier, index))
-  onQualityChange?.(quality.tier, quality.index)
 
   /**
    * PRD 8.5.6 and 8.5.7, checked against each other on a real GPU. Diagnostic only, and only when
@@ -455,6 +469,10 @@ export function attachStarScene({
     setStarsComplete: (complete) => {
       starsComplete = complete
       maybeStartSelfCheck()
+    },
+
+    announceStartingTier: () => {
+      onQualityChange?.(quality.tier, quality.index)
     },
 
     dispose: () => {

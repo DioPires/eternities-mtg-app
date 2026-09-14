@@ -182,6 +182,10 @@ export class SceneHost {
       onSelect: (pick) => this.selected.emit(pick),
       onQualityChange: (tier) => this.applyTier(tier),
     })
+    // **After the assignment above, never inside it.** `applyTier` pushes the tier at the star
+    // field, so a starting announcement that fired from inside `attachStarScene` would reach a
+    // `starSceneHandle` that does not exist yet. See `StarSceneHandle.announceStartingTier`.
+    this.starSceneHandle.announceStartingTier()
 
     // The stats the tick reports outwards, gathered last. `frameMs` and `cpuMs` are the loop's own
     // and are written by `SceneRenderer`'s `onTickEnd` hook, which by construction runs after every
