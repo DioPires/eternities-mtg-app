@@ -1,9 +1,14 @@
 /**
- * Mutation matrix for §1.6's fetch discipline (DEC-749).
+ * Mutation matrix for §1.6's fetch discipline and §3.1's probe payload (DEC-749).
  *
  * A green suite proves nothing until the same suite goes red on the defect it claims to catch.
- * Each row patches one source site, runs `test/worlds-art-fetch.test.ts`, and expects RED; the tree
- * is restored between rows and a final control row expects GREEN.
+ * Each row patches one source site, runs the test file that owns it, and expects RED; the tree is
+ * restored between rows, and the control rows at both ends expect GREEN — an always-red tree would
+ * otherwise score identically to a perfect guard.
+ *
+ * This earned its keep on the first run: the "reset cancels by the card key" row survived, because
+ * the test asserted the *pool* and `reset()` releases the reservation itself, so the assertion was
+ * insensitive to whether the cancel found its target. The queue was the only witness.
  *
  * Run: `node scripts/mutate-art-fetch.mjs`
  */
@@ -14,6 +19,10 @@ import { readFileSync, writeFileSync } from 'node:fs'
 const STREAM = 'src/scene/worlds/artStream.ts'
 const POOL = 'src/scene/worlds/artPool.ts'
 const QUEUE = 'src/scene/cards/imageQueue.ts'
+const PROBE = 'src/scene/worlds/probePayload.ts'
+
+const FETCH_TEST = 'test/worlds-art-fetch.test.ts'
+const PROBE_TEST = 'test/worlds-probe.test.ts'
 
 const MUTANTS = [
   {
@@ -88,11 +97,60 @@ const MUTANTS = [
     from: '    while (!this.disposed && this.inFlightCount < this.concurrency && this.waiting.length > 0) {',
     to: '    while (!this.disposed && this.waiting.length > 0) {',
   },
+  {
+    name: 'probe: shade squares BEFORE the clamp (night and day become identical)',
+    file: PROBE,
+    test: PROBE_TEST,
+    from: '  const clamped = wrapped < 0 ? 0 : wrapped > 1 ? 1 : wrapped\n  return SHADE_AMBIENT + SHADE_GAIN * clamped * clamped',
+    to: '  const squared = wrapped * wrapped\n  const clamped = squared < 0 ? 0 : squared > 1 ? 1 : squared\n  return SHADE_AMBIENT + SHADE_GAIN * clamped',
+  },
+  {
+    name: 'probe: shade clamps lambert instead of wrapping it',
+    file: PROBE,
+    test: PROBE_TEST,
+    from: '  const wrapped = dotNormalLight * 0.5 + 0.5',
+    to: '  const wrapped = dotNormalLight',
+  },
+  {
+    name: 'probe: rect from the four corners only',
+    file: PROBE,
+    test: PROBE_TEST,
+    from: '  const { kLon, kLat } = subdivision',
+    to: '  const { kLon, kLat } = { kLon: 1, kLat: 1 }\n  void subdivision',
+  },
+  {
+    name: 'probe: rect projects before the near-plane rejection',
+    file: PROBE,
+    test: PROBE_TEST,
+    from: '      if (point.z > -near) continue\n      point.applyMatrix4(projectionMatrix)',
+    to: '      point.applyMatrix4(projectionMatrix)\n      if (point.z > -near) continue',
+  },
+  {
+    name: 'probe: rect does not flip y for the screen',
+    file: PROBE,
+    test: PROBE_TEST,
+    from: '      const sy = (0.5 - point.y * 0.5) * viewportHeightPx',
+    to: '      const sy = (point.y * 0.5 + 0.5) * viewportHeightPx',
+  },
+  {
+    name: 'probe: cells renumbered after compaction, losing the instance id',
+    file: PROBE,
+    test: PROBE_TEST,
+    from: '    cells.push({ cell, ...record })',
+    to: '    cells.push({ cell: cells.length, ...record })',
+  },
+  {
+    name: 'probe: longitude spelled atan2(z, x), which mirrors the world',
+    file: PROBE,
+    test: PROBE_TEST,
+    from: '  return out.set(sinTheta * Math.sin(lambda), Math.cos(theta), sinTheta * Math.cos(lambda))',
+    to: '  return out.set(sinTheta * Math.cos(lambda), Math.cos(theta), sinTheta * Math.sin(lambda))',
+  },
 ]
 
-function run() {
+function run(test = FETCH_TEST) {
   try {
-    execFileSync('npx', ['vitest', 'run', 'test/worlds-art-fetch.test.ts'], {
+    execFileSync('npx', ['vitest', 'run', test], {
       stdio: 'pipe',
       encoding: 'utf8',
     })
@@ -111,7 +169,7 @@ const restore = () => {
 }
 
 let failures = 0
-console.log(`control (unmutated tree): ${run()} — expected GREEN\n`)
+console.log(`control: ${run(FETCH_TEST)} / ${run(PROBE_TEST)} — both expected GREEN\n`)
 
 for (const mutant of MUTANTS) {
   const source = originals.get(mutant.file)
@@ -121,7 +179,7 @@ for (const mutant of MUTANTS) {
     continue
   }
   writeFileSync(mutant.file, source.replace(mutant.from, mutant.to))
-  const verdict = run()
+  const verdict = run(mutant.test ?? FETCH_TEST)
   restore()
   const ok = verdict === 'RED'
   if (!ok) failures += 1
@@ -129,6 +187,6 @@ for (const mutant of MUTANTS) {
 }
 
 restore()
-console.log(`\nrestored tree: ${run()} — expected GREEN`)
+console.log(`\nrestored tree: ${run(FETCH_TEST)} / ${run(PROBE_TEST)} — both expected GREEN`)
 console.log(failures === 0 ? '\nevery mutant killed' : `\n${failures} mutant(s) survived`)
 process.exit(failures === 0 ? 0 : 1)

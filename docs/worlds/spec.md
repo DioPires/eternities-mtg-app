@@ -1177,7 +1177,19 @@ scale — which is the thing T7 said was missing.
 > > `2·sin γ`; the flat quad projects to `2γ`. The ratio is `γ/sin γ`: **1.0001 on Dominaria**,
 > > 1.0051 on Rabiah, 1.0115 at 30 cards, and **1.5708 at N = 1** — smaller than the lift figures by
 > > 106× on Dominaria, 11× on Rabiah and 4.6× at N = 1, and that is the direction that matters
-> > here. (G's 30-card figure, 11.6%, is additionally one commit stale: `55d3b15`'s exact-N
+> > **And the corners do not bound the patch either (DEC-749).** A spherical patch's projected
+> > half-width is `cos(θ)·sin(γ)`, maximised where `|cos θ|` is — the cell row nearest the equator —
+> > so for any cell straddling its own widest latitude the extreme lies in the grid's **interior**
+> > and a rect taken from the four corners *under*-reports. Measured at `γ = 0.4`, `latArc = 0.2`:
+> > **2.03% short**. That is the mirror image of the tangent-quad error and points the other way, so
+> > an implementation carrying both partially cancels and looks almost right. Two consequences:
+> > `k = (1,1)` **is** the four-corner case, and "just use a large k" is not the rule — an odd
+> > `kLat` never samples `v = 0` and lands short however fine it is. There is therefore no
+> > k-independent "true" rect to report: the probe reports the bound of the vertex grid the frame
+> > actually rasterises, at the renderer's own subdivision, which is consistent with the picture by
+> > construction.
+> >
+> > (G's 30-card figure, 11.6%, is additionally one commit stale: `55d3b15`'s exact-N
 > > apportionment moved shenmeng to 13.0%.) W1's floor binds on the
 > > *largest* world, and Dominaria's 25.3 px moves by 0.003 px between the two models. **No W1 row
 > > can discriminate them at any N**, which is a stronger statement of G's "the gate is structurally
