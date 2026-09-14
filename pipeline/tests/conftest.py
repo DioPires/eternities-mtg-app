@@ -99,6 +99,7 @@ def set_entry(
     prd_verified: str | None = None,
     corrected_from: str | None = None,
     prd_ratified: str | None = None,
+    stamp_exempt: bool = False,
 ) -> SetEntry:
     return SetEntry(
         code=code,
@@ -114,6 +115,7 @@ def set_entry(
         corrected_from=corrected_from,
         prd_verified=prd_verified,
         prd_ratified=prd_ratified,
+        stamp_exempt=stamp_exempt,
     )
 
 

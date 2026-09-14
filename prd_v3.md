@@ -110,7 +110,7 @@ A printing is excluded if any of the following hold:
 2. Its set code is a Secret Lair code (per Appendix B.4, which also lists the exemption) or its set `set_type` is `promo`, `token`, `memorabilia`, `minigame`, `funny`, `alchemy`, or `vanguard`.
 3. Its `layout` is `token`, `double_faced_token`, `emblem`, `art_series`, `planar`, `scheme`, `vanguard`, `augment`, `host`, or `reversible_card`.
 4. `promo` is true, `digital` is true, or `oversized` is true.
-5. `security_stamp` is `triangle` (Universes Beyond stamp; secondary guard for UB cards inside otherwise included sets — verify this field's semantics against current Scryfall documentation at build time).
+5. `security_stamp` is `triangle` (Universes Beyond stamp; secondary guard for UB cards inside otherwise included sets — verify this field's semantics against current Scryfall documentation at build time), **unless its Appendix B row (or the nearest one up its parent chain) is marked `stampExempt`**. The stamp is a proxy, and a set can carry it for a reason unrelated to Universes Beyond; the exemption is how Appendix B records that for one set, and it does not change what the stamp means anywhere else. A row marked both `stampExempt` and Universes Beyond is a contradiction the pipeline rejects. Added 2026-09-14 for `clu` by owner decision (DEC-710 sign-off 0dec0512).
 6. `lang` is not `en`.
 7. `flavor_name` is present. These are Universes Beyond skins printed on in-universe cards (the Godzilla series in Ikoria, the Dracula series in Crimson Vow); the card itself stays, the skinned printing goes.
 8. Its set's release date is after the pipeline run date. Preview cards for unreleased sets never enter; a set is added to Appendix B once it has shipped.
@@ -119,7 +119,7 @@ A printing is excluded if any of the following hold:
 
 1. A card is excluded if it has no included printings after 4.3.
 2. A card with `content_warning` true is excluded regardless of printings; Wizards has withdrawn these cards and asked that their images not be displayed.
-3. A card is excluded as Universes Beyond if its earliest printing of any kind — every printing in the bulk file, before 4.3 is applied — belongs to a set flagged Universes Beyond in Appendix B, or carries a `triangle` security stamp on a printing without a `flavor_name`. This test uses the earliest printing rather than any printing for two reasons: Universes Beyond cards get reprinted in mixed products (The List, bonus sheets), where 4.3 alone would leave them with a mixed set as their first printing; and in-universe staples get reprinted inside Universes Beyond products (Sol Ring in the Warhammer 40,000 decks), where an any-printing test would wrongly exclude them.
+3. A card is excluded as Universes Beyond if its earliest printing of any kind — every printing in the bulk file, before 4.3 is applied — belongs to a set flagged Universes Beyond in Appendix B, or carries a `triangle` security stamp on a printing without a `flavor_name`. **The stamp clause honours 4.3.5's `stampExempt` mark**: a set exempted in 4.3.5 alone would have its printings cleared by stage 2 only for this rule to exclude the same cards on the same stamp, so the exemption has to reach both or it ships nothing. This test uses the earliest printing rather than any printing for two reasons: Universes Beyond cards get reprinted in mixed products (The List, bonus sheets), where 4.3 alone would leave them with a mixed set as their first printing; and in-universe staples get reprinted inside Universes Beyond products (Sol Ring in the Warhammer 40,000 decks), where an any-printing test would wrongly exclude them.
 4. Basic lands are included.
 5. Exemption to rule 3: a card with an included printing in a set that Appendix B exempts from Secret Lair exclusion (`slx`, Universes Within) is never excluded by rule 3, whatever its earliest printing carries. Whether Universes Within cards share an `oracle_id` with their Secret Lair originals is unverified; the first pipeline run settles it, and a fixture (9.1.5) locks the answer either way.
 6. Meld results (Scryfall objects whose `all_parts` component is `meld_result`, such as Brisela) are not cards of their own and are excluded; they remain reachable as the back faces of their component cards.
@@ -601,6 +601,8 @@ No analytics, no error tracking, no cookies, no accounts. Settings and the hint 
 2. Blind Eternities share of included cards: reported every run. The target is the recorded baseline minus what curating the three highest-contributing sets (11.9) recovers. The report always lists the top contributing sets so curation effort goes where it pays.
 
    **Baseline: 17.42%** — 4,980 of 28,587 cards, measured on the 2026-09-04 dataset and accepted by the board as the working baseline. It sits **below** the 20–25% this document expected, which is a better starting point than predicted rather than a defect: the expectation was reasoned from core sets, Modern Horizons, Commander products, Jumpstart and the D&D sets all landing in the dust, and they do. The gap is not explained here; if a later run moves the number materially, the explanation is owed then. The top three contributors at the baseline are Commander Legends: Battle for Baldur's Gate (345), March of the Machine (272) and Adventures in the Forgotten Realms (257) — 874 cards, 17.6% of the dust, which is what 11.9's curation target is measured against.
+
+   **Measured since: 14.70%** (4,204 of 28,603 cards, 2026-09-14, DEC-745). All three of the named contributors have now been curated away — `mom` by the DEC-710 overrides, `clb` and `afr` by the Forgotten Realms set-level mapping — so the 874-card target above is spent and the sentence describes history, not a live goal. **17.42% remains the board-accepted baseline** until the board moves it; re-baselining is a board decision, not a pipeline one. The new top contributors are Aetherdrift (256), Modern Horizons 3 (256) and Modern Horizons 2 (255), none of which names one plane.
 3. Cards whose plane changed since the last run: listed, each expected to trace to an appendix or override edit.
 4. Planes with zero cards: listed, so roster errors (a plane that should have cards) stand out.
 
@@ -704,6 +706,7 @@ The remaining 29 wiki entries the diff reports are Universes Beyond settings, co
 | `fabacin` | Fabacin | |
 | `fiora` | Fiora | Paliano |
 | `foldaria` | Foldaria | Ratified from the wiki roster diff, 2026-09-04 (open question 1); no set maps here yet |
+| `forgotten-realms` | Forgotten Realms | Added by owner decision 2026-09-14 (DEC-710 sign-off, interaction 0dec0512). The D&D crossover setting; `afr`, `afc` and `clb` map here (B.1). Not a page in the wiki's `Category:Planes`, so the roster diff lists it under "no wiki page of that name" — expected, not drift |
 | `gargantikar` | Gargantikar | |
 | `gastal` | Gastal | |
 | `gobakhan` | Gobakhan | |
@@ -850,7 +853,7 @@ Row format: code · name · date · plane slug (or `blind-eternities`) · flags.
 - `grn` Guilds of Ravnica · 2018-10 · `ravnica`
 - `rna` Ravnica Allegiance · 2019-01 · `ravnica`
 - `war` War of the Spark · 2019-05 · `ravnica`
-- `clu` Ravnica: Clue Edition · 2024-02 · `ravnica`
+- `clu` Ravnica: Clue Edition · 2024-02 · `ravnica` · **stampExempt** (owner decision 2026-09-14, DEC-710 sign-off 0dec0512): an in-universe Ravnica product that carries the `triangle` stamp because it is sold through mass-market retail, not because it is Universes Beyond. Without the exemption its 16 cards were dropped by 4.3.5 and, once past it, again by 4.4.3's stamp clause
 - `mkm` Murders at Karlov Manor · 2024-02 · `ravnica`
 - `mkc` Murders at Karlov Manor Commander · 2024-02 · `ravnica`
 
@@ -943,6 +946,11 @@ Row format: code · name · date · plane slug (or `blind-eternities`) · flags.
 - `sos` Secrets of Strixhaven · 2026-04 · `arcavios` · **verify**
 - `soc` Secrets of Strixhaven Commander · 2026-04 · `arcavios` · **verify**
 
+**Forgotten Realms** — moved here from B.2 on 2026-09-14 by owner decision (DEC-710 sign-off, interaction 0dec0512). Mapped at set level, not per card: each set is wall-to-wall Forgotten Realms, so the plane is a property of the product. DEC-745 scanned all 664 first printings for cross-setting evidence (oracle text, type lines and flavour text) and found none naming another Magic plane; `Ravenloft Adventurer` (`clb`) is the single card whose own name points at another D&D world and is mapped here anyway, because Ravenloft is not an Appendix A plane and Magic reaches the D&D cosmology as one plane.
+- `afr` Adventures in the Forgotten Realms · 2021-07 · `forgotten-realms`
+- `afc` Forgotten Realms Commander · 2021-07 · `forgotten-realms`
+- `clb` Commander Legends: Battle for Baldur's Gate · 2022-06 · `forgotten-realms`
+
 **Capenna**
 - `snc` Streets of New Capenna · 2022-04 · `capenna`
 - `ncc` New Capenna Commander · 2022-04 · `capenna`
@@ -1011,10 +1019,7 @@ Multi-plane by design, or products with no single setting. Overrides move indivi
 - `dft` Aetherdrift · 2025-02 · `blind-eternities` (Avishkar, Amonkhet, and Muraganda cards via overrides)
 - `drc` Aetherdrift Commander · 2025-02 · `blind-eternities`
 
-Dungeons & Dragons crossovers (Wizards-owned, not branded Universes Beyond, not on a Magic plane):
-- `afr` Adventures in the Forgotten Realms · 2021-07 · `blind-eternities`
-- `afc` Forgotten Realms Commander · 2021-07 · `blind-eternities`
-- `clb` Commander Legends: Battle for Baldur's Gate · 2022-06 · `blind-eternities`
+~~Dungeons & Dragons crossovers (Wizards-owned, not branded Universes Beyond, not on a Magic plane):~~ **Moved to B.1 on 2026-09-14** by owner decision (DEC-710 sign-off, interaction 0dec0512): Forgotten Realms joined Appendix A, so "not on a Magic plane" stopped being true and the three sets map there. See B.1 **Forgotten Realms**.
 
 Universes Within (in-universe reworks of Universes Beyond cards, sold as Secret Lair; exempt from B.4):
 - `slx` Universes Within · 2022-01 · `blind-eternities` · **verify** code and Scryfall set name

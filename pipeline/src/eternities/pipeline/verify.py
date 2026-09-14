@@ -86,6 +86,18 @@ def _in_universes_beyond_set(
     return resolved is not None and resolved[0].universes_beyond
 
 
+def _stamp_exempt_set(
+    code: str, by_code: dict[str, SetEntry], sets: dict[str, ScrySet]
+) -> bool:
+    """Whether Appendix B exempts this set's triangle stamp (PRD 4.3.5), following the parent chain.
+
+    Same walk, same reason, as :func:`_in_universes_beyond_set`: 4.3.5 reads the governing row, so
+    a verification that read the set's own row would disagree with the rule it is checking.
+    """
+    resolved = governing_set_row(code, by_code, sets)
+    return resolved is not None and resolved[0].stamp_exempt
+
+
 def verify_security_stamp(
     all_printings: list[RawPrinting], appendices: Appendices, sets: dict[str, ScrySet]
 ) -> Finding:
@@ -95,18 +107,27 @@ def verify_security_stamp(
     their set is flagged Universes Beyond in Appendix B. A triangle inside an in-universe set is
     either a Universes Beyond skin (which 4.3.7's ``flavor_name`` rule already catches) or a
     counter-example that would make 4.3.5 unsafe.
+
+    A set Appendix B marks ``stampExempt`` is a counter-example that has already been ruled on, so
+    it is reported in its own line rather than counted as unexplained. The distinction matters:
+    "unexplained" is what asks the CEO for a decision, and a set whose exemption *is* that
+    decision must not keep asking for it.
     """
     by_code = appendices.by_code()
     stamps: Counter[str] = Counter()
     triangle_sets: Counter[str] = Counter()
     triangle_in_universe: Counter[str] = Counter()
     triangle_in_universe_no_flavour: Counter[str] = Counter()
+    triangle_exempt: Counter[str] = Counter()
 
     for printing in all_printings:
         stamps[printing.security_stamp or "(none)"] += 1
         if printing.security_stamp != "triangle":
             continue
         triangle_sets[printing.set_code] += 1
+        if _stamp_exempt_set(printing.set_code, by_code, sets):
+            triangle_exempt[printing.set_code] += 1
+            continue
         if not _in_universes_beyond_set(printing.set_code, by_code, sets):
             triangle_in_universe[printing.set_code] += 1
             if printing.flavor_name is None:
@@ -126,9 +147,16 @@ def verify_security_stamp(
         "security_stamp distribution: "
         + ", ".join(f"{k}={v}" for k, v in sorted(stamps.items(), key=lambda kv: -kv[1])),
         f"triangle printings: {total} across {len(triangle_sets)} sets; "
-        f"{share:.1%} sit in an Appendix B Universes Beyond set",
+        f"{share:.1%} are accounted for — in an Appendix B Universes Beyond set, flavour-named, "
+        f"or in a set Appendix B marks stampExempt",
         "top triangle sets: " + ", ".join(f"{c}={n}" for c, n in triangle_sets.most_common(8)),
     ]
+    if triangle_exempt:
+        detail.append(
+            "triangle in a set Appendix B marks stampExempt (kept, not dropped; the exemption is "
+            "the recorded answer, not an open question): "
+            + ", ".join(f"{c}={n}" for c, n in triangle_exempt.most_common(8))
+        )
     if triangle_in_universe:
         detail.append(
             "triangle outside a Universes Beyond set: "

@@ -219,21 +219,21 @@ Card `oracle_id`s are **not** in `search.json`; they are in `sets.bin` section 1
 
 ## 8. Payload budget
 
-PRD 7.2 budgets the pair `search.json` + `sets.bin` at ≤ 700 KB target / 1.5 MB ceiling, **encoded transferred size**. Both datasets below are measured at brotli quality 11 — the numbers `web/scripts/check-budget.mjs` reports, re-measured against the committed artefacts of `9d46708448e96fcc` (`fixture-scale`: 30 000 stars, 87 planes, 476 sets) and `6d4779695fde33ea` (production: 28 587 stars, 87 planes, 294 sets), both at `contractVersion` 2:
+PRD 7.2 budgets the pair `search.json` + `sets.bin` at ≤ 700 KB target / 1.5 MB ceiling, **encoded transferred size**. Both datasets below are measured at brotli quality 11 — the numbers `web/scripts/check-budget.mjs` reports, re-measured against the committed artefacts of `3e9be89b4e3e9bdb` (`fixture-scale`: 30 000 stars, 88 planes, 480 sets) and `dabe2c9a68b4d799` (production: 28 603 stars, 88 planes, 294 sets), both at `contractVersion` 2:
 
 | Artefact | Scale raw | Scale brotli | Production raw | Production brotli |
 |---|---|---|---|---|
-| `manifest.json` | 16.8 KB | 4.7 KB | 16.9 KB | 4.7 KB |
-| `planes.json` | 87.9 KB | 13.4 KB | 69.0 KB | 11.6 KB |
-| `stars.bin` | 351.6 KB | 261.6 KB | 335.0 KB | 237.6 KB |
-| `search.json` | 909.3 KB | 128.5 KB | 578.1 KB | 181.2 KB |
-| `sets.bin` | 666.2 KB | 543.2 KB | 624.0 KB | 487.2 KB |
-| **`search.json` + `sets.bin`** | 1 575.5 KB | **671.6 KB** | 1 202.0 KB | **668.5 KB** |
-| First frame (`manifest` + `planes`) | 104.7 KB | 18.1 KB | 85.9 KB | 16.2 KB |
-| Before intro (adds `stars.bin`) | 456.3 KB | 279.7 KB | 420.9 KB | 253.9 KB |
-| Largest plane shard | 838.6 KB | 204.7 KB | 1 212.7 KB | 339.8 KB |
+| `manifest.json` | 17.0 KB | 4.8 KB | 17.1 KB | 4.8 KB |
+| `planes.json` | 89.1 KB | 13.7 KB | 72.6 KB | 12.1 KB |
+| `stars.bin` | 351.6 KB | 261.2 KB | 335.2 KB | 237.7 KB |
+| `search.json` | 909.6 KB | 129.5 KB | 578.4 KB | 181.4 KB |
+| `sets.bin` | 666.2 KB | 543.5 KB | 624.4 KB | 487.6 KB |
+| **`search.json` + `sets.bin`** | 1 575.7 KB | **673.1 KB** | 1 202.8 KB | **669.0 KB** |
+| First frame (`manifest` + `planes`) | 106.1 KB | 18.5 KB | 89.7 KB | 16.9 KB |
+| Before intro (adds `stars.bin`) | 457.7 KB | 279.7 KB | 424.9 KB | 254.6 KB |
+| Largest plane shard | 838.3 KB | 204.5 KB | 1 213.1 KB | 339.9 KB |
 
-**The pair is under its target and not comfortably so.** 671.6 KB is **96%** of the 700 KB target on scale and 668.5 KB is **95%** on production — both inside the ≥ 90% band, so the budget check reports them `[near target]` with a headroom warning (28.4 KB and 31.5 KB), not a bare `ok`. Read the row that way: the target holds today and one more sizeable set is what moves it. Only the 1.5 MB ceiling fails the build; the target is reported, per PRD 9.1.1–2, so a target overshoot is visible without blocking a merge. The first frame, before-intro and A1 shard rows all sit at or under a quarter of their targets.
+**The pair is under its target and not comfortably so.** 673.1 KB is **96.2%** of the 700 KB target on scale and 669.0 KB is **95.6%** on production — both inside the ≥ 90% band, so the budget check reports them `[near target]` with a headroom warning (26.9 KB and 31.0 KB), not a bare `ok`. Read the row that way: the target holds today and one more sizeable set is what moves it. Only the 1.5 MB ceiling fails the build; the target is reported, per PRD 9.1.1–2, so a target overshoot is visible without blocking a merge. The first frame, before-intro and A1 shard rows all sit at or under a quarter of their targets.
 
 **What amendment A3 cost.** Nothing raw: `planes.json`, `stars.bin`, `search.json` and `sets.bin` are byte-for-byte what they were at `contractVersion` 1, because the identity went into bits byte 7 was already spending on zeroes. (`manifest.json` necessarily changes — it records the contract version and the hashes of the files above — but its raw size is unmoved at 17 285 bytes, so every raw cell in the table is the number main measured too.) The cost is entirely in compression, and only on `stars.bin` — production goes 229.1 → **237.6 KB** brotli, **+8.5 KB (+3.7%)**, because byte 7 now takes 31 distinct values instead of 7 and the plane-ordered runs it used to compress into are shorter. Scale is flat (262.0 → 261.6 KB): its stars sort by band then hue, so its mono runs — 15% of cards per colour, one identity value each — survive the packing almost intact.
 
@@ -361,7 +361,7 @@ Amendment A3 (implementation-plan.md §8), on the board's DEC-589 decision. Each
 
 Both failures are silent, which is exactly the case §10's version rule exists for. Contrast the 0.2.0 entry above, where bumping would have been the *breaking* option: there the change was unobservable to any decoder, here it is observable to all of them. `pipelineVersion` moves 0.3.0 → **0.4.0** for the added field.
 
-Every artefact re-hashes, so all three datasets were regenerated: `fixture-small` `a609e157836c79f0`, `fixture-scale` `7bd31529bcc71780`, production `d5ee9661aaffafa3` (the same 28 587 cards from the pinned 2026-09-04 bulk). Those four hashes are the record of *that* change and are deliberately not updated when a later refresh moves them; the committed hashes today are `1868a1c21c63f474`, `9d46708448e96fcc` and `6d4779695fde33ea`, and §8's table cites those. The test vector moved from `contract/test-vectors/v1/` to `v2/`.
+Every artefact re-hashes, so all three datasets were regenerated: `fixture-small` `a609e157836c79f0`, `fixture-scale` `7bd31529bcc71780`, production `d5ee9661aaffafa3` (the same 28 587 cards from the pinned 2026-09-04 bulk). Those four hashes are the record of *that* change and are deliberately not updated when a later refresh moves them; the committed hashes today are `1868a1c21c63f474`, `3e9be89b4e3e9bdb` and `dabe2c9a68b4d799`, and §8's table cites those. The test vector moved from `contract/test-vectors/v1/` to `v2/`.
 
 Three things a reviewer should check rather than take on trust:
 

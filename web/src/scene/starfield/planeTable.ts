@@ -2,7 +2,7 @@
  * The per-plane parameter table of PRD 8.5.2: one row of a float `DataTexture` per plane, holding
  * everything the vertex shader needs to place and move that plane's stars.
  *
- * Why a texture and not uniforms: 87 planes × 24 floats is 2,088 floats, well past the uniform
+ * Why a texture and not uniforms: 88 planes × 24 floats is 2,112 floats, well past the uniform
  * array limits the PRD's weakest supported GPU has to offer, and the whole table uploads in one
  * call per frame.
  *
