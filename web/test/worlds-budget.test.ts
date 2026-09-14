@@ -112,7 +112,7 @@ describe('§1.12 the worlds budget', () => {
     expect(small.equirectBytes).toBeLessThan(v3().equirectBytes)
     expect(small.cellBytes).toBeLessThan(v3().cellBytes)
     // The 87-plane roster is the cheaper of the two, and the refresh's cost is almost all equirect.
-    expect(mib(v3().totalBytes - small.totalBytes)).toBeCloseTo(2.03, 1)
+    expect(mib(v3().totalBytes - small.totalBytes)).toBeCloseTo(2.04, 1)
   })
 
   it('prices the printing ring at §1.10s flat quads, which have now landed', () => {

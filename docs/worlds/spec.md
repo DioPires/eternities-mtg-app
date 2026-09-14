@@ -877,12 +877,33 @@ tick positions, not with a capture. See §5, Q5.
 > drift against the quads.
 
 > **The sphere-to-quad conversion has landed (DEC-751).** `focusedCard.ts` builds one
-> `PlaneGeometry` of 0.172 × 0.24 — the height the ring can hold, the width **derived from the
-> 146 × 204 of the `small` image it shows**, so the undistorted claim is a property of the code
-> rather than a number that has to stay in agreement with another number. It needs no billboarding:
-> PRD 5.6.1's root already turns to face the camera each frame and the ring hangs off it. The pick
-> mesh shares the geometry object, and the quad is larger than the 0.116 sphere it replaces, so no
-> printing became harder to click.
+> `PlaneGeometry` of 0.125 × 0.174 — the width **derived from the 146 × 204 of the `small` image it
+> shows** and the height **derived from the ring**, so neither the undistorted claim nor the
+> clearance claim is a number that has to stay in agreement with another number. It needs no
+> billboarding: PRD 5.6.1's root already turns to face the camera each frame and the ring hangs off
+> it. The pick mesh shares the geometry object, and the quad is larger than the 0.116 sphere it
+> replaces in **both** dimensions, so no printing became harder to click.
+>
+> **The height a ring can hold is set by the quad's diagonal, and the first attempt got it wrong
+> (DEC-776 F1, fixed in DEC-779).** The quads are axis-aligned in the card's frame and the ring
+> turns underneath them, so two neighbours a chord `c` apart are offset by `(c·cos φ, c·sin φ)` for
+> a `φ` that sweeps the whole revolution. Axis-aligned rects of equal size overlap exactly when
+> *both* offsets fall inside the box, so they clear **at every phase of the turn** if and only if
+>
+> ```
+>   c ≥ √(W² + H²) = H · √(1 + (146/204)²)
+> ```
+>
+> The first conversion sized the quad by checking its width against the arc and its height against
+> the 0.30 radial gap. That is the configuration at the *top* of the ring only: a quarter-revolution
+> later the arc is spanned by the quad's height, and 0.24 exceeded the inner ring's 0.214 chord. It
+> shipped a ring whose inner two circles overlapped — 16 simultaneous pairs, up to 10.8% of a quad's
+> area, onset at exactly 18 printings and reaching 168 of the production roster's 28,603 cards —
+> with every planet at `z = 0` and an opaque material, so which quad won was a depth tie. The height
+> is now solved from the tightest full ring's chord at equality, which makes it the largest height
+> §1.10's ring can hold; `test/cards.test.ts` sweeps a full revolution through the shipped
+> `planetLayout` / `planetPosition` and carries the pre-fix height as a positive control, because
+> the defective arrangement is green at `t = 0`.
 >
 > **Two things did not survive the conversion, and both would have failed silently.** The wrapped
 > lambert collapses to a single constant on a flat quad — it would have dimmed every printing by
@@ -1048,16 +1069,26 @@ first place concept B pays for itself rather than costing.
 > so is the one row a transcribed constant could sit in undetected.
 
 > **The two dataset-dependent rows are v3's** (45 worlds, 24,399 cards on worlds — §1.2). On the
-> 87-plane roster they are 29 layers / 3.62 MiB and 23,607 cells / 0.99 MiB, for **63.20 MiB**
-> total. The refresh costs **+2.03 MiB**, almost all of it the equirect array — the only place in
+> 87-plane roster they are 29 layers / 3.62 MiB and 23,607 cells / 1.08 MiB, for **63.29 MiB**
+> total. The refresh costs **+2.04 MiB**, almost all of it the equirect array — the only place in
 > this spec where the roster's new shape moves a budget row. Both rows are `.length`s of §3.1's
 > derived sets: a renderer that allocates either from a constant is wrong on one of the two datasets
 > it is guaranteed to meet.
 
 > The focused-card row counts one face. Today's worst case counts two, because a double-faced card
 > uploads both (`focusedCard.ts:702`, and `worstCaseCardBytes` multiplies by 2). A DFC in focus adds
-> 2.40 MiB for **67.63 MiB** and 28.4 MiB of headroom; the conclusion is untouched either way, but
+> 2.40 MiB for **67.72 MiB** and 28.28 MiB of headroom; the conclusion is untouched either way, but
 > the DFC figure is the one to assert against, because it is the one `gpuMemory.ts` computes.
+>
+> **Every derived figure in these notes is computed from `worldsBudgetReport`, not carried by hand,
+> and four of them were not (DEC-776 F2, fixed in DEC-779).** §1.11's `iStar` moved the cell row
+> 44 B → 48 B; the table above was updated and these notes were not, so the DFC total, the DFC
+> headroom, the 87-plane cell row, the 87-plane total and the refresh delta all went on reporting
+> the 44 B arithmetic — including, on the line above, the one figure this section names as the one
+> to assert against. `test/worlds-budget.test.ts` cannot catch this and deliberately so: it asserts
+> the budget's *conclusions* rather than its digits, because a table of literals is exactly what
+> went stale. The prose is the residual that choice leaves open, so it is re-derived rather than
+> re-typed whenever a row moves.
 
 The art pool is the worlds path's contribution to W4.1's quality ladder, and it is a real rung at
 every step:
