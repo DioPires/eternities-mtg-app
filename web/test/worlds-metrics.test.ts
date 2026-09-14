@@ -677,6 +677,77 @@ describe("W4 — art resolves without exhausting", () => {
     ];
     expect(evictionRate(timeline)).toBeCloseTo(1, 6);
   });
+
+  /**
+   * **The denominator's two visibility terms, each bound by its own row (DEC-749's 14T note).**
+   *
+   * `wantsArt` is the size test *alone* — deliberately wider than the renderer's admission, which
+   * is `wantsArt && frontFacing && onScreen`, so that the payload can still distinguish a cell that
+   * was too small from one that was merely turned away. The gate must re-form the conjunction or
+   * its denominator counts cells the renderer correctly never fetched, and W4 goes red on correct
+   * behaviour.
+   *
+   * Every other test in this block draws its population from `cells()`, which hardcodes both terms
+   * to `true` — so the conjunction could be deleted outright and the block stayed green. Measured:
+   * all three mutants (drop both terms / drop `frontFacing` / drop `onScreen`) survived 62/62,
+   * while breaking the *numerator* reddened two tests, so the block bound W4 but not this. The two
+   * rows below are split one per term precisely so that a mutant dropping a single term cannot
+   * survive on the other's row.
+   *
+   * **The `onScreen` row is not a duplicate of the live matrix — it is the only guard that half
+   * has.** Measured over the shipped 45-world roster at W4's own 2.2-radii pose, on R1's `1edf715`:
+   * `wantsArt && !onScreen` is **empty on all 45 worlds**, under the adaptive quantile *and* under
+   * `?artThreshold=fixed24` alike. No live control row can redden it. `frontFacing` does bind live,
+   * but only on some worlds — see the block comment on the matrix.
+   */
+  const visible = (n: number) =>
+    Array.from({ length: n }, () => ({
+      frontFacing: true,
+      onScreen: true,
+      wantsArt: true,
+      showingArt: true,
+    }));
+
+  it("excludes back-facing cells from the denominator, so a turned-away world is not a failure", () => {
+    // 90 visible cells all showing art, plus 20 that are big enough to want art but face away.
+    // Counting the 20 would read 90/110 = 0.818 against the 0.9 floor and condemn a correct frame.
+    const cells = [
+      ...visible(90),
+      ...Array.from({ length: 20 }, () => ({
+        frontFacing: false,
+        onScreen: true,
+        wantsArt: true,
+        showingArt: false,
+      })),
+    ];
+    const w4 = evaluateW4(cells, settled(0));
+
+    expect(w4.wanting).toBe(90);
+    expect(w4.showing).toBe(90);
+    // The exclusion must actually be doing work, or this row is vacuous like the ones above it.
+    expect(w4.wanting).toBeLessThan(cells.length);
+    expect(w4.measures.find((m) => m.key === "artFraction")?.value).toBe(1);
+    expect(w4.pass).toBe(true);
+  });
+
+  it("excludes off-screen cells from the denominator, the half no live control row can reach", () => {
+    const cells = [
+      ...visible(90),
+      ...Array.from({ length: 20 }, () => ({
+        frontFacing: true,
+        onScreen: false,
+        wantsArt: true,
+        showingArt: false,
+      })),
+    ];
+    const w4 = evaluateW4(cells, settled(0));
+
+    expect(w4.wanting).toBe(90);
+    expect(w4.showing).toBe(90);
+    expect(w4.wanting).toBeLessThan(cells.length);
+    expect(w4.measures.find((m) => m.key === "artFraction")?.value).toBe(1);
+    expect(w4.pass).toBe(true);
+  });
 });
 
 describe("W5 — the home view is not a wall of labels, and every world is reachable", () => {

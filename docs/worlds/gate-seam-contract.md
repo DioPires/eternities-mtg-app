@@ -189,6 +189,63 @@ entries and sums to **1, or to 0 on an empty plane** — the reader accepts thos
 between them, because a single `≈ 1` check rejects the degenerate plane and a plain `≤ 1` accepts a
 payload that silently dropped a band. And `pool.layers` of 0 is a measurement, not a setup failure.
 
+### 1a. `wantsArt` is the size test alone, and the gate re-forms the admission itself
+
+R1's `1edf715` settled two things this document had to take on trust.
+
+**The admission height now has one spelling, and the probe reports it.** The renderer had been
+admitting on a small-angle extent (`2·latArc·radius` over depth) while the probe reported
+`rect.height >= effectiveThresholdPx`; the two disagree by up to 79% on the same cell at W4's own
+2.2-radii pose, because the small-angle form carries no foreshortening and a limb cell measures as
+tall as a face-on one. Both paths now reach one `cellScreenRect`. Checked rather than taken on
+trust, because this is the shape where **the picture stays correct while only the measurement
+moves** — `cellScreenRect` takes its geometry as parameters, so a wrong *binding* is invisible to
+the shader. The binding holds: renderer and probe derive colatitude, longitude and the longitudinal
+arc from the same `rowOfUnitY` nearest-row match, and `worldSurface`'s single `latArc` is row 0's
+only because `cellDrawAngles` returns `dφ/2 · CELL_INSET` on every row. R1's test compares
+`probe.cells[i].height` against `surface.admissionHeightPx(i)` across paths — not the probe against
+itself — and carries both a negative control (the two spellings measurably differ) and an
+assertion that both arms of the admission are exercised.
+
+**`wantsArt` is deliberately wider than the renderer's admission**, which is
+`wantsArt && frontFacing && onScreen`. The visibility terms stay beside it rather than folded into
+it so the gate can still tell a cell that was too small from one that was merely turned away — the
+position §1 of this document asked for, and R1 kept. The consequence is the gate's to honour: **W4
+must re-form the conjunction.** Pairing `wantsArt` against `showingArt` alone puts cells the
+renderer correctly never fetched into the denominator, and the criterion goes red on correct
+behaviour. Measured at 2.2 radii over the shipped 45-world roster, dropping the terms inflates
+alara's denominator from 111 to 499 under `?artThreshold=fixed24` — a 4.5× collapse in
+`artFraction`, far below the 0.9 floor.
+
+**How load-bearing each term is, measured, because it decides what the live matrix can assert:**
+
+| term | adaptive quantile | `?artThreshold=fixed24` |
+|---|---|---|
+| `wantsArt && !frontFacing` | non-empty on **30 of 45** worlds, 1,768 cells | non-empty on **45 of 45**, 12,771 cells |
+| `wantsArt && !onScreen` | **empty on all 45** | **empty on all 45** |
+
+Two consequences, and they point opposite ways. R1's warning that the adaptive quantile makes a
+visibility row vacuous is **right in practice but not as a law** — back-facing cells do clear the
+adaptive threshold on two thirds of the roster. What is true is that it is vacuous *per world*: on
+the worlds whose threshold rises highest (alara, arcavios, avishkar, eldraine, all at 93.9 px) the
+excluded set is empty, and **alara is the world R1's composition tests use throughout**, which is
+the likelier mechanism behind the two mutants that walked through their suite. `?artThreshold=fixed24`
+makes the case reachable on every world, so the matrix's W4 control row already sits at the only
+pose that can test this.
+
+The `onScreen` half is the one that cannot be reached at all: at 2.2 radii the world subtends far
+less than the frustum, under either threshold policy, so **no live control row can redden it** and
+the unit test in `worlds-metrics.test.ts` is its only guard. That row is therefore not a duplicate
+of the live matrix and must not be retired as one.
+
+**This block was vacuous in the gate's own suite until it was measured.** All three mutants of the
+denominator — drop both terms, drop `frontFacing`, drop `onScreen` — survived 62/62 green, because
+every W4 fixture built its population from a helper that hardcoded both terms to `true`. The
+instrument was not inert: breaking the *numerator* reddened two tests, which is the positive control
+that distinguishes a blind test file from a passing one. Two rows now bind the terms one at a time,
+scored per term rather than per conjunction: control 64/64 green, drop-both fails 2,
+drop-`frontFacing` fails 1, drop-`onScreen` fails 1 — neither row covering for the other.
+
 ## 2. The control seams — five owned by R1, plus one readback seam owed by R3
 
 Straight from §3.1 and §1.6; restated only as what the gate asserts of each. `?probe=` is one of
