@@ -177,11 +177,28 @@ export function specsFromObject(root: Object3D): ProgramWarmupSpec[] {
  * **`points` is part of the key too** (DEC-747 N2). It was not, and the omission was a hole rather
  * than untidiness: `WebGLPrograms.getParameters` derives `pointsUvs` from `object.isPoints`, and
  * `getProgramCacheKey` folds it into the second layer mask (bit 18, three 0.170), so one material
- * over one geometry drawn both ways really is two programs. Keying on the pair alone dropped the
- * second of them — leaving a `Points` first-draw stall in place while reporting it warmed, which is
- * the failure this whole module exists to prevent. Nothing in the scene draws that shape today; the
- * `?warmup=0` comparison is the only thing that would ever have shown it, and by then the number it
- * was being compared against would already have been wrong.
+ * over one geometry drawn both ways can be two programs. Keying on the pair alone dropped the second
+ * of them — leaving a `Points` first-draw stall in place while reporting it warmed, which is the
+ * failure this whole module exists to prevent.
+ *
+ * **The condition is narrower than "drawn both ways", and the difference is worth stating**
+ * (DEC-756 N7). `getParameters` reads
+ *
+ * ```js
+ * pointsUvs: object.isPoints === true && !! geometry.attributes.uv && ( HAS_MAP || HAS_ALPHAMAP )
+ * ```
+ *
+ * — so the split only *actually* produces two programs when the geometry carries a `uv` attribute
+ * **and** the material has a `map` or an `alphaMap`. For this app's `ShaderMaterial`s neither is
+ * generally true, so today the extra key usually costs one redundant stand-in draw at boot rather
+ * than catching a real second program. Splitting is still the right call — it is conservative in the
+ * safe direction, `quality.spec.ts` bounds `warmup.specs` from below so a split can never redden it,
+ * and nothing in the scene produces a colliding pair — but it is pinned to a three internal that a
+ * 0.170 -> 0.186 bump can move silently. Routed to DEC-741's audit list beside N4.
+ *
+ * Nothing in the scene draws the colliding shape today; the `?warmup=0` comparison is the only thing
+ * that would ever have shown it, and by then the number it was being compared against would already
+ * have been wrong.
  */
 export function dedupeSpecs(specs: readonly ProgramWarmupSpec[]): ProgramWarmupSpec[] {
   // Sets of object identities rather than a string key: geometries and materials have no stable id.

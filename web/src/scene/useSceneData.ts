@@ -128,15 +128,16 @@ export function useSceneData(): SceneDataState {
        *
        * The answer is needed below, at the moment the `StarGeometry` is built, and asking for it
        * there would be the worst available time: `resolvePositionMode` is synchronous, and the
-       * probe costs a context, two shader compiles and a `readPixels` — **measured at 68 ms on this
-       * M5 Pro through ANGLE Metal**, not the ~1 ms review §3.5 estimates, because a synchronous
-       * readback is a full pipeline flush however small the target. Paid at the call site that is
-       * two network round trips deep, that is 68 ms of dead main thread between `planes.json`
-       * landing and the first star being drawable.
+       * probe costs a context, two shader compiles and a `readPixels` — **measured once at 68 ms on
+       * this M5 Pro through ANGLE Metal, a figure that has not reproduced since; see the corrections
+       * below** — against the ~1 ms review §3.5 estimates, because a synchronous readback is a full
+       * pipeline flush however small the target. Paid at the call site that is two network round
+       * trips deep, a cost of that size is dead main thread between `planes.json` landing and the
+       * first star being drawable.
        *
-       * Paid *here*, one frame in, it is 68 ms of a main thread that is otherwise waiting on the
-       * network — and `bootPositionMode` caches, so the call below is free. If the fetches somehow
-       * win the race the probe simply runs at its old moment; nothing depends on the ordering for
+       * Paid *here*, one frame in, it is a main thread that is otherwise waiting on the network —
+       * and `bootPositionMode` caches, so the call below is free. If the fetches somehow win the
+       * race the probe simply runs at its old moment; nothing depends on the ordering for
        * correctness, only for when the cost lands.
        *
        * **Two corrections to the paragraph above, from DEC-747 N1.**
@@ -147,13 +148,19 @@ export function useSceneData(): SceneDataState {
        * numbers, both wanted: this one decides *when* to run the probe, the bench field compares
        * GPUs at the readback. `e2e/quality.spec.ts` bounds the field, not the wall-clock.
        *
-       * Second, **68 ms does not reproduce.** Measured in situ against this scheduling, on an M5
-       * Pro through Chrome 141 on a `vite preview` build: `getContext` 2.2 ms, probe 3.3 ms, ~5.5 ms
-       * end to end. It is not context-creation cost hiding on a cold page either — the *first*
-       * WebGL2 context of a fresh page timed 1.8 ms and the second 1.2 ms. The 68 ms is left on the
-       * record rather than deleted because it is what the deferral was designed against and the
-       * conditions that produced it are not known; what is measured is that on this machine the
-       * probe is cheap wherever it runs, and the ordering here costs nothing to keep.
+       * Second, **68 ms does not reproduce — now on three independent measurements.** Measured in
+       * situ against this scheduling, on an M5 Pro through Chrome 141 on a `vite preview` build:
+       * `getContext` 2.2 ms, probe 3.3 ms, ~5.5 ms end to end. DEC-756's reviewer then measured it
+       * a third time on a different instrument — `getContext` hooked on the prototype before any app
+       * code runs, fresh browser and cold page per run — and got a median of **5.3 ms** end to end
+       * across seven runs, of which the excluded `getContext` is ~2.2 ms. It is not context-creation
+       * cost hiding on a cold page either: the page's genuinely first WebGL2 context is the
+       * renderer's 300x150, and across those runs it cost 3.6-14.1 ms. Nothing near 68.
+       *
+       * The 68 is left on the record rather than deleted because it is what the deferral was
+       * designed against, and a scheduling choice with no stated reason is a worse comment than one
+       * carrying a figure with its refutation attached. Nothing rides on the value either way — the
+       * deferral costs nothing, so it stays whichever number is right.
        */
       void afterFirstFrame().then(() => {
         if (!signal.aborted) bootPositionMode()

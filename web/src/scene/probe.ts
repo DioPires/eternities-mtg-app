@@ -133,6 +133,18 @@ export interface ProbeState {
    * Everything here describes hardware the team does not own, which is why it is on the probe at
    * all: a `?probe=1` run from a Windows laptop is only readable if it says which answers it was
    * measured under. The same object goes into the bench JSON through `capabilitiesForBench`.
+   *
+   * **Do not wait on a field of this object, and in particular not on `halfFloatProbeMs`**
+   * (DEC-756 N8). Read before the boot probe has run, this block returns `halfFloatProbeMs: 0`,
+   * `halfFloatProbeOk: false`, `positionMode: 'float16'` and `webgl2: false` — and every one of
+   * those is a plausible value. `ok: false` with a duration of 0 is a real code path in
+   * `probeOnThrowawayContext`, so the snapshot reads exactly like "the probe could not get a
+   * context" rather than like "you read too early"; the only tell is `webgl2: false` contradicting
+   * `positionMode: 'float16'`. It has cost one measurement round already.
+   *
+   * Gate on {@link ProbeState.programWarmup} being non-null, which is what `e2e/quality.spec.ts`
+   * does, or on `platform.webgl2 === true`. Both go false-to-true exactly once and neither has a
+   * plausible-looking initial value.
    */
   readonly platform: {
     readonly webgl2: boolean
