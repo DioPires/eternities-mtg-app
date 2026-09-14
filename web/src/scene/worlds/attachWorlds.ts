@@ -44,6 +44,7 @@ import {
   Vector2,
   Vector3,
   type PerspectiveCamera,
+  type Points,
   type Scene,
   type WebGLRenderer,
 } from 'three'
@@ -57,8 +58,18 @@ import type { FrameLoop } from '../renderer/frameLoop'
 import { AdaptiveThreshold } from './adaptiveThreshold'
 import { ArtPool, artPoolSize } from './artPool'
 import { ArtStream } from './artStream'
+import { AtmospherePass, type RimQuality } from './atmosphere'
+import { buildBelt, disposeBelt, setBeltPixelRatio } from './belt'
 import { keyLightDirection } from './keyLight'
+import {
+  RENDER_ORDER_BELT,
+  RENDER_ORDER_SHEET,
+  RENDER_ORDER_SYSTEM,
+} from './passOrder'
 import { readWorldsSeams, type WorldsSeams } from './seams'
+import { planeOrientation, NO_SPIN, type SpinAngleSource } from './spin'
+import { SystemPass } from './systemMesh'
+import { TetherPass, type TetherEnd } from './tether'
 import { buildWorldSource, worldPlanesOf, type WorldPlane } from './worldSource'
 import { WorldSurface, type WorldCard, type WorldFrame } from './worldSurface'
 import {
@@ -85,6 +96,16 @@ export interface WorldsData {
   readonly planes: readonly PlaneRecord[]
   readonly stars: Stars
   readonly swatches: Swatches
+  /**
+   * `PlanesFile.multiverseRadius` — §1.8's belt sits at **1.12 ×** this (DEC-750).
+   *
+   * Carried on the roster rather than read off the dust plane's own `radius`, which happens to hold
+   * the same 130.0 on every dataset so far. That coincidence is the pipeline writing the multiverse
+   * radius into a per-plane field, not a contract: `PlanesFile` is where the number is defined, and
+   * a belt scaled from the plane row would be silently wrong the first time the two diverge — at
+   * 1.12 of the wrong radius, which still looks exactly like a belt.
+   */
+  readonly multiverseRadius: number
 }
 
 export interface WorldsAttachmentOptions {
@@ -133,11 +154,48 @@ export interface WorldsAttachment {
   probeSource: () => WorldsProbeSource | null
   /** §1.12's rung, for R3's ladder. See the method's note — it is not implemented here. */
   setArtLayers: (tierLayers: number) => void
+  /**
+   * Every plane's accumulated spin angle this frame, by `PlaneRecord.index` (§1.3, DEC-750).
+   *
+   * **The plane table's, never a second clock.** `PlaneTable.advance` already integrates the spin
+   * and `motionSync` mirrors it into the camera rig, which is what PRD 8.5.7's CPU mirror flies the
+   * camera against — so a worlds path that integrated its own would put the cell under the reticle
+   * somewhere the camera does not go. `null` restores {@link NO_SPIN}, which is the honest state
+   * before `planes.json` and the table have landed.
+   *
+   * See `spin.ts` for the CEO's axis ruling and the measurement behind it.
+   */
+  setSpinAngles: (spinAngleOf: SpinAngleSource | null) => void
+  /**
+   * §1.9's two ends, or `null` to hide the tether.
+   *
+   * Imperative and unwired, deliberately. §1.9 specifies the tether's *geometry* between two worlds
+   * and says nothing about which two or when; §4 puts the product surfaces (§1.10–§1.12) on leg R3.
+   * See `tether.ts`'s header — flagged on DEC-750's hand-back rather than invented here.
+   */
+  setTether: (ends: readonly [string, string] | null) => void
+  /**
+   * §1.12's tier-4 rung: *"cheap rim (one tap, no dither)"* (§1.7).
+   *
+   * A knob, not a rung. §1.12 is leg R3's section and `applyQualityTier` is the ladder's **one**
+   * application point (DEC-747's finding), so wiring this to the tier here would be a second writer
+   * on the ladder — the exact shape that made the pixel-ratio rung untestable. R3 adds the field to
+   * `QualityTier` and the line to `applyQualityTier`; R2 owes the knob and the two programs.
+   */
+  setRimQuality: (quality: RimQuality) => void
   /** The composed worlds, in roster order. For the tests and for R2's system pass. */
   readonly surfaces: readonly WorldSurface[]
   /** §1.5's far LOD: one baked 256x128 layer per world with cards. R2's step-2 pass samples it. */
   readonly equirectArray: DataArrayTextureType | null
   readonly pool: ArtPool
+  /** §1.2 step 2 (§1.8). `null` until a roster composes. */
+  readonly system: SystemPass | null
+  /** §1.2 step 8 (§1.7). `null` until a roster composes. */
+  readonly atmosphere: AtmospherePass | null
+  /** §1.2 step 5 (§1.9). Lives for the attachment; hidden until {@link setTether}. */
+  readonly tether: TetherPass
+  /** How many instances §1.2's step 2 drew last frame — the count §1.5 warns not to derive. */
+  readonly systemDrawn: number
   dispose: () => void
 }
 
@@ -242,10 +300,27 @@ export function attachWorlds(options: WorldsAttachmentOptions): WorldsAttachment
   }
 
   let surfaces: WorldSurface[] = []
+  /** `worldPlanesOf`'s output, index-aligned with {@link surfaces} — and with the equirect layers. */
+  let worldPlanes: WorldPlane[] = []
   let equirectArray: DataArrayTextureType | null = null
   let data: WorldsData | null = null
   /** The frame the last `update` was made against. See {@link WorldsAttachment.probeSource}. */
   let lastFrame: WorldFrame | null = null
+
+  // §1.2's other three passes (R2). All three live beside the sheets in `group`, and all three are
+  // composed from the same roster, so they are torn down with it.
+  let system: SystemPass | null = null
+  let atmosphere: AtmospherePass | null = null
+  let belt: Points | null = null
+  const tether = new TetherPass()
+  group.add(tether.ribbon, tether.pads[0], tether.pads[1])
+
+  /** By `PlaneRecord.index`, so §1.5's crossover can be asked about a plane rather than a surface. */
+  let surfaceOfPlane = new Map<number, WorldSurface>()
+  let spinAngleOf: SpinAngleSource = NO_SPIN
+  let rimQuality: RimQuality = 'full'
+  /** §1.9's flow pulse runs on wall time, so it is the one thing here that accumulates. */
+  let elapsedSeconds = 0
 
   function teardownSurfaces(): void {
     for (const surface of surfaces) {
@@ -253,9 +328,61 @@ export function attachWorlds(options: WorldsAttachmentOptions): WorldsAttachment
       surface.dispose()
     }
     surfaces = []
+    worldPlanes = []
+    surfaceOfPlane = new Map()
     equirectArray?.dispose()
     equirectArray = null
     lastFrame = null
+    if (system) {
+      group.remove(system.mesh)
+      system.dispose()
+      system = null
+    }
+    if (atmosphere) {
+      group.remove(atmosphere.mesh)
+      atmosphere.dispose()
+      atmosphere = null
+    }
+    if (belt) {
+      group.remove(belt)
+      disposeBelt(belt)
+      belt = null
+    }
+    tether.setEnds(null)
+  }
+
+  /**
+   * §1.5's crossover for a plane that has a sheet.
+   *
+   * > **Not the complement of step 4 (§1.2, §1.5).** *"Step 2's instance count is a count of planes
+   * > below the band's top"* — a world **inside** the band is in both passes — *"and a renderer that
+   * > derives one from the other will be one instance short through every approach."* So this reads
+   * > the surface's own `drawSystem`, which `crossoverState` sets independently of `drawSheet`.
+   */
+  function drawsSystem(plane: PlaneRecord): boolean {
+    return surfaceOfPlane.get(plane.index)?.crossover.drawSystem ?? true
+  }
+
+  /** §1.7's *"every world that is drawn at all"* — which, for a world with a sheet, is always. */
+  function isDrawn(plane: PlaneRecord): boolean {
+    const surface = surfaceOfPlane.get(plane.index)
+    if (!surface) return false
+    return surface.crossover.drawSystem || surface.crossover.drawSheet
+  }
+
+  /** One end of §1.9's tether, from a composed world. `null` if that slug composed nothing. */
+  function tetherEnd(slug: string): TetherEnd | null {
+    const surface = surfaces.find((candidate) => candidate.planeSlug === slug)
+    if (!surface) return null
+    return {
+      centre: surface.centre.clone(),
+      radius: surface.radius,
+      // Seeded on the pole rather than on a zero vector: the first frame's `advanceAnchor` lerps
+      // from whatever is here, and a zero vector normalises to NaN and takes the whole ribbon with
+      // it. Any unit direction does; this one is the axis §1.3 already names.
+      anchor: new Vector3(0, 1, 0),
+      exit: new Vector3(0, 1, 0),
+    }
   }
 
   function runFrame(deltaSeconds: number): void {
@@ -285,14 +412,27 @@ export function attachWorlds(options: WorldsAttachmentOptions): WorldsAttachment
       lightDirection: light,
     }
     lastFrame = frame
+    elapsedSeconds += deltaSeconds
 
-    for (const surface of surfaces) {
+    for (const [index, surface] of surfaces.entries()) {
+      // §1.3's orientation, before the surface measures anything: `update` folds it into the local
+      // frame it projects in, and reading it afterwards would measure last frame's rotation against
+      // this frame's camera. See `spin.ts` for the axis ruling.
+      const plane = worldPlanes[index]
+      if (plane) planeOrientation(plane, spinAngleOf, surface.orientation)
       surface.update(frame)
       // §1.2's partition, applied. A world below the band's floor draws only in step 2 — R2's
       // system instance — and one inside the band draws in **both**, which is why this reads the
       // sheet's own flag and is not the complement of anything the system pass counts.
       surface.mesh.visible = surface.crossover.drawSheet
     }
+
+    // Steps 2, 8 and 5. After the sheets, because all three read the crossover state the loop above
+    // just produced — and §1.2's *order* is `renderOrder`, not the order they are updated in.
+    if (belt) setBeltPixelRatio(belt, gl.getPixelRatio())
+    system?.update(frame, spinAngleOf, drawsSystem)
+    atmosphere?.update(frame, isDrawn)
+    tether.update(camera, viewport.y, elapsedSeconds, deltaSeconds)
   }
 
   const unsubscribes = [loop.subscribe('worlds', ({ delta }) => runFrame(delta))]
@@ -307,6 +447,18 @@ export function attachWorlds(options: WorldsAttachmentOptions): WorldsAttachment
     get pool() {
       return pool
     },
+    get system() {
+      return system
+    },
+    get atmosphere() {
+      return atmosphere
+    },
+    get tether() {
+      return tether
+    },
+    get systemDrawn() {
+      return system?.drawnCount ?? 0
+    },
 
     setData: (next) => {
       if (next === data) return
@@ -319,6 +471,7 @@ export function attachWorlds(options: WorldsAttachmentOptions): WorldsAttachment
 
       const worlds = worldPlanesOf(next.planes)
       if (worlds.length === 0) return
+      worldPlanes = worlds
       allocatePool()
       // One layer per world with cards, from the dataset's own count — 29 on the 87-plane roster
       // and 45 on v3 (§1.5, §1.12). A constant is right on exactly one of the two.
@@ -335,8 +488,48 @@ export function attachWorlds(options: WorldsAttachmentOptions): WorldsAttachment
           { seams, pool, threshold, stream, artTexture },
         )
         surfaces.push(surface)
+        surfaceOfPlane.set(plane.index, surface)
+        surface.mesh.renderOrder = RENDER_ORDER_SHEET
         group.add(surface.mesh)
         if (equirectArray) writeEquirectLayer(equirectArray, index, surface.equirect)
+      }
+
+      // --- §1.2's other three passes (R2) ------------------------------------------------------
+
+      // The layer index is the world's position in `worlds`, which is the order the loop above wrote
+      // the array in. Handed to the system pass rather than recomputed there: two derivations of one
+      // ordering agree until the day a plane with cards fails to compose, and then the whole roster
+      // is off by one layer with every world still drawing a plausible mosaic.
+      const layerByPlane = new Map(worlds.map((plane, index) => [plane.index, index]))
+      system = new SystemPass({
+        planes: next.planes,
+        equirect: equirectArray,
+        layerOf: (plane) => layerByPlane.get(plane.index) ?? -1,
+      })
+      system.mesh.renderOrder = RENDER_ORDER_SYSTEM
+      group.add(system.mesh)
+
+      atmosphere = new AtmospherePass({ worlds, quality: rimQuality })
+      group.add(atmosphere.mesh)
+
+      // §1.8's belt is the dust plane's own records, laid out by the pipeline (§2.1). A dataset with
+      // no dust plane is a fixture, not a roster — and the honest response is no belt rather than an
+      // empty one, which would report a zero point count that reads as "the belt failed to load".
+      const dust = next.planes.find((plane) => plane.kind === 'dust')
+      if (dust && dust.starCount > 0) {
+        belt = buildBelt({
+          plane: dust,
+          stars: next.stars,
+          planes: next.planes,
+          multiverseRadius: next.multiverseRadius,
+          // `gl.getPixelRatio()`, read here and re-read every frame in `runFrame`, rather than
+          // pushed in by a setter. The ratio changes when the quality ladder moves rung 1 and when
+          // the window crosses monitors, and a cached copy is a copy that can be a rung behind --
+          // on the one quantity whose whole job is to keep the belt at 2 CSS px.
+          pixelRatio: gl.getPixelRatio(),
+        })
+        belt.renderOrder = RENDER_ORDER_BELT
+        group.add(belt)
       }
     },
 
@@ -366,10 +559,33 @@ export function attachWorlds(options: WorldsAttachmentOptions): WorldsAttachment
       )
     },
 
+    setSpinAngles: (next) => {
+      spinAngleOf = next ?? NO_SPIN
+    },
+
+    setTether: (slugs) => {
+      if (!slugs) {
+        tether.setEnds(null)
+        return
+      }
+      const a = tetherEnd(slugs[0])
+      const b = tetherEnd(slugs[1])
+      // Both ends or neither. A tether with one composed end would run from a world to the origin,
+      // which is the multiverse's centre and is a place — so it draws a plausible ribbon to nowhere.
+      tether.setEnds(a && b ? [a, b] : null)
+    },
+
+    setRimQuality: (quality) => {
+      rimQuality = quality
+      atmosphere?.setRimQuality(quality)
+    },
+
     dispose: () => {
       for (const undo of unsubscribes.splice(0)) undo()
       teardownSurfaces()
       releasePool()
+      tether.dispose()
+      group.remove(tether.ribbon, tether.pads[0], tether.pads[1])
       scene.remove(group)
       if (ownsQueue) queue.dispose()
     },
