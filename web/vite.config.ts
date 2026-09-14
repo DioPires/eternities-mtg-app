@@ -132,9 +132,38 @@ export default defineConfig({
         harness: fileURLToPath(new URL('./harness.html', import.meta.url)),
       },
       output: {
-        manualChunks: {
-          three: ['three'],
-          react: ['react', 'react-dom'],
+        /**
+         * Vite 8 replaced rollup with rolldown, and rolldown does not accept the object form of
+         * `manualChunks` at all — only a function, and that spelling is deprecated on arrival in
+         * favour of `codeSplitting.groups`. So this is the same two chunks re-expressed, not a
+         * change of policy: PRD 7.7.3 still wants the chunking legible rather than clever.
+         *
+         * The one thing worth knowing is what carries the *unnamed* members of these chunks. The
+         * old object form listed package entry points and rollup pulled each one's non-shared
+         * dependencies in behind it — which is how react-dom's `scheduler` sat in the react chunk
+         * without ever being mentioned here. A group `test` matches module ids, so the natural
+         * worry is that it captures only what it literally names and strands `scheduler` in the
+         * product entry, moving bytes across the very boundary `scripts/check-budget.mjs` budgets
+         * against. It does not: rolldown's `includeDependenciesRecursively` defaults to `true`, so
+         * a captured module drags its dependency graph into the group with it, and the old
+         * behaviour is preserved for the same reason it existed before.
+         *
+         * That is measured, not assumed — building with `scheduler` added to the react pattern and
+         * without it produces a byte-identical chunk (same content hash), and `scheduler`'s
+         * markers appear in the react chunk and in neither the product entry nor the styles chunk.
+         * Naming it here would therefore be decoration; the pattern stays the two packages the
+         * object form named.
+         *
+         * `[\\/]` rather than `/` per rolldown's own guidance, so the pattern still anchors on a
+         * path separator under Windows; the `node_modules[\\/]<pkg>[\\/]` shape also keeps these
+         * anchored to the package root, so pnpm's `.pnpm/<pkg>@<version>/node_modules/<pkg>/`
+         * layout matches on the final segment rather than on the version-stamped one.
+         */
+        codeSplitting: {
+          groups: [
+            { name: 'three', test: /node_modules[\\/]three[\\/]/ },
+            { name: 'react', test: /node_modules[\\/](react|react-dom)[\\/]/ },
+          ],
         },
       },
     },

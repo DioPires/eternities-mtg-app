@@ -261,7 +261,27 @@ test('9d About: the Fan Content notice, the Scryfall credit, and rel-safe links'
   await page.keyboard.press('Escape')
 })
 
-test('9e reduced motion: the duration tokens collapse to 0ms and nothing animates', async ({
+/**
+ * CSS time values in seconds, so an assertion is about duration rather than spelling.
+ *
+ * `0ms` and `0s` are the same duration, and which one `getComputedStyle` hands back is a property
+ * of whoever last minified the stylesheet: Vite 8 moved CSS minification to lightningcss, which
+ * normalises `0ms` to the shorter `0s`. A test that compared the literal token failed on that
+ * rename while the behaviour it names — reduced motion collapsing every duration to zero — was
+ * intact.
+ *
+ * Parsing also removes a unit blindness in the control below, which read `transitionDuration` with
+ * `Number.parseFloat`: that yields `0.03` for `0.03s` and passes a `< 0.05` bound meant to mean
+ * "under 50 ms", but yields `30` for the identical `30ms` and fails it. Same duration, opposite
+ * verdicts, decided by the serialisation.
+ */
+function durationSeconds(value: string): number {
+  const trimmed = value.trim()
+  const scale = trimmed.endsWith('ms') ? 0.001 : 1
+  return Number.parseFloat(trimmed) * scale
+}
+
+test('9e reduced motion: the duration tokens collapse to zero and nothing animates', async ({
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
@@ -280,9 +300,12 @@ test('9e reduced motion: the duration tokens collapse to 0ms and nothing animate
     }
   })
 
-  expect(motion.tokens, 'a duration token survived reduced motion').toEqual(['0ms', '0ms', '0ms'])
   expect(
-    Number.parseFloat(motion.control),
+    motion.tokens.map(durationSeconds),
+    `a duration token survived reduced motion (${motion.tokens.join(', ')})`,
+  ).toEqual([0, 0, 0])
+  expect(
+    durationSeconds(motion.control),
     `a control still transitions for ${motion.control} under reduced motion`,
   ).toBeLessThan(0.05)
 })
