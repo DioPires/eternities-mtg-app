@@ -144,6 +144,9 @@ detail and had no equirect rung at all; 27 is a prototype count and is not produ
   > `3ce85aed` is the first to carry this section's `max(0.126·√N, 0.55)`, which puts them at
   > **0.55**, a uniform **6.55× shrink**. So the WCAG regression is not leg P's pipeline; it is the
   > constant-area law arriving, and the ruling on it is §1.3's to make even though the fix is not.
+  > (**24 px here is a measurement threshold, not a conformance claim.** §1.11 carries the
+  > conformance basis and the limits of what the screen-space floor delivers; read it before quoting
+  > WCAG 2.5.8 off this paragraph.)
   > (Homes also moved between the two datasets — median 4.4%, but `segovia` 69 → 19 — so px is not
   > the radius ratio alone. `radius/distance` predicts a worst case of **3.7 px** against R3's
   > measured **3.8**, and the home moves are what spread the cohort to 9.2.) **Do not fix this by
@@ -667,22 +670,59 @@ tick positions, not with a capture. See §5, Q5.
   > the art threshold a world is picked as a *plane*, through a world-space `radius × 1.15` proxy,
   > and that proxy cannot express a pixel target (§1.3 rules out raising the radius floor to chase
   > one). The plane-level proxy is therefore floored **in screen space** at **24 CSS px of
-  > diameter** (WCAG 2.5.8), applied after projection, per frame, per world. It floors the *pick*
-  > proxy only — it never scales the drawn world, so §1.3's radius law and §1.8's moon relationship
-  > are untouched.
+  > diameter**, applied after projection, per frame, per world. It floors the *pick* proxy only — it
+  > never scales the drawn world, so §1.3's radius law and §1.8's moon relationship are untouched.
+  >
+  > **What the floor guarantees, and what it does not.** It guarantees a 24 px *proxy*. It does
+  > **not** guarantee a 24 px *target*, and this section must not be read as claiming one. Floored
+  > proxies overlap each other and the nearer disk takes the pixels, so a world's *effective*
+  > hittable area is smaller than its proxy wherever the crowd is dense. The two claims that survive
+  > measurement (DEC-751 `628d9bc`, re-measured by R1 at a second sweep and under the picker's own
+  > ordering rule) are:
+  >
+  > 1. **The floor never makes a world less pickable than it was as drawn.** Samples with zero
+  >    effective target are strictly *fewer* with the floor on than with every world at its drawn
+  >    `radius × 1.15`. The worlds that are dead anyway are genuinely behind `innistrad` /
+  >    `new-phyrexia`, and no pick policy recovers those.
+  > 2. **Nothing silently swallows a neighbour.** Total effective area is conserved; the floor
+  >    redistributes it, it does not manufacture it.
+  >
+  > Everything else is residual exposure, and is recorded as a count rather than a guarantee:
+  > **19 of the 33 worlds the floor lifts somewhere in the turn fall under 24 px of effective
+  > diameter at some azimuth**, and the floor itself pushes **2 worlds that already cleared 24 px as
+  > drawn** (`eldraine`, `kamigawa`) below it, to a worst of **~20.6 px**. Those counts move with the
+  > sweep and with `home`; see the warning below.
+  >
+  > **Conformance basis.** WCAG 2.5.8 is where the 24 px constant comes from, and it is not what
+  > makes the product conform. Conformance rests on the criterion's **Equivalent** exception: every
+  > plane is indexed in the search path as a `kind: 'plane'` hit (`web/src/search/index.ts`) and is
+  > reachable by name through a full-size control that meets 2.5.8 on its own. **R3 pins that as a
+  > test — every world slug in the roster is a reachable search hit — and the pin is a release
+  > requirement, not a nicety**, because it is the only part of this section that is a conformance
+  > argument. The proxy floor is a usability improvement layered on top of it.
+  >
+  > **Rejected alternatives (R1 ruling, DEC-749).** A nearest-proxy-centre (Voronoi) tie-break was
+  > measured and is **not** adopted: it lifts the worst case but takes the under-24 count from 19 to
+  > 26 of 33 and regresses three worlds, because screen area is conserved and a tie-break only moves
+  > it. Reaching a real 24 px target means separating worlds *on screen* — a layout change to the
+  > `home` law in §1.3/§2, outside both R1 and R3, tracked separately. Do not retune the tie-break to
+  > make this section's wording true.
   >
   > The obvious objection does not hold: inflating the proxy does not make small worlds steal their
-  > neighbours' picks. Over the 15 floored worlds on `3ce85aed`, clearance to the nearest pickable
-  > neighbour admits **7.9× – 33×** inflation before the disks touch, against the **6.3×** the worst
-  > one-card world needs — so nothing collides, but `karsus` at 7.9× leaves only ~25% headroom.
+  > neighbours' picks. Over the 15 worlds that the *world-space* pass on `3ce85aed` found floored,
+  > clearance to the nearest pickable neighbour admits **7.9× – 33×** inflation before the disks
+  > touch, against the **6.3×** the worst one-card world needs — so nothing collides, but `karsus` at
+  > 7.9× leaves only ~25% headroom.
   >
-  > **That margin is not a durable constant, and must not be treated as one.** It is a function of
-  > `home`, which moves on every dataset refresh: the same 15 worlds on `dabe2c9a` clear at 17.6×,
-  > with a different world (`vryn`) tightest. The invariant that survives a refresh is only *no
+  > **That margin is not a durable constant, and must not be treated as one, and neither is any
+  > count in this section.** The margin is a function of `home`, which moves on every dataset
+  > refresh: the same 15 worlds on `dabe2c9a` clear at 17.6×, with a different world (`vryn`)
+  > tightest. The counts are a function of azimuth: the world-space pass reports **15** worlds
+  > floored, the screen-space pass **33**, because the scene turns (§1.2, `motion.ts`). **Carry no
+  > single-azimuth number out of this section.** The invariant that survives a refresh is only *no
   > collision at the required inflation* — that is what `surface-law-check.py` asserts, and it
-  > reports the headroom rather than pinning it. **The clearance is also world-space**: two worlds at
-  > very different depths can still project together. The screen-space check, the implementation, and
-  > the tie-break between overlapping proxies are R3's.
+  > reports the headroom rather than pinning it. The screen-space check and the implementation are
+  > R3's; the tie-break is ruled out above, so R3 implements the plain floor.
 - **Labels.** The label solver is kept. Under worlds its home-view subject count is
   `planesWithCards.length`, not the plane count, because the moons are unlabelled until hover
   (§1.8): **30 of 87** on today's roster, **46 of 88** on v3. The label tick stays after the final
