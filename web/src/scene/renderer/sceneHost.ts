@@ -49,6 +49,8 @@ import { attachStarScene, type StarSceneHandle } from '../starScene'
 import { BLOOM_INTENSITY } from '../tuning'
 import type { SceneResources } from '../useSceneData'
 import { attachWorlds, type WorldsAttachment, type WorldsData } from '../worlds/attachWorlds'
+import type { WorldPlane } from '../worlds/worldSource'
+import type { WorldCard } from '../worlds/worldSurface'
 import type { WorldsProbeSource } from '../worlds/worldsProbe'
 
 import type { FrameStatsFields, FrameStatsSnapshot } from './frameStats'
@@ -153,6 +155,18 @@ export class SceneHost {
 
   private navigation: SceneNavigation | null = null
   private resources: SceneResources | null = null
+  /**
+   * The focused plane's cards, as {@link setCards} last supplied them.
+   *
+   * **Two readers, one load.** PRD 8.7.6 fetches a plane's shards the moment it becomes focus, and
+   * on the worlds path that is the same moment its world is the one filling the frame — so §1.6's
+   * art stream reads the printing ids off the load that already exists rather than opening a second
+   * one. The card tier draws the same records as thumbnails on the galaxy path.
+   *
+   * Empty until the first shard lands, which is the cold start {@link worldCardOf} answers `null`
+   * for: a world at system distance is swatch-only, and that is exactly §1.5's far rung.
+   */
+  private worldCards: PlaneCards = { get: () => null }
   /** The last `drive` the caller asked for. See {@link attachDrive}. */
   private driveRig = true
   /** {@link attachDrive}'s one-shot guard, the same shape as `cardTierHandle` is for the tier. */
@@ -204,7 +218,20 @@ export class SceneHost {
     // phase whose subscriber arrives with the data is a phase that can end up with none at all,
     // which is DEC-761's F1 in miniature. Nothing is allocated here beyond the art pool, and on a
     // v2 dataset nothing ever composes — §3.2's "the two coexist at zero cost".
-    this.worldsAttachment = attachWorlds({ gl, scene, camera, loop })
+    //
+    // **`cardOf` is not optional in the product, whatever its type says.** It is the only thing that
+    // turns §1.6's admission into a fetch: without it `buildWorldSource` defaults the lookup to
+    // `() => null`, `WorldSurface` finds no printing for any cell, and the art stream is never
+    // *asked* — a globe of swatches that draws correctly, errors nowhere and scores W4 at 0.0% on
+    // every world in every configuration (DEC-772). The default exists for the cold start, where a
+    // world's shards have genuinely not landed; omitting the argument makes the cold start permanent.
+    this.worldsAttachment = attachWorlds({
+      gl,
+      scene,
+      camera,
+      loop,
+      cardOf: (plane, card) => this.worldCardOf(plane, card),
+    })
 
     // The stats the tick reports outwards, gathered last. `frameMs` and `cpuMs` are the loop's own
     // and are written by `SceneRenderer`'s `onTickEnd` hook, which by construction runs after every
@@ -423,7 +450,37 @@ export class SceneHost {
   }
 
   setCards(cards: PlaneCards): void {
+    // Latched before the delegation, and unconditionally: the card tier does not exist until the
+    // navigation and the resources have both landed, and a worlds page whose art stream waited on
+    // the *thumbnail* tier's construction would be a second ordering hazard of the kind DEC-761's
+    // F1 already cost a frozen camera.
+    this.worldCards = cards
     this.cardTierHandle?.setCards(cards)
+  }
+
+  /**
+   * §1.6's printing for one cell of one world, or `null` while that world's shards have not landed.
+   *
+   * **The two indices meet at `starOffset`.** A shard is keyed by *global* star index and a world's
+   * `card` is local to it, so the join is `plane.starOffset + card` — the same multiverse-wide
+   * identity `swatches.bin` is encoded in star order against (§2.2) and the same one the art pool
+   * keys on (`WorldSurfaceSource.artKeyBase`). That is also what makes holding a single plane's
+   * cards safe for a roster of 45: the windows into `stars.bin` do not overlap, so a lookup for a
+   * world whose shards are not loaded **misses** rather than answering some other world's card.
+   *
+   * **Printing index 0, deliberately, and it is not "the debut printing".** `p` is sorted by the
+   * *printing's* set release date (data contract §8.3), so `p[0]` is the earliest-*released*
+   * printing and a promo or a list reprint whose set shipped earlier sorts ahead of the set the card
+   * first appeared in. The reason to take it is not chronology: the pipeline's swatch stage and the
+   * shard writer share one `printing_order`, so `p[0]` is the printing whose `art_crop` §2.2's 2x2
+   * statistic was computed from, and `p[0][5]` is the credit the cell carries (contract §5.1, §9).
+   * Any other index would cross-fade a cell out of one printing's swatch and into another
+   * printing's art, and would credit an artist who did not paint what is on screen.
+   */
+  private worldCardOf(plane: WorldPlane, card: number): WorldCard | null {
+    const record = this.worldCards.get(plane.starOffset + card)
+    const printing = record?.p[0]
+    return printing ? { printingId: printing[0], imageTs: printing[3] } : null
   }
 
   /**
