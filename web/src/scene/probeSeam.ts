@@ -22,6 +22,7 @@ import type { Probe, ProbeState } from './probe'
 import type { SceneNavigation } from '../navigation/scene'
 import type { SceneHost } from './renderer/sceneHost'
 import type { SceneDataState } from './useSceneData'
+import { worldsProbeOf, type WorldsProbeSource } from './worlds/worldsProbe'
 
 /**
  * Scratch, allocated once for the page.
@@ -62,6 +63,15 @@ export interface ProbeSeamDeps {
   readonly focusedStarRef: MutableRefObject<number>
   readonly focusedSlugRef: MutableRefObject<string | null>
   readonly cardsRef: MutableRefObject<Map<number, CardRecord>>
+  /**
+   * The composed world's probe source, or `null` when none is composed (spec §3.1).
+   *
+   * A **getter**, not a value, and not a dep of the effect below: the focused world changes as the
+   * camera flies, and a seam that re-installed on each change would be swapped out from under a
+   * driver mid-assertion — the same reason `focusedStarRef` is a ref. Absent entirely on a build
+   * with no worlds renderer, which is what makes `worlds()` return `undefined` there.
+   */
+  readonly worldsSource?: () => WorldsProbeSource | null
 }
 
 export function useProbeSeam(deps: ProbeSeamDeps): void {
@@ -237,6 +247,9 @@ export function useProbeSeam(deps: ProbeSeamDeps): void {
         return handle.activePrinting === index
       },
       thumbnailStars: () => [...(scene.cardTier?.drawnStars ?? [])],
+      // `undefined`, never an empty payload: leg G scores a missing seam as a setup failure and an
+      // empty one as a world that drew no cells. See `worldsProbeOf`.
+      worlds: () => worldsProbeOf(deps.worldsSource?.()),
       planetScreen: (index) => {
         const handle = scene.cardTier?.card
         const camera = scene.renderer.camera

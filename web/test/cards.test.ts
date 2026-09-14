@@ -587,7 +587,12 @@ describe('PRD 7.2 image concurrency', () => {
     const result = harness.queue.request({ key: 'a', url: 'a', priority: () => 0 })
     await Promise.resolve()
     harness.release('a')
-    expect(await result).toEqual({ ok: false, reason: 'failed' })
+    // `bytes: 0` because this harness fails the response before a body exists. The failed variant
+    // carries a byte count so the worlds art stream's per-session budget (spec §1.6) can charge a
+    // body that arrived and then failed to decode; that case spends a full transfer and returns
+    // nothing, and a budget that only charged successes would under-count exactly the traffic it
+    // exists to bound.
+    expect(await result).toEqual({ ok: false, reason: 'failed', bytes: 0 })
     expect(started).toEqual(['a'])
     expect(harness.queue.stats.failed).toBe(1)
     harness.queue.dispose()

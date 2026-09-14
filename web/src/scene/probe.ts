@@ -12,6 +12,8 @@
  * exposes is the product's own code path rather than a second implementation of it.
  */
 
+import type { WorldsProbe } from './worlds/worldsProbe'
+
 export interface ProbeCardState {
   readonly name: string
   readonly printings: number
@@ -252,6 +254,18 @@ export interface Probe {
    * `activatePrinting`, which bypasses the picker entirely.
    */
   planetScreen: (index: number) => { x: number; y: number } | null
+  /**
+   * The worlds payload (spec §3.1) — **R1's normative surface, consumed by leg G's gate**.
+   *
+   * `undefined` when no world is composed, and that is the contract rather than a gap: leg G
+   * reports "the worlds probe is not installed on this page" as a **setup failure**, which is a
+   * different verdict from a criterion going red. Returning an empty payload instead would let a
+   * page with no worlds on it score a green matrix.
+   *
+   * Separate from {@link Probe.state} because the per-cell array runs to thousands of entries on
+   * Dominaria and has no business in the object the readout panel renders from every frame.
+   */
+  worlds: () => WorldsProbe | undefined
 }
 
 declare global {

@@ -6,7 +6,15 @@
  * for the shell's toast. Phase 2a wires the error events to the loader; Phase 4 wires the toast.
  */
 
-import { ContractError, decodeSets, StarStreamReader, type SetsSidecar, type Stars } from './decode'
+import {
+  ContractError,
+  decodeSets,
+  decodeSwatches,
+  StarStreamReader,
+  type SetsSidecar,
+  type Stars,
+  type Swatches,
+} from './decode'
 import type { Manifest, PlaneShardFile, PlanesFile, SearchFile } from './types'
 import { BINARY_HEADER_BYTES, READABLE_CONTRACT_VERSIONS, SHARD_SIZE } from './types'
 
@@ -165,6 +173,25 @@ export async function loadSearch(options: RetryOptions = {}): Promise<SearchFile
 
 export async function loadSets(options: RetryOptions = {}): Promise<SetsSidecar> {
   return decodeSets(await (await fetchWithRetry('sets.bin', options)).arrayBuffer())
+}
+
+/**
+ * `swatches.bin` — contract v3 only, and the enabler for the whole worlds surface (spec §2.2).
+ *
+ * **Not optional, and not silently skippable.** A v2 dataset has no `swatches.bin`, and the fetch
+ * for one 404s. The temptation is to catch that and carry on with a grey or palette-tinted world,
+ * because the scene keeps rendering either way — which is exactly what makes it the wrong choice:
+ * §1.3's claim is that a cell's *colour is its card's art*, so a world painted from anything else
+ * is a picture that reads as the product working. The caller decides whether a dataset is a worlds
+ * dataset (`planes.json` carries `rowCells`, §2.4); once it has decided, a missing file is an
+ * error, not a degraded mode. `decodeSwatches` throws on kind and on length for the same reason.
+ *
+ * It lands on the before-intro row beside `stars.bin` rather than in the `search.json` + `sets.bin`
+ * pair, which §2.2 makes normative — the pair is at 95% of its reported target and this file is
+ * ~200 KB (223.5 KB raw on v3, 191.9 KB brotli; `docs/data-contract.md` §8).
+ */
+export async function loadSwatches(options: RetryOptions = {}): Promise<Swatches> {
+  return decodeSwatches(await (await fetchWithRetry('swatches.bin', options)).arrayBuffer())
 }
 
 /** `Content-Range: bytes 1234-5678/9012` → 1234; `null` if it is absent or not a byte range. */

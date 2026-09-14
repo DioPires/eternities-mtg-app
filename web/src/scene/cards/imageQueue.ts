@@ -54,9 +54,33 @@ export interface ImageQueueOptions {
 
 /** Why a request produced no bitmap. See the file header for why this is not just `null`. */
 export type ImageResult =
-  | { readonly ok: true; readonly bitmap: ImageBitmap }
-  /** The fetch or the decode failed. PRD 7.4.2: leave what was there; do not ask again. */
-  | { readonly ok: false; readonly reason: 'failed' }
+  | {
+      readonly ok: true
+      readonly bitmap: ImageBitmap
+      /**
+       * The response body's size in bytes, as `Blob.size` reports it.
+       *
+       * Here rather than in a caller because this is the only place the blob exists — every consumer
+       * gets a decoded `ImageBitmap`, whose footprint is the *decoded* `width * height * 4` and says
+       * nothing about what crossed the network. The worlds art stream's per-session byte budget
+       * (spec §1.6) is a budget against the network, so it needs this number and cannot derive it:
+       * the prototype's 1,900 `art_crop` fetches are ~170 MB transferred against ~93 MB decoded at
+       * 128x96.
+       *
+       * Read `0` as "unknown", not as "free" — a `fetchImpl` double that returns a bodyless response
+       * reports `0`, and a budget that treats that as costless never closes.
+       */
+      readonly bytes: number
+    }
+  /**
+   * The fetch or the decode failed. PRD 7.4.2: leave what was there; do not ask again.
+   *
+   * Carries {@link ImageResult.bytes}' counterpart for the same reason the success case does: a
+   * body that arrived and then failed to decode has already been paid for, and a byte budget that
+   * only charges for successes under-counts exactly the traffic it exists to bound. `0` when the
+   * request failed before a body arrived, which is the common case.
+   */
+  | { readonly ok: false; readonly reason: 'failed'; readonly bytes: number }
   /** `priority()` returned `null`: the caller stopped wanting it. Asking again later is correct. */
   | { readonly ok: false; readonly reason: 'dropped' }
   /** `cancel()` or `dispose()`. Also not a failure. */
@@ -64,7 +88,8 @@ export type ImageResult =
 
 const DROPPED: ImageResult = { ok: false, reason: 'dropped' }
 const CANCELLED: ImageResult = { ok: false, reason: 'cancelled' }
-const FAILED: ImageResult = { ok: false, reason: 'failed' }
+/** Not a shared constant, unlike the other two: it carries the bytes this attempt spent. */
+const failedAfter = (bytes: number): ImageResult => ({ ok: false, reason: 'failed', bytes })
 
 interface Waiting {
   readonly request: ImageRequest
@@ -212,6 +237,7 @@ export class ImageQueue {
     this.controllers.set(request.key, controller)
 
     let bitmap: ImageBitmap | null
+    let bytes = 0
     let aborted = false
     try {
       const response = await this.fetchImpl(request.url, {
@@ -223,7 +249,17 @@ export class ImageQueue {
         signal: controller.signal,
       })
       if (!response.ok) throw new Error(`${request.url} returned ${response.status}`)
-      bitmap = await this.decode(await response.blob(), request.resize)
+      const blob = await response.blob()
+      // Before the decode, not after: `decode` can throw, and a request that spent the bytes and
+      // then failed to decode has still spent them. Reading `blob.size` here keeps the budget
+      // honest about a corrupt-image failure, which is the one failure mode that costs a full
+      // transfer and returns nothing.
+      // Guarded rather than read straight: a `fetchImpl` double that returns a bodyless response —
+      // which is the shape every existing test in `cards.test.ts` uses — has no `size` at all, and
+      // an unguarded `+=` turns the budget into NaN, which compares false against every threshold
+      // and silently disables the thing it is counting for.
+      bytes = Number.isFinite(blob.size) ? blob.size : 0
+      bitmap = await this.decode(blob, request.resize)
       this.completed += 1
     } catch {
       // PRD 7.4.2: nothing renders as a broken rectangle, and nothing is said about it. The caller
@@ -241,7 +277,11 @@ export class ImageQueue {
       bitmap = null
     }
     settle(
-      bitmap ? { ok: true, bitmap } : aborted || this.disposed ? CANCELLED : FAILED,
+      bitmap
+        ? { ok: true, bitmap, bytes }
+        : aborted || this.disposed
+          ? CANCELLED
+          : failedAfter(bytes),
     )
     this.pump()
   }

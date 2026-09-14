@@ -265,7 +265,7 @@ describe('shader names (DEC-700)', () => {
 
   it('covers every material the scene builds, one name per program', () => {
     // A count, not a list: adding a material and leaving it out of `SHADER_NAMES` should be a
-    // deliberate act. There are 17 sites and 16 names, and the gap is the point of this test.
+    // deliberate act. There are 18 sites and 17 names, and the gap is the point of this test.
     //
     // Two *sites* share `SHADER_NAME_STAR_FIELD`: the drawn star field and the bloom source's copy
     // of it differ only in the values bound to five uniforms, which are not in the program cache
@@ -280,6 +280,11 @@ describe('shader names (DEC-700)', () => {
     // *fragment source*, so `getProgramCacheKey` gives it a program of its own — unlike the bloom
     // copy above — and it therefore earns a name of its own. A shared name would put one roster row
     // in front of the Windows kit for two programs, reporting whichever linked first.
-    expect(SHADER_NAMES).toHaveLength(16)
+    //
+    // **The eighteenth site and seventeenth name are DEC-749's**: the worlds cell sheet. It is one
+    // site and one name for all 45 worlds — two sheets differ only in per-instance attributes and in
+    // the value bound to `uRadius`, neither of which is in the program cache key — so it moves both
+    // counts by one and leaves the gap where it was.
+    expect(SHADER_NAMES).toHaveLength(17)
   })
 })
