@@ -84,12 +84,6 @@ def _plane(
         drift_amplitude=0.0 if slug == BLIND_ETERNITIES_SLUG else 1.5,
         drift_period_s=0.0 if slug == BLIND_ETERNITIES_SLUG else 90.0,
         drift_phase=0.0 if slug == BLIND_ETERNITIES_SLUG else 1.25,
-        shear_amplitude=0.0 if slug == BLIND_ETERNITIES_SLUG else 0.1,
-        shear_period_s=0.0 if slug == BLIND_ETERNITIES_SLUG else 60.0,
-        shear_phase=0.0 if slug == BLIND_ETERNITIES_SLUG else 0.5,
-        arm_pitch=0.0 if slug == BLIND_ETERNITIES_SLUG else 0.6,
-        disc_thickness=0.05,
-        bar=slug == "ravnica",
         palette=(0.2, 0.2, 0.2, 0.1, 0.1, 0.1, 0.1),
         nebula_tint=(0.3, 0.4, 0.5),
         sets=sets,
@@ -414,7 +408,6 @@ def build_test_vector() -> Dataset:
         stars=stars,
         cards=cards,
         multiverse_radius=100.0,
-        disc_thickness=15.0,
     )
 
 

@@ -24,6 +24,7 @@ WEB_DATA_ROOT = REPO_ROOT / "web" / "public" / "data"
 DATASETS_FILE = REPO_ROOT / "web" / "datasets.json"
 REPORTS_DIR = REPO_ROOT / "pipeline" / "reports"
 CACHE_DIR = REPO_ROOT / "pipeline" / ".cache" / "scryfall"
+SWATCH_CACHE_FILE = REPO_ROOT / "pipeline" / ".cache" / "swatches" / "swatches.jsonl"
 
 _FIXTURES: dict[str, FixtureSpec] = {"small": SMALL, "scale": SCALE}
 
@@ -156,6 +157,7 @@ def _cmd_build(args: argparse.Namespace) -> int:
             dataset_name=str(args.dataset),
             roster_diff=not args.no_roster_diff,
             bulk_updated_at=args.bulk_updated_at,
+            swatch_cache_path=Path(args.swatch_cache).resolve(),
         )
     except (UnknownEnumError, UnmappedSetError, PinnedBulkMissingError) as error:
         # PRD 7.7.2, 4.6.4 and the pinned cache key are the rules that stop a run rather than
@@ -183,6 +185,54 @@ def _cmd_build(args: argparse.Namespace) -> int:
         if previous and previous != result.data_dir.name and (data_root / previous).exists():
             # PRD 8.8.3: the stale hash directory goes in the same pull request.
             remove_stale_dataset(data_root, previous)
+    return 0
+
+
+def _cmd_swatches(args: argparse.Namespace) -> int:
+    """Warm the swatch cache without building anything (worlds spec §2.2).
+
+    The fetch is the longest wall-clock stage in the pipeline by an order of magnitude — one
+    request per card — and it is independent of the roster, the surface law and the plane geometry.
+    So it gets its own command: start it early, let it run, resume it as often as needed, and only
+    then pay for a build. ``--limit`` splits a cold warm across sittings.
+    """
+    from .pipeline.run import prepare, swatch_requests
+    from .pipeline.scryfall import PinnedBulkMissingError
+    from .pipeline.swatches import SwatchCache, fetch_swatches
+
+    try:
+        ready = prepare(
+            as_of=str(args.as_of),
+            cache_dir=Path(args.cache).resolve(),
+            bulk_updated_at=args.bulk_updated_at,
+        )
+    except PinnedBulkMissingError as error:
+        print(f"\nswatches failed — {error}", file=sys.stderr)
+        return 1
+
+    cache_path = Path(args.swatch_cache).resolve()
+    cache = SwatchCache(cache_path)
+    print(f"swatch cache: {_display(cache_path)} ({len(cache):,} records)")
+    requests = swatch_requests(ready.cards, ready.scry_sets)
+    stats = fetch_swatches(requests, cache, log=print, limit=args.limit)
+    cache.close()
+
+    print()
+    print(
+        f"wanted {stats.wanted:,}  cached {stats.cache_hits:,}  fetched {stats.fetched:,}  "
+        f"failed {stats.failed:,}"
+    )
+    if stats.bytes_downloaded:
+        print(
+            f"downloaded {stats.bytes_downloaded / 1e6:,.1f} MB in {stats.elapsed_s / 60:.1f} min"
+        )
+    for printing_id, reason in stats.failures[:20]:
+        print(f"  failed {printing_id}: {reason}")
+    if stats.failed > 20:
+        print(f"  ... and {stats.failed - 20} more")
+    remaining = stats.wanted - stats.cache_hits - stats.fetched
+    if remaining:
+        print(f"{remaining:,} still missing — re-run to resume")
     return 0
 
 
@@ -229,7 +279,30 @@ def main(argv: list[str] | None = None) -> int:
         help="skip the MTG wiki roster diff (implementation plan §2); the run still succeeds "
         "without network access to the wiki",
     )
+    build_cmd.add_argument(
+        "--swatch-cache",
+        default=str(SWATCH_CACHE_FILE),
+        help="the (printing id, imageTs)-keyed swatch cache the art statistic is read from",
+    )
     build_cmd.set_defaults(func=_cmd_build)
+
+    swatch_cmd = sub.add_parser(
+        "swatches",
+        help="warm the swatch cache (worlds spec §2.2) without building; resumable, safe to repeat",
+    )
+    swatch_cmd.add_argument("--as-of", default=_today(), metavar="YYYY-MM-DD")
+    swatch_cmd.add_argument("--cache", default=str(CACHE_DIR), help="Scryfall download cache")
+    swatch_cmd.add_argument("--swatch-cache", default=str(SWATCH_CACHE_FILE))
+    swatch_cmd.add_argument("--bulk-updated-at", default=None, metavar="TIMESTAMP")
+    swatch_cmd.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        metavar="N",
+        help="stop after N new fetches. The cache is append-only and resumable, so this splits a "
+        "cold warm across sittings instead of holding one process open for an hour.",
+    )
+    swatch_cmd.set_defaults(func=_cmd_swatches)
 
     fixtures_cmd = sub.add_parser("fixtures", help="generate the seeded fixture datasets")
     fixtures_cmd.add_argument("which", choices=["small", "scale", "all"], default="all", nargs="?")

@@ -10,6 +10,7 @@ runs of the same inputs produce byte-identical artefacts *and* an identical mani
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,14 +18,19 @@ from ..contract import write_dataset
 from ..contract.models import Dataset
 from . import records, report, scryfall, verify
 from .appendices import Appendices, load_appendices
-from .assemble import CardInput, build_dataset
-from .records import RawPrinting, ScrySet
+from .assemble import CardInput, build_dataset, printing_order
+from .records import MeldResult, RawPrinting, ScrySet
 from .stages import (
+    CardExclusionResult,
+    PlaneAssignment,
+    PrintingFilterResult,
     assign_planes,
     choose_first_printings,
     exclude_cards,
     filter_printings,
 )
+from .swatches import DEFAULT_CACHE as SWATCH_CACHE
+from .swatches import SwatchCache, SwatchRequest, fetch_swatches
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,20 +41,35 @@ class BuildResult:
     report_text: str
 
 
-def build(
+@dataclass(frozen=True, slots=True)
+class Prepared:
+    """Everything the Scryfall-reading half of the run produces, before layout.
+
+    Extracted because the swatch stage (§2.2) needs exactly this and nothing after it: the art a
+    cell shows is a property of the card's printing list, which is fixed here, and is independent
+    of the roster, the surface law and the plane geometry. Warming the swatch cache is therefore a
+    separate command that reuses the same seven stages rather than a second implementation of them.
+    """
+
+    source: scryfall.BulkSource
+    scry_sets: dict[str, ScrySet]
+    appendices: Appendices
+    all_printings: list[RawPrinting]
+    filtered: PrintingFilterResult
+    excluded: CardExclusionResult
+    assignment: PlaneAssignment
+    cards: list[CardInput]
+    meld_results: dict[str, MeldResult]
+
+
+def prepare(
     *,
     as_of: str,
-    data_root: Path,
-    reports_dir: Path,
     cache_dir: Path,
-    dataset_name: str = "production",
-    roster_diff: bool = True,
     bulk_updated_at: str | None = None,
-    log: object = print,
-) -> BuildResult:
-    """Run every stage of PRD 8.2 and write the artefacts and the report."""
-    emit = log if callable(log) else print
-
+    emit: Callable[[str], object] = print,
+) -> Prepared:
+    """Stages 1-5 of PRD 8.2: fetch, parse, filter, exclude, first printing, assign, detail."""
     emit("appendices: loading the three curated inputs (PRD 7.7.1)")
     appendices = load_appendices()
 
@@ -94,7 +115,62 @@ def build(
             f"{source.path.name}; the cached bulk file changed under the run"
         )
 
-    cards = _card_inputs(first_printings, filtered.kept, assignment.by_oracle_id, details)
+    return Prepared(
+        source=source,
+        scry_sets=scry_sets,
+        appendices=appendices,
+        all_printings=all_printings,
+        filtered=filtered,
+        excluded=excluded,
+        assignment=assignment,
+        cards=_card_inputs(first_printings, filtered.kept, assignment.by_oracle_id, details),
+        meld_results=meld_results,
+    )
+
+
+def swatch_requests(cards: list[CardInput], scry_sets: dict[str, ScrySet]) -> list[SwatchRequest]:
+    """One art source per card: printing index 0, which is what §2.3 says a cell shows.
+
+    Order is the caller's business — the cache is keyed by ``(id, imageTs)`` and is indifferent to
+    it — but the list is built from :func:`~eternities.pipeline.assemble.printing_order`, the same
+    function ``p`` is written from, so the swatch and the credit can never disagree.
+    """
+    out: list[SwatchRequest] = []
+    for card in cards:
+        first = printing_order(card, scry_sets)[0]
+        out.append(
+            SwatchRequest(oracle_id=card.oracle_id, printing_id=first.id, image_ts=first.image_ts)
+        )
+    return out
+
+
+def build(
+    *,
+    as_of: str,
+    data_root: Path,
+    reports_dir: Path,
+    cache_dir: Path,
+    dataset_name: str = "production",
+    roster_diff: bool = True,
+    bulk_updated_at: str | None = None,
+    swatch_cache_path: Path | None = None,
+    log: Callable[[str], object] = print,
+) -> BuildResult:
+    """Run every stage of PRD 8.2 and write the artefacts and the report."""
+    emit = log
+
+    ready = prepare(as_of=as_of, cache_dir=cache_dir, bulk_updated_at=bulk_updated_at, emit=emit)
+    source, scry_sets, appendices = ready.source, ready.scry_sets, ready.appendices
+    all_printings, cards, meld_results = ready.all_printings, ready.cards, ready.meld_results
+    filtered, excluded, assignment = ready.filtered, ready.excluded, ready.assignment
+
+    emit("swatches: per-card art statistic (worlds spec §2.2)")
+    cache = SwatchCache(swatch_cache_path or SWATCH_CACHE)
+    requests = swatch_requests(cards, scry_sets)
+    swatch_stats = fetch_swatches(requests, cache, log=emit)
+    if swatch_stats.failures:
+        emit(f"  {swatch_stats.failed} swatches failed; the build will refuse to publish")
+    cache.close()
 
     emit("layout + assemble (PRD 8.6, 8.3)")
     dataset, stats = build_dataset(
@@ -102,6 +178,7 @@ def build(
         scry_sets,
         appendices,
         meld_results,
+        swatches=cache,
         dataset_name=dataset_name,
         as_of=as_of,
         generated_at=f"{as_of}T00:00:00Z",
@@ -155,6 +232,7 @@ def build(
             bulk_updated_at=source.updated_at,
             bulk_uri=source.download_uri,
             bulk_uri_reconstructed=source.uri_reconstructed,
+            swatches=swatch_stats,
             total_printings=len(all_printings),
             total_oracle_ids=len({p.oracle_id for p in all_printings}),
             printings_dropped=filtered.dropped_by_rule,

@@ -86,9 +86,7 @@ def _in_universes_beyond_set(
     return resolved is not None and resolved[0].universes_beyond
 
 
-def _stamp_exempt_set(
-    code: str, by_code: dict[str, SetEntry], sets: dict[str, ScrySet]
-) -> bool:
+def _stamp_exempt_set(code: str, by_code: dict[str, SetEntry], sets: dict[str, ScrySet]) -> bool:
     """Whether Appendix B exempts this set's triangle stamp (PRD 4.3.5), following the parent chain.
 
     Same walk, same reason, as :func:`_in_universes_beyond_set`: 4.3.5 reads the governing row, so

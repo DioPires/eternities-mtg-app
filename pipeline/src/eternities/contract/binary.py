@@ -1,4 +1,7 @@
-"""Byte-level codecs for ``stars.bin`` and ``sets.bin``. See docs/data-contract.md §2, §5, §6."""
+"""Byte-level codecs for ``stars.bin``, ``sets.bin`` and ``swatches.bin``.
+
+See docs/data-contract.md §2, §5, §6 and docs/worlds/spec.md §2.2.
+"""
 
 from __future__ import annotations
 
@@ -11,20 +14,23 @@ from .enums import (
     BINARY_MAGIC,
     CONTRACT_VERSION,
     STAR_RECORD_BYTES,
+    SWATCH_RECORD_BYTES,
     BinaryKind,
     SetsSection,
     SizeClass,
     pack_colour_byte,
     unpack_colour_byte,
 )
-from .models import StarRecord
+from .models import StarRecord, Swatch
 
 _HEADER = struct.Struct("<4sBBHII")
 _STAR = struct.Struct("<eeeBBBBBB")
+_SWATCH = struct.Struct("<HHHH")
 _SECTION_TABLE_ENTRY = struct.Struct("<IIII")
 
 assert _HEADER.size == BINARY_HEADER_BYTES
 assert _STAR.size == STAR_RECORD_BYTES
+assert _SWATCH.size == SWATCH_RECORD_BYTES
 
 
 class ContractError(ValueError):
@@ -106,6 +112,39 @@ def decode_stars(data: bytes | bytearray | memoryview) -> list[StarRecord]:
             )
         )
     return out
+
+
+def encode_swatches(swatches: Sequence[Swatch]) -> bytes:
+    """``swatches.bin``: header then one 8-byte record per card, in **star order** (§2.2).
+
+    Star order is the whole encoding: a swatch lookup is ``starIndex * 8 + 16``, with no map and no
+    offset table. That is only true while this stays parallel to ``stars.bin``, which is why the
+    caller passes a sequence the :class:`~eternities.contract.models.Dataset` has already checked
+    against its own star count.
+    """
+    out = bytearray(encode_header(BinaryKind.SWATCHES, len(swatches)))
+    for i, swatch in enumerate(swatches):
+        if len(swatch) != 4:
+            raise ContractError(f"swatch {i}: expected 4 RGB565 samples, got {len(swatch)}")
+        for sample in swatch:
+            if not 0 <= sample <= 0xFFFF:
+                raise ContractError(f"swatch {i}: {sample} does not fit in a uint16 RGB565 sample")
+        out += _SWATCH.pack(*swatch)
+    return bytes(out)
+
+
+def decode_swatches(data: bytes | bytearray | memoryview) -> list[Swatch]:
+    """Inverse of :func:`encode_swatches`. Used by the tests and the report, not by the browser."""
+    kind, _flags, count = decode_header(data)
+    if kind is not BinaryKind.SWATCHES:
+        raise ContractError(f"expected a swatches file, got kind {kind}")
+    expected = BINARY_HEADER_BYTES + count * SWATCH_RECORD_BYTES
+    if len(data) != expected:
+        raise ContractError(f"swatches.bin is {len(data)} bytes, expected {expected}")
+    return [
+        _SWATCH.unpack_from(data, BINARY_HEADER_BYTES + i * SWATCH_RECORD_BYTES)
+        for i in range(count)
+    ]
 
 
 def _pad4(buffer: bytearray) -> None:

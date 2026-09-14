@@ -17,8 +17,8 @@ from typing import Any, cast
 from ..contract.binary import decode_sets
 from ..contract.enums import CONTRACT_VERSION
 from ..contract.models import Dataset
-from ..fixtures import layout
 from .assemble import BRIGHTNESS_PERCENTILE, AssemblyStats
+from .swatches import CONCURRENCY, SWATCH_SOURCE, SwatchStats
 from .verify import Finding
 
 BLIND_ETERNITIES_SLUG = "blind-eternities"
@@ -41,6 +41,8 @@ class ReportInput:
     via_override: list[str]
     bulk_uri_reconstructed: bool = False
     """See ``BulkSource.uri_reconstructed``: the URI is a local cache path, so say so on the row."""
+    swatches: SwatchStats | None = None
+    """What §2.2's fetch cost this run. ``None`` for a dataset built without a swatch cache."""
     unused_overrides: list[str] = field(default_factory=list)
     """``overrides.json`` records that matched no first printing (see ``PlaneAssignment``)."""
     dropped_via_parent: dict[str, str] = field(default_factory=dict)
@@ -237,50 +239,110 @@ def _table(header: list[str], rows: list[list[str]]) -> list[str]:
     return lines
 
 
-def _radius_saturation_section(data: ReportInput) -> list[str]:
-    """How close the biggest planes are to PRD 5.3.2's radius clamp (review finding D2).
+def _assignment_section(data: ReportInput) -> list[str]:
+    """Worlds spec §2.6 item 5: exact / displaced / bare per plane, which must read ``N / 0 / 0``.
 
-    ``visual_radius`` normalises by ``layout.RADIUS_SPAN_CARDS``, so past that count every plane
-    encodes ``R_MAX`` and two planes of very different sizes render the same. The clamp itself is
-    the spec; what was missing is anyone being told when the data reached it.
+    This replaces v2's radius-headroom table. That one watched PRD 5.3.2's ``log N`` clamp for the
+    refresh that would reach it; §1.3's ``0.126·√N`` has no clamp, because constant area per card
+    is the invariant and there is nothing left to saturate.
+
+    This is the section a regression in the surface law shows up in. The prototype ran three
+    assignment passes and left Dominaria at 200 displaced and Rabiah at 3 bare of 75; production
+    relaxes the grid to the population instead, and the pipeline fails its own invariant test if any
+    card is displaced. A displaced card is a card in the wrong place on a map whose entire claim is
+    that position means something, so the only acceptable table here is an uneventful one.
     """
-    out = [f"## Plane radius headroom (PRD 5.3.2, span {layout.RADIUS_SPAN_CARDS:,} cards)", ""]
-    rows = data.stats.radius_saturation
+    rows = data.stats.assignment
+    out = ["## Surface assignment (worlds spec §1.3)", ""]
     if not rows:
-        out.append(
-            "No plane is within "
-            f"{layout.RADIUS_SATURATION_REPORT_FRACTION:.0%} of the radius span; every plane's "
-            "card count still moves its radius."
-        )
+        out.append("No plane carries cards.")
         return out
-    out.extend(
-        _table(
-            ["Plane", "Cards", "Span used", "Radius"],
-            [
-                [
-                    f"`{slug}`",
-                    f"{cards:,}",
-                    f"{saturation:.1%}" + (" **clamped**" if saturation >= 1.0 else ""),
-                    f"{radius:.2f} / {layout.R_MAX:.1f}",
-                ]
-                for slug, cards, saturation, radius in rows
-            ],
-        )
+    displaced = sum(r.displaced for r in rows)
+    bare = sum(r.bare for r in rows)
+    out.append(
+        f"{sum(r.cards for r in rows):,} cards over {len(rows)} worlds: "
+        f"**{sum(r.exact for r in rows):,} exact, {displaced:,} displaced, {bare:,} bare.** "
+        "The grid relaxes to the population — only the per-row *cell counts* move; the row "
+        "latitudes stay equal-angle and the band boundaries stay equal-area and are never snapped "
+        "to a row. `rowCells` in `planes.json` is the shipped table (§2.4)."
     )
-    clamped = [slug for slug, _, saturation, _ in rows if saturation >= 1.0]
-    out.append("")
-    if clamped:
-        out.append(
-            f"**{', '.join(f'`{s}`' for s in clamped)} is at the clamp.** Further growth is "
-            "unrepresentable: the plane encodes `R_MAX` whatever it holds. Raising "
-            "`layout.RADIUS_SPAN_CARDS` re-normalises every radius, and radii feed 8.6.1's plane "
-            "placement, so it is a deliberate visual re-tune plus a full refresh — not a fix to "
-            "slip into a data run."
+    out.extend(
+        [
+            "",
+            *_table(
+                ["World", "Cards", "Exact", "Displaced", "Bare", "Rows", "Closed form", "Aspect"],
+                [
+                    [
+                        f"`{r.slug}`",
+                        f"{r.cards:,}",
+                        f"{r.exact:,}",
+                        str(r.displaced),
+                        str(r.bare),
+                        str(r.rows),
+                        f"{r.seed_cells:,}" + ("" if r.seed_cells == r.cards else " x"),
+                        f"{r.aspect_deviation:.1%}",
+                    ]
+                    for r in rows[:12]
+                ],
+            ),
+        ]
+    )
+    if len(rows) > 12:
+        out.extend(["", f"_{len(rows) - 12} smaller worlds omitted; all are exact / 0 / 0._"])
+    mismatched = [r for r in rows if r.seed_cells != r.cards]
+    out.extend(
+        [
+            "",
+            f"**Closed form differs from the card count on {len(mismatched)} of {len(rows)} "
+            "worlds** (marked `x`). That column is what §1.3's relaxation exists for and why §2.4 "
+            "ships `rowCells` rather than a formula: `round(2*pi*sin(theta) / (aspect*dphi))` "
+            "summed over the rows is only approximately the card count, and the shipped grid has "
+            "to be exactly it.",
+            "",
+            "**Aspect** is the worst row's deviation from 4:3. It is bounded by integer "
+            "`rowCells`, "
+            "not by the surface law: a two-cell polar row has an aspect of pi/2. The renderer must "
+            "letterbox art into the cell's own rect and may not assume 4:3 anywhere (§2.1).",
+        ]
+    )
+    return out
+
+
+def _swatch_section(data: ReportInput) -> list[str]:
+    """Worlds spec §2.6 item 5: what the art statistic cost and whether it is complete."""
+    out = ["## Swatch fetch (worlds spec §2.2)", ""]
+    stats = data.swatches
+    if stats is None:
+        out.append("This dataset carries no `swatches.bin`.")
+        return out
+    out.append(
+        f"{stats.wanted:,} cards wanted a swatch from Scryfall `{SWATCH_SOURCE}`: "
+        f"**{stats.cache_hits:,} already cached, {stats.fetched:,} fetched, "
+        f"{stats.failed:,} failed.** The cache is keyed by `(printing id, imageTs)`, so a refresh "
+        "re-fetches only what Scryfall actually changed, and the *decoded* 8-byte record is "
+        "what is "
+        "stored — the images themselves are not kept (review §4.4)."
+    )
+    if stats.bytes_downloaded:
+        out.extend(
+            [
+                "",
+                f"Downloaded {stats.bytes_downloaded / 1e6:,.1f} MB in "
+                f"{stats.elapsed_s / 60:.1f} minutes at {CONCURRENCY} concurrent.",
+            ]
         )
-    else:
-        out.append(
-            "Nothing is clamped yet. At 100% a plane's radius stops responding to its card count, "
-            "so this table is the warning that `layout.RADIUS_SPAN_CARDS` needs a decision."
+    if stats.failures:
+        out.extend(
+            [
+                "",
+                "**A failed swatch is a black cell**, so the build refuses to publish with any. "
+                "This list is empty in a committed run; it is here for the run that hit them.",
+                "",
+                *_table(
+                    ["Printing", "Reason"],
+                    [[f"`{pid}`", reason] for pid, reason in stats.failures[:20]],
+                ),
+            ]
         )
     return out
 
@@ -465,7 +527,9 @@ def render(data: ReportInput) -> str:
             ],
         ),
         "",
-        *_radius_saturation_section(data),
+        *_assignment_section(data),
+        "",
+        *_swatch_section(data),
         "",
         *_brightness_cap_section(data),
         "",

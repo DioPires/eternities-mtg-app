@@ -1,7 +1,15 @@
-"""The seeded layout rules of PRD 8.6, shared by the fixture generator and Phase 1's pipeline.
+"""Seeded layout rules shared by the fixture generator and the pipeline.
 
 Kept free of Scryfall concepts on purpose: it maps counts and hue classes to positions and nothing
-else, so Phase 1 can reuse it verbatim.
+else, so both callers reuse it verbatim.
+
+**Contract v3 retired the spiral disc.** PRD 8.6.2's arm generation, ``arm_width_scale`` (inert on
+every plane over 500 cards — review §4.1), ``BULGE_SCALE``, the chronology-*radius* mapping of PRD
+5.4.2, shear, the bar and the disc thickness all went with the galaxy, and so did PRD 5.3.2's
+``log N`` radius and its clamp. What replaces them is the surface law of docs/worlds/spec.md §1.3,
+which lives in :mod:`eternities.fixtures.surface` — a world is a sphere of cells, one per card —
+and §1.8's belt, which is what the Blind Eternities becomes. This module keeps the rules that are
+still about *where a plane sits in the system* rather than where a card sits on a plane.
 """
 
 from __future__ import annotations
@@ -11,59 +19,20 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Final
 
-from ..contract.enums import FRAME_RADIUS, HueClass, PlaneKind
+from ..contract.enums import FRAME_RADIUS, PlaneKind
 from . import rng
 
-R_MIN: Final = 3.0
-R_MAX: Final = 12.0
-"""PRD 5.3.2: visual radius is log(card count), clamped to [r_min, r_max]."""
-
-RADIUS_SPAN_CARDS: Final = 30000
-"""The card count at which a plane's radius reaches ``R_MAX`` — where 5.3.2's clamp bites.
-
-Not a spec constant. 5.3.2 fixes the curve ("log(card count), clamped to [r_min, r_max]") and
-leaves the normalisation open, so this is a visual tunable; it was an unnamed literal inside
-:func:`visual_radius`. It is deliberately *not* re-derived per run from the largest plane: radii
-feed 8.6.1's plane placement by rejection sampling, so moving this moves every plane's home
-position, renames the dataset directory and forces a full refresh — a value that drifted with the
-data would do all of that on every run.
-
-Which leaves the clamp reachable, and reaching it invisible in the artefacts: planes of 30,000 and
-60,000 cards both encode radius 12.0. Production is not close: its largest *plane* is `dominaria`
-at 6,266 cards (2026-09-06) — 84.8% of the span on the log scale, radius 10.63 of 12, below the
-0.9 reporting fraction, which is why the run report says no plane is within 90% of the span. The
-28,587 that sits near the clamp is the whole multiverse's card count, not any one plane's, and the
-gap between the two is the headroom. :func:`radius_saturation` exists so the run report tracks
-that per plane, rather than the next refresh finding out (review finding D2)."""
-
-RADIUS_SATURATION_REPORT_FRACTION: Final = 0.9
-"""Saturation from here up is reported per plane (PRD 4.9.2)."""
-
 SPIRAL_THRESHOLD: Final = 50
-"""PRD 5.3.6: >= 50 cards is a five-arm spiral, 1-49 an irregular cloud, 0 an empty glow."""
+"""PRD 5.3.6's population threshold, still the source of ``kind`` in ``planes.json``.
 
-ARMS: Final = 5
-
-ARM_WIDTH_BASE: Final = 0.35
-"""An arm's angular half-width as a fraction of the arm *spacing*, before 8.6.2's scaling law.
-
-PRD 8.6.2 fixes the scaling (``sqrt(count_arm / mean_count)``, clamped) but says nothing about the
-base, so this is a visual tunable rather than a spec constant. It was 0.5, which makes an arm's full
-width ``2 * 0.5 * 360/ARMS`` = 72 degrees against a spacing of exactly 72 degrees: at
-``arm_width_scale == 1.0`` the five arms tile the disc with no dark lane at all. Because colour
-balance improves with card count, scale approaches 1.0 exactly on the large planes PRD 9.3
-criterion 2 governs, so the arms were least legible where the criterion asks for most. 0.35 gives a
-50.4-degree arm and a 21.6-degree lane at scale 1.0 (DEC-683/DEC-684)."""
-
-BULGE_SCALE: Final = 0.3
-HALO_MIN: Final = 1.05
-HALO_MAX: Final = 1.2
-BAND_JITTER: Final = 0.35
-"""PRD 8.6.2: radial jitter is +/- 0.35 of a band."""
+``kind`` is one of the fields §2.4 keeps, and it keeps its v2 meaning with it: the worlds renderer
+does not read it, the galaxy renderer does, and re-labelling the enum would be a contract change
+§2.4 did not ask for."""
 
 DUST_HALF_THICKNESS_RATIO: Final = 0.075
 """PRD 8.6.1: half the disc's thickness, as a fraction of the multiverse radius. Read by plane
-placement and by the Blind Eternities scatter, which must agree on where the disc ends."""
+placement, which is the only thing left that needs it — the belt of §1.8 has its own vertical
+jitter and no longer scatters through the disc."""
 
 PLANE_MARGIN_FACTOR: Final = 0.15
 """PRD 5.3.3, as a fraction of mean plane spacing: the anti-overlap margin :func:`place_planes`
@@ -80,10 +49,27 @@ FRAME_CLAMP_SAFETY: Final = 0.995
 ``float16(1.2)`` is ``1.2001953125``, so a star sitting exactly on the frame radius fails the 8.9.1
 invariant once it is encoded. The margin is what keeps the invariant true of the *bytes*."""
 
+BELT_RADIUS_FACTOR: Final = 1.12
+"""§1.8: the belt sits at 1.12 x ``multiverseRadius`` — 145.6 units on production."""
+
+BELT_SET_GAP: Final = 0.06
+"""§1.8: a 6% gap at each end of a set's arc, so "one arc per set" reads as arcs and not as a
+continuous smear."""
+
+BELT_RADIAL_JITTER: Final = 0.06
+BELT_VERTICAL_JITTER: Final = 0.035
+"""§1.8, both as fractions of the belt radius. A mathematically clean ring reads as a UI element,
+not as debris; the jitter is what stops it. Deterministic, from the same seeded hash as everything
+else here (PRD 4.9.1)."""
+
 
 @dataclass(frozen=True, slots=True)
 class PlaneMotion:
-    """The seeded per-plane parameters of PRD 5.3.14-15, 5.4.13 and 8.6.2."""
+    """The seeded per-plane parameters of PRD 5.3.14-15.
+
+    Seven fields shorter than v2: ``shearAmplitude``/``PeriodS``/``Phase``, ``armPitch``, ``bar``
+    and the per-plane and top-level ``discThickness`` all retire with the spiral disc (§2.4).
+    """
 
     tilt: tuple[float, float, float, float]
     spin_period_s: float
@@ -91,31 +77,6 @@ class PlaneMotion:
     drift_amplitude: float
     drift_period_s: float
     drift_phase: float
-    shear_amplitude: float
-    shear_period_s: float
-    shear_phase: float
-    arm_pitch: float
-    disc_thickness: float
-    bar: bool
-
-
-def radius_saturation(card_count: int) -> float:
-    """Where this card count sits on ``RADIUS_SPAN_CARDS``, on the log scale that sets the radius.
-
-    ``1.0`` means the plane is clamped at ``R_MAX`` and any growth from here is unrepresentable.
-    Unclamped on purpose: a value above 1.0 is the number the report needs to say *how far* past
-    the span the data has gone.
-    """
-    if card_count <= 0:
-        return 0.0
-    return math.log(card_count + 1) / math.log(RADIUS_SPAN_CARDS)
-
-
-def visual_radius(card_count: int) -> float:
-    """PRD 5.3.2. Zero-card planes render at ``R_MIN``; see ``RADIUS_SPAN_CARDS`` for the clamp."""
-    if card_count <= 0:
-        return R_MIN
-    return R_MIN + (R_MAX - R_MIN) * min(radius_saturation(card_count), 1.0)
 
 
 def plane_kind(slug: str, card_count: int) -> PlaneKind:
@@ -148,12 +109,6 @@ def plane_motion(slug: str, mean_spacing: float) -> PlaneMotion:
             drift_amplitude=0.0,
             drift_period_s=0.0,
             drift_phase=0.0,
-            shear_amplitude=0.0,
-            shear_period_s=0.0,
-            shear_phase=0.0,
-            arm_pitch=0.0,
-            disc_thickness=0.05,
-            bar=False,
         )
 
     tilt_axis = (
@@ -170,13 +125,6 @@ def plane_motion(slug: str, mean_spacing: float) -> PlaneMotion:
         drift_amplitude=DRIFT_FACTOR * mean_spacing,
         drift_period_s=rng.between(60.0, 120.0, slug, "driftperiod"),
         drift_phase=rng.between(0.0, 2.0 * math.pi, slug, "driftphase"),
-        # PRD 5.4.13: amplitude <= 10 degrees, period 40-90 s.
-        shear_amplitude=rng.between(0.02, math.radians(10.0), slug, "shearamp"),
-        shear_period_s=rng.between(40.0, 90.0, slug, "shearperiod"),
-        shear_phase=rng.between(0.0, 2.0 * math.pi, slug, "shearphase"),
-        arm_pitch=rng.between(0.35, 0.85, slug, "pitch"),
-        disc_thickness=rng.between(0.035, 0.07, slug, "thickness"),
-        bar=rng.flag(0.3, slug, "bar"),
     )
 
 
@@ -215,7 +163,7 @@ def place_planes(
         if position is None:
             raise RuntimeError(
                 f"could not place plane {slug!r} without overlap after 4000 attempts; "
-                "raise multiverse_radius or lower r_max"
+                "raise multiverse_radius or lower the radius law's constant"
             )
         placed.append((slug, radius, position))
         result[slug] = position
@@ -226,54 +174,44 @@ def _distance(a: tuple[float, float, float], b: tuple[float, float, float]) -> f
     return math.sqrt(sum((x - y) ** 2 for x, y in zip(a, b, strict=True)))
 
 
-def card_position(
-    plane_slug: str,
-    oracle_id: str,
-    hue: HueClass,
-    band: int,
-    band_count: int,
-    motion: PlaneMotion,
-    arm_width_scale: float,
-    spiral: bool,
+def belt_position(
+    oracle_id: str, set_band: int, band_count: int, index_in_set: int, set_size: int
 ) -> tuple[float, float, float]:
-    """PRD 8.6.2 plane-local card placement. Always inside ``FRAME_RADIUS``."""
-    bands = max(band_count, 1)
-    jitter_r = rng.between(-BAND_JITTER, BAND_JITTER, plane_slug, oracle_id, "jr")
-    r = (band + 0.5 + jitter_r) / bands
-    r = min(max(r, 0.02), 1.0)
+    """§1.8: one arc per set around the whole system, in the Blind Eternities' own local frame.
 
-    thickness = motion.disc_thickness
+    The dust plane's local frame is multiverse coordinates scaled by ``1 / multiverseRadius`` (PRD
+    8.3), so the belt's 1.12 R is simply 1.12 here and the shader path stays identical for every
+    star.
 
-    if hue is HueClass.MULTICOLOUR:
-        r *= BULGE_SCALE
-        theta = rng.between(0.0, 2.0 * math.pi, plane_slug, oracle_id, "bulge")
-        thickness *= 3.0
-    elif hue is HueClass.COLOURLESS:
-        r = rng.between(HALO_MIN, HALO_MAX, plane_slug, oracle_id, "halo")
-        theta = rng.between(0.0, 2.0 * math.pi, plane_slug, oracle_id, "halotheta")
-    elif not spiral:
-        # PRD 5.4.6 / 8.6.2: under 50 cards, angle is uniform everywhere.
-        theta = rng.between(0.0, 2.0 * math.pi, plane_slug, oracle_id, "uniform")
-    else:
-        arm = int(hue)  # W U B R G map to arms 0-4 (PRD 8.6.2).
-        r0 = 0.1
-        spread = (2.0 * math.pi / ARMS) * ARM_WIDTH_BASE * arm_width_scale
-        jitter_theta = rng.between(-spread, spread, plane_slug, oracle_id, "jt")
-        theta = (
-            2.0 * math.pi * arm / ARMS + motion.arm_pitch * math.log(max(r, r0) / r0) + jitter_theta
-        )
+    The belt replaces PRD 8.6.3's rejection-sampled scatter outright. The scatter existed to make
+    4,980 cards — 17.4% of the multiverse, the largest population after Dominaria — look like
+    "connecting tissue" between the planes; §1.8's judgement is that it should stop pretending to
+    have a shape. One arc per set in chronological order is a reading, which a cloud was not.
 
-    x = r * math.cos(theta)
-    z = r * math.sin(theta)
-    if motion.bar and hue is HueClass.MULTICOLOUR:
-        x *= 1.8
-    y = rng.gaussian(plane_slug, oracle_id, "y") * thickness
+    Cards spread evenly along their set's arc. The arc is that set's share of 360 degrees minus a
+    6% gap at each end, so the arcs read as arcs. Radial and vertical jitter are seeded per card.
+    """
+    span = 2.0 * math.pi / max(band_count, 1)
+    start = set_band * span + BELT_SET_GAP * span
+    usable = span * (1.0 - 2.0 * BELT_SET_GAP)
+    # `+ 1` in the denominator, so a set's first and last card sit inside its arc rather than on
+    # the gap boundaries it just paid for.
+    lam = start + usable * (index_in_set + 1) / (max(set_size, 1) + 1)
 
-    return _clamp_to_frame((x, y, z))
+    radius = BELT_RADIUS_FACTOR * (
+        1.0 + BELT_RADIAL_JITTER * rng.between(-1.0, 1.0, oracle_id, "beltr")
+    )
+    y = BELT_RADIUS_FACTOR * BELT_VERTICAL_JITTER * rng.between(-1.0, 1.0, oracle_id, "belty")
+    return _clamp_to_frame((radius * math.cos(lam), y, radius * math.sin(lam)))
 
 
 def _clamp_to_frame(p: tuple[float, float, float]) -> tuple[float, float, float]:
-    """PRD 8.9.1 invariant: plane-local positions stay inside the frame radius of 1.2."""
+    """PRD 8.9.1 invariant: plane-local positions stay inside the frame radius of 1.2.
+
+    The belt is the only thing that comes close now — 1.12 x 1.06 = 1.1872 against a limit of
+    1.194 — and a world's cells are unit vectors, a long way inside. Kept because the invariant is
+    about the *bytes*, and the margin is what stops ``float16(1.2) = 1.2001953125`` failing it.
+    """
     length = math.sqrt(p[0] ** 2 + p[1] ** 2 + p[2] ** 2)
     limit = FRAME_RADIUS * FRAME_CLAMP_SAFETY
     if length <= limit:
@@ -282,167 +220,17 @@ def _clamp_to_frame(p: tuple[float, float, float]) -> tuple[float, float, float]
     return (p[0] * scale, p[1] * scale, p[2] * scale)
 
 
-DUST_ATTEMPTS: Final = 24
-"""PRD 8.6.3 samples per dust card; the best-weighted one wins."""
-
-DUST_EXCLUSION_FACTOR: Final = 1.3
-"""A dust card must clear this multiple of a plane's visual radius."""
-
-
-@dataclass(frozen=True, slots=True)
-class DustField:
-    """The plane geometry PRD 8.6.3's scatter reads, with its per-plane tables built once.
-
-    :func:`scatter` used to take the raw ``plane_positions``/``plane_radii`` lists and re-derive
-    everything per card: the nearest-neighbour lookup was a full 86-plane scan run twelve times
-    *per card*, and the exclusion radius was re-multiplied for every plane on every attempt. On
-    production's 4,980 dust cards that came to roughly 15.5 million distance computations in pure
-    Python, two thirds of them re-deriving the same 86-entry table (review finding D5).
-
-    Nothing about the sampling changed: the tables are pure functions of the plane geometry, which
-    is fixed before the first dust card is placed, so every position this produces is the position
-    the per-card version produced. ``test_fixtures`` and the committed fixture hashes are what
-    hold that.
-    """
-
-    positions: tuple[tuple[float, float, float], ...]
-    radii: tuple[float, ...]
-    multiverse_radius: float
-    nearest_other: tuple[int, ...]
-    """Index of each plane's nearest other plane — 86 x 86 once, not 86 per card."""
-    exclusion: tuple[float, ...]
-    """``DUST_EXCLUSION_FACTOR * radius`` per plane."""
-    neighbour_spread: tuple[float, ...]
-    """``0.35 * distance`` to the nearest other plane, the midpoint sampler's jitter scale."""
-
-    @classmethod
-    def build(
-        cls,
-        plane_positions: list[tuple[float, float, float]],
-        plane_radii: list[float],
-        multiverse_radius: float,
-    ) -> DustField:
-        nearest = tuple(_nearest_other(i, plane_positions) for i in range(len(plane_positions)))
-        return cls(
-            positions=tuple(plane_positions),
-            radii=tuple(plane_radii),
-            multiverse_radius=multiverse_radius,
-            nearest_other=nearest,
-            exclusion=tuple(DUST_EXCLUSION_FACTOR * r for r in plane_radii),
-            neighbour_spread=tuple(
-                0.35 * _distance(plane_positions[i], plane_positions[j])
-                for i, j in enumerate(nearest)
-            ),
-        )
-
-    def scatter(self, oracle_id: str, index: int) -> tuple[float, float, float]:
-        """PRD 8.6.3: through the disc, avoiding plane interiors, densest between neighbours.
-
-        Returns a position in the Blind Eternities' own local frame, which is multiverse
-        coordinates scaled by ``1 / multiverse_radius`` (PRD 8.3), so the shader path is identical
-        for every star.
-        """
-        multiverse_radius = self.multiverse_radius
-        half_thickness = 0.075 * multiverse_radius
-        positions = self.positions
-        best: tuple[float, float, float] | None = None
-        best_weight = -1.0
-
-        for attempt in range(DUST_ATTEMPTS):
-            # Half the samples are biased toward a midpoint between two neighbouring planes, which
-            # is the "connecting tissue" reading of PRD 8.6.3; the rest fill the volume.
-            if positions and attempt % 2 == 0:
-                a = rng.integer(0, len(positions) - 1, oracle_id, "pa", attempt)
-                pa, pb = positions[a], positions[self.nearest_other[a]]
-                t = rng.between(0.35, 0.65, oracle_id, "t", attempt)
-                spread = self.neighbour_spread[a]
-                candidate = tuple(
-                    pa[i] + (pb[i] - pa[i]) * t + rng.gaussian(oracle_id, "s", attempt, i) * spread
-                    for i in range(3)
-                )
-            else:
-                u = rng.unit(oracle_id, "r", attempt)
-                r = math.sqrt(u) * multiverse_radius
-                theta = rng.between(0.0, 2.0 * math.pi, oracle_id, "theta", attempt)
-                candidate = (
-                    r * math.cos(theta),
-                    rng.gaussian(oracle_id, "y", attempt) * half_thickness * 0.6,
-                    r * math.sin(theta),
-                )
-
-            x, y, z = candidate
-            y = max(-half_thickness * 1.4, min(half_thickness * 1.4, y))
-            radial = math.sqrt(x * x + z * z)
-            if radial > multiverse_radius:
-                scale = multiverse_radius / radial
-                x, z = x * scale, z * scale
-            candidate = (x, y, z)
-
-            clearance = self._clearance(candidate)
-            if clearance <= 0.0:
-                continue
-            # Prefer samples nearest a plane's exclusion shell: the dust reads densest there.
-            weight = 1.0 / (1.0 + clearance)
-            if weight > best_weight:
-                best_weight, best = weight, candidate
-
-        if best is None:
-            # Every sample landed inside a plane: fall back to the outer rim, always clear.
-            theta = rng.between(0.0, 2.0 * math.pi, oracle_id, "fallback", index)
-            best = (
-                multiverse_radius * 0.98 * math.cos(theta),
-                0.0,
-                multiverse_radius * 0.98 * math.sin(theta),
-            )
-
-        inv = 1.0 / multiverse_radius
-        return _clamp_to_frame((best[0] * inv, best[1] * inv, best[2] * inv))
-
-    def _clearance(self, candidate: tuple[float, float, float]) -> float:
-        """Distance from the nearest plane's exclusion shell, or ``<= 0`` inside one.
-
-        The caller only distinguishes "inside a plane" from "this far out", so the scan stops at
-        the first plane that swallows the candidate instead of finishing the ``min`` — and on the
-        midpoint-biased samples, which aim between two planes, that is where most of them land.
-        The value returned when nothing swallows it is the full minimum, computed with the same
-        :func:`_distance` as before so the weighting is bit-for-bit what it was.
-        """
-        if not self.positions:
-            return 1.0
-        best = math.inf
-        for position, exclusion in zip(self.positions, self.exclusion, strict=True):
-            clearance = _distance(candidate, position) - exclusion
-            if clearance <= 0.0:
-                return clearance
-            if clearance < best:
-                best = clearance
-        return best
-
-
-def _nearest_other(index: int, positions: list[tuple[float, float, float]]) -> int:
-    best, best_d = index, math.inf
-    for j, p in enumerate(positions):
-        if j == index:
-            continue
-        d = _distance(positions[index], p)
-        if d < best_d:
-            best, best_d = j, d
-    return best
-
-
 def brightness_for(printing_count: int, cap: int) -> int:
-    """PRD 5.4.10: quantised log printing count, capped at the plane's 98th percentile."""
+    """PRD 5.4.10: quantised log printing count, capped at the plane's 98th percentile.
+
+    Byte 9, still written and still unread by the worlds renderer — §2.1 keeps bytes 8-9 so that a
+    v3 dataset would render on the galaxy path if the dual-scene period ever needs it. Reclaiming
+    them is a v4 conversation.
+    """
     capped = min(max(printing_count, 1), max(cap, 1))
     top = math.log(max(cap, 1) + 1.0)
     t = math.log(capped + 1.0) / top if top > 0 else 1.0
     return round(40 + 215 * min(max(t, 0.0), 1.0))
-
-
-def arm_width_scale(arm_count: int, mean_count: float) -> float:
-    """PRD 8.6.2: arm width scales with sqrt(count_arm / mean_count), clamped."""
-    if mean_count <= 0:
-        return 1.0
-    return min(max(math.sqrt(arm_count / mean_count), 0.5), 1.8)
 
 
 type Palette = tuple[float, float, float, float, float, float, float]
@@ -459,7 +247,11 @@ _NEBULA_BASE: Final[tuple[tuple[float, float, float], ...]] = (
 
 
 def palette_from_hue_counts(counts: Sequence[float]) -> Palette:
-    """PRD 5.3.5: a plane's palette is its colour-identity distribution over the hue classes."""
+    """PRD 5.3.5: a plane's palette is its colour-identity distribution over the hue classes.
+
+    Load-bearing under v3 in a way it was not under v2: §1.8 makes this the colour of an undetailed
+    world below 6 px, through its deviation from the card-weighted multiverse mean.
+    """
     total = sum(counts)
     if total <= 0:
         return (1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7)
