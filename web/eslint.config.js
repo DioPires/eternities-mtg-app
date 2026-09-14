@@ -50,6 +50,44 @@ export default tseslint.config(
     languageOptions: { globals: { ...globals.browser } },
   },
   {
+    /*
+     * The shell does not know there is a GPU (review §3.6, W4.2 item 6).
+     *
+     * `ui/` is PRD section 6's React chrome and `app/` is the shell that composes it; the renderer
+     * reaches them through the store and a polled stats snapshot, never the other way round. Once
+     * the frame loop moves out of react-three-fiber the only thing holding that boundary is this
+     * rule, so it lands *before* the loop moves rather than after: the window in which the boundary
+     * is most likely to be breached is the one where three-dependent code is being carried between
+     * files.
+     *
+     * Type-only imports are restricted too, and deliberately — `allowTypeImports` is left off. An
+     * `import type { WebGLRenderer }` erases at runtime and costs no bytes, but it still writes a
+     * panel's signature in terms of the renderer, which is the coupling this forbids. The scene
+     * hands plain data across the seam.
+     */
+    files: ['src/ui/**/*.{ts,tsx}', 'src/app/**/*.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              // `three` itself, and its subpath entries (`three/examples/...`, `three/src/...`).
+              group: ['three', 'three/*'],
+              message:
+                'ui/ and app/ must not import three (review §3.6). Reach the scene through the store or the FrameStats snapshot.',
+            },
+            {
+              group: ['@react-three/*'],
+              message:
+                'ui/ and app/ must not import react-three-fiber (review §3.6). The render loop is not a React tree.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['test/**/*.ts', 'scripts/**/*', '*.config.ts'],
     languageOptions: { globals: globals.node },
   },
