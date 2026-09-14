@@ -539,6 +539,9 @@ export class WorldSurface {
       viewport: frame.viewport,
       pool: this.options.pool.report(),
       threshold: this.thresholdReport,
+      // Read live, like every other field here — and `null` where there is no stream, which is
+      // §1.6's zero-layer swatch-only world rather than a stream that has done nothing (DEC-778).
+      stream: this.options.stream?.report() ?? null,
       seams: this.options.seams,
       artOf: (cell) => art[cell] ?? 0,
     }
