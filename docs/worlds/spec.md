@@ -861,6 +861,22 @@ The ticks are the requirement; the panel already holds up its end. On production
 cards, so it is cheap to build and cheap to get wrong unnoticed — pin it with a unit test on the
 tick positions, not with a capture. See §5, Q5.
 
+> **Normative — "its own release angle" is its own fraction of the release *order* (DEC-751).** A
+> tick for printing `i` of `n` sits at `2π · i / n`, measured like every other angle on the ring.
+> It cannot be derived from a date: a `PrintingTuple` is
+> `[id, setId, rarity, imageTs, collectorNumber, artist?]` and carries no release date at all. What
+> it carries is its position, because the tuples arrive ordered by release (PRD 5.6.7, contract
+> §7) — so the ring is a clock of that order and a tick marks where on it the dropped printing
+> falls. Spacing the ticks over the *tail* instead (`i − 72` of `n − 72`) spreads Swamp's 498 marks
+> evenly around the circle and says nothing about where in the card's history they sit, which is
+> the one thing this section wants shown. The quads keep PRD 5.6.8's own spacing — even within the
+> ring they landed in — so the two spacings differ on purpose.
+>
+> **Landed as one `Points` object per card, rotated on the orbit**, not one object per tick: 498
+> marks would otherwise be 498 draw calls, and a single angle is what guarantees the tail cannot
+> drift against the quads. The sphere-to-quad conversion in this section's first paragraph has
+> **not** landed; §1.12's printing-ring budget row records what that costs.
+
 ### 1.11 Picking, labels, filters
 
 - **Picking.** The id-buffer picker is kept wholesale; only its subject changes. The cell sheet
@@ -938,8 +954,27 @@ tick positions, not with a capture. See §5, Q5.
   (§1.8) and the belt is dropped before projection (PRD 5.3.4, and §3.1's W5): **29 of 87** on
   today's roster, **45 of 88** on v3. The label tick stays after the final camera matrices, per
   W4.2.
+
+  > **Landed (DEC-751), derived from the data rather than from a version.** `PlaneLabels` narrows
+  > its subject to the planes carrying `rowCells` — §2.4's field to test for — which is empty on a
+  > v2 dataset, so a galaxy page keeps PRD 5.3.4's rule untouched until the cutover. The narrowing
+  > is not cosmetic: the solver seats a bounded number of labels per frame and `priority` only
+  > *orders* them, so the 42 moons were not competing for their own names, they were taking them
+  > from the worlds.
+  >
+  > Plane labels also carry **`data-plane-slug`** (`gate-seam-contract.md` §2a, owed to leg G).
+  > The `tier === 'plane'` guard on it is load-bearing: a band's key is `${slug}:${code}`, so
+  > without it a W5 sweep would count a focused plane's set names as worlds.
 - **Filters.** The GPU filter-mask subscription W1.2 landed (review F1) is kept and rebound: a
-  filtered-out cell drops to its swatch and dims, and **never** dims its art. Dimming a card image is
+  filtered-out cell drops to its swatch and dims, and **never** dims its art.
+
+  > **Landed (DEC-751), in two halves that fail differently.** Admission excludes a filtered cell,
+  > so it never asks the stream for a printing and never holds a layer a visible cell could use;
+  > and a cell filtered *while* it already held one releases it, because `claimLayer` refuses
+  > eviction within `EVICTION_GRACE_FRAMES` and the card would otherwise stay at full art for as
+  > long as the LRU left it resident. The dim multiplies the swatch term **before** the art mix, so
+  > "never dims its art" is structural rather than a convention. The mask is read through the
+  > cell's *card*, not its index, because `?bands=shuffle` permutes the two. Dimming a card image is
   a colour shift, which Scryfall's terms forbid and `docs/scryfall-policy.md` §5 already calls out as
   a Phase 2a/3 constraint. Under worlds the rule is simpler than it was for thumbnails: a filtered
   cell never resolves to art at all.
@@ -958,16 +993,30 @@ comparable to the thing it is being compared to.
 |---|---|---|
 | Art pool, 1,024 × 128 × 96 × 4, no mips | 50,331,648 | 48.00 |
 | Equirect swatch array, 45 × 256 × 128 × 4 | 5,898,240 | 5.62 |
-| Cell instance attributes, 24,399 × 40 B | 975,960 | 0.93 |
+| Cell instance attributes, 24,399 × 44 B | 1,073,556 | 1.02 |
 | Printing ring, 72 × `small` (146×204×4) | 8,577,792 | 8.18 |
 | Focused card, `large` (672×936×4), one face | 2,515,968 | 2.40 |
-| **Total** | **68,299,608** | **65.14** |
+| **Total** | **68,397,204** | **65.23** |
 
-Under target with **30.9 MiB** of headroom, and **lower than today's worst case** — which is the
+Under target with **30.8 MiB** of headroom, and **lower than today's worst case** — which is the
 first place concept B pays for itself rather than costing.
 
+> **The cell row is 44 B, amending DEC-749's 40 (DEC-751).** §1.11's filter needs one float per
+> cell, and it is a separate attribute rather than a sentinel packed into `iArt` because the two
+> have different writers — the art stream owns `iArt` every frame, the store's evaluation owns the
+> filter on change — and one array with two writers is the defect the pool's three states exist to
+> prevent one level down. `test/worlds-cell-sheet.test.ts` proves the figure from the geometry
+> rather than restating it, so the next attribute moves this row automatically.
+
+> **The printing-ring row prices §1.10's flat quads, which have not landed.** The ticks have
+> (DEC-751); the sphere-to-quad conversion has not, so the ring still uploads 72 `art_crop`
+> textures at PRD 8.5.10's 256 px and costs **13.15 MiB**, not 8.18. Today's real total is
+> therefore **70.20 MiB** — still under target with 25.8 MiB to spare, so the conclusion holds
+> either way and the conversion is a saving rather than a prerequisite.
+> `test/worlds-budget.test.ts` asserts the allocation, not this table, and says so in that row.
+
 > **The two dataset-dependent rows are v3's** (45 worlds, 24,399 cards on worlds — §1.2). On the
-> 87-plane roster they are 29 layers / 3.62 MiB and 23,607 cells / 0.90 MiB, for **63.11 MiB**
+> 87-plane roster they are 29 layers / 3.62 MiB and 23,607 cells / 0.99 MiB, for **63.20 MiB**
 > total. The refresh costs **+2.03 MiB**, almost all of it the equirect array — the only place in
 > this spec where the roster's new shape moves a budget row. Both rows are `.length`s of §3.1's
 > derived sets: a renderer that allocates either from a constant is wrong on one of the two datasets
@@ -975,27 +1024,67 @@ first place concept B pays for itself rather than costing.
 
 > The focused-card row counts one face. Today's worst case counts two, because a double-faced card
 > uploads both (`focusedCard.ts:702`, and `worstCaseCardBytes` multiplies by 2). A DFC in focus adds
-> 2.40 MiB for **67.53 MiB** and 28.5 MiB of headroom; the conclusion is untouched either way, but
+> 2.40 MiB for **67.63 MiB** and 28.4 MiB of headroom; the conclusion is untouched either way, but
 > the DFC figure is the one to assert against, because it is the one `gpuMemory.ts` computes.
 
 The art pool is the worlds path's contribution to W4.1's quality ladder, and it is a real rung at
 every step:
 
-| Tier | Art pool layers | MiB | Other |
-|---|---|---|---|
-| 0 | 1,024 | 48.00 | dpr cap 1.5 |
-| 1 | 1,024 | 48.00 | dpr cap 1.0 |
-| 2 | 512 | 24.00 | — |
-| 3 | 256 | 12.00 | LOD crossover 4 px → 8 px |
-| 4 | 128 | 6.00 | cheap rim (one tap, no dither) |
+**Reconciled with W4.1's shipped ladder by DEC-753's ruling, and landed in DEC-751.** The table
+below is a transcription of `web/src/scene/quality/adaptiveQuality.ts`, not a parallel design: the
+first draft of it moved the art pool at three rungs and omitted tier 2's bloom, which broke the one
+property the ladder's own tests rely on.
 
-All five are clamped by `max(0, min(tierLayers, MAX_ARRAY_TEXTURE_LAYERS − 32))` (§1.6 — the outer
-`max` is load-bearing: an unanswered limit reports 0 and the inner expression is then −32). `e2e/quality.spec.ts`
-must assert the pool size actually changes with the tier, the way W4.1 asserts its own rungs — and
-it must assert against the **clamped** value the renderer reports, not against the constant in this
-table. On a spec-minimum 256-layer device tiers 0–3 all clamp to 224 and only tier 4 is distinct, so
-an assertion written against the tier constants passes on this Mac and fails on the hardware W0.1 is
-about to measure.
+| Tier | Art pool layers | MiB | Shipped rung (W4.1's knob) | Worlds addition |
+|---|---|---|---|---|
+| 0 | 1,024 | 48.00 | dpr cap 1.5 | — |
+| 1 | 1,024 | 48.00 | dpr cap 1.0 | — |
+| 2 | 1,024 | 48.00 | bloom chain (`bloomScale` 0.5 → 0.25, `bloomLevels` 8 → 7) | — |
+| 3 | 128 | 6.00 | resident card imagery (atlas 512 → 256) | **art pool 1,024 → 128** |
+| 4 | 128 | 6.00 | plane glow → `cheap` (one tap, no dither) | cheap rim, **on the same knob** |
+
+**The invariant is one *knob* per rung, not one field** (DEC-747 N3, restated by DEC-753). A knob
+may move several fields — rung 2's bloom moves two, because the chain's cost is a source size times
+a mip count — but **no two rungs may touch the same knob**. `QUALITY_KNOBS` publishes that grouping
+as data and `web/test/quality-ladder.test.ts` holds the ladder to it, so a field bolted onto a rung
+that already turns a knob goes red instead of passing quietly. Three consequences of the ruling are
+load-bearing here:
+
+- **the pool steps at exactly one rung, tier 3.** It cannot also step at 2 and 4;
+- **the LOD crossover does not move at tier 3.** That would be a second knob on one rung. If
+  measurement later justifies an LOD rung, it gets a tier of its own in a separate change;
+- **tier 4's cheap rim and cheap glow are one quantity if and only if one knob drives both.** The
+  rim shader reads the same `glow` field and swaps full/cheap with it. A rim that ever needs its own
+  switch is a second knob and needs its own rung.
+
+**Why the rung is 1,024 → 128 rather than the 512 → 256 the first draft implied.** All five tiers
+are clamped by `max(0, min(tierLayers, MAX_ARRAY_TEXTURE_LAYERS − 32))` (§1.6 — the outer `max` is
+load-bearing: an unanswered limit reports 0 and the inner expression is then −32). WebGL 2's
+*specification minimum* for `MAX_ARRAY_TEXTURE_LAYERS` is **256, not 1,024**, so on a device at that
+minimum every request at or above 256 comes back as **224**. Under the retired column that read
+`[224, 224, 224, 224, 128]`: tier 3 — the rung that *owns* the pool — was the one rung the clamp
+made inert, on exactly the hardware the clamp exists for. At 128 it reads `[224, 224, 224, 128,
+128]` and the rung is live on a spec-minimum device and on a slack one alike.
+
+`e2e/quality.spec.ts` must assert the pool size actually changes with the tier, the way W4.1 asserts
+its own rungs — and it must assert against the **clamped** value the renderer reports, not against
+the constant in this table, which is what `WorldsAttachment.setArtLayers` and the probe's
+`pool.layers` read-back are for.
+
+> **A rung change recomposes the roster (DEC-751).** Resizing an array texture is a new allocation
+> and every surface's material holds the old one, so the pool cannot be resized in place. The cost
+> is the resident art, which the stream re-fetches under its own discipline. A rung announced
+> before the first world composes is *recorded* rather than dropped — the shipped boot order takes
+> exactly that path — and `?layers=N` still overrides it, so a gate row measures the pool it asked
+> for.
+
+> **W4 at tier 4 is capped, and the cap is not a defect (DEC-770 note N1).** An admitted cell with
+> no layer shows its swatch, and `ArtPool.claimLayer` refuses eviction within
+> `EVICTION_GRACE_FRAMES`, so `artFraction ≤ layers / admitted`. On dominaria at 1920×1080 with 128
+> layers that is **66.0%** at 1.8 radii (194 admitted) and **81.0%** at 2.2 radii (158 admitted);
+> both reach 100% at 224 layers. Any tier-4 W4 expectation in §3.1 must be set against that
+> measured ceiling rather than against 100%, and the ceiling is a property of the rung this table
+> chose — it moves if the rung does.
 
 ### 1.13 The prototype's traps, as a checklist
 
