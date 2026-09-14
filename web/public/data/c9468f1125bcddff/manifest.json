@@ -2,7 +2,7 @@
   "contractVersion": 3,
   "pipelineVersion": "0.5.0",
   "dataset": "production",
-  "dataHash": "3ce85aed66e9dc3a",
+  "dataHash": "c9468f1125bcddff",
   "asOf": "2026-09-14",
   "generatedAt": "2026-09-14T00:00:00Z",
   "scryfallBulkUpdatedAt": "2026-09-14T09:05:27.256+00:00",
@@ -112,7 +112,7 @@
     {
       "path": "planes.json",
       "bytes": 66009,
-      "sha256": "46c4893147dd663e99d8c54d80587a8291b58fd32f0f9c3ef1d1d7f1c8e60bbf"
+      "sha256": "eb55084358376933fb10e1ad83f526014427e95691d8f6f0d019795349e0ade2"
     },
     {
       "path": "planes/abyss.0.json",
@@ -597,7 +597,7 @@
     {
       "path": "stars.bin",
       "bytes": 343252,
-      "sha256": "2c9f930183044620482319b73993b723bb25066e8a928c8a9d991ea6c2e4134a"
+      "sha256": "ee221ab6b06906a89541b955b4dfd0203596ec0c24a3595cc37f80c132434ca9"
     },
     {
       "path": "swatches.bin",

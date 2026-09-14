@@ -1,6 +1,6 @@
 {
   "contractVersion": 3,
-  "dataHash": "7937ea66ecbdad82",
+  "dataHash": "b27efc0cd6f20ca9",
   "starCount": 10,
   "stars": [
     {
@@ -44,9 +44,9 @@
     },
     {
       "index": 3,
-      "x": 0.25,
-      "y": 0.8662109375,
-      "z": -0.43310546875,
+      "x": 0.0,
+      "y": -0.8662109375,
+      "z": 0.5,
       "planeIndex": 2,
       "hueClass": 1,
       "colourIdentity": 2,
@@ -57,9 +57,9 @@
     },
     {
       "index": 4,
-      "x": 0.25,
+      "x": 0.0,
       "y": 0.8662109375,
-      "z": 0.43310546875,
+      "z": 0.5,
       "planeIndex": 2,
       "hueClass": 6,
       "colourIdentity": 0,
@@ -96,9 +96,9 @@
     },
     {
       "index": 7,
-      "x": -0.5,
-      "y": 0.8662109375,
-      "z": 0.0,
+      "x": -0.0,
+      "y": -0.8662109375,
+      "z": -0.5,
       "planeIndex": 2,
       "hueClass": 3,
       "colourIdentity": 8,
@@ -109,9 +109,9 @@
     },
     {
       "index": 8,
-      "x": -0.5,
-      "y": -0.8662109375,
-      "z": 0.0,
+      "x": -0.0,
+      "y": 0.8662109375,
+      "z": -0.5,
       "planeIndex": 2,
       "hueClass": 1,
       "colourIdentity": 2,
@@ -201,9 +201,9 @@
       2
     ],
     "ravnica": [
+      2,
       3,
-      3,
-      1
+      2
     ]
   },
   "artists": [

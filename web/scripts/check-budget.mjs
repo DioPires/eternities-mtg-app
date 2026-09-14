@@ -58,9 +58,7 @@ const BUDGETS = [
 ]
 
 function encodedSize(path) {
-  // 0 for a file this dataset does not have. `swatches.bin` is contract v3 only (worlds spec
-  // §2.2), and this script measures whichever dataset it is pointed at — which during the
-  // dual-scene period is a v2 one whenever `active` has not moved.
+  // 0 for a file this dataset does not have — see `datasetFile` for who is allowed to be absent.
   if (!existsSync(path)) return 0
   return brotliCompressSync(readFileSync(path), {
     params: { [constants.BROTLI_PARAM_QUALITY]: 11 },
@@ -125,7 +123,40 @@ function main() {
   const { hash, dir } = resolveDataDir(args.dataset)
   const distDir = resolve(WEB_ROOT, args.dist)
 
-  const file = (name) => encodedSize(join(dir, name))
+  const manifest = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8'))
+  const declared = new Set(manifest.files.map((entry) => entry.path))
+
+  /**
+   * A dataset file's encoded size — with **the manifest, not the filesystem, deciding whether the
+   * file is allowed to be missing.**
+   *
+   * `existsSync` alone conflates "this dataset has no such file" with "this dataset lost it", and
+   * gets the second one exactly backwards: the absent file silently measures 0 bytes and *lowers*
+   * the row, so a dataset missing `swatches.bin` passes a budget it should fail. Of every check in
+   * here that is the one place a silent 0 must not be the answer, because it is the only direction
+   * in which losing data makes the number look better (DEC-757 note 5).
+   *
+   * Keyed on the manifest's own file list rather than on `contractVersion`, which the review
+   * suggested and which the fixtures falsify: both fixture datasets are contract **v3 and have no
+   * `swatches.bin`**, legitimately — the generator invents planes and never fetches card art, so
+   * there is no art statistic to emit — and CI measures them on every run. `contractVersion >= 3`
+   * fails those two jobs. The manifest is the dataset's own declaration of what it shipped (PRD
+   * 4.9.1: every entry carries a `sha256`), so it separates the three real cases that exist —
+   * production v3 declares the file, a v3 fixture does not, v2 has no such concept — and it
+   * generalises: *any* declared artefact that is not on disk is a corrupt dataset, not a 0.
+   */
+  const datasetFile = (name) => {
+    const path = join(dir, name)
+    if (declared.has(name) && !existsSync(path)) {
+      console.error(
+        `${hash}/${name} is declared in manifest.json but is not on disk — refusing to measure ` +
+          'it as 0 bytes, which would make this dataset look cheaper for having lost a file',
+      )
+      process.exit(1)
+    }
+    return encodedSize(path)
+  }
+  const file = datasetFile
   const shell = shellSize(distDir)
 
   const shards = readdirSync(join(dir, 'planes'))
@@ -143,10 +174,9 @@ function main() {
   const measured = {
     'first-frame': (shell ?? 0) + firstFrameData,
     // `swatches.bin` is contract v3's per-card art statistic (worlds spec §2.2) and it is fetched
-    // with `stars.bin`, so it belongs on this row and nowhere else. Optional because a v2 dataset
-    // has no such file and this script still measures the one `active` points at — §2.5 is
-    // explicit that the pair `search.json` + `sets.bin` must *not* absorb it: that row is at 96%
-    // of its target and is the project's one genuinely tight budget.
+    // with `stars.bin`, so it belongs on this row and nowhere else. §2.5 is explicit that the pair
+    // `search.json` + `sets.bin` must *not* absorb it: that row is at 96% of its target and is the
+    // project's one genuinely tight budget.
     intro: (shell ?? 0) + firstFrameData + file('stars.bin') + file('swatches.bin'),
     'search-pair': file('search.json') + file('sets.bin'),
     'plane-shard': largestShard,

@@ -285,25 +285,30 @@ Two things to read the table with:
 
 ### 8.1 What contract v3 cost, measured
 
-The v3 production dataset is `3ce85aed66e9dc3a` — the same 28 603 cards from the same pinned
+The v3 production dataset is `c9468f1125bcddff` — the same 28 603 cards from the same pinned
 2026-09-14 bulk file as `dabe2c9a68b4d799` above, so the two columns differ only by the contract.
 
-| Row | Target | v2 `dabe2c9a…` | v3 `3ce85aed…` |
+| Row | Target | v2 `dabe2c9a…` | v3 `c9468f11…` |
 |---|---|---|---|
 | `search.json` + `sets.bin` | 700 KB / 1.5 MB ceiling | 669.0 KB (95.6%) | **669.0 KB — unchanged** |
 | First frame (`manifest` + `planes`) | — | 16.9 KB | 15.9 KB |
-| Before intro (+ `stars.bin`, + `swatches.bin`) | 3 MB | 254.6 KB | **347.4 KB (11%)** |
+| Before intro (+ `stars.bin`, + `swatches.bin`) | 3 MB | 254.6 KB | **347.2 KB (11%)** |
 | Largest plane shard | 1.5 MB / 2.5 MB ceiling | 339.9 KB | 361.0 KB (24%) |
 
 Four things a reviewer should read off it rather than take on trust.
 
-1. **The constrained row does not move by a single byte.** `search.json` and `sets.bin` are
-   byte-identical across the two datasets, which is what §5.1's "its own file" decision buys.
-   Folding `swatches.bin` in as a section would have put the pair at ≈ 861 KB — 23% *over* a
-   reported target, on the one row with 31 KB of headroom.
+1. **The constrained row does not move by a single byte — meant literally.** Both files are the
+   same length in v2 and v3, and each differs at **exactly one byte**: `search.json` at offset 19,
+   the `2` of `"contractVersion":2`, and `sets.bin` at offset 5, the contract version in the §6
+   binary header (`02` → `03`). Every other one of their 1 231 673 bytes is equal. That is the
+   stronger claim and the correct one — the search path is provably untouched, not merely the same
+   size — and it is worth stating precisely because a previous draft of this section said
+   "byte-identical", which the two version stamps make false (DEC-757 note 4). This is what §5.1's
+   "its own file" decision buys: folding `swatches.bin` in as a section would have put the pair at
+   ≈ 861 KB, 23% *over* a reported target, on the one row with 31 KB of headroom.
 2. **`swatches.bin` compresses about as badly as expected**: 223.5 KB raw → 191.9 KB brotli, 86%
    surviving. The worlds spec estimated ~90% and budgeted 455 KB for the before-intro row; the
-   measured figure is 347.4 KB, so the row comes in *under* the estimate and the conclusion — 11%
+   measured figure is 347.2 KB, so the row comes in *under* the estimate and the conclusion — 11%
    of a 3 MB target — never depended on it.
 3. **`stars.bin` got dramatically cheaper**: 237.7 → 139.6 KB brotli, −41%. Unit vectors on a
    regular grid have far less entropy than seeded spiral positions, and the file is the same 12
@@ -441,21 +446,31 @@ absent on exactly the planes that have no grid, which makes that check meaningfu
 The test that guards the version gate had to change with it. `CONTRACT_VERSION - 1` is 2 and v2 is
 now readable, so the mutant is version `1`, and a second case asserts the v2 row *loads* — a gate
 that accepted everything and a gate that accepted only v3 would both have passed a test that only
-ever mutated to v2.
+ever mutated to v2. Those cases swap a version stamp on v3-shaped bytes, so they pin the *gate* and
+not the *tolerance*; the committed v2 dataset is loaded directly by a fourth block of tests, which
+is what asserts the shape this build has to keep reading — `rowCells` absent, five-element printing
+tuples, the spiral fields present, no `swatches.bin` (DEC-757 note 2).
 
 **Data.** The 88-plane roster of DEC-745, 28 603 cards, 45 worlds and 42 dark moons — not the 29/57
 split the spec illustrates, which predates PR #41's overrides being baked into a dataset. Every
 artefact re-hashes: the test vector moved from `contract/test-vectors/v2/` to `v3/`, the fixtures
-are `c791f8d91a9ee048` and `68c6a190b1c78d64`, and production is `3ce85aed66e9dc3a` with
+are `2e6f120ee85a5b23` and `f6f712c6e70a6a51`, and production is `c9468f1125bcddff` with
 `dabe2c9a68b4d799` kept on disk and still named by `active`. §8.1 has the measured budget.
 
 Three things a reviewer should check rather than take on trust:
 
-1. **The surface law is exact, not approximate.** The run report's assignment table must read
-   `N / 0 / 0` for every world. The grid relaxes to the population — only the per-row *cell counts*
-   move — and the pipeline fails its own invariant test if a card is displaced. The closed form
-   `round(2π·sin θ / (aspect·dφ))` disagrees with the card count on 33 of the 45 worlds, which is
-   why §4 ships `rowCells` rather than a formula.
+1. **The surface law is exact, not approximate** — but read the right evidence for it. The run
+   report's assignment table reads `N / 0 / 0` for every world, and that is a **regression
+   tripwire, not a measurement**: both counters are structurally zero under `build_grid` for every
+   input, because it places each card in its own band and its own set's slice by construction
+   (DEC-757 note 3). The checks that actually bind are `sum(rowCells) == cardCount`, the
+   `nearest_row` recount of the emitted stars, and — since DEC-757 F1 — `min(rowCells) >= 1`, which
+   is the one property none of the others can see: a row with *no* cells is not a bare *cell*, so
+   `bare` cannot count it and the recount agrees `0 == 0`. `lorwyn` shipped `[3, 3, 0]` in a
+   committed fixture for exactly that reason. It is now a `BareRowError` raised at construction, so
+   a population that cannot reach every row fails the build instead of dividing §4's client-side
+   `(π / rowCells[r])` by zero. The closed form `round(2π·sin θ / (aspect·dφ))` disagrees with the
+   card count on 33 of the 45 worlds, which is why §4 ships `rowCells` rather than a formula.
 2. **`θ` is colatitude and the row formula carries `sin`.** Read as latitude the counts run
    `+1 → −1` down the sphere and an 81-row world sums to **zero** cells. Pinned by a test that
    asserts the degenerate reading is degenerate, not only that the correct one is correct.

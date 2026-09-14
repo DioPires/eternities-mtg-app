@@ -2,7 +2,7 @@
   "contractVersion": 3,
   "pipelineVersion": "0.5.0",
   "dataset": "test-vector",
-  "dataHash": "7937ea66ecbdad82",
+  "dataHash": "b27efc0cd6f20ca9",
   "asOf": "2026-09-04",
   "generatedAt": "2026-09-04T00:00:00Z",
   "scryfallBulkUpdatedAt": "2026-09-03T09:00:00Z",
@@ -27,7 +27,7 @@
     {
       "path": "planes.json",
       "bytes": 2069,
-      "sha256": "4980a20afe9193902ad7d1bcb9b965d4227fee7947eefcd99d0f1698c7d48f3a"
+      "sha256": "0b11fc6e70e0da9d498aa7471aedada2c6fa2c23a1cebfb945d1e02c7bd704a5"
     },
     {
       "path": "planes/blind-eternities.0.json",
@@ -62,7 +62,7 @@
     {
       "path": "stars.bin",
       "bytes": 136,
-      "sha256": "963f3960decf22d3692600e85f5c2afb92574963fdc1871819338af729ee677d"
+      "sha256": "6ba95e8fdff2ea18048208a1daa6b67c1df932e22de82b06d8acf8acfcac1c38"
     },
     {
       "path": "swatches.bin",

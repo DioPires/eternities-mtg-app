@@ -194,6 +194,38 @@ def _apportion(total: int, weights: Sequence[float]) -> list[int]:
 GOLD_BAND: Final = BAND_ORDER.index(HueClass.MULTICOLOUR)
 
 
+class BareRowError(ValueError):
+    """A world came out with a row holding **zero** cells. The build stops here (§2.4).
+
+    ``rowCells`` is the client's only description of the grid, and §2.4's derivations divide by it:
+    ``(pi / rowCells[r]) * sin(theta_r)`` is the cell half-extent, and the same count sets the cell
+    longitude. A zero is a division by zero on every consumer at once, and it is **invisible to
+    every other check** — ``sum(rowCells) == cardCount`` still holds, the ``nearest_row`` recount of
+    the emitted stars agrees ``0 == 0``, and ``bare``/``displaced`` count bare *cells*, of which a
+    row with no cells has none. So it has to be its own guard, at the point of construction, or it
+    is not caught at all: ``lorwyn`` shipped ``[3, 3, 0]`` in a committed fixture (DEC-757 F1).
+
+    Loud rather than repaired, because the repair is not available. §1.3 wants every card in its own
+    band and its own set's arc, and at small N a population can simply have nothing to put in a row
+    — the northern bands of a single-set six-card plane can lie wholly inside row 0 while their
+    southern twins hold no cards at all. Filling the row would mean displacing a card out of its own
+    band, which §1.3 forbids outright, so exact-N, zero-displaced and ``rowCells[r] >= 1`` are not
+    jointly satisfiable for every population (DEC-757 ruling 1). :func:`_north_first` makes the case
+    rare — single-digit percentages at small N rather than tens — and this makes the residue a
+    failed build rather than a corrupt artefact.
+    """
+
+    def __init__(self, row_cells: Sequence[int]) -> None:
+        bare = [i for i, c in enumerate(row_cells) if c < 1]
+        super().__init__(
+            f"rows {bare} of {len(row_cells)} came out with zero cells ({list(row_cells)}): a "
+            "world's population must reach every row of its grid, because §2.4's client-side "
+            "derivations divide by rowCells[r]"
+        )
+        self.row_cells = list(row_cells)
+        self.bare_rows = bare
+
+
 @dataclass(frozen=True, slots=True)
 class Placement:
     """Where one card's cell sits on the sphere."""
@@ -233,6 +265,10 @@ def build_grid(groups: Sequence[tuple[HueClass, int, int]]) -> Grid:
        exactly its card count: no card is displaced and no cell is left bare.
     4. ``rowCells[i]`` is then whatever fell in row ``i``, and the counts sum to the card count by
        construction rather than by a rounding that happened to work out.
+    5. Every row must have received **at least one** cell, or the build stops: see
+       :class:`BareRowError`. This is the one property of the table that nothing downstream can
+       check, because a row with no cells is not a bare *cell* and is invisible to the
+       ``exact / displaced / bare`` row and to the ``nearest_row`` recount alike.
 
     Step 3 is why the counts cannot be a function of ``cardCount`` and a row count, and
     therefore why
@@ -344,10 +380,14 @@ def build_grid(groups: Sequence[tuple[HueClass, int, int]]) -> Grid:
             Placement(row=row_index, column=column, band=band_index, set_band=set_band)
         )
 
+    row_cells = [len(row) for row in per_row]
+    if min(row_cells) < 1:
+        raise BareRowError(row_cells)
+
     return Grid(
         rows=rows,
         d_phi=dphi,
-        row_cells=[len(row) for row in per_row],
+        row_cells=row_cells,
         placements=placements,
     )
 
@@ -355,16 +395,37 @@ def build_grid(groups: Sequence[tuple[HueClass, int, int]]) -> Grid:
 def _north_first(hue: HueClass, set_band: int) -> bool:
     """Which hemisphere a mirrored ``(class, set)`` group's *first* card goes to.
 
-    Alternating by set index, not always north. The split is by parity of ``seq``, so a group with
-    an odd card count has one card more in whichever hemisphere it started in — and if that were
-    always north, then across the ~40 odd-count groups a class has on a large plane the north band
-    would carry ~20 more cards than the south into the *same* area. On Dominaria that is a ~9%
-    imbalance between the two halves of a mirrored pair: a visible asymmetry on a layout whose whole
-    argument for mirroring is that a world should be symmetric. Parity of the set index averages it
-    out without costing determinism.
+    Alternating by set index **and by colour class**, not always north. The split is by parity of
+    ``seq``, so a group with an odd card count has one card more in whichever hemisphere it started
+    in — and under an always-north rule every one of those surpluses lands in the same half. That
+    is exact, not approximate: a plane's north-minus-south cell count under always-north **equals
+    its number of odd-count mirrored ``(class, set)`` groups**, because an even group contributes 0
+    and an odd one contributes +1. So the cost grows with the number of groups, which is to say with
+    a plane's set count — production's shape. Over 200 random planes of 1-40 sets, always-north
+    averages **32.8 cells** of plane-wide imbalance (worst 131); this rule averages **3.0** (worst
+    17), against **3.5** (worst 18) for the set-parity-only rule it replaces: unchanged to slightly
+    better on the property the rule exists for.
+
+    That imbalance is the **plane-wide** one, summed over every mirrored band. An earlier draft of
+    this docstring quoted "~9% on Dominaria", which is the per-mirrored-*pair* figure — a different
+    and larger quantity, and not what this rule is measured on (DEC-757 ruling 2).
+
+    **Both keys, because either alone is inert somewhere.** Parity of the set index alone does
+    nothing on a plane whose sets all share a parity — a single-set plane above all — and there
+    every mirrored class then sends its odd card to the *same* hemisphere at once. At small N each
+    class holds about one card, so the southern bands get no population and the southern rows they
+    cover come out with **zero cells**: ``lorwyn`` (N=6, one set) shipped ``[3, 3, 0]``, an empty
+    southern hemisphere and a division by zero in §2.4's client-side ``(pi / rowCells[r])``
+    derivation (DEC-757 F1). Adding the class index gives the classes of a single-set plane
+    alternating hemispheres between themselves, and ``lorwyn`` becomes ``[1, 3, 2]``.
+
+    Measured over every ordered assignment of N cards to the seven classes within one set, the share
+    of compositions that bare a row falls N=3 61.2% -> 17.5%, N=4 15.0% -> 1.0%, N=5 15.0% -> 0.7%,
+    N=6 24.3% -> 3.9%, N=7 19.4% -> 2.8%. It does not reach zero and cannot: §1.3's exact-N and
+    zero-displaced are not jointly satisfiable with ``rowCells[r] >= 1`` for every population at
+    small N, so :func:`build_grid` refuses the residue rather than shipping it.
     """
-    del hue
-    return set_band % 2 == 0
+    return (set_band + int(hue)) % 2 == 0
 
 
 def _band_share(hue: HueClass, set_band: int, count: int, *, northern: bool) -> int:

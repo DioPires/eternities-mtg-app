@@ -479,6 +479,27 @@ def test_the_emitted_stars_group_by_nearest_row_into_the_shipped_rowCells(datase
         assert counted == plane.row_cells, f"{plane.slug}: emitted rows disagree with rowCells"
 
 
+def test_every_row_of_every_world_holds_at_least_one_cell(dataset: Dataset):
+    """§2.4's one table property that no other check in this file can see (DEC-757 F1).
+
+    ``rowCells`` is the client's only description of the grid and §2.4 divides by it —
+    ``(pi / rowCells[r]) * sin(theta_r)`` is the cell half-extent, and the same count sets the cell
+    longitude. A zero is a division by zero on every consumer at once.
+
+    Nothing above catches it. ``sum(rowCells) == cardCount`` still holds; the ``nearest_row``
+    recount of the emitted stars agrees ``0 == 0``; the assignment row's ``bare`` counts bare
+    *cells*, and a row with no cells has none. That is why the guard also lives inside
+    :func:`surface.build_grid` — by the time a dataset reaches this assertion it has been written to
+    disk once already. ``lorwyn`` (N=6, one set) shipped ``[3, 3, 0]`` in the committed
+    ``fixture-scale`` dataset and the ``dense`` fixture shipped three more at ``[4, 4, 0]``, for
+    exactly as long as neither this test nor that guard existed.
+    """
+    for plane in _worlds(dataset):
+        assert min(plane.row_cells) >= 1, (
+            f"{plane.slug} ({plane.card_count} cards) has an empty row: {plane.row_cells}"
+        )
+
+
 def test_nearest_row_survives_the_float16_round_trip_from_the_pole_down(dataset: Dataset):
     """§2.1, normative: **match the nearest row, never ``floor()``**.
 
@@ -718,6 +739,77 @@ def test_the_relaxed_grid_is_exact_for_any_population(cards: int):
     for (hue, set_band, _), placement in zip(groups, grid.placements, strict=True):
         assert surface.BAND_ORDER[placement.band] is hue
         assert placement.set_band == set_band
+
+
+def _one_set_grid(hues: list[HueClass], set_bands: list[int] | None = None) -> list[int]:
+    """``build_grid`` over one card per entry, each in the given class and set band."""
+    bands = set_bands if set_bands is not None else [0] * len(hues)
+    sequence: dict[tuple[int, int], int] = {}
+    groups: list[tuple[HueClass, int, int]] = []
+    for hue, band in zip(hues, bands, strict=True):
+        key = (int(hue), band)
+        sequence[key] = sequence.get(key, -1) + 1
+        groups.append((hue, band, sequence[key]))
+    return surface.build_grid(groups).row_cells
+
+
+def test_a_world_whose_population_cannot_reach_every_row_fails_the_build():
+    """DEC-757 F1's guard, with the limit injected — and a control row that must not trip it.
+
+    A bound nothing reaches is not a check, so this constructs a population that genuinely bares a
+    row: three cards of three different classes in one set, which `_north_first` still sends to one
+    hemisphere (10 of the 84 three-card hue multisets do, down from 35). The guard has to be the
+    thing that fails, so the assertion is on the exception and on *which* row it names.
+
+    The second row is the control. Spreading the same three cards over two set bands reaches both
+    hemispheres and must build clean — otherwise this test would pass just as well against a
+    `build_grid` that refused every small plane, which is not a guard but rubble.
+    """
+    bare = [HueClass.WHITE, HueClass.BLACK, HueClass.GREEN]
+    with pytest.raises(surface.BareRowError) as caught:
+        _one_set_grid(bare)
+    assert caught.value.row_cells == [3, 0]
+    assert caught.value.bare_rows == [1], "the guard must name the row that came out empty"
+    assert "rowCells[r]" in str(caught.value), "the message must say why a zero is fatal"
+
+    assert _one_set_grid(bare, set_bands=[0, 1, 0]) == [2, 1], (
+        "the same three cards across two sets reach both hemispheres and must build"
+    )
+
+
+def test_north_first_alternates_on_the_class_as_well_as_the_set():
+    """DEC-757 F1's fix, as its own negative control: the old rule is the mutant.
+
+    ``lorwyn`` — 2 W, 1 U, 1 B, 1 R, 1 gold, all in one set — is the plane that shipped ``[3, 3,
+    0]`` in the committed ``fixture-scale`` dataset. Keying the hemisphere on the set index alone is
+    inert on a single-set plane, so every mirrored class sent its odd card north at once and the
+    southern hemisphere came out empty. Keying on the class as well lands it on ``[1, 3, 2]``, which
+    is also what DEC-749's N-only conformance check gives at N=6.
+
+    The ``del hue`` form is restored here rather than described, because "the fix works" is only
+    half the claim: the other half is that the *unfixed* emitter is caught, and this file's other
+    tests all agreed with ``[3, 3, 0]``.
+    """
+    lorwyn = [
+        HueClass.WHITE,
+        HueClass.WHITE,
+        HueClass.BLUE,
+        HueClass.BLACK,
+        HueClass.RED,
+        HueClass.MULTICOLOUR,
+    ]
+    assert _one_set_grid(lorwyn) == [1, 3, 2]
+
+    original = surface._north_first
+    try:
+        surface._north_first = lambda hue, set_band: set_band % 2 == 0
+        with pytest.raises(surface.BareRowError) as caught:
+            _one_set_grid(lorwyn)
+        assert caught.value.row_cells == [3, 3, 0], (
+            "the pre-fix emitter must still produce the artefact this guard was written for"
+        )
+    finally:
+        surface._north_first = original
 
 
 def test_the_assignment_report_reads_n_exact_zero_zero():
