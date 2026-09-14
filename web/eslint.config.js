@@ -88,6 +88,106 @@ export default tseslint.config(
     },
   },
   {
+    /*
+     * The product does not ship its instruments (review §3.6 phase 3, item 4).
+     *
+     * The bench, the GPU self-check and the `?probe=1` scene have their own Vite entry,
+     * `harness.html` -> `src/harness/main.tsx`. What makes that split real is the absence of an
+     * import edge from the product entry, and nothing but this rule holds it: `lazy()` does not,
+     * which is the whole lesson of the item. Every one of these modules was *already* behind a
+     * `lazy()` or a dynamic `import()` and every one of them was still emitted from the product
+     * entry, because a dynamic import is a code-splitting hint, not a boundary. Rollup follows
+     * `dynamicImports` like any other edge.
+     *
+     * So this rule is checkable where that mistake is cheap to make — in the editor, on the file
+     * being written — rather than only in a `dist/` diff nobody runs per commit. `src/bench/` and
+     * `src/harness/` may import the scene freely; the arrow only points one way.
+     *
+     * `allowTypeImports` is on here, unlike the three.js rule above. The reasons differ: that rule
+     * forbids `ui/` from *describing itself* in renderer terms, which a type import still does.
+     * This one is about emitted bytes, and `import type { BenchRunnerProps }` emits none —
+     * `SceneView` takes the runner as a prop and needs to name its shape without naming its module.
+     * That is the inversion item 4 asked for, not a hole in it.
+     */
+    files: [
+      'src/main.tsx',
+      'src/App.tsx',
+      'src/app/**/*.{ts,tsx}',
+      'src/ui/**/*.{ts,tsx}',
+      'src/scene/**/*.{ts,tsx}',
+      'src/labels/**/*.{ts,tsx}',
+      'src/store/**/*.{ts,tsx}',
+      'src/navigation/**/*.{ts,tsx}',
+    ],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/bench/*', '**/harness/*'],
+              allowTypeImports: true,
+              message:
+                'The product entry must not import the harness (review §3.6 phase 3, item 4). A lazy() is not a boundary — rollup follows dynamic imports, so this would put the bench back in the product build. Invert it: take what you need as a prop, the way SceneView takes bench.renderRunner.',
+            },
+            {
+              /*
+               * `scene/selfCheck.ts` is the one harness module that does not live in a harness
+               * directory — it sits in `src/scene/` beside the field it inspects, so the two
+               * patterns above walk straight past it. Found by mutation: an injected
+               * `import { runSelfCheck } from './selfCheck'` in `starScene.ts` was not caught by
+               * the rule as first written, which is the exact 993-line regression item 4 removed.
+               *
+               * `selfCheck.url` and `selfCheck.register` are deliberately *not* matched. Both exist
+               * to be imported from the product side — the first is the free URL test, the second
+               * is the seam the harness registers through — and both are a few lines that reach
+               * nothing.
+               */
+              group: ['**/selfCheck', './selfCheck'],
+              allowTypeImports: true,
+              message:
+                'The product entry must not import scene/selfCheck (review §3.6 phase 3, item 4) — 993 lines of GPU read-back that only ?selfcheck=1 can reach, and a dynamic import() still emits them from this entry. Go through scene/selfCheck.register instead; the harness entry registers the loader.',
+            },
+          ],
+        },
+      ],
+      /*
+       * The same boundary, for `import()`.
+       *
+       * `no-restricted-imports` only sees `ImportDeclaration`. It does not see a dynamic
+       * `import()` at all — which makes it, on its own, blind to precisely the regression item 4
+       * fixed. The code this leg replaced was `void import('./selfCheck')` inside `starScene`, and
+       * a mutation test put it back: the rule above stayed green while the 993-line chunk returned
+       * to the product entry. `lazy(() => import('../bench/BenchRunner'))` in `EternitiesScene`
+       * was the same shape.
+       *
+       * That is worth stating plainly, because the intuition runs the other way: a dynamic import
+       * *feels* like the safe kind. For a first-chunk budget it is — that is review §5.4 B1, and it
+       * worked. For an entry boundary it is not, because rollup follows `dynamicImports` like any
+       * other edge and emits the chunk from whichever entry can reach it. The two rules together
+       * cover both spellings; neither covers both alone.
+       *
+       * Literal specifiers only — a computed `import(someVariable)` is invisible to any lint rule.
+       * The build manifest is the backstop there: `scripts/check-budget.mjs` reads which files each
+       * entry can reach, so a specifier this cannot parse still shows up as harness bytes landing
+       * back on the product's budget.
+       */
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: String.raw`ImportExpression[source.value=/(^|\/)(bench|harness)\//]`,
+          message:
+            'The product entry must not import() the harness (review §3.6 phase 3, item 4). Rollup follows dynamic imports, so this emits the bench from the product entry — the exact thing lazy() failed to prevent. Invert it: take the runner as a prop, the way SceneView takes bench.renderRunner.',
+        },
+        {
+          selector: String.raw`ImportExpression[source.value=/(^|\/)selfCheck$/]`,
+          message:
+            'The product entry must not import() scene/selfCheck (review §3.6 phase 3, item 4). This is the exact line the item removed from starScene: a dynamic import still puts 993 lines of GPU read-back in the product build. Go through scene/selfCheck.register; the harness entry registers the loader.',
+        },
+      ],
+    },
+  },
+  {
     files: ['test/**/*.ts', 'scripts/**/*', '*.config.ts'],
     languageOptions: { globals: globals.node },
   },

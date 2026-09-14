@@ -225,12 +225,6 @@ export function benchRequested(
   return value !== null && value !== '0'
 }
 
-/** Which segment the URL asked the camera to be parked at, if any. */
-export function benchHold(
-  search = typeof location === 'undefined' ? '' : location.search,
-): string | null {
-  return new URLSearchParams(search).get('hold')
-}
 
 export function BenchRunner({
   ready,

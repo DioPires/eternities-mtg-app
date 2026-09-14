@@ -1,0 +1,42 @@
+/*
+ * The harness index page, and only that.
+ *
+ * A separate sheet rather than a few rules in `styles.css`, for the same reason the harness has a
+ * separate entry (review §3.6 phase 3, item 4): `styles.css` is shared by both builds, so anything
+ * added there is transferred by every visitor to pay for a page none of them will open. Vite emits
+ * this as an asset of the harness entry, which is where `scripts/check-budget.mjs` leaves it.
+ *
+ * The three scene routes do not use any of this — they are a canvas.
+ */
+
+.harness-index {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 3rem 1.5rem;
+  color: #d8d8e0;
+  font-family: system-ui, sans-serif;
+  line-height: 1.6;
+}
+
+.harness-index h1 {
+  font-size: 1.35rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+}
+
+.harness-index ul {
+  padding-left: 1.2rem;
+}
+
+.harness-index li {
+  margin-bottom: 0.75rem;
+}
+
+.harness-index code {
+  font-size: 0.9em;
+  opacity: 0.85;
+}
+
+.harness-index a {
+  color: #9fc7ff;
+}

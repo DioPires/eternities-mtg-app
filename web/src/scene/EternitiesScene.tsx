@@ -26,12 +26,20 @@
  * do in a scene where the rig is flying the camera. `App` routes `?selfcheck` to `harness/`.
  */
 
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from 'react'
 import { Vector3 } from 'three'
 
 import { useReducedMotion } from '../app/hooks'
 import { useSceneHost } from '../app/services'
-import type { BenchResult } from '../bench/BenchRunner'
+import type { BenchResult, BenchRunnerProps } from '../bench/BenchRunner'
 import { BLIND_ETERNITIES_SLUG, type PlaneRecord } from '../data'
 import { PlaneLabels } from '../labels/PlaneLabels'
 import type { NavigationHost } from '../navigation/host'
@@ -52,15 +60,6 @@ import { SceneReadout } from './SceneReadout'
 import { BLOOM_INTENSITY_STEPS } from './tuning'
 import { usePlaneDetail } from './usePlaneDetail'
 import { useSceneData, type SceneDataState } from './useSceneData'
-
-/**
- * 612 lines that only `benchContext !== null` can reach, so they are not in the product's chunk
- * (review §5.4 B1). The per-frame `recordBenchCpu` writer stays static in `bench/cpuSamples` — it
- * is six lines and the runner reads through it, so the split costs no samples.
- */
-const BenchRunner = lazy(async () => ({
-  default: (await import('../bench/BenchRunner')).BenchRunner,
-}))
 
 export interface SceneViewProps {
   /**
@@ -96,6 +95,19 @@ export interface SceneViewProps {
   readonly bench?: {
     readonly hold?: string | null
     readonly onComplete?: (result: BenchResult) => void
+    /**
+     * The runner itself, supplied by the caller (review §3.6 phase 3, item 4).
+     *
+     * This used to be a `lazy(() => import('../bench/BenchRunner'))` right here, which kept the
+     * runner's 612 lines out of the product's *first chunk* (review §5.4 B1) but not out of the
+     * product's *build*: this module is the shipped scene, so the import edge was in the product's
+     * graph and rollup emitted `BenchRunner` from the product entry. Inverting it costs one prop
+     * and takes the edge with it — the scene now knows the runner's shape and not its module.
+     *
+     * The caller is `bench/BenchScene`, which lives in the harness entry and was going to import
+     * the runner anyway.
+     */
+    readonly renderRunner: (props: BenchRunnerProps) => ReactNode
   } | null
 }
 
@@ -465,22 +477,20 @@ export function SceneView({
           made in `createServices()`, so nothing about the canvas is a value a render can recompute. */}
       <div className="canvas-slot" ref={canvasSlot} />
 
-      {benchContext && (
-        <Suspense fallback={null}>
-          <BenchRunner
-            // The numbers mean nothing until the whole field is drawable (PRD 8.7.3).
-            ready={data.starsComplete}
-            context={benchContext}
-            camera={scene3d.renderer.camera}
-            gl={scene3d.renderer.renderer}
-            loop={scene3d.renderer.loop}
-            qualityTier={tier.tier.label}
-            qualityChanges={tier.changes}
-            hold={bench?.hold ?? null}
-            {...(bench?.onComplete ? { onComplete: bench.onComplete } : {})}
-          />
-        </Suspense>
-      )}
+      {benchContext &&
+        bench &&
+        bench.renderRunner({
+          // The numbers mean nothing until the whole field is drawable (PRD 8.7.3).
+          ready: data.starsComplete,
+          context: benchContext,
+          camera: scene3d.renderer.camera,
+          gl: scene3d.renderer.renderer,
+          loop: scene3d.renderer.loop,
+          qualityTier: tier.tier.label,
+          qualityChanges: tier.changes,
+          hold: bench.hold ?? null,
+          ...(bench.onComplete ? { onComplete: bench.onComplete } : {}),
+        })}
 
       {scene && data.planes && (
         <PlaneLabels

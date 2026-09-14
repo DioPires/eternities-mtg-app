@@ -23,7 +23,6 @@ import {
 import { Router, browserHost, type RouterSnapshot } from '../router/router'
 import { probeRequested } from '../scene/probe'
 import { SceneHost } from '../scene/renderer/sceneHost'
-import { SELF_CHECK_FAR, selfCheckRequested } from '../scene/selfCheck.url'
 
 /**
  * The host is not a third implementation — it forwards to the stub until the scene has built the
@@ -82,25 +81,44 @@ export interface Services {
   readonly scene: SceneHost
 }
 
-export function createServices(): Services {
+/**
+ * What the caller knows about the renderer that the URL cannot say.
+ *
+ * Both are `WebGLRenderer` and `PerspectiveCamera` construction arguments, so there is no later
+ * point at which either could be applied — they have to be decided before the handle exists. See
+ * `SceneRendererOptions`.
+ *
+ * This parameter is item 4 of review §3.6 phase 3 arriving. `createServices` used to answer both
+ * questions by reading `location.search` for `?selfcheck`, which meant the product entry imported
+ * the self-check's URL test — and through it `SELF_CHECK_FAR`, a number that exists only for a
+ * camera the product never builds. The harness entry knows it is the harness; it says so here
+ * instead, and the product entry never asks the question.
+ */
+export interface ServicesOptions {
+  /**
+   * Default: whatever `?probe=` asks for.
+   *
+   * That default is the product's own business and stays a URL read: `?probe=shell` is the *shipped
+   * composition* with the seam installed in it, which is the page PRD 9.3's visual review is judged
+   * on (`scripts/visual-gate.mjs`). `?probe=1` — the scene on its own — is the harness's, and by
+   * the time this runs it has already redirected away. See `app/harnessRoute.ts`.
+   */
+  readonly preserveDrawingBuffer?: boolean
+  /** Default: the product camera's far plane, from `SceneRendererOptions`. */
+  readonly cameraFar?: number
+}
+
+export function createServices(options: ServicesOptions = {}): Services {
   const nav = createNavigationHost()
   return {
     nav,
     navStore: createNavStore(nav),
     router: new Router(browserHost()),
-    // Both options are decided once, here, from the URL the page was opened with: they are
-    // `WebGLRenderer` and `PerspectiveCamera` construction arguments, so there is no later point at
-    // which either could be applied. See `SceneRendererOptions`.
-    //
-    // Reading the URL in `createServices` is the arrangement item 4 of review §3.6 phase 3 replaces:
-    // once the harness has an entry of its own, the harness decides these and the product entry
-    // never asks the question.
     scene: new SceneHost({
       // Without a preserved buffer, reading the canvas back gives whatever frame the compositor
-      // last kept rather than the frame the assertions were made against. The self-check exists to
-      // be read back, so it is unconditional there.
-      preserveDrawingBuffer: probeRequested() || selfCheckRequested(),
-      ...(selfCheckRequested() ? { cameraFar: SELF_CHECK_FAR } : {}),
+      // last kept rather than the frame the assertions were made against.
+      preserveDrawingBuffer: options.preserveDrawingBuffer ?? probeRequested(),
+      ...(options.cameraFar === undefined ? {} : { cameraFar: options.cameraFar }),
     }),
   }
 }

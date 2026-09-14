@@ -41,6 +41,7 @@ import {
   type QualityTier,
 } from './quality/adaptiveQuality'
 import type { FrameLoop } from './renderer/frameLoop'
+import { selfCheckLoader } from './selfCheck.register'
 import { selfCheckRequested } from './selfCheck.url'
 import { starWorldPosition } from './starfield/motion'
 import { SKY_COLOUR } from './tuning'
@@ -381,16 +382,22 @@ export function attachStarScene({
   function maybeStartSelfCheck(): void {
     if (selfCheckStarted || !selfCheckWanted || !resources || !starsComplete) return
     if (!isPerspective(camera)) return
+    // Asked for, but nothing in this build can answer — the product registers no loader, and
+    // `?selfcheck=1` is redirected to the harness entry before React starts. See
+    // `selfCheck.register.ts`.
+    const load = selfCheckLoader()
+    if (!load) return
     selfCheckStarted = true
     const ready = resources
     // One second in, so every plane has finished fading and the field has actually moved.
     //
-    // Imported here rather than at the top of the file, and that is the whole point: `selfCheck.ts`
-    // is 993 lines that only this branch can reach, and a static import put every one of them in
-    // the product's first chunk (review §5.4 B1). The URL test lives in `selfCheck.url.ts` so
-    // asking the question stays free.
+    // Loaded through the registry rather than imported here, and that is the whole point:
+    // `selfCheck.ts` is 993 lines that only this branch can reach. A static import put every one of
+    // them in the product's first chunk (review §5.4 B1); a dynamic import fixed that but still put
+    // them in the product's *build*, because this file is the shipped field (review §3.6 phase 3,
+    // item 4). The URL test lives in `selfCheck.url.ts` so asking the question stays free.
     selfCheckTimer = window.setTimeout(() => {
-      void import('./selfCheck').then(async ({ runSelfCheck, samplesPerRowRequested }) => {
+      void load().then(async ({ runSelfCheck, samplesPerRowRequested }) => {
         const result = await runSelfCheck(
           gl,
           scene,
