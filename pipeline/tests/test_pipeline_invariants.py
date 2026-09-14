@@ -617,6 +617,45 @@ def test_the_closed_form_is_only_a_starting_point():
     assert sum(surface.seed_row_cells(6266)) == 6266, "Dominaria's closed form happens to match"
 
 
+def test_row_cells_is_not_a_function_of_card_count_alone():
+    """Why §2.4 ships the table and no client — or spec — may re-derive it from ``cardCount``.
+
+    The obvious reading of §1.3 is that ``rowCells`` follows from ``N``: rows and ``dphi`` do, and
+    an apportionment of ``N`` over ``sin(theta_r)`` gets within a cell of the shipped table
+    everywhere. It is still not the law. The counts are apportioned *per band*, so a plane's colour
+    composition moves them — the same ``N`` under different hue histograms yields different tables,
+    and any N-only construction has to disagree with at least one of them.
+
+    An N-only reference implementation is therefore an approximation, however close. This is the
+    test that fails if one is ever promoted to normative (DEC-749's §1.3 revision).
+    """
+
+    def grid_for(hue_counts: list[int]) -> list[int]:
+        groups: list[tuple[HueClass, int, int]] = []
+        sequence: dict[tuple[int, int], int] = {}
+        for index, count in enumerate(hue_counts):
+            hue = HueClass(index)
+            for card in range(count):
+                key = (index, card % 3)
+                sequence[key] = sequence.get(key, -1) + 1
+                groups.append((hue, card % 3, sequence[key]))
+        return surface.build_grid(groups).row_cells
+
+    cards = 306  # Duskmourn's population; large enough for the per-band rounding to separate.
+    spread = [44, 44, 44, 44, 44, 44, 42]  # near-even across the seven classes
+    mono = [0, cards, 0, 0, 0, 0, 0]  # one class, so one mirrored pair carries the whole plane
+    paired = [153, 0, 0, 153, 0, 0, 0]  # two classes, two mirrored pairs
+
+    tables = [grid_for(spread), grid_for(mono), grid_for(paired)]
+    for table in tables:
+        assert sum(table) == cards, "every composition still places every card"
+        assert len(table) == surface.row_count(cards), "rows depend on N alone; cells do not"
+    assert len({tuple(table) for table in tables}) == 3, (
+        "the same card count produced the same grid under three different colour histograms, so "
+        "rowCells would be derivable from cardCount and §2.4 would not need to ship it"
+    )
+
+
 def test_the_row_formula_carries_sin_of_colatitude_not_cos_of_latitude():
     """DEC-749 D1, as a guard rather than as prose.
 
