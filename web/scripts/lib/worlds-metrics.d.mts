@@ -112,6 +112,12 @@ export interface W4Criterion extends Criterion {
   readonly poolLayers: number;
   /** `true` below tier 4's 128: a reading of the harness, not of any browser. */
   readonly belowShippedPool: boolean;
+  /**
+   * `true` when the pool has layers and demand, but nothing was ever resident — the art stream
+   * never ran. Moves `artFraction` to `insufficient`, because a setup failure scored as `fail` is
+   * indistinguishable from a policy that exhausts, and it makes both W4 matrix rows inert.
+   */
+  readonly streamNeverRan: boolean;
 }
 
 export interface W5Criterion extends Criterion {
@@ -247,11 +253,20 @@ export declare function evictionRate(
   windowS?: number,
 ): number | null;
 export declare const SMALLEST_SHIPPED_POOL_LAYERS: number;
+/**
+ * Did the art stream never run? `true` when the pool has capacity and cells want art, but nothing
+ * is resident — so no layer was ever handed out. A zero-layer pool is excluded: §1.6 makes that a
+ * legal swatch-only world, which is a measurement rather than a setup failure.
+ */
+export declare function streamNeverRan(
+  wanting: number,
+  pool: { readonly layers: number; readonly resident: number },
+): boolean;
 /** `pool` is required on purpose: a W4 count without its capacity is not a reading of the renderer. */
 export declare function evaluateW4(
   cells: readonly ArtCell[],
   evictionTimeline: readonly EvictionSample[],
-  pool: { readonly layers: number },
+  pool: { readonly layers: number; readonly resident: number },
 ): W4Criterion;
 export declare const W5_MIN_AZIMUTHS: number;
 export declare const W5_AZIMUTH_UNIFORMITY_TOLERANCE: number;

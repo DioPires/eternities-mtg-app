@@ -614,7 +614,7 @@ describe("W4 — art resolves without exhausting", () => {
   ];
 
   /** The prototype's own pool — Appendix A's `tether-surface` drew 1,024 layers. */
-  const PROTOTYPE_POOL = { layers: 1_024 };
+  const PROTOTYPE_POOL = { layers: 1_024, resident: 1_024 };
 
   it("goes RED on its control — ?artThreshold=fixed24 — reproducing tether-surface", () => {
     const { drawn, wanted, evicted } = PROTOTYPE.tetherSurface;
@@ -660,7 +660,7 @@ describe("W4 — art resolves without exhausting", () => {
     // §1.6 defines demand relative to pool capacity, so a 128-layer pool does not starve: the
     // effective threshold rises until ~128 cells want art and ~128 resolve. Condemning this row
     // would be condemning the low-end device the ladder exists to protect.
-    const w4 = evaluateW4(cells(128, 128), settled(4_100), { layers: 128 });
+    const w4 = evaluateW4(cells(128, 128), settled(4_100), { layers: 128, resident: 128 });
     expect(w4.pass).toBe(true);
     expect(w4.measures.find((m) => m.key === "artFraction")?.value).toBe(1);
   });
@@ -773,7 +773,7 @@ describe("W4 — art resolves without exhausting", () => {
    * renderer when it is a property of the harness.
    */
   it("records the capacity beside the count, because the quantile is relative to it", () => {
-    const w4 = evaluateW4(visible(90), settled(0), { layers: 224 });
+    const w4 = evaluateW4(visible(90), settled(0), { layers: 224, resident: 90 });
     expect(w4.poolLayers).toBe(224);
     expect(w4.belowShippedPool).toBe(false);
   });
@@ -791,9 +791,10 @@ describe("W4 — art resolves without exhausting", () => {
 
   it("flags a sub-shipped capacity as a harness reading without calling the measurement absent", () => {
     // Tier 4's 128 is the smallest rung; 64 is below every configuration a browser can be in.
-    const harness = evaluateW4(visible(90), settled(0), { layers: 64 });
+    const harness = evaluateW4(visible(90), settled(0), { layers: 64, resident: 64 });
     const shipped = evaluateW4(visible(90), settled(0), {
       layers: SMALLEST_SHIPPED_POOL_LAYERS,
+      resident: 1,
     });
 
     expect(harness.belowShippedPool).toBe(true);
@@ -815,14 +816,95 @@ describe("W4 — art resolves without exhausting", () => {
     expect(
       evaluateW4(visible(1), settled(0), {
         layers: SMALLEST_SHIPPED_POOL_LAYERS - 1,
+        resident: 1,
       }).belowShippedPool,
     ).toBe(true);
     expect(
       evaluateW4(visible(1), settled(0), {
         layers: SMALLEST_SHIPPED_POOL_LAYERS,
+        resident: 1,
       }).belowShippedPool,
     ).toBe(false);
     expect(SMALLEST_SHIPPED_POOL_LAYERS).toBe(128);
+  });
+
+  /**
+   * DEC-752 -> DEC-772. Measured on main `f049dca`: the composition never supplies `cardOf`
+   * (`sceneHost.ts:207`), so `stream.request` is unreachable and `showingArt` is false for every
+   * cell on every world. The art half then reads a flat 0%.
+   *
+   * Scored as `fail` that is indistinguishable from a policy that genuinely exhausts — and it makes
+   * *both* W4 matrix rows inert at once: the `fixed24` expected-RED row goes red for the wrong
+   * cause, and the `?layers=128` expected-GREEN row can never go green, so neither row can falsify
+   * the instrument. An instrument that reports RED on a frame it never measured is the same defect
+   * as one that reports GREEN, pointed the other way.
+   */
+  describe("a dead art stream is a setup failure, not a policy failure", () => {
+    it("reports insufficient when the pool has capacity and demand but nothing resident", () => {
+      const dead = evaluateW4(cells(1_008, 0), settled(0), {
+        layers: 1_024,
+        resident: 0,
+      });
+
+      expect(dead.streamNeverRan).toBe(true);
+      const art = dead.measures.find((m) => m.key === "artFraction");
+      expect(art?.status).toBe("insufficient");
+      expect(art?.insufficientReason).toMatch(/art stream never ran/);
+      // Not a pass either: `insufficient` is the absence of a measurement, not a third flavour of
+      // success. The gate must not green-light a cutover off this row.
+      expect(dead.status).not.toBe("pass");
+    });
+
+    /**
+     * The controls that stop this being vacuous. Each row is one edit away from the dead one and
+     * must stay a real measurement — otherwise the guard would swallow the very failures W4 exists
+     * to catch, which is a worse bug than the one it fixes.
+     */
+    it("does not fire on a policy that genuinely exhausts", () => {
+      // The prototype's own capture: art resolved, then the pool churned. `resident` is non-zero,
+      // so the stream demonstrably ran and 37% is a true reading of the policy.
+      const exhausted = evaluateW4(cells(2_759, 1_024), settled(925), {
+        layers: 1_024,
+        resident: 1_024,
+      });
+
+      expect(exhausted.streamNeverRan).toBe(false);
+      expect(
+        exhausted.measures.find((m) => m.key === "artFraction")?.status,
+      ).toBe("fail");
+    });
+
+    it("does not fire on §1.6's legal swatch-only world", () => {
+      // A zero-layer pool is a measurement, not a setup failure (`?layers=0`, or a device whose
+      // limit is slack). Nothing is resident there *by construction*, so keying on `resident`
+      // alone would misread the one configuration the spec explicitly blesses.
+      const swatchOnly = evaluateW4(cells(1_008, 0), settled(0), {
+        layers: 0,
+        resident: 0,
+      });
+
+      expect(swatchOnly.streamNeverRan).toBe(false);
+    });
+
+    it("does not fire when nothing wants art", () => {
+      // No demand means no layer *should* be resident. Firing here would flag a world that is
+      // simply too far away as broken.
+      const idle = evaluateW4(cells(0, 0), settled(0), {
+        layers: 1_024,
+        resident: 0,
+      });
+
+      expect(idle.streamNeverRan).toBe(false);
+    });
+
+    it("refuses a pool that omits resident rather than silently passing", () => {
+      // The guard's own provenance trap: `undefined === 0` is false, so an omitted field would
+      // switch the check off and restore the false RED. Same argument as `pool` being positional.
+      expect(() =>
+        // @ts-expect-error — the omission is the thing under test.
+        evaluateW4(cells(1_008, 0), settled(0), { layers: 1_024 }),
+      ).toThrow(/pool\.resident/);
+    });
   });
 });
 

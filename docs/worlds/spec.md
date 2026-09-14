@@ -2247,10 +2247,57 @@ the shape of mistake that survives review. `?layers=128` reads like "pool pinned
 rises until ~128 cells want art, ~128 resolve, and steady-state eviction goes to ~0. W4 measures the
 fraction above the _effective_ threshold that resolved — ≈100% — and evictions/s — ≈0. The row
 passes. **Starving the resource a policy adapts to makes the criterion green; only starving the
-policy makes it red.** Worse, 128 layers is **tier 4 of §1.12's ladder**, a shipped configuration: a
-row that went red there would be condemning the exact low-end device the ladder exists to protect.
-So `?layers=128` stays in the matrix — as an **expected-GREEN** row asserting that tier 4 still
-passes W4.
+policy makes it red.** Worse, 128 layers is **§1.12's tier-4 allocation**, the configuration the
+ladder exists to protect: a row that went red there would be condemning the exact low-end device.
+So `?layers=128` stays in the matrix — as an **expected-GREEN** row asserting that a tier-4-sized
+pool still passes W4.
+
+> **Normative — name that row by its capacity, never by its tier (DEC-752, measured on main
+> `f049dca`).** §1.12's rung is not implemented: `setArtLayers` (`attachWorlds.ts:135`, implemented
+> at `:356`) has **zero callers** in `web/src`, `web/test` or `web/e2e`, and `tierArtLayers` is
+> never passed, so the pool is always `DEFAULT_TIER_ART_LAYERS` = 1,024. Measured through
+> `?quality=N` on dominaria at 1920×1080: tiers 0, 2, 3 and 4 **all report `pool.layers` = 1024**,
+> where §1.12's table says 1,024 / 512 / 256 / 128. **No tier yields 128 layers today**; 128 is
+> reachable only through `?layers=128`, which is R1's seam and does work. A row — or a DEC-770
+> note N1 bar — written as "quality tier 4" therefore runs at 1,024 layers and measures nothing.
+> Attach the bar to the **capacity**, which is the quantity §1.6's quantile is relative to anyway.
+> Implementing the rung is R3's row (§1.10–§1.12), relayed on DEC-751; it is what would make the
+> two spellings agree.
+
+> **The effective threshold moves with capacity, and here are the readings (DEC-752, main
+> `f049dca`, dominaria, 2.2 radii, 1920×1080).** `pool.layers` 1,024 → **24.00 px** (the
+> `BASE_THRESHOLD_PX` floor), 128 → **27.93 px**, 0 → **30.13 px**. The `layers=0` figure is the one
+> that supersedes the stale 32.50 px flagged as DEC-770's note N2.
+
+> **Normative — W4 is unmeasurable until the art stream is connected, and the matrix must not be
+> read as passing before then (DEC-752 → DEC-772).** On main the worlds art stream is never asked:
+> `renderer/sceneHost.ts:207` calls `attachWorlds` with no `cardOf`, so `worldSource.ts:149`
+> defaults it to `() => null` and `worldSurface.ts:407-412`'s `stream.request(...)` is unreachable
+> for every cell on every world. Measured at 2.2 radii after a 20 s settle: **`showingArt` false for
+> all cells, `pool.resident` 0, artFraction 0.0%, and zero requests to the image origin** under
+> `?probe=shell`, `?layers=128` and `?artThreshold=fixed24` alike — with the image queue reading
+> `inFlight 0, waiting 0, completed 0, failed 0` and the network demonstrably reachable. A local
+> positive control supplying one constant printing (reverted) takes the same three rows to 15.0% /
+> **73.0%** / 13.8% with `resident` 686 / 128 / 686, so the pool, the LRU, the threshold, the
+> cross-fade and the eviction counter are all correct — only the printing lookup is absent.
+>
+> The consequence is the one this section exists to forbid, in its mirror form: **both W4 rows are
+> inert.** The `fixed24` expected-RED row is red for the wrong cause, and the `?layers=128`
+> expected-GREEN row cannot go green, so neither falsifies anything. Per the rule below — only the
+> green rows can falsify the instrument — a W4 verdict taken before DEC-772 lands is not a
+> measurement. Score W4 `insufficient`, not `fail`, until `worlds()` reports art on the shipped path.
+>
+> No unit suite caught this: every `WorldSurface` test supplies `cardOf` directly, so the suite
+> exercises the stream fully while the composition's call site is covered by nothing. The fix's
+> acceptance must include a test that goes red when the *composition* stops supplying it.
+
+> **The four control seams are verified live and leg G is routing nothing against them (DEC-752,
+> main `f049dca`).** Read back off `worlds().seams` at 1920×1080 on dominaria: `?swatch=mean` →
+> `swatchMean`, `?bands=shuffle` → `bandsShuffle`, `?artThreshold=fixed24` → `artThresholdFixed24`
+> (with `effectiveThresholdPx` pinned to exactly 24), and `?layers=N` → `layersRequested` with
+> `pool.layers` actually moving 1024 → 128 → 0. `?probe=` returns a full payload — 6,271 cells on
+> dominaria, 13 band shares, per-cell `shade`, `frontFacing`, `onScreen`, `wantsArt`, `showingArt`.
+> R1's seam surface (DEC-744 B1 / DEC-746 D5) is complete as specified.
 
 The same relative definition has a second consequence, this one for the gate's own *readings* rather
 than its rows, and §1.6 states it normatively: **how much of W4's subject is even reachable is a

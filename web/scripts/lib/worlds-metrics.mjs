@@ -717,12 +717,34 @@ export const SMALLEST_SHIPPED_POOL_LAYERS = 128;
  * the status: at 64 layers the policy still works and `artFraction` is still a true measurement of
  * it, so scoring it `insufficient` would call a real measurement absent. What it forbids is sourcing
  * a *reachability* claim — "this row has a subject on N worlds" — from a sub-shipped capacity.
+ *
+ * > **Normative — a dead art stream is `insufficient`, not `fail` (§3.1, DEC-752 → DEC-772).** See
+ * > {@link streamNeverRan}. Measured on main `f049dca`, the art half reads a flat **0%** on every
+ * > world at every pose under every seam, because the composition never supplies `cardOf` and the
+ * > fetch is therefore unreachable. Scored as `fail` that is indistinguishable from a policy that
+ * > genuinely exhausts — and worse, it makes *both* W4 matrix rows inert: the `fixed24`
+ * > expected-RED row goes red for the wrong cause, and the `?layers=128` expected-GREEN row can
+ * > never go green, so neither row can falsify the instrument. An instrument that reports RED on a
+ * > frame it never measured is the same defect as one that reports GREEN, pointed the other way.
  */
+export function streamNeverRan(wanting, pool) {
+  // Required, not defaulted, for the same reason `pool` itself is a required positional: a missing
+  // `resident` would make the comparison below `undefined === 0`, silently switching the guard off
+  // and restoring exactly the false-RED it exists to prevent. The probe always reports it.
+  if (typeof pool.resident !== "number") {
+    throw new TypeError(
+      "W4 needs pool.resident: without it the dead-stream guard silently passes",
+    );
+  }
+  return pool.layers > 0 && pool.resident === 0 && wanting > 0;
+}
+
 export function evaluateW4(cells, evictionTimeline, pool) {
   const wanting = cells.filter(
     (c) => c.frontFacing && c.onScreen && c.wantsArt,
   );
   const showing = wanting.filter((c) => c.showingArt);
+  const dead = streamNeverRan(wanting.length, pool);
 
   return criterion(
     "W4",
@@ -734,6 +756,15 @@ export function evaluateW4(cells, evictionTimeline, pool) {
         wanting.length === 0 ? null : showing.length / wanting.length,
         FLOORS.artFraction,
         "min",
+        dead
+          ? {
+              insufficient: true,
+              why:
+                `the art stream never ran: ${wanting.length} cells want art and the pool has ` +
+                `${pool.layers} layers, but nothing is resident, so no layer was ever handed out. ` +
+                `This is a setup failure, not a policy failure — see DEC-772.`,
+            }
+          : {},
       ),
       measure(
         "evictionsPerSecond",
@@ -748,6 +779,7 @@ export function evaluateW4(cells, evictionTimeline, pool) {
       showing: showing.length,
       poolLayers: pool.layers,
       belowShippedPool: pool.layers < SMALLEST_SHIPPED_POOL_LAYERS,
+      streamNeverRan: dead,
     },
   );
 }
