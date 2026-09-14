@@ -23,6 +23,7 @@ import { decodeStars, decodeSwatches } from '../src/data/decode'
 import type { PlaneRecord, PlanesFile } from '../src/data/types'
 import { FrameLoop, TICK_PHASES } from '../src/scene/renderer/frameLoop'
 import type { ImageQueue } from '../src/scene/cards/imageQueue'
+import { QUALITY_TIERS } from '../src/scene/quality/adaptiveQuality'
 import { attachWorlds, DEFAULT_TIER_ART_LAYERS } from '../src/scene/worlds/attachWorlds'
 import { KEY_LIGHT_OFF_AXIS, keyLightDirection } from '../src/scene/worlds/keyLight'
 import { artPoolSize } from '../src/scene/worlds/artPool'
@@ -456,6 +457,71 @@ describe('the shared art pool (§1.6, §1.12)', () => {
   it('gives `?layers=N` the pool, without routing it through the quality ladder', () => {
     const rig = build({ seams: { ...NO_SEAMS, layersRequested: 8 } })
     rig.worlds.setData(roster())
+    expect(rig.worlds.pool.layers).toBe(8)
+    rig.worlds.dispose()
+  })
+
+  it('resizes the pool when the ladder steps the rung, and rebinds the surfaces to it', () => {
+    // §1.12's rung, landed (DEC-751). R1 left this throwing, so the ladder could not reach the
+    // pool at all; the sheets hold the array texture the pool was allocated with, which is why the
+    // rung recomposes rather than patching a size in place.
+    const rig = build({ capabilities: { webgl2: true, maxArrayTextureLayers: 2048 } })
+    rig.worlds.setData(roster())
+    const before = rig.worlds.pool
+    expect(before.layers).toBe(QUALITY_TIERS[0]!.artPoolLayers)
+
+    rig.worlds.setArtLayers(QUALITY_TIERS[3]!.artPoolLayers)
+    expect(rig.worlds.pool.layers).toBe(QUALITY_TIERS[3]!.artPoolLayers)
+    // A different pool object, and a roster still composed against it. Asserting the number alone
+    // would pass an implementation that resized the pool and left every sheet sampling the old,
+    // disposed array texture — which draws a plausible picture until the driver reclaims it.
+    expect(rig.worlds.pool).not.toBe(before)
+    expect(rig.worlds.surfaces).toHaveLength(WORLDS.length)
+    expect(rig.scene.getObjectByName('worlds')!.children).toHaveLength(WORLDS.length)
+
+    // And back up: the rung is not one-way, and PRD 8.5.11's restore step walks it.
+    rig.worlds.setArtLayers(QUALITY_TIERS[0]!.artPoolLayers)
+    expect(rig.worlds.pool.layers).toBe(QUALITY_TIERS[0]!.artPoolLayers)
+    rig.worlds.dispose()
+  })
+
+  it('remembers a rung announced before the first world composes', () => {
+    // The half a throwing stub could not express, and the one the shipped boot order actually
+    // takes: the tier is announced once at startup and the pool is not allocated until a roster
+    // arrives. Dropping the rung there allocates tier 0's 48 MiB on a machine that asked for 6.
+    const rig = build({ capabilities: { webgl2: true, maxArrayTextureLayers: 2048 } })
+    rig.worlds.setArtLayers(QUALITY_TIERS[4]!.artPoolLayers)
+    expect(rig.worlds.pool.layers).toBe(0)
+    rig.worlds.setData(roster())
+    expect(rig.worlds.pool.layers).toBe(QUALITY_TIERS[4]!.artPoolLayers)
+    expect(rig.worlds.pool.layers).not.toBe(DEFAULT_TIER_ART_LAYERS)
+    rig.worlds.dispose()
+  })
+
+  it('reports the clamped size after a rung, never the size the rung asked for', () => {
+    // The rung goes through §1.6's clamp exactly as the initial allocation does. On a spec-minimum
+    // device rung 0's 1,024 and rung 3's 128 read 224 and 128 — so the rung is still live here,
+    // which is the property that picked 128 over the first draft's 256.
+    const rig = build()
+    rig.worlds.setData(roster())
+    expect(rig.worlds.pool.layers).toBe(224)
+    rig.worlds.setArtLayers(QUALITY_TIERS[3]!.artPoolLayers)
+    expect(rig.worlds.pool.layers).toBe(artPoolSize(QUALITY_TIERS[3]!.artPoolLayers, 256))
+    expect(rig.worlds.pool.layers).toBe(128)
+    rig.worlds.dispose()
+  })
+
+  it('lets `?layers=N` override the rung, so a gate row measures the pool it asked for', () => {
+    // `?layers=` is not `?quality=` (`seams.ts`), and the ladder must not be able to take it back:
+    // W4's expected-GREEN row pins the pool and leaves the policy alone, so a tier change during
+    // the run would silently re-parameterise the criterion.
+    const rig = build({
+      seams: { ...NO_SEAMS, layersRequested: 8 },
+      capabilities: { webgl2: true, maxArrayTextureLayers: 2048 },
+    })
+    rig.worlds.setData(roster())
+    expect(rig.worlds.pool.layers).toBe(8)
+    rig.worlds.setArtLayers(QUALITY_TIERS[0]!.artPoolLayers)
     expect(rig.worlds.pool.layers).toBe(8)
     rig.worlds.dispose()
   })

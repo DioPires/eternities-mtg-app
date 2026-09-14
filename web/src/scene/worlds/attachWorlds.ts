@@ -207,8 +207,19 @@ export function attachWorlds(options: WorldsAttachmentOptions): WorldsAttachment
   let artTexture: DataArrayTextureType | null = null
   let stream: ArtStream | null = null
 
+  /**
+   * The rung's requested pool size, before §1.6's clamp — {@link WorldsAttachment.setArtLayers}'
+   * only state.
+   *
+   * Held rather than read from `options` at each allocation because the ladder moves it at runtime
+   * (§1.12), and a page can walk a rung while nothing is composed — the common case, since the pool
+   * is allocated on the first composition. A rung announced before then has to survive until there
+   * is something to allocate.
+   */
+  let tierArtLayers = options.tierArtLayers ?? DEFAULT_TIER_ART_LAYERS
+
   function allocatePool(): void {
-    pool = new ArtPool(resolveLayers(options.tierArtLayers ?? DEFAULT_TIER_ART_LAYERS))
+    pool = new ArtPool(resolveLayers(tierArtLayers))
     artTexture = createArtPoolTexture(pool.layers)
     // `null` on a zero-layer pool, and that is §1.6's legal swatch-only world rather than a
     // fallback: every cell reads `layerOf` as `null` for the session and draws its swatch, which is
@@ -295,6 +306,40 @@ export function attachWorlds(options: WorldsAttachmentOptions): WorldsAttachment
     }
   }
 
+  /**
+   * Compose the current roster against a freshly allocated pool.
+   *
+   * Factored out of `setData` because §1.12's rung needs exactly the same work: resizing the pool
+   * means a new array texture, and every surface's material holds the old one. Recomposing is the
+   * one path that rebuilds those bindings, so the rung reuses it rather than growing a second,
+   * partially-overlapping rebind that only the ladder exercises.
+   */
+  function composeRoster(): void {
+    const next = data
+    if (!next) return
+    const worlds = worldPlanesOf(next.planes)
+    if (worlds.length === 0) return
+    allocatePool()
+    // One layer per world with cards, from the dataset's own count — 29 on the 87-plane roster
+    // and 45 on v3 (§1.5, §1.12). A constant is right on exactly one of the two.
+    equirectArray = createEquirectArray(worlds.length)
+    for (const [index, plane] of worlds.entries()) {
+      const cardOf = options.cardOf
+      const surface = new WorldSurface(
+        buildWorldSource(
+          plane,
+          next.stars,
+          next.swatches,
+          cardOf ? { cardOf: (card) => cardOf(plane, card) } : {},
+        ),
+        { seams, pool, threshold, stream, artTexture },
+      )
+      surfaces.push(surface)
+      group.add(surface.mesh)
+      if (equirectArray) writeEquirectLayer(equirectArray, index, surface.equirect)
+    }
+  }
+
   const unsubscribes = [loop.subscribe('worlds', ({ delta }) => runFrame(delta))]
 
   return {
@@ -315,29 +360,7 @@ export function attachWorlds(options: WorldsAttachmentOptions): WorldsAttachment
       // Every in-flight fetch would land in a layer the new roster has since been given, and the
       // pool itself is sized against a roster that is going away. See `ArtStream.reset`.
       releasePool()
-      if (!next) return
-
-      const worlds = worldPlanesOf(next.planes)
-      if (worlds.length === 0) return
-      allocatePool()
-      // One layer per world with cards, from the dataset's own count — 29 on the 87-plane roster
-      // and 45 on v3 (§1.5, §1.12). A constant is right on exactly one of the two.
-      equirectArray = createEquirectArray(worlds.length)
-      for (const [index, plane] of worlds.entries()) {
-        const cardOf = options.cardOf
-        const surface = new WorldSurface(
-          buildWorldSource(
-            plane,
-            next.stars,
-            next.swatches,
-            cardOf ? { cardOf: (card) => cardOf(plane, card) } : {},
-          ),
-          { seams, pool, threshold, stream, artTexture },
-        )
-        surfaces.push(surface)
-        group.add(surface.mesh)
-        if (equirectArray) writeEquirectLayer(equirectArray, index, surface.equirect)
-      }
+      composeRoster()
     },
 
     probeSource: () => {
@@ -353,17 +376,33 @@ export function attachWorlds(options: WorldsAttachmentOptions): WorldsAttachment
       return nearest.probeSource(frame)
     },
 
+    /**
+     * §1.12's rung, landed (DEC-751).
+     *
+     * **The request is recorded even when it cannot be acted on**, which is the half R1's throwing
+     * stub could not express. A tier is announced at boot, long before the first world composes, so
+     * the ladder's common case is a rung change against a zero-layer idle pool; dropping it there
+     * would allocate rung 0's 48 MiB on a machine that had already asked for rung 3's 6.
+     *
+     * When a roster *is* composed the pool is rebuilt, because resizing an array texture is a new
+     * allocation and every surface's material holds the old one. That costs the resident art —
+     * every layer is re-fetched through the stream's own discipline — and the honest reading is
+     * that this is what a rung change *is*: `?layers=N` (`seams.ts`) still overrides it, and still
+     * wins, so a gate row measuring the pool measures the pool it asked for.
+     *
+     * What the probe reports stays `pool.report().layers` throughout: the number allocated, never
+     * the number requested. A rung clamped away by `MAX_ARRAY_TEXTURE_LAYERS` therefore reads back
+     * as the clamp, which is what §1.12 tells `e2e/quality.spec.ts` to assert against.
+     */
     setArtLayers: (tierLayers) => {
-      const resolved = resolveLayers(tierLayers)
-      if (resolved === pool.layers) return
-      // Deliberately not a live reallocation: resizing an array texture means a new allocation, a
-      // re-upload of every resident layer and a rebind on every surface's material, and §1.12's
-      // rung is R3's leg. Accepting the request without acting on it would be worse — the probe
-      // would then report a pool size the renderer never allocated, which is exactly the
-      // read-back failure `seams.ts` is written against. So it refuses until R3 lands the rung.
-      throw new Error(
-        `art pool is ${pool.layers} layers and cannot yet be resized to ${resolved} (spec §1.12, leg R3)`,
-      )
+      tierArtLayers = tierLayers
+      if (resolveLayers(tierLayers) === pool.layers) return
+      // Nothing composed: there is no texture to rebuild and no surface to rebind, and the line
+      // above has already recorded the rung for whenever the first world arrives.
+      if (surfaces.length === 0) return
+      teardownSurfaces()
+      releasePool()
+      composeRoster()
     },
 
     dispose: () => {

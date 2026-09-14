@@ -76,8 +76,15 @@ export interface QualityRungTargets {
   setBloomLevels: (levels: number) => void
   /** Rung 2's third consumer: the field sizes its bloom-source sprites by the same fraction. */
   setStarBloomScale: (scale: number) => void
-  /** Rung 3. */
+  /**
+   * Rung 3, both halves — one knob, the resident card-image budget (`QUALITY_KNOBS`, DEC-753).
+   *
+   * The galaxy spends it on PRD 8.5.8's atlas and worlds spends it on §1.12's art pool, so which
+   * of the two moves the picture is a function of which card path the page is on. Both are driven
+   * from the one rung so that the cutover deletes a field rather than re-cutting the ladder.
+   */
   setThumbnailCapacity: (capacity: number) => void
+  setArtPoolLayers: (layers: number) => void
   /** Rung 4. */
   setGlowQuality: (quality: QualityTier['glow']) => void
 }
@@ -96,6 +103,7 @@ export function applyQualityTier(tier: QualityTier, targets: QualityRungTargets)
   targets.setBloomLevels(tier.bloomLevels)
   targets.setStarBloomScale(tier.bloomScale)
   targets.setThumbnailCapacity(tier.thumbnailCapacity)
+  targets.setArtPoolLayers(tier.artPoolLayers)
   targets.setGlowQuality(tier.glow)
 }
 
@@ -195,16 +203,23 @@ export class SceneHost {
       onSelect: (pick) => this.selected.emit(pick),
       onQualityChange: (tier) => this.applyTier(tier),
     })
-    // **After the assignment above, never inside it.** `applyTier` pushes the tier at the star
-    // field, so a starting announcement that fired from inside `attachStarScene` would reach a
-    // `starSceneHandle` that does not exist yet. See `StarSceneHandle.announceStartingTier`.
-    this.starSceneHandle.announceStartingTier()
-
     // The `worlds` phase (spec §1.2). Attached unconditionally and empty until `setWorldData`: a
     // phase whose subscriber arrives with the data is a phase that can end up with none at all,
     // which is DEC-761's F1 in miniature. Nothing is allocated here beyond the art pool, and on a
     // v2 dataset nothing ever composes — §3.2's "the two coexist at zero cost".
+    //
+    // **Before the announcement below, for the same reason the star field is assigned before it**
+    // (DEC-751): rung 3 now reaches the worlds art pool (§1.12), so an announcement that ran first
+    // would reach a `worldsAttachment` that does not exist. Ordering it here rather than guarding
+    // the setter with `?.` is deliberate — a dropped starting rung is not a crash, it is a page
+    // pinned to `?quality=4` that quietly allocates rung 0's 48 MiB pool, which is precisely the
+    // silent-wiring class DEC-761's F1 and DEC-747's two-writer finding are both about.
     this.worldsAttachment = attachWorlds({ gl, scene, camera, loop })
+
+    // **After the assignments above, never inside them.** `applyTier` pushes the tier at the star
+    // field, so a starting announcement that fired from inside `attachStarScene` would reach a
+    // `starSceneHandle` that does not exist yet. See `StarSceneHandle.announceStartingTier`.
+    this.starSceneHandle.announceStartingTier()
 
     // The stats the tick reports outwards, gathered last. `frameMs` and `cpuMs` are the loop's own
     // and are written by `SceneRenderer`'s `onTickEnd` hook, which by construction runs after every
@@ -445,6 +460,7 @@ export class SceneHost {
       setStarBloomScale: (scale) => this.starSceneHandle.setBloomScale(scale),
       // The tier may be announced before the card tier exists; `buildCardTier` re-applies it.
       setThumbnailCapacity: (capacity) => this.cardTierHandle?.setThumbnailCapacity(capacity),
+      setArtPoolLayers: (layers) => this.worldsAttachment.setArtLayers(layers),
       setGlowQuality: (glow) => this.starSceneHandle.setGlowQuality(glow),
     })
 

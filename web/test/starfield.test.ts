@@ -606,7 +606,14 @@ describe('adaptive quality (PRD 8.5.11)', () => {
     expect(QUALITY_TIERS[1]!.bloomLevels).toBe(QUALITY_TIERS[0]!.bloomLevels)
     expect(QUALITY_TIERS[2]!.bloomLevels).toBeLessThan(QUALITY_TIERS[1]!.bloomLevels)
     expect(QUALITY_TIERS[3]!.bloomLevels).toBe(QUALITY_TIERS[2]!.bloomLevels)
+    // Rung 3's knob is the resident card-image budget, and it is two fields for the same reason
+    // the bloom rung is two: which one reaches the picture is a function of which card path is
+    // live (DEC-753, worlds §1.12). `test/quality-ladder.test.ts` holds the grouping itself.
     expect(QUALITY_TIERS[3]!.thumbnailCapacity).toBeLessThan(QUALITY_TIERS[2]!.thumbnailCapacity)
+    expect(QUALITY_TIERS[3]!.artPoolLayers).toBeLessThan(QUALITY_TIERS[2]!.artPoolLayers)
+    for (let i = 1; i < 3; i += 1) {
+      expect(QUALITY_TIERS[i]!.artPoolLayers).toBe(QUALITY_TIERS[0]!.artPoolLayers)
+    }
     // Rung 4 (DEC-739, review §3.5's "new tier 4 cheap glow variant"): the glow program, and
     // nothing else. Asserted in both directions — it is the only rung that moves `glow`, and it
     // moves nothing the rungs above it moved, which is what keeps each rung isolable in
@@ -618,9 +625,11 @@ describe('adaptive quality (PRD 8.5.11)', () => {
     expect(QUALITY_TIERS[4]!.bloomScale).toBe(QUALITY_TIERS[3]!.bloomScale)
     expect(QUALITY_TIERS[4]!.bloomLevels).toBe(QUALITY_TIERS[3]!.bloomLevels)
     expect(QUALITY_TIERS[4]!.thumbnailCapacity).toBe(QUALITY_TIERS[3]!.thumbnailCapacity)
+    expect(QUALITY_TIERS[4]!.artPoolLayers).toBe(QUALITY_TIERS[3]!.artPoolLayers)
     // Nothing in a tier can reach the star count or the motion.
     for (const tier of QUALITY_TIERS) {
       expect(Object.keys(tier).sort()).toEqual([
+        'artPoolLayers',
         'bloomLevels',
         'bloomScale',
         'glow',

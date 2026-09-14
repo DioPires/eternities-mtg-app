@@ -17,6 +17,7 @@
 import { Matrix4, PerspectiveCamera, Vector3 } from 'three'
 import { describe, expect, it } from 'vitest'
 
+import { QUALITY_TIERS } from '../src/scene/quality/adaptiveQuality'
 import { ArtPool, LAYER_RESERVED, artPoolSize } from '../src/scene/worlds/artPool'
 import {
   AdaptiveThreshold,
@@ -28,8 +29,15 @@ import {
 import { CLIP_BOUND, FACING_CUTOFF, facesCamera, withinFrustum } from '../src/scene/worlds/cellSelection'
 import { readWorldsSeams, shufflePermutation } from '../src/scene/worlds/seams'
 
-/** §1.12's ladder, as the quality tiers state it before any clamp. */
-const TIERS = [1024, 1024, 512, 256, 128]
+/**
+ * §1.12's ladder, as the quality tiers state it before any clamp.
+ *
+ * Read from the shipped ladder rather than transcribed (DEC-751): this file's subject is what the
+ * clamp does to the rung, and a local copy of the column measures the copy. The rung moved when
+ * §1.12's ladder was reconciled with W4.1's — art pool 1,024 -> 128 at tier 3, once — and a
+ * transcription would have gone on asserting the retired column while passing.
+ */
+const TIERS = QUALITY_TIERS.map((tier) => tier.artPoolLayers)
 
 describe('§1.6 the art-pool clamp', () => {
   it('floors at zero, because maxLayers can BE zero (DEC-749 N1)', () => {
@@ -50,10 +58,14 @@ describe('§1.6 the art-pool clamp', () => {
 
   it('clamps to the real limit, and leaves a slack limit alone', () => {
     // The binding row: WebGL 2's SPECIFICATION MINIMUM is 256, not 1,024. On a device at that
-    // minimum, tiers 0-3 all clamp to 224 and only tier 4 stays distinct — so §1.12's ladder
-    // assertion must be written against the value the renderer REPORTS, never against the tier
-    // constant. An assertion against the constants passes here and fails on W0.1's hardware.
-    expect(TIERS.map((t) => artPoolSize(t, 256))).toEqual([224, 224, 224, 224, 128])
+    // minimum, the three top rungs all clamp to 224 — so §1.12's ladder assertion must be written
+    // against the value the renderer REPORTS, never against the tier constant. An assertion
+    // against the constants passes here and fails on W0.1's hardware.
+    //
+    // This row is also why the art-pool rung is 1,024 -> 128: under the retired column it read
+    // [224, 224, 224, 224, 128], i.e. tier 3 — the rung that *owns* the pool — was the one rung
+    // the clamp made inert on the device the clamp exists for.
+    expect(TIERS.map((t) => artPoolSize(t, 256))).toEqual([224, 224, 224, 128, 128])
     expect(new Set(TIERS.map((t) => artPoolSize(t, 256))).size).toBe(2)
     // The non-binding control. Without this row an `artPoolSize` that returned 0 unconditionally
     // would pass every assertion above.
