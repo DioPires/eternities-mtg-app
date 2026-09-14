@@ -4,9 +4,15 @@
  * "One HTML layer for HUD, panels, search, labels, and hints. Labels are positioned each frame by
  * CPU-side projection of plane centres (~80 points), never by per-star work."
  *
- * The layer sits *outside* the canvas, which is what PRD 8.4.4 asks for and also why this uses a
- * plain `requestAnimationFrame` rather than R3F's `useFrame`: HTML cannot live inside the R3F tree.
- * It reads the rig the canvas is already advancing, so the two stay on the same frame.
+ * The layer sits *outside* the canvas, which is what PRD 8.4.4 asks for. That used to force it onto
+ * a `requestAnimationFrame` of its own — HTML cannot live inside an R3F tree, so it could not take a
+ * `useFrame` — and **a second clock is what review §3.6 phase 3 came here to delete**. The browser
+ * hands both callbacks the same timestamp but not the same position in the queue, and on a cold load
+ * this one was registered first, so a label was routinely placed against the camera pose of the
+ * *previous* frame. A label a frame behind the plane it names is PRD 5.3.8's whole complaint.
+ *
+ * It is now a subscriber to the loop's `labels` phase, which {@link TICK_PHASES} runs after `rig` —
+ * the step in which `camera.updateMatrixWorld()` makes the matrices final. The two cannot disagree.
  *
  * The React part runs once: one `<div>` per plane, created when `planes.json` lands and never
  * re-rendered. Every frame after that writes `transform` and `opacity` straight onto the DOM nodes
@@ -26,6 +32,7 @@ import { vec, type MutVec3 } from '../camera/vec'
 import type { PlaneRecord, PlanesFile } from '../data/types'
 import { BLIND_ETERNITIES_SLUG } from '../data/types'
 import type { Level } from '../navigation/types'
+import type { FrameLoop } from '../scene/renderer/frameLoop'
 
 import { layoutLabels, type LabelCandidate, type LabelPlacement } from './layout'
 import { createProjected, Projector } from './project'
@@ -33,6 +40,12 @@ import { createProjected, Projector } from './project'
 export interface PlaneLabelsProps {
   readonly planes: PlanesFile
   readonly rig: CameraRig
+  /**
+   * The loop this places labels on, at the `labels` phase. Required, not optional: an optional loop
+   * would leave the private `requestAnimationFrame` alive as a fallback, and the second clock is
+   * the defect. See the header.
+   */
+  readonly loop: FrameLoop
   /** PRD 5.4.15: at plane level this plane's name moves to the HUD and the rest fade out. */
   readonly focusedPlaneSlug: string | null
   readonly level: Level
@@ -77,6 +90,7 @@ function candidateFor(plane: PlaneRecord): MutableCandidate {
 export function PlaneLabels({
   planes,
   rig,
+  loop,
   focusedPlaneSlug,
   level,
   enabled = true,
@@ -276,15 +290,10 @@ export function PlaneLabels({
     }
   }
 
-  useEffect(() => {
-    let handle = requestAnimationFrame(function tick() {
-      frameRef.current()
-      handle = requestAnimationFrame(tick)
-    })
-    return () => {
-      cancelAnimationFrame(handle)
-    }
-  }, [])
+  // The `labels` phase, which runs after `rig` has finalised the camera matrices. `frameRef` is
+  // reassigned on every render, so the subscription itself never needs to be — which is what keeps
+  // a settings change from re-subscribing the label layer mid-flight.
+  useEffect(() => loop.subscribe('labels', () => frameRef.current()), [loop])
 
   return (
     <div className="labels" aria-hidden="true">

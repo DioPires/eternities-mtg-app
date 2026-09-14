@@ -47,6 +47,11 @@ export interface FrameStatsFields {
   bloomHeight: number
   /** Thumbnails the tier is drawing right now (PRD 5.5). */
   thumbnails: number
+  /** Atlas cells in use, and the cap PRD 8.5.11's third rung moves. */
+  thumbnailCells: number
+  thumbnailCapacity: number
+  /** Thumbnail images that failed to load. PRD 7.4.1's per-artefact failure, counted. */
+  thumbnailsFailed: number
   /** PRD 7.2's six-request image budget, as it is being spent. */
   imagesInFlight: number
   /** Live GPU bytes for the atlas and for everything the focused card has uploaded (PRD 7.2). */
@@ -67,6 +72,9 @@ const FIELDS = [
   'bloomWidth',
   'bloomHeight',
   'thumbnails',
+  'thumbnailCells',
+  'thumbnailCapacity',
+  'thumbnailsFailed',
   'imagesInFlight',
   'atlasBytes',
   'cardBytes',
@@ -82,6 +90,9 @@ export function createFrameStats(): FrameStatsFields {
     bloomWidth: 0,
     bloomHeight: 0,
     thumbnails: 0,
+    thumbnailCells: 0,
+    thumbnailCapacity: 0,
+    thumbnailsFailed: 0,
     imagesInFlight: 0,
     atlasBytes: 0,
     cardBytes: 0,
@@ -127,6 +138,9 @@ export function sameDisplayedStats(a: FrameStatsSnapshot, b: FrameStatsSnapshot)
     a.bloomWidth === b.bloomWidth &&
     a.bloomHeight === b.bloomHeight &&
     a.thumbnails === b.thumbnails &&
+    a.thumbnailCells === b.thumbnailCells &&
+    a.thumbnailCapacity === b.thumbnailCapacity &&
+    a.thumbnailsFailed === b.thumbnailsFailed &&
     a.imagesInFlight === b.imagesInFlight &&
     Math.round(a.atlasBytes / 1024) === Math.round(b.atlasBytes / 1024) &&
     Math.round(a.cardBytes / 1024) === Math.round(b.cardBytes / 1024)

@@ -16,8 +16,8 @@ import type { BenchContext, BenchDrive } from '../bench/BenchRunner'
 import type { CardRecord } from '../data'
 import type { SceneNavigation } from '../navigation/scene'
 
-import type { CardTierHandle } from './cards/CardTier'
 import { pickLoadedCard } from './cards/pickCard'
+import type { SceneHost } from './renderer/sceneHost'
 import type { SceneDataState } from './useSceneData'
 
 export interface BenchSeamDeps {
@@ -26,7 +26,8 @@ export interface BenchSeamDeps {
   readonly data: SceneDataState
   readonly focusStar: (index: number, planeIndex: number) => void
   readonly sceneRef: RefObject<SceneNavigation | null>
-  readonly cardTier: RefObject<CardTierHandle | null>
+  /** The renderer, for the focused card's live position. See `ProbeSeamDeps` on the ref bag it replaced. */
+  readonly scene: SceneHost
   readonly cardsRef: MutableRefObject<Map<number, CardRecord>>
 }
 
@@ -51,7 +52,7 @@ export function useBenchSeam(deps: BenchSeamDeps): BenchContext | null {
         return true
       },
       cardPosition: (out: Vector3) => {
-        const slot = deps.cardTier.current?.card
+        const slot = deps.scene.cardTier?.card
         if (!slot?.visible) return false
         out.copy(slot.root.position)
         return true

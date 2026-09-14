@@ -68,6 +68,23 @@ body {
   height: 100%;
 }
 
+/*
+ * Where the renderer puts its canvas (review §3.6 phase 3).
+ *
+ * React renders this element and nothing inside it; `SceneHost` appends the canvas it built in
+ * `createServices()`. Absolutely positioned rather than left in flow because the canvas is no longer
+ * a React child the layout was written around — the slot claims the whole of `.app` without
+ * participating in its flow, so the HUD, the label layer and the harness readout sit over it in
+ * source order exactly as they did when `<Canvas>` was the first child.
+ *
+ * It is the element `SceneRenderer.resize` measures, so it must have a real box: a zero-sized
+ * container gives a zero-sized drawing buffer.
+ */
+.canvas-slot {
+  position: absolute;
+  inset: 0;
+}
+
 .app canvas {
   display: block;
   /* Same requirement: the canvas consumes touch itself rather than letting it scroll the page. */

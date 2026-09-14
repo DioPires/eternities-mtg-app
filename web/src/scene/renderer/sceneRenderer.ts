@@ -36,7 +36,7 @@ import { createFrameStats, type FrameStatsFields, type FrameStatsSnapshot } from
 /** PRD 5.2: the camera's vertical field of view. Was `EternitiesScene`'s `FOV` constant. */
 export const FOV = 55
 const NEAR = 0.1
-const FAR = 8000
+export const FAR = 8000
 /** PRD 6.8.2's opening pose, before the intro takes over. Was the `<Canvas camera>` prop. */
 const START_POSITION = [0, 150, 260] as const
 
@@ -52,6 +52,15 @@ export interface SceneRendererOptions {
   readonly preserveDrawingBuffer?: boolean
   /** The tier's `pixelRatioCap` at construction (PRD 8.5.11's first rung). */
   readonly pixelRatioCap?: number
+  /**
+   * The camera's far plane. Defaults to the product's {@link FAR}.
+   *
+   * An option for exactly one caller: the GPU self-check flies nothing and reads pixels back, and
+   * its star-depth band was derived against a 6000 far plane. Its header says its camera numbers
+   * are load-bearing, so the number follows the harness rather than the harness following the
+   * product's. Nothing else should set it.
+   */
+  readonly cameraFar?: number
   /**
    * Injected by the tests. jsdom has no WebGL, and the point of the seam is that everything in
    * this file except the three lines that touch the GL context is testable without one.
@@ -99,7 +108,7 @@ export class SceneRenderer {
     // so a second one in the renderer would apply it twice.
     this.gl.toneMapping = NoToneMapping
 
-    this.camera = new PerspectiveCamera(FOV, 1, NEAR, FAR)
+    this.camera = new PerspectiveCamera(FOV, 1, NEAR, options.cameraFar ?? FAR)
     this.camera.position.set(START_POSITION[0], START_POSITION[1], START_POSITION[2])
 
     this.loop = new FrameLoop({
