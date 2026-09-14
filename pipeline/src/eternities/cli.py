@@ -176,15 +176,39 @@ def _cmd_build(args: argparse.Namespace) -> int:
             registry = cast("dict[str, Any]", json.loads(DATASETS_FILE.read_text(encoding="utf-8")))
         previous = str(registry.get("production", ""))
         registry["production"] = result.data_dir.name
-        # A real dataset supersedes the fixtures as what the app ships (PRD 8.3).
-        registry["active"] = result.data_dir.name
+        if args.register:
+            registry[str(args.register)] = result.data_dir.name
+        if args.keep_active:
+            # Worlds spec §2's dual-scene period, and the whole reason it is free. A data directory
+            # is content-hashed and immutable and `datasets.json` names which one a build uses, so a
+            # v3 dataset is simply a *new directory*: the galaxy build keeps pointing at the last v2
+            # one and is not touched, and the worlds build points at the v3 one. Publishing a full
+            # v3 dataset therefore carries zero risk to what is deployed, long before any renderer
+            # work exists — but only if this run leaves `active` alone and leaves the predecessor's
+            # directory on disk, which is what this flag is.
+            print(f"datasets.json active unchanged = {registry.get('active')}")
+        else:
+            # A real dataset supersedes the fixtures as what the app ships (PRD 8.3).
+            registry["active"] = result.data_dir.name
+            print(f"datasets.json active = {result.data_dir.name}")
+        if args.register:
+            print(f"datasets.json {args.register} = {result.data_dir.name}")
         DATASETS_FILE.write_text(
             json.dumps(registry, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
-        print(f"datasets.json active = {result.data_dir.name}")
-        if previous and previous != result.data_dir.name and (data_root / previous).exists():
-            # PRD 8.8.3: the stale hash directory goes in the same pull request.
+        stale = (
+            previous
+            and previous != result.data_dir.name
+            and (data_root / previous).exists()
+            and previous not in {str(v) for k, v in registry.items() if k != "production"}
+        )
+        if stale:
+            # PRD 8.8.3: the stale hash directory goes in the same pull request — unless some other
+            # key still names it, which under `--keep-active` is exactly the case: the predecessor
+            # is what the deployed build is still fetching.
             remove_stale_dataset(data_root, previous)
+        elif previous and previous != result.data_dir.name:
+            print(f"kept {previous}/: still named by another datasets.json key")
     return 0
 
 
@@ -284,6 +308,21 @@ def main(argv: list[str] | None = None) -> int:
         default=str(SWATCH_CACHE_FILE),
         help="the (printing id, imageTs)-keyed swatch cache the art statistic is read from",
     )
+    build_cmd.add_argument(
+        "--register",
+        default=None,
+        metavar="KEY",
+        help="also record this run in datasets.json under KEY, beside `production`. Worlds spec "
+        "§2.6 item 6 publishes the first v3 dataset under a key of its own so a worlds build can "
+        "name it while `active` still points at the last v2 one.",
+    )
+    build_cmd.add_argument(
+        "--keep-active",
+        action="store_true",
+        help="do not move `active`, and do not delete the predecessor's directory. This is what "
+        "makes the dual-scene period free: the deployed build keeps fetching the dataset it "
+        "already fetches, and this run lands beside it.",
+    )
     build_cmd.set_defaults(func=_cmd_build)
 
     swatch_cmd = sub.add_parser(
@@ -312,8 +351,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     fixtures_cmd.set_defaults(func=_cmd_fixtures)
 
-    vector_cmd = sub.add_parser("test-vector", help="regenerate contract/test-vectors/v2")
-    vector_cmd.add_argument("--out", default=str(REPO_ROOT / "contract" / "test-vectors" / "v2"))
+    vector_cmd = sub.add_parser("test-vector", help="regenerate contract/test-vectors/v3")
+    vector_cmd.add_argument("--out", default=str(REPO_ROOT / "contract" / "test-vectors" / "v3"))
     vector_cmd.set_defaults(func=_cmd_test_vector)
 
     args = parser.parse_args(argv)

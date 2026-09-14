@@ -30,6 +30,8 @@ from eternities.contract import write_dataset
 from eternities.contract.enums import CONTRACT_VERSION
 from eternities.pipeline.assemble import CardInput, build_dataset
 from eternities.pipeline.records import CardDetail, FaceDetail
+from eternities.pipeline.assemble import PlaneAssignmentStats
+from eternities.pipeline.swatches import SwatchStats
 from eternities.pipeline.report import (
     PreviousRun,
     ReportInput,
@@ -477,36 +479,61 @@ def test_a_predecessor_under_an_older_contract_does_not_claim_to_be_the_first(tm
 # --- review findings D2 and D6: the two silent normalisations, made visible --------------------
 
 
-def test_the_radius_headroom_section_says_so_when_nothing_is_near_the_clamp(report_text: str):
-    """Finding D2. The fixture's planes hold 3 to 6 cards, so the section must read as "clear"."""
-    assert "## Plane radius headroom (PRD 5.3.2, span 30,000 cards)" in report_text
-    assert "No plane is within 90% of the radius span" in report_text
-    assert "clamped" not in report_text
+def test_the_assignment_section_reports_exact_displaced_bare(report_text: str):
+    """Worlds spec §2.6 item 5, which replaces v2's radius-headroom table.
+
+    That table watched PRD 5.3.2's ``log N`` clamp for the refresh that would reach it. §1.3's
+    ``0.126 * sqrt(N)`` has no clamp — constant area per card is the invariant — so the row that
+    matters now is whether any card was displaced.
+    """
+    assert "## Surface assignment (worlds spec §1.3)" in report_text
+    assert "exact, 0 displaced, 0 bare" in report_text
+    assert "rowCells" in report_text
 
 
-def test_a_plane_at_the_clamp_is_named_and_the_consequence_stated(tmp_path: Path):
-    """Finding D2's actual failure: at the clamp a plane's card count stops moving its radius.
+def test_a_displaced_card_is_named_in_the_assignment_table(tmp_path: Path):
+    """The failure the section exists for. The prototype left Dominaria at 200 displaced and
+    Rabiah at 3 bare of 75; §1.3 makes that a build failure, and this is what it reads like.
 
-    Driven through ``AssemblyStats`` rather than by building a 30,000-card dataset, because what
-    is under test is the report's reading of the number, not ``visual_radius`` — which
-    ``test_fixtures`` already pins.
+    Driven through ``AssemblyStats`` rather than by building a broken grid, because what is under
+    test is the report's reading of the numbers — ``test_pipeline_invariants`` pins the grid.
     """
     data = _report_input(tmp_path)
     data.stats = replace(
         data.stats,
-        radius_saturation=[
-            ("dominaria", 41_000, 1.0269, 12.0),
-            ("ravnica", 24_000, 0.9754, 11.78),
+        assignment=[
+            PlaneAssignmentStats("dominaria", 6266, 6066, 200, 0, 81, 6266, 0.178),
+            PlaneAssignmentStats("rabiah", 75, 72, 0, 3, 9, 78, 0.269),
         ],
     )
 
     text = render(data)
 
-    assert "| `dominaria` | 41,000 | 102.7% **clamped** | 12.00 / 12.0 |" in text
-    assert "| `ravnica` | 24,000 | 97.5% | 11.78 / 12.0 |" in text
-    assert "**`dominaria` is at the clamp.**" in text
-    assert "Further growth is unrepresentable" in text
-    assert "full refresh" in text, "the cost of re-tuning the span belongs in the warning"
+    assert "| `dominaria` | 6,266 | 6,066 | 200 | 0 | 81 | 6,266 | 17.8% |" in text
+    assert "| `rabiah` | 75 | 72 | 0 | 3 | 9 | 78 x | 26.9% |" in text
+    assert "6,138 exact, 200 displaced, 3 bare" in text
+    assert "Closed form differs from the card count on 1 of 2 worlds" in text
+
+
+def test_the_swatch_section_reports_the_fetch(tmp_path: Path):
+    """Worlds spec §2.2's report line: cache hits, fetches and failures."""
+    data = _report_input(tmp_path)
+    data.swatches = SwatchStats(
+        wanted=28_603,
+        cache_hits=28_600,
+        fetched=3,
+        failures=[("abc-def", "HTTP 404")],
+        bytes_downloaded=240_000,
+        elapsed_s=90.0,
+    )
+
+    text = render(data)
+
+    assert "## Swatch fetch (worlds spec §2.2)" in text
+    assert "28,603 cards wanted a swatch from Scryfall `art_crop`" in text
+    assert "28,600 already cached, 3 fetched, 1 failed" in text
+    assert "| `abc-def` | HTTP 404 |" in text
+    assert "A failed swatch is a black cell" in text
 
 
 def test_the_brightness_cap_section_reports_the_cap_and_who_is_above_it(tmp_path: Path):

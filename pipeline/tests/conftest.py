@@ -46,6 +46,7 @@ def printing(
     content_warning: bool = False,
     collector_number: str = "1",
     image_ts: int = 1700000000,
+    artist: str = "Test Artist",
     is_meld_result: bool = False,
 ) -> RawPrinting:
     return RawPrinting(
@@ -65,6 +66,7 @@ def printing(
         content_warning=content_warning,
         collector_number=collector_number,
         image_ts=image_ts,
+        artist=artist,
         is_meld_result=is_meld_result,
     )
 

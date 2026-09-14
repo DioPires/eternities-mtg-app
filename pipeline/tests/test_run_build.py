@@ -75,9 +75,29 @@ def _write_cache(cache_dir: Path, cards: list[dict[str, object]]) -> None:
     (cache_dir / f"sets-{STAMP}.json").write_text(json.dumps({"data": SETS}), encoding="utf-8")
 
 
+def _write_swatch_cache(path: Path, cards: list[dict[str, object]]) -> None:
+    """A pre-warmed swatch cache, so the build takes the cache-hit path and never leaves the box.
+
+    The swatch stage is the second impure stage (worlds spec §2.2) and it is resumable by design:
+    a record already in the cache is never fetched. Seeding it here is what keeps this suite's
+    "everything downstream is the code that ships" claim true — the stage runs for real, decides
+    every card is cached, and reports 0 fetched.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "".join(
+            json.dumps({"id": str(card["id"]), "ts": 1700000000, "s": [i, i, i, i]}) + "\n"
+            for i, card in enumerate(cards)
+        ),
+        encoding="utf-8",
+    )
+
+
 def _build(tmp_path: Path, *, as_of: str, cards: list[dict[str, object]]) -> run.BuildResult:
     cache_dir = tmp_path / "cache"
     _write_cache(cache_dir, cards)
+    swatch_cache = tmp_path / "swatches.jsonl"
+    _write_swatch_cache(swatch_cache, cards)
     return run.build(
         as_of=as_of,
         data_root=tmp_path / "data",
@@ -85,6 +105,7 @@ def _build(tmp_path: Path, *, as_of: str, cards: list[dict[str, object]]) -> run
         cache_dir=cache_dir,
         roster_diff=False,  # the wiki diff is a report item, and this must not touch the network
         bulk_updated_at=BULK_UPDATED_AT,
+        swatch_cache_path=swatch_cache,
         log=_quiet,
     )
 

@@ -7,12 +7,12 @@
 | Field | Value |
 |---|---|
 | Dataset | production |
-| Data hash | `9393bd85c850ed35` |
+| Data hash | `55f206be630164d0` |
 | Run date (`--as-of`) | 2026-09-04 |
 | Scryfall bulk `updated_at` | 2026-09-04T09:05:32.308+00:00 |
 | Scryfall bulk file | `default-cards-20260904090532.json` |
-| Pipeline version | 0.4.0 |
-| Contract version | 2 |
+| Pipeline version | 0.5.0 |
+| Contract version | 3 |
 
 ## Counts
 
@@ -65,9 +65,23 @@
 | Ravnica | `ravnica` | 3 | 1 | irregular |
 | Segovia | `segovia` | 0 | 0 | empty |
 
-## Plane radius headroom (PRD 5.3.2, span 30,000 cards)
+## Surface assignment (worlds spec §1.3)
 
-No plane is within 90% of the radius span; every plane's card count still moves its radius.
+9 cards over 3 worlds: **9 exact, 0 displaced, 0 bare.** The grid relaxes to the population — only the per-row *cell counts* move; the row latitudes stay equal-angle and the band boundaries stay equal-area and are never snapped to a row. `rowCells` in `planes.json` is the shipped table (§2.4).
+
+| World | Cards | Exact | Displaced | Bare | Rows | Closed form | Aspect |
+|---|---|---|---|---|---|---|---|
+| `dominaria` | 6 | 6 | 0 | 0 | 3 | 9 x | 125.0% |
+| `ravnica` | 3 | 3 | 0 | 0 | 2 | 4 x | 112.1% |
+| `segovia` | 0 | 0 | 0 | 0 | 0 | 0 | 0.0% |
+
+**Closed form differs from the card count on 2 of 3 worlds** (marked `x`). That column is what §1.3's relaxation exists for and why §2.4 ships `rowCells` rather than a formula: `round(2*pi*sin(theta) / (aspect*dphi))` summed over the rows is only approximately the card count, and the shipped grid has to be exactly it.
+
+**Aspect** is the worst row's deviation from 4:3. It is bounded by integer `rowCells`, not by the surface law: a two-cell polar row has an aspect of pi/2. The renderer must letterbox art into the cell's own rect and may not assume 4:3 anywhere (§2.1).
+
+## Swatch fetch (worlds spec §2.2)
+
+This dataset carries no `swatches.bin`.
 
 ## Brightness cap per plane (PRD 5.4.10)
 
@@ -133,11 +147,11 @@ Each row should trace to an appendix or override edit (PRD 9.2.3).
 
 | File | Bytes |
 |---|---|
-| `planes.json` | 2,764 |
+| `planes.json` | 2,295 |
 | `search.json` | 862 |
 | `sets.bin` | 312 |
 | `stars.bin` | 160 |
-| `planes/*.json` (4 shards) | 2,911 |
+| `planes/*.json` (4 shards) | 3,079 |
 
-Written to `web/public/data/9393bd85c850ed35/` (PRD 8.8.3).
+Written to `web/public/data/55f206be630164d0/` (PRD 8.8.3).
 

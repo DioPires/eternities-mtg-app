@@ -1,0 +1,74 @@
+{
+  "contractVersion": 3,
+  "pipelineVersion": "0.5.0",
+  "dataset": "fixture-small",
+  "dataHash": "c791f8d91a9ee048",
+  "asOf": "2026-09-04",
+  "generatedAt": "2026-09-04T00:00:00Z",
+  "scryfallBulkUpdatedAt": null,
+  "starRecordBytes": 12,
+  "swatchRecordBytes": 8,
+  "shardSize": 2000,
+  "counts": {
+    "planes": 5,
+    "stars": 500,
+    "sets": 23,
+    "printings": 1099,
+    "blindEternitiesStars": 110,
+    "blindEternitiesShare": 0.22
+  },
+  "planeShards": {
+    "blind-eternities": 1,
+    "dominaria": 1,
+    "innistrad": 1,
+    "ravnica": 1,
+    "segovia": 1
+  },
+  "files": [
+    {
+      "path": "planes.json",
+      "bytes": 4068,
+      "sha256": "abbb3710db98f93e9b627d46adf6431442f048a0570baf82196cd28a87c6d6ef"
+    },
+    {
+      "path": "planes/blind-eternities.0.json",
+      "bytes": 45433,
+      "sha256": "0427f32814f995278e2f58a0a63339b7ff74495c5da44f5ff3aa6413006e2920"
+    },
+    {
+      "path": "planes/dominaria.0.json",
+      "bytes": 17934,
+      "sha256": "97d0faff75f8381aaa22288a1f412d6b9d7c489a942955949c7280cae3c05188"
+    },
+    {
+      "path": "planes/innistrad.0.json",
+      "bytes": 95,
+      "sha256": "dd9420a5fd3bed609fbe4e534b7a08ae0720303ad2988a197e253e1b5d8854d3"
+    },
+    {
+      "path": "planes/ravnica.0.json",
+      "bytes": 54190,
+      "sha256": "9166cd2bd0c46193b351bdbdee02de132d6ecedcfbfd650fa364fa84eda8336f"
+    },
+    {
+      "path": "planes/segovia.0.json",
+      "bytes": 91429,
+      "sha256": "3a4afaf4681a7cedbe5cd2cc1818f71f1c44eb116e33b3be4c87a14d9d1003eb"
+    },
+    {
+      "path": "search.json",
+      "bytes": 17122,
+      "sha256": "1f943a0f06cc9e5059409b8a2b9dd1a00d7af3098c6da6a1e1105546bbda73ab"
+    },
+    {
+      "path": "sets.bin",
+      "bytes": 11272,
+      "sha256": "6837f77ce5ad0767b252038889a395687115ab50255c0789c8027ac1aca59437"
+    },
+    {
+      "path": "stars.bin",
+      "bytes": 6016,
+      "sha256": "f66ef185cb0e5203bb59bf4f19e2a86521c76d3dec7869be5b938c32a2546c05"
+    }
+  ]
+}

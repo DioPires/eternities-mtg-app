@@ -343,13 +343,9 @@ def test_the_stamp_exemption_must_reach_the_origin_test_too():
 def test_a_stamp_exemption_does_not_leak_to_other_sets():
     """The exemption is a statement about one set, not a change to what `triangle` means."""
     rows = [printing(oracle_id="ub", set_code="mix", security_stamp="triangle")]
-    apx = appendices(
-        sets=[set_entry("clu", plane="ravnica", stamp_exempt=True), set_entry("mix")]
-    )
+    apx = appendices(sets=[set_entry("clu", plane="ravnica", stamp_exempt=True), set_entry("mix")])
     sets = {"clu": scry_set("clu"), "mix": scry_set("mix")}
-    assert _filter(rows, sets=sets, apx=apx).dropped_by_rule[
-        "4.3.5 security_stamp triangle"
-    ] == 1
+    assert _filter(rows, sets=sets, apx=apx).dropped_by_rule["4.3.5 security_stamp triangle"] == 1
     assert _exclude(rows, rows, apx, sets).included == set()
 
 
