@@ -26,6 +26,7 @@ import type { ImageQueue } from '../src/scene/cards/imageQueue'
 import { attachWorlds, DEFAULT_TIER_ART_LAYERS } from '../src/scene/worlds/attachWorlds'
 import { KEY_LIGHT_OFF_AXIS, keyLightDirection } from '../src/scene/worlds/keyLight'
 import { artPoolSize } from '../src/scene/worlds/artPool'
+import { DEFAULT_BYTE_BUDGET } from '../src/scene/worlds/artStream'
 import { CROSSOVER_HIGH_PX } from '../src/scene/worlds/lod'
 import { isWorldPlane, worldPlanesOf } from '../src/scene/worlds/worldSource'
 import { worldsProbeOf } from '../src/scene/worlds/worldsProbe'
@@ -471,6 +472,163 @@ describe('the shared art pool (§1.6, §1.12)', () => {
     // Every cell draws its swatch, which is what §1.4's shading path already does with nothing
     // resident — and the payload is still a measurement, not a setup failure.
     expect(worldsProbeOf(rig.worlds.probeSource())?.pool.layers).toBe(0)
+    rig.worlds.dispose()
+  })
+})
+
+/**
+ * §1.6's stream report, **on the shipped path** (DEC-778).
+ *
+ * `worlds-served-probe.test.ts` pins the payload's shape against a hand-built report; that proves
+ * the field is carried and nothing about where its numbers come from. These rows drive the real
+ * `ArtStream` through `attachWorlds` and read the counters back off `?probe=`, because the whole
+ * purpose of the field is a claim about what the *renderer's* stream did — and a constant cannot
+ * testify to its own provenance.
+ *
+ * Every assertion below is a **matrix**, never a single reading. §1.6 counts three decline causes
+ * separately precisely so W4's control can tell them apart, so each cause is shown non-zero under
+ * the input that produces it *and* zero under a control that differs in one thing: a row that only
+ * showed `declinedBudget > 0` under a zero budget would score identically against a stream that
+ * incremented all three counters together.
+ */
+describe('§1.6 the stream report reaches the probe (DEC-778)', () => {
+  /** A queue whose requests never land: these rows measure what is *asked*, not what arrives. */
+  function pendingQueue(): ImageQueue {
+    return {
+      request: () => new Promise<never>(() => {}),
+      cancel: () => {},
+      dispose: () => {},
+    } as unknown as ImageQueue
+  }
+
+  /** `printingId`s the stream can build a URL from — the wiring DEC-772 found missing. */
+  const CARD_OF = (plane: { slug: string }, card: number) => ({
+    printingId: `${plane.slug}:${card}`,
+    imageTs: 1,
+  })
+
+  /** Compose, pose at Dominaria and tick — the pose §3.1 states W4 at. */
+  function readAt(rig: Rig, ticks = 1) {
+    const world = rig.worlds.surfaces.find((s) => s.planeSlug === 'dominaria')!
+    poseAt(rig.camera, world.centre, world.radius, 2.2)
+    for (let i = 0; i < ticks; i += 1) rig.tick()
+    return worldsProbeOf(rig.worlds.probeSource())!
+  }
+
+  it('publishes zeros for a wired stream that nothing asked — not `null`', () => {
+    // The control every row below is read against, and a real state rather than a contrivance:
+    // this is the composition DEC-772 found shipped, where the stream existed and no cell could
+    // reach it because `sceneHost` supplied no `cardOf`. The payload has to be able to say that,
+    // and it must not say it the way a world with no stream at all says it.
+    const rig = build({ queue: pendingQueue() })
+    rig.worlds.setData(roster())
+    const probe = readAt(rig)
+    expect(probe.stream).not.toBeNull()
+    expect(probe.stream).toEqual({
+      bytesFetched: 0,
+      byteBudget: DEFAULT_BYTE_BUDGET,
+      swatchOnly: false,
+      requested: 0,
+      resolved: 0,
+      failed: 0,
+      declinedExhausted: 0,
+      declinedBudget: 0,
+      declinedFailedBefore: 0,
+    })
+    rig.worlds.dispose()
+  })
+
+  it('publishes `null` where there is no stream, which `?layers=0` is', () => {
+    // A zero-layer pool builds no `ArtStream` at all (§1.6's legal swatch-only world). That is a
+    // different sentence from the row above and the payload keeps it different: a synthesised
+    // zero report here would tell the gate a 64 MiB budget is unspent on a session that has no
+    // budget, no queue and no possibility of art.
+    const rig = build({ queue: pendingQueue(), cardOf: CARD_OF, seams: { ...NO_SEAMS, layersRequested: 0 } })
+    rig.worlds.setData(roster())
+    const probe = readAt(rig)
+    expect(probe.pool.layers).toBe(0)
+    expect(probe.stream).toBeNull()
+    rig.worlds.dispose()
+  })
+
+  it('counts a budget decline as `declinedBudget`, and an unspent budget as none', () => {
+    // `byteBudget: 0` is swatch-only from frame one — §1.6's documented degenerate case — so every
+    // admitted want is refused by the budget and nothing is ever requested.
+    const declined = build({ queue: pendingQueue(), cardOf: CARD_OF, byteBudget: 0 })
+    declined.worlds.setData(roster())
+    const spent = readAt(declined)
+    expect(spent.stream?.swatchOnly).toBe(true)
+    expect(spent.stream?.declinedBudget).toBeGreaterThan(0)
+    expect(spent.stream?.requested).toBe(0)
+    // The cause is the budget and not the pool: this world's pool is 224 layers and untouched.
+    expect(spent.stream?.declinedExhausted).toBe(0)
+    expect(spent.stream?.declinedFailedBefore).toBe(0)
+    declined.worlds.dispose()
+
+    // **The non-binding control.** Same rig, same pose, same roster, one input changed. Without it
+    // a stream that declined everything for any reason at all would score the row above green.
+    const funded = build({ queue: pendingQueue(), cardOf: CARD_OF })
+    funded.worlds.setData(roster())
+    const asking = readAt(funded)
+    expect(asking.stream?.swatchOnly).toBe(false)
+    expect(asking.stream?.declinedBudget).toBe(0)
+    expect(asking.stream?.requested).toBeGreaterThan(0)
+    funded.worlds.dispose()
+  })
+
+  it('counts a pool with nothing to give as `declinedExhausted`, and a full one as none', () => {
+    // `?artThreshold=fixed24` is the seam §3.1's W4 control drives exhaustion with; here the pool
+    // is pinned at one layer instead, which reaches the same refusal without also moving the
+    // threshold — so the counter that rises is attributable to the pool alone.
+    const starved = build({
+      queue: pendingQueue(),
+      cardOf: CARD_OF,
+      seams: { ...NO_SEAMS, layersRequested: 1 },
+    })
+    starved.worlds.setData(roster())
+    const short = readAt(starved)
+    expect(short.pool.layers).toBe(1)
+    expect(short.stream?.declinedExhausted).toBeGreaterThan(0)
+    // One layer, so exactly one key is ever reserved and asked for. Every other want is refused by
+    // the pool, and by the pool only — the budget is untouched.
+    expect(short.stream?.requested).toBe(1)
+    expect(short.stream?.declinedBudget).toBe(0)
+    starved.worlds.dispose()
+
+    // The control: the clamped 224-layer pool at the same pose declines nothing for exhaustion.
+    const roomy = build({ queue: pendingQueue(), cardOf: CARD_OF })
+    roomy.worlds.setData(roster())
+    const ample = readAt(roomy)
+    expect(ample.pool.layers).toBe(224)
+    expect(ample.stream?.declinedExhausted).toBe(0)
+    roomy.worlds.dispose()
+  })
+
+  it('charges the bytes of a body that failed to decode, and refuses that key after', async () => {
+    // The third cause, and the one that carries `bytesFetched` with it. A body that arrived and
+    // then failed to decode HAS been paid for (§1.6), so this row is the only place the published
+    // byte count is non-zero — and it is the queue's own `Blob.size`, never the Resource Timing
+    // API, which reads 0 for Scryfall cross-origin without `Timing-Allow-Origin` (DEC-772).
+    const BYTES = 90_112
+    const failing = {
+      request: () => Promise.resolve({ ok: false, reason: 'failed', bytes: BYTES }),
+      cancel: () => {},
+      dispose: () => {},
+    } as unknown as ImageQueue
+    const rig = build({ queue: failing, cardOf: CARD_OF, seams: { ...NO_SEAMS, layersRequested: 1 } })
+    rig.worlds.setData(roster())
+    // One tick files the request; the settle is a microtask, so it lands before the second tick
+    // asks again — and the second ask is the one that must be refused by the never-retry set.
+    const first = readAt(rig)
+    expect(first.stream?.requested).toBe(1)
+    await Promise.resolve()
+    const second = readAt(rig)
+    expect(second.stream?.failed).toBe(1)
+    expect(second.stream?.bytesFetched).toBe(BYTES)
+    expect(second.stream?.declinedFailedBefore).toBeGreaterThan(0)
+    // Charged, and still far under budget: `swatchOnly` must not trip on one failed body.
+    expect(second.stream?.byteBudget).toBe(DEFAULT_BYTE_BUDGET)
+    expect(second.stream?.swatchOnly).toBe(false)
     rig.worlds.dispose()
   })
 })
