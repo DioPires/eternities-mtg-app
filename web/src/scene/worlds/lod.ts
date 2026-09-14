@@ -42,6 +42,47 @@ export const CROSSOVER_HIGH_PX = 8
  */
 export const TINT_RADIUS_PX = 6
 
+/**
+ * A world's on-screen **radius** in CSS px — the quantity {@link TINT_RADIUS_PX} is a threshold on.
+ *
+ * Distinct from {@link cellHeightPx}, which sizes one cell: the far LOD draws no cells, so the only
+ * scale it has is the whole world's disc.
+ */
+export function worldRadiusPx(
+  radius: number,
+  distance: number,
+  viewportHeightPx: number,
+  fovRadians: number,
+): number {
+  if (distance <= 0) return Infinity
+  return (radius * viewportHeightPx) / (2 * distance * Math.tan(fovRadians / 2))
+}
+
+/**
+ * How far a distant world has moved from its equirect sample toward §1.8's palette tint (§1.5).
+ *
+ * `0` = the equirect sample alone, `1` = the tint alone. Far below the crossover the layer stops
+ * carrying information — the sampler returns something close to the layer's own mean, and **a mean
+ * over a balanced colour pie is grey for every plane** — so without this every world at the home
+ * view reads as the same dot.
+ *
+ * > **Normative — R1 owns this factor and §1.8 owns the colour it mixes toward (§4).** The staffing
+ * > table puts §1.3–§1.6 on R1 and §1.7–§1.9 on R2, and the boundary falls exactly here: the *mix*
+ * > belongs to §1.5's LOD, while the x3.2 palette-deviation stretch it mixes toward is §1.8's and
+ * > ships with the system instance mesh. Two legs each computing their own blend factor is how the
+ * > crossover and the tint end up disagreeing about where a world stops being itself.
+ *
+ * Smoothstepped for the same reason §1.5's crossover is a band rather than a switch: a linear ramp
+ * has a slope discontinuity at the threshold, which on a slow approach reads as the moment the
+ * colour "catches".
+ */
+export function tintMix(radiusPx: number, tintRadiusPx = TINT_RADIUS_PX): number {
+  if (!(tintRadiusPx > 0)) return 0
+  if (!(radiusPx < tintRadiusPx)) return 0
+  const t = radiusPx > 0 ? 1 - radiusPx / tintRadiusPx : 1
+  return t * t * (3 - 2 * t)
+}
+
 /** Which passes a world draws in this frame, and how they blend (§1.2, §1.5). */
 export interface CrossoverState {
   /** §1.2 step 2 — one instance of the system icosphere, textured from the world's equirect layer. */

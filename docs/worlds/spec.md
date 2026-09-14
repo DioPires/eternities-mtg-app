@@ -533,6 +533,20 @@ balanced colour pie is grey for every plane (§1.8). So a distant instance mixes
 sample toward §1.8's stretched palette-deviation tint as its on-screen radius falls below **6 px**.
 That is where §1.8's ×3.2 stretch lives and the only place it applies.
 
+> **Normative — R1 owns the tint *mix*, §1.8 owns the colour it mixes toward (§4, DEC-749).** §4's
+> staffing table puts §1.3–§1.6 on R1 and §1.7–§1.9 on R2, and the boundary falls exactly on this
+> paragraph, which is the one place the two sections meet. The blend factor is part of §1.5's LOD and
+> ships with it as `tintMix(worldRadiusPx(...))`; the ×3.2 palette-deviation colour is §1.8's and
+> ships with the step-2 instance mesh that samples it. Two legs each deriving their own blend factor
+> is how the crossover and the tint end up disagreeing about where a world stops being itself — and
+> because both representations are self-consistent on their own side of the disagreement, it reads
+> as a world that dims at the wrong distance rather than as a defect in either leg.
+>
+> The mix is smoothstepped over `[0, 6 px]`, for the same reason §1.5's crossover is a band rather
+> than a switch: a linear ramp has a slope discontinuity at the threshold, which on a slow approach
+> reads as the moment the colour "catches". The two endpoints are fixed, so a world at exactly 6 px
+> samples the equirect layer alone and the tint is reachable only below it.
+
 ### 1.6 The art stream
 
 `art_crop` letterboxed into 128×96 layers of a `TEXTURE_2D_ARRAY`, uploaded one layer at a time with
@@ -629,6 +643,41 @@ fetches (≈ 170 MB) for one camera pose.
 > is conservative by nothing at the measured pose — but it is the difference between W4 measuring
 > the picture and W4 measuring the bookkeeping, which is exactly the distinction the prototype's
 > 1,031-resident-in-1,024 bug hid behind.
+
+> **Normative — the admission height is the *projected rect's*, and it is the same call §3.1's
+> payload makes (DEC-749).** A cell's on-screen height has two plausible spellings: the small-angle
+> extent `2·latArc·radius` over the cell's depth, and the height of the bounding box of the
+> projected sphere-following vertex grid. They are not the same number — measured over the shipped
+> roster at §3.1's 2.2-radii pose they differ by up to **79%** on the same cell, because the
+> small-angle form carries no foreshortening and so sizes a cell at the limb as though it sat at the
+> centre of the disc.
+>
+> §3.1 reports `wantsArt` as `rect.height >= effectiveThresholdPx`. If the renderer admits on the
+> other spelling, **that field describes a predicate the renderer never evaluated**, and W4 scores a
+> quantity nothing in the shipped path computes. The failure is silent in the worst way: the picture
+> stays correct, because the sheet is drawn by the shader from its own attributes, and only the
+> *measurement* moves. One quantity, one call site — renderer and probe reach the same
+> `cellScreenRect`. The same reason keeps the stored height a double: narrowing it to `float32` puts
+> the two a rounding step apart at the threshold boundary, which is exactly where W4's cells sit.
+
+> **Normative — residency drives the picture, admission drives the asking (DEC-749).** A cell draws
+> art when the pool holds its key *resolved*; a cell *asks* for art when it is above the frame's
+> effective threshold **and** passes §1.6's facing and frustum tests. Deliberately two predicates:
+>
+> - **Fading toward a RESERVED layer shows the previous card's pixels.** A reserved layer holds no
+>   art yet, so the fade may only advance once the fetch has landed. Keying it on what `reserve`
+>   returned cross-fades every cell into whatever its layer held before it was claimed.
+> - **Eviction has to pull the picture back, and only a per-frame re-read can.** A cell holding layer
+>   `L` at `iArt = 1` whose key is evicted goes on sampling `L`, which now belongs to another card —
+>   the **wrong card's art, at full opacity**, for as long as the cell is on screen. There is no
+>   eviction callback, and adding one would put the invariant in two places.
+>
+> Tying the picture to admission instead would also flicker exactly the boundary cells the
+> threshold's one-sided hysteresis exists to hold still. Note that the renderer's admission is
+> strictly narrower than the reported `wantsArt`, which is the size test alone: §3.1 reports
+> `frontFacing` and `onScreen` beside it so the gate can recover either predicate, and folding them
+> into the reported field would leave it unable to tell a cell that was too small from one that was
+> merely turned away.
 
 Fetch discipline: `mode: 'cors'`, `credentials: 'omit'`, at most 6 concurrent (PRD 7.2's politeness
 cap — the `*.scryfall.io` origins have no rate limit, `docs/scryfall-policy.md` §4, but the cap is
