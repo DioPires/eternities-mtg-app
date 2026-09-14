@@ -611,11 +611,28 @@ fetches (≈ 170 MB) for one camera pose.
 
 > **Normative.** The effective art threshold is a **per-frame quantile**, not a constant. Maintain a
 > 64-bucket histogram of the on-screen pixel heights of wanting cells (one pass, no sort). If the
-> count above 24 px exceeds the pool capacity, raise the effective threshold to the bucket at which
-> the running count crosses capacity, with one bucket of hysteresis so the boundary does not
-> oscillate. The result is the same picture — a ring of art around the sub-camera point — reached by
-> design rather than by exhaustion, with a bounded fetch count and near-zero steady-state eviction.
-> Acceptance criterion **W4** (§3.1) measures exactly this.
+> count above 24 px exceeds the pool capacity, count down from the tallest bucket until admitting one
+> more would carry the running total past capacity, and raise the effective threshold to the lower
+> edge of the bucket **above** that crossing one — the last bucket that fit — with one bucket of
+> hysteresis so the boundary does not oscillate. The result is the same picture — a ring of art
+> around the sub-camera point — reached by design rather than by exhaustion, with a bounded fetch
+> count and near-zero steady-state eviction. Acceptance criterion **W4** (§3.1) measures exactly
+> this.
+>
+> **Normative — the one exception, and a pool with demand in front of it is never left idle (DEC-768
+> F1, DEC-770 N3).** Where the crossing bucket is the **first non-empty** one, "the last bucket that
+> fit" is a bucket nothing is in: the frame admits nothing at all and every layer of the pool sits
+> idle in front of a world that wants art, which is strictly worse than the `fixed24` prototype this
+> quantile replaces. So take the **crossing bucket itself** whenever the bucket above it would admit
+> nothing, and leave the overshoot — at most that one bucket's own count — to the pool's LRU. A frame
+> that asks for 1.2 pools is a frame with one round of eviction in it; a frame that asks for nothing
+> is a world with no art on it at all. **A capacity of zero is excluded from the exception**, because
+> a pool of no layers is a legal swatch-only world (§1.12) and must admit nothing.
+>
+> This paragraph is the rule, not a gloss on the one above it: taking the crossing bucket
+> *unconditionally* overshoots capacity every frame, and the sentence above without this exception is
+> the reading that produced the idle pool. Both halves are pinned at the unit — the exception and its
+> control — in `worlds-art-stream.test.ts`.
 
 > **Normative — ship the seam that turns the quantile off: `?artThreshold=fixed24`.** It restores
 > the prototype's behaviour exactly — a constant 24 CSS px threshold, no histogram, no hysteresis,
@@ -641,8 +658,9 @@ fetches (≈ 170 MB) for one camera pose.
 > terms unpinned on the default path while every assertion about them still passes.
 >
 > The mechanism is not a property of any one world, and in particular it is **not** "the worlds whose
-> threshold rises highest go empty": dominaria has the *lowest* risen threshold on the roster (32.50
-> px) and goes empty, while bloomburrow at 35.06 px does not. A back-facing cell projects at most
+> threshold rises highest go empty": dominaria has the *lowest* risen threshold on the roster (30.13
+> px at 16, 64 and 128 layers alike — it read 32.50, one bucket higher, until DEC-769 fixed F1 above)
+> and goes empty, while bloomburrow at 35.06 px does not. A back-facing cell projects at most
 > ~0.82x the height of the world's tallest front-facing cell at this pose — near-constant across the
 > roster — so the exclusion binds exactly while the threshold sits below that fraction, and the
 > threshold is set by **demand against capacity**, nothing else.

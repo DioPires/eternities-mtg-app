@@ -157,10 +157,15 @@ describe('§1.6 the per-frame adaptive threshold', () => {
     expect(report.adaptive).toBe(true)
   })
 
-  it('raises the threshold to the bucket where the running count crosses capacity', () => {
+  it('raises the threshold until what the frame asks for fits the pool', () => {
     // The prototype's measured failure at `tether-surface` is 1,024 drawn against 2,759 wanted with
     // 925 evictions: the visible swatch/art boundary in that frame IS the budget being exhausted.
     // The quantile reaches the same picture by design instead.
+    //
+    // The NAME used to say "the bucket where the running count crosses capacity", which is the §1.6
+    // sentence DEC-768 F1 was derived from and is not what this row asserts or what the code does: a
+    // `24 + (i % 400)` fill spreads demand over a contiguous run of buckets, so the crossing bucket
+    // is never the first non-empty one and the threshold lands on the bucket ABOVE it (DEC-770 N3).
     const threshold = new AdaptiveThreshold()
     threshold.begin()
     for (let i = 0; i < 2759; i += 1) threshold.offer(24 + (i % 400))
@@ -293,8 +298,8 @@ describe('§1.6 the quantile and its hysteresis (DEC-768 F1, F2)', () => {
 
     expect(report.wanting).toBe(922)
     expect(report.admitted, 'the pool must not sit idle in front of demand').toBe(158)
-    // §1.6: "raise the effective threshold to the bucket AT WHICH the running count crosses
-    // capacity" — bucket 3's edge, 30.13 px, not bucket 4's 32.50 px.
+    // §1.6's exception: the crossing bucket ITSELF, because the one above it is empty — bucket 3's
+    // edge, 30.13 px, and not bucket 4's 32.50 px, which is what this world read before the fix.
     expect(report.effectiveThresholdPx).toBeCloseTo(bucketEdgePx(3), 9)
 
     // The overshoot is real, and is bounded by that one bucket's own count. It goes to the pool's

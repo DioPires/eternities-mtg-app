@@ -8,11 +8,17 @@
  *
  * > **Normative.** The effective threshold is a **per-frame quantile**, not a constant. Maintain a
  * > 64-bucket histogram of the on-screen pixel heights of wanting cells (one pass, no sort). If the
- * > count above 24 px exceeds the pool capacity, raise the effective threshold to the bucket at
- * > which the running count crosses capacity, with one bucket of hysteresis so the boundary does
- * > not oscillate. The result is the same picture — a ring of art around the sub-camera point —
- * > reached by design rather than by exhaustion, with a bounded fetch count and near-zero
- * > steady-state eviction. Acceptance criterion **W4** (§3.1) measures exactly this.
+ * > count above 24 px exceeds the pool capacity, count down from the tallest bucket until admitting
+ * > one more would carry the running total past capacity, and raise the effective threshold to the
+ * > lower edge of the bucket **above** that crossing one — the last bucket that fit — with one
+ * > bucket of hysteresis so the boundary does not oscillate. The result is the same picture — a ring
+ * > of art around the sub-camera point — reached by design rather than by exhaustion, with a bounded
+ * > fetch count and near-zero steady-state eviction. Acceptance criterion **W4** (§3.1) measures
+ * > exactly this.
+ * >
+ * > **Normative — the one exception (DEC-768 F1).** Where the crossing bucket is the first non-empty
+ * > one, take the crossing bucket itself, unless capacity is zero. See {@link AdaptiveThreshold.end},
+ * > which carries that rule and the measurement behind it.
  */
 
 /** The prototype's constant, which is still the floor the quantile starts from (§1.6). */
@@ -142,13 +148,15 @@ export class AdaptiveThreshold {
    * cell leaves the threshold at the 24 px floor, which is the ordinary case away from a surface.
    *
    * > **Normative — a pool with demand in front of it is never left idle (§1.6, DEC-768 F1).** The
-   * > last bucket that fit is one bucket *above* the one the running count crosses at, and §1.6
-   * > says the crossing one. The two agree everywhere except the case where the crossing bucket is
-   * > the **first non-empty one** — where "the last that fit" is a bucket nothing is in, so the
-   * > frame admits **nothing at all** and every layer of the pool sits idle in front of a world
-   * > that wants art. Measured before this branch existed: `dominaria` at 2.2 world-radii, tier 4's
+   * > last bucket that fit is one bucket *above* the one the running count crosses at, which is what
+   * > §1.6 asks for everywhere except the case where the crossing bucket is the **first non-empty
+   * > one** — where "the last that fit" is a bucket nothing is in, so the frame admits **nothing at
+   * > all** and every layer of the pool sits idle in front of a world that wants art.
+   * >
+   * > Measured before this branch existed: `dominaria` at 2.2 world-radii, tier 4's
    * > 128 layers, 922 wanting cells in buckets 0–3 (185/299/280/158) — bucket 3 alone exceeds 128,
-   * > the threshold jumped to 32.50 px and **0** of 128 layers were used. The same world at 1.8
+   * > the threshold jumped to bucket 4's 32.50 px and **0** of 128 layers were used; it now sits at
+   * > bucket 3's **30.13 px** and admits that bucket (DEC-770 N2). The same world at 1.8
    * > radii wanted 961 and admitted 0 as well; they were the only two poses of ninety in that sweep
    * > that did. That is strictly worse than the `fixed24` prototype this quantile replaces, at the
    * > pose §3.1 states W4 at.
