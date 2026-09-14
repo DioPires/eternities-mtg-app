@@ -16,10 +16,18 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import type { SetsSidecar, Stars } from '../data/decode'
-import { LOAD_ATTEMPTS, loadManifest, loadPlanes, loadSearch, loadSets } from '../data/load'
+import type { SetsSidecar, Stars, Swatches } from '../data/decode'
+import {
+  LOAD_ATTEMPTS,
+  loadManifest,
+  loadPlanes,
+  loadSearch,
+  loadSets,
+  loadSwatches,
+} from '../data/load'
 import type { Manifest, PlanesFile, SearchFile } from '../data/types'
 import { sceneErrors } from './errors'
+import { worldPlanesOf } from './worlds/worldSource'
 import { bootPositionMode } from './platform/capabilities'
 import { createNebulaTexture } from './starfield/nebulaTexture'
 import { PlaneTable } from './starfield/planeTable'
@@ -49,6 +57,24 @@ export interface SceneDataState {
    * the largest artefact on the page. `null` while streaming, and after a failed transfer.
    */
   readonly stars: Stars | null
+  /**
+   * `swatches.bin`, on a **worlds** dataset only (worlds spec §2.2).
+   *
+   * `null` on a v2 dataset, where the file does not exist, and `null` on a worlds dataset whose
+   * fetch failed — reported either way, never silently. What makes a dataset a worlds dataset is
+   * `planes.json` carrying `rowCells` (§2.4), and that is the test made before asking for the file
+   * at all; `load.ts` is explicit that once the caller has decided, a missing file is an error and
+   * not a degraded mode, because a world painted from anything but its cards' art is a picture that
+   * reads as the product working.
+   *
+   * **Failing this artefact does not fail the load, today.** §3.2 keeps the galaxy and the worlds
+   * path coexisting until the gate, the owner, the W0.1 field reports and feature parity all clear,
+   * so a broken `swatches.bin` must not cost a user the multiverse it is not part of. What it does
+   * cost is every world: nothing composes, and `__eternitiesProbe.worlds()` answers `undefined`,
+   * which §3.1 defines as a **setup failure** rather than a measurement. At cutover this joins
+   * `planes.json` on the fatal row, because there is then nothing else to draw.
+   */
+  readonly swatches: Swatches | null
   readonly search: SearchFile | null
   readonly sets: SetsSidecar | null
   /** Human-readable progress, and the Phase 0 contract check it inherited. */
@@ -64,6 +90,7 @@ const INITIAL: SceneDataState = {
   expected: 0,
   starsComplete: false,
   stars: null,
+  swatches: null,
   search: null,
   sets: null,
   report: [],
@@ -191,6 +218,22 @@ export function useSceneData(): SceneDataState {
       lines.push(`star buffer: ${manifest.counts.stars} records, ${positionMode} positions`)
       patch({ planes, resources: { table, geometry, field, positionMode }, expected: manifest.counts.stars })
 
+      /*
+       * `swatches.bin`, beside `stars.bin` rather than in the background pair (§2.2, `load.ts`).
+       *
+       * Issued here, awaited after the star stream: the worlds surface cannot compose without it,
+       * and it is ~200 KB against `stars.bin`'s megabytes, so it costs the stream nothing to have
+       * it in flight alongside. Asked for only when the roster says this is a worlds dataset —
+       * `rowCells` on at least one plane (§2.4) — because on v2 the file does not exist and a
+       * speculative fetch would put a 404 and a toast on every page load of the shipped product.
+       */
+      const swatchLoad = worldPlanesOf(planes.planes).length
+        ? loadSwatches({ signal }).catch((error: unknown) => {
+            if (!signal.aborted) sceneErrors.report('swatches.bin', LOAD_ATTEMPTS, error)
+            return null
+          })
+        : Promise.resolve(null)
+
       // PRD 8.7.5: the background artefacts wait for the first frame.
       //
       // What that buys, precisely (review §5.2 F6): they are not *issued* before the first paint,
@@ -231,6 +274,16 @@ export function useSceneData(): SceneDataState {
           `${planes.planes.filter((p) => (table.planes[p.index]?.fade ?? 0) > 0).length} planes revealed`,
       )
       patch({ drawable: geometry.drawCount, starsComplete: true, stars })
+
+      // **Awaited after `starsComplete` is published, never before it.** `starsComplete` gates the
+      // program warm-up and the GPU self-check, and `swatches.bin` can spend three attempts with
+      // exponential backoff before it gives up — folding it into the line above would hold the
+      // warm-up behind a fetch that has nothing to do with it. So the two land in separate patches,
+      // and the worlds pass is handed all three artefacts at once by its caller rather than
+      // assembling them from setters that can arrive in either order — see `EternitiesScene`.
+      const swatches = await swatchLoad
+      if (swatches) lines.push(`swatches.bin: ${swatches.count} records`)
+      patch({ swatches })
 
       await background
       patch({})

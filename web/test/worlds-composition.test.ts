@@ -110,6 +110,10 @@ function sourceFor(world: World) {
     radius: worldRadius(cardCount),
     centre: CENTRE,
     cardOf: (card: number) => ({ printingId: `p${card}`, imageTs: 1 }),
+    // This file composes **one** world at a time, so every base is as good as every other here and
+    // nothing below can tell 0 from `starOffset`. The assertion that can is in
+    // `worlds-attach.test.ts`, where two worlds share one pool — see `WorldSurfaceSource.artKeyBase`.
+    artKeyBase: 0,
   }
 }
 

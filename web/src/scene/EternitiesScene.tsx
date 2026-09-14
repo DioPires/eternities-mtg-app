@@ -228,6 +228,30 @@ export function SceneView({
     scene3d.setStarsComplete(data.starsComplete)
   }, [scene3d, data.starsComplete])
 
+  /*
+   * The worlds roster (worlds spec §1.2), composed once all three of its artefacts are in hand.
+   *
+   * Assembled here rather than inside the host because `useSceneData` publishes `stars` and
+   * `swatches` in separate patches, in an order it does not control — the swatch fetch is awaited
+   * *after* `starsComplete` so that a failing one cannot hold up the program warm-up. A host that
+   * latched whichever arrived first would be the two-effect ordering hazard DEC-761's F1 was, in a
+   * second place; this way the host is handed a complete roster or nothing at all.
+   *
+   * `null` on a v2 dataset for the whole of §3.2's coexistence period: `swatches` is only ever
+   * fetched when `planes.json` carries `rowCells`, so nothing here allocates on the shipped galaxy.
+   */
+  const worldData = useMemo(
+    () =>
+      data.planes && data.stars && data.swatches
+        ? { planes: data.planes.planes, stars: data.stars, swatches: data.swatches }
+        : null,
+    [data.planes, data.stars, data.swatches],
+  )
+
+  useEffect(() => {
+    scene3d.setWorldData(worldData)
+  }, [scene3d, worldData])
+
   useEffect(() => {
     // The bench flies the camera itself; the rig must not also be attached.
     scene3d.setNavigation(scene, { drive: bench === null })
@@ -440,6 +464,10 @@ export function SceneView({
     focusedStarRef,
     focusedSlugRef,
     cardsRef,
+    // A getter, not a value, and deliberately not a dep of the seam's effect: the world the payload
+    // describes changes as the camera flies, and a seam that re-installed on each change would be
+    // swapped out from under a driver mid-assertion. See `ProbeSeamDeps.worldsSource`.
+    worldsSource: () => scene3d.worldsProbeSource(),
   })
 
   const benchContext = useBenchSeam({

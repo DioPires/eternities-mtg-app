@@ -151,15 +151,29 @@ export function writeEquirectLayer(
  * Note the argument order: three r165 changed `copyTextureToTexture` from
  * `(position, src, dst, level)` to `(src, dst, srcRegion, dstPosition, level)` and warns once at
  * runtime rather than throwing. A call left in the old order silently copies nothing.
+ *
+ * > **The destination is `letterbox`'s origin, not (0, 0) (DEC-749).** `art_crop` is 626x457 against
+ * > a 128x96 layer, so a fitted bitmap is 128x93 and `letterbox` centres it with one texel of bar
+ * > top and two bottom. Uploading at the layer's origin instead shifts every card's art up by a
+ * > texel *and* leaves the bottom three rows holding whatever the layer's previous tenant put there
+ * > — a thin band of a different card along one edge of every cell, which reads as a seam in the
+ * > mosaic rather than as a texture bug. The default is the origin only so the pure-arithmetic
+ * > callers that have no box need not invent one.
  */
 export function uploadArtLayer(
   renderer: WebGLRenderer,
   pool: DataArrayTextureType,
   layer: number,
   source: Texture,
+  origin: { readonly x: number; readonly y: number } = ORIGIN,
 ): void {
   if (layer < 0 || layer >= pool.image.depth) {
     throw new Error(`art layer ${layer} outside the ${pool.image.depth} allocated`)
   }
-  renderer.copyTextureToTexture(source, pool, null, new Vector3(0, 0, layer))
+  renderer.copyTextureToTexture(source, pool, null, new Vector3(origin.x, origin.y, layer))
 }
+
+const ORIGIN = { x: 0, y: 0 } as const
+
+/** The array-texture type these allocators return, for the callers that hold one. */
+export type { DataArrayTextureType }

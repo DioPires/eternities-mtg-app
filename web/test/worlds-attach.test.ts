@@ -1,0 +1,532 @@
+/**
+ * The pass-list cutover (spec §1.1, §1.2): worlds reaching the frame.
+ *
+ * Every other file under `worlds/` had a test before this one, and the whole suite was green while
+ * `__eternitiesProbe.worlds()` returned `undefined` in a browser — because nothing composed a world
+ * and nothing ran one on the tick. That is the class of defect this file exists for, so its rows are
+ * deliberately about *reachability and wiring* rather than about arithmetic: the phase has a
+ * subscriber, the roster composes from the shipped bytes, the payload is the frame it was measured
+ * on, and the coexistence §3.2 promises actually costs nothing.
+ *
+ * **Measured on the shipped v3 dataset**, for the reason `worlds-source.test.ts` gives at length:
+ * the attachment's job is agreeing with an emitter, and a fixture it wrote itself cannot check that.
+ * The renderer is a stub — jsdom has no WebGL — and everything asserted below is CPU state the
+ * shipped path computes, never a pixel.
+ */
+
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { Matrix4, PerspectiveCamera, Scene, Vector2, Vector3, type WebGLRenderer } from 'three'
+
+import { decodeStars, decodeSwatches } from '../src/data/decode'
+import type { PlanesFile } from '../src/data/types'
+import { FrameLoop, TICK_PHASES } from '../src/scene/renderer/frameLoop'
+import type { ImageQueue } from '../src/scene/cards/imageQueue'
+import { attachWorlds, DEFAULT_TIER_ART_LAYERS } from '../src/scene/worlds/attachWorlds'
+import { KEY_LIGHT_OFF_AXIS, keyLightDirection } from '../src/scene/worlds/keyLight'
+import { artPoolSize } from '../src/scene/worlds/artPool'
+import { CROSSOVER_HIGH_PX } from '../src/scene/worlds/lod'
+import { isWorldPlane, worldPlanesOf } from '../src/scene/worlds/worldSource'
+import { worldsProbeOf } from '../src/scene/worlds/worldsProbe'
+import type { WorldsSeams } from '../src/scene/worlds/seams'
+
+const DATA = resolve(__dirname, '../public/data')
+
+function datasetDir(role: string): string {
+  const roles = JSON.parse(readFileSync(resolve(__dirname, '../datasets.json'), 'utf8')) as Record<
+    string,
+    string
+  >
+  return resolve(DATA, roles[role]!)
+}
+
+function bufferOf(path: string): ArrayBuffer {
+  const file = readFileSync(path)
+  return file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength)
+}
+
+const ROOT = datasetDir('worlds')
+const PLANES = JSON.parse(readFileSync(resolve(ROOT, 'planes.json'), 'utf8')) as PlanesFile
+const STARS = decodeStars(bufferOf(resolve(ROOT, 'stars.bin')))
+const SWATCHES = decodeSwatches(bufferOf(resolve(ROOT, 'swatches.bin')))
+const WORLDS = worldPlanesOf(PLANES.planes)
+
+const NO_SEAMS: WorldsSeams = {
+  swatchMean: false,
+  bandsShuffle: false,
+  artThresholdFixed24: false,
+  layersRequested: null,
+}
+
+/** A spec-minimum WebGL2 device: 256 layers, so §1.6's clamp actually binds at tier 0. */
+const SPEC_MINIMUM = { webgl2: true, maxArrayTextureLayers: 256 }
+
+/** CSS pixels. The drawing buffer below is deliberately **twice** this — see the viewport row. */
+const CSS_WIDTH = 1920
+const CSS_HEIGHT = 1080
+
+interface Harness {
+  readonly gl: WebGLRenderer
+  readonly getSize: ReturnType<typeof vi.fn>
+  readonly getDrawingBufferSize: ReturnType<typeof vi.fn>
+  readonly copyTextureToTexture: ReturnType<typeof vi.fn>
+}
+
+/**
+ * A renderer stub offering exactly the three members the attachment touches.
+ *
+ * `getDrawingBufferSize` reports 2x `getSize`, which is a real 2x display and is what makes the
+ * CSS-versus-device row below a measurement rather than a restatement: under the wrong call every
+ * cell measures twice as tall and the crossover moves a full rung, with a picture that still looks
+ * right because the shader never reads either number.
+ */
+function harness(): Harness {
+  const getSize = vi.fn((target: Vector2) => target.set(CSS_WIDTH, CSS_HEIGHT))
+  const getDrawingBufferSize = vi.fn((target: Vector2) =>
+    target.set(CSS_WIDTH * 2, CSS_HEIGHT * 2),
+  )
+  const copyTextureToTexture = vi.fn()
+  return {
+    gl: { getSize, getDrawingBufferSize, copyTextureToTexture } as unknown as WebGLRenderer,
+    getSize,
+    getDrawingBufferSize,
+    copyTextureToTexture,
+  }
+}
+
+function makeCamera(): PerspectiveCamera {
+  const camera = new PerspectiveCamera(55, CSS_WIDTH / CSS_HEIGHT, 0.1, 8000)
+  camera.position.set(0, 0, 400)
+  camera.lookAt(0, 0, 0)
+  camera.updateMatrixWorld(true)
+  camera.updateProjectionMatrix()
+  camera.matrixWorldInverse.copy(camera.matrixWorld).invert()
+  return camera
+}
+
+/** Put the camera `radii` of a world's own radius away from it, looking at it. */
+function poseAt(camera: PerspectiveCamera, centre: Vector3, radius: number, radii: number): void {
+  camera.position.copy(centre).add(new Vector3(0, 0, radius * radii))
+  camera.lookAt(centre)
+  camera.updateMatrixWorld(true)
+  camera.matrixWorldInverse.copy(camera.matrixWorld).invert()
+}
+
+interface Rig {
+  readonly scene: Scene
+  readonly camera: PerspectiveCamera
+  readonly loop: FrameLoop
+  readonly gl: Harness
+  readonly worlds: ReturnType<typeof attachWorlds>
+  tick: () => void
+}
+
+let clock = 0
+
+function build(
+  options: Partial<Parameters<typeof attachWorlds>[0]> & { capabilities?: typeof SPEC_MINIMUM } = {},
+): Rig {
+  const gl = harness()
+  const scene = new Scene()
+  const camera = makeCamera()
+  const loop = new FrameLoop({ requestFrame: () => 0, cancelFrame: () => {}, now: () => 0 })
+  const worlds = attachWorlds({
+    gl: gl.gl,
+    scene,
+    camera,
+    loop,
+    seams: NO_SEAMS,
+    capabilities: SPEC_MINIMUM,
+    ...options,
+  })
+  return {
+    scene,
+    camera,
+    loop,
+    gl,
+    worlds,
+    tick: () => {
+      clock += 17
+      loop.tick(clock)
+    },
+  }
+}
+
+beforeEach(() => {
+  clock = 0
+})
+
+const roster = () => ({ planes: PLANES.planes, stars: STARS, swatches: SWATCHES })
+
+describe('the worlds pass reaches the frame (§1.1, §1.2)', () => {
+  it('composes one surface per world in the shipped roster, and puts each sheet in the scene', () => {
+    const rig = build()
+    rig.worlds.setData(roster())
+
+    // Not a literal 45: §1.5 and §1.12 both make the count the dataset's, and a constant is right
+    // on exactly one of the two datasets this renderer is guaranteed to meet.
+    expect(rig.worlds.surfaces).toHaveLength(WORLDS.length)
+    expect(WORLDS.length).toBeGreaterThan(1)
+
+    const group = rig.scene.getObjectByName('worlds')
+    expect(group).toBeDefined()
+    expect(group!.children).toHaveLength(WORLDS.length)
+    for (const surface of rig.worlds.surfaces) expect(surface.mesh.parent).toBe(group)
+    rig.worlds.dispose()
+  })
+
+  it('puts the `worlds` phase after `rig` and before `draw`', () => {
+    // The selection pass projects every cell, so it needs the camera matrices `rig` made final, and
+    // it has to have finished before anything binds a framebuffer. Asserted against the list rather
+    // than against behaviour because **behaviour cannot see it here**: this file poses the camera by
+    // hand, so no `rig` subscriber exists to be run in the wrong order. A harness that drives the
+    // real rig would notice; one that does not would score a reordered list green.
+    expect(TICK_PHASES.indexOf('worlds')).toBeGreaterThan(TICK_PHASES.indexOf('rig'))
+    expect(TICK_PHASES.indexOf('worlds')).toBeLessThan(TICK_PHASES.indexOf('draw'))
+  })
+
+  it('subscribes the `worlds` phase at construction, before any data exists', () => {
+    // The subscriber must not arrive with the roster. A phase whose subscription is conditional on
+    // data is a phase that can end up with none at all, which is the shape DEC-761's F1 took — and
+    // there, the entire suite stayed green while the camera never moved.
+    const rig = build()
+    expect(rig.loop.stepCount('worlds')).toBe(1)
+    rig.worlds.dispose()
+    expect(rig.loop.stepCount('worlds')).toBe(0)
+  })
+
+  it('runs every composed world on the tick, and nothing before it', () => {
+    const rig = build()
+    rig.worlds.setData(roster())
+    const dominaria = rig.worlds.surfaces.find((s) => s.planeSlug === 'dominaria')!
+
+    // Before the first tick the surface has never been measured: its crossover is the constructed
+    // default and the probe declines to answer at all.
+    expect(rig.worlds.probeSource()).toBeNull()
+    expect(worldsProbeOf(rig.worlds.probeSource())).toBeUndefined()
+
+    poseAt(rig.camera, dominaria.centre, dominaria.radius, 2.2)
+    rig.tick()
+
+    expect(dominaria.medianCellHeightPx).toBeGreaterThan(0)
+    expect(rig.worlds.probeSource()).not.toBeNull()
+    rig.worlds.dispose()
+  })
+
+  it('reports the world the camera is nearest in its own radii, not in scene units', () => {
+    const rig = build()
+    rig.worlds.setData(roster())
+    // Two worlds far apart in size: the pose sits close to the smaller one in scene units while a
+    // larger world is nearer in absolute distance only if the roster happens to place it so. The
+    // claim under test is the *metric*, so it is asserted by posing at each in turn.
+    for (const slug of ['dominaria', 'alara']) {
+      const target = rig.worlds.surfaces.find((s) => s.planeSlug === slug)!
+      poseAt(rig.camera, target.centre, target.radius, 2.2)
+      rig.tick()
+      expect(worldsProbeOf(rig.worlds.probeSource())?.planeSlug).toBe(slug)
+    }
+    rig.worlds.dispose()
+  })
+
+  it('draws a sheet only above §1.5s crossover, and both passes inside the band', () => {
+    const rig = build()
+    rig.worlds.setData(roster())
+    const world = rig.worlds.surfaces.find((s) => s.planeSlug === 'dominaria')!
+
+    poseAt(rig.camera, world.centre, world.radius, 2.2)
+    rig.tick()
+    expect(world.medianCellHeightPx).toBeGreaterThanOrEqual(CROSSOVER_HIGH_PX)
+    expect(world.crossover).toEqual({ drawSystem: false, drawSheet: true, sheetMix: 1 })
+    expect(world.mesh.visible).toBe(true)
+
+    // Far enough that the median cell falls below the band's floor. The sheet stops drawing and
+    // R2's step-2 instance takes over; `visible` is the flag that carries it.
+    poseAt(rig.camera, world.centre, world.radius, 400)
+    rig.tick()
+    expect(world.crossover.drawSheet).toBe(false)
+    expect(world.mesh.visible).toBe(false)
+
+    // **Inside the band, where both passes draw.** The two poses above cannot see the difference
+    // between `drawSheet` and `!drawSystem` — outside the band they are complements, and §1.5 says
+    // in terms that a renderer deriving one pass from the other "will be one instance short through
+    // every approach". Only a pose in the band separates them, so the band is searched for rather
+    // than guessed at: the crossover is a function of distance, so bisection finds it exactly.
+    let near = 2.2
+    let far = 400
+    for (let i = 0; i < 60; i += 1) {
+      const mid = (near + far) / 2
+      poseAt(rig.camera, world.centre, world.radius, mid)
+      rig.tick()
+      if (world.crossover.sheetMix > 0 && world.crossover.sheetMix < 1) break
+      if (world.crossover.drawSheet) near = mid
+      else far = mid
+    }
+    expect(world.crossover).toMatchObject({ drawSystem: true, drawSheet: true })
+    expect(world.crossover.sheetMix).toBeGreaterThan(0)
+    expect(world.crossover.sheetMix).toBeLessThan(1)
+    expect(world.mesh.visible).toBe(true)
+    rig.worlds.dispose()
+  })
+})
+
+describe('the frame the payload is measured on (§3.1)', () => {
+  it('sizes cells in CSS pixels, never in device pixels', () => {
+    const rig = build()
+    rig.worlds.setData(roster())
+    const world = rig.worlds.surfaces.find((s) => s.planeSlug === 'dominaria')!
+    poseAt(rig.camera, world.centre, world.radius, 2.2)
+    rig.tick()
+
+    // Every threshold in §1.5 and §1.6 is CSS. The stub reports a 2x drawing buffer, so the wrong
+    // call is not a rounding difference — it doubles every cell height and the viewport the probe
+    // publishes, moving the crossover a full rung with the picture unchanged.
+    expect(rig.gl.getSize).toHaveBeenCalled()
+    expect(rig.gl.getDrawingBufferSize).not.toHaveBeenCalled()
+    expect(worldsProbeOf(rig.worlds.probeSource())?.viewport).toEqual({
+      width: CSS_WIDTH,
+      height: CSS_HEIGHT,
+    })
+    rig.worlds.dispose()
+  })
+
+  it('publishes the camera the measurement was made with, not the live one', () => {
+    const rig = build()
+    rig.worlds.setData(roster())
+    const world = rig.worlds.surfaces.find((s) => s.planeSlug === 'dominaria')!
+    poseAt(rig.camera, world.centre, world.radius, 2.2)
+    rig.tick()
+
+    const measured = new Vector3().copy(rig.worlds.probeSource()!.camera.position)
+    const measuredMatrix = new Matrix4().copy(
+      rig.worlds.probeSource()!.camera.matrixWorldInverse,
+    )
+
+    // The rig moves the camera every tick and three mutates its matrices **in place**. A payload
+    // that held the live camera would report this new pose against the admission state measured at
+    // the old one — and the two disagree exactly at the threshold boundary, which is the set W4
+    // scores. Nothing about the resulting table looks wrong.
+    poseAt(rig.camera, world.centre, world.radius, 9)
+    const after = rig.worlds.probeSource()!
+    expect(after.camera.position).toEqual(measured)
+    expect(after.camera.matrixWorldInverse).toEqual(measuredMatrix)
+    expect(rig.camera.position.distanceTo(measured)).toBeGreaterThan(1)
+    rig.worlds.dispose()
+  })
+})
+
+describe('§1.7s key light, which the shade term is computed from', () => {
+  it('sits 0.798 rad off the camera axis', () => {
+    const camera = makeCamera()
+    const light = keyLightDirection(camera.matrixWorld, new Vector3())
+    // The camera's own +z is the direction back towards the viewer. Not `hypot(0.72, 0.38)`, which
+    // is 0.814: composing a turn about `up` with one about `right` is not adding the angles.
+    const axis = new Vector3().setFromMatrixColumn(camera.matrixWorld, 2)
+    expect(light.dot(axis)).toBeCloseTo(Math.cos(KEY_LIGHT_OFF_AXIS), 12)
+    expect(KEY_LIGHT_OFF_AXIS).toBeCloseTo(0.798, 3)
+  })
+
+  it('puts 0.72 in azimuth and 0.38 in elevation, and not the other way round', () => {
+    // **The off-axis angle cannot see this.** It is `acos(cos(el)·cos(az))`, which is symmetric in
+    // the two offsets — so a build with the pair transposed sits at the same 0.798 rad, turns with
+    // the camera identically, and still lights the near face. Every row above stays green. What
+    // moves is *where* around the axis the light sits: 0.612 right / 0.371 up becomes 0.278 right
+    // / 0.659 up, which tilts the terminator across every world by 29 degrees.
+    const camera = makeCamera()
+    const light = keyLightDirection(camera.matrixWorld, new Vector3())
+    const right = new Vector3().setFromMatrixColumn(camera.matrixWorld, 0)
+    const up = new Vector3().setFromMatrixColumn(camera.matrixWorld, 1)
+    expect(light.dot(right)).toBeCloseTo(Math.cos(0.38) * Math.sin(0.72), 12)
+    expect(light.dot(up)).toBeCloseTo(Math.sin(0.38), 12)
+    // Stated as an inequality too, so the intent survives a future change of the two constants.
+    expect(light.dot(right)).toBeGreaterThan(light.dot(up))
+  })
+
+  it('turns with the camera, and lights the face the camera can see', () => {
+    const camera = makeCamera()
+    const atHome = keyLightDirection(camera.matrixWorld, new Vector3()).clone()
+
+    // Camera-relative is the whole content of §1.7: orbit the camera and the light must follow. A
+    // world-space sun would leave this unchanged, and half of every capture set would be black.
+    camera.position.set(400, 0, 0)
+    camera.lookAt(0, 0, 0)
+    camera.updateMatrixWorld(true)
+    const orbited = keyLightDirection(camera.matrixWorld, new Vector3())
+    expect(orbited.dot(atHome)).toBeLessThan(0.9)
+
+    // ...and the offset is preserved through the orbit, which is what makes it the *same* light.
+    const axis = new Vector3().setFromMatrixColumn(camera.matrixWorld, 2)
+    expect(orbited.dot(axis)).toBeCloseTo(Math.cos(KEY_LIGHT_OFF_AXIS), 12)
+
+    // A cell facing the viewer must be lit. Inverting the vector is the mutation that passes every
+    // magnitude assertion above and darkens the front of every world in the product.
+    expect(orbited.dot(axis)).toBeGreaterThan(0)
+  })
+})
+
+describe('the shared art pool (§1.6, §1.12)', () => {
+  it('keys the pool by star index, so a second world still asks for its own art', () => {
+    // **Asserted against what the surface hands the stream, never against `artKeyBase` itself.** A
+    // row that recomputed `base + card` from the field and checked the set was distinct passed
+    // every mutant, including the one that keys `update` by the bare card index — it was pinning a
+    // value the call site does not call, which is the shape `worlds-source.test.ts` §B is about.
+    const asked: string[] = []
+    const queue = {
+      request: (request: { key: string }) => {
+        asked.push(request.key)
+        // Never resolves: this measures which requests are *made*, and letting them land would
+        // start filling layers and bring the LRU into a row that is not about eviction.
+        return new Promise<never>(() => {})
+      },
+      cancel: () => {},
+      dispose: () => {},
+    } as unknown as ImageQueue
+
+    /*
+     * **Two one-card worlds, not two big ones, and that is what makes this exact.**
+     *
+     * On a full roster the collision is only statistical: the pool holds 224 layers against
+     * Dominaria's 6,271 cards, so which keys are reserved depends on which cells the pose admits,
+     * and a second world's admitted indices may simply miss them. The row then passes under both
+     * spellings and reports nothing. Two worlds of **one card each** remove every degree of
+     * freedom: each has exactly one cell, index 0, and under the aliased spelling both are pool key
+     * **0** — so the second world's request is de-duplicated against the first's and is never filed.
+     * Correct keying makes them `starOffset + 0`, two numbers 6,307 apart.
+     */
+    const tiny = [...WORLDS].sort((a, b) => a.cardCount - b.cardCount).slice(0, 2)
+    expect(tiny.map((p) => p.cardCount)).toEqual([1, 1])
+    expect(tiny[0]!.starOffset).not.toBe(tiny[1]!.starOffset)
+
+    const rig = build({
+      queue,
+      cardOf: (plane, card) => ({ printingId: `${plane.slug}:${card}`, imageTs: 1 }),
+    })
+    rig.worlds.setData({
+      planes: [...tiny, ...PLANES.planes.filter((p) => !isWorldPlane(p))],
+      stars: STARS,
+      swatches: SWATCHES,
+    })
+
+    /*
+     * Posed along the cell's **own normal**, in two steps.
+     *
+     * A one-card world has a single cell sitting at an arbitrary longitude on the equator (row 0 of
+     * `[1]`, centre colatitude pi/2), so a fixed `+z` approach faces the back of it as often as the
+     * front — and a back-facing cell is never admitted, which would make this row pass by drawing
+     * nothing. The normal is read off the payload rather than recomputed here, for the reason
+     * `WorldsProbeSource` exists: a second model of §2.1 beside the renderer's is a second thing to
+     * keep in agreement. One tick to get a payload, then the real pose.
+     */
+    const normal = new Vector3()
+    for (const surface of rig.worlds.surfaces) {
+      poseAt(rig.camera, surface.centre, surface.radius, 2.2)
+      rig.tick()
+      rig.worlds.probeSource()!.normalOf(0, normal)
+      rig.camera.position.copy(normal).multiplyScalar(surface.radius * 2.2).add(surface.centre)
+      rig.camera.lookAt(surface.centre)
+      rig.camera.updateMatrixWorld(true)
+      rig.camera.matrixWorldInverse.copy(rig.camera.matrixWorld).invert()
+      rig.tick()
+      expect(surface.wasAdmitted(0)).toBe(true)
+    }
+
+    // One pool serves the whole multiverse (§1.12 budgets exactly one). Under a 0-based per-world
+    // card index the second world's only cell shows the **first world's art**, at full opacity, for
+    // the session: no fetch fails, no counter moves, and the pool's own resident invariant still
+    // holds. The only symptom is a card wearing another plane's picture.
+    expect(asked).toEqual([
+      `worlds-art:${tiny[0]!.slug}:0`,
+      `worlds-art:${tiny[1]!.slug}:0`,
+    ])
+    rig.worlds.dispose()
+  })
+
+  it('allocates the clamped pool size, and reports the number it allocated', () => {
+    const rig = build()
+    rig.worlds.setData(roster())
+    // §1.12: tier 0 asks for 1,024 and a spec-minimum device gives 224. The gate must read this
+    // back rather than assume the constant — an assertion written against 1,024 passes on this Mac
+    // and fails on the hardware W0.1 is about to measure.
+    expect(rig.worlds.pool.layers).toBe(artPoolSize(DEFAULT_TIER_ART_LAYERS, 256))
+    expect(rig.worlds.pool.layers).toBe(224)
+    expect(rig.worlds.pool.layers).not.toBe(DEFAULT_TIER_ART_LAYERS)
+    rig.worlds.dispose()
+  })
+
+  it('gives `?layers=N` the pool, without routing it through the quality ladder', () => {
+    const rig = build({ seams: { ...NO_SEAMS, layersRequested: 8 } })
+    rig.worlds.setData(roster())
+    expect(rig.worlds.pool.layers).toBe(8)
+    rig.worlds.dispose()
+  })
+
+  it('treats `?layers=0` as a legal swatch-only world rather than a black one', () => {
+    const rig = build({ seams: { ...NO_SEAMS, layersRequested: 0 } })
+    rig.worlds.setData(roster())
+    expect(rig.worlds.pool.layers).toBe(0)
+    expect(rig.worlds.surfaces).toHaveLength(WORLDS.length)
+    const world = rig.worlds.surfaces.find((s) => s.planeSlug === 'dominaria')!
+    poseAt(rig.camera, world.centre, world.radius, 2.2)
+    rig.tick()
+    // Every cell draws its swatch, which is what §1.4's shading path already does with nothing
+    // resident — and the payload is still a measurement, not a setup failure.
+    expect(worldsProbeOf(rig.worlds.probeSource())?.pool.layers).toBe(0)
+    rig.worlds.dispose()
+  })
+})
+
+describe('§3.2s coexistence, which has to actually cost nothing', () => {
+  it('allocates no pool and no equirect array on a dataset with no worlds', () => {
+    const rig = build()
+    // v2's roster: `planes.json` carries no `rowCells`, which §2.4 makes the test for a surface.
+    const v2 = PLANES.planes.map((plane) => {
+      const copy = { ...plane }
+      delete copy.rowCells
+      return copy
+    })
+    rig.worlds.setData({ planes: v2, stars: STARS, swatches: SWATCHES })
+
+    expect(rig.worlds.surfaces).toHaveLength(0)
+    expect(rig.worlds.equirectArray).toBeNull()
+    // §1.12's pool is 48 MiB at tier 0 and §3.2 keeps the galaxy shipping until four separate
+    // conditions clear. Allocating it at construction would put the single largest resident
+    // allocation in the app on every page load of the shipped product, sampled by nothing.
+    expect(rig.worlds.pool.layers).toBe(0)
+    // And the tick must survive a roster it cannot draw.
+    rig.tick()
+    expect(worldsProbeOf(rig.worlds.probeSource())).toBeUndefined()
+    rig.worlds.dispose()
+  })
+
+  it('sizes the equirect array from the dataset, one layer per world with cards', () => {
+    const rig = build()
+    rig.worlds.setData(roster())
+    // 29 on the 87-plane roster and 45 on v3 (§1.5, §1.12). A constant is right on one of the two.
+    expect(rig.worlds.equirectArray?.image.depth).toBe(WORLDS.length)
+
+    // **And a second roster, because this one agrees with the wrong answer.** `WORLDS.length` is
+    // 45 on the shipped dataset, so an allocator that hard-coded 45 satisfies the row above — the
+    // worked example happens to equal the constant. A three-world roster is what makes the claim
+    // a claim about the *dataset* rather than about this dataset.
+    const three = [...WORLDS.slice(0, 3), ...PLANES.planes.filter((p) => !isWorldPlane(p))]
+    rig.worlds.setData({ planes: three, stars: STARS, swatches: SWATCHES })
+    expect(rig.worlds.surfaces).toHaveLength(3)
+    expect(rig.worlds.equirectArray?.image.depth).toBe(3)
+    rig.worlds.dispose()
+  })
+
+  it('releases the pool and the sheets when the roster is torn down', () => {
+    const rig = build()
+    rig.worlds.setData(roster())
+    expect(rig.worlds.pool.layers).toBeGreaterThan(0)
+
+    rig.worlds.setData(null)
+    expect(rig.worlds.surfaces).toHaveLength(0)
+    expect(rig.worlds.equirectArray).toBeNull()
+    expect(rig.worlds.pool.layers).toBe(0)
+    expect(rig.scene.getObjectByName('worlds')?.children).toHaveLength(0)
+    // A payload assembled after a teardown would be one from the previous roster.
+    expect(rig.worlds.probeSource()).toBeNull()
+    rig.worlds.dispose()
+  })
+})

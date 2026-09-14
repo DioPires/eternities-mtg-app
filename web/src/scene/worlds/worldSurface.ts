@@ -67,6 +67,24 @@ export interface WorldSurfaceSource {
   readonly centre: Vector3
   /** The printing for a **card** index — called with a card, never with a cell. See `cardOfCell`. */
   readonly cardOf: (card: number) => WorldCard | null
+  /**
+   * The offset that turns this world's card index into the **art pool's** key (§1.6, §1.12).
+   *
+   * > **Normative — the pool is one pool for the whole multiverse, so its keys have to be
+   * > multiverse-wide (DEC-749).** §1.12 budgets a *single* art pool of 1,024 layers, and §1.2 keeps
+   * > every world's sheet resident because any number of them may be above the crossover at once. A
+   * > surface that offered `pool.reserve(card)` with its own 0-based card index would therefore have
+   * > Dominaria's card 5 and Alara's card 5 claim **the same layer**: the second world's request is
+   * > de-duplicated against the first's as an already-held key, so it never fetches, and its cell
+   * > samples the first world's art at full opacity for the rest of the session. No fetch fails, no
+   * > counter moves, and the pool's own `resident` invariant still holds — the only symptom is cards
+   * > wearing other planes' pictures.
+   *
+   * `stars.bin`'s `starOffset` is the natural value: star order *is* the swatch encoding (§2.2), so
+   * `starOffset + card` is already the multiverse-wide identity every other artefact keys on. It is
+   * required rather than defaulted because a default of 0 is exactly the aliasing above, silently.
+   */
+  readonly artKeyBase: number
 }
 
 /** What the surface is driven with. The pool and threshold are shared; the stream may be absent. */
@@ -239,6 +257,34 @@ export class WorldSurface {
     return this.crossoverValue
   }
 
+  // The four read-only facts about *which* world this is. The source itself stays private — it
+  // holds the decoded arrays, and handing those out would let a caller build a second model of
+  // §2.1 beside this one, which is the thing `WorldsProbeSource` is shaped to prevent.
+
+  /** `planes.json`'s slug, or `null` — the name §3.1's criteria are stated against. */
+  get planeSlug(): string | null {
+    return this.source.planeSlug
+  }
+
+  /** The world's centre in scene units (`plane.home`). */
+  get centre(): Vector3 {
+    return this.source.centre
+  }
+
+  /** §1.3's radius, **before** §1.4's lift. `drawRadius` is what the sheet actually draws at. */
+  get radius(): number {
+    return this.source.radius
+  }
+
+  get cardCount(): number {
+    return this.source.cardCount
+  }
+
+  /** The multiverse-wide art key this world's cards start at. See {@link WorldSurfaceSource}. */
+  get artKeyBase(): number {
+    return this.source.artKeyBase
+  }
+
   /** The per-world scalar §1.5's crossover and §3.1's W1 are both written against. */
   get medianCellHeightPx(): number {
     return this.medianHeightPxValue
@@ -344,18 +390,21 @@ export class WorldSurface {
       this.admitted[cell] = admit ? 1 : 0
 
       const card = this.cardOfCell[cell]!
+      // The **pool's** key, not this world's card index. One pool serves the whole multiverse, so a
+      // 0-based key would alias every world onto the first one's layers — see `artKeyBase`.
+      const key = source.artKeyBase + card
       if (admit && stream !== null) {
         const printing = source.cardOf(card)
         // A card with no printing has nothing to fetch. It is not a failure and must not enter the
         // pool's failed set — it simply never asks.
         if (printing !== null) {
-          stream.request(card, printing.printingId, printing.imageTs, this.priorityOf(cell))
+          stream.request(key, printing.printingId, printing.imageTs, this.priorityOf(cell))
         }
       }
 
       // Re-read every frame. This is the eviction repair and the reserved-layer guard in one line;
       // see the class header for both failure modes.
-      const resident = pool.layerOf(card)
+      const resident = pool.layerOf(key)
       if (resident === null) {
         layers[cell] = LAYER_FREE
         this.fade[cell] = 0

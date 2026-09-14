@@ -48,6 +48,8 @@ import { QUALITY_TIERS, type QualityTier } from '../quality/adaptiveQuality'
 import { attachStarScene, type StarSceneHandle } from '../starScene'
 import { BLOOM_INTENSITY } from '../tuning'
 import type { SceneResources } from '../useSceneData'
+import { attachWorlds, type WorldsAttachment, type WorldsData } from '../worlds/attachWorlds'
+import type { WorldsProbeSource } from '../worlds/worldsProbe'
 
 import type { FrameStatsFields, FrameStatsSnapshot } from './frameStats'
 import { SceneRenderer, type SceneRendererOptions } from './sceneRenderer'
@@ -145,6 +147,7 @@ export class SceneHost {
   private readonly options: SceneHostOptions
   private readonly post: PostChainAttachment
   private readonly starSceneHandle: StarSceneHandle
+  private readonly worldsAttachment: WorldsAttachment
   private cardTierHandle: CardTierHandle | null = null
   private readonly teardown: Array<() => void> = []
 
@@ -196,6 +199,12 @@ export class SceneHost {
     // field, so a starting announcement that fired from inside `attachStarScene` would reach a
     // `starSceneHandle` that does not exist yet. See `StarSceneHandle.announceStartingTier`.
     this.starSceneHandle.announceStartingTier()
+
+    // The `worlds` phase (spec §1.2). Attached unconditionally and empty until `setWorldData`: a
+    // phase whose subscriber arrives with the data is a phase that can end up with none at all,
+    // which is DEC-761's F1 in miniature. Nothing is allocated here beyond the art pool, and on a
+    // v2 dataset nothing ever composes — §3.2's "the two coexist at zero cost".
+    this.worldsAttachment = attachWorlds({ gl, scene, camera, loop })
 
     // The stats the tick reports outwards, gathered last. `frameMs` and `cpuMs` are the loop's own
     // and are written by `SceneRenderer`'s `onTickEnd` hook, which by construction runs after every
@@ -274,6 +283,33 @@ export class SceneHost {
     this.buildCardTier()
     this.attachDrive()
     this.maybeWarm()
+  }
+
+  /**
+   * The worlds roster (spec §1.2), or `null` to tear it down.
+   *
+   * All three artefacts at once — `planes.json`'s records, the decoded `stars.bin` and
+   * `swatches.bin` — because two of them arrive in an order `useSceneData` does not control and a
+   * partially-composed roster is not a state worth representing. The caller passes non-`null` only
+   * once it holds all three; on a v2 dataset it never does, and nothing is allocated.
+   */
+  setWorldData(data: WorldsData | null): void {
+    this.worldsAttachment.setData(data)
+  }
+
+  /**
+   * The composed world's `?probe=` source (spec §3.1), or `null`.
+   *
+   * A method rather than a value: the world the payload describes changes as the camera flies, and
+   * the seam installs this as a getter so a driver is never holding a stale one mid-assertion.
+   */
+  worldsProbeSource(): WorldsProbeSource | null {
+    return this.worldsAttachment.probeSource()
+  }
+
+  /** The worlds pass itself, for the tests and for the legs that add passes beside it. */
+  get worlds(): WorldsAttachment {
+    return this.worldsAttachment
   }
 
   /** Every record of `stars.bin` is drawable (PRD 8.7.3). Gates the warm-up and the self-check. */
@@ -460,6 +496,7 @@ export class SceneHost {
     for (const undo of this.teardown.splice(0)) undo()
     this.cardTierHandle?.dispose()
     this.cardTierHandle = null
+    this.worldsAttachment.dispose()
     this.starSceneHandle.dispose()
     this.post.dispose()
     this.renderer.dispose()

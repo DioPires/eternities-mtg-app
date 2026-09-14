@@ -64,6 +64,20 @@ export const TICK_PHASES = [
   'uniforms',
   /** Thumbnail tier, focused card springs, planet label projection (PRD 5.5, 5.6). */
   'cards',
+  /**
+   * Every composed world's demand pass, art admission and LOD crossover (worlds spec §1.2, §1.6).
+   *
+   * **After `rig`, and its own step rather than a second subscriber on `cards`.** The selection pass
+   * projects every cell of every world, so it needs the camera matrices `rig` made final — which
+   * rules out `uniforms`. It could have ridden on `cards`, and that is exactly the shape this
+   * file's header rejects: two independent systems on one phase makes the order between them the
+   * *subscription* order, which is the thing `TICK_PHASES` exists to stop being load-bearing.
+   *
+   * It is an addition to the list worlds §1.1's table describes, which names four steps concept B
+   * changes and three it deletes, and no new one. That table is written about steps that already
+   * existed; the cell sheet's per-frame CPU work is genuinely new and had nowhere to live.
+   */
+  'worlds',
   /** At most one id-buffer read in flight (PRD 8.5.6). Fires and forgets; resolves later. */
   'pick',
   /** `PostChain.render`: main pass -> bloom source -> mip chain -> composite (DEC-703). */

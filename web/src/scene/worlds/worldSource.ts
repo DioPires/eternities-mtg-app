@@ -147,6 +147,10 @@ export function buildWorldSource(
     radius: worldRadius(cardCount),
     centre: new Vector3(plane.home[0], plane.home[1], plane.home[2]),
     cardOf: options.cardOf ?? (() => null),
+    // The multiverse-wide art key (§1.6). `starOffset` is already the identity `swatches.bin` is
+    // encoded in star order against, and the checks above have just proved this window lies inside
+    // `stars.bin` — so the keys this world claims cannot overlap another world's.
+    artKeyBase: starOffset,
   }
 }
 

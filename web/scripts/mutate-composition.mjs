@@ -39,14 +39,14 @@ const MUTANTS = [
   {
     name: 'the fade advances on a RESERVED layer (cross-fades into the previous card)',
     file: SURFACE,
-    from: '      const resident = pool.layerOf(card)',
-    to: '      const resident = pool.reserve(card, this.frameIndex)',
+    from: '      const resident = pool.layerOf(key)',
+    to: '      const resident = pool.reserve(key, this.frameIndex)',
   },
   {
     name: 'residency read once and cached, so eviction never pulls the picture back',
     file: SURFACE,
-    from: '      const resident = pool.layerOf(card)\n      if (resident === null) {',
-    to: '      const resident = layers[cell] >= 0 ? layers[cell] : pool.layerOf(card)\n      if (resident === null || resident < 0) {',
+    from: '      const resident = pool.layerOf(key)\n      if (resident === null) {',
+    to: '      const resident = layers[cell] >= 0 ? layers[cell] : pool.layerOf(key)\n      if (resident === null || resident < 0) {',
   },
   {
     name: 'back-facing and off-screen cells counted as demand',

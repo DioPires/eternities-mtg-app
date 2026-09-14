@@ -59,8 +59,8 @@ const MUTANTS = [
   },
   {
     name: 'hueCounts is indexed by colourIdentity, not hueClass',
-    from: '    hueCounts[stars.hueClass(star)] += 1',
-    to: '    hueCounts[stars.colourIdentity(star) % 7] += 1',
+    from: '    const hue = stars.hueClass(star)',
+    to: '    const hue = stars.colourIdentity(star) % 7',
   },
   {
     name: 'the starCount/cardCount guard is dropped',
