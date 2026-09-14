@@ -132,6 +132,36 @@ export const SHADER_NAME_POST_COMPOSITE = 'PostComposite'
 export const SHADER_NAME_WORLD_CELL = 'WorldCell'
 
 /**
+ * §1.2 step 2 — the system icospheres, one instance per plane below §1.5's crossover ceiling.
+ *
+ * One program for the undetailed worlds **and** §1.8's dark moons. They differ only in a per-
+ * instance `iLayer` of `-1` and the flat colour that selects; splitting them would double the
+ * program count to express a branch that costs one compare on a mesh drawing 87 dots.
+ */
+export const SHADER_NAME_WORLD_SYSTEM = 'WorldSystem'
+
+/** §1.2 step 3 — the Blind Eternities belt, one `Points` draw (§1.8). */
+export const SHADER_NAME_WORLD_BELT = 'WorldBelt'
+
+/**
+ * §1.2 step 8 — the atmosphere rim, the additive `BackSide` shell that replaces full-scene bloom.
+ *
+ * Paired with {@link SHADER_NAME_WORLD_ATMOSPHERE_CHEAP} the way `PlaneGlow` is with its cheap twin:
+ * §1.12's tier 4 selects "cheap rim (one tap, no dither)", and a define that changed the program
+ * without changing its name would make the two indistinguishable in a capture.
+ */
+export const SHADER_NAME_WORLD_ATMOSPHERE = 'WorldAtmosphere'
+
+/** §1.12 tier 4's rim: one tap, no dither. See {@link SHADER_NAME_WORLD_ATMOSPHERE}. */
+export const SHADER_NAME_WORLD_ATMOSPHERE_CHEAP = 'WorldAtmosphereCheap'
+
+/** §1.2 step 5 — §1.9's camera-facing ribbon. */
+export const SHADER_NAME_WORLD_TETHER = 'WorldTether'
+
+/** §1.9's two glowing anchor pads — the half of the tether that makes it read as footed. */
+export const SHADER_NAME_WORLD_TETHER_PAD = 'WorldTetherPad'
+
+/**
  * Every name above, for the test that enforces the rules in this file's header.
  *
  * Deliberately a hand-written list rather than a re-export of the module namespace: the point is to
@@ -156,4 +186,10 @@ export const SHADER_NAMES = [
   SHADER_NAME_POST_UPSAMPLE,
   SHADER_NAME_POST_COMPOSITE,
   SHADER_NAME_WORLD_CELL,
+  SHADER_NAME_WORLD_SYSTEM,
+  SHADER_NAME_WORLD_BELT,
+  SHADER_NAME_WORLD_ATMOSPHERE,
+  SHADER_NAME_WORLD_ATMOSPHERE_CHEAP,
+  SHADER_NAME_WORLD_TETHER,
+  SHADER_NAME_WORLD_TETHER_PAD,
 ] as const

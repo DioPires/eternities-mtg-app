@@ -71,6 +71,7 @@ interface Harness {
   readonly getSize: ReturnType<typeof vi.fn>
   readonly getDrawingBufferSize: ReturnType<typeof vi.fn>
   readonly copyTextureToTexture: ReturnType<typeof vi.fn>
+  readonly getPixelRatio: ReturnType<typeof vi.fn>
 }
 
 /**
@@ -87,11 +88,21 @@ function harness(): Harness {
     target.set(CSS_WIDTH * 2, CSS_HEIGHT * 2),
   )
   const copyTextureToTexture = vi.fn()
+  // 2, matching `getDrawingBufferSize`'s 2x above rather than defaulting to 1: §1.8's belt is sized
+  // in CSS px and `gl_PointSize` is in device px, so a stub that reported 1 would let the two
+  // spellings agree and the CSS-versus-device row below would stop discriminating them.
+  const getPixelRatio = vi.fn(() => 2)
   return {
-    gl: { getSize, getDrawingBufferSize, copyTextureToTexture } as unknown as WebGLRenderer,
+    gl: {
+      getSize,
+      getDrawingBufferSize,
+      copyTextureToTexture,
+      getPixelRatio,
+    } as unknown as WebGLRenderer,
     getSize,
     getDrawingBufferSize,
     copyTextureToTexture,
+    getPixelRatio,
   }
 }
 
@@ -157,7 +168,12 @@ beforeEach(() => {
   clock = 0
 })
 
-const roster = () => ({ planes: PLANES.planes, stars: STARS, swatches: SWATCHES })
+const roster = () => ({
+  planes: PLANES.planes,
+  stars: STARS,
+  swatches: SWATCHES,
+  multiverseRadius: PLANES.multiverseRadius,
+})
 
 describe('the worlds pass reaches the frame (§1.1, §1.2)', () => {
   it('composes one surface per world in the shipped roster, and puts each sheet in the scene', () => {
@@ -171,8 +187,18 @@ describe('the worlds pass reaches the frame (§1.1, §1.2)', () => {
 
     const group = rig.scene.getObjectByName('worlds')
     expect(group).toBeDefined()
-    expect(group!.children).toHaveLength(WORLDS.length)
     for (const surface of rig.worlds.surfaces) expect(surface.mesh.parent).toBe(group)
+
+    // §1.2's other passes share the group (DEC-750), so the sheets are counted by identity rather
+    // than by the group's size. Stated as an exact partition rather than as `>= WORLDS.length`: a
+    // pass that quietly added a second node per world -- one sheet plus one shell, say -- would
+    // satisfy an inequality and would double the scene graph.
+    const sheets = new Set(rig.worlds.surfaces.map((surface) => surface.mesh))
+    expect(group!.children.filter((child) => sheets.has(child as never))).toHaveLength(
+      WORLDS.length,
+    )
+    // Step 2, step 3, step 8, and §1.9's ribbon with its two pads: six nodes beside the sheets.
+    expect(group!.children).toHaveLength(WORLDS.length + 6)
     rig.worlds.dispose()
   })
 
@@ -405,6 +431,7 @@ describe('the shared art pool (§1.6, §1.12)', () => {
       planes: [...tiny, ...PLANES.planes.filter((p) => !isWorldPlane(p))],
       stars: STARS,
       swatches: SWATCHES,
+      multiverseRadius: PLANES.multiverseRadius,
     })
 
     /*
@@ -572,7 +599,7 @@ describe('§1.6 on the shipped roster (DEC-768 F1, F2)', () => {
       if (!rig || freshRigPerFrame) {
         rig?.worlds.dispose()
         rig = build({ seams: { ...NO_SEAMS, layersRequested: WOBBLE.capacity } })
-        rig.worlds.setData({ planes, stars: STARS, swatches: SWATCHES })
+        rig.worlds.setData({ planes, stars: STARS, swatches: SWATCHES, multiverseRadius: PLANES.multiverseRadius })
       }
       const subject = rig.worlds.surfaces.find((s) => s.planeSlug === WOBBLE.slug)!
       poseAt(rig.camera, subject.centre, subject.radius, WOBBLE.radii[frame % 2]!)
@@ -623,7 +650,7 @@ describe('§3.2s coexistence, which has to actually cost nothing', () => {
       delete copy.rowCells
       return copy
     })
-    rig.worlds.setData({ planes: v2, stars: STARS, swatches: SWATCHES })
+    rig.worlds.setData({ planes: v2, stars: STARS, swatches: SWATCHES, multiverseRadius: PLANES.multiverseRadius })
 
     expect(rig.worlds.surfaces).toHaveLength(0)
     expect(rig.worlds.equirectArray).toBeNull()
@@ -648,7 +675,7 @@ describe('§3.2s coexistence, which has to actually cost nothing', () => {
     // worked example happens to equal the constant. A three-world roster is what makes the claim
     // a claim about the *dataset* rather than about this dataset.
     const three = [...WORLDS.slice(0, 3), ...PLANES.planes.filter((p) => !isWorldPlane(p))]
-    rig.worlds.setData({ planes: three, stars: STARS, swatches: SWATCHES })
+    rig.worlds.setData({ planes: three, stars: STARS, swatches: SWATCHES, multiverseRadius: PLANES.multiverseRadius })
     expect(rig.worlds.surfaces).toHaveLength(3)
     expect(rig.worlds.equirectArray?.image.depth).toBe(3)
     rig.worlds.dispose()
@@ -663,7 +690,13 @@ describe('§3.2s coexistence, which has to actually cost nothing', () => {
     expect(rig.worlds.surfaces).toHaveLength(0)
     expect(rig.worlds.equirectArray).toBeNull()
     expect(rig.worlds.pool.layers).toBe(0)
-    expect(rig.scene.getObjectByName('worlds')?.children).toHaveLength(0)
+    // The roster's nodes all go. §1.9's tether does **not**: it has the attachment's lifetime
+    // rather than the roster's -- `setEnds` is what shows it, and it is hidden until then -- so
+    // three nodes are expected to survive a teardown and only these three.
+    const after = rig.scene.getObjectByName('worlds')!.children
+    expect(after).toHaveLength(3)
+    expect(after.every((child) => child.name.startsWith('worlds-tether'))).toBe(true)
+    expect(after.every((child) => child.visible)).toBe(false)
     // A payload assembled after a teardown would be one from the previous roster.
     expect(rig.worlds.probeSource()).toBeNull()
     rig.worlds.dispose()

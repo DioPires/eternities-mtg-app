@@ -243,7 +243,16 @@ export function SceneView({
   const worldData = useMemo(
     () =>
       data.planes && data.stars && data.swatches
-        ? { planes: data.planes.planes, stars: data.stars, swatches: data.swatches }
+        ? {
+            planes: data.planes.planes,
+            stars: data.stars,
+            swatches: data.swatches,
+            // §1.8's belt sits at 1.12x this (DEC-750). It is a `PlanesFile` field rather than a
+            // plane's, so here is the only place it can be read — `WorldsData` carries it instead of
+            // the attachment reaching for the dust plane's own `radius`, which holds the same
+            // number by coincidence on every dataset published so far.
+            multiverseRadius: data.planes.multiverseRadius,
+          }
         : null,
     [data.planes, data.stars, data.swatches],
   )
