@@ -39,7 +39,14 @@
 // ------------------------------------------------------------------------------------------------
 
 export const FLOORS = {
-  /** W1: median on-screen height of front-facing cells, CSS px. Binds on Dominaria, 25.3 px. */
+  /**
+   * W1: median on-screen height of front-facing cells, CSS px. Binds on Dominaria, 25.3 px.
+   *
+   * DEC-749's §1.4 subdivision does not move this number: `k` is `(1, 1)` from 574 cards up, so the
+   * world the floor binds on is the one the amendment leaves flat. The 32 worlds it does re-mesh are
+   * the small ones, whose cells clear 24 px by orders of magnitude — see the seam contract for why
+   * that also makes the gate blind to a `height` still computed from the old tangent quad.
+   */
   cellHeightPx: 24,
   /** W2: median ΔE from a cell to its nearest on-screen neighbour. */
   neighbourDeltaE: 6,

@@ -104,6 +104,31 @@ roster after DEC-745, and read off `planes.json` rather than hardcoded — and
 takes the statistic per plane; a single pooled array across the system would make the per-plane
 median unrecoverable, and W1's verdict is the worst plane, not the pooled one.
 
+**One entry per card, and `height` is the *subdivided* cell's extent (DEC-749's §1.4 amendment).**
+§1.4 now makes the base geometry a `(k_lon + 1) × (k_lat + 1)` vertex grid with one `k` per world,
+reaching `(1, 1)` only from 574 cards up — so **32 of v3's 45 worlds are subdivided**, and this is
+the roster's common case, not its edge. Two things that amendment must not change:
+
+- **Cardinality.** `cells` stays one entry per *card*. The sheet is still one instance per cell and
+  `k` only re-tessellates the shared base geometry, so this falls out of the instancing for free —
+  but a probe that walked sub-quads instead of instances would multiply W1's sample count by `k²`
+  and divide its median height, and it would do so on 32 worlds at once while leaving Dominaria
+  (already at `(1, 1)`) untouched. Report instances.
+- **What `height` measures.** The cell's on-screen extent as *rendered* — the spherical patch whose
+  vertices §1.4 places on the lifted sphere — not the tangent quad that patch replaced. The two
+  differ by exactly the corner lift the amendment exists to remove: 0.7% on Dominaria, 5.7% on
+  Rabiah, 11.6% at 30 cards, **265% at N = 1**.
+
+**The gate cannot catch a `height` computed from the old tangent quad, and this is deliberate
+routing, not an oversight.** The error is an over-statement, W1 is a floor, and it is largest exactly
+where W1 has the most headroom: the subdivided worlds are the *small* ones, whose cells are enormous,
+while W1's verdict binds on the largest world — Dominaria, at 25.3 px, which `k = (1, 1)` leaves
+flat anyway. So every W1 row stays green under both models, including §3.1's one-card
+`?plane=segovia` row, where the silhouette-sized cell clears 24 px whether it is measured as a patch
+or as a quad 3.65× too big. **That row is an expected-GREEN control that is insensitive to this
+defect** — it pins the gate's n = 1 *domain* handling and nothing about the geometry. The guard for
+the geometry is R1's own: §1.4's 1,262-sub-quad envelope assertion in the sheet's unit test.
+
 **`band` is the band index, not the colour class.** §1.3's layout is `C G R B U W · Gold · W U B R
 G C`, thirteen bands over seven classes, and W3 compares bands adjacent *on the sphere*. Reporting a
 class would merge the two ice caps — which sit at opposite poles — into one group and invent an
