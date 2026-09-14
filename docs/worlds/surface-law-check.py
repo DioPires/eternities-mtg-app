@@ -148,6 +148,79 @@ else:
     check("once FR lands the derived floor moves to 31", after_fr, 31)
     check("...so a hard-coded 30 would go RED on correct behaviour", after_fr > 30, True)
 
+print("\n§3.1 W2's IQR(L*) half — why it is measured iso-shade (DEC-749, on DEC-752's finding)")
+
+AZIMUTH, ELEVATION = 0.72, 0.38  # §1.7: the key light, camera-relative.
+LIGHT = (
+    math.cos(ELEVATION) * math.sin(AZIMUTH),
+    math.sin(ELEVATION),
+    math.cos(ELEVATION) * math.cos(AZIMUTH),
+)
+FACING_CUT = 0.12  # §1.6's own facing test.
+
+
+def shade(n: tuple[float, float, float]) -> float:
+    """§1.4's shading law. `s` is the wrapped lambert term; the square is the spec's."""
+    s = min(1.0, max(0.0, sum(n[k] * LIGHT[k] for k in range(3)) * 0.5 + 0.5))
+    return 0.10 + 0.95 * s * s
+
+
+def equal_area_sphere(count: int):
+    """Fibonacci lattice: deterministic and equal-area, which is what §1.3's cells are."""
+    golden = math.pi * (3 - math.sqrt(5))
+    for i in range(count):
+        z = 1 - (2 * i + 1) / count
+        r = math.sqrt(max(0.0, 1 - z * z))
+        yield (r * math.cos(golden * i), r * math.sin(golden * i), z)
+
+
+def quartiles(xs: list[float]) -> tuple[float, float, float]:
+    xs = sorted(xs)
+    n = len(xs)
+
+    def at(p: float) -> float:
+        i = p * (n - 1)
+        lo = int(i)
+        return xs[lo] * (1 - (i - lo)) + xs[min(lo + 1, n - 1)] * (i - lo)
+
+    return at(0.25), at(0.50), at(0.75)
+
+
+def l_star(luminance: float) -> float:
+    return 116 * luminance ** (1 / 3) - 16 if luminance > 0.008856 else 903.3 * luminance
+
+
+# The camera looks down +z, so the front-facing cap is `n.z > 0.12`.
+points = list(equal_area_sphere(200_000))
+front = [shade(n) for n in points if n[2] > FACING_CUT]
+q1, q2, q3 = quartiles(front)
+check("light is 0.798 rad off the camera axis", round(math.acos(LIGHT[2]), 3), 0.798, tol=0.001)
+check("shade quartiles over the front-facing cap", [round(q, 3) for q in (q1, q2, q3)], [0.363, 0.611, 0.852])
+
+# One swatch for the whole world: L* = 116*(Y_swatch * shade)^(1/3) - 16, so the IQR is the shade
+# gradient alone. Every plausible swatch luminance clears W2's floor of 8 on its own.
+SWATCH_LUMINANCES = [0.10, 0.18, 0.25, 0.35, 0.50]
+iqrs = [l_star(y * q3) - l_star(y * q1) for y in SWATCH_LUMINANCES]
+print(f"        IQR(L*) with ONE swatch, per swatch luminance: {[round(v, 1) for v in iqrs]}")
+check("un-subsetted IQR(L*) with one swatch, darkest case", round(min(iqrs), 1), 12.6, tol=0.05)
+check("...brightest case", round(max(iqrs), 1), 21.6, tol=0.05)
+check("...so the criterion cannot fail: every case clears the floor of 8", min(iqrs) > 8, True)
+
+# The >= 6 px cut only trims the limb, where cells are most foreshortened and darkest. It raises
+# the low quartile, so it narrows the IQR -- it does not rescue the measure.
+trimmed = [shade(n) for n in points if n[2] > 0.24]
+t1, _, t3 = quartiles(trimmed)
+worst_trimmed = l_star(min(SWATCH_LUMINANCES) * t3) - l_star(min(SWATCH_LUMINANCES) * t1)
+check("the >= 6 px cut narrows the worst case only to 11.9", round(worst_trimmed, 1), 11.9, tol=0.05)
+check("...still above the floor", worst_trimmed > 8, True)
+
+# Iso-shade: +/- 2.5% of the median shade. Holding shade fixed removes the gradient, so what is
+# left is swatch-to-swatch lightness -- and under `?swatch=mean` that is identically zero.
+iso = [s for s in front if abs(s / q2 - 1) <= 0.025]
+i1, _, i3 = quartiles(iso)
+check("iso-shade band is a usable fraction of the cap", 0.02 < len(iso) / len(front) < 0.20, True)
+check("iso-shade residual gradient is negligible", round(max(l_star(y * i3) - l_star(y * i1) for y in SWATCH_LUMINANCES), 1) < 1.0, True)
+
 print("\n§1.4 the winding (DEC-694 trap 1) — derived, not asserted")
 
 

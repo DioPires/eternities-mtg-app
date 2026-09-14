@@ -323,6 +323,23 @@ fetches (≈ 170 MB) for one camera pose.
 > relative to pool capacity, so a smaller pool simply raises the threshold and the criterion passes.
 > Starving the resource the policy adapts to makes the criterion GREEN; the control has to starve
 > the **policy**.
+>
+> **Normative — the seam reports itself engaged (DEC-752).** Under `?artThreshold=fixed24` the
+> probe's `effectiveThresholdPx` reads **exactly 24**, and the gate asserts that before it reads
+> W4's criterion. Under the quantile it reads the bucket edge the histogram chose, which is
+> quantised and is not 24 except by coincidence. Without the read-back, a seam that silently fails
+> to parse its own query parameter runs the *unmodified* policy, W4 passes, and the matrix records
+> a passing control — the `verify-browser --dataset all` shape of failure. The same applies to
+> every control seam: `?swatch=mean`, `?bands=shuffle` and `?layers=N` each report a value the gate
+> can check moved.
+
+> **Normative — `showingArt` means the cross-fade has landed, not that a layer was claimed
+> (DEC-752).** The probe reports a cell as showing art when its `iArt` has reached 1, not when the
+> pool handed it a layer and not when the fetch resolved. W4's numerator is "what the frame shows",
+> and a cell mid-fade is showing its swatch. After §3.1's 5 s settle no fade is in flight, so this
+> is conservative by nothing at the measured pose — but it is the difference between W4 measuring
+> the picture and W4 measuring the bookkeeping, which is exactly the distinction the prototype's
+> 1,031-resident-in-1,024 bug hid behind.
 
 Fetch discipline: `mode: 'cors'`, `credentials: 'omit'`, at most 6 concurrent (PRD 7.2's politeness
 cap — the `*.scryfall.io` origins have no rate limit, `docs/scryfall-policy.md` §4, but the cap is
@@ -758,10 +775,17 @@ building it.
 So concept B owes a definition of "legible" for a mosaic, and a measurement. This is it:
 **`web/scripts/worlds-gate.mjs`**, same puppeteer-core stack as `visual-gate.mjs`, driving the
 product route with a `?probe=` seam that reports, per visible cell, its screen-space rect, its band,
-and whether it resolved to art, plus the art pool's resident count, effective threshold and eviction
-counter. Geometry comes from the probe; **colour is sampled from the captured PNG**, so every
-criterion below measures the frame after tonemap and vignette at presentation scale — which is the
-thing T7 said was missing.
+**its shade term** and whether it resolved to art, plus the art pool's resident count, effective
+threshold and eviction counter. Geometry comes from the probe; **colour is sampled from the captured
+PNG**, so every criterion below measures the frame after tonemap and vignette at presentation
+scale — which is the thing T7 said was missing.
+
+> **Normative — the probe reports §1.4's `shade` per cell (DEC-749).** It is the scalar
+> `0.10 + 0.95·clamp(dot(n, light)·0.5 + 0.5, 0, 1)²` the renderer already computes, and W2's second
+> half cannot be measured without it — see the note under the criteria table. Reporting it costs the
+> renderer nothing and is the one probe field that is a *derived* quantity rather than a state
+> read; it is normative anyway, because the gate may not re-derive it (it would then be asserting
+> against its own model of the light rather than against the shipped one).
 
 The gate also depends on **control seams** in the shipped renderer, which is why they are normative
 in §1 rather than being a gate-side patch.
@@ -825,10 +849,42 @@ an assertion there.
 | # | Criterion | Measurement | Floor |
 |---|---|---|---|
 | **W1** | **Cells are resolvable at framing distance.** | At the plane-level settle for each of `worldsWithCards` (**29 today**), the median on-screen height of front-facing cells. Not the Blind Eternities: it has cards but no cell sheet (§1.8), so the statistic is undefined there — `planesWithCards` would be 30 and would include it. | **≥ 24 CSS px.** Binds on the largest plane: Dominaria measured 25.3 px at 3× radius. |
-| **W2** | **The mosaic reads as tiles, not as a wash.** This is T7's replacement. | Sample the captured frame at the centre of every front-facing cell ≥ 6 px tall, convert to CIELAB. Report the median ΔE to a cell's nearest on-screen neighbour, and the interquartile range of L\*. | **median neighbour ΔE ≥ 6** and **IQR(L\*) ≥ 8**. |
-| **W3** | **Latitude reads as colour.** | Group the same samples by band. For every pair of bands adjacent on the sphere where the smaller holds ≥ 5% of the plane's cards, the ΔE between their mean a\*b\*. | **≥ 10** for every such pair. |
+| **W2** | **The mosaic reads as tiles, not as a wash.** This is T7's replacement. | Sample the captured frame at the centre of every front-facing cell ≥ 6 px tall, convert to CIELAB. Report the median ΔE to a cell's nearest on-screen neighbour, and the interquartile range of L\* **across the iso-shade subset** — the cells whose reported `shade` lies within ±2.5% of the median shade. | **median neighbour ΔE ≥ 6** and **iso-shade IQR(L\*) ≥ 8**. |
+| **W3** | **Latitude reads as colour.** | Group the same samples by band. For every pair of bands adjacent **in §1.3's 13-band chain** (a chain, not a cycle: the two ice caps are its two ends and are the furthest apart of any pair) where the smaller holds ≥ 5% of the plane's cards, the ΔE between their mean a\*b\*. | **≥ 10** for every such pair. |
 | **W4** | **Art resolves without exhausting.** | At the surface view (2.2× radius), after a 5 s settle: the fraction of on-screen front-facing cells above the effective threshold that are showing art, and evictions per second over the last 2 s. | **≥ 90%** showing art, **≤ 5 evictions/s**. |
 | **W5** | **The home view is not a wall of labels.** | Count rendered plane labels in the DOM at the home view. | **≤ `planesWithCards.length`** — the worlds plus the belt, **30 on today's roster** and 31 once Forgotten Realms lands. Read it from the dataset under test; today the view renders 82. |
+
+> **Normative — W2's IQR(L\*) half is measured on an iso-shade subset, and the un-subsetted version
+> it replaces could not fail (DEC-749, on DEC-752's finding).** §1.4's shade runs
+> `0.10 + 0.95·s²` with `s = clamp(dot(n, light)·0.5 + 0.5, 0, 1)`, and §1.7 puts the key light
+> 0.798 rad off the camera axis, so over the front-facing cap (`dot(n, toCamera) > 0.12`) shade
+> spans quartiles **0.363 / 0.611 / 0.852**. That gradient alone — *one swatch for the whole
+> world* — puts IQR(L\*) between **12.6 and 21.6** for every swatch luminance from Y = 0.10 to 0.50,
+> against a floor of 8; the ≥ 6 px cut trims the limb and narrows the worst case only to 11.9.
+> (`surface-law-check.py` re-derives all of it.) The lightness spread W2 was reading is the
+> **sphere being lit**, not the mosaic
+> being tiled: no arrangement of cells, and no collapse of the palette, can drive it under 8 while
+> the globe is shaded and round. A criterion that cannot fail is not a criterion.
+>
+> Holding shade fixed removes the gradient and leaves swatch-to-swatch lightness, which is what W2's
+> title claims to measure. **±2.5% of the median shade** is the band: it is an iso-shade *ring*
+> around the sub-light point, so it crosses most of the 13 bands and samples the palette widely,
+> while a tonemap — monotone and per-channel — maps every cell in the ring identically and so cannot
+> reintroduce a gradient. This also repairs the control: under `?swatch=mean` every cell in the ring
+> is the *same colour*, iso-shade IQR(L\*) goes to ≈ 0, and one control row now falsifies **both**
+> halves of W2 instead of one.
+>
+> **The floor of 8 is provisional and is re-derived once leg P publishes `swatches.bin`**, because 8
+> was set against a measure that could not go below ~12. R1's first full gate run records the
+> observed iso-shade IQR per plane and the floor is set from the worst plane, in a spec amendment;
+> until then the gate reports the measure and the matrix asserts its *direction* (real build high,
+> `?swatch=mean` ≈ 0), which is decisive wherever between ~2 and ~20 the floor lands.
+
+> **Normative — a control row names the measure it aims at, not just the criterion (DEC-752).** W2
+> and W4 are conjunctions, and a conjunction hides which half did the work: a row recorded as "W2
+> went RED" reads as evidence for both halves when it may be evidence for one. Each row below
+> carries the measure key it must move, and the runner asserts that measure, so a half with no
+> control of its own is visible as a gap rather than borrowed from its partner.
 
 **Owner-judged, carried over from 9.3 unchanged:** motion perceptible within 3 s of arriving at any
 level; no aliasing shimmer on slow camera moves (recordings cast at the drawing buffer's own
@@ -840,15 +896,48 @@ events; the focused card's tilt feels physical; and, new, **the tether reads as 
 > the same discipline that caught `verify-browser --dataset all` printing "all datasets verified"
 > while running two fixtures.
 
-| Criterion | Control | Must go |
-|---|---|---|
-| W1 | capture at 6× radius instead of the settle (prototype measured 10.1 px there) | **RED** |
-| W2 | `?swatch=mean` — every cell takes the plane's mean swatch | **RED** |
-| W3 | `?bands=shuffle` — band assignment permuted, grid unchanged | **RED** |
-| W4 | `?artThreshold=fixed24` — §1.6's seam: the prototype's constant threshold, no quantile | **RED** |
-| W5 | labels forced on for empty planes | **RED** |
-| W4 | `?layers=128` — tier 4's pool, unmodified policy | **GREEN** |
-| all | the unmodified build on the v3 production dataset | **GREEN** |
+| Criterion | Measure asserted | Control | Must go |
+|---|---|---|---|
+| W1 | `medianCellHeightPx` | capture at 6× radius instead of the settle (prototype measured 10.1 px there) | **RED** |
+| W2 | `medianNeighbourDeltaE` | `?swatch=mean` — every cell takes the plane's mean swatch | **RED** |
+| W2 | `lightnessIqr` | `?swatch=mean` — same row, second half: iso-shade cells become one colour | **RED** |
+| W3 | `worstBandPairDeltaE` | `?bands=shuffle` — cards permuted across the plane's cells, grid and reported `band` unchanged | **RED** |
+| W4 | `artFraction` | `?artThreshold=fixed24` — §1.6's seam: the prototype's constant threshold, no quantile | **RED** |
+| W4 | `evictionsPerSecond` | `?artThreshold=fixed24` — same row, second half | **RED** |
+| W5 | `homeLabels` | labels forced on for empty planes | **RED** |
+| W4 | both | `?layers=128` — tier 4's pool, unmodified policy | **GREEN** |
+| all | all | the unmodified build on the v3 production dataset | **GREEN** |
+
+> **Normative — what `?bands=shuffle` permutes, because three of the four readings pass
+> (DEC-749, on DEC-752's finding).** The seam applies **one global permutation of the plane's cards
+> across the plane's cells**. The grid, the row latitudes, the band boundaries and each cell's
+> **reported `band`** are untouched; only which card — and therefore which swatch — sits in a cell
+> moves. W3 then groups by a band index that still means its geometric band, every band holds a
+> random draw from the whole plane, every band's mean a\*b\* converges on the plane's mean, and the
+> pairwise ΔE collapses. That is the criterion failing for the reason W3 exists: latitude has
+> stopped predicting colour.
+>
+> "Band assignment is permuted" — the wording this note replaces — admits three other readings, and
+> **each one goes GREEN**:
+>
+> 1. **Permute the reported `band` alongside the card.** Every band is still internally uniform,
+>    merely relabelled; every adjacent-pair ΔE stays large.
+> 2. **Permute the band → colour-class map** (the north cap becomes red, and so on). Each band is
+>    still one class, so adjacent bands are still different classes and still far apart in a\*b\*.
+> 3. **Permute within each band.** The band's contents are unchanged as a set; its mean is
+>    unchanged exactly.
+>
+> All three leave the mosaic band-structured and the criterion passing, which is the failure mode
+> §3.1's whole matrix exists to prevent — a control that silently no-ops reads as a passing gate.
+> The distinguishing test is cheap and belongs in R1's unit test for the seam: **under the seam,
+> the multiset of swatches within any single band must change.** Under all three wrong readings it
+> is invariant.
+>
+> On a small plane the collapse is noisy — Rabiah's 5%-share bands hold ~4 cells, so a pair's ΔE can
+> clear 10 by chance. This does not threaten the control: W3 is "≥ 10 for **every** such pair", so
+> one collapsed pair anywhere is RED, and on a plane the size of Dominaria (≥ 313 cells per
+> qualifying band) every pair collapses. The matrix asserts the control on `worstBandPairDeltaE`,
+> which is the pair that collapses hardest.
 
 **On W4's control specifically.** `fixed24` is the control because it is the configuration the
 prototype actually measured failing: at `tether-surface`, 1,024 drawn against 2,759 wanted is **37%
