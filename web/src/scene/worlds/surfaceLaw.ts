@@ -200,3 +200,33 @@ export const CELL_LIFT = 1.006
 
 /** The cell's inset, so the tiling reads as masonry with grout rather than as a skin (§1.4). */
 export const CELL_INSET = 0.93
+
+/**
+ * The angular half-extents the sheet **actually draws** — {@link cellHalfAngles}, inset.
+ *
+ * > **Normative — the probe measures these, not the cell's full angles (§3.1, DEC-749).** The
+ * > vertex shader insets the *angle* before it steps onto the sphere, so a cell covers 93% of its
+ * > share of the surface and the remaining 7% is §1.4's grout. `cellScreenRect` takes its arcs as
+ * > parameters and will happily bound a rectangle nothing ever drew: passing the un-inset angles
+ * > over-reports every cell's extent by **1/0.93 = 7.5%**, which lands directly on W1's pixel-height
+ * > floor and on §1.11's 24 px proxy. This function exists so the two sides cannot spell it
+ * > differently — the shader gets `CELL_INSET` as a `#define` written from this same constant.
+ *
+ * Returns **angle**, like {@link cellHalfAngles} and unlike {@link cellSizeArc}: the probe's
+ * parameterisation walks colatitude and longitude, so it wants the angle the shader walks.
+ */
+export function cellDrawAngles(rowCells: readonly number[], row: number): CellAngles {
+  const angles = cellHalfAngles(rowCells, row)
+  return { lon: angles.lon * CELL_INSET, lat: angles.lat * CELL_INSET }
+}
+
+/**
+ * The radius the sheet is drawn at — the world's radius, lifted off the globe (§1.4).
+ *
+ * The other half of {@link cellDrawAngles}' contract. `cellScreenRect` takes a radius and the
+ * world's own radius is the wrong one: the sheet sits at `1.006x` so it beats depth precision at
+ * system distance, and a probe reading the unlifted radius under-reports every cell by 0.6%.
+ */
+export function drawRadius(radius: number): number {
+  return radius * CELL_LIFT
+}

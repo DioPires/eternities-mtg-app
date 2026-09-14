@@ -122,6 +122,16 @@ export const SHADER_NAME_POST_UPSAMPLE = 'PostUpsample'
 export const SHADER_NAME_POST_COMPOSITE = 'PostComposite'
 
 /**
+ * A world's cell sheet — `worlds/cellMaterial.ts` (DEC-749, spec §1.4).
+ *
+ * **One name and one program for all 45 worlds**, and that is the shared-program case this file's
+ * header describes rather than a gap in the roster. Two sheets differ in their per-instance
+ * attributes and in the *value* bound to `uRadius`; `getProgramCacheKey` keys on neither, so three
+ * links one program however many worlds are above §1.5's crossover.
+ */
+export const SHADER_NAME_WORLD_CELL = 'WorldCell'
+
+/**
  * Every name above, for the test that enforces the rules in this file's header.
  *
  * Deliberately a hand-written list rather than a re-export of the module namespace: the point is to
@@ -145,4 +155,5 @@ export const SHADER_NAMES = [
   SHADER_NAME_POST_DOWNSAMPLE,
   SHADER_NAME_POST_UPSAMPLE,
   SHADER_NAME_POST_COMPOSITE,
+  SHADER_NAME_WORLD_CELL,
 ] as const

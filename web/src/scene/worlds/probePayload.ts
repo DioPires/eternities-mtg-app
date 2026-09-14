@@ -128,6 +128,14 @@ const point = new Vector3()
  * > `2·sin γ` while the flat quad projects to `2γ`, a ratio of `γ/sin γ`: 1.0001 on Dominaria,
  * > 1.0115 at 30 cards, and **1.5708 at N = 1**.
  *
+ * > **Normative — the caller passes the arcs and radius the sheet DRAWS at (DEC-749).** This
+ * > function takes both as parameters, so it will bound a rectangle nothing ever drew if it is
+ * > handed the cell's nominal extents. Use `surfaceLaw.cellDrawAngles` and `surfaceLaw.drawRadius`:
+ * > the un-inset angles over-report every cell by **7.5%** and the unlifted radius under-reports it
+ * > by 0.6%, and the larger error lands on exactly the two numbers that are scored — W1's pixel
+ * > floor and §1.11's 24 px proxy. Neither shows up as a wrong picture, because the picture is drawn
+ * > by the shader and only the *measurement* moves.
+ *
  * Returns `null` when no grid point survives the near plane — the same two-transform discipline
  * `cellSelection.withinFrustum` documents, for the same reason: `applyMatrix4` has already divided
  * by `w`, so a point behind the eye folds back into the frame and reads as an ordinary on-screen

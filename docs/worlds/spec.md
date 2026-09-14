@@ -371,17 +371,45 @@ carry the contract consequence.
 One `InstancedBufferGeometry`, one unit quad, N instances, one draw per world. Review §4.2 costs
 this at "~2,000 opaque textured quads ≈ 2–3 ms"; Dominaria puts 6,266 in the draw.
 
-Per-instance attributes: `iNormal` (vec3, the unit-sphere point), `iEast` (vec3), `iSize` (vec2,
+Per-instance attributes: `iNormal` (vec3, the unit-sphere point), `iSize` (vec2,
 half-extents in units of world radius — **arc length, not angle**; the longitudinal component is
 `(π / rowCells[r])·sin θ_r` and §2.1 carries the derivation and the 51.6× failure that drops the
 `sin θ_r`), `iSwatch` (vec3, linear RGB), `iLayer` (float, dynamic),
-`iArt` (float, dynamic cross-fade). 52 bytes per cell; one cell per card **on a world**, so
-**1.17 MiB** for the 87-plane roster's 23,607 and **1.21 MiB** for v3's 24,399 — not 28,587, which
+`iArt` (float, dynamic cross-fade). **40 bytes per cell**; one cell per card **on a world**, so
+**0.90 MiB** for the 87-plane roster's 23,607 and **0.93 MiB** for v3's 24,399 — not 28,587, which
 is the multiverse total and includes the belt's dust, and the belt has no cell sheet (§1.8).
 
-The vertex shader builds `north = cross(east, n)` and places the quad at `n · radius · 1.006`, lifted
-just off the globe so it beats depth precision at system distance, with edges pulled in to 0.93 so
-the tiling reads as masonry with grout rather than as a skin.
+> **Normative — `iEast` is gone, and 52 bytes per cell is now 40 (DEC-749).** The attribute list
+> above was written for the flat-quad era, where a quad needed an explicit tangent basis to orient
+> it against the sphere. The sphere-following grid below does not: a cell's centre normal already
+> carries its colatitude (`acos(n.y)`) and its longitude (`atan2(n.x, n.z)`), and a vertex is placed
+> by re-walking the *same* parameterisation that placed the centre rather than by stepping along a
+> stored basis. Dropping the vec3 takes the 87-plane roster from 1.17 MiB to **0.90 MiB** and v3
+> from 1.21 MiB to **0.93 MiB**; §1.12's budget table carries the smaller figure. `eastOf` itself
+> stays — §1.5 pins the bake's handedness on it and `buildRowIndex` needs it — but it no longer
+> ships per cell. The client asserts the 40 from the geometry rather than restating it, so a
+> re-added attribute moves the constant and the budget together.
+
+The vertex shader recovers the cell's *angular* half-extents from `iSize` — dividing out the
+`sin θ_r` that made it arc length — walks colatitude and longitude out from the centre to the grid
+vertex's `(u, v)`, and places it at `n · radius · 1.006`, lifted just off the globe so it beats
+depth precision at system distance, with the **angle** pulled in to 0.93 so the tiling reads as
+masonry with grout rather than as a skin. Insetting the angle rather than a tangent offset is what
+keeps every vertex on the sphere at every subdivision.
+
+> **Normative — the probe must be handed the extents the sheet DRAWS at (§3.1, DEC-749).**
+> `cellScreenRect` takes its arcs and its radius as parameters, so it will bound a rectangle nothing
+> ever drew if it is handed a cell's nominal extents: the un-inset angles over-report every cell by
+> **7.5%** and the unlifted radius under-reports it by 0.6%. The larger error lands directly on the
+> two numbers that are scored — W1's pixel-height floor and §1.11's 24 px proxy — and neither shows
+> up as a wrong picture, because the picture is drawn by the shader and only the *measurement*
+> moves. `surfaceLaw.cellDrawAngles` and `surfaceLaw.drawRadius` are the single spelling of both,
+> and the shader takes the same two constants as `#define`s written from them.
+
+**Shading is flat across a cell.** `iNormal` is the *centre* normal and the fragment shader uses it
+unmodified rather than interpolating a per-vertex one, so §3.1's `shade` is a statement about the
+frame rather than an approximation of it — a smooth normal would leave W2's iso-shade subset not a
+subset of anything.
 
 > **Normative — the quad follows the sphere; below 574 cards it has to be subdivided (DEC-749, on
 > DEC-751's n = 1 finding).** A flat quad tangent at the cell centre is only a surface patch while
@@ -842,16 +870,16 @@ comparable to the thing it is being compared to.
 |---|---|---|
 | Art pool, 1,024 × 128 × 96 × 4, no mips | 50,331,648 | 48.00 |
 | Equirect swatch array, 45 × 256 × 128 × 4 | 5,898,240 | 5.62 |
-| Cell instance attributes, 24,399 × 52 B | 1,268,748 | 1.21 |
+| Cell instance attributes, 24,399 × 40 B | 975,960 | 0.93 |
 | Printing ring, 72 × `small` (146×204×4) | 8,577,792 | 8.18 |
 | Focused card, `large` (672×936×4), one face | 2,515,968 | 2.40 |
-| **Total** | **68,592,396** | **65.41** |
+| **Total** | **68,299,608** | **65.14** |
 
-Under target with **30.6 MiB** of headroom, and **lower than today's worst case** — which is the
+Under target with **30.9 MiB** of headroom, and **lower than today's worst case** — which is the
 first place concept B pays for itself rather than costing.
 
 > **The two dataset-dependent rows are v3's** (45 worlds, 24,399 cards on worlds — §1.2). On the
-> 87-plane roster they are 29 layers / 3.62 MiB and 23,607 cells / 1.17 MiB, for **63.38 MiB**
+> 87-plane roster they are 29 layers / 3.62 MiB and 23,607 cells / 0.90 MiB, for **63.11 MiB**
 > total. The refresh costs **+2.03 MiB**, almost all of it the equirect array — the only place in
 > this spec where the roster's new shape moves a budget row. Both rows are `.length`s of §3.1's
 > derived sets: a renderer that allocates either from a constant is wrong on one of the two datasets
@@ -859,7 +887,7 @@ first place concept B pays for itself rather than costing.
 
 > The focused-card row counts one face. Today's worst case counts two, because a double-faced card
 > uploads both (`focusedCard.ts:702`, and `worstCaseCardBytes` multiplies by 2). A DFC in focus adds
-> 2.40 MiB for **67.81 MiB** and 28.2 MiB of headroom; the conclusion is untouched either way, but
+> 2.40 MiB for **67.53 MiB** and 28.5 MiB of headroom; the conclusion is untouched either way, but
 > the DFC figure is the one to assert against, because it is the one `gpuMemory.ts` computes.
 
 The art pool is the worlds path's contribution to W4.1's quality ladder, and it is a real rung at
