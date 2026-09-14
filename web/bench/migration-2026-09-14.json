@@ -1,0 +1,72 @@
+{
+  "note": "DEC-741 (W4.3): what three 0.170->0.186, Vite 6->8 and React 18->19 cost. Four bench runs, all on this machine inside one session, two at the W4.2 merge commit (6f48471) before any version change and two at the migrated head. Not a new baseline for the product -- baseline-2026-09-05.json remains that -- but the before/after pair the migration is judged on.",
+
+  "comparisonBasis": {
+    "primary": "Isolation. `before` is commit 6f48471 (the W4.2 de-React merge) with its committed lockfile; `after` is the same tree with only the three version bumps and the four source changes they forced. Same machine, same session, same dataset, same bench invocation. This is the only pairing that answers the question the leg asks -- 'did r186/Vite 8/React 19 cost us anything' -- because nothing else differs between the two columns.",
+    "whyNotTheStatedBasis": "The issue names the W1.1/W2.1 pre-migration numbers (baseline-2026-09-05.json) as the comparison. That delta is not attributable to this leg and is not used as one here, for three independent reasons. (1) W4.1 (DEC-739, platform layer and quality ladder) and W4.2 (DEC-740, de-React) both merged in between, so any difference carries their cost as well as the bumps'. (2) The dataset moved: the 2026-09-05 baseline ran `production` at 28,587 stars and 87 planes, and `scale` today is a different fixture at 30,000 stars and 88 planes. (3) The display is different -- see displayCaveat. The 2026-09-05 file is still quoted below as context, but as context and not as a delta.",
+    "displayCaveat": "The reference machine ran at 60 Hz for this session, not the 120 Hz ProMotion the 2026-09-05 baseline recorded. Both vsync runs below therefore sit on a 16.7 ms floor where the baseline sat on an 8.3 ms one, and the vsync column reports `target missed` purely because 17.4 ms p95 exceeds a 16.7 ms target that the panel itself makes unreachable. No vsync number here is comparable with the 2026-09-05 file, in either direction. The uncapped runs are unaffected and are the instrument this leg is read on: with vsync on, a panel reports its own refresh interval whether the frame cost 2 ms or 8.",
+    "notMeasured": "The Iris Xe and 780M field runs stay owner-side (review §9, W0.1); none had arrived by this run. Windows is untested here -- `pnpm windows-kit` is what covers it."
+  },
+
+  "recordedAt": "2026-09-14",
+  "issue": "DEC-741",
+  "before": { "commit": "6f48471", "three": "0.170.0", "vite": "6.4.3", "react": "18.3.1" },
+  "after": { "commit": "86016f8", "three": "0.186.0", "vite": "8.3.0", "react": "19.3.0" },
+
+  "machine": {
+    "description": "Apple Silicon MacBook, the development machine this team runs on (implementation-plan.md section 6)",
+    "gpu": "ANGLE (Apple, ANGLE Metal Renderer: Apple M5 Pro, Unspecified Version)",
+    "display": "60 Hz this session -- NOT the 120 Hz ProMotion of baseline-2026-09-05.json",
+    "browser": "Google Chrome 153.0.8010.37, headed, 1920x1080 viewport, devicePixelRatio 2 capped to 1.5 by quality tier 0",
+    "dataset": "fixture-scale, 30000 stars, 88 planes, float16 positions, anchor plane shandalar"
+  },
+
+  "runtime": {
+    "uncapped": {
+      "role": "The load-bearing comparison. Frame rate unlocked, so the number is frame cost and not refresh interval.",
+      "before": { "fps": 679.85, "frameMsP50": 2.2, "frameMsP95": 2.9, "frameMsMax": 371.6, "frames": 26452 },
+      "after": { "fps": 686.52, "frameMsP50": 2.2, "frameMsP95": 2.9, "frameMsMax": 364.8, "frames": 26468 },
+      "delta": "p95 unchanged at 2.9 ms; p50 unchanged at 2.2 ms; mean fps +6.7 (+1.0%), which is inside this bench's run-to-run spread and is not claimed as an improvement. Verdict: no measurable steady-state cost.",
+      "maxFrame": "371.6 -> 364.8 ms. Both are DEC-645, unchanged in kind: three.js's WebGLProgram.onFirstUse calls gl.getProgramInfoLog() the first time a newly linked program draws, which is a synchronous round trip that cannot answer until the command buffer drains. It appears only uncapped, at ~680 fps, where the queue is hundreds of frames deep. r186 did not remove it and did not make it worse."
+    },
+    "vsync": {
+      "role": "The protocol run PRD 7.2 is judged on -- but see displayCaveat: on a 60 Hz panel it measures the panel.",
+      "before": { "fps": 59.97, "frameMsP50": 16.7, "frameMsP95": 17.6, "frameMsMax": 17.8 },
+      "after": { "fps": 59.97, "frameMsP50": 16.7, "frameMsP95": 17.4, "frameMsMax": 17.8 },
+      "delta": "p95 17.6 -> 17.4 ms. Both sit on the 60 Hz floor; the difference is scheduling noise, not headroom. Both report PRD 7.2's ceiling (50 fps, p95 <= 33 ms) MET and its target (60 fps, p95 <= 16.7 ms) missed-by-the-display."
+    },
+    "quality": "Tier `full`, 0 quality changes, on all four runs. The W4.1 ladder did not engage in either column, so no run is a degraded-tier measurement wearing a full-tier label."
+  },
+
+  "payload": {
+    "basis": "scripts/check-budget.mjs, brotli quality 11 over local files, dataset dabe2c9a68b4d799. See servedBytes for why that is a model and not a measurement.",
+    "budgetRows": {
+      "first-frame": { "before": "348.5 KB", "after": "374.5 KB", "delta": "+26.0 KB", "target": "500.0 KB", "ceiling": "1.00 MB", "status": "ok, 70% -> 75% of target" },
+      "intro": { "before": "586.2 KB", "after": "612.2 KB", "delta": "+26.0 KB", "target": "3.00 MB", "ceiling": "6.00 MB", "status": "ok, 19% -> 20% of target" },
+      "search-pair": { "before": "669.0 KB", "after": "669.0 KB", "delta": "0", "target": "700.0 KB", "ceiling": "1.50 MB", "status": "near target, 96% -- data, untouched by this leg" },
+      "plane-shard": { "before": "339.9 KB", "after": "339.9 KB", "delta": "0", "target": "1.50 MB", "ceiling": "2.50 MB", "status": "ok, 22% -- data, untouched by this leg" }
+    },
+    "verdict": "Every target and ceiling still holds. The shell grew 331.6 -> 357.6 KB.",
+    "attribution": {
+      "method": "Per-chunk brotli q11 on both builds, from a second worktree built at 6f48471. The chunk names survive the rolldown migration, so the rows are directly comparable.",
+      "three": "94.1 -> 104.2 KB (+10.1)",
+      "react": "38.8 -> 56.7 KB (+17.9)",
+      "styles.js": "55.1 -> 52.7 KB (-2.4)",
+      "index.js": "7.6 -> 7.4 KB (-0.2)",
+      "styles.css": "3.7 -> 3.8 KB (+0.1)",
+      "types.js": "new chunk, +0.6 KB (rolldown splits one module rollup had inlined)",
+      "sum": "+26.1 KB, which closes against the +26.0 KB shell delta.",
+      "reading": "React 19 is the larger half of the cost (+17.9 KB brotli, a 46% growth on that chunk) and three r186 the smaller (+10.1 KB, +11%). The bundler swap is the only line that gave bytes back."
+    },
+    "servedBytes": {
+      "status": "The evidence bar asks for served bytes rather than local brotli. That cannot be satisfied from this branch, and the gap is real rather than pedantic.",
+      "why": "check-budget.mjs has no served-bytes mode -- it is brotliCompressSync at quality 11 over local files, with only --dataset and --dist. It models the edge and prints 'encoded transferred size', but never measures it. And served bytes need a deployment, which an unmerged branch does not have.",
+      "measuredOnProduction": "Measured against https://eternities-mtg-app.vercel.app on 2026-09-14, which serves the same dataset hash (dabe2c9a68b4d799) the local gate scores, so the two are directly comparable: search.json 227,954 B + sets.bin 513,644 B = 741,598 B = 724.2 KB served with content-encoding: br.",
+      "finding": "The search-pair row is 724.2 KB as served against a 700.0 KB target -- over it -- while the repo gate reports 669.0 KB and calls it 96% of target. The edge does not reach quality 11, so local brotli under-reports by 55.2 KB on this row. This is a pre-existing measurement gap, not something this leg introduced; the row is data and did not move. Flagged rather than fixed, because re-basing the budget is review amendment B4's open decision and not this leg's to settle."
+    }
+  },
+
+  "crossBrowser": "docs/cross-browser.md, rewritten from a real run on the migrated toolchain. Chrome 153.0.8010.37, Firefox 155.0 and WebKit 26.6 all pass the PRD 7.1.2 battery, including the PRD 8.5.7 GPU self-check at float16 and float32 -- which is the measurement that the r177/r183/r184/r185 audit only argued for.",
+
+  "suite": "typecheck, lint, 666 unit tests across 35 files, and 23 Playwright e2e specs green on the bumped toolchain. Unit count rose from 664: DEC-741 added test/drawer-inert.test.tsx, covering a PRD 7.5.2 behaviour whose mechanism the React 19 bump changed and which nothing asserted before."
+}

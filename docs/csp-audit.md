@@ -122,9 +122,12 @@ is correct in advance if one is ever added. No change.
 
 ### F4 — considered and declined
 
-- **`require-trusted-types-for 'script'`.** React 18 does not run clean under Trusted Types
-  without a policy shim. Declined as disproportionate for a site with no user-generated content
-  and no `innerHTML` of our own (PRD 7.6.3).
+- **`require-trusted-types-for 'script'`.** React 18 did not run clean under Trusted Types without
+  a policy shim. Declined as disproportionate for a site with no user-generated content and no
+  `innerHTML` of our own (PRD 7.6.3). DEC-741 moved the site to React 19 and did **not** re-test
+  this: the decision never rested on the React version — the second clause is what carries it — so
+  the outcome is unchanged, but read the first sentence as a statement about React 18 rather than
+  as a current measurement.
 - **`Cross-Origin-Embedder-Policy`.** Would break the Scryfall image fetches unless Scryfall sends
   `Cross-Origin-Resource-Policy` on its CDN, which is not ours to arrange. Declined.
 - **CSP reporting (`report-to` / `report-uri`).** Needs an endpoint. PRD 8.10 is explicit that

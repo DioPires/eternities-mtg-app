@@ -41,7 +41,7 @@ pipeline/                 Python 3.13, uv. Scryfall bulk data to artefacts.
   data/appendix_b.json    The set to plane seed table (PRD Appendix B).
   data/overrides.json     Card-name to plane overrides (PRD 4.1.5). Starts empty.
   reports/<date>.md       One run report per pipeline run, committed with its data.
-web/                      Vite, React, TypeScript strict, react-three-fiber, Zustand. pnpm.
+web/                      Vite 8, React 19, TypeScript strict, three.js, Zustand. pnpm.
   src/data/               The data contract, decoder side. Frozen.
   src/navigation/         The navigation contract. Frozen. One state machine, two transports:
                           the no-op stub and the camera rig.
@@ -50,18 +50,21 @@ web/                      Vite, React, TypeScript strict, react-three-fiber, Zus
   src/plane-detail/       Plane shards fetched and parsed in a worker (amendment A1).
   src/scene/              The shipped scene: the star field, the card tier, the post chain and
                           the GPU self-check.
-  src/bench/              The in-page bench `scripts/bench.mjs` drives, behind `/bench`. Lazy.
+  src/bench/              The in-page bench `scripts/bench.mjs` drives, behind `/bench`. Reached
+                          from `harness.html`, not from the product.
   src/router/             PRD 6.7's URL: the source of truth for focus and filters.
   src/store/              PRD 8.4.2's transient view state, and the persisted settings.
   src/filters/            PRD 6.6's facets: the dimming mask and the exact count.
   src/search/             PRD 6.5's client-side fuzzy index over search.json.
   src/app/                Cold start, dataset loading, and the shell's hooks.
   src/ui/                 HUD, drawers, overlays, toasts, WebGL2 fallback.
-  src/harness/            The still field the GPU self-check needs, behind `?selfcheck`. Lazy,
-                          so none of it is in the product's chunk.
+  src/harness/            The still field the GPU self-check needs, behind `?selfcheck`, and the
+                          entry point of `harness.html` — the second Vite input (DEC-740). None of
+                          it is in the product's *build*, not merely out of its first chunk.
   public/data/<hash>/     Committed artefacts, immutable, content-hashed.
-  scripts/                Budget check, vercel.json generation, browser verification, and
-                          `visual-gate.mjs` — PRD 9.3's acceptance instrument.
+  scripts/                Budget check, vercel.json generation, the bench, and `visual-gate.mjs`
+                          — PRD 9.3's acceptance instrument. The browser-verification scripts were
+                          archived by DEC-708; see `docs/cross-browser.md` to restore one.
   e2e/                    Playwright: PRD 8.9.2's route smoke and 9.1.2's bench smoke, in CI.
 contract/test-vectors/v2/ The shared byte-level test vector. Both languages assert against it.
 docs/                     The contract and policy documents above.
