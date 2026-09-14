@@ -2,8 +2,8 @@
 
 **Status:** leg G's consumption contract for leg R1's seams. Written before R1 starts, deliberately.
 
-`docs/worlds/spec.md` §3.1 makes five seams normative renderer surface and assigns them to legs R1
-and R3, and DEC-744 B1 / DEC-746 D5 confirm that ownership: **the gate consumes these seams and does
+`docs/worlds/spec.md` §3.1 makes five seams normative renderer surface and assigns **all five to leg
+R1**, and DEC-744 B1 / DEC-746 D5 confirm that ownership: **the gate consumes these seams and does
 not build them.** The rule that follows from that — if a seam is missing when the gate is built,
 that is an R1 defect routed via the CEO — is a good rule and an expensive one to exercise. R1 is
 five engineer-days, and a seam that lands in a shape the gate cannot read costs a second round trip
@@ -59,6 +59,19 @@ interface ProbeCell {
   onScreen: boolean
   /** Index into `BAND_ORDER`, the 13-band north-to-south chain of §1.3. Not a colour class. */
   band: number
+  /**
+   * §1.4's shade term as the renderer computed it:
+   * `0.10 + 0.95·clamp(dot(n, light)·0.5 + 0.5, 0, 1)²`.
+   *
+   * W2's lightness half is measured over the **iso-shade subset** (§3.1) and cannot be computed
+   * without it. The gate deliberately does not re-derive it from the normal and the light
+   * direction: a gate that recomputes shade asserts against its own model of the lighting rather
+   * than against the shipped one, and would stay green on a renderer whose light had drifted.
+   *
+   * This is the one probe field that is a *derived* quantity rather than a state read, which is
+   * why it is normative in §3.1 rather than being a gate-side convenience.
+   */
+  shade: number
   /** Above the *effective* threshold this frame. Under §1.6's quantile this is not "height ≥ 24". */
   wantsArt: boolean
   /** Resolved to art and cross-faded in — `iArt` at 1, not merely a layer having been claimed. */
@@ -66,7 +79,16 @@ interface ProbeCell {
 }
 
 interface ProbePool {
-  /** After §1.6's `min(tierLayers, maxLayers − 32)` clamp, not the tier constant. */
+  /**
+   * After §1.6's clamp, not the tier constant: `max(0, min(tierLayers, maxLayers − 32))`.
+   *
+   * **The outer `max(0, …)` is load-bearing and this document originally omitted it.** W4.1's
+   * `capabilities.ts` reports `maxArrayTextureLayers` as **0** — not as a large number — on a
+   * non-WebGL2 context and on a lost context, so the inner expression is **−32 at every tier**
+   * there. `layers >= 0` always, and **0 is a legal value**: a swatch-only world, which is what
+   * §1.4's shading path already degrades to when no cell holds a layer. The gate treats 0 as a
+   * measurement, not as a setup failure.
+   */
   layers: number
   /** Must satisfy `resident <= layers`; the prototype's 1,031-in-1,024 is the bug this catches. */
   resident: number
@@ -77,7 +99,8 @@ interface ProbePool {
 }
 ```
 
-**Cells are reported for the focused plane only.** W1 flies to each of the 29 worlds in turn and
+**Cells are reported for the focused plane only.** W1 flies to each world in turn — 45 on the v3
+roster after DEC-745, and read off `planes.json` rather than hardcoded — and
 takes the statistic per plane; a single pooled array across the system would make the per-plane
 median unrecoverable, and W1's verdict is the worst plane, not the pooled one.
 
@@ -86,16 +109,34 @@ G C`, thirteen bands over seven classes, and W3 compares bands adjacent *on the 
 class would merge the two ice caps — which sit at opposite poles — into one group and invent an
 adjacency the sphere does not have.
 
-## 2. The four control seams
+## 2. The control seams — five, all owned by R1
 
-Straight from §3.1 and §1.6; restated only as what the gate asserts of each.
+Straight from §3.1 and §1.6; restated only as what the gate asserts of each. `?probe=` is one of
+them and not a separate kind of thing: it is renderer surface the gate reads and does not build.
+**§3.1's ruling is that all five are R1's**; an earlier draft of this table put `?layers=N` on
+"R1/R3", and R3's rows (§1.10–§1.12) carry none of them.
 
 | Seam | Owner | What the gate needs to be true |
 |---|---|---|
-| `?swatch=mean` | R1 | Every cell takes the plane's mean swatch. **The grid and `band` are unchanged** — only the colour moves. |
-| `?bands=shuffle` | R1 | Band *assignment* is permuted; the grid is unchanged. Cells keep their geometry and their reported `band`; which card sits in them moves. Permuting the reported `band` alongside the card relabels the mosaic and leaves every band internally uniform, which is a control that passes. |
+| `?probe=` | R1 | Installs `window.__eternitiesProbe.worlds()`, §1 above. Returns `undefined` on a build without the seam, which the gate reports as a setup failure rather than a red criterion. |
+| `?swatch=mean` | R1 | Every cell takes the plane's mean swatch. **The grid and `band` are unchanged** — only the colour moves. With §3.1's iso-shade subset this one row now falsifies **both** halves of W2. |
+| `?bands=shuffle` | R1 | **One global permutation of the plane's cards across the plane's cells.** The grid, the row latitudes, the band boundaries and each cell's reported `band` are all untouched; only which card sits in a cell moves. Three other readings all leave the criterion **green** — see below. |
 | `?artThreshold=fixed24` | R1 | A constant 24 CSS px threshold: no histogram, no hysteresis, pool allowed to exhaust. `pool.effectiveThresholdPx` must read exactly 24 so the gate can prove the seam took effect rather than assuming it. |
-| `?layers=N` | R1/R3 | Pins the pool size, **after** the `MAX_ARRAY_TEXTURE_LAYERS − 32` clamp. `?layers=128` is tier 4 and an expected-**GREEN** row. |
+| `?layers=N` | R1 | Pins the pool size alone, reported back **after** the `max(0, min(N, MAX_ARRAY_TEXTURE_LAYERS − 32))` clamp. **It is not `?quality=N`** — that one already exists (`adaptiveQuality.ts:360`) and moves five quantities at once (`pixelRatioCap`, `bloomScale`, `bloomLevels`, `thumbnailCapacity`, `glow`). Routed through the tier, the expected-GREEN `?layers=128` row would also be measuring dpr, bloom and glow. |
+
+**What `?bands=shuffle` must not be.** The gate cannot distinguish these from the outside by reading
+W3 alone, because all three go **green**:
+
+1. **Permuting the reported `band` alongside the card** — every band stays internally uniform and is
+   merely relabelled, so every adjacent-pair ΔE stays large.
+2. **Permuting the band → colour-class map** — each band is still one class, so adjacent bands are
+   still different classes and still far apart in a\*b\*.
+3. **Permuting within each band** — the band's contents are unchanged *as a set*, so its mean is
+   unchanged exactly.
+
+The distinguishing assertion belongs in R1's unit test for the seam, not in the gate: **under the
+seam, the multiset of swatches within any single band must change.** It is invariant under all three
+wrong readings and it is the cheapest thing that separates them.
 
 Every control run asserts the seam engaged before it reads a criterion. A control that silently
 no-ops produces a green row and reads as a passing gate — the `verify-browser --dataset all` shape
@@ -112,14 +153,28 @@ directly and carries the row on its own.
 
 **Criteria report per half, and the matrix scores per half.** W2 and W4 are conjunctions, and a
 conjunction hides which half did the work. Under `?swatch=mean` the neighbour-ΔE half collapses to
-≈ 1.2 against a floor of 6 and goes solidly red — but §1.4's shade runs 0.10 + 0.95·s² with s from
-0.56 at the facing cut to 1.0 at the sub-camera point, so lightness still varies across the disc
-with one swatch throughout, and **IQR(L\*) measures 14.1 against its floor of 8 and stays green.**
-The row is still red, because W2 is a conjunction. But a gate reporting only the row would have
-recorded `?swatch=mean` as exercising both halves of W2 when it exercises exactly one, and IQR(L\*)
-would ship with no negative control at all. So `checkControlRow` names the measure a row targets,
-and the matrix carries a sixth, gate-side row — a flat unshaded wash — as IQR(L\*)'s own control.
+≈ 1.2 against a floor of 6 and goes solidly red — but the **un-subsetted** IQR(L\*) measured 14.1
+against its floor of 8 and stayed green, because it was reading the lit sphere's own gradient rather
+than the mosaic. The row was still red, so a gate reporting only the row would have recorded
+`?swatch=mean` as exercising both halves of W2 when it exercised exactly one, and IQR(L\*) would
+have shipped with no negative control at all. `checkControlRow` names the measure a row targets for
+this reason, and §3.1 now requires it of every row.
 
-Neither of these changes a floor or a criterion. Both are recorded here because they are decisions a
-reader of §3.1 alone would not arrive at, and the second one is the reason the gate's output shape
-is what it is.
+This document previously answered the finding with a sixth, gate-side row — a flat unshaded wash.
+**DEC-749 repaired it in the renderer instead, and that is the better fix:** §3.1's lightness half
+is now measured over the iso-shade subset, where `?swatch=mean` drives it to ≈ 0, so one real
+control row falsifies both halves and the gate-side row is gone. R1's re-derivation also showed the
+un-subsetted measure could not fail *at all* — 12.6–21.6 for any single swatch — which is a stronger
+statement than "it stayed green on this control". The gate-side workaround did not survive its own
+finding.
+
+**A criterion may be out of its domain, and that is a third verdict.** W2 and W3 are undefined on a
+one-card world — no nearest neighbour, no second quartile, no adjacent band pair — and the v3 roster
+has six. They report `insufficient`, which is neither red nor green, and the gate prints how many
+planes landed there. Scoring them as failures would take the matrix's expected-GREEN row down
+against a correct renderer; skipping them silently is how a gate prints green while measuring
+nothing. See §3.1's note and `W2_MIN_SAMPLES`.
+
+None of these changes a floor or a criterion. They are recorded here because they are decisions a
+reader of §3.1 alone would not arrive at, and the second and third are the reason the gate's output
+shape is what it is.

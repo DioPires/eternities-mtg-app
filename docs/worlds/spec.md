@@ -1823,8 +1823,8 @@ an assertion there.
 > (DEC-751).** Two sets, and every count below is one of their sizes:
 >
 > ```
-> worldsWithCards  = planes.filter(p => p.kind !== 'dust' && p.cardCount > 0)   // 29 today
-> planesWithCards  = planes.filter(p => p.cardCount > 0)                        // 30 today
+> worldsWithCards  = planes.filter(p => p.kind !== 'dust' && p.cardCount > 0)   // 45 on v3
+> planesWithCards  = planes.filter(p => p.cardCount > 0)                        // 46 on v3
 > ```
 >
 > W1 and W5 both iterate `worldsWithCards`, and for the same reason: the Blind Eternities has cards
@@ -1857,7 +1857,7 @@ an assertion there.
 
 | # | Criterion | Measurement | Floor |
 |---|---|---|---|
-| **W1** | **Cells are resolvable at framing distance.** | At the plane-level settle for each of `worldsWithCards` (**29** on the 87-plane roster, **45** on v3), the median on-screen height of front-facing cells. Not the Blind Eternities: it has cards but no cell sheet (§1.8), so the statistic is undefined there — `planesWithCards` would be 30 / 46 and would include it. | **≥ 24 CSS px.** Binds on the largest plane: Dominaria **28.74** at its worst azimuth, at §1.3's framing distance — a **20% margin** (`[shipped]`, the arm the build renders; `[tilted]` it is Ravnica 25.21 and 5% — §1.3 on the two arms). |
+| **W1** | **Cells are resolvable at framing distance.** | At the plane-level settle for each of `worldsWithCards` (**29** on the 87-plane roster, **45** on v3), the median on-screen height of front-facing cells; the verdict is the **worst** world, not the pooled median. Not the Blind Eternities: it has cards but no cell sheet (§1.8), so the statistic is undefined there — `planesWithCards` would be 30 / 46 and would include it. | **≥ 24 CSS px.** Binds on the largest plane: Dominaria **28.74** at its worst azimuth, at §1.3's framing distance — a **20% margin** (`[shipped]`, the arm the build renders; `[tilted]` it is Ravnica 25.21 and 5% — §1.3 on the two arms). |
 | **W2** | **The mosaic reads as tiles, not as a wash.** This is T7's replacement. | Sample the captured frame at the centre of every front-facing cell ≥ 6 px tall, convert to CIELAB. Report the median ΔE to a cell's nearest on-screen neighbour, and the interquartile range of L\* **across the iso-shade subset** — the cells whose reported `shade` lies within ±2.5% of the median shade. | **median neighbour ΔE ≥ 6** and **iso-shade IQR(L\*) ≥ 8**. |
 | **W3** | **Latitude reads as colour.** | Group the same samples by band. For every pair of bands adjacent **in §1.3's 13-band chain** (a chain, not a cycle: the two ice caps are its two ends and are the furthest apart of any pair) where the smaller holds ≥ 5% of the plane's cards, the ΔE between their mean a\*b\*. | **≥ 10** for every such pair. |
 | **W4** | **Art resolves without exhausting.** | At the surface view (2.2× radius), after a 5 s settle: the fraction of on-screen front-facing cells above the effective threshold that are showing art, and evictions per second over the last 2 s. | **≥ 90%** showing art, **≤ 5 evictions/s**. |
@@ -1922,6 +1922,35 @@ an assertion there.
 > went RED" reads as evidence for both halves when it may be evidence for one. Each row below
 > carries the measure key it must move, and the runner asserts that measure, so a half with no
 > control of its own is visible as a gap rather than borrowed from its partner.
+> **Normative — the smallest worlds are below W2's and W3's domain, and a correct build goes RED
+> without this (DEC-752, on DEC-751's finding).** The Forgotten Realms refresh introduces **six
+> worlds holding exactly one card** (ergamon, muraganda, pyrulea, regatha, segovia, shandalar) and
+> 15 holding ≤ 4; `minWorld` across tracked datasets was {41, 30, 6} and production now contributes
+> **1**. W1 survives this — a one-cell world's cell is enormous and never becomes the worst plane —
+> but W2 and W3 are **undefined** there, not merely noisy, and the gate's own module returns:
+>
+> | measure | value at n = 1 | why |
+> |---|---|---|
+> | `medianNeighbourDeltaE` | `null` | "nearest on-screen neighbour" has no referent with one cell |
+> | iso-shade `IQR(L*)` | `0` | the interquartile range of a single sample |
+> | `minAdjacentBandDeltaE` | `null` | one populated band, so **zero** qualifying adjacent pairs |
+>
+> Scored as ordinary failures — which is what a floor comparison does to a `null` — those six worlds
+> turn the matrix's **expected-GREEN** row ("the unmodified build on the v3 production dataset")
+> RED, on a renderer doing exactly what this section asks. That is W5's stale-30 failure again, one
+> criterion over: unsatisfiable by construction on the dataset the gate exists to accept.
+>
+> So W2 and W3 carry a **sample-size precondition** and a third verdict. A plane with fewer than
+> **4 sampled cells** for W2, or with no qualifying adjacent band pair for W3, reports
+> `insufficientSamples` — not `pass`, not `fail` — and the gate prints the count of planes that
+> landed there. A criterion may not be silently skipped: an `n/a` that is invisible is how a gate
+> comes to measure nothing while printing green. The threshold is 4 because IQR needs two quartiles
+> to be a spread rather than a gap, and because a 4-cell world measured 133.0 ΔE / 33.6 IQR in the
+> module's own test — comfortably inside the domain — while 1 is outside it.
+>
+> **The degenerate worlds are still covered, by W1 and W4, which are defined at n = 1**, and by the
+> dedicated matrix row below. What may not happen is a whole-multiverse aggregate quietly averaging
+> over them: a single degenerate world is exactly what an aggregate seam measure does not catch.
 
 **Owner-judged, carried over from 9.3 unchanged:** motion perceptible within 3 s of arriving at any
 level; no aliasing shimmer on slow camera moves (recordings cast at the drawing buffer's own
@@ -1935,15 +1964,44 @@ events; the focused card's tilt feels physical; and, new, **the tether reads as 
 
 | Criterion | Measure asserted | Control | Must go |
 |---|---|---|---|
-| W1 | `medianCellHeightPx` | capture at 6× radius instead of the settle (prototype measured 10.1 px there) | **RED** |
+| W1 | `minMedianCellHeightPx` | capture at 6× radius instead of the settle (prototype measured 10.1 px there) | **RED** |
 | W2 | `medianNeighbourDeltaE` | `?swatch=mean` — every cell takes the plane's mean swatch | **RED** |
 | W2 | `lightnessIqr` | `?swatch=mean` — same row, second half: iso-shade cells become one colour | **RED** |
-| W3 | `worstBandPairDeltaE` | `?bands=shuffle` — cards permuted across the plane's cells, grid and reported `band` unchanged | **RED** |
+| W3 | `minAdjacentBandDeltaE` | `?bands=shuffle` — cards permuted across the plane's cells, grid and reported `band` unchanged | **RED** |
 | W4 | `artFraction` | `?artThreshold=fixed24` — §1.6's seam: the prototype's constant threshold, no quantile | **RED** |
 | W4 | `evictionsPerSecond` | `?artThreshold=fixed24` — same row, second half | **RED** |
 | W5 | `homeLabels` | labels forced on for empty planes | **RED** |
+| W1, W4 | `minMedianCellHeightPx`, `artFraction` | a **one-card world** (`?plane=segovia`) at its own settle — the n = 1 extreme, never rendered in any tracked dataset before v3 | **GREEN** |
 | W4 | both | `?layers=128` — tier 4's pool, unmodified policy | **GREEN** |
 | all | all | the unmodified build on the v3 production dataset | **GREEN** |
+
+> **Normative — the measure keys in this table are the keys the module emits.** `checkControlRow`
+> resolves a row by `{criterion, measure}` and reports `W1 has no measure "…"` when the name is not
+> one a criterion actually returned, so a typo here surfaces as a failing row with a confusing
+> detail rather than as a silent pass — safe, but only once. The seven keys are
+> `minMedianCellHeightPx`, `medianNeighbourDeltaE`, `lightnessIqr`, `minAdjacentBandDeltaE`,
+> `artFraction`, `evictionsPerSecond`, `homeLabels`. Two rows above named `medianCellHeightPx` and
+> `worstBandPairDeltaE`, which no criterion emits; both are corrected.
+
+> **On the one-card-world row (DEC-752, raised by DEC-751).** It is an expected-**GREEN** row and it
+> is not redundant with the last row: the whole-multiverse capture *averages over* a degenerate
+> world, and an aggregate that averages is precisely what cannot catch one. Pinning the row to a
+> named one-card world makes the extreme a subject in its own right.
+>
+> It asserts the two criteria that are **defined** at n = 1 — W1's cell height and W4's art
+> fraction — and asserts that W2 and W3 report `insufficientSamples` rather than either verdict.
+> That second half is the one that matters: it is the guard against the precondition above being
+> quietly widened later until it swallows real planes. A control that asserts an `n/a` is still a
+> control, because the alternative readings (silently pass, silently skip) are both reachable and
+> both wrong.
+>
+> The row is also the surface law's extreme, and the law is **degenerate there in a way §1.3 does
+> not yet address**: at N = 1 the closed form returns one row of **two** cells for one card, and the
+> single cell's half-extents are **1.571 × 1.571 world radii** — a quad π radii on a side wrapped
+> onto a globe 2 radii across — at an aspect of **1.000**, not 4:3. (The same closed form
+> over-allocates at every small N: 1→2, 3→4, 6→9, 12→16, 30→34 cells.) §1.3's relaxation is what
+> must reconcile that, and it is **R1's** to specify; this row is what would catch it not having
+> been. Reproduce with `surface-law-check.py`'s `grid()`.
 
 > **Normative — what `?bands=shuffle` permutes, because three of the four readings pass
 > (DEC-749, on DEC-752's finding).** The seam applies **one global permutation of the plane's cards

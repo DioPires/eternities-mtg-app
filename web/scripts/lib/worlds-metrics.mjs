@@ -20,11 +20,18 @@
  * conjunction hides which half is load-bearing. That is not a stylistic preference — it is forced
  * by the matrix. Under `?swatch=mean` every cell takes the plane's mean swatch, so neighbouring
  * cells differ only by `shade`, and adjacent cells have near-identical normals: the neighbour-ΔE
- * half collapses to ≈ 0 and goes solidly red. But `shade` runs 0.34 → 1.05 from limb to sub-camera
- * point (§1.4), a ~3× luminance range across the disc, so **IQR(L\*) stays wide and that half of W2
- * passes on its own negative control**. The row is still red, because the conjunction is, and a
- * gate reporting only the row would report the truth while measuring nothing on that half. The
- * matrix asserts per measure for this reason.
+ * half collapses to ≈ 0 and goes solidly red. The matrix asserts per measure for this reason, and
+ * §3.1 now requires each row to name the measure it aims at.
+ *
+ * This module first carried a sixth, gate-side control row — a flat unshaded wash — because the
+ * un-subsetted IQR(L\*) survived `?swatch=mean` and so had no control of its own. **DEC-749 fixed
+ * that in the renderer instead, which is the better repair**: §3.1's lightness half is now measured
+ * over the iso-shade subset, where `?swatch=mean` drives it to ≈ 0, so one real control row
+ * falsifies both halves of W2 and the gate-side row is gone. The finding stands; the workaround
+ * does not survive it.
+ *
+ * **3. Three verdicts, not two.** See `criterion` — `insufficient` is the absence of a measurement
+ * and is not a failure. The v3 roster's six one-card worlds are outside W2's and W3's domain.
  */
 
 // ------------------------------------------------------------------------------------------------
@@ -36,7 +43,16 @@ export const FLOORS = {
   cellHeightPx: 24,
   /** W2: median ΔE from a cell to its nearest on-screen neighbour. */
   neighbourDeltaE: 6,
-  /** W2: interquartile range of L\* across the sampled cells. */
+  /**
+   * W2: interquartile range of L\* across the **iso-shade subset**.
+   *
+   * **Provisional (DEC-749).** The 8 was set against the un-subsetted measure, which could not go
+   * below ~12 because it was reading the lit sphere's own gradient. The iso-shade measure is a
+   * different quantity with a different scale, and its floor is re-derived from the worst plane on
+   * R1's first full gate run once leg P publishes real swatches. Until then the matrix asserts the
+   * measure's **direction** — real build high, `?swatch=mean` ≈ 0 — which is decisive wherever
+   * between ~2 and ~20 the floor lands. Do not build a green expectation on the 8 itself.
+   */
   lightnessIqr: 8,
   /** W3: ΔE between the mean a\*b\* of two bands adjacent on the sphere. */
   bandDeltaE: 10,
@@ -44,12 +60,57 @@ export const FLOORS = {
   artFraction: 0.9,
   /** W4: evictions per second, averaged over the last 2 s. A ceiling, not a floor. */
   evictionsPerSecond: 5,
-  /** W5: rendered plane labels in the DOM at the home view. A ceiling. 29 worlds plus the belt. */
-  homeLabels: 30,
 }
+
+/**
+ * W5's ceiling — **derived from the roster, never written down as a number.**
+ *
+ * §3.1 published it as "≤ 30 (29 worlds plus the belt)", and the parenthesis is the real criterion:
+ * what may carry a label at the home view is one per world plus the belt. The bare 30 went stale
+ * the moment the roster moved. DEC-745 / PR #46 (Forgotten Realms) took the v3 production dataset
+ * to **45 worlds — 29 spiral plus 16 irregular, which §6 collapses into one `world` kind — 1 belt
+ * and 42 moons, 88 planes in total**, so the same derivation now gives 46. Left at 30, W5 would be
+ * unsatisfiable by construction on the dataset it is supposed to accept, and §3.2 makes W1–W5
+ * passing a condition for the galaxy's retirement.
+ *
+ * So the gate reads the roster and computes this. A refresh that adds a plane moves the ceiling by
+ * itself, and the next Forgotten Realms does not silently turn the criterion into a tripwire.
+ */
+export function homeLabelCeiling({ worlds, belts }) {
+  return worlds + belts
+}
+
+/**
+ * The v3 production roster after DEC-745 / PR #46, for tests and for a default.
+ *
+ * The gate takes these off `planes.json` at run time — this is the provenance record, not the
+ * source of truth.
+ */
+export const ROSTER_V3 = Object.freeze({ worlds: 45, belts: 1, moons: 42, planes: 88 })
 
 /** W2 only samples cells this tall or taller (§3.1). */
 export const W2_MIN_CELL_PX = 6
+
+/**
+ * W2's iso-shade subset is the cells within ±2.5% of the median reported `shade` (§3.1).
+ *
+ * The un-subsetted IQR(L\*) could not fail: §1.7's key light sits 0.798 rad off the camera axis, so
+ * shade alone spans 0.363/0.611/0.852 over the front-facing cap and puts IQR(L\*) at 12.6–21.6 for
+ * *one* swatch — the sphere being lit, not the mosaic being tiled. Holding shade fixed leaves
+ * swatch-to-swatch lightness, which is what W2 claims to measure.
+ */
+export const W2_ISO_SHADE_TOLERANCE = 0.025
+
+/**
+ * W2 needs at least this many sampled cells before its statistics mean anything.
+ *
+ * Below it the criterion reports `insufficient`, not `fail`. The v3 roster has **six one-card
+ * worlds** (ergamon, muraganda, pyrulea, regatha, segovia, shandalar) and 15 with ≤ 4 cards: at
+ * n = 1 "nearest neighbour" has no referent and an IQR is the spread of a single sample, so a floor
+ * comparison scores a correct render as RED and takes the matrix's expected-GREEN row down with it.
+ * Four is the threshold because an IQR needs two quartiles to be a spread rather than a gap.
+ */
+export const W2_MIN_SAMPLES = 4
 
 /** W3 only compares a band pair when the smaller band holds at least this share of the plane. */
 export const W3_MIN_BAND_SHARE = 0.05
@@ -193,14 +254,34 @@ export function iqr(xs) {
  * `direction` is `'min'` when the floor is a lower bound and `'max'` when it is a ceiling. Spelling
  * it out beats inferring from the name: W4 carries one of each.
  */
-function measure(key, label, value, bound, direction) {
-  const pass = value === null ? false : direction === 'min' ? value >= bound : value <= bound
-  return { key, label, value, bound, direction, pass }
+function measure(key, label, value, bound, direction, { insufficient = false, why = null } = {}) {
+  const status = insufficient ? 'insufficient' : value === null ? 'fail' : (direction === 'min' ? value >= bound : value <= bound) ? 'pass' : 'fail'
+  return { key, label, value, bound, direction, status, pass: status === 'pass', insufficientReason: why }
 }
 
-/** A criterion passes when every one of its measures does. */
+/**
+ * A criterion's verdict, over three values rather than two.
+ *
+ * `insufficient` is not a third flavour of failure, it is the absence of a measurement: the subject
+ * was outside the criterion's domain. The distinction is load-bearing — the v3 roster's six
+ * one-card worlds are outside W2's and W3's domain, and scoring them as `fail` turns the matrix's
+ * expected-GREEN row red against a renderer doing exactly what §3.1 asks, which is W5's stale-30
+ * failure one criterion over.
+ *
+ * It is reported rather than skipped, and the gate prints how many planes landed here, because a
+ * criterion that is silently not measured is how a gate comes to print green while measuring
+ * nothing — the `verify-browser --dataset all` shape of failure §3.1 exists to prevent.
+ *
+ * `pass` stays a boolean for callers that only branch on success, and it is `false` here: an
+ * unmeasured criterion has not passed. Anything deciding the *run's* verdict must read `status`.
+ */
 function criterion(id, title, measures, extra = {}) {
-  return { id, title, measures, pass: measures.every((m) => m.pass), ...extra }
+  const status = measures.some((m) => m.status === 'fail')
+    ? 'fail'
+    : measures.some((m) => m.status === 'insufficient')
+      ? 'insufficient'
+      : 'pass'
+  return { id, title, measures, status, pass: status === 'pass', ...extra }
 }
 
 /**
@@ -251,10 +332,19 @@ export function evaluateW1(planes) {
  * "Nearest on-screen neighbour" is nearest by screen-space centre distance among the sampled set —
  * so a cell whose neighbours all fell under the height cut is compared against the nearest cell
  * that survived, which is the honest reading of a statistic about what is visible.
+ *
+ * Each sample carries `shade`, the scalar §1.4 already computes, because the lightness half is
+ * measured over the **iso-shade subset** — see `W2_ISO_SHADE_TOLERANCE`. The gate may not re-derive
+ * shade from the normal: it would then be asserting against its own model of the light rather than
+ * against the shipped one.
+ *
+ * Below `W2_MIN_SAMPLES` cells both halves report `insufficient` rather than failing.
  */
 export function evaluateW2(samples) {
   const kept = samples.filter((s) => s.frontFacing && s.height >= W2_MIN_CELL_PX)
   const labs = kept.map((s) => srgbToLab(s.rgb))
+  const thin = kept.length < W2_MIN_SAMPLES
+  const why = thin ? `only ${kept.length} sampled cells, below W2's domain of ${W2_MIN_SAMPLES}` : null
 
   const neighbourDeltas = []
   for (let i = 0; i < kept.length; i += 1) {
@@ -271,6 +361,15 @@ export function evaluateW2(samples) {
     if (bestAt >= 0) neighbourDeltas.push(deltaE76(labs[i], labs[bestAt]))
   }
 
+  // The iso-shade ring: cells within ±2.5% of the median shade. A tonemap is monotone and
+  // per-channel, so it maps every cell in the ring identically and cannot reintroduce a gradient.
+  const shades = kept.map((s) => s.shade)
+  const medianShade = median(shades)
+  const isoShade =
+    medianShade === null
+      ? []
+      : labs.filter((_, i) => Math.abs(shades[i] - medianShade) <= W2_ISO_SHADE_TOLERANCE * medianShade)
+
   return criterion(
     'W2',
     'The mosaic reads as tiles, not as a wash',
@@ -281,10 +380,18 @@ export function evaluateW2(samples) {
         median(neighbourDeltas),
         FLOORS.neighbourDeltaE,
         'min',
+        { insufficient: thin, why },
       ),
-      measure('lightnessIqr', 'IQR of L*', iqr(labs.map((l) => l.L)), FLOORS.lightnessIqr, 'min'),
+      measure(
+        'lightnessIqr',
+        `IQR of L* across the iso-shade subset (${isoShade.length} of ${kept.length} cells)`,
+        iqr(isoShade.map((l) => l.L)),
+        FLOORS.lightnessIqr,
+        'min',
+        { insufficient: thin, why },
+      ),
     ],
-    { sampled: kept.length },
+    { sampled: kept.length, isoShadeSampled: isoShade.length, medianShade },
   )
 }
 
@@ -338,6 +445,13 @@ export function evaluateW3(samples, bandShares) {
         worst === null ? null : worst.deltaE,
         FLOORS.bandDeltaE,
         'min',
+        {
+          // Zero qualifying pairs is the criterion having nothing to say, not the criterion failing.
+          // A one-card world populates a single band, so no adjacent pair exists to compare — and
+          // "≥ 10 for every such pair" over an empty set is vacuous, which is neither red nor green.
+          insufficient: pairs.length === 0,
+          why: pairs.length === 0 ? `no adjacent band pair holds ≥ ${W3_MIN_BAND_SHARE * 100}% on both sides` : null,
+        },
       ),
     ],
     { pairs, worstPair: worst },
@@ -408,12 +522,22 @@ export function evaluateW4(cells, evictionTimeline) {
 /**
  * **W5 — the home view is not a wall of labels.**
  *
- * 29 worlds plus the belt is 30; today the galaxy renders 82. The 57 empty planes become moons and
- * stay unlabelled until hover (§1.8, PRD 5.3.8 as amended in §6).
+ * The moons stay unlabelled until hover (§1.8, PRD 5.3.8 as amended in §6), so what may carry a
+ * label is one per world plus the belt. On the v3 roster that is 45 + 1 = 46, against the 87 the
+ * galaxy renders on the same dataset today.
+ *
+ * `roster` is required rather than defaulted: a default would be a bare number wearing a hat, and
+ * a bare number is exactly what went stale here.
  */
-export function evaluateW5(renderedLabelCount) {
+export function evaluateW5(renderedLabelCount, roster) {
   return criterion('W5', 'The home view is not a wall of labels', [
-    measure('homeLabels', 'plane labels in the DOM at the home view', renderedLabelCount, FLOORS.homeLabels, 'max'),
+    measure(
+      'homeLabels',
+      `plane labels in the DOM at the home view (${roster.worlds} worlds + ${roster.belts} belt)`,
+      renderedLabelCount,
+      homeLabelCeiling(roster),
+      'max',
+    ),
   ])
 }
 
@@ -428,6 +552,12 @@ export function evaluateW5(renderedLabelCount) {
  *
  * `expect: 'GREEN'` on a criterion with no named measure asserts the whole criterion passed, which
  * is what the two green rows want.
+ *
+ * `expect: 'N/A'` asserts the criterion was **out of its domain** — the one-card-world row uses it
+ * on W2 and W3. Asserting the `n/a` is the point: without it, the sample-size precondition could be
+ * widened later until it swallowed real planes and no row would notice. `N/A` is a distinct
+ * expectation from GREEN precisely so that "not measured" can never be recorded as "measured and
+ * fine", which is the failure mode the whole matrix exists to prevent.
  */
 export function checkControlRow(criteria, { criterion: id, measure: key, expect }) {
   const found = criteria.find((c) => c.id === id)
@@ -436,15 +566,20 @@ export function checkControlRow(criteria, { criterion: id, measure: key, expect 
   const subject = key === undefined ? found : found.measures.find((m) => m.key === key)
   if (subject === undefined) return { ok: false, detail: `${id} has no measure "${key}"` }
 
-  const wentRed = !subject.pass
-  const ok = expect === 'RED' ? wentRed : !wentRed
+  const went = subject.status === 'insufficient' ? 'N/A' : subject.status === 'pass' ? 'GREEN' : 'RED'
+  const ok = went === expect
   const what = key === undefined ? id : `${id}.${key}`
-  const value = key === undefined ? '' : ` (value ${subject.value}, bound ${subject.bound})`
+  const value =
+    went === 'N/A'
+      ? ` (${subject.insufficientReason ?? 'out of domain'})`
+      : key === undefined
+        ? ''
+        : ` (value ${subject.value}, bound ${subject.bound})`
 
   return {
     ok,
     detail: ok
       ? `${what} went ${expect} as expected${value}`
-      : `${what} was expected ${expect} but went ${wentRed ? 'RED' : 'GREEN'}${value}`,
+      : `${what} was expected ${expect} but went ${went}${value}`,
   }
 }

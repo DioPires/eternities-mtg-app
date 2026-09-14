@@ -17,6 +17,7 @@ import { describe, expect, it } from 'vitest'
 import {
   BAND_ORDER,
   FLOORS,
+  ROSTER_V3,
   W3_MIN_BAND_SHARE,
   checkControlRow,
   deltaE76,
@@ -27,6 +28,7 @@ import {
   evaluateW4,
   evaluateW5,
   evictionRate,
+  homeLabelCeiling,
   iqr,
   median,
   quantile,
@@ -162,6 +164,10 @@ function modelWorld({
         frontFacing: true,
         band: bandAt(v / radiusPx, i),
         rgb: shaded ? shadeRgb(swatch, nz) : swatch,
+        // What the renderer reports, not what the gate re-derives. An unshaded frame still has a
+        // shade term — it is simply constant, which is why the flat-wash case degenerates to one
+        // iso-shade ring holding every cell.
+        shade: shaded ? shade(nz) : shade(1),
       })
       i += 1
     }
@@ -292,32 +298,46 @@ describe('W2 — the mosaic reads as tiles', () => {
   })
 
   /**
-   * The reason `checkControlRow` asserts per *measure* and not per row.
+   * The iso-shade subset, and why it replaced a gate-side sixth control row.
    *
-   * This is not a defect being tolerated — it is the finding that shaped the reporting. IQR(L\*)
-   * cannot be red under `?swatch=mean`, because §1.4's shade runs 0.10 + 0.95·s² with s from 0.56
-   * at the facing cut to 1.0 at the sub-camera point: a ~3× luminance range spread across the disc,
-   * with the same swatch throughout. The row is still RED — W2 is a conjunction and the neighbour
-   * half fails hard — but a gate that reported only the row would have recorded `?swatch=mean` as
-   * exercising both halves of W2 when it exercises exactly one, and IQR(L\*) would have shipped
-   * with no negative control at all.
+   * Measured over *every* sampled cell, IQR(L\*) could not be red under `?swatch=mean` — §1.4's
+   * shade spreads a ~3× luminance range across the disc with one swatch throughout, so the measure
+   * was reading the lit sphere rather than the mosaic. DEC-749 re-derived it and showed the
+   * un-subsetted measure cannot go below ~12 for *any* single swatch: not a half without a control,
+   * a half that could not fail. Holding shade fixed leaves swatch-to-swatch lightness, which is
+   * what W2's title claims to measure — and `?swatch=mean` then drives it to ≈ 0, so one real
+   * control row falsifies both halves.
    */
-  it('leaves IQR(L*) GREEN under ?swatch=mean, because shading alone spreads lightness', () => {
+  it('goes RED on ?swatch=mean via the lightness half too, once shade is held fixed', () => {
     const w2 = evaluateW2(meanSwatch)
     const lightness = w2.measures.find((m) => m.key === 'lightnessIqr')
-    expect(lightness?.pass).toBe(true)
-    expect(lightness?.value).toBeGreaterThan(FLOORS.lightnessIqr)
+    expect(lightness?.pass).toBe(false)
+    // One colour at one shade is one colour: the ring collapses to a point in L*.
+    expect(lightness?.value).toBeLessThan(1)
   })
 
-  it('has a control that does reach IQR(L*) — a flat unshaded wash', () => {
-    // The gap the row above leaves. One colour, no shading: both halves go red, which is what
-    // proves IQR(L*) is wired to anything at all.
+  it('measures the lightness half over a strict subset of the sampled cells', () => {
+    const w2 = evaluateW2(mosaic)
+    // The guard against the tolerance being widened until the subset is everything, which would
+    // silently restore the measure that could not fail.
+    expect(w2.isoShadeSampled).toBeGreaterThan(0)
+    expect(w2.isoShadeSampled).toBeLessThan(w2.sampled)
+    expect(w2.measures.find((m) => m.key === 'lightnessIqr')?.pass).toBe(true)
+  })
+
+  /**
+   * The negative control for the subset itself: a flat unshaded wash is one iso-shade ring holding
+   * every cell, so if the subsetting were inert this frame would be indistinguishable from the
+   * un-subsetted measure. Both halves must still go red.
+   */
+  it('goes RED on a flat unshaded wash — the degenerate single-ring frame', () => {
     const flat = modelWorld({
       classAt: classByLatitude,
       swatchOf: () => MEAN_SWATCH,
       shaded: false,
     })
     const w2 = evaluateW2(flat)
+    expect(w2.isoShadeSampled).toBe(w2.sampled)
     expect(w2.measures.find((m) => m.key === 'lightnessIqr')?.pass).toBe(false)
     expect(w2.measures.find((m) => m.key === 'medianNeighbourDeltaE')?.pass).toBe(false)
   })
@@ -326,6 +346,83 @@ describe('W2 — the mosaic reads as tiles', () => {
     const w2 = evaluateW2(mosaic)
     expect(w2.sampled).toBeLessThan(mosaic.length)
     expect(w2.sampled).toBeGreaterThan(0)
+  })
+})
+
+/**
+ * **The one-card world — six of them on the v3 roster (DEC-751).**
+ *
+ * ergamon, muraganda, pyrulea, regatha, segovia and shandalar hold exactly one card each, and 15
+ * worlds hold ≤ 4. `minWorld` across tracked datasets was {41, 30, 6}; production now contributes
+ * **1**, a case no tracked dataset has ever rendered.
+ *
+ * W2 and W3 are not merely noisy there, they are **undefined**: "nearest on-screen neighbour" has
+ * no referent with one cell, an interquartile range of a single sample is 0, and one populated band
+ * yields zero adjacent pairs. Scored as ordinary failures — which is what a floor comparison does
+ * to a `null` — those six worlds take the matrix's expected-GREEN row down against a renderer doing
+ * exactly what §3.1 asks. That is W5's stale-30 failure one criterion over.
+ */
+describe('worlds below the criteria’s domain', () => {
+  const oneCell: CellSample[] = [
+    { x: 960, y: 540, height: 420, frontFacing: true, band: 6, rgb: [120, 90, 60], shade: 0.9 },
+  ]
+  const oneBandShares = BAND_ORDER.map((_, i) => (i === 6 ? 1 : 0))
+
+  it('reports W2 as insufficient on a one-card world, not as a failure', () => {
+    const w2 = evaluateW2(oneCell)
+    expect(w2.status).toBe('insufficient')
+    expect(w2.measures.every((m) => m.status === 'insufficient')).toBe(true)
+    // The distinction that matters: not passing, but not red either.
+    expect(w2.pass).toBe(false)
+    expect(w2.measures[0]?.insufficientReason).toContain('below W2')
+  })
+
+  it('reports W3 as insufficient when no adjacent band pair qualifies', () => {
+    const w3 = evaluateW3(oneCell, oneBandShares)
+    expect(w3.status).toBe('insufficient')
+    expect(w3.pairs).toHaveLength(0)
+  })
+
+  it('still measures W1 on a one-card world — that criterion is defined at n = 1', () => {
+    const w1 = evaluateW1([
+      { slug: 'dominaria', cells: Array.from({ length: 40 }, () => ({ height: 26, frontFacing: true })) },
+      { slug: 'segovia', cells: [{ height: 420, frontFacing: true }] },
+    ])
+    expect(w1.status).toBe('pass')
+    // A one-cell world's cell is enormous, so it is never the worst plane — W1 needs no exemption.
+    expect(w1.worstPlane).toBe('dominaria')
+  })
+
+  /**
+   * The regression this whole section exists to prevent: the expected-GREEN row of the matrix must
+   * survive a roster that contains degenerate worlds.
+   */
+  it('keeps the unmodified-build row GREEN across a roster holding six one-card worlds', () => {
+    const healthy = modelWorld({ classAt: classByLatitude, swatchOf: productionSwatch })
+    const rows = [
+      ...['ergamon', 'muraganda', 'pyrulea', 'regatha', 'segovia', 'shandalar'].map(() => oneCell),
+      healthy,
+    ]
+    const verdicts = rows.map((cells) => evaluateW2(cells).status)
+    expect(verdicts.filter((v) => v === 'insufficient')).toHaveLength(6)
+    expect(verdicts.filter((v) => v === 'pass')).toHaveLength(1)
+    // Nothing went red, so nothing fails the run.
+    expect(verdicts).not.toContain('fail')
+  })
+
+  it('asserts the n/a as a matrix row, so the precondition cannot be widened unnoticed', () => {
+    const criteria = [evaluateW2(oneCell), evaluateW3(oneCell, oneBandShares)]
+    for (const row of [
+      { criterion: 'W2', measure: 'medianNeighbourDeltaE', expect: 'N/A' as const },
+      { criterion: 'W2', measure: 'lightnessIqr', expect: 'N/A' as const },
+      { criterion: 'W3', measure: 'minAdjacentBandDeltaE', expect: 'N/A' as const },
+    ]) {
+      expect(checkControlRow(criteria, row).ok).toBe(true)
+    }
+    // And N/A is not GREEN: "not measured" may never be recorded as "measured and fine".
+    expect(
+      checkControlRow(criteria, { criterion: 'W2', measure: 'lightnessIqr', expect: 'GREEN' }).ok,
+    ).toBe(false)
   })
 })
 
@@ -383,6 +480,7 @@ describe('W3 — latitude reads as colour', () => {
         frontFacing: true,
         band: 5,
         rgb: [50, 50, 50] as Rgb,
+        shade: 0.9,
       })),
       ...Array.from({ length: 20 }, (_, i) => ({
         x: i,
@@ -391,6 +489,7 @@ describe('W3 — latitude reads as colour', () => {
         frontFacing: true,
         band: 6,
         rgb: [210, 210, 210] as Rgb,
+        shade: 0.9,
       })),
     ]
     const shares = BAND_ORDER.map(() => 0)
@@ -481,60 +580,106 @@ describe('W4 — art resolves without exhausting', () => {
 })
 
 describe('W5 — the home view is not a wall of labels', () => {
-  it('passes at 29 worlds plus the belt', () => {
-    expect(evaluateW5(30).pass).toBe(true)
+  const ceiling = homeLabelCeiling(ROSTER_V3)
+
+  it('derives its ceiling from the roster rather than carrying a number', () => {
+    // §3.1 published "≤ 30 (29 worlds plus the belt)". DEC-745 / PR #46 took the v3 dataset to 45
+    // worlds and 1 belt, so the same derivation gives 46. Held at 30, W5 would be unsatisfiable by
+    // construction on the dataset §3.2 requires it to accept.
+    expect(ceiling).toBe(46)
+    expect(homeLabelCeiling({ worlds: 29, belts: 1 })).toBe(30)
+  })
+
+  it('passes at one label per world plus the belt', () => {
+    expect(evaluateW5(ceiling, ROSTER_V3).pass).toBe(true)
   })
 
   it('goes RED on its control — labels forced on for the empty planes', () => {
-    // 29 worlds, the belt, and the 57 planes that become unlabelled moons under §1.8.
-    expect(evaluateW5(30 + 57).pass).toBe(false)
+    // Every plane labelled: 45 worlds, the belt, and the 42 that become unlabelled moons (§1.8).
+    expect(evaluateW5(ROSTER_V3.planes, ROSTER_V3).pass).toBe(false)
   })
 
-  it("goes RED on today's galaxy, which renders 82", () => {
-    expect(evaluateW5(82).pass).toBe(false)
+  it("goes RED on today's galaxy, which renders 87 on this dataset", () => {
+    expect(evaluateW5(87, ROSTER_V3).pass).toBe(false)
+  })
+
+  it('would have gone RED on a passing frame under the stale ceiling', () => {
+    // The regression the derivation removes: 46 labels is the correct answer and the old bare 30
+    // rejects it.
+    expect(evaluateW5(46, { worlds: 29, belts: 1 }).pass).toBe(false)
+    expect(evaluateW5(46, ROSTER_V3).pass).toBe(true)
   })
 })
 
 describe('the negative-control matrix', () => {
   /**
-   * §3.1's matrix, as `checkControlRow` consumes it. Five expected-RED rows and two expected-GREEN.
+   * §3.1's matrix, as `checkControlRow` consumes it.
    *
-   * Each RED row names the *measure* it targets, not just the criterion, so a row cannot be scored
-   * green by a half it never touches. The W2 row targets the neighbour-ΔE half for the reason the
-   * W2 block above documents.
+   * Each row names the *measure* it targets, not just the criterion, so a row cannot be scored
+   * green by a half it never touches. W2 and W4 are conjunctions and each contributes two rows —
+   * one per half — which is what makes a half with no control of its own visible as a gap rather
+   * than borrowed from its partner.
+   *
+   * W2's lightness half has its own row against the same `?swatch=mean` seam only because DEC-749
+   * moved the measure onto the iso-shade subset. Before that it was un-failable, and this matrix
+   * carried a sixth gate-side row (a flat unshaded wash) to cover for it.
    */
   const MATRIX = [
     { row: 'W1 · capture at 6× radius', criterion: 'W1', measure: 'minMedianCellHeightPx', expect: 'RED' },
     { row: 'W2 · ?swatch=mean', criterion: 'W2', measure: 'medianNeighbourDeltaE', expect: 'RED' },
+    { row: 'W2 · ?swatch=mean (iso-shade half)', criterion: 'W2', measure: 'lightnessIqr', expect: 'RED' },
     { row: 'W3 · ?bands=shuffle', criterion: 'W3', measure: 'minAdjacentBandDeltaE', expect: 'RED' },
     { row: 'W4 · ?artThreshold=fixed24', criterion: 'W4', measure: 'artFraction', expect: 'RED' },
+    { row: 'W4 · ?artThreshold=fixed24 (evictions)', criterion: 'W4', measure: 'evictionsPerSecond', expect: 'RED' },
     { row: 'W5 · labels forced on for empty planes', criterion: 'W5', measure: 'homeLabels', expect: 'RED' },
+    { row: 'W1 · one-card world', criterion: 'W1', measure: 'minMedianCellHeightPx', expect: 'GREEN' },
+    { row: 'W2 · one-card world', criterion: 'W2', measure: 'lightnessIqr', expect: 'N/A' },
+    { row: 'W3 · one-card world', criterion: 'W3', measure: 'minAdjacentBandDeltaE', expect: 'N/A' },
     { row: 'W4 · ?layers=128 (tier 4)', criterion: 'W4', expect: 'GREEN' },
     { row: 'all · the unmodified build', criterion: 'W2', expect: 'GREEN' },
   ] as const
 
-  it('has five expected-RED rows and two expected-GREEN', () => {
-    expect(MATRIX.filter((r) => r.expect === 'RED')).toHaveLength(5)
-    expect(MATRIX.filter((r) => r.expect === 'GREEN')).toHaveLength(2)
+  it('has seven expected-RED rows, three expected-GREEN and two expected-N/A', () => {
+    expect(MATRIX.filter((r) => r.expect === 'RED')).toHaveLength(7)
+    expect(MATRIX.filter((r) => r.expect === 'GREEN')).toHaveLength(3)
+    expect(MATRIX.filter((r) => r.expect === 'N/A')).toHaveLength(2)
+  })
+
+  it('names only measures the criteria actually emit', () => {
+    // A key no criterion returns is reported as a failing row with a confusing detail rather than
+    // as a silent pass — safe, but only once. §3.1 shipped two such keys (`medianCellHeightPx`,
+    // `worstBandPairDeltaE`); this pins the seven real ones.
+    const EMITTED = new Set([
+      'minMedianCellHeightPx',
+      'medianNeighbourDeltaE',
+      'lightnessIqr',
+      'minAdjacentBandDeltaE',
+      'artFraction',
+      'evictionsPerSecond',
+      'homeLabels',
+    ])
+    for (const row of MATRIX) {
+      if ('measure' in row) expect(EMITTED.has(row.measure)).toBe(true)
+    }
   })
 
   it('scores a row against the measure it names', () => {
-    const red = [evaluateW5(87)]
+    const red = [evaluateW5(87, ROSTER_V3)]
     expect(checkControlRow(red, { criterion: 'W5', measure: 'homeLabels', expect: 'RED' }).ok).toBe(true)
     expect(checkControlRow(red, { criterion: 'W5', measure: 'homeLabels', expect: 'GREEN' }).ok).toBe(false)
 
-    const green = [evaluateW5(30)]
+    const green = [evaluateW5(homeLabelCeiling(ROSTER_V3), ROSTER_V3)]
     expect(checkControlRow(green, { criterion: 'W5', measure: 'homeLabels', expect: 'GREEN' }).ok).toBe(true)
   })
 
   it('fails loudly rather than passing when a criterion or measure is missing', () => {
     // A control row that silently matched nothing would be the `verify-browser --dataset all`
     // failure again: a matrix printing seven greens while running none of them.
-    const absent = checkControlRow([evaluateW5(30)], { criterion: 'W4', expect: 'GREEN' })
+    const absent = checkControlRow([evaluateW5(46, ROSTER_V3)], { criterion: 'W4', expect: 'GREEN' })
     expect(absent.ok).toBe(false)
     expect(absent.detail).toContain('was not run')
 
-    const mistyped = checkControlRow([evaluateW5(30)], {
+    const mistyped = checkControlRow([evaluateW5(46, ROSTER_V3)], {
       criterion: 'W5',
       measure: 'labelCount',
       expect: 'GREEN',

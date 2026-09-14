@@ -22,6 +22,14 @@ export interface CellSample {
   readonly frontFacing: boolean
   readonly band: number
   readonly rgb: Rgb
+  /**
+   * §1.4's shade term for this cell, as the renderer computed it — `0.10 + 0.95·s²`.
+   *
+   * W2's lightness half is measured over the iso-shade subset and cannot be computed without it.
+   * The gate does not re-derive it from the normal: doing so would assert against the gate's model
+   * of the light rather than against the shipped one.
+   */
+  readonly shade: number
 }
 
 export interface ArtCell {
@@ -39,19 +47,34 @@ export interface EvictionSample {
   readonly evictions: number
 }
 
+/**
+ * A criterion's or a measure's verdict.
+ *
+ * `insufficient` is the absence of a measurement — the subject was outside the criterion's domain —
+ * and is not a kind of failure. Anything deciding a run's overall verdict must branch on this
+ * rather than on `pass`.
+ */
+export type Verdict = 'pass' | 'fail' | 'insufficient'
+
 export interface Measure {
   readonly key: string
   readonly label: string
   readonly value: number | null
   readonly bound: number
   readonly direction: 'min' | 'max'
+  readonly status: Verdict
+  /** `status === 'pass'`. Kept for callers that only branch on success. */
   readonly pass: boolean
+  /** Why the subject was out of domain, when `status` is `insufficient`. */
+  readonly insufficientReason: string | null
 }
 
 export interface Criterion {
   readonly id: string
   readonly title: string
   readonly measures: readonly Measure[]
+  readonly status: Verdict
+  /** `status === 'pass'`. An unmeasured criterion has not passed. */
   readonly pass: boolean
 }
 
@@ -62,6 +85,9 @@ export interface W1Criterion extends Criterion {
 
 export interface W2Criterion extends Criterion {
   readonly sampled: number
+  /** How many of `sampled` fell in the iso-shade ring the lightness half is measured over. */
+  readonly isoShadeSampled: number
+  readonly medianShade: number | null
 }
 
 export interface BandPair {
@@ -85,9 +111,19 @@ export interface ControlExpectation {
   readonly criterion: string
   /** Omit to assert on the criterion's overall verdict rather than one of its halves. */
   readonly measure?: string
-  readonly expect: 'RED' | 'GREEN'
+  /** `'N/A'` asserts the criterion was out of its domain — the one-card-world row uses it. */
+  readonly expect: 'RED' | 'GREEN' | 'N/A'
 }
 
+export interface Roster {
+  readonly worlds: number
+  readonly belts: number
+}
+
+/**
+ * The five fixed floors. W5's ceiling is not among them — it is derived from the roster by
+ * `homeLabelCeiling`, because the published "≤ 30" was a stale reading of "worlds plus the belt".
+ */
 export declare const FLOORS: {
   readonly cellHeightPx: number
   readonly neighbourDeltaE: number
@@ -95,10 +131,20 @@ export declare const FLOORS: {
   readonly bandDeltaE: number
   readonly artFraction: number
   readonly evictionsPerSecond: number
-  readonly homeLabels: number
+}
+
+export declare function homeLabelCeiling(roster: Roster): number
+
+export declare const ROSTER_V3: {
+  readonly worlds: number
+  readonly belts: number
+  readonly moons: number
+  readonly planes: number
 }
 
 export declare const W2_MIN_CELL_PX: number
+export declare const W2_ISO_SHADE_TOLERANCE: number
+export declare const W2_MIN_SAMPLES: number
 export declare const W3_MIN_BAND_SHARE: number
 export declare const W4_EVICTION_WINDOW_S: number
 export declare const BAND_ORDER: readonly string[]
@@ -131,7 +177,7 @@ export declare function evaluateW4(
   cells: readonly ArtCell[],
   evictionTimeline: readonly EvictionSample[],
 ): W4Criterion
-export declare function evaluateW5(renderedLabelCount: number): Criterion
+export declare function evaluateW5(renderedLabelCount: number, roster: Roster): Criterion
 
 export declare function checkControlRow(
   criteria: readonly Criterion[],
