@@ -307,6 +307,14 @@ export class SceneHost {
     if (resources === this.resources) return
     this.resources = resources
     this.starSceneHandle.setResources(resources)
+    // §1.3's spin, from the **plane table's** clock (DEC-750). `PlaneTable.advance` integrates it in
+    // the `planeTable` phase and `motionSync` mirrors it into the camera rig, and the `worlds` phase
+    // runs after both — so a world's orientation and the position PRD 8.5.7's CPU mirror flies the
+    // camera to are the same frame's. A second integrator here would put the cell under the reticle
+    // somewhere the camera never goes, and the drift would grow with session length.
+    this.worldsAttachment.setSpinAngles(
+      resources ? (index) => resources.table.planes[index]?.spinAngle ?? 0 : null,
+    )
     this.buildCardTier()
     this.attachDrive()
     this.maybeWarm()

@@ -285,6 +285,17 @@ describe('shader names (DEC-700)', () => {
     // site and one name for all 45 worlds — two sheets differ only in per-instance attributes and in
     // the value bound to `uRadius`, neither of which is in the program cache key — so it moves both
     // counts by one and leaves the gap where it was.
-    expect(SHADER_NAMES).toHaveLength(17)
+    //
+    // **The nineteenth to twenty-fourth sites and the eighteenth to twenty-third names are
+    // DEC-750's** — §1.2's remaining passes, and they sit on the wide side of the gap for three
+    // different reasons worth separating. `WorldSystem` and `WorldBelt` are one site and one name
+    // each, like the cell sheet: every instance differs only in per-instance attributes.
+    // `WorldAtmosphere` and `WorldAtmosphereCheap` are two of each, for exactly `PlaneGlow`'s
+    // reason — §1.12's tier 4 selects a different *fragment source* (`CHEAP_RIM`), which
+    // `getProgramCacheKey` makes a program of its own. `WorldTether` and `WorldTetherPad` are two
+    // sites and two names because the ribbon and the pads are different geometry with different
+    // shaders, and the two pads share one `padMaterial()` source site the way the two card faces
+    // share `faceMaterial()`.
+    expect(SHADER_NAMES).toHaveLength(23)
   })
 })
