@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { benchRouteWanted } from '../src/App'
+import { benchRouteWanted, harnessHref } from '../src/app/harnessRoute'
 import { stillSettling } from '../src/bench/BenchRunner'
 import { benchRouteRequested } from '../src/bench/BenchScene'
 import {
@@ -82,12 +82,17 @@ describe('bench settling (PRD 9.1.2)', () => {
 })
 
 /**
- * `App.benchRouteWanted` is a copy of `BenchScene.benchRouteRequested`, and it exists so that
- * asking the question does not import the bench (review §6.3). A copy can drift, so it is pinned
- * to the original over every spelling that decides the route — including the ones that must say
- * no, because a copy that answered `true` too often would route real visitors to the bench.
+ * `harnessRoute.benchRouteWanted` is a copy of `BenchScene.benchRouteRequested`, and it exists so
+ * that asking the question does not import the bench (review §6.3). A copy can drift, so it is
+ * pinned to the original over every spelling that decides the route — including the ones that must
+ * say no, because a copy that answered `true` too often would route real visitors to the bench.
+ *
+ * The two copies are further apart than they were: since review §3.6 phase 3 item 4 they are in
+ * different *builds*, `benchRouteWanted` in the product entry and `benchRouteRequested` in the
+ * harness entry. This test is the only thing that still sees both, which makes it the only place
+ * the drift can be caught.
  */
-describe("the URL test App inlines so it doesn't import the bench", () => {
+describe("the URL test the product inlines so it doesn't import the bench", () => {
   const CASES: readonly (readonly [string, string])[] = [
     ['/bench', ''],
     ['/bench/', ''],
@@ -117,5 +122,49 @@ describe("the URL test App inlines so it doesn't import the bench", () => {
     expect(benchRouteWanted('/', '')).toBe(false)
     expect(benchRouteWanted('/', '?probe=shell')).toBe(false)
     expect(benchRouteWanted('/', '?bench=0')).toBe(false)
+  })
+})
+
+/**
+ * The redirect that keeps the harness URLs working after item 4 moved the harness (review §3.6
+ * phase 3).
+ *
+ * This is the whole compatibility surface. `scripts/bench.mjs`, `scripts/warmup-probe.mjs`,
+ * `scripts/visual-gate.mjs` and four `e2e/` specs drive these spellings and were not changed, so if
+ * `harnessHref` is wrong they do not fail loudly — they land on the product shell and measure the
+ * wrong page. Hence the two directions are tested separately: what must leave, and what must stay.
+ */
+describe('where a harness URL goes', () => {
+  it('sends every harness spelling to the harness entry, query intact', () => {
+    // `/bench` said it with the path, and nothing but the query survives a redirect.
+    expect(harnessHref('/bench', '')).toBe('/harness.html?bench=1')
+    expect(harnessHref('/bench/', '')).toBe('/harness.html?bench=1')
+    // ...but a query that already carries the request is passed through unchanged.
+    expect(harnessHref('/', '?bench=1')).toBe('/harness.html?bench=1')
+    expect(harnessHref('/', '?hold=sheet')).toBe('/harness.html?hold=sheet')
+    expect(harnessHref('/bench', '?hold=card')).toBe('/harness.html?hold=card')
+    expect(harnessHref('/', '?selfcheck=1')).toBe('/harness.html?selfcheck=1')
+    expect(harnessHref('/', '?probe=1')).toBe('/harness.html?probe=1')
+  })
+
+  it('carries the parameters the harness routes are steered by', () => {
+    // Real call sites: `e2e/quality.spec.ts` drives `?probe=1&quality=<i>&motion=1`, and dropping
+    // the tail would silently measure the default tier instead of the one under test.
+    expect(harnessHref('/', '?probe=1&quality=3&motion=1')).toBe(
+      '/harness.html?probe=1&quality=3&motion=1',
+    )
+    expect(harnessHref('/', '?bench=1&dataset=small')).toBe('/harness.html?bench=1&dataset=small')
+  })
+
+  it('leaves the product alone — including ?probe=shell, which is the product', () => {
+    expect(harnessHref('/', '')).toBe(null)
+    // PRD 9.3's visual review is of the shipped composition. Redirecting this one would point
+    // `scripts/visual-gate.mjs` at the scene alone and quietly change what it judges.
+    expect(harnessHref('/', '?probe=shell')).toBe(null)
+    expect(harnessHref('/', '?probe=0')).toBe(null)
+    expect(harnessHref('/', '?bench=0')).toBe(null)
+    expect(harnessHref('/', '?selfcheck=0')).toBe(null)
+    expect(harnessHref('/benchmark', '')).toBe(null)
+    expect(harnessHref('/plane/dominaria', '?focus=abc')).toBe(null)
   })
 })

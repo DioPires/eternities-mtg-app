@@ -85,6 +85,43 @@ function resolveDataDir(dataset) {
 }
 
 /**
+ * Every emitted file one entry of the build can reach, as relative `dist/` paths.
+ *
+ * Follows static `imports` *and* `dynamicImports`, plus each chunk's `css` and `assets`. Dynamic
+ * imports are included deliberately: a `lazy()` chunk is not transferred before the first frame,
+ * but it is code this entry chose to ship, and the walk this function replaces counted it. Keeping
+ * it counted means the only thing that changes about the budget is the harness coming off it.
+ *
+ * Returns `null` if the manifest is missing — an older `dist/`, or a build run before
+ * `build.manifest` was turned on.
+ */
+function entryFiles(distDir, entryKey) {
+  let manifest
+  try {
+    manifest = JSON.parse(readFileSync(join(distDir, '.vite', 'manifest.json'), 'utf8'))
+  } catch {
+    return null
+  }
+  if (!manifest[entryKey]) return null
+
+  const files = new Set()
+  const seen = new Set()
+  const visit = (key) => {
+    if (seen.has(key)) return
+    seen.add(key)
+    const chunk = manifest[key]
+    if (!chunk) return
+    if (chunk.file) files.add(chunk.file)
+    for (const asset of chunk.css ?? []) files.add(asset)
+    for (const asset of chunk.assets ?? []) files.add(asset)
+    for (const next of chunk.imports ?? []) visit(next)
+    for (const next of chunk.dynamicImports ?? []) visit(next)
+  }
+  visit(entryKey)
+  return files
+}
+
+/**
  * The built shell: index.html plus every JS, CSS and font asset it can pull in before the first
  * frame.
  *
@@ -95,26 +132,51 @@ function resolveDataDir(dataset) {
  * They are counted conservatively: both subsets are added, even though `unicode-range` means a
  * session that never renders a `latin-ext` glyph never fetches the second file. Over-counting
  * against a ceiling is safe; under-counting is not.
+ *
+ * **The harness does not count** (review §3.6 phase 3, item 4). `harness.html` is a second Vite
+ * input holding the bench, the GPU self-check and the `?probe=1` scene; it builds into the same
+ * `dist/`, so a walk of the directory would put its bytes on a budget whose label reads
+ * "transferred before the first rendered frame" — which they are not, by construction, since
+ * nothing the product entry imports can reach them.
+ *
+ * The exclusion is deliberately the narrowest one that is true: files reachable from `harness.html`
+ * and *not* from `index.html`. Rollup shares modules across inputs, so the scene, three.js and
+ * React are reachable from both and stay counted. Only what is harness-only comes off, and if the
+ * manifest is missing the walk falls back to counting everything — over-counting against a ceiling
+ * is safe.
  */
 function shellSize(distDir) {
-  let total = 0
-  const walk = (dir) => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const path = join(dir, entry.name)
-      if (entry.isDirectory()) {
-        if (entry.name === 'data') continue // data is budgeted separately
-        walk(path)
-        continue
-      }
-      if (/\.(js|css|html|woff2)$/.test(entry.name)) total += encodedSize(path)
-    }
-  }
   try {
     statSync(distDir)
   } catch {
     return null
   }
-  walk(distDir)
+
+  const product = entryFiles(distDir, 'index.html')
+  const harness = entryFiles(distDir, 'harness.html')
+  const harnessOnly = new Set()
+  if (product && harness) {
+    for (const file of harness) if (!product.has(file)) harnessOnly.add(file)
+  }
+  // The HTML is not a chunk, so it is not in either set. It is still harness-only.
+  harnessOnly.add('harness.html')
+
+  let total = 0
+  const walk = (dir, prefix) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name)
+      const relative = prefix === '' ? entry.name : `${prefix}/${entry.name}`
+      if (entry.isDirectory()) {
+        if (entry.name === 'data') continue // data is budgeted separately
+        if (entry.name === '.vite') continue // the manifest itself is not served
+        walk(path, relative)
+        continue
+      }
+      if (harnessOnly.has(relative)) continue
+      if (/\.(js|css|html|woff2)$/.test(entry.name)) total += encodedSize(path)
+    }
+  }
+  walk(distDir, '')
   return total
 }
 

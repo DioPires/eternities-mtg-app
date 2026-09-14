@@ -113,6 +113,23 @@ export function segmentSeconds(name: string): number | null {
   return BENCH_PATH.find((key) => key.name === name)?.seconds ?? null
 }
 
+/**
+ * Which segment the URL asked the camera to be parked at, if any.
+ *
+ * Lives beside the segment names it selects from, rather than in `BenchRunner` where it used to be.
+ * That move is load-bearing, not tidying. `BenchScene` calls this to decide whether the URL wants
+ * the bench at all, and while it was a value export of `BenchRunner` that call was a *static*
+ * import of the runner — so once review §3.6 phase 3 item 4 moved `BenchScene`'s `lazy()` boundary
+ * into the same file, the static edge silently defeated it and folded all 612 lines of sampler into
+ * the chunk. Rollup said so out loud: "dynamically imported ... but also statically imported ...
+ * dynamic import will not move module into another chunk."
+ */
+export function benchHold(
+  search = typeof location === 'undefined' ? '' : location.search,
+): string | null {
+  return new URLSearchParams(search).get('hold')
+}
+
 /** Ease-in-out, the same curve PRD 5.7.3 specifies for a fly-to. */
 export function easeInOut(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2

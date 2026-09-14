@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import react from '@vitejs/plugin-react'
 import { defineConfig, type Plugin } from 'vite'
@@ -101,8 +102,35 @@ export default defineConfig({
      * `'hidden'` would keep the build cost for a file nobody can fetch.
      */
     sourcemap: false,
+    /**
+     * Emitted so `scripts/check-budget.mjs` can tell the product's bytes from the harness's.
+     *
+     * It is the only way to know: both entries build into one `dist/`, so a walk of the directory
+     * cannot say which files `index.html` can reach. Written to `dist/.vite/manifest.json`, which
+     * is not served (the leading dot is not why — nothing links it, and PRD 7.6.1's policy does not
+     * matter for a file no page references). It costs a few kB in `dist/` and is not counted.
+     */
+    manifest: true,
     // PRD 7.7.3: upgrades are deliberate, so keep the chunking legible rather than clever.
     rollupOptions: {
+      /**
+       * Two entries (review §3.6 phase 3, item 4).
+       *
+       * `harness.html` is the bench, the GPU self-check and the `?probe=1` scene. They were
+       * `lazy()` branches of the product entry, which kept them out of its first chunk but not out
+       * of its build — `App` named the modules, so rollup emitted them from `index.html` and a
+       * `dist/` diff could not separate the product from its instruments.
+       *
+       * Rollup shares modules across inputs rather than duplicating them, so the scene, three.js
+       * and React stay one copy each; what the second input adds is a small entry chunk and the
+       * boundary itself. `scripts/check-budget.mjs` knows which emitted files belong to which
+       * entry — it reads the build manifest below rather than walking `dist/`, because the harness
+       * is not transferred before the product's first frame and must not be budgeted as if it were.
+       */
+      input: {
+        index: fileURLToPath(new URL('./index.html', import.meta.url)),
+        harness: fileURLToPath(new URL('./harness.html', import.meta.url)),
+      },
       output: {
         manualChunks: {
           three: ['three'],

@@ -16,11 +16,11 @@
  * which is why they are reported alongside and not instead.
  */
 
-import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef, type ReactElement } from 'react'
-import { Vector3, type PerspectiveCamera } from 'three'
+import { Vector3, type PerspectiveCamera, type WebGLRenderer } from 'three'
 
 import { BLIND_ETERNITIES_SLUG } from '../data/types'
+import type { FrameLoop } from '../scene/renderer/frameLoop'
 import { planeWorldPosition } from '../scene/starfield/motion'
 import type { PlaneTable } from '../scene/starfield/planeTable'
 import {
@@ -194,6 +194,18 @@ export interface BenchRunnerProps {
   /** The bench only starts once the whole fixture is drawable, or the numbers mean nothing. */
   readonly ready: boolean
   readonly context: BenchContext
+  /**
+   * The camera the path flies, the renderer it reports, and the loop it steps on (review §3.6
+   * phase 3).
+   *
+   * Arguments rather than `useThree` reads. The bench is the one caller that *owns* the camera for
+   * the duration of a run — `SceneView` does not attach the rig when a bench is present, because two
+   * things cannot fly one camera — and it says so by taking the camera rather than by reaching into
+   * a store that would have handed it the same object either way.
+   */
+  readonly camera: PerspectiveCamera
+  readonly gl: WebGLRenderer
+  readonly loop: FrameLoop
   /** Live tier label from the quality monitor, and how many times it has changed. */
   readonly qualityTier: string
   readonly qualityChanges: number
@@ -213,23 +225,18 @@ export function benchRequested(
   return value !== null && value !== '0'
 }
 
-/** Which segment the URL asked the camera to be parked at, if any. */
-export function benchHold(
-  search = typeof location === 'undefined' ? '' : location.search,
-): string | null {
-  return new URLSearchParams(search).get('hold')
-}
 
 export function BenchRunner({
   ready,
   context,
   qualityTier,
   qualityChanges,
+  camera,
+  gl,
+  loop,
   hold = null,
   onComplete,
 }: BenchRunnerProps): ReactElement | null {
-  const camera = useThree((state) => state.camera) as PerspectiveCamera
-  const gl = useThree((state) => state.gl)
 
   const state = useRef({
     running: false,
@@ -413,10 +420,22 @@ export function BenchRunner({
     }
   }, [ready, hold, state, gl])
 
-  // Default priority, deliberately: a priority above zero takes over R3F's render loop and the
-  // effect composer already owns that. `delta` is animation-frame to animation-frame either way,
-  // so it covers the previous frame's full render.
-  useFrame((_, delta) => {
+  /**
+   * The bench flies the camera, so it subscribes to the `rig` phase — the phase whose contract is
+   * "the camera's matrices are final when this ends" ({@link TICK_PHASES}).
+   *
+   * That is a stronger statement than the arrangement it replaces. This used to be a default-priority
+   * `useFrame`, chosen because a priority above zero would have taken R3F's render loop away from
+   * the post chain — so the bench's position in the frame was defined by what it had to avoid rather
+   * than by what depends on it. What depends on it is `cards`, which reads the camera's world
+   * position, and `draw`, which renders through it; both run after `rig` by construction.
+   *
+   * `frameRef` is reassigned every render so the subscription is never rebuilt mid-run, which would
+   * otherwise reset the segment the path is in.
+   */
+  const frameRef = useRef<(delta: number) => void>(() => {})
+  useEffect(() => loop.subscribe('rig', ({ delta }) => frameRef.current(delta)), [loop])
+  frameRef.current = (delta: number): void => {
     if (hold !== null) {
       // Parked: the camera sits at the segment's end pose while the field keeps moving, so a
       // screenshot shows a real frame of a live scene rather than a frozen one.
@@ -509,7 +528,7 @@ export function BenchRunner({
       window.__eternitiesBench = result
       live.current.onComplete?.(result)
     }
-  })
+  }
 
   return null
 }

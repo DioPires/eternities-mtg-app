@@ -21,6 +21,8 @@ import {
   type NavigationSnapshot,
 } from '../navigation'
 import { Router, browserHost, type RouterSnapshot } from '../router/router'
+import { probeRequested } from '../scene/probe'
+import { SceneHost } from '../scene/renderer/sceneHost'
 
 /**
  * The host is not a third implementation — it forwards to the stub until the scene has built the
@@ -64,11 +66,61 @@ export interface Services {
   readonly nav: NavigationHost
   readonly navStore: NavStore
   readonly router: Router
+  /**
+   * The renderer: one canvas, one `WebGLRenderer`, one `requestAnimationFrame` (review §3.6 phase
+   * 3, item 1 — "created in `createServices()` next to the navigation host and router").
+   *
+   * It belongs here for the same reason the other two do, and the argument is now stronger rather
+   * than weaker: `<Canvas>` resolved its GL options, its camera and its pixel ratio from props, so
+   * every one of them was a value React owned and could recompute. The renderer has the lifetime of
+   * the page, so that is the lifetime it gets.
+   *
+   * Its public surface names no three.js type, which is what lets this module — under `app/`, where
+   * `eslint.config.js` forbids importing three — hold one. See `scene/renderer/sceneHost`.
+   */
+  readonly scene: SceneHost
 }
 
-export function createServices(): Services {
+/**
+ * What the caller knows about the renderer that the URL cannot say.
+ *
+ * Both are `WebGLRenderer` and `PerspectiveCamera` construction arguments, so there is no later
+ * point at which either could be applied — they have to be decided before the handle exists. See
+ * `SceneRendererOptions`.
+ *
+ * This parameter is item 4 of review §3.6 phase 3 arriving. `createServices` used to answer both
+ * questions by reading `location.search` for `?selfcheck`, which meant the product entry imported
+ * the self-check's URL test — and through it `SELF_CHECK_FAR`, a number that exists only for a
+ * camera the product never builds. The harness entry knows it is the harness; it says so here
+ * instead, and the product entry never asks the question.
+ */
+export interface ServicesOptions {
+  /**
+   * Default: whatever `?probe=` asks for.
+   *
+   * That default is the product's own business and stays a URL read: `?probe=shell` is the *shipped
+   * composition* with the seam installed in it, which is the page PRD 9.3's visual review is judged
+   * on (`scripts/visual-gate.mjs`). `?probe=1` — the scene on its own — is the harness's, and by
+   * the time this runs it has already redirected away. See `app/harnessRoute.ts`.
+   */
+  readonly preserveDrawingBuffer?: boolean
+  /** Default: the product camera's far plane, from `SceneRendererOptions`. */
+  readonly cameraFar?: number
+}
+
+export function createServices(options: ServicesOptions = {}): Services {
   const nav = createNavigationHost()
-  return { nav, navStore: createNavStore(nav), router: new Router(browserHost()) }
+  return {
+    nav,
+    navStore: createNavStore(nav),
+    router: new Router(browserHost()),
+    scene: new SceneHost({
+      // Without a preserved buffer, reading the canvas back gives whatever frame the compositor
+      // last kept rather than the frame the assertions were made against.
+      preserveDrawingBuffer: options.preserveDrawingBuffer ?? probeRequested(),
+      ...(options.cameraFar === undefined ? {} : { cameraFar: options.cameraFar }),
+    }),
+  }
 }
 
 const ServicesContext = createContext<Services | null>(null)
@@ -95,6 +147,11 @@ export function useNavigation(): NavigationHost {
 
 export function useRouter(): Router {
   return useServices().router
+}
+
+/** The renderer. `ui/` reaches it for the `FrameStats` snapshot and for nothing else. */
+export function useSceneHost(): SceneHost {
+  return useServices().scene
 }
 
 /** PRD 6.7.1: every component that needs focus or filters reads them from here, not from a store. */

@@ -21,14 +21,35 @@
  * with a toast. `App` intercepts it before the router ever sees it.
  */
 
-import { useState, type ReactElement } from 'react'
+import { Suspense, lazy, useState, type ReactElement } from 'react'
 
 import { useReducedMotion } from '../app/hooks'
 import { SceneView } from '../scene/EternitiesScene'
 import { motionOverride } from '../scene/motionOverride'
 import { useSceneData } from '../scene/useSceneData'
 
-import { benchHold, type BenchResult } from './BenchRunner'
+// Type-only from the runner, so asking whether the URL wants the bench does not import it. The
+// value — `benchHold` — moved to `benchPath`, which is the module the segment names live in and
+// which costs nothing to load. See the note there.
+import type { BenchResult } from './BenchRunner'
+import { benchHold } from './benchPath'
+
+/**
+ * 612 lines that only a recording run can reach.
+ *
+ * This `lazy()` used to live in `scene/EternitiesScene`, which is the shipped scene — so the import
+ * edge sat in the product's module graph and rollup emitted the runner from the product entry, even
+ * though no product URL could ever mount it. Review §3.6 phase 3 item 4 moved it here, to the file
+ * that was going to import the runner anyway; `SceneView` takes it as `bench.renderRunner`.
+ *
+ * Still lazy, for the reason it always was: `?hold=<segment>` parks the camera for a PRD 9.3
+ * screenshot and records nothing, so that path should not download the sampler. The per-frame
+ * `recordBenchCpu` writer stays static in `bench/cpuSamples` — six lines, and the runner reads
+ * through it, so the split costs no samples.
+ */
+const BenchRunner = lazy(async () => ({
+  default: (await import('./BenchRunner')).BenchRunner,
+}))
 
 /**
  * Which URL asks for the bench.
@@ -68,6 +89,11 @@ export function BenchScene(): ReactElement {
         chrome={false}
         bench={{
           hold,
+          renderRunner: (props) => (
+            <Suspense fallback={null}>
+              <BenchRunner {...props} />
+            </Suspense>
+          ),
           onComplete: (next) => {
             setResult(next)
             // PRD 9.1.2 says the console, in JSON. `scripts/bench.mjs` reads

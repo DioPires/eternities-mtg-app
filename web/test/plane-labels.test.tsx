@@ -9,17 +9,25 @@
  * The assertion is a call count rather than a frame time, because a frame time measured in jsdom
  * against a fake rAF would be noise. `Projector.project` is the per-plane unit of the work N2 is
  * about, so counting it is counting exactly the thing that was supposed to stop.
+ *
+ * **The clock changed under this test in W4.2 and the count did not.** The overlay used to run a
+ * `requestAnimationFrame` of its own; it is now a subscriber to the loop's `labels` phase, which
+ * runs after the camera matrices are final (review §3.6 phase 3, item 2). So the harness below
+ * steps a real {@link FrameLoop} by hand rather than advancing fake timers — which is a better test
+ * of the same thing, because a step that never ran would now show up as a count of zero rather than
+ * as a pump that silently did nothing.
  */
 
 import { render } from '@testing-library/react'
 import { act } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { emptyTether } from '../src/camera/framing'
 import { CameraRig } from '../src/camera/rig'
 import { BLIND_ETERNITIES_SLUG } from '../src/data/types'
 import { PlaneLabels } from '../src/labels/PlaneLabels'
 import { Projector } from '../src/labels/project'
+import { FrameLoop } from '../src/scene/renderer/frameLoop'
 
 import { loadFixturePlanes } from './fixtures'
 
@@ -27,14 +35,27 @@ const planes = loadFixturePlanes('scale')
 /** PRD 5.3.8: the dust plane carries no label, so it is not in the per-frame projection either. */
 const LABELLED = planes.planes.filter((plane) => plane.slug !== BLIND_ETERNITIES_SLUG).length
 
-/** Drive the component's own `requestAnimationFrame` loop by hand, `frames` times. */
+/**
+ * The loop the overlay subscribes to. Never started: `requestFrame` is a no-op, so the only ticks
+ * are the ones {@link pump} asks for and the count is exact.
+ */
+let loop = new FrameLoop({ requestFrame: () => 0, cancelFrame: () => {}, now: () => 0 })
+let clock = 0
+
+/** Step the loop by hand, `frames` times. */
 function pump(frames: number): void {
   for (let i = 0; i < frames; i += 1) {
+    clock += 17
     act(() => {
-      vi.advanceTimersByTime(17)
+      loop.tick(clock)
     })
   }
 }
+
+beforeEach(() => {
+  loop = new FrameLoop({ requestFrame: () => 0, cancelFrame: () => {}, now: () => 0 })
+  clock = 0
+})
 
 function rigAtHome(): CameraRig {
   const rig = new CameraRig(planes)
@@ -51,7 +72,7 @@ describe('the label overlay frame path (PRD 8.4.4)', () => {
   it('projects every plane centre per frame while labels are on', () => {
     vi.useFakeTimers()
     const project = vi.spyOn(Projector.prototype, 'project')
-    render(<PlaneLabels planes={planes} rig={rigAtHome()} focusedPlaneSlug={null} level="multiverse" enabled />)
+    render(<PlaneLabels loop={loop} planes={planes} rig={rigAtHome()} focusedPlaneSlug={null} level="multiverse" enabled />)
 
     project.mockClear()
     pump(3)
@@ -69,6 +90,7 @@ describe('the label overlay frame path (PRD 8.4.4)', () => {
     const project = vi.spyOn(Projector.prototype, 'project')
     render(
       <PlaneLabels
+        loop={loop}
         planes={planes}
         rig={rigAtHome()}
         focusedPlaneSlug={null}
@@ -86,12 +108,13 @@ describe('the label overlay frame path (PRD 8.4.4)', () => {
     vi.useFakeTimers()
     const rig = rigAtHome()
     const { container, rerender } = render(
-      <PlaneLabels planes={planes} rig={rig} focusedPlaneSlug={null} level="multiverse" enabled />,
+      <PlaneLabels loop={loop} planes={planes} rig={rig} focusedPlaneSlug={null} level="multiverse" enabled />,
     )
     pump(2)
 
     rerender(
       <PlaneLabels
+        loop={loop}
         planes={planes}
         rig={rig}
         focusedPlaneSlug={null}
@@ -114,6 +137,7 @@ describe('the label overlay frame path (PRD 8.4.4)', () => {
     const rig = rigAtHome()
     const { rerender } = render(
       <PlaneLabels
+        loop={loop}
         planes={planes}
         rig={rig}
         focusedPlaneSlug={null}
@@ -125,7 +149,7 @@ describe('the label overlay frame path (PRD 8.4.4)', () => {
     project.mockClear()
 
     rerender(
-      <PlaneLabels planes={planes} rig={rig} focusedPlaneSlug={null} level="multiverse" enabled />,
+      <PlaneLabels loop={loop} planes={planes} rig={rig} focusedPlaneSlug={null} level="multiverse" enabled />,
     )
     pump(2)
     expect(project.mock.calls.length).toBe(2 * LABELLED)
@@ -134,7 +158,7 @@ describe('the label overlay frame path (PRD 8.4.4)', () => {
   it('is hidden from the accessibility tree — the names are the HUD breadcrumb’s job', () => {
     vi.useFakeTimers()
     const { container } = render(
-      <PlaneLabels planes={planes} rig={rigAtHome()} focusedPlaneSlug={null} level="multiverse" enabled />,
+      <PlaneLabels loop={loop} planes={planes} rig={rigAtHome()} focusedPlaneSlug={null} level="multiverse" enabled />,
     )
     expect(container.querySelector('.labels')).toHaveAttribute('aria-hidden', 'true')
   })

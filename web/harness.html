@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Eternities — measurement harness</title>
+    <meta name="robots" content="noindex" />
+    <meta
+      name="description"
+      content="The bench, the GPU self-check and the probe scene. Not the product."
+    />
+    <!--
+      The second Vite input (review §3.6 phase 3, item 4). The bench, the self-check and the
+      `?probe=1` scene used to be `lazy()` branches of the product entry, which kept them out of its
+      first chunk but not out of its build. They are reached from here now, and from nothing the
+      product imports. `src/app/harnessRoute.ts` redirects their URLs; the spellings did not change.
+
+      Same data injection as index.html — these routes load the real dataset, and the bench is only
+      worth running against the artefacts the product ships.
+    -->
+    <!-- eternities:data -->
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/harness/main.tsx"></script>
+  </body>
+</html>

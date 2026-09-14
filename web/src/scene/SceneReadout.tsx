@@ -17,21 +17,28 @@
  * The shell renders none of this: PRD section 6's HUD is the real one.
  */
 
-import { useEffect, useState, type ReactElement, type RefObject } from 'react'
+import { useEffect, useState, type ReactElement } from 'react'
 
 import { BLIND_ETERNITIES_SLUG, type PlanesFile } from '../data'
 import type { NavigationSnapshot } from '../navigation/types'
 
 import { CameraReadout } from './CameraReadout'
-import type { CardTierHandle } from './cards/CardTier'
 import { formatMb, gpuMemoryReport } from './cards/gpuMemory'
+import {
+  copyFrameStats,
+  sameDisplayedStats,
+  FRAME_STATS_POLL_MS,
+  type FrameStatsSnapshot,
+} from './renderer/frameStats'
+import type { SceneHost } from './renderer/sceneHost'
 import type { SceneDataError } from './errors'
 import type { SceneNavigation } from '../navigation/scene'
 import type { PickResult } from './picking/scenePicker'
 import type { PlaneDetailStatus } from './usePlaneDetail'
 
 /**
- * The readout's two live counters, polled off the card tier's handle.
+ * The readout's two live counters: **the one leaf that polls `FrameStats`** (review §3.6 phase 3,
+ * item 3).
  *
  * These used to be `useState` in `SceneView`, written by a 500 ms `setInterval` from two getters
  * that return a fresh object every call. Both writes re-rendered the component that owns
@@ -39,46 +46,33 @@ import type { PlaneDetailStatus } from './usePlaneDetail'
  * its own reconciler on every render — which rebuilt `SelectiveBloomEffect` and its render targets
  * each time (DEC-692 R1, review §2.2; ~308 MB/s of GPU memory, measured on the live site).
  *
- * A leaf that polls a ref is the same 2 Hz refresh confined to the two `<li>`s that show it.
+ * Two things changed when the loop left React. The poll now reads the **mutable `FrameStats`
+ * record** the tick writes, rather than reaching into the card tier's handle for two getters that
+ * allocate — so this leaf holds no scene object at all, only plain numbers. And it re-renders only
+ * when {@link sameDisplayedStats} says a value it actually prints has moved: `frameMs` changes on
+ * every single tick, so a poller that compared raw samples would re-render twice a second forever,
+ * including on a still scene under reduced motion, which is the case PRD 5.9 exists to make cheap.
  */
-function SceneStats({ handle }: { handle: RefObject<CardTierHandle | null> }): ReactElement {
-  const [stats, setStats] = useState({
-    atlas: 0,
-    card: 0,
-    drawn: 0,
-    cells: 0,
-    capacity: 0,
-    failed: 0,
-  })
+function SceneStats({ stats }: { stats: FrameStatsSnapshot }): ReactElement {
+  const [shown, setShown] = useState(() => copyFrameStats(stats))
 
   useEffect(() => {
     const read = (): void => {
-      const tier = handle.current
-      if (!tier) return
-      const gpu = tier.gpuBytes
-      const thumbnails = tier.stats
-      setStats({
-        atlas: gpu.atlas,
-        card: gpu.card,
-        drawn: thumbnails.drawn,
-        cells: thumbnails.cells,
-        capacity: thumbnails.capacity,
-        failed: thumbnails.failed,
-      })
+      setShown((previous) => (sameDisplayedStats(previous, stats) ? previous : copyFrameStats(stats)))
     }
     read()
-    const timer = window.setInterval(read, 500)
+    const timer = window.setInterval(read, FRAME_STATS_POLL_MS)
     return () => {
       window.clearInterval(timer)
     }
-  }, [handle])
+  }, [stats])
 
-  const memory = gpuMemoryReport(stats.atlas, stats.card)
+  const memory = gpuMemoryReport(shown.atlasBytes, shown.cardBytes)
   return (
     <>
       <li data-testid="thumbnails">
-        thumbnails: {stats.drawn} drawn · {stats.cells} / {stats.capacity} cells · {stats.failed}{' '}
-        failed
+        thumbnails: {shown.thumbnails} drawn · {shown.thumbnailCells} / {shown.thumbnailCapacity}{' '}
+        cells · {shown.thumbnailsFailed} failed
       </li>
       <li data-testid="gpu">
         gpu: {formatMb(memory.totalBytes)} of {formatMb(memory.targetBytes)} target (atlas{' '}
@@ -100,7 +94,8 @@ export interface SceneReadoutProps {
   readonly focusedSlug: string | null
   readonly focusedCardName: string | null
   readonly focusedPrintings: number
-  readonly cardTier: RefObject<CardTierHandle | null>
+  /** The renderer. The readout reads its `FrameStats` record and its card handle. */
+  readonly host: SceneHost
   readonly detail: PlaneDetailStatus | null
   readonly hover: PickResult
   readonly reducedMotion: boolean
@@ -117,7 +112,7 @@ export function SceneReadout({
   focusedSlug,
   focusedCardName,
   focusedPrintings,
-  cardTier,
+  host,
   detail,
   hover,
   reducedMotion,
@@ -155,14 +150,14 @@ export function SceneReadout({
             : `${detail.slug} ${detail.cards} cards over ${detail.shards} shard(s)` +
               (detail.slug === BLIND_ETERNITIES_SLUG ? ' (sharded, worker-parsed)' : '')}
         </li>
-        <SceneStats handle={cardTier} />
+        <SceneStats stats={host.stats} />
         <li data-testid="card">
           card:{' '}
           {focusedCardName === null
             ? '—'
-            : `${focusedCardName} · ${cardTier.current?.card.planetCount ?? 0} planet(s)` +
+            : `${focusedCardName} · ${host.cardTier?.card.planetCount ?? 0} planet(s)` +
               ` of ${focusedPrintings} printing(s)` +
-              (cardTier.current?.card.canFlip ? ' · flippable' : '')}
+              (host.cardTier?.card.canFlip ? ' · flippable' : '')}
         </li>
         <li data-testid="hover">
           hover:{' '}
