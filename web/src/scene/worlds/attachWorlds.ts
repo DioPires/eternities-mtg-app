@@ -404,6 +404,11 @@ export function attachWorlds(options: WorldsAttachmentOptions): WorldsAttachment
       return nearest.probeSource(frame)
     },
 
+    setFilterMask: (mask) => {
+      filterMask = mask
+      for (const surface of surfaces) surface.setFilterMask(mask)
+    },
+
     /**
      * §1.12's rung, landed (DEC-751).
      *
@@ -422,11 +427,6 @@ export function attachWorlds(options: WorldsAttachmentOptions): WorldsAttachment
      * the number requested. A rung clamped away by `MAX_ARRAY_TEXTURE_LAYERS` therefore reads back
      * as the clamp, which is what §1.12 tells `e2e/quality.spec.ts` to assert against.
      */
-    setFilterMask: (mask) => {
-      filterMask = mask
-      for (const surface of surfaces) surface.setFilterMask(mask)
-    },
-
     setArtLayers: (tierLayers) => {
       tierArtLayers = tierLayers
       if (resolveLayers(tierLayers) === pool.layers) return
