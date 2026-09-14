@@ -60,6 +60,8 @@ import {
   PLANET_QUAD_HEIGHT,
   PLANET_QUAD_WIDTH,
   PLANET_RING_RADII,
+  PLANET_SMALL_HEIGHT,
+  PLANET_SMALL_WIDTH,
   PLANET_TICK_RADIUS,
   THUMBNAIL_FADE_FULL_PX,
   THUMBNAIL_GRACE_S,
@@ -1308,19 +1310,150 @@ describe('§1.10 the printings are flat quads', () => {
     queue.dispose()
   })
 
-  it('clears its neighbours on the tightest ring, so the quads do not overlap', () => {
-    // The ring spacing was chosen for a 0.116-wide sphere and the quad is bigger, so this is a real
-    // question rather than a restatement. The inner ring binds: 24 printings at the smallest radius.
-    const arc = (2 * Math.PI * PLANET_RING_RADII[0]!) / PLANETS_PER_RING
-    expect(PLANET_QUAD_WIDTH).toBeLessThan(arc)
-    // Radially the quad is the taller dimension, so this is what would collide first.
-    expect(PLANET_QUAD_HEIGHT).toBeLessThan(PLANET_RING_RADII[1]! - PLANET_RING_RADII[0]!)
+  /**
+   * Sweep a whole revolution and report the closest any two quads come (DEC-776 F1).
+   *
+   * The quads are axis-aligned in the card's frame and the ring turns underneath them, so a single
+   * phase is a *sample*, not an answer — the arrangement that shipped is clear at `t = 0` and
+   * overlapping a quarter-revolution later. Everything here goes through the shipped
+   * `planetLayout` / `planetPosition`, so it measures the ring the product draws.
+   *
+   * Separation is reported as a ratio, not a boolean: axis-aligned rects of equal size overlap
+   * exactly when both centre offsets are inside the box, so `max(|dx|/width, |dy|/height) >= 1` is
+   * the clearance condition and the shortfall of the minimum below 1 says how badly. Width and
+   * height are arguments so the pre-fix size can be driven through the *same* instrument — which
+   * makes this a measurement taking its geometry as a parameter, so the shipped row below passes
+   * the shipped constants and nothing else, and the control is exactly the call-site mutation.
+   */
+  function closestQuadApproach(
+    printings: number,
+    width: number,
+    height: number,
+    steps = 720,
+  ): { separation: number; overlappingPairs: number; overlappingRings: number[] } {
+    const { slots } = planetLayout(printings)
+    const at = slots.map(() => ({ x: 0, y: 0, z: 0 }))
+    const overlappingRings = new Set<number>()
+    let separation = Infinity
+    let overlappingPairs = 0
+
+    for (let step = 0; step < steps; step += 1) {
+      const t = (PLANET_PERIOD_S * step) / steps
+      for (let i = 0; i < slots.length; i += 1) planetPosition(slots[i]!, t, 1, at[i]!)
+
+      let pairsThisStep = 0
+      for (let i = 0; i < slots.length; i += 1) {
+        for (let j = i + 1; j < slots.length; j += 1) {
+          const gap = Math.max(
+            Math.abs(at[i]!.x - at[j]!.x) / width,
+            Math.abs(at[i]!.y - at[j]!.y) / height,
+          )
+          if (gap < separation) separation = gap
+          // 1e-9 is a float allowance, not a clearance: the shipped height solves the diagonal
+          // condition at *equality*, so the tightest pair touches at exactly 1 and lands either
+          // side of it in doubles. The defect this row exists for sits at 0.79.
+          if (gap < 1 - 1e-9) {
+            pairsThisStep += 1
+            overlappingRings.add(slots[i]!.ring)
+            overlappingRings.add(slots[j]!.ring)
+          }
+        }
+      }
+      overlappingPairs = Math.max(overlappingPairs, pairsThisStep)
+    }
+
+    return {
+      separation,
+      overlappingPairs,
+      overlappingRings: [...overlappingRings].sort((a, b) => a - b),
+    }
+  }
+
+  it('takes its height from the tightest ring chord, through the diagonal condition', () => {
+    // The clearance sweep below proves the quad fits; this proves *why* it is the size it is.
+    // Without it a height that happened to fit — transcribed, or left over from another ring's
+    // arithmetic — would be indistinguishable from one derived from the ring the code ships.
+    const chords = PLANET_RING_RADII.map(
+      (radius) => 2 * radius * Math.sin(Math.PI / PLANETS_PER_RING),
+    )
+    const diagonal = Math.hypot(PLANET_QUAD_WIDTH, PLANET_QUAD_HEIGHT)
+    expect(diagonal).toBeCloseTo(Math.min(...chords), 12)
+    // And the tightest ring is the innermost one, so a reordered `PLANET_RING_RADII` would be
+    // caught here rather than showing up as an overlap on a ring nobody thought to sweep.
+    expect(Math.min(...chords)).toBe(chords[0])
+  })
+
+  it('keeps the quads off each other at every phase of the turn, not just at the top', () => {
+    // 72 fills all three rings; 18 is where overlap began on the production roster before the fix;
+    // 570 is Swamp, the worst card on it. All three go through the shipped layout functions.
+    for (const printings of [2, 18, 24, 25, 48, 72, 570]) {
+      const { separation, overlappingPairs } = closestQuadApproach(
+        printings,
+        PLANET_QUAD_WIDTH,
+        PLANET_QUAD_HEIGHT,
+      )
+      expect({ printings, overlappingPairs }).toEqual({ printings, overlappingPairs: 0 })
+      expect(separation).toBeGreaterThanOrEqual(1 - 1e-9)
+    }
+  })
+
+  it('sizes the quad so that clearance *binds* — the ring holds nothing larger', () => {
+    // Without this the row above is satisfied by any small enough quad, including one shrunk to
+    // nothing. The tightest ring's closest approach has to sit on the boundary, so a quad even a
+    // percent taller would overlap: that is what makes the derived height the largest one §1.10's
+    // ring can hold rather than a number that merely happens to fit.
+    // Asserted as "a fractionally larger quad overlaps" rather than as an upper bound on the
+    // sampled minimum, because the sampled minimum is *not* a property of the ring: the true
+    // closest approach is exactly 1 at an irrational phase, and any finite sweep reads slightly
+    // above it and converges down as the step count rises. The overlap count does not drift —
+    // widen the quad and the dip goes below 1 over a whole neighbourhood of phases, which 720
+    // steps cannot miss.
+    for (const scale of [1.002, 1.01, 1.1]) {
+      const larger = closestQuadApproach(
+        24,
+        PLANET_QUAD_WIDTH * scale,
+        PLANET_QUAD_HEIGHT * scale,
+      )
+      expect({ scale, overlaps: larger.overlappingPairs > 0 }).toEqual({ scale, overlaps: true })
+    }
+    // Non-binding control: shrinking instead leaves the ring clear, so the row above is testing the
+    // boundary and not merely that this instrument reports overlap for any input.
+    const smaller = closestQuadApproach(
+      24,
+      PLANET_QUAD_WIDTH * 0.998,
+      PLANET_QUAD_HEIGHT * 0.998,
+    )
+    expect(smaller.overlappingPairs).toBe(0)
+  })
+
+  it('positive control: the instrument sees the height that shipped overlapping', () => {
+    // DEC-776 F1's own measurement, re-run here. Without this row a sweep that could not see the
+    // defect would read exactly like a sweep that proves it is gone. The pre-fix quad was
+    // 0.24 tall at the same derived aspect, and the review found 16 simultaneous pairs.
+    const preFixHeight = 0.24
+    const preFixWidth = (preFixHeight * PLANET_SMALL_WIDTH) / PLANET_SMALL_HEIGHT
+    const preFix = closestQuadApproach(72, preFixWidth, preFixHeight)
+    expect(preFix.overlappingPairs).toBe(16)
+    expect(preFix.separation).toBeLessThan(1)
+
+    // Rings 0 and 1 collide and 1.42 always cleared — which is the *attribution*, and it is what
+    // makes this a control for the diagonal rule rather than a control for "this instrument reports
+    // overlap". An outer ring that also went red would mean the instrument was measuring something
+    // else: 1.42's chord is 0.371 against the pre-fix quad's 0.295 diagonal, so it cannot overlap.
+    expect(preFix.overlappingRings).toEqual([0, 1])
+
+    // Onset is a *count*, and it is where the review put the blast radius: 17 printings sit one
+    // ring apart at a chord of 0.302, wider than the pre-fix diagonal; 18 at 0.285 is not. So the
+    // control separates cards that reached the defect from cards that never could.
+    expect(closestQuadApproach(17, preFixWidth, preFixHeight).overlappingPairs).toBe(0)
+    expect(closestQuadApproach(18, preFixWidth, preFixHeight).overlappingPairs).toBeGreaterThan(0)
   })
 
   it('makes no printing harder to click than the sphere it replaces', () => {
     // The pick mesh shares the quad, so the hit area *is* the quad. Both dimensions have to clear
     // the sphere's 0.116 diameter, or the conversion would have bought a better picture with
-    // pickability — and nothing on screen would say so.
+    // pickability — and nothing on screen would say so. Still true after DEC-776 F1's shrink:
+    // 0.125 x 0.174 against 0.116.
     const sphereDiameter = 0.058 * 2
     expect(PLANET_QUAD_WIDTH).toBeGreaterThan(sphereDiameter)
     expect(PLANET_QUAD_HEIGHT).toBeGreaterThan(sphereDiameter)

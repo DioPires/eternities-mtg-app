@@ -258,6 +258,19 @@ export const PLANET_SMALL_WIDTH = 146
 export const PLANET_SMALL_HEIGHT = 204
 
 /**
+ * The chord between neighbours on the tightest ring a full complement of printings can land on.
+ *
+ * A ring seating `n` printings puts neighbours `2π/n` apart in angle, so the chord is
+ * `2r · sin(π/n)` — and a partial ring is always *wider* spaced than a full one, so the binding
+ * case is every ring at {@link PLANETS_PER_RING}. Taken as a minimum over the radii rather than
+ * from `PLANET_RING_RADII[0]` so that reordering or adding a radius cannot quietly stop this being
+ * the tightest one.
+ */
+const PLANET_RING_CHORD = Math.min(
+  ...PLANET_RING_RADII.map((radius) => 2 * radius * Math.sin(Math.PI / PLANETS_PER_RING)),
+)
+
+/**
  * The quad's height in the card's own units, and its width **derived from the image it shows**.
  *
  * Derived rather than written as its own literal, because "undistorted" is §1.10's entire claim
@@ -265,11 +278,30 @@ export const PLANET_SMALL_HEIGHT = 204
  * completely plausible — a card squashed by a few percent still reads as a card, and nothing
  * errors. Deriving makes the distortion unrepresentable instead of merely untested.
  *
- * 0.24 is what the ring can hold. The inner ring seats {@link PLANETS_PER_RING} printings at
- * radius `PLANET_RING_RADII[0]`, so neighbours are `2π · 0.82 / 24` = 0.215 apart along the arc,
- * and the rings are 0.30 apart radially. At this height the quad is 0.172 wide and clears both.
+ * **The height that fits is the one whose diagonal fits the chord, and the height is derived from
+ * that too.** The quads are axis-aligned and the ring turns underneath them, so two neighbours at
+ * chord `c` are offset by `(c·cos φ, c·sin φ)` where `φ` sweeps the whole turn. Axis-aligned rects
+ * of equal size overlap exactly when *both* offsets are inside the box, so they clear **at every
+ * phase of the turn** if and only if
+ *
+ * ```
+ *   c ≥ √(W² + H²) = H · √(1 + (146/204)²)
+ * ```
+ *
+ * i.e. the quad's **diagonal** fits the chord — not its width, and not its height. Checking width
+ * against the arc and height against the radial gap is the configuration at the *top* of the ring
+ * only; a quarter-revolution later the arc is spanned by the quad's height, and a height picked
+ * against the radial gap overlaps its neighbour. (That was the previous rule here, and it shipped a
+ * ring whose inner two circles overlapped by up to 10.8% of a quad's area — DEC-776 F1.)
+ *
+ * Solving that at equality on the tightest chord is what sizes the quad, so the constant below is
+ * the largest height §1.10's ring can hold. It is **smaller** than the height that shipped and the
+ * quad is still the larger pick target: at `0.174 × 0.125` both dimensions clear the retired
+ * sphere's 0.116 diameter, so the conversion still costs nothing in pickability — which is the
+ * claim the old comment here was making for the bigger quad.
  */
-export const PLANET_QUAD_HEIGHT = 0.24
+export const PLANET_QUAD_HEIGHT =
+  PLANET_RING_CHORD / Math.hypot(1, PLANET_SMALL_WIDTH / PLANET_SMALL_HEIGHT)
 export const PLANET_QUAD_WIDTH = (PLANET_QUAD_HEIGHT * PLANET_SMALL_WIDTH) / PLANET_SMALL_HEIGHT
 
 /**

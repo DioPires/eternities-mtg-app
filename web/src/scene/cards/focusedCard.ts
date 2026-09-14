@@ -859,8 +859,10 @@ function planetMaterial(active: number): ShaderMaterial {
  * The same quad into the id buffer (PRD 8.5.6), with its slot's id as a colour.
  *
  * Sharing the draw geometry is what keeps the pick target from drifting off the picture, and §1.10
- * makes the target *larger* than it was: the quad is 0.172 × 0.24 where the sphere it replaces was
- * 0.116 across, so no printing became harder to click in the conversion.
+ * makes the target *larger* than it was: the quad is 0.125 × 0.174 where the sphere it replaces was
+ * 0.116 across, so no printing became harder to click in the conversion. That still holds after
+ * DEC-776 F1 shrank the quad to clear its neighbours at every phase of the turn — both dimensions
+ * clear 0.116, which is why the fix was a smaller quad rather than a wider ring.
  */
 function planetPickMaterial(id: number): ShaderMaterial {
   return new ShaderMaterial({
