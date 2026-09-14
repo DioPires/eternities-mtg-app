@@ -196,19 +196,23 @@ def _cmd_build(args: argparse.Namespace) -> int:
         DATASETS_FILE.write_text(
             json.dumps(registry, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
-        stale = (
-            previous
-            and previous != result.data_dir.name
-            and (data_root / previous).exists()
-            and previous not in {str(v) for k, v in registry.items() if k != "production"}
-        )
-        if stale:
-            # PRD 8.8.3: the stale hash directory goes in the same pull request — unless some other
-            # key still names it, which under `--keep-active` is exactly the case: the predecessor
-            # is what the deployed build is still fetching.
-            remove_stale_dataset(data_root, previous)
-        elif previous and previous != result.data_dir.name:
-            print(f"kept {previous}/: still named by another datasets.json key")
+        superseded = previous and previous != result.data_dir.name
+        # PRD 8.8.3 prunes the superseded directory in the same pull request. Two things stop it:
+        #
+        # - `--keep-active`, which promises exactly this and must keep that promise whatever the
+        #   registry looks like. Checking "is any other key still naming it" instead is not the
+        #   same rule and is wrong the moment `active` has already moved on: the run that published
+        #   v3 beside v2 would be followed by one that deleted v2 while still claiming to keep it.
+        # - any other key naming it, `--keep-active` or not. A registry key is a claim that
+        #   something still fetches that directory.
+        named_elsewhere = previous in {str(v) for k, v in registry.items() if k != "production"}
+        if superseded and (data_root / previous).exists():
+            if args.keep_active:
+                print(f"kept {previous}/: --keep-active")
+            elif named_elsewhere:
+                print(f"kept {previous}/: still named by another datasets.json key")
+            else:
+                remove_stale_dataset(data_root, previous)
     return 0
 
 

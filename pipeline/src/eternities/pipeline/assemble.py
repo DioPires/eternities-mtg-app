@@ -204,7 +204,10 @@ def build_dataset(
                 else:
                     swatch_column.append(found)
 
-        if stats_row is not None:
+        # Empty planes are moons, not worlds (§1.8): no grid, no cells, nothing to be exact about.
+        # Counting them here would have the report open with "over 87 worlds" on a roster that has
+        # 45 — a number a reader would take for the world count and W5's label budget.
+        if stats_row is not None and stats_row.cards > 0:
             assignment.append(stats_row)
 
         palette = layout.palette_from_hue_counts(_hue_histogram(rows))

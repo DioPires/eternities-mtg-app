@@ -14,7 +14,7 @@
  */
 
 import { brotliCompressSync, constants } from 'node:zlib'
-import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -39,7 +39,7 @@ const BUDGETS = [
   },
   {
     id: 'intro',
-    label: 'Transferred before the intro starts (adds stars.bin)',
+    label: 'Transferred before the intro starts (adds stars.bin, swatches.bin)',
     target: 3 * MB,
     ceiling: 6 * MB,
   },
@@ -58,6 +58,10 @@ const BUDGETS = [
 ]
 
 function encodedSize(path) {
+  // 0 for a file this dataset does not have. `swatches.bin` is contract v3 only (worlds spec
+  // §2.2), and this script measures whichever dataset it is pointed at — which during the
+  // dual-scene period is a v2 one whenever `active` has not moved.
+  if (!existsSync(path)) return 0
   return brotliCompressSync(readFileSync(path), {
     params: { [constants.BROTLI_PARAM_QUALITY]: 11 },
   }).byteLength
@@ -138,7 +142,12 @@ function main() {
   const firstFrameData = file('manifest.json') + file('planes.json')
   const measured = {
     'first-frame': (shell ?? 0) + firstFrameData,
-    intro: (shell ?? 0) + firstFrameData + file('stars.bin'),
+    // `swatches.bin` is contract v3's per-card art statistic (worlds spec §2.2) and it is fetched
+    // with `stars.bin`, so it belongs on this row and nowhere else. Optional because a v2 dataset
+    // has no such file and this script still measures the one `active` points at — §2.5 is
+    // explicit that the pair `search.json` + `sets.bin` must *not* absorb it: that row is at 96%
+    // of its target and is the project's one genuinely tight budget.
+    intro: (shell ?? 0) + firstFrameData + file('stars.bin') + file('swatches.bin'),
     'search-pair': file('search.json') + file('sets.bin'),
     'plane-shard': largestShard,
   }

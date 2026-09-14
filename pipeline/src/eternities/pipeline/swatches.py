@@ -236,13 +236,28 @@ def swatch_from_image(image: Image) -> Swatch:
     return (out[0], out[1], out[2], out[3])
 
 
+class DecodeError(ValueError):
+    """The bytes that arrived are not an image this build can turn into a swatch.
+
+    Its own type because the retry loop has to tell it apart from a transport failure, and Pillow's
+    ``UnidentifiedImageError`` is a subclass of ``OSError`` — which is exactly what
+    :func:`_fetch_one` catches as *transient*. Left unwrapped, a truncated or HTML-error body was
+    re-requested four times and then reported as an OS error, which is three wasted requests per
+    bad card and a reason string that names the wrong culprit.
+    """
+
+
 def _decode(payload: bytes) -> Swatch:
     from io import BytesIO
 
     from PIL import Image as PilImage
+    from PIL import UnidentifiedImageError
 
-    with PilImage.open(BytesIO(payload)) as image:
-        return swatch_from_image(image)
+    try:
+        with PilImage.open(BytesIO(payload)) as image:
+            return swatch_from_image(image)
+    except (UnidentifiedImageError, SyntaxError, ValueError, OSError) as error:
+        raise DecodeError(f"{type(error).__name__}: {error}") from error
 
 
 def _fetch_one(
@@ -259,15 +274,17 @@ def _fetch_one(
             with stats_lock:
                 stats.bytes_downloaded += len(payload)
             return request, _decode(payload), ""
+        except DecodeError as error:
+            # Before the transport branch, and deliberately: a decode failure is not transient —
+            # the same bytes will not parse next time — and `UnidentifiedImageError` is an
+            # `OSError`, so ordering this after the branch below would silently retry it.
+            return request, None, f"decode: {error}"
         except urllib.error.HTTPError as error:
             last = f"HTTP {error.code}"
             if error.code not in RETRY_STATUSES:
                 return request, None, last
         except (urllib.error.URLError, TimeoutError, OSError) as error:
             last = f"{type(error).__name__}: {error}"
-        except ValueError as error:
-            # A decode failure is not transient: the same bytes will not parse next time either.
-            return request, None, f"decode: {error}"
         time.sleep(0.5 * (2**attempt))
     return request, None, last
 

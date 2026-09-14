@@ -442,7 +442,6 @@ def test_every_card_lands_in_its_own_band_and_its_own_set_slice(dataset: Dataset
         edges = surface.band_boundaries(hue_counts)
 
         for star in stars:
-            row = surface.nearest_row(star.y, rows, dphi)
             band = next(
                 b
                 for b in range(len(surface.BAND_ORDER))
@@ -453,6 +452,7 @@ def test_every_card_lands_in_its_own_band_and_its_own_set_slice(dataset: Dataset
                 and surface.BAND_ORDER[b] is star.hue
             )
             assert surface.BAND_ORDER[band] is star.hue
+            assert 0 <= surface.nearest_row(star.y, rows, dphi) < rows
 
 
 def test_the_emitted_stars_group_by_nearest_row_into_the_shipped_rowCells(dataset: Dataset):

@@ -67,15 +67,14 @@
 
 ## Surface assignment (worlds spec §1.3)
 
-9 cards over 3 worlds: **9 exact, 0 displaced, 0 bare.** The grid relaxes to the population — only the per-row *cell counts* move; the row latitudes stay equal-angle and the band boundaries stay equal-area and are never snapped to a row. `rowCells` in `planes.json` is the shipped table (§2.4).
+9 cards over 2 worlds: **9 exact, 0 displaced, 0 bare.** The grid relaxes to the population — only the per-row *cell counts* move; the row latitudes stay equal-angle and the band boundaries stay equal-area and are never snapped to a row. `rowCells` in `planes.json` is the shipped table (§2.4).
 
 | World | Cards | Exact | Displaced | Bare | Rows | Closed form | Aspect |
 |---|---|---|---|---|---|---|---|
 | `dominaria` | 6 | 6 | 0 | 0 | 3 | 9 x | 125.0% |
 | `ravnica` | 3 | 3 | 0 | 0 | 2 | 4 x | 112.1% |
-| `segovia` | 0 | 0 | 0 | 0 | 0 | 0 | 0.0% |
 
-**Closed form differs from the card count on 2 of 3 worlds** (marked `x`). That column is what §1.3's relaxation exists for and why §2.4 ships `rowCells` rather than a formula: `round(2*pi*sin(theta) / (aspect*dphi))` summed over the rows is only approximately the card count, and the shipped grid has to be exactly it.
+**Closed form differs from the card count on 2 of 2 worlds** (marked `x`). That column is what §1.3's relaxation exists for and why §2.4 ships `rowCells` rather than a formula: `round(2*pi*sin(theta) / (aspect*dphi))` summed over the rows is only approximately the card count, and the shipped grid has to be exactly it.
 
 **Aspect** is the worst row's deviation from 4:3. It is bounded by integer `rowCells`, not by the surface law: a two-cell polar row has an aspect of pi/2. The renderer must letterbox art into the cell's own rect and may not assume 4:3 anywhere (§2.1).
 
