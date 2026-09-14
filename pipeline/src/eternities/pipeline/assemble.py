@@ -16,6 +16,7 @@ from ..contract.enums import (
     BLIND_ETERNITIES_SLUG,
     MULTIVERSE_RADIUS,
     UNRELEASED_DATE,
+    HueClass,
     colour_identity_mask,
     hue_class_for,
     size_class_for,
@@ -30,10 +31,12 @@ from ..contract.models import (
     Printing,
     SetRecord,
     StarRecord,
+    Swatch,
 )
-from ..fixtures import layout, rng
+from ..fixtures import layout, surface
 from .appendices import Appendices
 from .records import CardDetail, MeldResult, RawPrinting, ScrySet
+from .swatches import MissingSwatchError, SwatchCache
 
 BRIGHTNESS_PERCENTILE: Final = 0.98
 """PRD 5.4.10: the printing-count cap is the plane's 98th percentile."""
@@ -52,12 +55,36 @@ class CardInput:
 
 
 @dataclass(frozen=True, slots=True)
+class PlaneAssignmentStats:
+    """One plane's row of §2.6 item 5's assignment report, which must read ``N / 0 / 0``.
+
+    The prototype ran three passes — exact (colour *and* set), colour only, anywhere — and left
+    Dominaria at 5,372 exact / 694 colour-only / 200 displaced / 0 bare and Rabiah at 49 / 0 / 26 /
+    3 bare of 75. Production relaxes the grid to the population instead, so the only honest row is
+    every card exact. A displaced card is a card in the wrong place on a map whose entire claim is
+    that position means something, which is why this is a report line *and* an invariant.
+    """
+
+    slug: str
+    cards: int
+    exact: int
+    displaced: int
+    bare: int
+    rows: int
+    seed_cells: int
+    """What §1.3's closed form would have given. Rabiah is the standing example of the two
+    disagreeing: 78 slots from the formula against the 75 cells the relaxation demands."""
+
+    aspect_deviation: float
+    """Worst ``|aspect / (4:3) - 1|`` over the plane's rows. Integer ``rowCells`` is what bounds
+    this, not the surface law: at ``rowCells = 2`` a cell's aspect is pi/2 (§2.1)."""
+
+
+@dataclass(frozen=True, slots=True)
 class AssemblyStats:
     blind_eternities_top_sets: list[tuple[str, str, int]]
     """PRD 9.2.2: ``(code, name, cards)`` of the sets contributing most to the dust."""
-    largest_plane: tuple[str, int]
-    radius_saturation: list[tuple[str, int, float, float]] = field(default_factory=list)
-    """``(slug, cards, saturation, radius)`` for planes near or at 5.3.2's clamp (finding D2)."""
+    assignment: list[PlaneAssignmentStats] = field(default_factory=list)
     brightness_caps: list[tuple[str, int, int, int]] = field(default_factory=list)
     """``(slug, cap, highest printing count, cards at or above the cap)`` (finding D6).
 
@@ -73,13 +100,20 @@ def build_dataset(
     appendices: Appendices,
     meld_results: dict[str, MeldResult],
     *,
+    swatches: SwatchCache | None = None,
     dataset_name: str,
     as_of: str,
     generated_at: str,
     scryfall_bulk_updated_at: str | None,
 ) -> tuple[Dataset, AssemblyStats]:
-    """Lay out every plane and card and return the dataset the encoder writes."""
+    """Lay out every plane and card and return the dataset the encoder writes.
+
+    ``swatches`` is optional so the fixtures — which have no Scryfall printings to fetch art for —
+    can build a dataset without one; production always passes it, and a dataset built without one
+    carries no ``swatches.bin``.
+    """
     roster = {p.slug: p for p in appendices.planes}
+    missing_swatches: list[str] = []
     unknown = sorted({c.plane_slug for c in cards} - set(roster))
     if unknown:
         raise ValueError(f"cards assigned to planes absent from Appendix A: {unknown}")
@@ -99,7 +133,7 @@ def build_dataset(
         *sorted(s for s in roster if s != BLIND_ETERNITIES_SLUG),
     ]
     named = [s for s in ordered_slugs if s != BLIND_ETERNITIES_SLUG]
-    radii = {s: layout.visual_radius(len(by_plane[s])) for s in named}
+    radii = {s: surface.visual_radius(len(by_plane[s])) for s in named}
     mean_spacing = 2.0 * MULTIVERSE_RADIUS / max(math.sqrt(len(named)), 1.0)
     # PRD 5.3.3: the gap must survive drift. Every plane drifts by layout.DRIFT_FACTOR x mean
     # spacing and a pair can drift toward each other, so the margin clears several times that.
@@ -108,16 +142,13 @@ def build_dataset(
         [(s, radii[s], len(by_plane[s]) == 0) for s in named], MULTIVERSE_RADIUS, margin
     )
     motions = {s: layout.plane_motion(s, mean_spacing) for s in ordered_slugs}
-    plane_positions = [positions[s] for s in named]
-    plane_radii = [radii[s] for s in named]
-    # Built once: the plane geometry is fixed before the first dust card, and re-deriving its
-    # nearest-neighbour table per card was two thirds of PRD 8.6.3's cost (finding D5).
-    dust_field = layout.DustField.build(plane_positions, plane_radii, MULTIVERSE_RADIUS)
 
     planes: list[Plane] = []
     stars: list[StarRecord] = []
     out_cards: list[Card] = []
+    swatch_column: list[Swatch] = []
     brightness_caps: list[tuple[str, int, int, int]] = []
+    assignment: list[PlaneAssignmentStats] = []
 
     for index, slug in enumerate(ordered_slugs):
         bands = plane_bands[slug]
@@ -132,14 +163,6 @@ def build_dataset(
         )
         star_offset = len(stars)
         motion = motions[slug]
-        spiral = layout.plane_kind(slug, len(rows)) is layout.PlaneKind.SPIRAL
-
-        arm_counts = [0] * 5
-        for row in rows:
-            hue = hue_class_for(row.detail.colour_identity)
-            if int(hue) < 5:
-                arm_counts[int(hue)] += 1
-        mean_arm = sum(arm_counts) / 5.0 if sum(arm_counts) else 1.0
         printing_counts = [len(r.printings) for r in rows]
         cap = _brightness_cap(printing_counts)
         if printing_counts:
@@ -147,22 +170,15 @@ def build_dataset(
                 (slug, cap, max(printing_counts), sum(1 for n in printing_counts if n >= cap))
             )
 
-        for row in rows:
+        is_dust = slug == BLIND_ETERNITIES_SLUG
+        positions_for_rows, row_cells, stats_row = (
+            _belt_positions(rows, band_of, len(bands))
+            if is_dust
+            else _surface_positions(slug, rows, band_of)
+        )
+
+        for row, position in zip(rows, positions_for_rows, strict=True):
             hue = hue_class_for(row.detail.colour_identity)
-            band = band_of[row.first_printing.set_code]
-            if slug == BLIND_ETERNITIES_SLUG:
-                position = dust_field.scatter(row.oracle_id, len(stars))
-            else:
-                position = layout.card_position(
-                    slug,
-                    row.oracle_id,
-                    hue,
-                    band,
-                    max(len(bands), 1),
-                    motion,
-                    layout.arm_width_scale(arm_counts[int(hue)] if int(hue) < 5 else 0, mean_arm),
-                    spiral,
-                )
             card = _contract_card(row, set_id_of, sets, meld_results)
             stars.append(
                 StarRecord(
@@ -174,11 +190,25 @@ def build_dataset(
                     colour_identity=colour_identity_mask(row.detail.colour_identity),
                     size=card.rarity,
                     brightness=layout.brightness_for(len(row.printings), cap),
-                    twinkle_phase=rng.integer(0, 255, row.oracle_id, "twinkle"),
+                    # v3 byte 10 is reserved, written 0: there is no twinkle on a mosaic (§2.1).
+                    twinkle_phase=0,
                     type_mask=type_mask_for(card.type_line),
                 )
             )
             out_cards.append(card)
+            if swatches is not None:
+                first = printing_order(row, sets)[0]
+                found = swatches.get(first.id, first.image_ts)
+                if found is None:
+                    missing_swatches.append(first.id)
+                else:
+                    swatch_column.append(found)
+
+        # Empty planes are moons, not worlds (§1.8): no grid, no cells, nothing to be exact about.
+        # Counting them here would have the report open with "over 87 worlds" on a roster that has
+        # 45 — a number a reader would take for the world count and W5's label budget.
+        if stats_row is not None and stats_row.cards > 0:
+            assignment.append(stats_row)
 
         palette = layout.palette_from_hue_counts(_hue_histogram(rows))
         planes.append(
@@ -191,25 +221,23 @@ def build_dataset(
                 card_count=len(rows),
                 star_offset=star_offset,
                 star_count=len(stars) - star_offset,
-                home=(0.0, 0.0, 0.0) if slug == BLIND_ETERNITIES_SLUG else positions[slug],
-                radius=MULTIVERSE_RADIUS if slug == BLIND_ETERNITIES_SLUG else radii[slug],
+                home=(0.0, 0.0, 0.0) if is_dust else positions[slug],
+                radius=MULTIVERSE_RADIUS if is_dust else radii[slug],
                 tilt=motion.tilt,
                 spin_period_s=motion.spin_period_s,
                 spin_direction=motion.spin_direction,
                 drift_amplitude=motion.drift_amplitude,
                 drift_period_s=motion.drift_period_s,
                 drift_phase=motion.drift_phase,
-                shear_amplitude=motion.shear_amplitude,
-                shear_period_s=motion.shear_period_s,
-                shear_phase=motion.shear_phase,
-                arm_pitch=motion.arm_pitch,
-                disc_thickness=motion.disc_thickness,
-                bar=motion.bar,
                 palette=palette,
                 nebula_tint=layout.nebula_tint(palette),
                 sets=bands,
+                row_cells=row_cells,
             )
         )
+
+    if missing_swatches:
+        raise MissingSwatchError(missing_swatches)
 
     dataset = Dataset(
         dataset=dataset_name,
@@ -220,10 +248,101 @@ def build_dataset(
         sets=set_records,
         stars=stars,
         cards=out_cards,
+        swatches=swatch_column,
         multiverse_radius=MULTIVERSE_RADIUS,
-        disc_thickness=0.15 * MULTIVERSE_RADIUS,
     )
-    return dataset, _stats(by_plane, plane_bands, sets, brightness_caps)
+    return dataset, _stats(by_plane, sets, brightness_caps, assignment)
+
+
+def _surface_positions(
+    slug: str, rows: list[CardInput], band_of: dict[str, int]
+) -> tuple[list[tuple[float, float, float]], list[int], PlaneAssignmentStats]:
+    """Lay one world out on its sphere (§1.3) and report what the assignment cost.
+
+    The report row is computed here rather than inferred later because "exact / displaced / bare"
+    is only meaningful against the grid that was actually built: :func:`surface.build_grid` places
+    every card in its own band and its own set's slice by construction, so the honest row is
+    ``N / 0 / 0`` — and this function is where a future change that stopped making that true would
+    have to lie about it.
+    """
+    if not rows:
+        return [], [], PlaneAssignmentStats(slug, 0, 0, 0, 0, 0, 0, 0.0)
+
+    sequence: dict[tuple[int, int], int] = {}
+    groups: list[tuple[HueClass, int, int]] = []
+    for row in rows:
+        hue = hue_class_for(row.detail.colour_identity)
+        set_band = band_of[row.first_printing.set_code]
+        key = (int(hue), set_band)
+        sequence[key] = sequence.get(key, -1) + 1
+        groups.append((hue, set_band, sequence[key]))
+
+    grid = surface.build_grid(groups)
+    out = [
+        surface.cell_direction(p.row, p.column, grid.row_cells[p.row], grid.d_phi)
+        for p in grid.placements
+    ]
+
+    displaced = sum(
+        1
+        for (hue, set_band, _), p in zip(groups, grid.placements, strict=True)
+        if surface.BAND_ORDER[p.band] is not hue or p.set_band != set_band
+    )
+    bare = sum(grid.row_cells) - len({(p.row, p.column) for p in grid.placements})
+    deviation = max(
+        (
+            abs(
+                2
+                * math.pi
+                * math.sin(surface.row_centre(i, grid.d_phi))
+                / (count * grid.d_phi)
+                / surface.ASPECT
+                - 1
+            )
+            for i, count in enumerate(grid.row_cells)
+            if count
+        ),
+        default=0.0,
+    )
+    return (
+        out,
+        grid.row_cells,
+        PlaneAssignmentStats(
+            slug=slug,
+            cards=len(rows),
+            exact=len(rows) - displaced,
+            displaced=displaced,
+            bare=bare,
+            rows=grid.rows,
+            seed_cells=sum(surface.seed_row_cells(len(rows))),
+            aspect_deviation=deviation,
+        ),
+    )
+
+
+def _belt_positions(
+    rows: list[CardInput], band_of: dict[str, int], band_count: int
+) -> tuple[list[tuple[float, float, float]], list[int], None]:
+    """§1.8's belt: one arc per set, chronological, each set its share of 360 degrees.
+
+    ``rowCells`` is empty and omitted — the belt has no surface grid — and there is no assignment
+    row, because "exact / displaced / bare" is a statement about cells and the belt has none.
+    """
+    per_set: dict[int, int] = {}
+    for row in rows:
+        set_band = band_of[row.first_printing.set_code]
+        per_set[set_band] = per_set.get(set_band, 0) + 1
+    seen: dict[int, int] = {}
+    out: list[tuple[float, float, float]] = []
+    for row in rows:
+        set_band = band_of[row.first_printing.set_code]
+        seen[set_band] = seen.get(set_band, 0) + 1
+        out.append(
+            layout.belt_position(
+                row.oracle_id, set_band, band_count, seen[set_band] - 1, per_set[set_band]
+            )
+        )
+    return out, [], None
 
 
 def _band_index(slug: str, bands: list[PlaneSetRef], rows: list[CardInput]) -> dict[str, int]:
@@ -328,14 +447,19 @@ def _chronology_bands(
     ]
 
 
-def _contract_card(
-    row: CardInput,
-    set_id_of: dict[str, int],
-    sets: dict[str, ScrySet],
-    meld_results: dict[str, MeldResult],
-) -> Card:
-    detail = row.detail
-    printings = sorted(
+def printing_order(row: CardInput, sets: dict[str, ScrySet]) -> list[RawPrinting]:
+    """A card's printings in the order they appear as ``p`` in a shard — PRD 5.6.7's planet order.
+
+    By the *printing's set release date*, which is not the same thing as the card's debut: a promo
+    or a list reprint whose set shipped earlier sorts ahead of the set the card first appeared in.
+    ``p[0]`` is therefore the earliest-released printing, and §2.3 makes it the one whose art a cell
+    shows and whose artist the cell credits.
+
+    Lifted out of :func:`_contract_card` because the swatch stage needs exactly this element and
+    must not re-derive it: a swatch taken from a different printing than the cell draws is a
+    mismatch nothing in the artefacts could detect.
+    """
+    return sorted(
         row.printings,
         key=lambda p: (
             sets[p.set_code].released_at if p.set_code in sets else UNRELEASED_DATE,
@@ -344,6 +468,16 @@ def _contract_card(
             p.id,
         ),
     )
+
+
+def _contract_card(
+    row: CardInput,
+    set_id_of: dict[str, int],
+    sets: dict[str, ScrySet],
+    meld_results: dict[str, MeldResult],
+) -> Card:
+    detail = row.detail
+    printings = printing_order(row, sets)
     return Card(
         oracle_id=row.oracle_id,
         name=detail.front.name,
@@ -361,6 +495,7 @@ def _contract_card(
                 rarity=size_class_for(p.rarity),
                 image_ts=p.image_ts,
                 collector_number=p.collector_number,
+                artist=p.artist,
             )
             for p in printings
         ],
@@ -397,30 +532,27 @@ def _back_face(detail: CardDetail, meld_results: dict[str, MeldResult]) -> CardF
 
 def _stats(
     by_plane: dict[str, list[CardInput]],
-    plane_bands: dict[str, list[PlaneSetRef]],
     sets: dict[str, ScrySet],
     brightness_caps: list[tuple[str, int, int, int]],
+    assignment: list[PlaneAssignmentStats],
 ) -> AssemblyStats:
+    """The report's numbers.
+
+    ``radius_saturation`` and ``largest_plane`` are gone. The first watched PRD 5.3.2's ``log N``
+    clamp for the refresh that would reach it; §1.3's ``0.126 * sqrt(N)`` has no clamp — area per
+    card is the invariant, so there is nothing to saturate — and a report row about a law that no
+    longer exists is worse than no row. The second was never read by anything (review §6.1 group D).
+    """
     dust = by_plane.get(BLIND_ETERNITIES_SLUG, [])
     contributions: dict[str, int] = {}
     for card in dust:
         code = card.first_printing.set_code
         contributions[code] = contributions.get(code, 0) + 1
     top = sorted(contributions.items(), key=lambda kv: (-kv[1], kv[0]))[:10]
-    largest = max(((s, len(r)) for s, r in by_plane.items()), key=lambda kv: (kv[1], kv[0]))
-    # The Blind Eternities is excluded: PRD 8.3 gives it the multiverse radius outright, so it
-    # never goes through `visual_radius` and its card count says nothing about the clamp.
-    saturation = [
-        (slug, len(rows), layout.radius_saturation(len(rows)), layout.visual_radius(len(rows)))
-        for slug, rows in sorted(by_plane.items())
-        if slug != BLIND_ETERNITIES_SLUG
-        and layout.radius_saturation(len(rows)) >= layout.RADIUS_SATURATION_REPORT_FRACTION
-    ]
     return AssemblyStats(
         blind_eternities_top_sets=[
             (code, sets[code].name if code in sets else code, count) for code, count in top
         ],
-        largest_plane=largest,
-        radius_saturation=sorted(saturation, key=lambda row: (-row[2], row[0])),
+        assignment=sorted(assignment, key=lambda row: (-row.cards, row.slug)),
         brightness_caps=brightness_caps,
     )

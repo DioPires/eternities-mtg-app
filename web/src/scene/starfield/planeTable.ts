@@ -142,9 +142,14 @@ export class PlaneTable {
     d[base + PT_DRIFT_PHASE] = record.driftPhase
     d[base + PT_SPIN_ANGLE] = 0
 
-    d[base + PT_SHEAR_AMPLITUDE] = record.shearAmplitude
-    d[base + PT_SHEAR_VELOCITY] = record.shearPeriodS > 0 ? TAU / record.shearPeriodS : 0
-    d[base + PT_SHEAR_PHASE] = record.shearPhase
+    // Shear retires in contract v3 (worlds spec §2.4). The galaxy path reads a v2 dataset for the
+    // whole dual-scene period, so these are present in practice; defaulted to zero because a v3
+    // dataset would otherwise write `undefined` into a Float32Array as `NaN`, and a NaN in the
+    // plane table is a plane that vanishes rather than one that stops shearing.
+    d[base + PT_SHEAR_AMPLITUDE] = record.shearAmplitude ?? 0
+    const shearPeriodS = record.shearPeriodS ?? 0
+    d[base + PT_SHEAR_VELOCITY] = shearPeriodS > 0 ? TAU / shearPeriodS : 0
+    d[base + PT_SHEAR_PHASE] = record.shearPhase ?? 0
     d[base + PT_KIND] = kind
 
     d[base + PT_FADE] = 0

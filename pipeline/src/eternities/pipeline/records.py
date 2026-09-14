@@ -109,6 +109,15 @@ class RawPrinting:
     content_warning: bool
     collector_number: str
     image_ts: int
+    artist: str
+    """Contract v3, worlds spec §2.3. ``""`` where Scryfall has none.
+
+    Read here rather than in the second detail pass because the artist is a property of the
+    *printing*, and the second pass visits only first printings — while the shard carries an artist
+    for every printing in ``p``. Scryfall gives it on the card object for a multi-artist printing as
+    ``artist`` joined with ``&``, which is the credit line as printed and is what goes in the
+    contract verbatim."""
+
     is_meld_result: bool
 
     @property
@@ -216,6 +225,7 @@ def parse_printing(card: dict[str, Any]) -> RawPrinting | None:
         return None
     stamp = card.get("security_stamp")
     flavor = card.get("flavor_name")
+    artist = card.get("artist")
     return RawPrinting(
         id=str(card["id"]),
         oracle_id=oracle_id,
@@ -233,6 +243,7 @@ def parse_printing(card: dict[str, Any]) -> RawPrinting | None:
         content_warning=bool(card.get("content_warning", False)),
         collector_number=str(card["collector_number"]),
         image_ts=_image_timestamp(card),
+        artist=artist if isinstance(artist, str) else "",
         is_meld_result=_is_meld_result(card),
     )
 

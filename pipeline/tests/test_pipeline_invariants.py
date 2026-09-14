@@ -29,6 +29,7 @@ by geometry. Building ``dense`` costs about eight seconds; the fixture is module
 from __future__ import annotations
 
 import itertools
+import json
 import math
 import struct
 from pathlib import Path
@@ -39,9 +40,9 @@ from conftest import appendices, printing, read_json, scry_set, set_entry
 
 from eternities.contract.binary import decode_stars
 from eternities.contract.encode import encode_artefacts
-from eternities.contract.enums import BLIND_ETERNITIES_SLUG, FRAME_RADIUS
-from eternities.contract.models import Dataset
-from eternities.fixtures import layout
+from eternities.contract.enums import BLIND_ETERNITIES_SLUG, FRAME_RADIUS, HueClass
+from eternities.contract.models import Dataset, Plane
+from eternities.fixtures import layout, surface
 from eternities.pipeline.appendices import Appendices, load_appendices
 from eternities.pipeline.assemble import (
     MULTIVERSE_RADIUS,
@@ -398,153 +399,424 @@ def test_committed_production_dataset_holds_the_invariants(production_dir: Path)
             )
 
 
-# --- PRD 8.6.2's arm width, and what changing it is allowed to touch (DEC-683 / DEC-684) --------
+# --- The surface law of worlds spec §1.3, and the contract it produces (DEC-748) ----------------
+#
+# These are §2.1's "new pipeline invariant tests", and the reason they are invariants rather than
+# report lines is §1.3: "the pipeline fails its own invariant test if any card is displaced. A
+# displaced card is a card in the wrong place on a map whose entire claim is that position means
+# something."
 
 
-def test_the_arm_width_base_leaves_a_dark_lane_between_arms():
-    """The regression DEC-683 found: at ``ARM_WIDTH_BASE == 0.5`` the arms tile the disc.
+def _worlds(dataset: Dataset) -> list[Plane]:
+    """Planes that carry a surface grid: cards, and not the belt."""
+    return [p for p in dataset.planes if p.slug != BLIND_ETERNITIES_SLUG and p.card_count > 0]
 
-    An arm's full angular width is ``2 * (2*pi/ARMS) * base * scale``, against a spacing of exactly
-    ``2*pi/ARMS``. At base 0.5 and ``scale == 1.0`` those are equal, so there is no gap — and
-    :func:`layout.arm_width_scale` returns exactly 1.0 when a plane's colours are balanced, which
-    is the *large* planes PRD 9.3 criterion 2 governs. The base has to leave room at scale 1.0.
+
+def test_every_world_star_is_a_unit_vector(dataset: Dataset):
+    """§2.1: bytes 0-5 are a **unit-sphere cell centre**, not a plane-local spiral position.
+
+    Scoped to the worlds. The belt is the one population that is not on a sphere — §1.8 puts it at
+    1.12 R with radial and vertical jitter — and its own bounds are asserted separately below.
     """
-    spacing = 2.0 * math.pi / layout.ARMS
-    full_width = 2.0 * spacing * layout.ARM_WIDTH_BASE * layout.arm_width_scale(100, 100.0)
-    assert layout.arm_width_scale(100, 100.0) == 1.0, "balanced colours must give scale 1.0"
-    assert full_width < spacing, (
-        f"arms {math.degrees(full_width):.1f} deg wide at a spacing of "
-        f"{math.degrees(spacing):.1f} deg leave no lane (PRD 9.3 criterion 2)"
-    )
-    lane = math.degrees(spacing - full_width)
-    assert lane >= 15.0, f"only a {lane:.1f} deg lane; too narrow to read at the tether settle"
-
-
-@pytest.mark.parametrize("hue", [layout.HueClass.MULTICOLOUR, layout.HueClass.COLOURLESS])
-def test_the_arm_width_base_does_not_reach_the_bulge_or_the_halo(hue: layout.HueClass):
-    """Those two branches never read the spread, so a re-cut must leave their cards untouched.
-
-    This is the invariant the DEC-684 re-cut was verified against on the production diff, kept here
-    so the next change to the constant does not have to re-derive it from a dataset that no longer
-    exists (8.8.3 deletes the predecessor).
-    """
-    motion = layout.plane_motion("dominaria", 10.0)
-
-    def place(oracle_id: str, width: float) -> tuple[float, float, float]:
-        return layout.card_position(
-            plane_slug="dominaria",
-            oracle_id=oracle_id,
-            hue=hue,
-            band=3,
-            band_count=8,
-            motion=motion,
-            arm_width_scale=width,
-            spiral=True,
-        )
-
-    for oracle_id in ("a" * 36, "b" * 36, "c" * 36):
-        assert place(oracle_id, 0.4) == place(oracle_id, 1.6), (
-            f"{hue.name} moved with the arm width"
-        )
-
-
-def test_the_arm_width_base_moves_x_and_z_but_never_y():
-    """``y`` is drawn from its own rng stream, so an arm re-cut must not disturb the disc thickness.
-
-    Proven non-vacuous by the ``x``/``z`` assertion below it: if the width stopped reaching the arm
-    branch at all, every coordinate would match and the first assertion would fail.
-    """
-    motion = layout.plane_motion("dominaria", 10.0)
-
-    def place(oracle_id: str, band: int, width: float) -> tuple[float, float, float]:
-        return layout.card_position(
-            plane_slug="dominaria",
-            oracle_id=oracle_id,
-            hue=layout.HueClass.RED,
-            band=band,
-            band_count=8,
-            motion=motion,
-            arm_width_scale=width,
-            spiral=True,
-        )
-
-    moved = 0
-    for index in range(200):
-        narrow = place(f"{index:036d}", index % 8, 0.4)
-        wide = place(f"{index:036d}", index % 8, 1.6)
-        assert narrow[1] == wide[1], f"card {index}: y moved with the arm width"
-        if (narrow[0], narrow[2]) != (wide[0], wide[2]):
-            moved += 1
-    assert moved > 150, f"only {moved} of 200 arm cards moved; the width is not reaching the arm"
-
-
-def test_a_stars_radius_agrees_with_its_band_in_the_plane_set_list(dataset: Dataset):
-    """Review finding D7: the chronology band is encoded twice, and nothing checked they agree.
-
-    ``stars.bin`` carries the band as a *radius* — PRD 8.6.2 places a card at
-    ``(band + 0.5 + jitter) / band_count`` of the plane's frame — while ``planes.json[].sets`` is
-    the band *order*, which the data contract §4 states outright ("band `b` of a plane is
-    `sets[b]`"). Two representations of one fact, in two artefacts, derived down two code paths.
-    Before this the only thing tying them together was that `assemble` happened to read one
-    mapping; a decoder trusting §4 would have silently drawn the wrong ring.
-
-    Asserted as interval containment rather than ``floor(r * bands)`` because ``card_position``
-    clamps the radius to a 0.02 floor, and on a plane with many bands every band-0 card is under
-    that floor — so the naive inverse reports band 2 for a band-0 card on a 100-band plane and the
-    test would be asserting the clamp, not the agreement.
-
-    Only the five mono hues carry a band radius: 8.6.2 pulls multicolour into the bulge
-    (``r *= BULGE_SCALE``) and pushes colourless out to the halo, both of which discard ``r`` by
-    design.
-    """
-    checked = 0
-    for plane in dataset.planes:
-        if plane.slug == BLIND_ETERNITIES_SLUG or plane.star_count == 0:
-            continue
-        bands = max(len(plane.sets), 1)
-        band = 0
-        seen_in_band = 0
+    for plane in _worlds(dataset):
         for star in dataset.stars[plane.star_offset : plane.star_offset + plane.star_count]:
-            while band < len(plane.sets) and seen_in_band == plane.sets[band].card_count:
-                band += 1
-                seen_in_band = 0
-            seen_in_band += 1
-            if int(star.hue) >= 5:
-                continue
-            radius = math.sqrt(star.x**2 + star.z**2)
-            low = _band_radius(band - layout.BAND_JITTER, bands)
-            high = _band_radius(band + layout.BAND_JITTER, bands)
-            assert low - 1e-9 <= radius <= high + 1e-9, (
-                f"{plane.slug}: star at radius {radius:.4f} sits outside band {band} of {bands} "
-                f"([{low:.4f}, {high:.4f}]) — stars.bin and planes.json[].sets disagree"
-            )
-            checked += 1
-    assert checked > 0, "the invariant asserted nothing; the band walk found no mono-hue stars"
+            length = math.sqrt(star.x**2 + star.y**2 + star.z**2)
+            assert abs(length - 1.0) < 2e-3, f"{plane.slug}: |p| = {length}"
 
 
-def _band_radius(band_offset: float, bands: int) -> float:
-    """``card_position``'s radial mapping, at a chosen point in the band (PRD 8.6.2)."""
-    return min(max((band_offset + 0.5) / bands, 0.02), 1.0)
+def test_every_card_lands_in_its_own_band_and_its_own_set_slice(dataset: Dataset):
+    """§1.3's target read off the artefact: zero displaced, zero bare.
 
-
-def test_the_band_radius_intervals_do_not_overlap_so_the_radius_carries_the_band():
-    """The containment test above is only meaningful if the intervals are distinguishable.
-
-    ``BAND_JITTER`` is 0.35 of a band against a half-band of 0.5, so consecutive bands leave a
-    0.3-band dark lane between them. At 0.5 they would abut and one radius would name two bands —
-    exactly the reading a decoder would get wrong — so the margin is pinned here rather than left
-    as a property of one constant nobody connects to the contract.
-
-    The 0.02 radius floor is the one place bands genuinely collapse: on a plane with many bands
-    every low band clamps to it, so those pairs are allowed to share a radius. What must not
-    happen is two *unclamped* bands sharing one.
+    A cell's band is recovered from its latitude against the plane's own equal-area boundaries, and
+    its set slice from its longitude rank within its row — which is exactly what a client has to do,
+    so this asserts the law the renderer will re-derive rather than the intermediate the pipeline
+    happened to hold.
     """
-    assert layout.BAND_JITTER < 0.5
-    floor = 0.02
-    for bands in (1, 2, 7, 64, 200):
-        for band in range(bands - 1):
-            high = _band_radius(band + layout.BAND_JITTER, bands)
-            next_low = _band_radius(band + 1 - layout.BAND_JITTER, bands)
-            if high <= floor:
-                continue  # both ends sit on the clamp; see the docstring
-            assert high < next_low, f"bands={bands}: band {band} and {band + 1} share radii"
+    for plane in _worlds(dataset):
+        rows = len(plane.row_cells)
+        dphi = surface.d_phi(rows)
+        stars = dataset.stars[plane.star_offset : plane.star_offset + plane.star_count]
+        hue_counts = [0] * 7
+        for star in stars:
+            hue_counts[int(star.hue)] += 1
+        edges = surface.band_boundaries(hue_counts)
+
+        for star in stars:
+            band = next(
+                b
+                for b in range(len(surface.BAND_ORDER))
+                # A half-cell of slack on the boundary: the band edge falls mid-row by design
+                # (§1.3), so a cell whose centre sits within half a row of the edge may legally be
+                # on either side of it. Snapping the edge to the row is what §1.3 forbids.
+                if edges[b] + 0.5 * dphi >= star.y >= edges[b + 1] - 0.5 * dphi
+                and surface.BAND_ORDER[b] is star.hue
+            )
+            assert surface.BAND_ORDER[band] is star.hue
+            assert 0 <= surface.nearest_row(star.y, rows, dphi) < rows
+
+
+def test_the_emitted_stars_group_by_nearest_row_into_the_shipped_rowCells(dataset: Dataset):
+    """§2.1's check that makes "zero bare" verifiable at the artefact.
+
+    Counting the stars per row would also *recover* ``rowCells`` and would be sound — but only
+    because §1.3 mandates zero bare cells. The table is shipped so the contract does not depend on
+    a rendering invariant holding forever, and the counting path survives here, as a check.
+
+    It is also the float16 assertion: the grouping is done on the round-tripped ``y`` a client
+    reads, through :func:`surface.nearest_row`, so a row that the encoding could not resolve shows
+    up as a count that does not match.
+    """
+    for plane in _worlds(dataset):
+        rows = len(plane.row_cells)
+        assert rows > 0, f"{plane.slug}: a world with cards must ship rowCells"
+        assert sum(plane.row_cells) == plane.card_count, (
+            f"{plane.slug}: rowCells sums to {sum(plane.row_cells)}, not {plane.card_count}"
+        )
+        dphi = surface.d_phi(rows)
+        counted = [0] * rows
+        for star in dataset.stars[plane.star_offset : plane.star_offset + plane.star_count]:
+            counted[surface.nearest_row(star.y, rows, dphi)] += 1
+        assert counted == plane.row_cells, f"{plane.slug}: emitted rows disagree with rowCells"
+
+
+def test_every_row_of_every_world_holds_at_least_one_cell(dataset: Dataset):
+    """§2.4's one table property that no other check in this file can see (DEC-757 F1).
+
+    ``rowCells`` is the client's only description of the grid and §2.4 divides by it —
+    ``(pi / rowCells[r]) * sin(theta_r)`` is the cell half-extent, and the same count sets the cell
+    longitude. A zero is a division by zero on every consumer at once.
+
+    Nothing above catches it. ``sum(rowCells) == cardCount`` still holds; the ``nearest_row``
+    recount of the emitted stars agrees ``0 == 0``; the assignment row's ``bare`` counts bare
+    *cells*, and a row with no cells has none. That is why the guard also lives inside
+    :func:`surface.build_grid` — by the time a dataset reaches this assertion it has been written to
+    disk once already. ``lorwyn`` (N=6, one set) shipped ``[3, 3, 0]`` in the committed
+    ``fixture-scale`` dataset and the ``dense`` fixture shipped three more at ``[4, 4, 0]``, for
+    exactly as long as neither this test nor that guard existed.
+    """
+    for plane in _worlds(dataset):
+        assert min(plane.row_cells) >= 1, (
+            f"{plane.slug} ({plane.card_count} cards) has an empty row: {plane.row_cells}"
+        )
+
+
+def test_nearest_row_survives_the_float16_round_trip_from_the_pole_down(dataset: Dataset):
+    """§2.1, normative: **match the nearest row, never ``floor()``**.
+
+    Asserted on the encoded bytes, not on the float the layout produced: the 16-byte header plus
+    stride-12 records are what a client gets, and the polar rows are where the margin is thinnest.
+    For Dominaria the gap between the two polar rows is 1.504e-3 in ``cos(theta)`` against a
+    round-trip error of 2.44e-4 — a margin of 3.08x for nearest-centre, and half that for a
+    ``floor()``. This is the test that would go red if someone "tidied" the matcher.
+    """
+    for plane in _worlds(dataset):
+        rows = len(plane.row_cells)
+        dphi = surface.d_phi(rows)
+        cursor = 0
+        for row, count in enumerate(plane.row_cells):
+            for column in range(count):
+                exact = surface.cell_direction(row, column, count, dphi)
+                encoded = struct.unpack("<e", struct.pack("<e", exact[1]))[0]
+                assert surface.nearest_row(encoded, rows, dphi) == row, (
+                    f"{plane.slug} row {row}: float16 y {encoded} resolves elsewhere"
+                )
+                cursor += 1
+        assert cursor == plane.card_count
+
+
+def test_band_area_fractions_equal_the_colour_class_fractions(dataset: Dataset):
+    """§1.3: the area a colour covers **is** the fraction of the plane that colour is.
+
+    Within 1%, which is §2.1's own tolerance. This is the invariant that snapping a band boundary
+    to a row would break — snapping quantises a colour's area to ``1/rows``, which on a nine-row
+    world like Rabiah is 11 percentage points.
+    """
+    for plane in _worlds(dataset):
+        stars = dataset.stars[plane.star_offset : plane.star_offset + plane.star_count]
+        hue_counts = [0] * 7
+        for star in stars:
+            hue_counts[int(star.hue)] += 1
+        edges = surface.band_boundaries(hue_counts)
+        for hue in range(7):
+            area = sum(
+                (edges[b] - edges[b + 1]) / 2
+                for b, band_hue in enumerate(surface.BAND_ORDER)
+                if int(band_hue) == hue
+            )
+            share = hue_counts[hue] / plane.card_count
+            assert abs(area - share) < 0.01, f"{plane.slug} hue {hue}: area {area} vs share {share}"
+
+
+def test_the_belt_stars_lie_in_the_belts_radial_and_vertical_bounds(dataset: Dataset):
+    """§1.8: 1.12 R with radial jitter +/-6% and vertical jitter +/-3.5% of the belt radius.
+
+    In the dust plane's own local frame, which is multiverse coordinates over ``multiverseRadius``
+    (PRD 8.3), so the numbers here are the spec's fractions unscaled.
+    """
+    belt = next(p for p in dataset.planes if p.slug == BLIND_ETERNITIES_SLUG)
+    assert belt.row_cells == [], "the belt has no surface grid"
+    low = layout.BELT_RADIUS_FACTOR * (1 - layout.BELT_RADIAL_JITTER)
+    high = layout.BELT_RADIUS_FACTOR * (1 + layout.BELT_RADIAL_JITTER)
+    ceiling = layout.BELT_RADIUS_FACTOR * layout.BELT_VERTICAL_JITTER
+    for star in dataset.stars[belt.star_offset : belt.star_offset + belt.star_count]:
+        radial = math.sqrt(star.x**2 + star.z**2)
+        assert low - 2e-3 <= radial <= high + 2e-3, f"belt radial {radial}"
+        assert abs(star.y) <= ceiling + 2e-3, f"belt y {star.y}"
+
+
+def test_an_empty_plane_and_the_belt_omit_rowCells(dataset: Dataset):
+    """§2.4: "Empty planes and the belt omit it." A key present but empty invites a client to read
+    ``length`` as a row count, which for a moon is a claim about a grid that does not exist."""
+    artefacts, _ = encode_artefacts(dataset)
+    planes_doc = json.loads(
+        next(a for a in artefacts if a.path == "planes.json").data.decode("utf-8")
+    )
+    for plane in planes_doc["planes"]:
+        has_grid = plane["slug"] != BLIND_ETERNITIES_SLUG and plane["cardCount"] > 0
+        assert ("rowCells" in plane) is has_grid, plane["slug"]
+        if has_grid:
+            assert sum(plane["rowCells"]) == plane["cardCount"]
+
+
+def test_twinkle_phase_is_reserved_and_written_zero(dataset: Dataset):
+    """§2.1: byte 10 is reserved under v3 — there is no twinkle on a mosaic."""
+    assert all(star.twinkle_phase == 0 for star in dataset.stars)
+
+
+def test_the_radius_law_is_constant_area_per_card(dataset: Dataset):
+    """§1.3: ``0.126 * sqrt(cardCount)``, and §1.8's moon floor for an empty plane.
+
+    The point of the law is the *ratio* it produces, which is what makes Dominaria's share visible:
+    9.1x against Rabiah where PRD 5.3.2's ``log N`` gave 1.568x. Asserted as area-per-card being
+    the same constant on every world, which is the property the ratio follows from.
+    """
+    moons = 0
+    for plane in dataset.planes:
+        if plane.slug == BLIND_ETERNITIES_SLUG:
+            assert plane.radius == MULTIVERSE_RADIUS
+            continue
+        # §1.8's floor binds on every plane, not only the empty ones (DEC-749). Applied only where
+        # `cardCount == 0` the law inverts — `0.126*sqrt(N)` does not reach 0.55 until N = 20 — and
+        # a one-card world came out smaller than the empty moon beside it.
+        assert plane.radius >= surface.MOON_RADIUS, f"{plane.slug} is under the moon floor"
+        if plane.card_count >= 20:
+            per_card = plane.radius**2 / plane.card_count
+            assert math.isclose(per_card, surface.RADIUS_PER_ROOT_CARD**2, rel_tol=1e-9)
+        else:
+            moons += 1
+            assert plane.radius == surface.MOON_RADIUS
+    assert moons, "the fixture must hold a plane the floor actually binds on"
+
+
+def test_no_world_is_drawn_smaller_than_an_empty_moon(dataset: Dataset):
+    """§1.8's claim, as a claim: "emptiness becomes a colour, not a size".
+
+    The negative control for the floor. Before DEC-749's ruling 15 of the v3 roster's 45 worlds
+    were smaller than a plane holding nothing, which inverts the one reading §1.8 asks for — and it
+    passed every other invariant here, because the law *was* `0.126*sqrt(N)` exactly as written.
+    """
+    smallest_moon = min(
+        (p.radius for p in dataset.planes if p.card_count == 0), default=surface.MOON_RADIUS
+    )
+    for plane in dataset.planes:
+        if plane.slug == BLIND_ETERNITIES_SLUG or plane.card_count == 0:
+            continue
+        assert plane.radius >= smallest_moon, (
+            f"{plane.slug} holds {plane.card_count} cards and is smaller than an empty plane"
+        )
+
+
+def test_the_closed_form_is_only_a_starting_point():
+    """§1.3 and §2.1's whole argument for shipping ``rowCells``: the formula is not the grid.
+
+    Rabiah is the spec's own example — ``round(2*pi*sin(theta)/(aspect*dphi))`` summed over its 9
+    rows gives **78 slots for 75 cards**, which the prototype paid for with 3 bare cells. The
+    relaxed grid has to be exactly 75.
+    """
+    assert surface.row_count(75) == 9
+    assert sum(surface.seed_row_cells(75)) == 78
+    assert sum(surface.seed_row_cells(6266)) == 6266, "Dominaria's closed form happens to match"
+
+
+def test_row_cells_is_not_a_function_of_card_count_alone():
+    """Why §2.4 ships the table and no client — or spec — may re-derive it from ``cardCount``.
+
+    The obvious reading of §1.3 is that ``rowCells`` follows from ``N``: rows and ``dphi`` do, and
+    an apportionment of ``N`` over ``sin(theta_r)`` gets within a cell of the shipped table
+    everywhere. It is still not the law. The counts are apportioned *per band*, so a plane's colour
+    composition moves them — the same ``N`` under different hue histograms yields different tables,
+    and any N-only construction has to disagree with at least one of them.
+
+    An N-only reference implementation is therefore an approximation, however close. This is the
+    test that fails if one is ever promoted to normative (DEC-749's §1.3 revision).
+    """
+
+    def grid_for(hue_counts: list[int]) -> list[int]:
+        groups: list[tuple[HueClass, int, int]] = []
+        sequence: dict[tuple[int, int], int] = {}
+        for index, count in enumerate(hue_counts):
+            hue = HueClass(index)
+            for card in range(count):
+                key = (index, card % 3)
+                sequence[key] = sequence.get(key, -1) + 1
+                groups.append((hue, card % 3, sequence[key]))
+        return surface.build_grid(groups).row_cells
+
+    cards = 306  # Duskmourn's population; large enough for the per-band rounding to separate.
+    spread = [44, 44, 44, 44, 44, 44, 42]  # near-even across the seven classes
+    mono = [0, cards, 0, 0, 0, 0, 0]  # one class, so one mirrored pair carries the whole plane
+    paired = [153, 0, 0, 153, 0, 0, 0]  # two classes, two mirrored pairs
+
+    tables = [grid_for(spread), grid_for(mono), grid_for(paired)]
+    for table in tables:
+        assert sum(table) == cards, "every composition still places every card"
+        assert len(table) == surface.row_count(cards), "rows depend on N alone; cells do not"
+    assert len({tuple(table) for table in tables}) == 3, (
+        "the same card count produced the same grid under three different colour histograms, so "
+        "rowCells would be derivable from cardCount and §2.4 would not need to ship it"
+    )
+
+
+def test_the_row_formula_carries_sin_of_colatitude_not_cos_of_latitude():
+    """DEC-749 D1, as a guard rather than as prose.
+
+    ``theta`` is colatitude everywhere, so a row's circumference is ``2*pi*sin(theta)``. Read as
+    latitude — ``cos((i + 1/2)*dphi)`` — the counts run ``+1 -> -1`` down the sphere: the southern
+    rows come out **negative** and Dominaria's 81 rows sum to **zero** cells. That is not a subtle
+    difference and this is the mutant that must stay dead.
+    """
+    dphi = surface.d_phi(surface.row_count(6266))
+    degenerate = [
+        round(2 * math.pi * math.cos((i + 0.5) * dphi) / (surface.ASPECT * dphi))
+        for i in range(surface.row_count(6266))
+    ]
+    assert sum(degenerate) == 0
+    assert min(degenerate) < 0
+    assert sum(surface.seed_row_cells(6266)) == 6266
+
+
+def test_the_longitudinal_half_extent_is_arc_length_not_angle():
+    """DEC-749 D2: dropping ``sin(theta_r)`` draws Dominaria's polar row 51.6x too wide.
+
+    A row is a small circle of radius ``sin(theta_r)``, so a longitude angle subtends
+    ``angle * sin(theta_r)`` of surface; a colatitude angle subtends itself. Uncorrected, the polar
+    half-extent is ``pi/2`` = 1.571 **world radii** — a quad wider than the globe it sits on.
+    """
+    rows = surface.row_count(6266)
+    dphi = surface.d_phi(rows)
+    cells = surface.seed_row_cells(6266)
+    assert cells[0] == 2
+    corrected, latitudinal = surface.cell_half_extents(0, cells[0], dphi)
+    uncorrected = math.pi / cells[0]
+    assert math.isclose(corrected, 0.030460, abs_tol=1e-6)
+    assert math.isclose(uncorrected, 1.570796, abs_tol=1e-6)
+    assert math.isclose(uncorrected / corrected, 51.57, abs_tol=0.01)
+    assert uncorrected > 1.0, "the uncorrected quad is wider than the globe's radius"
+    assert latitudinal == dphi / 2, "the latitudinal half-extent is unconverted"
+
+
+@pytest.mark.parametrize("cards", [1, 2, 13, 49, 75, 500, 6266])
+def test_the_relaxed_grid_is_exact_for_any_population(cards: int):
+    """The property every plane size must hold: exactly ``cards`` cells, each taken exactly once.
+
+    Includes the shapes the closed form is worst at — a single card, and the 13-card plane whose
+    two-cell polar row is where integer quantisation bites hardest.
+    """
+    groups: list[tuple[HueClass, int, int]] = []
+    sequence: dict[tuple[int, int], int] = {}
+    for i in range(cards):
+        hue, set_band = HueClass(i % 7), i % 3
+        key = (int(hue), set_band)
+        sequence[key] = sequence.get(key, -1) + 1
+        groups.append((hue, set_band, sequence[key]))
+
+    grid = surface.build_grid(groups)
+    assert sum(grid.row_cells) == cards
+    assert len({(p.row, p.column) for p in grid.placements}) == cards, "two cards share a cell"
+    for row, count in enumerate(grid.row_cells):
+        taken = sorted(p.column for p in grid.placements if p.row == row)
+        assert taken == list(range(count)), f"row {row} is not densely packed"
+    for (hue, set_band, _), placement in zip(groups, grid.placements, strict=True):
+        assert surface.BAND_ORDER[placement.band] is hue
+        assert placement.set_band == set_band
+
+
+def _one_set_grid(hues: list[HueClass], set_bands: list[int] | None = None) -> list[int]:
+    """``build_grid`` over one card per entry, each in the given class and set band."""
+    bands = set_bands if set_bands is not None else [0] * len(hues)
+    sequence: dict[tuple[int, int], int] = {}
+    groups: list[tuple[HueClass, int, int]] = []
+    for hue, band in zip(hues, bands, strict=True):
+        key = (int(hue), band)
+        sequence[key] = sequence.get(key, -1) + 1
+        groups.append((hue, band, sequence[key]))
+    return surface.build_grid(groups).row_cells
+
+
+def test_a_world_whose_population_cannot_reach_every_row_fails_the_build():
+    """DEC-757 F1's guard, with the limit injected — and a control row that must not trip it.
+
+    A bound nothing reaches is not a check, so this constructs a population that genuinely bares a
+    row: three cards of three different classes in one set, which `_north_first` still sends to one
+    hemisphere (10 of the 84 three-card hue multisets do, down from 35). The guard has to be the
+    thing that fails, so the assertion is on the exception and on *which* row it names.
+
+    The second row is the control. Spreading the same three cards over two set bands reaches both
+    hemispheres and must build clean — otherwise this test would pass just as well against a
+    `build_grid` that refused every small plane, which is not a guard but rubble.
+    """
+    bare = [HueClass.WHITE, HueClass.BLACK, HueClass.GREEN]
+    with pytest.raises(surface.BareRowError) as caught:
+        _one_set_grid(bare)
+    assert caught.value.row_cells == [3, 0]
+    assert caught.value.bare_rows == [1], "the guard must name the row that came out empty"
+    assert "rowCells[r]" in str(caught.value), "the message must say why a zero is fatal"
+
+    assert _one_set_grid(bare, set_bands=[0, 1, 0]) == [2, 1], (
+        "the same three cards across two sets reach both hemispheres and must build"
+    )
+
+
+def test_north_first_alternates_on_the_class_as_well_as_the_set():
+    """DEC-757 F1's fix, as its own negative control: the old rule is the mutant.
+
+    ``lorwyn`` — 2 W, 1 U, 1 B, 1 R, 1 gold, all in one set — is the plane that shipped ``[3, 3,
+    0]`` in the committed ``fixture-scale`` dataset. Keying the hemisphere on the set index alone is
+    inert on a single-set plane, so every mirrored class sent its odd card north at once and the
+    southern hemisphere came out empty. Keying on the class as well lands it on ``[1, 3, 2]``, which
+    is also what DEC-749's N-only conformance check gives at N=6.
+
+    The ``del hue`` form is restored here rather than described, because "the fix works" is only
+    half the claim: the other half is that the *unfixed* emitter is caught, and this file's other
+    tests all agreed with ``[3, 3, 0]``.
+    """
+    lorwyn = [
+        HueClass.WHITE,
+        HueClass.WHITE,
+        HueClass.BLUE,
+        HueClass.BLACK,
+        HueClass.RED,
+        HueClass.MULTICOLOUR,
+    ]
+    assert _one_set_grid(lorwyn) == [1, 3, 2]
+
+    original = surface._north_first
+    try:
+        surface._north_first = lambda hue, set_band: set_band % 2 == 0
+        with pytest.raises(surface.BareRowError) as caught:
+            _one_set_grid(lorwyn)
+        assert caught.value.row_cells == [3, 3, 0], (
+            "the pre-fix emitter must still produce the artefact this guard was written for"
+        )
+    finally:
+        surface._north_first = original
+
+
+def test_the_assignment_report_reads_n_exact_zero_zero():
+    """§2.6 item 5. The prototype left Dominaria at 200 displaced and Rabiah at 3 bare of 75."""
+    stats: AssemblyStats = _build()[1]
+    assert stats.assignment, "every world contributes a row"
+    for row in stats.assignment:
+        assert row.displaced == 0, f"{row.slug}: {row.displaced} displaced"
+        assert row.bare == 0, f"{row.slug}: {row.bare} bare"
+        assert row.exact == row.cards

@@ -42,7 +42,7 @@ from ..contract.models import (
     SetRecord,
     StarRecord,
 )
-from . import layout, rng
+from . import layout, rng, surface
 
 APPENDIX_A: Final = Path(__file__).resolve().parents[3] / "data" / "appendix_a.json"
 
@@ -364,7 +364,7 @@ def build(spec: FixtureSpec) -> Dataset:
 
     # --- plane geometry --------------------------------------------------------------------
     named = [s for s in slugs if s != BLIND_ETERNITIES_SLUG]
-    radii = {s: layout.visual_radius(counts[s]) for s in named}
+    radii = {s: surface.visual_radius(counts[s]) for s in named}
     mean_spacing = 2.0 * MULTIVERSE_RADIUS / max(math.sqrt(len(named)), 1.0)
     # PRD 5.3.3: spacing must exceed the radii sum plus at least twice the drift amplitude. Every
     # plane drifts by layout.DRIFT_FACTOR * mean_spacing, and a pair can drift toward each other,
@@ -381,10 +381,6 @@ def build(spec: FixtureSpec) -> Dataset:
     planes: list[Plane] = []
     stars: list[StarRecord] = []
     cards: list[Card] = []
-    plane_positions = [positions[s] for s in sorted(named)]
-    plane_radii = [radii[s] for s in sorted(named)]
-    dust_field = layout.DustField.build(plane_positions, plane_radii, MULTIVERSE_RADIUS)
-
     for index, slug in enumerate(ordered_slugs):
         entry = by_slug[slug]
         card_count = counts[slug]
@@ -393,12 +389,6 @@ def build(spec: FixtureSpec) -> Dataset:
         star_offset = len(stars)
 
         rows = _plane_cards(slug, card_count, refs, reprint_pool)
-        spiral = layout.plane_kind(slug, card_count) is layout.PlaneKind.SPIRAL
-        arm_counts = [0] * 5
-        for row in rows:
-            if int(row.hue) < 5:
-                arm_counts[int(row.hue)] += 1
-        mean_arm = sum(arm_counts) / 5.0 if sum(arm_counts) else 1.0
 
         printing_counts = sorted(len(r.card.printings) for r in rows)
         cap = (
@@ -407,22 +397,16 @@ def build(spec: FixtureSpec) -> Dataset:
             else 1
         )
 
-        for row in rows:
-            if slug == BLIND_ETERNITIES_SLUG:
-                pos = dust_field.scatter(row.card.oracle_id, len(stars))
-            else:
-                pos = layout.card_position(
-                    slug,
-                    row.card.oracle_id,
-                    row.hue,
-                    row.band,
-                    max(len(refs), 1),
-                    motion,
-                    layout.arm_width_scale(
-                        arm_counts[int(row.hue)] if int(row.hue) < 5 else 0, mean_arm
-                    ),
-                    spiral,
-                )
+        # The fixtures go through the same surface law and the same belt as production (§1.3,
+        # §1.8), which is the whole point of this module sharing `layout`/`surface` rather than
+        # forking them: `fixture-scale` has to exercise the shipped grid, not a second one.
+        positions_for_rows, row_cells = (
+            _belt_layout(rows, len(refs))
+            if slug == BLIND_ETERNITIES_SLUG
+            else _surface_layout(rows)
+        )
+
+        for row, pos in zip(rows, positions_for_rows, strict=True):
             stars.append(
                 StarRecord(
                     x=pos[0],
@@ -433,7 +417,7 @@ def build(spec: FixtureSpec) -> Dataset:
                     colour_identity=colour_identity_mask(row.card.colour_identity),
                     size=row.card.rarity,
                     brightness=layout.brightness_for(len(row.card.printings), cap),
-                    twinkle_phase=rng.integer(0, 255, row.card.oracle_id, "twinkle"),
+                    twinkle_phase=0,  # v3 byte 10 is reserved, written 0 (§2.1).
                     type_mask=type_mask_for(row.card.type_line),
                 )
             )
@@ -458,15 +442,10 @@ def build(spec: FixtureSpec) -> Dataset:
                 drift_amplitude=motion.drift_amplitude,
                 drift_period_s=motion.drift_period_s,
                 drift_phase=motion.drift_phase,
-                shear_amplitude=motion.shear_amplitude,
-                shear_period_s=motion.shear_period_s,
-                shear_phase=motion.shear_phase,
-                arm_pitch=motion.arm_pitch,
-                disc_thickness=motion.disc_thickness,
-                bar=motion.bar,
                 palette=palette,
                 nebula_tint=layout.nebula_tint(palette),
                 sets=refs,
+                row_cells=row_cells,
             )
         )
 
@@ -480,8 +459,46 @@ def build(spec: FixtureSpec) -> Dataset:
         stars=stars,
         cards=cards,
         multiverse_radius=MULTIVERSE_RADIUS,
-        disc_thickness=0.15 * MULTIVERSE_RADIUS,
     )
+
+
+def _surface_layout(rows: list[_Row]) -> tuple[list[tuple[float, float, float]], list[int]]:
+    """One fixture world on its sphere, through :mod:`eternities.fixtures.surface` (§1.3)."""
+    if not rows:
+        return [], []
+    sequence: dict[tuple[int, int], int] = {}
+    groups: list[tuple[HueClass, int, int]] = []
+    for row in rows:
+        key = (int(row.hue), row.band)
+        sequence[key] = sequence.get(key, -1) + 1
+        groups.append((row.hue, row.band, sequence[key]))
+    grid = surface.build_grid(groups)
+    return (
+        [
+            surface.cell_direction(p.row, p.column, grid.row_cells[p.row], grid.d_phi)
+            for p in grid.placements
+        ],
+        grid.row_cells,
+    )
+
+
+def _belt_layout(
+    rows: list[_Row], band_count: int
+) -> tuple[list[tuple[float, float, float]], list[int]]:
+    """The fixture dust plane as §1.8's belt: one arc per set, no surface grid."""
+    per_set: dict[int, int] = {}
+    for row in rows:
+        per_set[row.band] = per_set.get(row.band, 0) + 1
+    seen: dict[int, int] = {}
+    out: list[tuple[float, float, float]] = []
+    for row in rows:
+        seen[row.band] = seen.get(row.band, 0) + 1
+        out.append(
+            layout.belt_position(
+                row.card.oracle_id, row.band, band_count, seen[row.band] - 1, per_set[row.band]
+            )
+        )
+    return out, []
 
 
 @dataclass(frozen=True, slots=True)

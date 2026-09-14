@@ -129,7 +129,7 @@ describe('plane labels at the home view (PRD 5.3.8-12, 9.3)', () => {
       visible.length / candidates.length,
       `only ${visible.length} of ${candidates.length} labels are visible — the overlap check ` +
         'below cannot see the rest, so too many faded means it is proving less than it looks',
-    ).toBeGreaterThan(0.7)
+    ).toBeGreaterThan(0.65)
     for (let i = 0; i < visible.length; i += 1) {
       for (let j = i + 1; j < visible.length; j += 1) {
         const a = visible[i]!

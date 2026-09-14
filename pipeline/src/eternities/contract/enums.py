@@ -5,16 +5,31 @@ from __future__ import annotations
 from enum import IntEnum, StrEnum
 from typing import Final
 
-CONTRACT_VERSION: Final = 2
+CONTRACT_VERSION: Final = 3
 """Bumped only for a byte-layout, section-id, enum-value or filename change.
 
 v2 is amendment A3: star-record byte 7 packs the colour identity into the hue class's spare bits.
+
+v3 is concept B "worlds" (docs/worlds/spec.md §2), and is **one** bump carrying three changes
+because all three are a pipeline re-run plus a data PR and there is no reason to pay for that
+three times:
+
+- ``stars.bin`` keeps its 12 bytes and changes what bytes 0-5 *mean* — a unit-sphere cell centre
+  instead of a plane-local spiral position — and byte 10 (``twinklePhase``) becomes reserved,
+  written 0. Bytes 8-9 stay written so a v3 dataset would still render on the galaxy path.
+- ``swatches.bin`` arrives: a per-card 2x2 RGB565 statistic of the card's own art (§2.2).
+- the printing tuple gains a sixth element, ``artist`` (§2.3), and ``planes.json`` trades seven
+  spiral fields for the ``rowCells`` table (§2.4).
 """
 
-PIPELINE_VERSION: Final = "0.4.0"
-"""Bumped when a field is added, per docs/data-contract.md §10. 0.4.0 adds `colourIdentity`."""
+PIPELINE_VERSION: Final = "0.5.0"
+"""Bumped when a field is added, per docs/data-contract.md §10. 0.5.0 is the worlds contract:
+``rowCells``, ``artist`` and ``swatches.bin``."""
 
 STAR_RECORD_BYTES: Final = 12
+SWATCH_RECORD_BYTES: Final = 8
+"""``swatches.bin``: four uint16 RGB565 samples, the card's art downsampled to 2x2 (§2.2)."""
+
 BINARY_HEADER_BYTES: Final = 16
 BINARY_MAGIC: Final = b"ETRN"
 
@@ -44,6 +59,11 @@ not worth it for one diagnostic string). DEC-708 archived that script under the
 class BinaryKind(IntEnum):
     STARS = 1
     SETS = 2
+    SWATCHES = 3
+    """v3, §2.2. A file of its own, deliberately **not** a fourth section of ``sets.bin``: PRD 7.2
+    budgets ``search.json`` + ``sets.bin`` together at 700 KB and that pair is at 95% of it, which
+    is the project's one genuinely tight row. Fetched with ``stars.bin`` instead, where the
+    before-intro row has 3 MB to spend."""
 
 
 class HueClass(IntEnum):

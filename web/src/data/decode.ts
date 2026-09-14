@@ -1,7 +1,7 @@
 /**
  * The TypeScript half of the data contract: decoders for `stars.bin` and `sets.bin`.
  * The Python twin is `pipeline/src/eternities/contract/binary.py`, and both sides assert against
- * `contract/test-vectors/v2`. See `docs/data-contract.md` §2, §5, §6.
+ * `contract/test-vectors/v3`. See `docs/data-contract.md` §2, §5, §6 and `docs/worlds/spec.md` §2.
  *
  * Design constraints, both from PRD 7.3.2 (no allocations in the per-frame path):
  *  - decoding creates typed-array *views* over the received buffer wherever it can, no copies;
@@ -13,10 +13,11 @@ import {
   BINARY_HEADER_BYTES,
   BINARY_MAGIC,
   BinaryKind,
-  CONTRACT_VERSION,
+  READABLE_CONTRACT_VERSIONS,
   SetsSection,
   SHARD_SIZE,
   STAR_RECORD_BYTES,
+  SWATCH_RECORD_BYTES,
   type OracleId,
   type SetId,
   type StarIndex,
@@ -49,13 +50,20 @@ export function decodeHeader(buffer: ArrayBuffer, byteOffset = 0): BinaryHeader 
   const view = new DataView(buffer, byteOffset, BINARY_HEADER_BYTES)
   const kind = view.getUint8(4)
   const version = view.getUint8(5)
-  if (version !== CONTRACT_VERSION) {
-    throw new ContractError(`contract version ${version}, this build speaks ${CONTRACT_VERSION}`)
+  // Any version this build can decode, not only the one it writes — see
+  // `READABLE_CONTRACT_VERSIONS`. The dual-scene period of worlds spec §2 has a v3 build reading
+  // the v2 dataset `datasets.json` still points `active` at, and a strict check here would make
+  // the first v3 commit break what is deployed.
+  if (!READABLE_CONTRACT_VERSIONS.has(version)) {
+    throw new ContractError(
+      `contract version ${version}, this build reads ` +
+        `${[...READABLE_CONTRACT_VERSIONS].join(', ')}`,
+    )
   }
   if (view.getUint32(12, true) !== 0) {
     throw new ContractError('reserved header word is not zero')
   }
-  if (kind !== BinaryKind.Stars && kind !== BinaryKind.Sets) {
+  if (kind !== BinaryKind.Stars && kind !== BinaryKind.Sets && kind !== BinaryKind.Swatches) {
     throw new ContractError(`unknown binary kind ${kind}`)
   }
   return { kind, flags: view.getUint16(6, true), recordCount: view.getUint32(8, true) }
@@ -350,6 +358,62 @@ export class StarStreamReader {
       this.chunks = [merged]
     }
     return this.chunks[0] ?? new Uint8Array(0)
+  }
+}
+
+/**
+ * A decoded `swatches.bin`: one 2x2 RGB565 statistic of each card's art, in star order (§2.2).
+ *
+ * Star order is the whole encoding — the lookup is `starIndex * 8 + 16`, with no map and no offset
+ * table — so this is a **view** over the received buffer and costs nothing to hold. The samples are
+ * `[topLeft, topRight, bottomLeft, bottomRight]`.
+ */
+export interface Swatches {
+  readonly count: number
+  /** The four packed RGB565 samples for a star. Returns a view; do not mutate. */
+  samples(index: StarIndex): Uint16Array
+  /** One sample as linear-light RGB in 0..1, which is what `iSwatch` wants (§1.4). */
+  linear(index: StarIndex, corner: 0 | 1 | 2 | 3): readonly [number, number, number]
+}
+
+/** 5- and 6-bit fields scaled to 0..1 and then through sRGB's transfer function, once, at load. */
+const FROM_5_BIT = Array.from({ length: 32 }, (_, i) => srgbToLinear(i / 31))
+const FROM_6_BIT = Array.from({ length: 64 }, (_, i) => srgbToLinear(i / 63))
+
+function srgbToLinear(value: number): number {
+  return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
+}
+
+export function decodeSwatches(buffer: ArrayBuffer): Swatches {
+  const header = decodeHeader(buffer)
+  if (header.kind !== BinaryKind.Swatches) {
+    throw new ContractError(`expected a swatches file, got kind ${header.kind}`)
+  }
+  const expected = BINARY_HEADER_BYTES + header.recordCount * SWATCH_RECORD_BYTES
+  if (buffer.byteLength !== expected) {
+    throw new ContractError(`swatches.bin is ${buffer.byteLength} bytes, expected ${expected}`)
+  }
+  const count = header.recordCount
+  const packed = new Uint16Array(buffer, BINARY_HEADER_BYTES, count * 4)
+
+  const bounds = (i: StarIndex): void => {
+    // Throws rather than returning a silent black, for the same reason `setIdsOf` throws: a swatch
+    // that is off by a plane offset is a world painted in another world's colours, and that reads
+    // as a design choice rather than as a bug.
+    if (i < 0 || i >= count) throw new ContractError(`star index ${i} out of range`)
+  }
+
+  return {
+    count,
+    samples(i) {
+      bounds(i)
+      return packed.subarray(i * 4, i * 4 + 4)
+    },
+    linear(i, corner) {
+      bounds(i)
+      const value = packed[i * 4 + corner]!
+      return [FROM_5_BIT[value >> 11]!, FROM_6_BIT[(value >> 5) & 0x3f]!, FROM_5_BIT[value & 0x1f]!]
+    },
   }
 }
 

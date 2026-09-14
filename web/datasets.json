@@ -1,8 +1,9 @@
 {
   "active": "dabe2c9a68b4d799",
   "fixtures": {
-    "scale": "3e9be89b4e3e9bdb",
-    "small": "1868a1c21c63f474"
+    "scale": "f6f712c6e70a6a51",
+    "small": "2e6f120ee85a5b23"
   },
-  "production": "dabe2c9a68b4d799"
+  "production": "c9468f1125bcddff",
+  "worlds": "c9468f1125bcddff"
 }

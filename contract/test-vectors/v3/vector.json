@@ -1,0 +1,731 @@
+{
+  "contractVersion": 3,
+  "dataHash": "b27efc0cd6f20ca9",
+  "starCount": 10,
+  "stars": [
+    {
+      "index": 0,
+      "x": -1.1279296875,
+      "y": -0.0355224609375,
+      "z": 0.0,
+      "planeIndex": 0,
+      "hueClass": 6,
+      "colourIdentity": 0,
+      "sizeClass": 0,
+      "brightness": 40,
+      "twinklePhase": 0,
+      "typeMask": 8
+    },
+    {
+      "index": 1,
+      "x": 0.0,
+      "y": 0.0,
+      "z": 1.0,
+      "planeIndex": 1,
+      "hueClass": 0,
+      "colourIdentity": 1,
+      "sizeClass": 2,
+      "brightness": 128,
+      "twinklePhase": 0,
+      "typeMask": 1
+    },
+    {
+      "index": 2,
+      "x": -0.0,
+      "y": 0.0,
+      "z": -1.0,
+      "planeIndex": 1,
+      "hueClass": 5,
+      "colourIdentity": 10,
+      "sizeClass": 1,
+      "brightness": 200,
+      "twinklePhase": 0,
+      "typeMask": 2
+    },
+    {
+      "index": 3,
+      "x": 0.0,
+      "y": -0.8662109375,
+      "z": 0.5,
+      "planeIndex": 2,
+      "hueClass": 1,
+      "colourIdentity": 2,
+      "sizeClass": 0,
+      "brightness": 1,
+      "twinklePhase": 0,
+      "typeMask": 1
+    },
+    {
+      "index": 4,
+      "x": 0.0,
+      "y": 0.8662109375,
+      "z": 0.5,
+      "planeIndex": 2,
+      "hueClass": 6,
+      "colourIdentity": 0,
+      "sizeClass": 2,
+      "brightness": 255,
+      "twinklePhase": 0,
+      "typeMask": 0
+    },
+    {
+      "index": 5,
+      "x": -0.5,
+      "y": 0.0,
+      "z": -0.8662109375,
+      "planeIndex": 2,
+      "hueClass": 5,
+      "colourIdentity": 31,
+      "sizeClass": 3,
+      "brightness": 0,
+      "twinklePhase": 0,
+      "typeMask": 255
+    },
+    {
+      "index": 6,
+      "x": 1.0,
+      "y": 0.0,
+      "z": -0.0,
+      "planeIndex": 2,
+      "hueClass": 5,
+      "colourIdentity": 10,
+      "sizeClass": 1,
+      "brightness": 17,
+      "twinklePhase": 0,
+      "typeMask": 2
+    },
+    {
+      "index": 7,
+      "x": -0.0,
+      "y": -0.8662109375,
+      "z": -0.5,
+      "planeIndex": 2,
+      "hueClass": 3,
+      "colourIdentity": 8,
+      "sizeClass": 2,
+      "brightness": 96,
+      "twinklePhase": 0,
+      "typeMask": 1
+    },
+    {
+      "index": 8,
+      "x": -0.0,
+      "y": 0.8662109375,
+      "z": -0.5,
+      "planeIndex": 2,
+      "hueClass": 1,
+      "colourIdentity": 2,
+      "sizeClass": 2,
+      "brightness": 160,
+      "twinklePhase": 0,
+      "typeMask": 1
+    },
+    {
+      "index": 9,
+      "x": -0.5,
+      "y": 0.0,
+      "z": 0.8662109375,
+      "planeIndex": 2,
+      "hueClass": 0,
+      "colourIdentity": 1,
+      "sizeClass": 2,
+      "brightness": 224,
+      "twinklePhase": 0,
+      "typeMask": 1
+    }
+  ],
+  "swatches": [
+    [
+      0,
+      65535,
+      63488,
+      31
+    ],
+    [
+      2016,
+      0,
+      65535,
+      63488
+    ],
+    [
+      31,
+      2016,
+      0,
+      65535
+    ],
+    [
+      65535,
+      31,
+      2016,
+      0
+    ],
+    [
+      33808,
+      16904,
+      50712,
+      8452
+    ],
+    [
+      65535,
+      65535,
+      65535,
+      65535
+    ],
+    [
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      63519,
+      2047,
+      65504,
+      32768
+    ],
+    [
+      32,
+      2048,
+      1,
+      4226
+    ],
+    [
+      14823,
+      31727,
+      44405,
+      57083
+    ]
+  ],
+  "rowCells": {
+    "dominaria": [
+      2
+    ],
+    "ravnica": [
+      2,
+      3,
+      2
+    ]
+  },
+  "artists": [
+    [
+      "Ava Ohm"
+    ],
+    [
+      "Ava Ohm",
+      "Ava Ohm",
+      "Ava Ohm"
+    ],
+    [
+      "Ava Ohm"
+    ],
+    [
+      "Ava Ohm"
+    ],
+    [
+      "Ava Ohm"
+    ],
+    [
+      "Ava Ohm",
+      "Ava Ohm"
+    ],
+    [
+      "Ava Ohm"
+    ],
+    [
+      "Ava Ohm"
+    ],
+    [
+      "Ava Ohm"
+    ],
+    [
+      ""
+    ]
+  ],
+  "float16Checks": [
+    {
+      "bits": 0,
+      "value": 0.0
+    },
+    {
+      "bits": 1,
+      "value": 5.960464477539063e-08
+    },
+    {
+      "bits": 1024,
+      "value": 6.103515625e-05
+    },
+    {
+      "bits": 15360,
+      "value": 1.0
+    },
+    {
+      "bits": 13653,
+      "value": 0.333251953125
+    },
+    {
+      "bits": 48128,
+      "value": -1.0
+    },
+    {
+      "bits": 31743,
+      "value": 65504.0
+    },
+    {
+      "bits": 6144,
+      "value": 0.001953125
+    },
+    {
+      "bits": 38912,
+      "value": -0.001953125
+    }
+  ],
+  "oracleIds": [
+    "00000000-0000-4000-8000-000000000001",
+    "00000000-0000-4000-8000-000000000002",
+    "00000000-0000-4000-8000-000000000003",
+    "00000000-0000-4000-8000-000000000004",
+    "00000000-0000-4000-8000-000000000005",
+    "00000000-0000-4000-8000-000000000006",
+    "00000000-0000-4000-8000-000000000007",
+    "00000000-0000-4000-8000-000000000008",
+    "00000000-0000-4000-8000-000000000009",
+    "00000000-0000-4000-8000-00000000000a"
+  ],
+  "setIdsPerStar": [
+    [
+      0
+    ],
+    [
+      0,
+      1,
+      3
+    ],
+    [
+      0
+    ],
+    [
+      2
+    ],
+    [
+      2
+    ],
+    [
+      2,
+      3
+    ],
+    [
+      2
+    ],
+    [
+      2
+    ],
+    [
+      2
+    ],
+    [
+      2
+    ]
+  ],
+  "planeShards": {
+    "blind-eternities": 1,
+    "dominaria": 1,
+    "ravnica": 1,
+    "segovia": 1
+  },
+  "files": [
+    "planes.json",
+    "planes/blind-eternities.0.json",
+    "planes/dominaria.0.json",
+    "planes/ravnica.0.json",
+    "planes/segovia.0.json",
+    "search.json",
+    "sets.bin",
+    "stars.bin",
+    "swatches.bin"
+  ],
+  "cardBackUri": "https://backs.scryfall.io/large/0/a/0aeebaf5-8c7d-4636-9e82-8c27447861f7.jpg",
+  "uris": [
+    {
+      "printingId": "aaaaaaaa-0000-4000-8000-000000000001",
+      "imageTs": "1700000001",
+      "layout": "normal",
+      "hasSecondFace": false,
+      "hasBackImage": false,
+      "small": "https://cards.scryfall.io/small/front/a/a/aaaaaaaa-0000-4000-8000-000000000001.jpg?1700000001",
+      "large": "https://cards.scryfall.io/large/front/a/a/aaaaaaaa-0000-4000-8000-000000000001.jpg?1700000001",
+      "artCrop": "https://cards.scryfall.io/art_crop/front/a/a/aaaaaaaa-0000-4000-8000-000000000001.jpg?1700000001",
+      "backLarge": null,
+      "page": "https://scryfall.com/card/tv1/1"
+    },
+    {
+      "printingId": "aaaaaaaa-0000-4000-8000-000000000002",
+      "imageTs": "1700000002",
+      "layout": "normal",
+      "hasSecondFace": false,
+      "hasBackImage": false,
+      "small": "https://cards.scryfall.io/small/front/a/a/aaaaaaaa-0000-4000-8000-000000000002.jpg?1700000002",
+      "large": "https://cards.scryfall.io/large/front/a/a/aaaaaaaa-0000-4000-8000-000000000002.jpg?1700000002",
+      "artCrop": "https://cards.scryfall.io/art_crop/front/a/a/aaaaaaaa-0000-4000-8000-000000000002.jpg?1700000002",
+      "backLarge": null,
+      "page": "https://scryfall.com/card/tv1/12"
+    },
+    {
+      "printingId": "aaaaaaaa-0000-4000-8000-000000000003",
+      "imageTs": "1700000003",
+      "layout": "normal",
+      "hasSecondFace": false,
+      "hasBackImage": false,
+      "small": "https://cards.scryfall.io/small/front/a/a/aaaaaaaa-0000-4000-8000-000000000003.jpg?1700000003",
+      "large": "https://cards.scryfall.io/large/front/a/a/aaaaaaaa-0000-4000-8000-000000000003.jpg?1700000003",
+      "artCrop": "https://cards.scryfall.io/art_crop/front/a/a/aaaaaaaa-0000-4000-8000-000000000003.jpg?1700000003",
+      "backLarge": null,
+      "page": "https://scryfall.com/card/tv2/13a"
+    },
+    {
+      "printingId": "aaaaaaaa-0000-4000-8000-000000000004",
+      "imageTs": "1700000004",
+      "layout": "normal",
+      "hasSecondFace": false,
+      "hasBackImage": false,
+      "small": "https://cards.scryfall.io/small/front/a/a/aaaaaaaa-0000-4000-8000-000000000004.jpg?1700000004",
+      "large": "https://cards.scryfall.io/large/front/a/a/aaaaaaaa-0000-4000-8000-000000000004.jpg?1700000004",
+      "artCrop": "https://cards.scryfall.io/art_crop/front/a/a/aaaaaaaa-0000-4000-8000-000000000004.jpg?1700000004",
+      "backLarge": null,
+      "page": "https://scryfall.com/card/rp0/301"
+    },
+    {
+      "printingId": "aaaaaaaa-0000-4000-8000-000000000005",
+      "imageTs": "1700000005",
+      "layout": "normal",
+      "hasSecondFace": false,
+      "hasBackImage": false,
+      "small": "https://cards.scryfall.io/small/front/a/a/aaaaaaaa-0000-4000-8000-000000000005.jpg?1700000005",
+      "large": "https://cards.scryfall.io/large/front/a/a/aaaaaaaa-0000-4000-8000-000000000005.jpg?1700000005",
+      "artCrop": "https://cards.scryfall.io/art_crop/front/a/a/aaaaaaaa-0000-4000-8000-000000000005.jpg?1700000005",
+      "backLarge": null,
+      "page": "https://scryfall.com/card/tv1/77"
+    },
+    {
+      "printingId": "aaaaaaaa-0000-4000-8000-000000000006",
+      "imageTs": "1700000006",
+      "layout": "transform",
+      "hasSecondFace": true,
+      "hasBackImage": true,
+      "small": "https://cards.scryfall.io/small/front/a/a/aaaaaaaa-0000-4000-8000-000000000006.jpg?1700000006",
+      "large": "https://cards.scryfall.io/large/front/a/a/aaaaaaaa-0000-4000-8000-000000000006.jpg?1700000006",
+      "artCrop": "https://cards.scryfall.io/art_crop/front/a/a/aaaaaaaa-0000-4000-8000-000000000006.jpg?1700000006",
+      "backLarge": "https://cards.scryfall.io/large/back/a/a/aaaaaaaa-0000-4000-8000-000000000006.jpg?1700000006",
+      "page": "https://scryfall.com/card/tv3/60"
+    },
+    {
+      "printingId": "aaaaaaaa-0000-4000-8000-000000000007",
+      "imageTs": "1700000007",
+      "layout": "normal",
+      "hasSecondFace": false,
+      "hasBackImage": false,
+      "small": "https://cards.scryfall.io/small/front/a/a/aaaaaaaa-0000-4000-8000-000000000007.jpg?1700000007",
+      "large": "https://cards.scryfall.io/large/front/a/a/aaaaaaaa-0000-4000-8000-000000000007.jpg?1700000007",
+      "artCrop": "https://cards.scryfall.io/art_crop/front/a/a/aaaaaaaa-0000-4000-8000-000000000007.jpg?1700000007",
+      "backLarge": null,
+      "page": "https://scryfall.com/card/tv3/3"
+    },
+    {
+      "printingId": "aaaaaaaa-0000-4000-8000-000000000008",
+      "imageTs": "1700000008",
+      "layout": "normal",
+      "hasSecondFace": false,
+      "hasBackImage": false,
+      "small": "https://cards.scryfall.io/small/front/a/a/aaaaaaaa-0000-4000-8000-000000000008.jpg?1700000008",
+      "large": "https://cards.scryfall.io/large/front/a/a/aaaaaaaa-0000-4000-8000-000000000008.jpg?1700000008",
+      "artCrop": "https://cards.scryfall.io/art_crop/front/a/a/aaaaaaaa-0000-4000-8000-000000000008.jpg?1700000008",
+      "backLarge": null,
+      "page": "https://scryfall.com/card/tv3/%E2%98%851"
+    },
+    {
+      "printingId": "aaaaaaaa-0000-4000-8000-000000000009",
+      "imageTs": "1700000009",
+      "layout": "normal",
+      "hasSecondFace": false,
+      "hasBackImage": false,
+      "small": "https://cards.scryfall.io/small/front/a/a/aaaaaaaa-0000-4000-8000-000000000009.jpg?1700000009",
+      "large": "https://cards.scryfall.io/large/front/a/a/aaaaaaaa-0000-4000-8000-000000000009.jpg?1700000009",
+      "artCrop": "https://cards.scryfall.io/art_crop/front/a/a/aaaaaaaa-0000-4000-8000-000000000009.jpg?1700000009",
+      "backLarge": null,
+      "page": "https://scryfall.com/card/rp0/999"
+    },
+    {
+      "printingId": "aaaaaaaa-0000-4000-8000-000000000010",
+      "imageTs": "1700000010",
+      "layout": "split",
+      "hasSecondFace": true,
+      "hasBackImage": false,
+      "small": "https://cards.scryfall.io/small/front/a/a/aaaaaaaa-0000-4000-8000-000000000010.jpg?1700000010",
+      "large": "https://cards.scryfall.io/large/front/a/a/aaaaaaaa-0000-4000-8000-000000000010.jpg?1700000010",
+      "artCrop": "https://cards.scryfall.io/art_crop/front/a/a/aaaaaaaa-0000-4000-8000-000000000010.jpg?1700000010",
+      "backLarge": null,
+      "page": "https://scryfall.com/card/tv3/215"
+    },
+    {
+      "printingId": "aaaaaaaa-0000-4000-8000-000000000011",
+      "imageTs": "1700000011",
+      "layout": "adventure",
+      "hasSecondFace": true,
+      "hasBackImage": false,
+      "small": "https://cards.scryfall.io/small/front/a/a/aaaaaaaa-0000-4000-8000-000000000011.jpg?1700000011",
+      "large": "https://cards.scryfall.io/large/front/a/a/aaaaaaaa-0000-4000-8000-000000000011.jpg?1700000011",
+      "artCrop": "https://cards.scryfall.io/art_crop/front/a/a/aaaaaaaa-0000-4000-8000-000000000011.jpg?1700000011",
+      "backLarge": null,
+      "page": "https://scryfall.com/card/tv3/781"
+    },
+    {
+      "printingId": "aaaaaaaa-0000-4000-8000-000000000012",
+      "imageTs": "1700000012",
+      "layout": "flip",
+      "hasSecondFace": true,
+      "hasBackImage": false,
+      "small": "https://cards.scryfall.io/small/front/a/a/aaaaaaaa-0000-4000-8000-000000000012.jpg?1700000012",
+      "large": "https://cards.scryfall.io/large/front/a/a/aaaaaaaa-0000-4000-8000-000000000012.jpg?1700000012",
+      "artCrop": "https://cards.scryfall.io/art_crop/front/a/a/aaaaaaaa-0000-4000-8000-000000000012.jpg?1700000012",
+      "backLarge": null,
+      "page": "https://scryfall.com/card/tv3/35"
+    },
+    {
+      "printingId": "aaaaaaaa-0000-4000-8000-000000000013",
+      "imageTs": "1700000014",
+      "layout": "meld",
+      "hasSecondFace": true,
+      "hasBackImage": true,
+      "small": "https://cards.scryfall.io/small/front/a/a/aaaaaaaa-0000-4000-8000-000000000013.jpg?1700000014",
+      "large": "https://cards.scryfall.io/large/front/a/a/aaaaaaaa-0000-4000-8000-000000000013.jpg?1700000014",
+      "artCrop": "https://cards.scryfall.io/art_crop/front/a/a/aaaaaaaa-0000-4000-8000-000000000013.jpg?1700000014",
+      "backLarge": "https://cards.scryfall.io/large/front/b/b/bbbbbbbb-0000-4000-8000-000000000001.jpg?1700000013",
+      "page": "https://scryfall.com/card/tv3/15a"
+    }
+  ],
+  "colourChecks": [
+    {
+      "colourIdentity": "W",
+      "hueClass": 0,
+      "identityMask": 1,
+      "colourByte": 8
+    },
+    {
+      "colourIdentity": "U",
+      "hueClass": 1,
+      "identityMask": 2,
+      "colourByte": 17
+    },
+    {
+      "colourIdentity": "B",
+      "hueClass": 2,
+      "identityMask": 4,
+      "colourByte": 34
+    },
+    {
+      "colourIdentity": "R",
+      "hueClass": 3,
+      "identityMask": 8,
+      "colourByte": 67
+    },
+    {
+      "colourIdentity": "G",
+      "hueClass": 4,
+      "identityMask": 16,
+      "colourByte": 132
+    },
+    {
+      "colourIdentity": "WU",
+      "hueClass": 5,
+      "identityMask": 3,
+      "colourByte": 29
+    },
+    {
+      "colourIdentity": "UR",
+      "hueClass": 5,
+      "identityMask": 10,
+      "colourByte": 85
+    },
+    {
+      "colourIdentity": "BRG",
+      "hueClass": 5,
+      "identityMask": 28,
+      "colourByte": 229
+    },
+    {
+      "colourIdentity": "RGWU",
+      "hueClass": 5,
+      "identityMask": 27,
+      "colourByte": 221
+    },
+    {
+      "colourIdentity": "WUBRG",
+      "hueClass": 5,
+      "identityMask": 31,
+      "colourByte": 253
+    },
+    {
+      "colourIdentity": "",
+      "hueClass": 6,
+      "identityMask": 0,
+      "colourByte": 6
+    }
+  ],
+  "typeMaskChecks": [
+    {
+      "typeLine": "Creature — Human Wizard",
+      "typeMask": 1
+    },
+    {
+      "typeLine": "Basic Land — Island",
+      "typeMask": 64
+    },
+    {
+      "typeLine": "Artifact Creature — Golem",
+      "typeMask": 9
+    },
+    {
+      "typeLine": "Legendary Planeswalker — Jace",
+      "typeMask": 32
+    },
+    {
+      "typeLine": "Conspiracy",
+      "typeMask": 0
+    },
+    {
+      "typeLine": "Battle — Siege",
+      "typeMask": 128
+    },
+    {
+      "typeLine": "Instant",
+      "typeMask": 2
+    },
+    {
+      "typeLine": "Enchantment Creature — Nymph",
+      "typeMask": 17
+    }
+  ],
+  "backImageChecks": [
+    {
+      "layout": "adventure",
+      "hasBackImage": false
+    },
+    {
+      "layout": "art_series",
+      "hasBackImage": true
+    },
+    {
+      "layout": "augment",
+      "hasBackImage": false
+    },
+    {
+      "layout": "battle",
+      "hasBackImage": false
+    },
+    {
+      "layout": "case",
+      "hasBackImage": false
+    },
+    {
+      "layout": "class",
+      "hasBackImage": false
+    },
+    {
+      "layout": "double_faced_token",
+      "hasBackImage": true
+    },
+    {
+      "layout": "emblem",
+      "hasBackImage": false
+    },
+    {
+      "layout": "flip",
+      "hasBackImage": false
+    },
+    {
+      "layout": "front_card",
+      "hasBackImage": false
+    },
+    {
+      "layout": "host",
+      "hasBackImage": false
+    },
+    {
+      "layout": "leveler",
+      "hasBackImage": false
+    },
+    {
+      "layout": "meld",
+      "hasBackImage": false
+    },
+    {
+      "layout": "modal_dfc",
+      "hasBackImage": true
+    },
+    {
+      "layout": "mutate",
+      "hasBackImage": false
+    },
+    {
+      "layout": "normal",
+      "hasBackImage": false
+    },
+    {
+      "layout": "planar",
+      "hasBackImage": false
+    },
+    {
+      "layout": "prepare",
+      "hasBackImage": false
+    },
+    {
+      "layout": "prototype",
+      "hasBackImage": false
+    },
+    {
+      "layout": "reversible_card",
+      "hasBackImage": true
+    },
+    {
+      "layout": "saga",
+      "hasBackImage": false
+    },
+    {
+      "layout": "scheme",
+      "hasBackImage": false
+    },
+    {
+      "layout": "split",
+      "hasBackImage": false
+    },
+    {
+      "layout": "token",
+      "hasBackImage": false
+    },
+    {
+      "layout": "transform",
+      "hasBackImage": true
+    },
+    {
+      "layout": "vanguard",
+      "hasBackImage": false
+    }
+  ],
+  "shardIndexChecks": [
+    {
+      "localIndex": 0,
+      "shard": 0
+    },
+    {
+      "localIndex": 1999,
+      "shard": 0
+    },
+    {
+      "localIndex": 2000,
+      "shard": 1
+    },
+    {
+      "localIndex": 4001,
+      "shard": 2
+    }
+  ]
+}

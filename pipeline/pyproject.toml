@@ -3,7 +3,15 @@ name = "eternities-pipeline"
 version = "0.1.0"
 description = "Eternities data pipeline: Scryfall bulk data to the web app's artefacts"
 requires-python = "==3.13.*"
-dependencies = []
+# The contract modules stay import-free of anything but the standard library — `binary.py`,
+# `encode.py` and `models.py` are the byte-level freeze and must not depend on a wheel. Pillow is
+# reached only by `pipeline/swatches.py`, and lazily even there: `swatches.bin` (worlds spec §2.2)
+# is a statistic of the card's *art*, and there is no JPEG decoder in the standard library.
+#
+# Pinned exactly, like every dev dependency below, because these pixels feed a content-hashed
+# dataset name (PRD 4.9.1): the swatch cache stores the decoded 8-byte record, so two machines
+# agree by construction once the cache is warm, and the pin is what makes them agree from cold.
+dependencies = ["pillow==12.3.0"]
 
 [project.scripts]
 eternities = "eternities.cli:main"

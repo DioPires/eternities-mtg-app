@@ -14,7 +14,7 @@ import pytest
 from eternities.contract.encode import encode_artefacts
 from eternities.testvector import build_test_vector, vector_summary
 
-VECTOR_DIR = Path(__file__).resolve().parents[2] / "contract" / "test-vectors" / "v2"
+VECTOR_DIR = Path(__file__).resolve().parents[2] / "contract" / "test-vectors" / "v3"
 
 
 def test_vector_directory_is_committed():

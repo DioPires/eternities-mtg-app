@@ -111,7 +111,7 @@ jobs:
       - name: The committed vector is what the encoder produces right now
         run: |
           uv run eternities test-vector --out "$RUNNER_TEMP/vector"
-          diff -r "$RUNNER_TEMP/vector" ../contract/test-vectors/v2
+          diff -r "$RUNNER_TEMP/vector" ../contract/test-vectors/v3
         working-directory: pipeline
       - name: The committed fixtures are what the generator produces right now
         run: |

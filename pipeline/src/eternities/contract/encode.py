@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .binary import encode_sets, encode_stars
+from .binary import encode_sets, encode_stars, encode_swatches
 from .enums import (
     BLIND_ETERNITIES_SLUG,
     CONTRACT_VERSION,
@@ -22,6 +22,7 @@ from .enums import (
     SHARD_SIZE,
     SIZE_CLASS_TO_RARITY_CHAR,
     STAR_RECORD_BYTES,
+    SWATCH_RECORD_BYTES,
 )
 from .models import Card, CardFace, Dataset, Plane
 
@@ -58,7 +59,17 @@ class EncodedArtefact:
 
 
 def _plane_json(plane: Plane) -> dict[str, Any]:
-    return {
+    """One plane's row of ``planes.json``.
+
+    v3 (worlds spec §2.4): ``shearAmplitude``/``PeriodS``/``Phase``, ``armPitch``, ``bar`` and the
+    per-plane ``discThickness`` are gone with the spiral disc, and ``rowCells`` arrives. Seven
+    fields out, one in — and the one that arrives is an array, so ``planes.json`` grows rather than
+    shrinks. It is noise in the budget either way and is listed for completeness, not for savings.
+
+    ``rowCells`` is omitted rather than written empty for the belt and the empty planes: neither has
+    a surface grid, and a key present-but-empty invites a client to read ``length`` as a row count.
+    """
+    row: dict[str, Any] = {
         "index": plane.index,
         "slug": plane.slug,
         "displayName": plane.display_name,
@@ -76,12 +87,6 @@ def _plane_json(plane: Plane) -> dict[str, Any]:
         "driftAmplitude": _round(plane.drift_amplitude),
         "driftPeriodS": _round(plane.drift_period_s, 3),
         "driftPhase": _round(plane.drift_phase),
-        "shearAmplitude": _round(plane.shear_amplitude),
-        "shearPeriodS": _round(plane.shear_period_s, 3),
-        "shearPhase": _round(plane.shear_phase),
-        "armPitch": _round(plane.arm_pitch),
-        "discThickness": _round(plane.disc_thickness),
-        "bar": plane.bar,
         "palette": [_round(v, 4) for v in plane.palette],
         "nebulaTint": [_round(v, 4) for v in plane.nebula_tint],
         "firstYear": plane.first_year,
@@ -91,6 +96,9 @@ def _plane_json(plane: Plane) -> dict[str, Any]:
             for s in plane.sets
         ],
     }
+    if plane.row_cells:
+        row["rowCells"] = plane.row_cells
+    return row
 
 
 def _face_json(face: CardFace) -> dict[str, Any]:
@@ -120,8 +128,19 @@ def _card_json(card: Card) -> dict[str, Any]:
         "ci": card.colour_identity,
         "r": int(card.rarity),
         "l": card.layout,
+        # v3 (§2.3): the printing tuple gains a sixth element, the artist, inline rather than as an
+        # id into a dictionary. A dictionary is the smaller encoding, but its only sensible home is
+        # `search.json`, which is half of the 95%-full pair; the shards have 4.4x headroom. The
+        # cost goes where the headroom is.
         "p": [
-            [p.id, p.set_id, SIZE_CLASS_TO_RARITY_CHAR[p.rarity], p.image_ts, p.collector_number]
+            [
+                p.id,
+                p.set_id,
+                SIZE_CLASS_TO_RARITY_CHAR[p.rarity],
+                p.image_ts,
+                p.collector_number,
+                p.artist,
+            ]
             for p in card.printings
         ],
     }
@@ -155,7 +174,8 @@ def encode_artefacts(
                     "contractVersion": CONTRACT_VERSION,
                     "shardSize": SHARD_SIZE,
                     "multiverseRadius": _round(dataset.multiverse_radius),
-                    "discThickness": _round(dataset.disc_thickness),
+                    # The top-level `discThickness` retires with the per-plane one (§2.4): it is a
+                    # property of a spiral disc, and a world is a sphere.
                     "planes": [_plane_json(p) for p in dataset.planes],
                 }
             ),
@@ -163,6 +183,12 @@ def encode_artefacts(
     )
 
     artefacts.append(EncodedArtefact("stars.bin", encode_stars(dataset.stars)))
+
+    # §2.2: its own file, fetched with `stars.bin`, and only when there is one. A dataset built
+    # without a swatch cache — every fixture — simply has no `swatches.bin`, which is a missing
+    # file the loader can see rather than a file of zeroes it cannot.
+    if dataset.swatches:
+        artefacts.append(EncodedArtefact("swatches.bin", encode_swatches(dataset.swatches)))
 
     artefacts.append(
         EncodedArtefact(
@@ -256,6 +282,7 @@ def encode_artefacts(
         "scryfallBulkUpdatedAt": dataset.scryfall_bulk_updated_at,
         "previousRun": None,
         "starRecordBytes": STAR_RECORD_BYTES,
+        "swatchRecordBytes": SWATCH_RECORD_BYTES,
         "shardSize": SHARD_SIZE,
         "counts": {
             "planes": len(dataset.planes),

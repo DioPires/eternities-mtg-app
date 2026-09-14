@@ -9,6 +9,12 @@ from .enums import HueClass, PlaneKind, SizeClass, assert_known_layout
 type Vec3 = tuple[float, float, float]
 type Quat = tuple[float, float, float, float]
 type Palette = tuple[float, float, float, float, float, float, float]
+type Swatch = tuple[int, int, int, int]
+"""One card's art as four uint16 RGB565 samples: top-left, top-right, bottom-left, bottom-right.
+
+Eight bytes in ``swatches.bin`` (worlds spec §2.2). This is a *pixel* statistic of the card's own
+art, which is the thing concept B is built on and the thing ``hueClass`` — a seven-way
+classification of colour identity — is not."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,21 +70,32 @@ class Plane:
     star_count: int
     home: Vec3
     radius: float
+    """v3 (§1.3): ``0.126 * sqrt(cardCount)`` — constant area per card — or §1.8's moon floor for
+    an empty plane. The Blind Eternities still carries the multiverse radius for the belt."""
     tilt: Quat
     spin_period_s: float
     spin_direction: int
     drift_amplitude: float
     drift_period_s: float
     drift_phase: float
-    shear_amplitude: float
-    shear_period_s: float
-    shear_phase: float
-    arm_pitch: float
-    disc_thickness: float
-    bar: bool
     palette: Palette
     nebula_tint: Vec3
     sets: list[PlaneSetRef] = field(default_factory=list)
+    row_cells: list[int] = field(default_factory=list)
+    """v3 (§2.4): the surface grid's per-row cell counts, north to south.
+
+    ``len(row_cells)`` is the row count; row latitudes are equal-angle with ``dphi = pi / rows`` and
+    centres at ``(i + 1/2) * dphi``, so the client's only remaining derivation is matching a cell to
+    its row by nearest colatitude.
+
+    Shipped rather than derived because §1.3's relaxation makes the counts *population*-derived: the
+    closed form no longer describes the shipped grid (Rabiah, 78 slots from the formula against 75
+    cells in fact). Counting the stars per row would also recover it, but only *because* §1.3
+    mandates zero bare cells, and a contract whose correctness depends on a rendering invariant
+    holding forever is not worth the ~3 KB it saves. The counting path survives as a pipeline
+    invariant check instead, which is what makes "zero bare" verifiable at the artefact.
+
+    Empty planes and the belt carry an empty list and omit the key."""
 
     @property
     def first_year(self) -> int | None:
@@ -98,6 +115,19 @@ class Printing:
     rarity: SizeClass
     image_ts: int
     collector_number: str
+    artist: str = ""
+    """v3 (§2.3). Per *printing*, not per card, because art differs between printings; ``""`` where
+    Scryfall has no artist.
+
+    An inline string rather than an id into a dictionary, and that is a budget decision, not a
+    stylistic one: the only sensible home for a global artist dictionary is ``search.json``, which
+    is half of the 95%-full ``search.json`` + ``sets.bin`` pair, while the shards have 4.4x
+    headroom. The cost goes where the headroom is.
+
+    It is in the contract at all because concept B shows tens of thousands of ``art_crop``s with no
+    card in sight, so the app stops satisfying the alternative clause of Scryfall's terms — "show
+    the artist and copyright, *or* the full card alongside" — that the focused-card planets satisfy
+    today."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,11 +194,21 @@ class Dataset:
     cards: list[Card]
     """Parallel to ``stars``: index i is the detail of star i."""
 
+    swatches: list[Swatch] = field(default_factory=list)
+    """Parallel to ``stars`` too: index i is the art statistic of star i (§2.2).
+
+    ``swatches.bin``'s whole encoding is that parallelism — the lookup is ``starIndex * 8 + 16``
+    with no table — so :meth:`__post_init__` refuses a dataset where it does not hold rather than
+    letting the encoder write a file whose every index is silently off by one."""
+
     multiverse_radius: float = 100.0
-    disc_thickness: float = 15.0
 
     def __post_init__(self) -> None:
         if len(self.cards) != len(self.stars):
             raise ValueError(
                 f"cards ({len(self.cards)}) and stars ({len(self.stars)}) must be parallel"
+            )
+        if self.swatches and len(self.swatches) != len(self.stars):
+            raise ValueError(
+                f"swatches ({len(self.swatches)}) and stars ({len(self.stars)}) must be parallel"
             )

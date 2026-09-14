@@ -24,16 +24,17 @@ Deliberately exercises the awkward cases:
 from __future__ import annotations
 
 import json
+import struct
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
-from .contract.binary import decode_stars
+from .contract.binary import decode_stars, decode_swatches
 from .contract.encode import encode_artefacts
 from .contract.enums import (
     BLIND_ETERNITIES_SLUG,
     CONTRACT_VERSION,
-    FRAME_RADIUS,
     LAYOUTS,
+    HueClass,
     PlaneKind,
     SizeClass,
     colour_identity_mask,
@@ -51,7 +52,9 @@ from .contract.models import (
     Printing,
     SetRecord,
     StarRecord,
+    Swatch,
 )
+from .fixtures import layout, surface
 
 _IDENTITY_QUAT = (0.0, 0.0, 0.0, 1.0)
 
@@ -66,6 +69,7 @@ def _plane(
     home: tuple[float, float, float],
     radius: float,
     sets: list[PlaneSetRef],
+    row_cells: list[int] | None = None,
 ) -> Plane:
     return Plane(
         index=index,
@@ -84,15 +88,10 @@ def _plane(
         drift_amplitude=0.0 if slug == BLIND_ETERNITIES_SLUG else 1.5,
         drift_period_s=0.0 if slug == BLIND_ETERNITIES_SLUG else 90.0,
         drift_phase=0.0 if slug == BLIND_ETERNITIES_SLUG else 1.25,
-        shear_amplitude=0.0 if slug == BLIND_ETERNITIES_SLUG else 0.1,
-        shear_period_s=0.0 if slug == BLIND_ETERNITIES_SLUG else 60.0,
-        shear_phase=0.0 if slug == BLIND_ETERNITIES_SLUG else 0.5,
-        arm_pitch=0.0 if slug == BLIND_ETERNITIES_SLUG else 0.6,
-        disc_thickness=0.05,
-        bar=slug == "ravnica",
         palette=(0.2, 0.2, 0.2, 0.1, 0.1, 0.1, 0.1),
         nebula_tint=(0.3, 0.4, 0.5),
         sets=sets,
+        row_cells=row_cells or [],
     )
 
 
@@ -104,8 +103,20 @@ def build_test_vector() -> Dataset:
         SetRecord(3, "rp0", "Reprint Only Masters", 2020, None, 0),
     ]
 
-    def printing(pid: str, set_id: int, rarity: SizeClass, ts: int, cn: str) -> Printing:
-        return Printing(id=pid, set_id=set_id, rarity=rarity, image_ts=ts, collector_number=cn)
+    def printing(
+        pid: str, set_id: int, rarity: SizeClass, ts: int, cn: str, artist: str = "Ava Ohm"
+    ) -> Printing:
+        # v3 §2.3: the sixth tuple element. One printing carries `""` on purpose — Scryfall has no
+        # artist for some objects, and an encoder that dropped the element instead of writing an
+        # empty string would shorten exactly one tuple and nothing else would notice.
+        return Printing(
+            id=pid,
+            set_id=set_id,
+            rarity=rarity,
+            image_ts=ts,
+            collector_number=cn,
+            artist=artist,
+        )
 
     cards: list[Card] = [
         # 0 — Blind Eternities dust, colourless, one printing, at exact-zero coordinates.
@@ -326,27 +337,55 @@ def build_test_vector() -> Dataset:
             layout="meld",
             printings=[
                 printing(
-                    "aaaaaaaa-0000-4000-8000-000000000013", 2, SizeClass.RARE, 1700000014, "15a"
+                    "aaaaaaaa-0000-4000-8000-000000000013",
+                    2,
+                    SizeClass.RARE,
+                    1700000014,
+                    "15a",
+                    # §2.3: `""` where Scryfall has no artist. Pinned in the vector because an
+                    # encoder that omitted the element instead of writing an empty string would
+                    # shorten exactly one tuple, and nothing else in the artefacts would notice.
+                    "",
                 )
             ],
             set_ids=[2],
         ),
     ]
 
+    # v3 §2.1: bytes 0-5 are unit-sphere cell centres, so the positions are no longer free. The two
+    # card-bearing planes are laid out by the shipped surface law and their `rowCells` are pinned
+    # below — §2.1 asks the vector to pin "one complete small world — every slot, every band, every
+    # set slice, and its `rowCells`", and `ravnica`'s seven cards over one set is that world.
+    #
+    # The float16 edge cases the v2 vector carried as positions did not survive the change (a cell
+    # centre is not a free value), so they move to `float16Checks` in `vector_summary`, where both
+    # sides still assert the round trip that made them worth pinning.
+    dominaria_grid = _surface_grid(cards[1:3])
+    ravnica_grid = _surface_grid(cards[3:10])
     positions: list[tuple[float, float, float]] = [
-        (0.0, 0.0, 0.0),
-        (0.5, 0.0625, -0.25),
-        (-FRAME_RADIUS * 0.995, 0.0, 0.0),
-        (0.125, -0.03125, 0.75),
-        (0.25, 0.5, -0.125),
-        (0.0009765625, 1.0, 0.0),  # a value that only survives a correct float16 round trip
-        (-0.5, 0.25, 0.0625),
-        (0.75, -0.5, -0.75),
-        (-0.0009765625, 0.0, 0.5),
-        (1.0, -1.0, 1.0),
+        # The belt (§1.8): 1.12 R with jitter, in the dust plane's own local frame.
+        layout.belt_position("tv-dust-0", 0, 1, 0, 1),
+        *_cell_directions(dominaria_grid),
+        *_cell_directions(ravnica_grid),
     ]
     brightness = [40, 128, 200, 1, 255, 0, 17, 96, 160, 224]
-    twinkle = [0, 64, 128, 200, 255, 7, 31, 96, 160, 250]
+    # v3 §2.1: byte 10 is reserved, written 0.
+    twinkle = [0] * 10
+    # §2.2: four uint16 RGB565 samples per card, in star order. Hand-picked rather than fetched, and
+    # they cover the ends of every field: pure red is the top five bits, pure green the middle six
+    # (which is the one field an RGB555 packing would get wrong), pure blue the bottom five.
+    swatches: list[Swatch] = [
+        (0x0000, 0xFFFF, 0xF800, 0x001F),
+        (0x07E0, 0x0000, 0xFFFF, 0xF800),
+        (0x001F, 0x07E0, 0x0000, 0xFFFF),
+        (0xFFFF, 0x001F, 0x07E0, 0x0000),
+        (0x8410, 0x4208, 0xC618, 0x2104),
+        (0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF),
+        (0x0000, 0x0000, 0x0000, 0x0000),
+        (0xF81F, 0x07FF, 0xFFE0, 0x8000),
+        (0x0020, 0x0800, 0x0001, 0x1082),
+        (0x39E7, 0x7BEF, 0xAD75, 0xDEFB),
+    ]
 
     stars = [
         StarRecord(
@@ -389,6 +428,7 @@ def build_test_vector() -> Dataset:
                 PlaneSetRef(0, "tv1", "Test Vector One", 1993, 1),
                 PlaneSetRef(1, "tv2", "Test Vector Two", 2004, 1),
             ],
+            dominaria_grid.row_cells,
         ),
         _plane(
             2,
@@ -400,6 +440,7 @@ def build_test_vector() -> Dataset:
             (-30.0, -1.25, 15.0),
             6.5,
             [PlaneSetRef(2, "tv3", "Test Vector Three", 2015, 7)],
+            ravnica_grid.row_cells,
         ),
         _plane(3, "segovia", "Segovia", PlaneKind.EMPTY, 0, 10, (55.0, 0.0, 40.0), 3.0, []),
     ]
@@ -413,9 +454,29 @@ def build_test_vector() -> Dataset:
         sets=sets,
         stars=stars,
         cards=cards,
+        swatches=swatches,
         multiverse_radius=100.0,
-        disc_thickness=15.0,
     )
+
+
+def _surface_grid(cards: list[Card]) -> surface.Grid:
+    """One vector plane through the shipped surface law, from its own cards' colours and sets."""
+    sequence: dict[tuple[int, int], int] = {}
+    groups: list[tuple[HueClass, int, int]] = []
+    for card in cards:
+        hue = hue_class_for(card.colour_identity)
+        set_band = card.set_ids[0]
+        key = (int(hue), set_band)
+        sequence[key] = sequence.get(key, -1) + 1
+        groups.append((hue, set_band, sequence[key]))
+    return surface.build_grid(groups)
+
+
+def _cell_directions(grid: surface.Grid) -> list[tuple[float, float, float]]:
+    return [
+        surface.cell_direction(p.row, p.column, grid.row_cells[p.row], grid.d_phi)
+        for p in grid.placements
+    ]
 
 
 def expected_uris() -> list[dict[str, Any]]:
@@ -456,6 +517,7 @@ def vector_summary() -> dict[str, Any]:
     # Read the positions back out of the encoded bytes, so the recorded values are what a decoder
     # actually sees after the float16 round trip rather than what the encoder was handed.
     stars_bin = next(a.data for a in artefacts if a.path == "stars.bin")
+    swatches_bin = next((a.data for a in artefacts if a.path == "swatches.bin"), b"")
     decoded = decode_stars(stars_bin)
     return {
         "contractVersion": CONTRACT_VERSION,
@@ -476,6 +538,17 @@ def vector_summary() -> dict[str, Any]:
                 "typeMask": s.type_mask,
             }
             for i, s in enumerate(decoded)
+        ],
+        "swatches": [list(s) for s in decode_swatches(swatches_bin)] if swatches_bin else [],
+        "rowCells": {p.slug: p.row_cells for p in dataset.planes if p.row_cells},
+        "artists": [[pr.artist for pr in c.printings] for c in dataset.cards],
+        # The float16 round trip these used to be asserted through the star positions. v3 makes a
+        # position a unit-sphere cell centre, so it is no longer a free value and the edge cases
+        # need a home of their own: a denormal, an exact power of two, the smallest normal, and a
+        # value that only survives a correct decode. Both sides run them through `float16ToNumber`.
+        "float16Checks": [
+            {"bits": bits, "value": _float16(bits)}
+            for bits in [0x0000, 0x0001, 0x0400, 0x3C00, 0x3555, 0xBC00, 0x7BFF, 0x1800, 0x9800]
         ],
         "oracleIds": oracle_ids,
         "setIdsPerStar": [c.set_ids for c in dataset.cards],
@@ -543,3 +616,8 @@ def write_test_vector(out_dir: Path) -> None:
     (out_dir / "vector.json").write_bytes(
         json.dumps(vector_summary(), ensure_ascii=False, indent=2).encode("utf-8") + b"\n"
     )
+
+
+def _float16(bits: int) -> float:
+    """The value a correct decoder reads from a binary16 bit pattern (contract §5)."""
+    return cast("float", struct.unpack("<e", struct.pack("<H", bits))[0])
