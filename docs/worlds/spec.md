@@ -1947,6 +1947,23 @@ an assertion there.
 > single azimuth, reachability collapses into exactly the single-frame coverage count it replaces
 > while still reading as the stronger claim.
 >
+> **The sweep parameter is the multiverse rotation, not a plane's own spin — so the pending
+> spin-axis ruling does not reach W5 (DEC-752, measured at `613715f`).** R1 raised on DEC-749 that
+> `motion.ts` spins a plane about plane-local **+z** (the disc normal, PRD 8.6.2) while the surface
+> law's poles are **±y**, and noted it would move what a sweep over azimuth means here. It does not,
+> and the reason is structural rather than numerical: `planePosition` (`camera/motion.ts:239-248`) is
+> `home + drift`, rotated by `multiverseAngle` about **y** — it applies neither spin nor shear.
+> W5 anchors every label at exactly that point (`labels/PlaneLabels.tsx:206`, `:217`). A plane's spin
+> is a rotation about an axis **through its own centre**, and the centre is the local origin, which
+> every such rotation fixes. So the spin axis cannot move a label by construction, at any azimuth and
+> under either ruling. `motion.ts:14-19` records the same invariant from the other side: the axis
+> error went undetected for a whole phase precisely because every tether then resolved to a plane
+> centre or a dust anchor.
+>
+> This is scoped to W5. The ruling is still R1's to take and still matters on R1's own surface — an
+> attached sheet is not at the origin, so a globe tumbling end-over-end through the bands is a real
+> defect there. W5 simply does not depend on its outcome, and no gate row should be held for it.
+>
 > **Normative — the ceiling half is a regression check on §1.8's suppression, and is named as one
 > (DEC-752).** Once the moons are unlabelled until hover, the candidate list is the 45 worlds and
 > the belt is filtered by slug, so at most 45 labels can exist against a ceiling of 45: the half
@@ -2270,6 +2287,50 @@ interim keep running `visual-gate.mjs` per `docs/refresh-runbook.md`.
 At cutover, in one PR: `datasets.json`'s `active` moves to the v3 directory; the galaxy scene, the
 spiral laws, the star shaders, the thumbnail atlas and the card-sheet tier are deleted; PRD §5 and §9
 are amended (§6); and the v2 dataset directories are removed from `web/public/data/`.
+
+#### 3.2.1 Which dataset the gate may measure, and why `active` is not it
+
+Three facts about the shipped `datasets.json` roles, measured on the bytes at `613715f`. They are
+constraints on *this runbook*, not defects in any leg.
+
+**Only the `worlds`/`production` directory can build a surface.** `swatches.bin` exists in exactly one
+of the four published datasets:
+
+| role | directory | contract | `swatches.bin` | planes with `rowCells` |
+| --- | --- | --- | --- | --- |
+| `production`, `worlds` | `c9468f1125bcddff` | 3 | **yes** (228,840 B) | 45 |
+| `fixtures.scale` | `f6f712c6e70a6a51` | 3 | no | 80 |
+| `fixtures.small` | `2e6f120ee85a5b23` | 3 | no | 3 |
+| `active` | `dabe2c9a68b4d799` | 2 | no | 0 |
+
+Both v3 fixtures declare contract v3 and carry `rowCells`, but neither carries `swatches.bin`. **A gate
+row written against a fixture therefore cannot construct a `WorldSurfaceSource` at all, and the failure
+surfaces inside R1's loader — it will read as an R1 defect when it is a missing fixture artefact.** Gate
+rows that build a surface bind to the `worlds` role only. Fixture-backed rows are limited to assertions
+that need `planes.json` alone. Raised to leg P on DEC-749.
+
+**`active` is contract v2 and cannot serve the worlds path** — 0 of its 88 planes carry `rowCells`. So
+"the deployed app" and "the dataset the gate measures" are different *contracts*. They are **not**
+different rosters: the world set is identical across the two — the same 45 ids (29 spiral + 16
+irregular), matching on `kind` and `cardCount` for all 45, with zero ids on either side alone. The only
+per-plane difference is `rowCells`, which v3 adds. Stating this precisely matters because a "different
+roster" reading would imply the gate measures a different population than the app ships, and it does
+not.
+
+**The cutover's `active` move must stay atomic with the galaxy deletion, because splitting it fails
+silently.** v3 also *drops* six v2-only fields (`shearAmplitude`/`PeriodS`/`Phase`, `armPitch`,
+`discThickness`, `bar` — §2.4 retires them with the spiral disc). Of those, three have live readers
+today: `camera/motion.ts:229-234` and `scene/starfield/planeTable.ts:149-152`, and **every one of them
+reads through `?? 0`**. `READABLE_CONTRACT_VERSIONS` is `{2, 3}` by design for the dual-scene period, so
+a v3 `planes.json` clears `assertContractVersion` unchanged. Repointing `active` at the v3 directory
+*before* the galaxy is deleted therefore does not throw and does not warn — the spiral shear flattens to
+zero and the galaxy keeps rendering, wrong. There is no instrument in the gate that would catch it,
+because at that point the gate is measuring worlds. `armPitch`, `discThickness` and `bar` are already
+declared-but-unread outside `data/types.ts`, so only the shear triple carries this risk.
+
+> **Runbook rule.** Never repoint `active` to test the worlds path — use the `worlds` role, which
+> already points at the v3 directory. `active` moves exactly once, in the cutover PR, in the same commit
+> that deletes the galaxy scene.
 
 ### 3.3 The archival tag
 
