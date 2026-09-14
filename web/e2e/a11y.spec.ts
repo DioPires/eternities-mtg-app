@@ -331,7 +331,19 @@ test('9e reduced motion: the duration tokens collapse to zero and nothing animat
 test('9e reduced motion: the scene stops too, even when the preference precedes the page', async ({
   page,
 }) => {
-  const planetsOverTime = async (): Promise<[unknown, unknown]> => {
+  const read = (): Promise<Array<{ x: number; y: number } | null>> =>
+    page.evaluate(() => [0, 1, 2].map((i) => window.__eternitiesProbe!.planetScreen(i)))
+
+  /**
+   * Focus a card, then report whether the ring ever comes to rest.
+   *
+   * **Settle-based rather than two-point, because two points cannot tell an orbit from a camera.**
+   * PRD 6.2.3's fly-to is still running when the ring is first laid out, so a pair of samples taken
+   * across it differ whether or not the orbit is turning — that flaked exactly once, passing alone
+   * and failing in a full run, which is the tell. Resting is the property that separates the two:
+   * the camera arrives and stops, and only a frozen orbit stops with it.
+   */
+  const ringComesToRest = async (): Promise<boolean> => {
     await page.waitForFunction(() => Boolean(window.__eternitiesProbe), null, { timeout: 60_000 })
     const planes = await page.evaluate(() => window.__eternitiesProbe!.planes().slice(0, 1))
     await page.evaluate((slug) => window.__eternitiesProbe!.focusPlane(slug), planes[0]!.slug)
@@ -340,17 +352,11 @@ test('9e reduced motion: the scene stops too, even when the preference precedes 
       timeout: 90_000,
     })
     await page.evaluate(() => window.__eternitiesProbe!.focusCard())
-    const read = (): Promise<unknown> =>
-      page.evaluate(() => [0, 1, 2].map((i) => window.__eternitiesProbe!.planetScreen(i)))
     /*
-     * Wait for the ring to be *laid out* before sampling, which is not the same as waiting for the
-     * card to be focused.
-     *
+     * Wait for the ring to be laid out, which is not the same as the card being focused.
      * `rebuildPlanets` adds the meshes at their constructed origin and the frame loop moves them to
-     * their phase positions on the next tick, so a read taken immediately after `focusCard` finds
-     * all 24 planets stacked on the card's centre. That is a *stiller* scene than a frozen one, so
-     * sampling it would have made the reduced run fail and — worse — would have made the control
-     * pass for the wrong reason.
+     * their phases on the next tick, so an immediate read finds all 24 stacked on the card's
+     * centre — a *stiller* scene than a frozen one, and one that would score this green either way.
      */
     await page.waitForFunction(
       () => {
@@ -361,33 +367,38 @@ test('9e reduced motion: the scene stops too, even when the preference precedes 
       null,
       { timeout: 30_000 },
     )
-    const first = await read()
-    // A quarter of PRD 5.6.7's 60 s revolution would be ideal and is far too slow for a smoke; 3 s
-    // is 18 degrees of orbit, which moves a planet by tens of pixels.
-    await page.waitForTimeout(3_000)
-    return [first, await read()]
+
+    // 800 ms is 4.8 degrees of PRD 5.6.7's 60 s revolution — tens of pixels at these radii, far
+    // above the noise of a settled camera, which is bit-identical frame to frame.
+    for (let attempt = 0; attempt < 25; attempt += 1) {
+      const before = await read()
+      await page.waitForTimeout(800)
+      const after = await read()
+      expect(before, 'the probe reported no planet at all, so neither arm can be read').not.toEqual([
+        null,
+        null,
+        null,
+      ])
+      if (JSON.stringify(before) === JSON.stringify(after)) return true
+    }
+    return false
   }
 
-  // Control first: with motion on, these planets move. Without this row, the assertion below
-  // passes on a scene that never started.
+  // The control, and it is doing real work: "the ring came to rest" is also what a dead probe, an
+  // unfocused card or a stalled loop reports, and all three would score the reduced arm green.
   await page.goto('/?probe=1')
-  const [movingA, movingB] = await planetsOverTime()
-  expect(movingA, 'the probe reported no planet at all, so the control cannot run').not.toEqual([
-    null,
-    null,
-    null,
-  ])
-  expect(movingB, 'PRD 5.6.7s ring did not orbit with motion on').not.toEqual(movingA)
+  expect(
+    await ringComesToRest(),
+    'PRD 5.6.7s ring came to rest with motion on, so the reduced arm below proves nothing',
+  ).toBe(false)
 
+  // The shipped order, and the broken one: the preference is set before the page exists.
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.goto('/?probe=1')
-  const [stillA, stillB] = await planetsOverTime()
-  expect(stillA, 'the probe reported no planet at all in the reduced run').not.toEqual([
-    null,
-    null,
-    null,
-  ])
-  expect(stillB, 'PRD 5.6.7s ring kept orbiting under prefers-reduced-motion').toEqual(stillA)
+  expect(
+    await ringComesToRest(),
+    'PRD 5.6.7s ring kept orbiting under prefers-reduced-motion',
+  ).toBe(true)
 })
 
 /**
