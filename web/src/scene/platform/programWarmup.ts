@@ -176,7 +176,7 @@ export function specsFromObject(root: Object3D): ProgramWarmupSpec[] {
  *
  * **`points` is part of the key too** (DEC-747 N2). It was not, and the omission was a hole rather
  * than untidiness: `WebGLPrograms.getParameters` derives `pointsUvs` from `object.isPoints`, and
- * `getProgramCacheKey` folds it into the second layer mask (bit 18, three 0.170), so one material
+ * `getProgramCacheKey` folds it into the second layer mask (bit 18), so one material
  * over one geometry drawn both ways can be two programs. Keying on the pair alone dropped the second
  * of them — leaving a `Points` first-draw stall in place while reporting it warmed, which is the
  * failure this whole module exists to prevent.
@@ -194,7 +194,15 @@ export function specsFromObject(root: Object3D): ProgramWarmupSpec[] {
  * than catching a real second program. Splitting is still the right call — it is conservative in the
  * safe direction, `quality.spec.ts` bounds `warmup.specs` from below so a split can never redden it,
  * and nothing in the scene produces a colliding pair — but it is pinned to a three internal that a
- * 0.170 -> 0.186 bump can move silently. Routed to DEC-741's audit list beside N4.
+ * version bump can move silently.
+ *
+ * **Both pins re-verified at 0.186.0** by DEC-741 (audit item N7). `getParameters` still reads the
+ * condition quoted above character-for-character, and `pointsUvs` still enables bit 18 of the
+ * second layer mask — second confirmed structurally, from the `disableAll()`/`push(mask)` pair that
+ * brackets it, rather than from a line number. Checked by measurement as well as by reading: the
+ * live `warmup.specs` is **19 at both 0.170 and 0.186.0**. That comparison is the point — the
+ * `>= 15` bound in `quality.spec.ts` is a floor, so it would have stayed green through any upward
+ * drift, and only the before/after count can say the key did not move.
  *
  * Nothing in the scene draws the colliding shape today; the `?warmup=0` comparison is the only thing
  * that would ever have shown it, and by then the number it was being compared against would already
