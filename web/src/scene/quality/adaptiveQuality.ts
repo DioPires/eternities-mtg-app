@@ -135,8 +135,15 @@ export interface QualityTier {
 }
 
 /**
- * The ladder, top rung first. Each rung differs from the one above it in **exactly one** quantity,
+ * The ladder, top rung first. Each rung turns **exactly one knob** relative to the one above it,
  * which is what lets `e2e/quality.spec.ts` isolate a rung by comparing adjacent tiers.
+ *
+ * *One knob*, not one number (DEC-747 N3). Rung 2's knob is the bloom chain and it is two fields —
+ * `bloomScale` 0.5 → 0.25 *and* `bloomLevels` 8 → 7 — because the chain's cost is the product of a
+ * source size and a mip count, and moving only one of them is what made this rung inert before
+ * (finding R3). The invariant the spec relies on is that no rung touches a knob another rung owns,
+ * and that still holds: the four knobs are the pixel ratio, the bloom chain, the atlas capacity and
+ * the glow program, and each belongs to one rung.
  *
  * Rung 4 is DEC-739's addition. Review §3.5 asked for it by name — "new 4: a cheap glow variant
  * (one tap, no dither) because glow overdraw is the second cost" — and it is the bottom of the

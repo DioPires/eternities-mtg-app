@@ -138,6 +138,22 @@ export function useSceneData(): SceneDataState {
        * network — and `bootPositionMode` caches, so the call below is free. If the fetches somehow
        * win the race the probe simply runs at its old moment; nothing depends on the ordering for
        * correctness, only for when the cost lands.
+       *
+       * **Two corrections to the paragraph above, from DEC-747 N1.**
+       *
+       * First, the 68 ms is wall-clock for the whole of `bootPositionMode` and it is *not* what the
+       * bench's `halfFloatProbeMs` reports. That field's clock starts inside
+       * `probeHalfFloatAttributes`, so it excludes the `getContext('webgl2')` — two different
+       * numbers, both wanted: this one decides *when* to run the probe, the bench field compares
+       * GPUs at the readback. `e2e/quality.spec.ts` bounds the field, not the wall-clock.
+       *
+       * Second, **68 ms does not reproduce.** Measured in situ against this scheduling, on an M5
+       * Pro through Chrome 141 on a `vite preview` build: `getContext` 2.2 ms, probe 3.3 ms, ~5.5 ms
+       * end to end. It is not context-creation cost hiding on a cold page either — the *first*
+       * WebGL2 context of a fresh page timed 1.8 ms and the second 1.2 ms. The 68 ms is left on the
+       * record rather than deleted because it is what the deferral was designed against and the
+       * conditions that produced it are not known; what is measured is that on this machine the
+       * probe is cheap wherever it runs, and the ordering here costs nothing to keep.
        */
       void afterFirstFrame().then(() => {
         if (!signal.aborted) bootPositionMode()

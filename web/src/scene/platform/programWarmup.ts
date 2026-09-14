@@ -76,12 +76,16 @@ export interface ProgramWarmupSpec {
    */
   readonly geometry: BufferGeometry
   readonly material: Material
-  /** `Points` draws take a different program from `Mesh` draws; the stand-in has to match. */
+  /**
+   * `Points` draws can take a different program from `Mesh` draws over the same material and
+   * geometry — `getParameters` reads `object.isPoints` — so the stand-in has to match, and so does
+   * {@link dedupeSpecs}'s key.
+   */
   readonly points?: boolean
 }
 
 export interface ProgramWarmupResult {
-  /** How many distinct (geometry, material) pairs were submitted. */
+  /** How many distinct (geometry, material, `points`) specs were submitted. */
   readonly specs: number
   /** Wall-clock milliseconds from the first submission to the last resolution. */
   readonly durationMs: number
@@ -169,17 +173,29 @@ export function specsFromObject(root: Object3D): ProgramWarmupSpec[] {
  * warmed at boot", and counting the card's front and back faces twice for one shared program would
  * make that number describe the scene graph instead of the driver. Keyed on the pair, because two
  * materials over one geometry and one material over two geometries are both genuinely two programs.
+ *
+ * **`points` is part of the key too** (DEC-747 N2). It was not, and the omission was a hole rather
+ * than untidiness: `WebGLPrograms.getParameters` derives `pointsUvs` from `object.isPoints`, and
+ * `getProgramCacheKey` folds it into the second layer mask (bit 18, three 0.170), so one material
+ * over one geometry drawn both ways really is two programs. Keying on the pair alone dropped the
+ * second of them — leaving a `Points` first-draw stall in place while reporting it warmed, which is
+ * the failure this whole module exists to prevent. Nothing in the scene draws that shape today; the
+ * `?warmup=0` comparison is the only thing that would ever have shown it, and by then the number it
+ * was being compared against would already have been wrong.
  */
 export function dedupeSpecs(specs: readonly ProgramWarmupSpec[]): ProgramWarmupSpec[] {
-  // A map of sets rather than a string key: these are object identities and have no stable id.
-  const seen = new Map<Material, Set<BufferGeometry>>()
+  // Sets of object identities rather than a string key: geometries and materials have no stable id.
+  // Two sets per material because `points` is a flag and not an identity — a `Points` draw and a
+  // `Mesh` draw over the same geometry land in different buckets and neither hides the other.
+  const seen = new Map<Material, { mesh: Set<BufferGeometry>; points: Set<BufferGeometry> }>()
   const unique: ProgramWarmupSpec[] = []
   for (const spec of specs) {
-    let geometries = seen.get(spec.material)
-    if (!geometries) {
-      geometries = new Set<BufferGeometry>()
-      seen.set(spec.material, geometries)
+    let buckets = seen.get(spec.material)
+    if (!buckets) {
+      buckets = { mesh: new Set<BufferGeometry>(), points: new Set<BufferGeometry>() }
+      seen.set(spec.material, buckets)
     }
+    const geometries = spec.points ? buckets.points : buckets.mesh
     if (geometries.has(spec.geometry)) continue
     geometries.add(spec.geometry)
     unique.push(spec)

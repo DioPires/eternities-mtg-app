@@ -13,11 +13,42 @@
  * not rebuilt against the new ratio therefore catches the *first* monitor move of a session and no
  * others, which is worse than catching none because it looks like it works. No amount of testing
  * "does it fire once" would see that, so the test below moves the window twice.
+ *
+ * **And `PixelRatioHost`, which is what turns either observer into a rung** (DEC-747's blocking
+ * finding). The two modules above answer *when the ratio changed*; the component is the only thing
+ * that turns that answer into a `setPixelRatio`, and nothing observed it. See the third `describe`.
  */
 
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { render } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { observeBackingStore, observeDevicePixelRatio } from '../src/scene/platform/backingStore'
+import {
+  observeBackingStore,
+  observeDevicePixelRatio,
+  type BackingStoreSize,
+} from '../src/scene/platform/backingStore'
+import { PixelRatioHost } from '../src/scene/platform/PixelRatioHost'
+
+/**
+ * The two members of R3F's store that `PixelRatioHost` reads, stubbed.
+ *
+ * `vi.hoisted` because `vi.mock` is hoisted above the imports and the factory below closes over
+ * this. The `gl` object is built once and kept: the backing-store effect's dep list is `[gl,
+ * sizeRef]`, so a fresh object per render would tear that observer down and rebuild it on every
+ * re-render and quietly change what the test is measuring.
+ */
+const store = vi.hoisted(() => ({
+  setDpr: vi.fn<(value: number) => void>(),
+  gl: { domElement: null as unknown as HTMLCanvasElement },
+}))
+
+// Only `useThree` is stubbed, and only as the selector call it is. Rendering the real component
+// under a real `<Canvas>` would need a WebGL context jsdom does not have; what is under test is the
+// component's own arithmetic and effect wiring, and a selector over a plain object is the whole of
+// its contract with r3f.
+vi.mock('@react-three/fiber', () => ({
+  useThree: <T,>(selector: (state: typeof store) => T): T => selector(store),
+}))
 
 /** A `matchMedia` that records every query it is handed and can fire each one on demand. */
 function installMatchMedia(): {
@@ -72,6 +103,11 @@ function installMatchMedia(): {
 function setDevicePixelRatio(value: number): void {
   Object.defineProperty(window, 'devicePixelRatio', { value, configurable: true })
 }
+
+beforeEach(() => {
+  store.gl.domElement = document.createElement('canvas')
+  store.setDpr.mockClear()
+})
 
 afterEach(() => {
   setDevicePixelRatio(1)
@@ -234,6 +270,107 @@ describe('observeBackingStore (review §3.5: device-pixel-content-box)', () => {
     } finally {
       stop()
       observer.restore()
+    }
+  })
+})
+
+/**
+ * `PixelRatioHost`: the component that turns either observer into an actual pixel ratio.
+ *
+ * **Why this exists** (DEC-747, blocking). PR #45 replaced `<Canvas dpr={[0.5, cap]}>` with
+ * `dpr={0}` and two writers: a one-shot `setDpr` in `SceneView`'s `onCreated`, and this component's
+ * effects. Under `e2e/quality.spec.ts`'s `?quality=N` pin **each writer is alone sufficient**, so
+ * the reviewer's mutation matrix found that breaking either one on its own left all five e2e tests
+ * green — only breaking both together turned rung 1 red. No test observed this component, and it is
+ * the only writer that exists after boot: `onCreated` fires once, so every runtime tier change and
+ * every monitor move goes through here. W4.2 deletes the `onCreated` write, which would have left
+ * the sole surviving writer guarded by nothing.
+ *
+ * So the assertions below are deliberately about the writes this component makes *after* mount. A
+ * test that only checked the mount write would pass on a build where `onCreated` did all the work,
+ * which is exactly the hole being closed.
+ *
+ * Each step moves the resolved value to a **different** number — 1.5, then 1, then 0.5 — so a write
+ * that happened at the wrong moment, or a stale value re-sent, cannot be mistaken for a fresh one.
+ */
+describe('PixelRatioHost (DEC-747: rung 1 needs an observed writer)', () => {
+  it('re-resolves the cap when the tier moves at runtime, and when the monitor changes', () => {
+    const media = installMatchMedia()
+    // A display well above every tier's cap, so the cap is what binds and the arithmetic under test
+    // (`min(tier cap, devicePixelRatio)`) is the tier's half of it.
+    setDevicePixelRatio(3)
+    try {
+      const view = render(<PixelRatioHost tierCap={1.5} />)
+
+      // The mount write. Asserted so the two runtime writes below can be counted from a known
+      // baseline — it is not itself the finding, because `onCreated` also covers boot.
+      expect(store.setDpr).toHaveBeenCalledTimes(1)
+      expect(store.setDpr).toHaveBeenLastCalledWith(1.5)
+
+      // (i) The tier moves at runtime — the monitor walked the ladder down a rung. This is the
+      // write `onCreated` structurally cannot make, and in production it is the rung landing.
+      store.setDpr.mockClear()
+      view.rerender(<PixelRatioHost tierCap={1} />)
+      expect(store.setDpr, 'a runtime tier change must reach the renderer').toHaveBeenCalledTimes(1)
+      expect(store.setDpr).toHaveBeenLastCalledWith(1)
+
+      // (ii) The window is dragged to a 0.5x display. No `resize`, no `ResizeObserver` callback —
+      // the re-armed `matchMedia` above is the only notification, and this component is the only
+      // thing that acts on it. The cap is unchanged at 1, so the display's ratio is what binds now.
+      store.setDpr.mockClear()
+      setDevicePixelRatio(0.5)
+      media.fireLatest()
+      expect(store.setDpr, 'a monitor move must reach the renderer').toHaveBeenCalledTimes(1)
+      expect(store.setDpr).toHaveBeenLastCalledWith(0.5)
+    } finally {
+      media.restore()
+    }
+  })
+
+  it('re-resolves on a backing-store observation, and publishes the box for the probe', () => {
+    // The third write the component owns: a resize or a zoom. Separate from (ii) because the two
+    // arrive through different APIs and a component wired to only one of them looks correct on a
+    // laptop that never moves — `observeDevicePixelRatio` sees the monitor move with an unchanged
+    // CSS box, and `observeBackingStore` sees the CSS box change with an unchanged ratio.
+    const media = installMatchMedia()
+    let callback: ResizeObserverCallback | null = null
+    const original = globalThis.ResizeObserver
+    globalThis.ResizeObserver = class {
+      constructor(cb: ResizeObserverCallback) {
+        callback = cb
+      }
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+    }
+    const deliver = (entry: ResizeObserverEntry): void => {
+      callback?.([entry], {} as ResizeObserver)
+    }
+
+    const sizeRef = { current: null as BackingStoreSize | null }
+    setDevicePixelRatio(2)
+    try {
+      render(<PixelRatioHost tierCap={1.5} sizeRef={sizeRef} />)
+      store.setDpr.mockClear()
+
+      setDevicePixelRatio(1)
+      deliver({
+        contentRect: { width: 800, height: 600 } as DOMRectReadOnly,
+        contentBoxSize: [{ inlineSize: 800, blockSize: 600 }],
+        devicePixelContentBoxSize: [{ inlineSize: 800, blockSize: 600 }],
+        borderBoxSize: [],
+        target: document.createElement('canvas'),
+      })
+
+      expect(store.setDpr, 'a resize must re-resolve the cap').toHaveBeenCalledTimes(1)
+      expect(store.setDpr).toHaveBeenLastCalledWith(1)
+      // The box goes to the ref, not to state: `?probe=1` and the bench read it, and putting it in
+      // state would re-render the `<Canvas>` owner on every drag of a window edge (finding R1).
+      expect(sizeRef.current?.devicePixelWidth).toBe(800)
+      expect(sizeRef.current?.exact).toBe(true)
+    } finally {
+      globalThis.ResizeObserver = original
+      media.restore()
     }
   })
 })

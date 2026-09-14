@@ -259,6 +259,26 @@ describe('the boot-time program warm-up (review §3.5, DEC-645)', () => {
     expect(specs[1]!.points).toBeUndefined()
     expect(specs[0]!.material).toBe(materialA)
   })
+
+  it('does not collapse a Points draw into the Mesh draw it shares a pair with', () => {
+    // DEC-747 N2. The test above was named for the flag but only ever passed it through; the key
+    // ignored it, so these two — one material, one geometry, drawn both ways — deduped to one.
+    // `getParameters` reads `object.isPoints` into `pointsUvs` and `getProgramCacheKey` folds that
+    // into its layer mask, so they are two programs and the second stall was silently left in.
+    const specs = dedupeSpecs([
+      { geometry: geometryA, material: materialA },
+      { geometry: geometryA, material: materialA, points: true },
+    ])
+    expect(specs).toHaveLength(2)
+    expect(specs[1]!.points).toBe(true)
+    // ...and the flag still does not make a genuine repeat into two.
+    expect(
+      dedupeSpecs([
+        { geometry: geometryA, material: materialA, points: true },
+        { geometry: geometryA, material: materialA, points: true },
+      ]),
+    ).toHaveLength(1)
+  })
 })
 
 describe('capabilitiesForBench (review §3.5: log it into bench JSON)', () => {

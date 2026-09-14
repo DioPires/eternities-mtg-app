@@ -196,7 +196,13 @@ test('every rung of the quality ladder lands, and only its own rung (PRD 8.5.11,
   ]
 
   // Rung 1 — the pixel-ratio cap, 1.5 → 1.0. Asserted as the exact ratio and the exact drawing
-  // buffer each cap produces, at every tier, because the `dpr` range prop is now the only writer.
+  // buffer each cap produces, at every tier, because the ratio now has deterministic writers: the
+  // `dpr` prop is off (`dpr={0}` makes r3f's own writer dead code) and the number is pushed into
+  // `gl.setPixelRatio` from `SceneView`'s `onCreated` at boot and from `PixelRatioHost` thereafter.
+  //
+  // **Under a `?quality=N` pin those two writers are each alone sufficient, so nothing here can
+  // distinguish them** (DEC-747). `PixelRatioHost` is the one that matters in production — it is the
+  // only writer after boot — and it is pinned in jsdom by `test/platform-dom.test.tsx`, not here.
   for (let index = 0; index < tiers.length; index += 1) {
     const cap = QUALITY_TIERS[index]!.pixelRatioCap
     const quality = tiers[index]!
@@ -380,10 +386,18 @@ test('the platform layer asks the GPU and the app acts on the answer (review §3
   // because the WebGL2 minimum is 256 and every context in scope clears PRD 5.6.8's 72.
   expect(state.platform.maxArrayTextureLayers).toBeGreaterThanOrEqual(72)
 
-  // The half-float probe ran, took roughly the millisecond review §3.5 budgets for it, and — this
-  // is the wire — its verdict is the format the star buffer was actually built in. Not asserted as
-  // `ok: true`: a software rasteriser is allowed to fail it, and the app's job then is to fall back,
-  // which is what this equality checks in either direction.
+  // The half-float probe ran, and — this is the wire — its verdict is the format the star buffer
+  // was actually built in. Not asserted as `ok: true`: a software rasteriser is allowed to fail it,
+  // and the app's job then is to fall back, which is what this equality checks in either direction.
+  //
+  // **`halfFloatProbeMs` is the draw-and-readback only** (DEC-747 N1). Its clock starts inside
+  // `probeHalfFloatAttributes`, so the `getContext('webgl2')` that `bootPositionMode` pays to get
+  // the probe a context is outside it — measured at 2.2 ms against the probe's 3.3 ms on an M5 Pro
+  // through Chrome 141, so it is a real fraction of the boot cost and not a rounding error. This
+  // bound is therefore a **ceiling on the readback**, generous because the e2e runs on a software
+  // rasteriser, and it is *not* evidence that review §3.5's ~1 ms budget was met. See the note in
+  // `useSceneData.ts` for the end-to-end figure and for why the 68 ms recorded there did not
+  // reproduce.
   expect(state.platform.halfFloatProbeMs).toBeLessThan(50)
   expect(state.platform.positionMode).toBe(
     state.platform.halfFloatProbeOk ? 'float16' : 'float32',

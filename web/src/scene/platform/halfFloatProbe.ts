@@ -115,7 +115,21 @@ void main() {
 export interface HalfFloatProbeResult {
   /** Whether the four points landed where the arithmetic says they should. */
   readonly ok: boolean
-  /** How long the probe took, in milliseconds, for the bench JSON. */
+  /**
+   * How long the probe took, in milliseconds, for the bench JSON.
+   *
+   * **Draw-and-readback only** (DEC-747 N1). The clock starts inside
+   * {@link probeHalfFloatAttributes}, so it covers the two shader compiles, the draw and the
+   * `readPixels` — and *not* the `getContext('webgl2')` that `capabilities.ts`'s
+   * `probeOnThrowawayContext` pays to hand this function a context. A reader comparing this against
+   * review §3.5's "~1 ms" budget, or against the boot cost `useSceneData` schedules around, is
+   * comparing two different measurements, and `e2e/quality.spec.ts` bounds this one.
+   *
+   * Measured in situ on an M5 Pro, Chrome 141, `?probe=1` on a `vite preview` build: **3.3 ms here
+   * against 2.2 ms for the excluded `getContext`** — so the exclusion is roughly 40% of the boot
+   * cost of the probe, not a rounding error, but neither half is the 68 ms `useSceneData`'s comment
+   * records. See the note there.
+   */
   readonly durationMs: number
   /**
    * Why the probe answered as it did, in one short phrase.
