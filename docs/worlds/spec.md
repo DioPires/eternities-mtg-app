@@ -930,6 +930,31 @@ threshold and eviction counter. Geometry comes from the probe; **colour is sampl
 PNG**, so every criterion below measures the frame after tonemap and vignette at presentation
 scale — which is the thing T7 said was missing.
 
+> **Normative — what a probe "cell" is, and what its rect measures (DEC-749, on DEC-752's pin).**
+> `cells[]` has **one entry per card**, never one per sub-quad: §1.4 subdivides the *base geometry*
+> of the instanced draw, so N instances survive the re-mesh untouched. And the screen-space rect is
+> the axis-aligned bound of the projected **sphere-following vertex grid** — the geometry §1.4
+> actually renders — never of a tangent quad's four corners.
+>
+> > **The overstatement is `γ/sin γ`, and it is not §1.3's corner lift.** Leg G pinned this contract
+> > with §1.3's lift figures (0.7% Dominaria, 5.7% Rabiah, 265% at N = 1). Those measure how far a
+> > corner floats *radially* off the globe, which is the right statistic for "does this read as a
+> > billboard" and the wrong one for an extent. In **arc length** the two models are identical to
+> > machine precision at every N in 1..7000 — `iSize` is arc length (§2.1's 51.6×), so a flat quad
+> > built from it has exactly the patch's length, just laid flat. So a pin worded only as "the
+> > patch's extent, not the quad's" is **vacuous**: both readings give the same number.
+> >
+> > What differs is the *projection*. A patch spanning half-angle γ projects to its chord
+> > `2·sin γ`; the flat quad projects to `2γ`. The ratio is `γ/sin γ`: **1.0001 on Dominaria**,
+> > 1.0051 on Rabiah, 1.0115 at 30 cards, and **1.5708 at N = 1** — smaller than the lift figures by
+> > 106× on Dominaria, 11× on Rabiah and 4.6× at N = 1, and that is the direction that matters
+> > here. (G's 30-card figure, 11.6%, is additionally one commit stale: `55d3b15`'s exact-N
+> > apportionment moved shenmeng to 13.0%.) W1's floor binds on the
+> > *largest* world, and Dominaria's 25.3 px moves by 0.003 px between the two models. **No W1 row
+> > can discriminate them at any N**, which is a stronger statement of G's "the gate is structurally
+> > blind" than the lift figures support — so §1.4's 1,262-sub-quad envelope assertion is not
+> > belt-and-braces, it is the only guard, and it stays in scope.
+
 > **Normative — the probe reports §1.4's `shade` per cell (DEC-749).** It is the scalar
 > `0.10 + 0.95·clamp(dot(n, light)·0.5 + 0.5, 0, 1)²` the renderer already computes, and W2's second
 > half cannot be measured without it — see the note under the criteria table. Reporting it costs the

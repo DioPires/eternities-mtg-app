@@ -277,6 +277,37 @@ for n in list(range(1, 600)) + [1000, 2000, 6266]:
         worst_sag = max(worst_sag, LIFT * (1 - math.cos(gamma)))
 check("worst facet sag over N = 1..6266 stays under 1%", round(worst_sag * 100, 3) <= 1.0, True)
 
+print("\n§3.1 the probe's cell rect — why the height pin needs 'projected', not just 'the patch'")
+# Leg G (DEC-752) pinned `height` as the rendered patch's extent rather than the tangent quad's,
+# sized with §1.3's corner-lift figures. The lift is a RADIAL float; a height is an EXTENT. In arc
+# length the two models coincide exactly, because iSize is arc length -- so the pin as worded is
+# vacuous and only bites once 'projected' is said out loud.
+worst_arc_gap, worst_proj = 0.0, (0, 1.0)
+for n in range(1, 7001):
+    dphi_n, _rows_n, cells_n = grid(n)
+    for r in range(len(cells_n)):
+        # The two models are derived from DIFFERENT sources on purpose: the flat quad from the
+        # shipped `iSize` half-extent, the patch from the angle §1.4 sweeps its vertex grid over.
+        # Their agreement is the result; writing both as `2*gamma` would make it a tautology.
+        tangent_len = 2 * i_size(cells_n, dphi_n, r)[1] * LIFT
+        gamma = dphi_n / 2                   # latitudinal half-ANGLE the vertex grid sweeps
+        arc_len = 2 * gamma * LIFT
+        worst_arc_gap = max(worst_arc_gap, abs(tangent_len / arc_len - 1.0))
+    projected = (dphi_n / 2) / math.sin(dphi_n / 2)  # quad projects to 2*gamma, patch to 2*sin(gamma)
+    if projected > worst_proj[1]:
+        worst_proj = (n, projected)
+check("in ARC LENGTH the tangent quad and the patch are identical at every N in 1..7000",
+      worst_arc_gap, 0.0)
+proj = lambda n: (lambda g: g / math.sin(g))(grid(n)[0] / 2)
+check("in PROJECTION the ratio is gamma/sin(gamma) — Dominaria", round(proj(6266), 4), 1.0001)
+check("...Rabiah's 75", round(proj(75), 4), 1.0051)
+check("...a 30-card world", round(proj(30), 4), 1.0115)
+check("...and N = 1, the worst case over the whole sweep", round(worst_proj[1], 4), 1.5708)
+check("...which N = 1 attains", worst_proj[0], 1)
+# The consequence G needs: W1 binds on the LARGEST world, where the two models are 0.01% apart.
+check("W1's binding world moves under 0.005 px between the models, so no W1 row discriminates",
+      round(25.3 * (proj(6266) - 1), 3) < 0.005, True)
+
 print("\n§1.3/§1.8 the radius floor — a world is never smaller than an empty moon")
 check("the laws cross at 19 cards", (round(RADIUS_K * math.sqrt(19), 3), round(RADIUS_K * math.sqrt(20), 3)),
       (0.549, 0.563))
