@@ -90,9 +90,8 @@ atmosphere must not depth-reject the tether passing in front of it.
 > focused world" versus "the rest".
 
 **Population on production, as of today's roster** (`worldsWithCards` / `planesWithCards` per §3.1;
-Forgotten Realms makes it 88 planes and 30 worlds, and every count in this paragraph moves by one —
-it is a worked example, not a set of constants). 87 planes: 57 empty, 1 dust, **29 worlds with
-cards**. At the home
+every count in this paragraph is a worked example, not a set of constants — derive them, §3.1 says
+why). 87 planes: 57 empty, 1 dust, **29 worlds with cards**. At the home
 view every world is far below the crossover, so step 2 draws **29 + 57 = 86 instances** and step 4
 draws nothing; with one world fully above the band, step 2 draws 28 worlds + 57 moons — and with
 that world *inside* the band it is 29 + 57 again, because it draws in both passes. Step 2's instance
@@ -100,6 +99,23 @@ count is therefore not `29 − (sheets drawn)`; it is a count of planes below th
 renderer that derives one from the other will be one instance short through every approach. (The
 prototype's `captures.json` reports `system.worlds = 27` because it drew Dominaria and Rabiah in
 detail and had no equirect rung at all; 27 is a prototype count and is not production's.)
+
+> **Normative — the v3 roster is not "today's plus one" (DEC-745, DEC-751; measured on PR #46 head
+> `311b87d`, dataset `dabe2c9a68b4d799`).** An earlier draft of this paragraph said Forgotten Realms
+> "makes it 88 planes and 30 worlds, and every count moves by one". It does not. The refresh is the
+> first dataset to bake in PR #41's plane overrides, so it moves the roster's **shape**, not its
+> size: **88 planes = 45 worlds + 1 dust + 42 empty**, with **24,399 cards on worlds**. Worlds go
+> 29 → **45**, moons 57 → **42**, and the instance arithmetic above reads `45 + 42 = 87` rather than
+> `29 + 57 = 86`. Three second-order quantities move with it and are corrected where they are
+> stated: the equirect array is one layer per world (§1.5, §1.12), `rowCells` is one array per world
+> (§2.4), and W1 iterates all of them (§3.1). Every number in this spec written against the 87-plane
+> roster is the **main** worked example and stays readable as such; nothing may be compiled in.
+>
+> The shape change is what makes §1.3's small-world floor load-bearing rather than hypothetical:
+> the smallest world goes 30 cards → **1**, and **15 of the 45** carry four cards or fewer. At the
+> other end the refresh is small: Dominaria 6,266 → **6,271** cells, the multiverse 28,587 →
+> **28,603** cards, the belt 4,980 → **4,204**. Worked examples written against 6,266 stay readable;
+> the ones that moved by more than rounding are called out where they are stated.
 
 ### 1.3 The surface law (normative)
 
@@ -110,7 +126,14 @@ detail and had no equirect rung at all; 27 is a prototype count and is not produ
   **1.568×** for the same pair (`visual_radius` in `pipeline/src/eternities/fixtures/layout.py`:
   10.633 against 6.781). Review §4.1's oft-quoted 1.3× is a *different* pair — Dominaria against
   Mercadia, 20× the cards, 10.633 / 8.008 = 1.328 — and is not the comparand for this sentence.
-  Empty planes take a floor radius instead (§1.8).
+  **The law carries the same floor empty planes do: `radius = max(0.126·√cardCount, 0.55)`** (§1.8).
+  Without it the law inverts below **19 cards** — `0.126·√19 = 0.549` — and a world is drawn
+  *smaller* than a plane with no cards at all. On the 87-plane roster nothing is: the smallest world
+  is 30 cards (r 0.690). On the v3 roster **15 of 45 worlds** are under the floor and six carry one
+  card, which the unfloored law draws at r 0.126 — **4.4× smaller in radius and 19× smaller in
+  silhouette than a dark moon**, which is §1.8's sentence "emptiness becomes a colour and not a
+  size" read backwards. Floored, that cohort is moon-sized and is told apart by colour, which is
+  what §1.8 claims. Above 19 cards the constant-area law is untouched.
 - **Bands.** Seven classes — W, U, B, R, G, gold, colourless — laid out **mirrored about the
   equator**: colourless is split between the two ice caps, each mono colour is a matched pair of
   bands, gold is the single equatorial belt. North to south:
@@ -175,6 +198,33 @@ shipped grid. Rabiah is the proof that the difference bites: the closed form giv
 cards** (the prototype's 78, with 3 bare); the relaxed invariant demands exactly 75. §2.1 and §2.4
 carry the contract consequence.
 
+> **Normative — the floor: n = 1 and n = 2 (DEC-751's finding, re-derived).** Six v3 worlds carry
+> exactly one card and eight carry two (§1.2), so the bottom of the law ships. It is stated, not
+> left to resolve:
+>
+> - `rows = max(1, round(π / √(4π / (aspect·N))))` and `rowCells[r] ≥ 1`. At N ≤ 2 the closed form
+>   already gives `rows = 1, rowCells = [2]`; the relaxation's exact-N invariant makes that `[1]` at
+>   N = 1 and leaves `[2]` at N = 2. **One row, whose centre is the equator, whose `dφ` is π.**
+> - At N = 1 the single cell spans the whole sphere: half-extents `(π, π/2)` in arc. This is not a
+>   degenerate case to special-case away — it is what constant area per card *means*. A cell's world
+>   area is `4π·radius²/N = 4π·0.126² = 0.200` square units for every N, so one card on a one-card
+>   world is the same physical size as one card on Dominaria. The cell wraps because the world is
+>   small, not because the law failed. (With the §1.3 radius floor the drawn world is larger than
+>   that; the floor is the compromise, not the wrap.)
+> - **The 4:3 target is exempt at N ≤ 2, and this costs nothing.** A closed surface cannot be tiled
+>   by one or two 4:3 cells: the slot aspect is `2π·sin θ / (rowCells·dφ)`, which at `rows = 1` is
+>   **2.00** for N = 1 and **1.00** for N = 2. Neither stretches any art — §1.4 letterboxes art into
+>   the slot, so a non-4:3 slot costs slot *area* and never geometry. Nor is the deviation special:
+>   N = 3–5 gives **1.41**, *closer* to 4:3 than the **1.571** polar row every world including
+>   Dominaria already carries.
+>
+> **What actually breaks at small N is §1.4's tangent quad, and it is a continuum, not a cliff** —
+> see §1.4's subdivision rule. A cell's corner sits `√(1.006² + α² + β²) − 1` above the unit sphere:
+> **0.7%** of the radius on Dominaria, **5.7%** on Rabiah, **11.6%** on a 30-card world (shenmeng,
+> the one irregular world on the 87-plane roster), **69%** at N = 3, **144%** at N = 2 and **265%**
+> at N = 1, where the "cell" is a flat billboard 2.6× the globe it is meant to tile. Reading the
+> failure as an aspect-ratio problem points at the harmless half.
+
 ### 1.4 The cell sheet
 
 One `InstancedBufferGeometry`, one unit quad, N instances, one draw per world. Review §4.2 costs
@@ -184,11 +234,53 @@ Per-instance attributes: `iNormal` (vec3, the unit-sphere point), `iEast` (vec3)
 half-extents in units of world radius — **arc length, not angle**; the longitudinal component is
 `(π / rowCells[r])·sin θ_r` and §2.1 carries the derivation and the 51.6× failure that drops the
 `sin θ_r`), `iSwatch` (vec3, linear RGB), `iLayer` (float, dynamic),
-`iArt` (float, dynamic cross-fade). 52 bytes per cell; **1.42 MiB** for all 28,587 cards.
+`iArt` (float, dynamic cross-fade). 52 bytes per cell; one cell per card **on a world**, so
+**1.17 MiB** for the 87-plane roster's 23,607 and **1.21 MiB** for v3's 24,399 — not 28,587, which
+is the multiverse total and includes the belt's dust, and the belt has no cell sheet (§1.8).
 
 The vertex shader builds `north = cross(east, n)` and places the quad at `n · radius · 1.006`, lifted
 just off the globe so it beats depth precision at system distance, with edges pulled in to 0.93 so
 the tiling reads as masonry with grout rather than as a skin.
+
+> **Normative — the quad follows the sphere; below 574 cards it has to be subdivided (DEC-749, on
+> DEC-751's n = 1 finding).** A flat quad tangent at the cell centre is only a surface patch while
+> the cell is small. Its corner sits at `√(1.006² + α² + β²)` from the world centre against the
+> surface's 1, where `(α, β)` are §1.4's `iSize` in radius units — **0.7% of the radius on
+> Dominaria, 5.7% on Rabiah, 11.6% on a 30-card world, 265% at N = 1** (§1.3). Past a few percent
+> the cell stops reading as masonry and starts reading as a billboard that parallaxes off its globe;
+> at N ≤ 2 it is larger than the globe.
+>
+> So the base geometry is **not** a unit quad in general: it is a `(k_lon + 1) × (k_lat + 1)` vertex
+> grid, **one `(k_lon, k_lat)` per world** (the sheet is already one draw per world), and a vertex at
+> `(u, v) ∈ [−1, 1]²` is placed **on the sphere** at colatitude `θ_c + v·(dφ/2)` and longitude
+> `λ_c + u·(π / rowCells[r])` — the cell's own *angular* half-extents, the same parameterisation that
+> placed its centre — then lifted by the same 1.006 and pulled in by the same 0.93. Every vertex now
+> sits *on* the lifted sphere at every `k`, so the residual error is the **sag** of each flat facet
+> between its four vertices, `1.006·(1 − cos γ)`, and never the tangent plane's unbounded corner
+> lift. `iSize` stays what it is (arc-length half-extents) and stays what the pixel tests and §2.1's
+> contract are written against; it is `sin θ_r` times the longitudinal *angle* used here, which is
+> the whole reason the two must not be confused (§2.1's 51.6×).
+>
+> `k` is the smallest integer pair holding that sag within **1% of the radius**:
+> `k_axis = ceil(arcHalfExtent / 0.0998)`, where `0.0998 = acos(1 − 0.01/1.006) / √2` and the `√2`
+> is the two axes combining at a facet corner.
+>
+> **The cost is bounded by the sphere, not by the card count**, which is what makes this affordable
+> at the bottom of the roster where every cell is huge. `k` is `(1, 1)` — one quad per cell, today's
+> geometry — for every world of **574 cards or more**: 13 of v3's 45 worlds, holding **19,497 of its
+> 24,399 cells**. It is `(3, 2)` at Rabiah's 75, `(5, 3)` at 30 cards, and
+> `(32, 16)` at N = 1, where the entire world is **512 sub-quads** against Dominaria's 6,271 cells at
+> `(1, 1)`. Summed over the whole v3 roster it is **38,887 sub-quads for 24,399 cells** — and that
+> total is hypothetical, since it assumes every world above the crossover at once. **No world that
+> subdivides at all can exceed 1,146 sub-quads**: `k` reaches `(1, 1)` at 574 cards, so the largest
+> subdivided world is a 573-card one at `(2, 1)`, and the sphere's own envelope
+> (`4π / 0.0998² ≈ 1,262`, a world whose every cell sits at the tolerance) is never reached. The
+> measured worst case is 1,124 on the 87-plane roster and 1,130 on v3. Assert the 1,262 envelope per
+> world in the sheet's unit test, over the dataset under test — a subdivided world that exceeds it
+> is a `k` computed from the wrong axis.
+>
+> **The winding rule below applies per sub-quad**, and the subdivision is where a "tidy" rewrite is
+> most likely to reintroduce it: a grid generator that emits CCW triangles inverts every cell.
 
 > **Normative — the winding.** The base quad's index order is **`[0, 2, 1, 0, 3, 2]`** — clockwise
 > in the quad's own x-y plane. It is not a typo and must not be "tidied" to `[0, 1, 2, 0, 2, 3]`.
@@ -216,20 +308,23 @@ colour  = mix(colour, art, iArt)                      // art enters at full valu
 
 ### 1.5 LOD: baked equirect far, cells near
 
-At system distance Dominaria's cells are **1.4 CSS px** (`captures.json`, `system`). 28,587 quads at
+At system distance Dominaria's cells are **1.4 CSS px** (`captures.json`, `system`). 24,399 quads at
 sub-pixel size is not a cost problem — it is an aliasing problem, and a sub-pixel quad sheet
 shimmers under any camera motion.
 
 So every world carries a **256×128 baked swatch texture**, one layer of a `DataArrayTexture` with
-one layer per world with cards — 29 layers on production, 256·128·4·29 = 3,801,088 B = **3.62 MiB**
-(3.80 decimal MB), which is review §4.2's "~4 MB for all worlds". Units here and in §1.12 are **MiB**
+one layer per world with cards — **`worldsWithCards.length` layers, allocated from the dataset, not
+a constant** (§3.1). That is 29 layers and 256·128·4·29 = 3,801,088 B = **3.62 MiB** (3.80 decimal
+MB) on the 87-plane roster, review §4.2's "~4 MB for all worlds"; on v3 it is **45 layers = 5.62
+MiB**, and §1.12's budget carries the larger figure. Units here and in §1.12 are **MiB**
 throughout, because `gpuMemory.ts:29` sets `MEGABYTE = 1024 * 1024` and the budget these are checked
 against is that one.
 
 > **Normative — the bake is client-side, at load, in the worker.** It is a pure function of
 > `swatches.bin` (§2.2) plus the surface law, which both sides already have; shipping it as a
 > pipeline artefact would add a fourth binary and a fourth budget row to buy nothing. Rasterising
-> 28,587 cells into 29 layers is one pass over the swatch buffer.
+> every world's cells into its own layer — 23,607 into 29 on the 87-plane roster, 24,399 into 45 on
+> v3 — is one pass over the swatch buffer.
 
 **Crossover.** Below **4 CSS px** median cell height a world draws as §1.2 step 2 — one instance of
 the system icosphere mesh, textured from its equirect layer — and its cell sheet is skipped
@@ -281,8 +376,9 @@ the pool is an array texture and not an atlas canvas.
 > injected-limit test is the only thing that can fail here (DEC-739's vacuous-clamp finding).
 >
 > **The −32 is driver slack, not accounting.** `MAX_ARRAY_TEXTURE_LAYERS` is a **per-array-texture**
-> limit, not a global layer pool: the 29-layer equirect array is a separate texture object and takes
-> nothing from the art pool's allowance. Sitting one notch below an implementation's stated maximum
+> limit, not a global layer pool: the equirect array (29 layers on the 87-plane roster, 45 on v3 —
+> §1.5) is a separate texture object and takes nothing from the art pool's allowance. Sitting one
+> notch below an implementation's stated maximum
 > is cheap insurance (1.5 MiB at tier 0) against drivers that report a limit they will not actually
 > allocate at 128×96×4; it is not headroom being reserved for anything. **Knock-on:** on a
 > spec-minimum 256-layer device tiers 0, 1, 2 and 3 all clamp to 224, so §1.12's ladder assertion
@@ -366,10 +462,10 @@ gets one; it is what replaces full-scene bloom.
 LOD crossover, scaled by the same `0.126·√N` law. Its colour comes from the world's equirect layer
 (§1.5) and, below 6 px of on-screen radius, from `planes.json`'s own `palette` — a real
 WUBRG-multi-colourless weight vector, so the colour at system distance is a statistic of the plane's
-cards. At the home view that is all of `worldsWithCards` (§3.1) — **29** on today's roster, 30 once
-Forgotten Realms lands; with one world near enough for its cell sheet it is one fewer.
+cards. At the home view that is all of `worldsWithCards` (§3.1) — **29** on the 87-plane roster,
+**45** on v3; with one world near enough for its cell sheet it is one fewer.
 
-> Mixed straight, all 29 come out the same grey, because Magic's colour pie is balanced — the same
+> Mixed straight, they come out the same grey, because Magic's colour pie is balanced — the same
 > finding that makes the shipped arm-skew law inert (review §4.1). So the mix runs on the
 > **deviation from the card-weighted multiverse mean**, amplified ×3.2: a plane at the average is
 > grey, a plane that is unusual is unusual in the direction it is unusual in. Alara's 58% gold and
@@ -377,15 +473,19 @@ Forgotten Realms lands; with one world near enough for its cell sheet it is one 
 > data. Undetailed worlds are additionally dimmed to 0.3 so a neighbour does not outshine the world
 > being looked at.
 
-**Dark moons.** `√0 = 0`, so the 57 empty planes take a floor radius of 0.55 and a near-black colour
-(0.035, 0.038, 0.05) with no palette tint. **Present, unlit, and unlabelled until hover.** Today they
+**Dark moons.** `√0 = 0`, so the empty planes — **57** on the 87-plane roster, **42** on v3 — take
+a floor radius of 0.55 and a near-black colour (0.035, 0.038, 0.05) with no palette tint.
+**Present, unlit, and unlabelled until hover.** Today they
 are dim glows that PRD 5.3.8 obliges the app to label, which is how the home view ends up as 82
-labels over 30 real objects (review §4.1). Emptiness becomes a colour and not a size.
+labels over 30 real objects (review §4.1). Emptiness becomes a colour and not a size — which is true
+only because §1.3's radius law carries the **same** 0.55 floor. Unfloored, v3's fifteen sub-20-card
+worlds are drawn smaller than these moons and emptiness becomes the largest thing in that cohort.
 
 > This needs a **PRD 5.3.8 amendment** (§6) and it is measured by acceptance criterion **W5** (§3.1).
 
-**The belt.** The Blind Eternities — 4,980 cards, 17.4% of everything, the largest population after
-Dominaria — stops pretending to have a shape and becomes a belt around the whole system at
+**The belt.** The Blind Eternities — 4,980 cards and 17.4% of everything on the 87-plane roster,
+**4,204 and 14.70%** on v3, the largest population after Dominaria on both — stops pretending to
+have a shape and becomes a belt around the whole system at
 **1.12 × `multiverseRadius`** (145.6 units on production). One arc per set, in chronological order,
 each set taking its share of 360° with a 6% gap at each end so "one arc per set" is legible rather
 than a continuous smear. Radial jitter ±6%, vertical jitter ±3.5% of the belt radius, both from a
@@ -426,7 +526,7 @@ without needing the artist beside it.
 **The cap, and the one thing it actually hides.** PRD 5.6.8 caps at 72 (three rings of 24).
 `planets.ts:48` computes `const shown = Math.min(printings, PLANET_CAP)`, and the remainder is *not*
 dropped: `planets.ts:35-37` declares `overflow` — "Printings past the 72 the rings can hold. PRD
-5.6.8 sends these to the card panel" — `planetLayout` returns it, `focusedCard.ts:261` exposes it as
+5.6.8 sends these to the card panel" — `planetLayout` returns it, `focusedCard.ts:243` exposes it as
 `printingOverflow`, and `ui/CardPanel.tsx:181` already renders `Printings ({printings.length})`, the
 true count, with `:184` listing **every** printing uncapped. All 570 Swamp rows are in the panel
 today. So "the card panel states the true count" is not a requirement this spec introduces; it
@@ -451,8 +551,9 @@ tick positions, not with a capture. See §5, Q5.
   renders `gl_InstanceID + 1` into the pick target, and the instance index maps to a card through
   the same instance-order array the sheet is built from. Cell picking replaces star picking at plane
   level; card focus and the printing ring pick as they do today.
-- **Labels.** The label solver is kept. Under worlds it has 30 subjects at the home view instead of
-  87, because the 57 moons are unlabelled until hover (§1.8). The label tick stays after the final
+- **Labels.** The label solver is kept. Under worlds its home-view subject count is
+  `planesWithCards.length`, not the plane count, because the moons are unlabelled until hover
+  (§1.8): **30 of 87** on today's roster, **46 of 88** on v3. The label tick stays after the final
   camera matrices, per W4.2.
 - **Filters.** The GPU filter-mask subscription W1.2 landed (review F1) is kept and rebound: a
   filtered-out cell drops to its swatch and dims, and **never** dims its art. Dimming a card image is
@@ -473,18 +574,25 @@ comparable to the thing it is being compared to.
 | Resident texture | Bytes | MiB |
 |---|---|---|
 | Art pool, 1,024 × 128 × 96 × 4, no mips | 50,331,648 | 48.00 |
-| Equirect swatch array, 29 × 256 × 128 × 4 | 3,801,088 | 3.62 |
-| Cell instance attributes, 28,587 × 52 B | 1,486,524 | 1.42 |
+| Equirect swatch array, 45 × 256 × 128 × 4 | 5,898,240 | 5.62 |
+| Cell instance attributes, 24,399 × 52 B | 1,268,748 | 1.21 |
 | Printing ring, 72 × `small` (146×204×4) | 8,577,792 | 8.18 |
 | Focused card, `large` (672×936×4), one face | 2,515,968 | 2.40 |
-| **Total** | **66,713,020** | **63.62** |
+| **Total** | **68,592,396** | **65.41** |
 
-Under target with **32.4 MiB** of headroom, and **lower than today's worst case** — which is the
+Under target with **30.6 MiB** of headroom, and **lower than today's worst case** — which is the
 first place concept B pays for itself rather than costing.
 
+> **The two dataset-dependent rows are v3's** (45 worlds, 24,399 cards on worlds — §1.2). On the
+> 87-plane roster they are 29 layers / 3.62 MiB and 23,607 cells / 1.17 MiB, for **63.38 MiB**
+> total. The refresh costs **+2.03 MiB**, almost all of it the equirect array — the only place in
+> this spec where the roster's new shape moves a budget row. Both rows are `.length`s of §3.1's
+> derived sets: a renderer that allocates either from a constant is wrong on one of the two datasets
+> it is guaranteed to meet.
+
 > The focused-card row counts one face. Today's worst case counts two, because a double-faced card
-> uploads both (`focusedCard.ts:752`, and `worstCaseCardBytes` multiplies by 2). A DFC in focus adds
-> 2.40 MiB for **66.02 MiB** and 30.0 MiB of headroom; the conclusion is untouched either way, but
+> uploads both (`focusedCard.ts:702`, and `worstCaseCardBytes` multiplies by 2). A DFC in focus adds
+> 2.40 MiB for **67.81 MiB** and 28.2 MiB of headroom; the conclusion is untouched either way, but
 > the DFC figure is the one to assert against, because it is the one `gpuMemory.ts` computes.
 
 The art pool is the worlds path's contribution to W4.1's quality ladder, and it is a real rung at
@@ -587,11 +695,13 @@ In **angle**, for a cell in row `r`, they are `(π / rowCells[r], dφ / 2)`.
 > `π/2 = 1.571`, 18% above 4:3. That is **4 cells of Dominaria's 6,266** (0.1%) and 4 of Rabiah's
 > (5.1%). The renderer must therefore letterbox art into the cell's **own** rect (§1.4, §1.6) and
 > may not assume 4:3 anywhere; a shader that hard-codes the ratio mis-frames the ice caps of every
-> small plane.
+> small plane. The extreme is §1.3's floor — **2.00 at `rowCells = 1`** (a one-card world, six of
+> them on v3) and **1.00 at `rowCells = [2]`, `rows = 1`** — which the same letterbox handles, and
+> which is therefore *not* where small worlds break: §1.4's subdivision is.
 
 > **Normative — the per-row cell counts are shipped, not derived.** §1.3's relaxation makes a row's
 > cell count population-derived, so it is **not** a function of `cardCount` and a row count and the
-> closed form `round(2π·cos φ / (aspect·dφ))` no longer describes the shipped grid (Rabiah: 78 slots
+> closed form `round(2π·sin θ / (aspect·dφ))` no longer describes the shipped grid (Rabiah: 78 slots
 > from the closed form, 75 cells in fact). The v3 contract therefore carries a per-plane **`rowCells`
 > table** — one `uint` cell count per row, in north-to-south order — in place of the scalar `rows`
 > (§2.4). `rowCells.length` is the row count; row latitudes are equal-`dφ` with `dφ = π /
@@ -599,8 +709,9 @@ In **angle**, for a cell in row `r`, they are `(π / rowCells[r], dφ / 2)`.
 > matching a cell to its row by latitude.
 
 Counting stars per row would also recover the counts, and would be sound — but only *because* §1.3
-mandates zero bare cells. The table is 734 numbers across all 29 production worlds (81 for
-Dominaria, 162 B as `uint16`, ≈ 3 KB raw as JSON against `planes.json`'s 11.6 KB brotli), which is
+mandates zero bare cells. The table is 734 numbers across the 87-plane roster's 29 worlds and 777
+across v3's 45 (81 for Dominaria, 162 B as `uint16`, ≈ 3 KB raw as JSON against `planes.json`'s
+11.6 KB brotli), which is
 too cheap to buy a contract whose correctness depends on a rendering invariant holding forever. The
 counting path is kept as a **check** rather than as the mechanism: the pipeline asserts per plane
 that the stars it emitted group into exactly `rowCells`, which is what makes "zero bare" verifiable
@@ -650,7 +761,8 @@ then: starCount × 8 bytes, in star order (the same order as ORACLE_IDS)
 ```
 
 Star order means a swatch lookup is `starIndex × 8 + 16` with no map and no table. Size on production:
-28,587 × 8 + 16 = **223.4 KB raw**.
+28,587 × 8 + 16 = **223.4 KB raw** (v3: 28,603 cards, 223.5 KB — the multiverse total, dust
+included, which is *not* the cell count; only cards on worlds get cells).
 
 > **Normative — `swatches.bin` is a separate artefact and must not become a section of `sets.bin`.**
 > `sets.bin` is a sectioned container and adding section id 4 would be the tidier-looking choice. It
@@ -717,10 +829,10 @@ cell's caption therefore credits `p[0][5]`.
 | top-level `discThickness` | **retire** |
 | `rowCells` *(new, `uint[]`)* | the surface grid's per-row cell counts, north to south. `rowCells.length` is the row count; row latitudes are equal-`dφ`, `dφ = π / rowCells.length`, centres at `(i + ½)·dφ`. Shipped rather than derived because §1.3's relaxation makes the counts population-derived (§2.1). Empty planes and the belt omit it |
 
-`radius` stays but changes meaning: it is now `0.126 · √cardCount`, or the moon floor 0.55 for an
-empty plane, and the Blind Eternities keeps `R` for the belt. Seven fields retire and one arrives;
+`radius` stays but changes meaning: it is now `max(0.126 · √cardCount, 0.55)` — the moon floor applies
+to worlds too, and binds on 15 of v3's 45 (§1.3, §1.8) — and the Blind Eternities keeps `R` for the belt. Seven fields retire and one arrives;
 the arriving one is an array, so `planes.json` grows rather than shrinks — 734 numbers across the 29
-worlds, ≈ 3 KB raw against 11.6 KB brotli today. Either way it is noise in the budget and is listed
+worlds of the 87-plane roster and 777 across v3's 45 (a one-card world contributes one: `[1]`), ≈ 3 KB raw against 11.6 KB brotli today. Either way it is noise in the budget and is listed
 for completeness, not for savings.
 
 ### 2.5 Budget summary
@@ -836,23 +948,27 @@ an assertion there.
 >
 > W1 iterates `worldsWithCards`; **W5's floor is `planesWithCards.length`** — that set is exactly
 > "the worlds plus the belt", which is where W5's 30 comes from. The numbers written in this section
-> are today's production roster (verified against `web/public/data/6d4779695fde33ea/planes.json`:
+> are the 87-plane roster (verified against `web/public/data/6d4779695fde33ea/planes.json`:
 > 87 planes = 29 worlds + 1 dust + 57 empty, 23,607 cards on worlds), not constants to compile in.
 >
-> **This is a gate threshold, so hard-coding it fails the gate on correct behaviour.** DEC-710's
-> curation sign-off is already answered and adds Forgotten Realms (`afr`, absent from the roster
-> today) as a **30th world**; it lands in the v3 dataset leg P publishes, which is the dataset this
-> gate runs on. A W5 pinned at 30 goes **RED the moment that data lands**, against a renderer doing
-> exactly what this section asks — and the failure will be read as a renderer regression. Derived,
-> Forgotten Realms joining is a data change and the gate stays honest.
+> **This is a gate threshold, so hard-coding it fails the gate on correct behaviour** — and the
+> dataset this gate runs on is already measured. DEC-710's curation sign-off is answered and lands
+> in the v3 dataset leg P publishes; measured on PR #46 head `311b87d` (`dabe2c9a68b4d799`) that
+> dataset is **88 planes = 45 worlds + 1 dust + 42 empty, 24,399 cards on worlds**, so the two
+> `.length`s become **45** and **46**. Forgotten Realms is not a `+1`: the refresh is the first
+> dataset to bake in PR #41's plane overrides (§1.2). A W5 pinned at 30 — or re-pinned at 31 on the
+> strength of "FR is one more world" — goes **RED the moment that data lands**, against a renderer
+> doing exactly what this section asks, and the failure will be read as a renderer regression.
+> Derived, the refresh is a data change and the gate stays honest. This is the whole argument for
+> deriving: the spec's own prediction of the next dataset was off by 15 worlds.
 
 | # | Criterion | Measurement | Floor |
 |---|---|---|---|
-| **W1** | **Cells are resolvable at framing distance.** | At the plane-level settle for each of `worldsWithCards` (**29 today**), the median on-screen height of front-facing cells. Not the Blind Eternities: it has cards but no cell sheet (§1.8), so the statistic is undefined there — `planesWithCards` would be 30 and would include it. | **≥ 24 CSS px.** Binds on the largest plane: Dominaria measured 25.3 px at 3× radius. |
+| **W1** | **Cells are resolvable at framing distance.** | At the plane-level settle for each of `worldsWithCards` (**29** on the 87-plane roster, **45** on v3), the median on-screen height of front-facing cells. Not the Blind Eternities: it has cards but no cell sheet (§1.8), so the statistic is undefined there — `planesWithCards` would be 30 / 46 and would include it. | **≥ 24 CSS px.** Binds on the largest plane: Dominaria measured 25.3 px at 3× radius. |
 | **W2** | **The mosaic reads as tiles, not as a wash.** This is T7's replacement. | Sample the captured frame at the centre of every front-facing cell ≥ 6 px tall, convert to CIELAB. Report the median ΔE to a cell's nearest on-screen neighbour, and the interquartile range of L\* **across the iso-shade subset** — the cells whose reported `shade` lies within ±2.5% of the median shade. | **median neighbour ΔE ≥ 6** and **iso-shade IQR(L\*) ≥ 8**. |
 | **W3** | **Latitude reads as colour.** | Group the same samples by band. For every pair of bands adjacent **in §1.3's 13-band chain** (a chain, not a cycle: the two ice caps are its two ends and are the furthest apart of any pair) where the smaller holds ≥ 5% of the plane's cards, the ΔE between their mean a\*b\*. | **≥ 10** for every such pair. |
 | **W4** | **Art resolves without exhausting.** | At the surface view (2.2× radius), after a 5 s settle: the fraction of on-screen front-facing cells above the effective threshold that are showing art, and evictions per second over the last 2 s. | **≥ 90%** showing art, **≤ 5 evictions/s**. |
-| **W5** | **The home view is not a wall of labels.** | Count rendered plane labels in the DOM at the home view. | **≤ `planesWithCards.length`** — the worlds plus the belt, **30 on today's roster** and 31 once Forgotten Realms lands. Read it from the dataset under test; today the view renders 82. |
+| **W5** | **The home view is not a wall of labels.** | Count rendered plane labels in the DOM at the home view. | **≤ `planesWithCards.length`** — the worlds plus the belt, **30** on the 87-plane roster and **46** on v3 (measured, not predicted — §1.2). Read it from the dataset under test; today the view renders 82. |
 
 > **Normative — W2's IQR(L\*) half is measured on an iso-shade subset, and the un-subsetted version
 > it replaces could not fail (DEC-749, on DEC-752's finding).** §1.4's shade runs
@@ -1091,7 +1207,7 @@ has a checklist rather than a discovery process.
 | 5.1.1 | "photoreal space, not data visualisation" | still satisfied — worlds are objects in space — but the surface *is* an encoding and the wording should say so |
 | 5.3.4 | the Blind Eternities as dust | a belt, one arc per set (§1.8) |
 | 5.3.6 | plane kinds `dust` / `spiral` / `irregular` / `empty` | `spiral` and `irregular` collapse into one `world` kind; `empty` becomes `moon` |
-| 5.3.8 | every plane is labelled | the 57 empty planes are unlabelled until hover (§1.8, criterion W5) |
+| 5.3.8 | every plane is labelled | the empty planes are unlabelled until hover — 57 of 87 on today's roster, **42 of 88** on v3 (§1.8, criterion W5) |
 | 5.4.2 | chronology bands map to radius | chronology maps to longitude (§1.3) |
 | 5.4.8 / 5.4.10 | hue class, brightness percentile | superseded by the art swatch (§2.2); `brightness` goes unread |
 | 5.4.13 | shear | retired with the disc (§2.4) |
@@ -1124,7 +1240,9 @@ law gives **1.568×** for that same pair (§1.3; review §4.1's 1.3× is Dominar
 Cells cross the 24 px art threshold at ≈ 3× radius, which is about where a world fills the frame, so
 the all-swatch state exists only *further out* than framing distance. System: 27 undetailed worlds,
 57 moons, 4,980 belt points — **27 because the prototype drew Dominaria and Rabiah in detail and had
-no equirect rung; production's home view has 29 worlds and no cell sheets at all** (§1.2).
+no equirect rung; production's home view has 29 worlds (45 on v3) and no cell sheets at all** (§1.2).
+The prototype's 57 moons and 4,980 belt points are likewise the roster it was built on: v3 has 42
+moons, and the belt's population moves with the curation refresh (DEC-745).
 
 The `drawn / wanted` column is the case for §1.6's adaptive threshold, and the two 900+ eviction rows
 are the case for criterion W4.
