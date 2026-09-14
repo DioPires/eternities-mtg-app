@@ -13,7 +13,13 @@
  * second re-rendered the canvas owner twice a second, with every scene child underneath it (review
  * finding R1). Here the children are seven `attach*` calls whose order is {@link TICK_PHASES}, the
  * rungs are {@link applyTier}, and what goes back out is the mutable `FrameStats` record that
- * `ui/Hud` polls at 2 Hz.
+ * `SceneStats`, in `scene/SceneReadout.tsx`, polls at 2 Hz.
+ *
+ * That poller is a *measurement* surface, not shipped chrome: `SceneReadout` renders only under
+ * `EternitiesScene`'s `chrome` prop, which the shell sets to `false` (`App.tsx`) and so does the
+ * bench (`bench/BenchScene.tsx`) — it defaults to `true`, so what reaches it is the `?probe=`
+ * and self-check compositions. Nothing in `src/ui/` reads `stats` at all. The polled-snapshot
+ * *shape* is still what review §3.6 phase 3 item 3 asks for; only the reader is not the HUD.
  *
  * **The inbound direction is five imperative calls**, driven by store subscriptions rather than by
  * props: `focusStar`, `setFilterMask` (through `bindFilterMask`), `setReducedMotion`,
@@ -119,7 +125,7 @@ function listeners<T>(): {
  */
 export class SceneHost {
   readonly renderer: SceneRenderer
-  /** The mutable record the tick writes and one HUD leaf polls at 2 Hz. See `./frameStats`. */
+  /** The mutable record the tick writes and `SceneStats` polls at 2 Hz. See `./frameStats`. */
   readonly stats: FrameStatsFields
   /** PRD 5.6.9's hover label position, written by the `cards` phase and read by the overlay. */
   readonly labelState: PlanetLabelState = { visible: false, x: 0, y: 0, printing: -1 }
@@ -144,6 +150,10 @@ export class SceneHost {
 
   private navigation: SceneNavigation | null = null
   private resources: SceneResources | null = null
+  /** The last `drive` the caller asked for. See {@link attachDrive}. */
+  private driveRig = true
+  /** {@link attachDrive}'s one-shot guard, the same shape as `cardTierHandle` is for the tier. */
+  private driveAttached = false
   private starsComplete = false
   private warmupStarted = false
   private warmupResult: ProgramWarmupResult | null = null
@@ -262,6 +272,7 @@ export class SceneHost {
     this.resources = resources
     this.starSceneHandle.setResources(resources)
     this.buildCardTier()
+    this.attachDrive()
     this.maybeWarm()
   }
 
@@ -276,21 +287,56 @@ export class SceneHost {
   /**
    * The real navigation, built from `planes.json` and living for the session (PRD 8.7.2).
    *
-   * This is where the camera rig arrives, so it is where `attachCameraRig` and `attachMotionSync`
-   * happen — and the order they are written in is not the order they run in, which is the point of
-   * {@link TICK_PHASES}.
+   * This is where the camera rig arrives, so the attaching happens in {@link attachDrive} — which
+   * this calls unconditionally, because the navigation and the resources arrive in an order this
+   * method does not get to choose. See that method's header; it is DEC-761's F1.
    */
   setNavigation(navigation: SceneNavigation | null, options: { readonly drive?: boolean } = {}): void {
-    if (navigation === this.navigation) return
-    this.navigation = navigation
-    this.buildCardTier()
-    if (!navigation || !this.resources) return
+    // Recorded before the identity check rather than after it. `drive` is a property of the
+    // *caller's intent*, not of the navigation object: `EternitiesScene` passes the same `scene`
+    // with `drive: bench === null`, and the bench's own prop is an object literal, so that effect
+    // re-fires with an unchanged `navigation` on every render of `BenchScene`.
+    this.driveRig = options.drive !== false
+    if (navigation !== this.navigation) {
+      this.navigation = navigation
+      this.buildCardTier()
+    }
+    this.attachDrive()
+  }
+
+  /**
+   * Subscribe the `motionSync` and `rig` phases, once, as soon as both inputs exist.
+   *
+   * **This is idempotent and called from both setters on purpose, and that is the whole finding.**
+   * It used to live inline in `setNavigation`, which latched `this.navigation` and *then* returned
+   * early if the resources had not landed yet — so the identity guard at the top of that method
+   * blocked every later retry, and the `rig` phase ended up with no subscriber at all. The camera
+   * then never moves: `attachCameraRig` is the only thing that writes the camera's position and
+   * calls `updateMatrixWorld`, so the view sits at its construction distance for the whole session.
+   *
+   * It worked only by coincidence of two unrelated facts — `useSceneData` publishes `planes` and
+   * `resources` in one atomic `patch`, and `EternitiesScene` happens to declare its `setResources`
+   * effect above its `setNavigation` one. Swapping those two adjacent effects froze the camera with
+   * the entire suite still green, because nothing tested this at all.
+   * `test/scene-host-drive.test.tsx` now drives both arrival orders.
+   *
+   * The guard is `driveAttached` rather than `navigation && resources`, matching
+   * {@link buildCardTier} two methods down: both are one-shot gates over the same pair of inputs,
+   * and the pair completes in whichever setter is called second. A consequence worth stating: the
+   * `drive` mode is fixed at the moment the pair completes. Nothing re-attaches the rig if a caller
+   * later flips `drive`, and no caller does — since item 4 the bench lives in its own Vite entry,
+   * so a single page is either the product (always `drive: true`) or the bench (always `false`).
+   */
+  private attachDrive(): void {
+    if (this.driveAttached || !this.resources || !this.navigation) return
+    this.driveAttached = true
+    const navigation = this.navigation
     this.teardown.push(
       attachMotionSync(this.renderer.loop, this.resources.table, navigation.rig.motion),
     )
     // The bench flies the camera itself. Attaching the rig as well would put two writers on one
     // camera and the path would stop being the path.
-    if (options.drive !== false) {
+    if (this.driveRig) {
       this.teardown.push(
         attachCameraRig({
           rig: navigation.rig,

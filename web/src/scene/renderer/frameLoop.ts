@@ -209,10 +209,24 @@ export class FrameLoop {
     }
   }
 
-  /** The phase-ordered step list, for `test/frame-loop.test.ts`. */
-  stepCount(): number {
+  /**
+   * How many steps are subscribed, in total or in one phase.
+   *
+   * The total is for `test/frame-loop.test.ts`. The per-phase count is for
+   * `test/scene-host-drive.test.tsx`, and exists because of DEC-761's F1: "the `rig` phase has a
+   * subscriber" is the difference between
+   * a camera that moves and one frozen at its construction distance, and no assertion outside a
+   * live browser could reach it. An empty phase is not an error here — most of the ten are empty
+   * until whatever drives them arrives — so nothing else can notice one that stayed empty.
+   */
+  stepCount(phase?: TickPhase): number {
     if (this.dirty) this.rebuild()
-    return this.steps.length
+    if (phase === undefined) return this.steps.length
+    let count = 0
+    for (const registration of this.registrations) {
+      if (registration.phase === phase) count += 1
+    }
+    return count
   }
 
   private schedule(): void {

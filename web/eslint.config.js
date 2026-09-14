@@ -10,6 +10,105 @@ import tseslint from 'typescript-eslint'
  * through the data decoders — so this is the type-checked recommended set, not the stylistic
  * `strictTypeChecked` one.
  */
+/*
+ * Two import boundaries, four rule instances, and one flat-config trap between them.
+ *
+ * Each boundary needs *two* rules, because `no-restricted-imports` only visits
+ * `ImportDeclaration` — it cannot see a dynamic `import()` at all, which is the headline lesson of
+ * W4.2 item 4 (see the harness block below). So each boundary is a pair: patterns for the static
+ * spelling, `no-restricted-syntax` selectors for the dynamic one. Neither covers both alone.
+ *
+ * **Why they are assembled from shared arrays instead of written out per block.** The two
+ * boundaries apply to *overlapping* file sets — the harness boundary covers all of `src/` while
+ * the three.js boundary covers `src/ui/` and `src/app/`, a subset. In flat config, when two config
+ * objects both configure one rule for the same file, the later object's options **replace** the
+ * earlier object's; they are not merged. That silently deleted the three.js boundary once already
+ * (DEC-761 F3): item 6 landed it first and verified it with a 9-row mutation matrix, then item 4
+ * added the harness block underneath, and from that commit a plain `import { Scene } from 'three'`
+ * in `src/ui/` was accepted — the resolved config for a `ui/` file listed only the harness
+ * patterns. Both spellings of both boundaries were green there.
+ *
+ * So the subset block re-states the superset's rules alongside its own. Nothing in the test suite
+ * or the type-checker can see this arrangement break — the only instrument is a mutation matrix
+ * that plants a violation and scores the result **by ruleId** (an unused-import error scores
+ * identically to a boundary violation otherwise). DEC-763's evidence comment records the 23-row
+ * run; its load-bearing rows are the four asserting the harness boundary still fires *inside*
+ * `ui/` and `app/`, and `npx eslint --print-config src/ui/<file>` is the one-line check that the
+ * resolved rule still lists all four pattern groups.
+ */
+
+/** The harness boundary, static spelling. `src/**` minus `bench/` and `harness/` themselves. */
+const HARNESS_IMPORT_PATTERNS = [
+  {
+    group: ['**/bench/*', '**/harness/*'],
+    allowTypeImports: true,
+    message:
+      'The product entry must not import the harness (review §3.6 phase 3, item 4). A lazy() is not a boundary — rollup follows dynamic imports, so this would put the bench back in the product build. Invert it: take what you need as a prop, the way SceneView takes bench.renderRunner.',
+  },
+  {
+    /*
+     * `scene/selfCheck.ts` is the one harness module that does not live in a harness directory —
+     * it sits in `src/scene/` beside the field it inspects, so the pattern above walks straight
+     * past it. Found by mutation: an injected `import { runSelfCheck } from './selfCheck'` in
+     * `starScene.ts` was not caught by the rule as first written, which is the exact 993-line
+     * regression item 4 removed.
+     *
+     * `selfCheck.url` and `selfCheck.register` are deliberately *not* matched. Both exist to be
+     * imported from the product side — the first is the free URL test, the second is the seam the
+     * harness registers through — and both are a few lines that reach nothing.
+     */
+    group: ['**/selfCheck', './selfCheck'],
+    allowTypeImports: true,
+    message:
+      'The product entry must not import scene/selfCheck (review §3.6 phase 3, item 4) — 993 lines of GPU read-back that only ?selfcheck=1 can reach, and a dynamic import() still emits them from this entry. Go through scene/selfCheck.register instead; the harness entry registers the loader.',
+  },
+]
+
+/** The harness boundary, dynamic spelling. Literal specifiers only; see the block's header. */
+const HARNESS_SYNTAX_RULES = [
+  {
+    selector: String.raw`ImportExpression[source.value=/(^|\/)(bench|harness)\//]`,
+    message:
+      'The product entry must not import() the harness (review §3.6 phase 3, item 4). Rollup follows dynamic imports, so this emits the bench from the product entry — the exact thing lazy() failed to prevent. Invert it: take the runner as a prop, the way SceneView takes bench.renderRunner.',
+  },
+  {
+    selector: String.raw`ImportExpression[source.value=/(^|\/)selfCheck$/]`,
+    message:
+      'The product entry must not import() scene/selfCheck (review §3.6 phase 3, item 4). This is the exact line the item removed from starScene: a dynamic import still puts 993 lines of GPU read-back in the product build. Go through scene/selfCheck.register; the harness entry registers the loader.',
+  },
+]
+
+/** The three.js boundary, static spelling. `src/ui/` and `src/app/` only. */
+const THREE_IMPORT_PATTERNS = [
+  {
+    // `three` itself, and its subpath entries (`three/examples/...`, `three/src/...`).
+    group: ['three', 'three/*'],
+    message:
+      'ui/ and app/ must not import three (review §3.6). Reach the scene through the store or the FrameStats snapshot.',
+  },
+  {
+    group: ['@react-three/*'],
+    message:
+      'ui/ and app/ must not import react-three-fiber (review §3.6). The render loop is not a React tree.',
+  },
+]
+
+/**
+ * The three.js boundary, dynamic spelling (DEC-761 F3).
+ *
+ * One selector for both groups. The regex is anchored and requires `three` to be followed by a
+ * `/` or by end-of-string, so it does not match a *local* module whose name merely starts with
+ * those five letters — `import('./three-column-layout')`. That is the load-bearing negative
+ * control the static rule already had, carried over to this one.
+ */
+const THREE_SYNTAX_RULES = [
+  {
+    selector: String.raw`ImportExpression[source.value=/^(three(\/.*)?|@react-three\/.*)$/]`,
+    message:
+      'ui/ and app/ must not import() three or react-three-fiber (review §3.6). A dynamic import is still an import edge: it keeps three out of the first chunk, not out of this layer. Reach the scene through the store or the FrameStats snapshot.',
+  },
+]
+
 export default tseslint.config(
   {
     // `bench/windows/results` is generated: the measurement kit writes its JSON, its summaries and
@@ -51,44 +150,6 @@ export default tseslint.config(
   },
   {
     /*
-     * The shell does not know there is a GPU (review §3.6, W4.2 item 6).
-     *
-     * `ui/` is PRD section 6's React chrome and `app/` is the shell that composes it; the renderer
-     * reaches them through the store and a polled stats snapshot, never the other way round. Once
-     * the frame loop moves out of react-three-fiber the only thing holding that boundary is this
-     * rule, so it lands *before* the loop moves rather than after: the window in which the boundary
-     * is most likely to be breached is the one where three-dependent code is being carried between
-     * files.
-     *
-     * Type-only imports are restricted too, and deliberately — `allowTypeImports` is left off. An
-     * `import type { WebGLRenderer }` erases at runtime and costs no bytes, but it still writes a
-     * panel's signature in terms of the renderer, which is the coupling this forbids. The scene
-     * hands plain data across the seam.
-     */
-    files: ['src/ui/**/*.{ts,tsx}', 'src/app/**/*.{ts,tsx}'],
-    rules: {
-      '@typescript-eslint/no-restricted-imports': [
-        'error',
-        {
-          patterns: [
-            {
-              // `three` itself, and its subpath entries (`three/examples/...`, `three/src/...`).
-              group: ['three', 'three/*'],
-              message:
-                'ui/ and app/ must not import three (review §3.6). Reach the scene through the store or the FrameStats snapshot.',
-            },
-            {
-              group: ['@react-three/*'],
-              message:
-                'ui/ and app/ must not import react-three-fiber (review §3.6). The render loop is not a React tree.',
-            },
-          ],
-        },
-      ],
-    },
-  },
-  {
-    /*
      * The product does not ship its instruments (review §3.6 phase 3, item 4).
      *
      * The bench, the GPU self-check and the `?probe=1` scene have their own Vite entry,
@@ -103,88 +164,66 @@ export default tseslint.config(
      * being written — rather than only in a `dist/` diff nobody runs per commit. `src/bench/` and
      * `src/harness/` may import the scene freely; the arrow only points one way.
      *
-     * `allowTypeImports` is on here, unlike the three.js rule above. The reasons differ: that rule
+     * **`src/**` with an ignore list, not a list of directories (DEC-761 F2).** This was written
+     * as an allow list of the eight paths that existed when item 4 landed, which left
+     * `src/camera/ router/ data/ search/ filters/ plane-detail/` — all six reachable from the
+     * product entry — outside the boundary entirely. A planted `void import('../bench/BenchRunner')`
+     * in `camera/attachRig.ts` linted clean and put BenchRunner back in the product graph. The
+     * budget check did not catch it either: `check-budget.mjs` measures, and the first-frame row had
+     * roughly 650 KB of headroom under its 1 MB ceiling, so it printed `[ok]` with the bench in it.
+     * Default-deny fixes the class rather than the instance — a directory added next week is
+     * covered on creation, which an allow list can never be.
+     *
+     * `allowTypeImports` is on here, unlike the three.js rule below. The reasons differ: that rule
      * forbids `ui/` from *describing itself* in renderer terms, which a type import still does.
      * This one is about emitted bytes, and `import type { BenchRunnerProps }` emits none —
      * `SceneView` takes the runner as a prop and needs to name its shape without naming its module.
      * That is the inversion item 4 asked for, not a hole in it.
+     *
+     * Literal specifiers only — a computed `import(someVariable)` is invisible to any lint rule.
+     * The build manifest is the backstop there: `scripts/check-budget.mjs` reads which files each
+     * entry can reach, so a specifier this cannot parse still shows up as harness bytes landing
+     * back on the product's budget. It reports rather than gates, which is why the lint rule is
+     * the boundary and the budget row is the second opinion.
      */
-    files: [
-      'src/main.tsx',
-      'src/App.tsx',
-      'src/app/**/*.{ts,tsx}',
-      'src/ui/**/*.{ts,tsx}',
-      'src/scene/**/*.{ts,tsx}',
-      'src/labels/**/*.{ts,tsx}',
-      'src/store/**/*.{ts,tsx}',
-      'src/navigation/**/*.{ts,tsx}',
-    ],
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/bench/**', 'src/harness/**'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': ['error', { patterns: HARNESS_IMPORT_PATTERNS }],
+      'no-restricted-syntax': ['error', ...HARNESS_SYNTAX_RULES],
+    },
+  },
+  {
+    /*
+     * The shell does not know there is a GPU (review §3.6, W4.2 item 6).
+     *
+     * `ui/` is PRD section 6's React chrome and `app/` is the shell that composes it; the renderer
+     * reaches them through the store and a polled stats snapshot, never the other way round. Once
+     * the frame loop moves out of react-three-fiber the only thing holding that boundary is this
+     * rule, so it lands *before* the loop moves rather than after: the window in which the boundary
+     * is most likely to be breached is the one where three-dependent code is being carried between
+     * files.
+     *
+     * Type-only imports are restricted too, and deliberately — `allowTypeImports` is left off. An
+     * `import type { WebGLRenderer }` erases at runtime and costs no bytes, but it still writes a
+     * panel's signature in terms of the renderer, which is the coupling this forbids. The scene
+     * hands plain data across the seam.
+     *
+     * **This block must stay below the harness block and must re-state its rules.** `src/ui/` and
+     * `src/app/` match both, and flat config resolves a doubly-configured rule by replacement, not
+     * by merge — so whichever block is second is the only one that exists for these files. Written
+     * as two independent blocks, this one lost and the three.js boundary was silently absent from
+     * `ui/` and `app/` (DEC-761 F3). Spreading both arrays here is what keeps the two boundaries
+     * additive. If you split them again, both spellings of this boundary go quiet with no error
+     * anywhere — check `eslint --print-config` on a `ui/` file, not the exit code.
+     */
+    files: ['src/ui/**/*.{ts,tsx}', 'src/app/**/*.{ts,tsx}'],
     rules: {
       '@typescript-eslint/no-restricted-imports': [
         'error',
-        {
-          patterns: [
-            {
-              group: ['**/bench/*', '**/harness/*'],
-              allowTypeImports: true,
-              message:
-                'The product entry must not import the harness (review §3.6 phase 3, item 4). A lazy() is not a boundary — rollup follows dynamic imports, so this would put the bench back in the product build. Invert it: take what you need as a prop, the way SceneView takes bench.renderRunner.',
-            },
-            {
-              /*
-               * `scene/selfCheck.ts` is the one harness module that does not live in a harness
-               * directory — it sits in `src/scene/` beside the field it inspects, so the two
-               * patterns above walk straight past it. Found by mutation: an injected
-               * `import { runSelfCheck } from './selfCheck'` in `starScene.ts` was not caught by
-               * the rule as first written, which is the exact 993-line regression item 4 removed.
-               *
-               * `selfCheck.url` and `selfCheck.register` are deliberately *not* matched. Both exist
-               * to be imported from the product side — the first is the free URL test, the second
-               * is the seam the harness registers through — and both are a few lines that reach
-               * nothing.
-               */
-              group: ['**/selfCheck', './selfCheck'],
-              allowTypeImports: true,
-              message:
-                'The product entry must not import scene/selfCheck (review §3.6 phase 3, item 4) — 993 lines of GPU read-back that only ?selfcheck=1 can reach, and a dynamic import() still emits them from this entry. Go through scene/selfCheck.register instead; the harness entry registers the loader.',
-            },
-          ],
-        },
+        { patterns: [...HARNESS_IMPORT_PATTERNS, ...THREE_IMPORT_PATTERNS] },
       ],
-      /*
-       * The same boundary, for `import()`.
-       *
-       * `no-restricted-imports` only sees `ImportDeclaration`. It does not see a dynamic
-       * `import()` at all — which makes it, on its own, blind to precisely the regression item 4
-       * fixed. The code this leg replaced was `void import('./selfCheck')` inside `starScene`, and
-       * a mutation test put it back: the rule above stayed green while the 993-line chunk returned
-       * to the product entry. `lazy(() => import('../bench/BenchRunner'))` in `EternitiesScene`
-       * was the same shape.
-       *
-       * That is worth stating plainly, because the intuition runs the other way: a dynamic import
-       * *feels* like the safe kind. For a first-chunk budget it is — that is review §5.4 B1, and it
-       * worked. For an entry boundary it is not, because rollup follows `dynamicImports` like any
-       * other edge and emits the chunk from whichever entry can reach it. The two rules together
-       * cover both spellings; neither covers both alone.
-       *
-       * Literal specifiers only — a computed `import(someVariable)` is invisible to any lint rule.
-       * The build manifest is the backstop there: `scripts/check-budget.mjs` reads which files each
-       * entry can reach, so a specifier this cannot parse still shows up as harness bytes landing
-       * back on the product's budget.
-       */
-      'no-restricted-syntax': [
-        'error',
-        {
-          selector: String.raw`ImportExpression[source.value=/(^|\/)(bench|harness)\//]`,
-          message:
-            'The product entry must not import() the harness (review §3.6 phase 3, item 4). Rollup follows dynamic imports, so this emits the bench from the product entry — the exact thing lazy() failed to prevent. Invert it: take the runner as a prop, the way SceneView takes bench.renderRunner.',
-        },
-        {
-          selector: String.raw`ImportExpression[source.value=/(^|\/)selfCheck$/]`,
-          message:
-            'The product entry must not import() scene/selfCheck (review §3.6 phase 3, item 4). This is the exact line the item removed from starScene: a dynamic import still puts 993 lines of GPU read-back in the product build. Go through scene/selfCheck.register; the harness entry registers the loader.',
-        },
-      ],
+      'no-restricted-syntax': ['error', ...HARNESS_SYNTAX_RULES, ...THREE_SYNTAX_RULES],
     },
   },
   {
