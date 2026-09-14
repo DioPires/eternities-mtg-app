@@ -302,6 +302,42 @@ describe('collision priority (PRD 5.3.10)', () => {
     expect(faded.length).toBeGreaterThan(0)
     expect(out[0]!.opacity).toBe(1)
   })
+
+  it('spends its whole shift budget, not just the first shift (PRD 5.3.10)', () => {
+    // The budget is `MAX_SHIFTS` shifts, and this is the row that makes it mean something. Four
+    // identical labels on one point resolve in a stack: the fourth has to clear the first, land on
+    // the second, clear that, land on the third, and clear that — three shifts, exactly the
+    // budget. It is only reachable if a shift actually moves the box: a push computed to the
+    // separating distance lands on `overlaps`' strict `<` and the next push is a float residual
+    // wide, which leaves every label with one effective shift and fades this fourth one.
+    //
+    // Its control is the test above, on the same helper with six: past the budget the label still
+    // fades, so this is not asserting that collisions stopped happening.
+    const items: LabelCandidate[] = Array.from({ length: 4 }, (_, i) => ({
+      ...base,
+      key: `plane-${i}`,
+      text: 'A Very Long Plane Name Indeed',
+      priority: 100 - i,
+      x: 600,
+      y: 600,
+    }))
+    const out: LabelPlacement[] = []
+    const count = layoutLabels(items, out, VIEWPORT)
+    expect(count).toBe(4)
+    for (const placement of out.slice(0, count)) expect(placement.opacity).toBe(1)
+
+    // And they are clear of each other, not merely visible — a shift that reports success while
+    // still overlapping would satisfy the line above on its own.
+    const placed = out.slice(0, count)
+    for (let i = 0; i < placed.length; i += 1) {
+      for (let j = i + 1; j < placed.length; j += 1) {
+        const a = placed[i]!
+        const b = placed[j]!
+        const halfHeight = (a.fontPx * 1.3) / 2 + (b.fontPx * 1.3) / 2
+        expect(Math.abs(a.y - b.y)).toBeGreaterThanOrEqual(halfHeight + LABEL_GAP_PX)
+      }
+    }
+  })
 })
 
 describe('occlusion and level (PRD 5.3.11, 5.4.15)', () => {
