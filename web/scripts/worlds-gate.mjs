@@ -179,14 +179,31 @@ function findChrome() {
 
 const probeState = (page) => page.evaluate(() => window.__eternitiesProbe?.state?.() ?? null)
 
-/** The raw worlds payload, or `undefined`. Read raw: `readWorldsProbe` owns every judgement of it. */
-const rawWorlds = (page) =>
-  page.evaluate(() => {
+/**
+ * The raw worlds payload for `slug`, or `undefined`. Read raw: `readWorldsProbe` owns every
+ * judgement of it.
+ *
+ * **`slug` is required wherever the caller has one, and this is the whole of DEC-785's fix.** The
+ * bare `worlds()` returns the surface with the smallest `radii` — the world the camera is nearest
+ * in units of *its own* radius, which is systematically the largest world in the neighbourhood, not
+ * the focused one. Measured over the 45-world roster before the fix: 42 mismatched at the driven
+ * pose, so a driver calling the bare seam files one world's cells under another world's name and
+ * only `dominaria` happens to agree, which is what makes a spot check look fine.
+ *
+ * `worlds(slug)` is additive and the no-arg path is byte-identical, so an *unchanged* driver keeps
+ * reporting those ~42 setup failures against the fixed build. That is why this argument exists and
+ * why it is threaded down from `visitWorld`, which already knows the slug.
+ *
+ * Omit it only where the reading is session-global (`pool`, `stream`, `seams`) and no world is in
+ * view — see the baseline and seam-evidence reads, which say so at their call sites.
+ */
+const rawWorlds = (page, slug = null) =>
+  page.evaluate((s) => {
     const probe = window.__eternitiesProbe
     if (probe === undefined || typeof probe.worlds !== 'function') return { missing: true }
-    const payload = probe.worlds()
+    const payload = s === null ? probe.worlds() : probe.worlds(s)
     return payload === undefined ? { missing: true } : { missing: false, payload }
-  })
+  }, slug)
 
 /**
  * PRD 5.3.23's cheapest input, and the reason every long loop here carries one.
@@ -306,32 +323,42 @@ const canvasCentre = (page) =>
  *
  * The wheel's sign is not assumed: the first notch is a probe of which way `radii` moved.
  */
-async function driveToRadii(page, target, { maxNotches = 60 } = {}) {
+async function driveToRadii(page, target, { slug = null, maxNotches = 60 } = {}) {
   const centre = await canvasCentre(page)
   await page.mouse.move(centre.x, centre.y)
   for (let i = 0; i < maxNotches; i += 1) {
-    const before = await poseOf(page)
+    const before = await poseOf(page, slug)
     if (before === null) return null
     if (Math.abs(before.radii - target) <= RADII_TOLERANCE) return before.radii
     await page.mouse.wheel({ deltaY: before.radii > target ? -120 : 120 })
     await sleep(400)
-    const after = await poseOf(page)
+    const after = await poseOf(page, slug)
     if (after === null) return null
     // A notch that did not move the pose at all means the rig is at a clamp, not that the loop
     // needs more of them. Stop and let the caller fail the assertion with the real number.
     if (Math.abs(after.radii - before.radii) < 1e-4) return after.radii
   }
-  const final = await poseOf(page)
+  const final = await poseOf(page, slug)
   return final?.radii ?? null
 }
 
-const poseOf = (page) =>
-  page.evaluate(() => {
-    const payload = window.__eternitiesProbe?.worlds?.()
+/**
+ * The pose of `slug`, not of whichever world the camera happens to be nearest.
+ *
+ * **The slug is load-bearing here in a way it is not elsewhere: without it the drive targets the
+ * wrong world's radii.** `driveToRadii` steers until this reports 2.2, so a bare read makes the rig
+ * stop when the *neighbour* is at 2.2 — and every threshold-dependent number is then taken at an
+ * unnamed pose on the focused world. The misattribution and the mis-pose are one defect, but the
+ * second survives any amount of checking the first.
+ */
+const poseOf = (page, slug = null) =>
+  page.evaluate((s) => {
+    const probe = window.__eternitiesProbe
+    const payload = s === null ? probe?.worlds?.() : probe?.worlds?.(s)
     return payload === undefined || payload === null
       ? null
       : { slug: payload.planeSlug, radii: payload.radii, cells: payload.cells.length }
-  })
+  }, slug)
 
 /** Fly to a plane through the product's own handler, then wait for the rig and the sheet. */
 async function flyToPlane(page, slug) {
@@ -352,13 +379,21 @@ async function flyToPlane(page, slug) {
  * "the probe is not installed" into "the criterion failed" lets a page with no worlds on it score a
  * green matrix, which is the `verify-browser --dataset all` shape of failure.
  */
-async function readProbe(page) {
-  const raw = await rawWorlds(page)
+async function readProbe(page, slug = null) {
+  const raw = await rawWorlds(page, slug)
   if (raw.missing) {
     return {
       ok: false,
       reason: 'absent',
-      detail: 'window.__eternitiesProbe.worlds() returned undefined — no world is composed on this page',
+      // The two spellings are different facts and the detail says which. Asked for a slug,
+      // `undefined` means *that world* is not composed — `blind-eternities` is the live case, and a
+      // world silently dropped from the roster would read the same way. Asked bare, it means no
+      // world is composed on the page at all.
+      detail:
+        slug === null
+          ? 'window.__eternitiesProbe.worlds() returned undefined — no world is composed on this page'
+          : `window.__eternitiesProbe.worlds(${JSON.stringify(slug)}) returned undefined — ` +
+            `${slug} is not a composed world on this page`,
     }
   }
   return readWorldsProbe(raw.payload, { expectedViewport: { width: VIEWPORT.width, height: VIEWPORT.height } })
@@ -372,20 +407,30 @@ async function readProbe(page) {
  * but the pose is checked here. W2 pairs a per-cell `shade` from the payload against a colour
  * sampled from the capture, so the two have to be readings of the same moment.
  */
-async function captureFrame(page, dir, name) {
+async function captureFrame(page, dir, name, slug = null) {
   await settleFrames(page, 2)
-  const before = await readProbe(page)
+  const before = await readProbe(page, slug)
   if (!before.ok) return { ok: false, ...before }
+  const focusBefore = (await probeState(page))?.planeSlug ?? null
   const png = await page.screenshot({ path: dir === null ? undefined : resolve(dir, `${name}.png`) })
-  const after = await readProbe(page)
+  const after = await readProbe(page, slug)
   if (!after.ok) return { ok: false, ...after }
-  if (Math.abs(after.probe.radii - before.probe.radii) > 1e-3 || after.probe.planeSlug !== before.probe.planeSlug) {
+  const focusAfter = (await probeState(page))?.planeSlug ?? null
+
+  // **The subject half of this guard reads `state()`, not the payload, and that is a consequence of
+  // threading the slug rather than a preference.** Once the payload is requested *by* slug it
+  // reports that slug or nothing, so `before.probe.planeSlug !== after.probe.planeSlug` can no
+  // longer fail — it became true by construction the moment the fix landed. The guard exists to
+  // catch the rig drifting off the world mid-capture (attract mode, an unfinished flight, a stray
+  // input), and after DEC-785 only the focus seam still carries that signal. Left on the payload it
+  // would read as a maintained check while testing nothing.
+  if (Math.abs(after.probe.radii - before.probe.radii) > 1e-3 || focusAfter !== focusBefore) {
     return {
       ok: false,
       reason: 'moved',
       detail:
-        `the rig moved across the capture: ${before.probe.planeSlug} at ${before.probe.radii.toFixed(3)} ` +
-        `before, ${after.probe.planeSlug} at ${after.probe.radii.toFixed(3)} after`,
+        `the rig moved across the capture: focus ${focusBefore} at ${before.probe.radii.toFixed(3)} ` +
+        `radii before, ${focusAfter} at ${after.probe.radii.toFixed(3)} after`,
     }
   }
   return { ok: true, probe: after.probe, image: decodePng(Buffer.from(png)), checked: after.checked }
@@ -471,25 +516,29 @@ async function visitWorld(page, world, { dir, captures, pose = SURFACE_RADII }) 
   // W1 is specified "at the plane-level settle", so the settle is read on every visit whatever the
   // row's measurement pose is, and both readings are returned. The row decides which one W1 scores
   // against: `w1-far` is the control that moves it, and only that row moves it.
-  const atSettle = await readProbe(page)
+  const atSettle = await readProbe(page, slug)
   if (!atSettle.ok) return { slug, ok: false, detail: `${atSettle.reason}: ${atSettle.detail}` }
 
-  // **The payload is not necessarily about the world the gate flew to, and every per-world reading
-  // is misattributed if this is not checked.** `attachWorlds.probeSource()` returns the surface with
-  // the smallest `radii` — the world the camera is nearest in units of *its own* radius — which is
-  // not the focused plane whenever a small world is focused next to a larger neighbour. Flying to
-  // `segovia` (1 card) lands a payload describing `innistrad`, with `state().planeSlug` still
-  // reading `segovia`, so the two seams disagree and only the worlds one knows what was measured.
-  // A gate that trusted `focusPlane` would file innistrad's cells under segovia's name and its
-  // one-card row would be measuring a 400-card world.
+  // **This asserts the seam honours its own argument, and it is deliberately kept even though it
+  // should now be unfailable.** Before DEC-785 the payload described whichever world the camera was
+  // nearest in units of its own radius, so flying to `segovia` (1 card) landed a payload describing
+  // `innistrad` while `state().planeSlug` still read `segovia` — 42 of 45 worlds misattributed, and
+  // this check was the measurement that found it. Asking by slug removes the defect at the source,
+  // which also turns this line into a restatement of `worlds(slug)`'s contract rather than a
+  // discriminating reading of the renderer.
+  //
+  // It stays because it is one comparison against a contract a future refactor of the seam could
+  // break silently, and because it is the assertion that would catch the argument being dropped on
+  // the way down — the failure mode DEC-785's own relay warned about, where an unchanged driver
+  // keeps calling the bare seam against a fixed build. It is no longer evidence of anything on a
+  // passing run, and the matrix must not be read as though it were.
   if (atSettle.probe.planeSlug !== slug) {
     return {
       slug,
       ok: false,
       detail:
-        `flew to ${slug}, but the worlds payload describes ${atSettle.probe.planeSlug} at ` +
-        `${atSettle.probe.radii.toFixed(3)} radii — probeSource() returns the world nearest in ` +
-        `radii, not the focused one`,
+        `asked worlds(${slug}) and the payload describes ${atSettle.probe.planeSlug} at ` +
+        `${atSettle.probe.radii.toFixed(3)} radii — the seam did not honour its argument`,
     }
   }
   const settleRadii = atSettle.probe.radii
@@ -502,7 +551,7 @@ async function visitWorld(page, world, { dir, captures, pose = SURFACE_RADII }) 
   // the baseline pose (a control that never left the baseline) and fail the second outright, since
   // a one-card world's radius is small enough that the rig's own near clamp never reaches 2.2.
   if (pose !== 'settle') {
-    const reached = await driveToRadii(page, pose)
+    const reached = await driveToRadii(page, pose, { slug })
     if (reached === null || Math.abs(reached - pose) > RADII_TOLERANCE) {
       return {
         slug,
@@ -513,11 +562,13 @@ async function visitWorld(page, world, { dir, captures, pose = SURFACE_RADII }) 
   }
   await hold(page, W4_SETTLE_S)
 
-  const frame = await captureFrame(page, captures ? dir : null, `world-${slug}`)
+  const frame = await captureFrame(page, captures ? dir : null, `world-${slug}`, slug)
   if (!frame.ok) return { slug, ok: false, detail: `${frame.reason}: ${frame.detail}` }
   const { probe, image } = frame
-  // Re-checked at the measurement pose, not only at the settle: driving the camera changes every
-  // world's `radii`, so the nearest-in-radii subject can change under the drive.
+  // The settle-time reasoning applies again at the measurement pose, for the same reason and with
+  // the same force: the check is a contract restatement now, not a reading. What the drive really
+  // needed was `poseOf(page, slug)` — steering on a bare read stops the rig when the *neighbour*
+  // reaches 2.2, and no amount of checking the subject afterwards recovers the pose.
   if (probe.planeSlug !== slug) {
     return {
       slug,
@@ -538,7 +589,7 @@ async function visitWorld(page, world, { dir, captures, pose = SURFACE_RADII }) 
   const timeline = []
   const started = Date.now()
   while ((Date.now() - started) / 1000 < W4_SAMPLE_S) {
-    const now = await readProbe(page)
+    const now = await readProbe(page, slug)
     if (now.ok) timeline.push({ t: (Date.now() - started) / 1000, evictions: now.probe.pool.evictions })
     await sleep(200)
   }
@@ -885,6 +936,12 @@ async function runRow(browser, url, row, { roster, args, baselineProbe }) {
     // The seam is asserted to have *engaged* before any criterion of this row is read. A seam that
     // silently fails to parse runs the unmodified policy, its criterion passes, and the matrix
     // records a passing control — which reads as a passing gate.
+    //
+    // **Bare on purpose, and one of only two such reads left.** `seamEvidence` reads `seams` and
+    // `pool` only, both session-global, and this is taken after the tour with no world in view —
+    // there is no slug to pass that would not be a fiction. Threading one here would turn a
+    // whole-session reading into a claim about an arbitrary world and would fail outright on a page
+    // where that world is uncomposed.
     const probeNow = await readProbe(page)
     const evidence = probeNow.ok ? seamEvidence(probeNow.probe, row.seams, baselineProbe) : []
 
@@ -973,6 +1030,9 @@ async function main() {
     let baselineProbe = null
     if (selected.some((row) => typeof row.seams.layersRequested === 'number')) {
       const { page } = await openPage(browser, url, { seams: {} })
+      // Bare for the same reason as the seam-evidence read: the baseline exists to carry
+      // `pool.layers`, which is session-global, and it is taken on a freshly opened page that has
+      // flown to no world at all.
       const read = await readProbe(page)
       baselineProbe = read.ok ? read.probe : null
       await page.close()
