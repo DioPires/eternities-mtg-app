@@ -84,10 +84,47 @@ function streamReport(overrides: Partial<ArtStreamReport> = {}): ArtStreamReport
   }
 }
 
+/**
+ * Dominaria's radius, and a centre far from the origin on all three axes.
+ *
+ * The centre is **not** the origin and the camera offset is **not** axis-aligned, both deliberately.
+ * At the origin `|cameraPosition − centre|` equals `|cameraPosition|`, so a reader that forgot to
+ * subtract the centre would agree — which is DEC-804's defect exactly, and the fixture that hid it.
+ * A (2, 3, 6)/7 offset makes every component contribute a different amount, so dropping any one of
+ * the three moves the derived `radii` by a different, non-zero factor.
+ */
+const POSE_RADIUS = 9.978
+const POSE_CENTRE = [12, -3, 40] as const
+const POSE_DIRECTION = [2 / 7, 3 / 7, 6 / 7] as const
+
+/**
+ * The world-space pair that makes `radii == |cameraPosition − centre| / radius` hold.
+ *
+ * Derived from whatever `radii` the caller asked for rather than pinned beside it, so a test that
+ * moves the pose does not have to restate the geometry — and so a test that means to break the
+ * identity has to say so by overriding `centre`, `cameraPosition` or `radius` itself. A
+ * non-measurable `radii` (the NaN and negative rows) keeps the 2.2 geometry, so those rows fault on
+ * the one thing they are about.
+ */
+function poseFor(radii: number): Pick<WorldsProbe, 'radius' | 'centre' | 'cameraPosition'> {
+  const distance = (Number.isFinite(radii) && radii >= 0 ? radii : 2.2) * POSE_RADIUS
+  return {
+    radius: POSE_RADIUS,
+    centre: POSE_CENTRE,
+    cameraPosition: [
+      POSE_CENTRE[0] + POSE_DIRECTION[0] * distance,
+      POSE_CENTRE[1] + POSE_DIRECTION[1] * distance,
+      POSE_CENTRE[2] + POSE_DIRECTION[2] * distance,
+    ],
+  }
+}
+
 function probe(overrides: Partial<WorldsProbe> = {}): WorldsProbe {
+  const radii = overrides.radii ?? 2.2
   return {
     planeSlug: 'dominaria',
-    radii: 2.2,
+    radii,
+    ...poseFor(radii),
     viewport: { width: 1920, height: 1080 },
     cells: [cell(0), cell(1), cell(2)],
     pool: { layers: 1024, resident: 900, effectiveThresholdPx: 31.5, evictions: 12 },
@@ -101,6 +138,13 @@ function probe(overrides: Partial<WorldsProbe> = {}): WorldsProbe {
     },
     ...overrides,
   }
+}
+
+/** A payload with one key *deleted* — not set to `undefined`, which is a different state. */
+function without(payload: WorldsProbe, key: keyof WorldsProbe): unknown {
+  const copy: Record<string, unknown> = { ...payload }
+  delete copy[key]
+  return copy
 }
 
 /** A solid image, so any pixel difference in a test is one the test put there. */
@@ -277,6 +321,70 @@ describe('probe.stream — required, and null is not a zeroed report', () => {
   })
 })
 
+describe('probe.radii — audited against its own operands, not trusted (DEC-804)', () => {
+  /** Move the centre `by` scene units along one axis, leaving every other field alone. */
+  const centreOffBy = (by: number): WorldsProbe =>
+    probe({ centre: [POSE_CENTRE[0] + by, POSE_CENTRE[1], POSE_CENTRE[2]] })
+
+  it('accepts a payload whose three operands reproduce the radii it published', () => {
+    const result = readWorldsProbe(probe())
+    expect(result.ok).toBe(true)
+  })
+
+  it('accepts the degenerate world §1.6 makes legal — radius 0 and radii 0', () => {
+    // The positive half of the zero-radius mutant. Without this row the reader could satisfy that
+    // mutant by rejecting *every* zero-radius world, and §1.6's swatch-only world would stop being
+    // measurable — a guard that passes its negative control by refusing the legal case too.
+    const result = readWorldsProbe(probe({ radii: 0, radius: 0 }))
+    expect(result.ok).toBe(true)
+  })
+
+  /**
+   * The tolerance has to bind, and a tolerance is only checked by a pair.
+   *
+   * `POSE_IDENTITY_TOLERANCE` is relative (1e-6 of 2.2 radii ≈ 2.2e-6 radii ≈ 2.2e-5 scene units at
+   * dominaria's radius). One row either side of that: an offset comfortably inside it passes, an
+   * offset comfortably outside it fails. Asserting only the failing row would leave a reader that
+   * rejected *any* nonzero difference — float noise included — indistinguishable from a correct one,
+   * and it would go red on the first live payload.
+   */
+  it.each([
+    { what: 'float noise, well inside the tolerance', by: 1e-9, ok: true },
+    { what: 'a drift a thousand times the tolerance', by: 1e-2, ok: false },
+  ])('$what: ok=$ok', ({ by, ok }) => {
+    expect(readWorldsProbe(centreOffBy(by)).ok).toBe(ok)
+  })
+
+  it('catches the drift DEC-804 shipped, at the magnitude it actually had', () => {
+    // Leg G measured `radii` at 2.9203 where the pose was 3.2 — the centre was a stale snapshot of
+    // `plane.home` while the camera had flown on. Reconstructed here as the payload that defect
+    // would have published: a well-formed centre, the correct camera, and a `radii` belonging to
+    // neither. The point of the row is the *size*: 0.28 radii is a number a reviewer reads as a
+    // plausible pose, which is why it survived a green suite for a whole phase.
+    const drifted = probe({ radii: 2.9203 })
+    const result = readWorldsProbe({ ...drifted, ...poseFor(3.2), radii: 2.9203 })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.faults.join('\n')).toMatch(/the payload says 2\.9203 but its own operands give 3\.2/)
+  })
+
+  it('subtracts the centre — a camera measured from the origin is not a pose', () => {
+    // The one mistake the check exists to be immune to, and the one a fixture centred on the origin
+    // would license. With the centre at the origin the two readings coincide, so this fixture is
+    // the whole reason `POSE_CENTRE` is (12, −3, 40).
+    const result = readWorldsProbe(probe({ centre: [0, 0, 0] }))
+    expect(result.ok).toBe(false)
+  })
+
+  it('counts the pose among its checks rather than adding it for free', () => {
+    // `checked` is the audit's denominator (DEC-802). A check that does not increment it is a check
+    // no report can show was run.
+    const full = readWorldsProbe(probe())
+    const noPose = readWorldsProbe(without(probe(), 'centre'))
+    expect(full.checked).toBeGreaterThan(noPose.checked)
+  })
+})
+
 /**
  * One row per field the payload publishes.
  *
@@ -296,6 +404,52 @@ const MUTANTS: ReadonlyArray<{
   },
   { what: 'radii NaN', payload: probe({ radii: Number.NaN }), fault: /radii/ },
   { what: 'radii negative', payload: probe({ radii: -1 }), fault: /radii/ },
+  {
+    // **The row DEC-804 exists for.** Every field is well-formed and every value is plausible; the
+    // only thing wrong is that they disagree with each other. Nothing else in this table catches it,
+    // because nothing else in the table compares two fields.
+    what: 'radii that its own operands contradict — a centre the camera is not looking at',
+    payload: probe({ centre: [0, 0, 0] }),
+    fault: /the world is not where the camera is looking/,
+  },
+  {
+    what: 'centre absent — the renderer stopped publishing the pose',
+    payload: without(probe(), 'centre'),
+    fault: /centre: the key is absent/,
+  },
+  {
+    what: 'cameraPosition absent — the renderer stopped publishing the pose',
+    payload: without(probe(), 'cameraPosition'),
+    fault: /cameraPosition: the key is absent/,
+  },
+  {
+    what: 'radius absent — the renderer stopped publishing radii’s divisor',
+    payload: without(probe(), 'radius'),
+    fault: /radius: the key is absent/,
+  },
+  {
+    what: 'centre[] of the wrong arity',
+    payload: probe({ centre: [1, 2] as unknown as WorldsProbe['centre'] }),
+    fault: /centre: expected \[x, y, z\]/,
+  },
+  {
+    what: 'cameraPosition[] holding a NaN',
+    payload: probe({ cameraPosition: [1, Number.NaN, 3] }),
+    fault: /cameraPosition\[1\]/,
+  },
+  {
+    what: 'radius negative',
+    payload: probe({ radius: -1 }),
+    fault: /probe\.radius: expected a finite number/,
+  },
+  {
+    // §1.6's zero-layer world is legal and `worldsProbe.ts` reports `radii` 0 rather than dividing.
+    // The degenerate arm needs its own row: the identity would read 0/0 and agree with anything, so
+    // a reader that simply skipped it would pass this fixture while forgiving any number at all.
+    what: 'a zero-radius world reporting a non-zero radii',
+    payload: probe({ radius: 0 }),
+    fault: /on a world of radius 0/,
+  },
   {
     what: 'viewport missing',
     payload: probe({ viewport: undefined as unknown as WorldsProbe['viewport'] }),

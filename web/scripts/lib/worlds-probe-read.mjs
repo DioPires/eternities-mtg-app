@@ -147,6 +147,7 @@ export function readWorldsProbe(raw, { expectedViewport = null } = {}) {
     }
   }
 
+  readPose(raw, c)
   readPool(raw.pool, c)
   readStream(raw, c)
   readSeams(raw.seams, c)
@@ -167,6 +168,80 @@ function malformed(c) {
     checked: c.checked,
     faults: c.faults,
   }
+}
+
+/** The relative agreement `radii` must hold with its own operands. Float, not exact. */
+const POSE_IDENTITY_TOLERANCE = 1e-6
+
+/**
+ * §3.1's pose, **audited rather than read** — `radii == |cameraPosition − centre| / radius`.
+ *
+ * > **Normative, and it is DEC-804's whole remedy on this side of the seam.** Until that leg the
+ * > payload published `radii` and neither of its operands, so the number was a claim the gate could
+ * > only take on trust: leg G watched `radii` run 2.9203 → 2.1687 on a rig whose `cameraDistance`
+ * > was constant to four decimals, and reaching that conclusion took instrumenting the product from
+ * > outside, because nothing inside the payload disagreed with anything else inside the payload.
+ * > A criterion specified "at 2.2 radii" is only as good as `radii`, so `radii` now has to answer
+ * > to something. [[a-constant-cannot-testify-to-its-own-provenance]].
+ *
+ * **The check is not a tautology, and the reason is the frames.** `WorldSurface` measures in the
+ * world's own local frame — centre at the origin, the camera counter-rotated onto it — and `radii`
+ * is that local camera's length. `centre` and `cameraPosition` are the *untransformed* world-space
+ * pair. Agreement therefore says the local-frame substitution was a rigid motion, which is the one
+ * assumption it rests on, and it is exactly the assumption that failed in DEC-804: a centre that
+ * has stopped tracking the multiverse shows up here as a world sitting where the camera is not
+ * looking, on a payload whose every individual field is well-formed.
+ *
+ * Presence is required, for `readStream`'s reason (DEC-782): `buildWorldsProbe` writes all three
+ * unconditionally from non-optional source fields, so a payload missing one is a renderer that
+ * stopped publishing, not an old capture — and skipping the identity on a missing operand would
+ * retire the audit silently, in the one direction that matters.
+ */
+function readPose(raw, c) {
+  const triple = (name) => {
+    if (!c.check(name in raw, `probe.${name}: the key is absent — the renderer stopped publishing it`)) {
+      return null
+    }
+    const value = raw[name]
+    if (!c.check(Array.isArray(value) && value.length === 3, `probe.${name}: expected [x, y, z], got ${show(value)}`)) {
+      return null
+    }
+    let ok = true
+    for (let i = 0; i < 3; i += 1) ok = c.number(value[i], `probe.${name}[${i}]`) && ok
+    return ok ? value : null
+  }
+
+  const centre = triple('centre')
+  const cameraPosition = triple('cameraPosition')
+  const hasRadius =
+    c.check('radius' in raw, 'probe.radius: the key is absent — the renderer stopped publishing it') &&
+    c.number(raw.radius, 'probe.radius', { min: 0 })
+  if (centre === null || cameraPosition === null || !hasRadius) return
+  if (typeof raw.radii !== 'number' || !Number.isFinite(raw.radii)) return
+
+  const distance = Math.hypot(
+    cameraPosition[0] - centre[0],
+    cameraPosition[1] - centre[1],
+    cameraPosition[2] - centre[2],
+  )
+  // `worldsProbe.ts` reports `radii` as 0 rather than dividing when the radius is 0, and §1.6 makes
+  // a zero-radius world legal. Scored as its own row so the degenerate arm cannot pass by being
+  // skipped — the identity below would read 0/0 and quietly agree with anything.
+  if (raw.radius === 0) {
+    c.check(
+      raw.radii === 0,
+      `probe.radii: ${raw.radii} on a world of radius 0 — the renderer reports 0 rather than dividing`,
+    )
+    return
+  }
+
+  const derived = distance / raw.radius
+  c.check(
+    Math.abs(derived - raw.radii) <= POSE_IDENTITY_TOLERANCE * Math.max(1, Math.abs(raw.radii)),
+    `probe.radii: the payload says ${raw.radii} but its own operands give ` +
+      `${derived} (|cameraPosition − centre| = ${distance}, radius = ${raw.radius}) — the world is ` +
+      'not where the camera is looking, so no criterion taken at a named pose is trustworthy',
+  )
 }
 
 function readPool(pool, c) {
