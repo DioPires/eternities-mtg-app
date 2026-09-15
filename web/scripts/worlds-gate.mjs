@@ -315,31 +315,72 @@ const canvasCentre = (page) =>
 /**
  * Drive the camera to `radii` and return what it actually reached.
  *
- * **§3.1 requires this rather than accepting wherever `focusPlane` settles.** The settle lands at
- * `radii ≈ 2.14`, ~3% nearer than the 2.2 the criteria name, which makes every cell ~3% taller —
- * enough to cross one bucket edge of §1.6's quantile and move the reported effective threshold.
- * A number specified "at 2.2 radii" and in fact taken at 2.14 is a number taken at a pose the spec
- * does not name, so the driver drives, and the caller asserts before it reads.
+ * **§3.1 requires this rather than accepting wherever `focusPlane` settles.** The settle is
+ * `framing.ts`'s `frame: r * 3.2` — exactly 3.2 radii on every world, since DEC-804 made the
+ * worlds-scene centre follow the rig — and 3.2 is not 2.2. A number specified "at 2.2 radii" and
+ * in fact taken at the settle is a number taken at a pose the spec does not name, so the driver
+ * drives, and the caller asserts before it reads.
  *
- * The wheel's sign is not assumed: the first notch is a probe of which way `radii` moved.
+ * **The notch is solved, not stepped, and that is forced by the arithmetic.** Zoom is
+ * multiplicative (`rig.zoomBy(exp(deltaY · k))`), so a fixed ±120 notch moves `radii` by a fixed
+ * *ratio* — about 21% on this build. `RADII_TOLERANCE` is ±0.02 at 2.2, a window of ±0.9%, so a
+ * ladder of fixed notches from 3.2 lands inside it only if the two happen to commensurate: from
+ * 3.2 the reachable poses are 2.64 and 2.18, and 2.18 clears by 0.0004. **A stepping driver is a
+ * coin flip on a constant it does not read**, and the failure is the one this leg has already paid
+ * for once — every threshold-dependent number taken at an unnamed pose.
+ *
+ * `k` is **measured, not copied from `attachRig.ts`**: one probe notch, then `deltaY =
+ * ln(target/current) / k`. Copying the constant would make the drive agree with the product by
+ * construction and go silently wrong the day someone retunes the wheel; measuring it also picks up
+ * the *sign*, which is therefore never assumed. Two refinements follow the solve, for the rig's
+ * own easing — not for the arithmetic, which is exact.
  */
-async function driveToRadii(page, target, { slug = null, maxNotches = 60 } = {}) {
+async function driveToRadii(page, target, { slug = null, probeDeltaY = 60, refinements = 3 } = {}) {
   const centre = await canvasCentre(page)
   await page.mouse.move(centre.x, centre.y)
-  for (let i = 0; i < maxNotches; i += 1) {
-    const before = await poseOf(page, slug)
-    if (before === null) return null
-    if (Math.abs(before.radii - target) <= RADII_TOLERANCE) return before.radii
-    await page.mouse.wheel({ deltaY: before.radii > target ? -120 : 120 })
-    await sleep(400)
-    const after = await poseOf(page, slug)
-    if (after === null) return null
-    // A notch that did not move the pose at all means the rig is at a clamp, not that the loop
-    // needs more of them. Stop and let the caller fail the assertion with the real number.
-    if (Math.abs(after.radii - before.radii) < 1e-4) return after.radii
+
+  const read = async () => {
+    const pose = await poseOf(page, slug)
+    return pose === null ? null : pose.radii
   }
-  const final = await poseOf(page, slug)
-  return final?.radii ?? null
+  const notch = async (deltaY) => {
+    await page.mouse.wheel({ deltaY })
+    await sleep(400)
+    return read()
+  }
+
+  let current = await read()
+  if (current === null) return null
+  if (Math.abs(current - target) <= RADII_TOLERANCE) return current
+
+  // The probe notch. Its direction is the one that takes us toward the target *if* the sign
+  // convention is the expected one; if it is not, `k` comes out negative and the solve below
+  // simply turns around. Either way the constant is read off the rig, never asserted at it.
+  let k = null
+  for (const deltaY of [current > target ? -probeDeltaY : probeDeltaY, current > target ? probeDeltaY : -probeDeltaY]) {
+    const before = current
+    const after = await notch(deltaY)
+    if (after === null) return null
+    current = after
+    if (Math.abs(current - target) <= RADII_TOLERANCE) return current
+    // A notch that does not move the pose means the rig is against a tether clamp in that
+    // direction, not that the loop needs more of them. Try the other way once, then give up and
+    // let the caller fail the assertion with the real number.
+    if (Math.abs(Math.log(after / before)) < 1e-6) continue
+    k = Math.log(after / before) / deltaY
+    break
+  }
+  if (k === null) return current
+
+  for (let i = 0; i < refinements; i += 1) {
+    const before = current
+    const after = await notch(Math.log(target / before) / k)
+    if (after === null) return null
+    current = after
+    if (Math.abs(current - target) <= RADII_TOLERANCE) return current
+    if (Math.abs(Math.log(after / before)) < 1e-6) return current
+  }
+  return current
 }
 
 /**
