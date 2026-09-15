@@ -97,7 +97,55 @@ interface ProbePool {
   /** Cumulative since page load, monotonic. The gate differences it; see §3 below. */
   evictions: number;
 }
+
+/**
+ * §1.6's stream report, published by DEC-778 and consumed here under DEC-782's ruling.
+ *
+ * **The key is REQUIRED and the gate reads the whole payload to find it.** `buildWorldsProbe` sets
+ * `stream` unconditionally from a non-optional `WorldsProbeSource` field, so on a live payload the
+ * key is always present, holding either this object or `null`. A payload missing the key is a
+ * renderer that stopped publishing — not an old capture — so the gate fails that row rather than
+ * coalescing. `readStream(raw.stream ?? null, c)` is the spelling this rules out, and it is the one
+ * that would read the regression as the legal zero-layer world.
+ */
+interface ProbeStream {
+  /** Bytes charged this session, successes and decode failures alike. Monotonic. */
+  bytesFetched: number;
+  byteBudget: number;
+  /**
+   * The budget is spent and the stream has stopped asking.
+   *
+   * **The gate READS this and never recomputes `bytesFetched >= byteBudget`** (DEC-744 B1 /
+   * DEC-746 D5): re-deriving it asserts against the gate's own model of the policy rather than the
+   * shipped one. W4 reads it before it scores, because a session that went swatch-only part-way has
+   * a legitimate reason for a low art count. W4's rows must not, however, assume the budget *binds*
+   * — at §3.1's poses it does not (DEC-780).
+   */
+  swatchOnly: boolean;
+  /** Requests handed to the queue — not the same as cells wanting art. */
+  requested: number;
+  resolved: number;
+  failed: number;
+  /** Wants refused, by cause. Exhaustion is what `?artThreshold=fixed24` exists to produce. */
+  declinedExhausted: number;
+  declinedBudget: number;
+  declinedFailedBefore: number;
+}
 ```
+
+**`null` is not a zeroed report, and no criterion may collapse them.** `null` means the world
+composed with **no `ArtStream` at all** — a zero-layer pool, which §1.6 makes a legal swatch-only
+world — so nothing was ever going to be asked for. **All-zeros** means a stream exists and has asked
+for nothing: a *live* path that is idle, which is exactly the shape DEC-772's missing `cardOf` took,
+where the stream was wired and no cell ever reached it. One zeroed report for both would report the
+never-installed case as the never-fired one, and W4 would score a broken composition as a legal
+swatch-only world.
+
+**These counters are session-GLOBAL and cumulative, not the focused world's, so no per-world
+criterion may be written over them (DEC-782 N1).** W1's 45-world tour reads `requested`
+113 → 207 → 224 → 224 → 224; at `azgol`, a world drawing 2 cells, the payload reports 224 requests,
+none of which are azgol's, and the stop-to-stop delta is 0. Differencing does not rescue it — the
+field answers a question about the session, and the gate must only ask it one.
 
 **Cells are reported for the focused plane only.** W1 flies to each world in turn — 45 on the v3
 roster after DEC-745, and read off `planes.json` rather than hardcoded — and

@@ -15,6 +15,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { DecodedPng } from '../scripts/lib/png-sample.d.mts'
+import type { ArtStreamReport } from '../src/scene/worlds/artStream'
 import type { WorldsProbe, WorldsProbeCell } from '../src/scene/worlds/worldsProbe'
 import {
   FIXED24_PX,
@@ -55,6 +56,28 @@ const SHARES = Object.freeze([
   0.05, 0.08, 0.09, 0.07, 0.08, 0.06, 0.14, 0.06, 0.08, 0.07, 0.09, 0.08, 0.05,
 ])
 
+/**
+ * A **live** stream report — one that exists and has asked for things.
+ *
+ * Every value is distinct and non-zero on purpose. A zeroed fixture would agree with a reader that
+ * had silently substituted an all-zero report for the `null` case, which is the one collapse §1.6
+ * forbids, and it would also agree with a reader that crossed two of the nine counters.
+ */
+function streamReport(overrides: Partial<ArtStreamReport> = {}): ArtStreamReport {
+  return {
+    bytesFetched: 4_194_304,
+    byteBudget: 67_108_864,
+    swatchOnly: false,
+    requested: 158,
+    resolved: 151,
+    failed: 3,
+    declinedExhausted: 27,
+    declinedBudget: 11,
+    declinedFailedBefore: 5,
+    ...overrides,
+  }
+}
+
 function probe(overrides: Partial<WorldsProbe> = {}): WorldsProbe {
   return {
     planeSlug: 'dominaria',
@@ -62,6 +85,7 @@ function probe(overrides: Partial<WorldsProbe> = {}): WorldsProbe {
     viewport: { width: 1920, height: 1080 },
     cells: [cell(0), cell(1), cell(2)],
     pool: { layers: 1024, resident: 900, effectiveThresholdPx: 31.5, evictions: 12 },
+    stream: streamReport(),
     bandShares: SHARES,
     seams: {
       swatchMean: false,
@@ -125,6 +149,119 @@ describe('readWorldsProbe — the three outcomes', () => {
     // cannot be read as one that looked at four hundred.
     expect(result.detail).toMatch(/checks failed/)
     expect(result.checked).toBeGreaterThan(0)
+  })
+})
+
+/**
+ * The nine fields `ArtStreamReport` publishes, each broken alone and caught by name.
+ *
+ * At module scope so the table-completeness guard below can count these as the stream's negative
+ * controls: they are the same kind of row as `MUTANTS`, kept separate only because they share the
+ * `stream` sub-object rather than sitting at the payload's top level.
+ */
+const STREAM_FIELDS: ReadonlyArray<{ readonly field: string; readonly bad: unknown }> = [
+  { field: 'bytesFetched', bad: -1 },
+  { field: 'byteBudget', bad: 'lots' },
+  { field: 'swatchOnly', bad: 1 },
+  { field: 'requested', bad: 1.5 },
+  { field: 'resolved', bad: Number.NaN },
+  { field: 'failed', bad: null },
+  { field: 'declinedExhausted', bad: -2 },
+  { field: 'declinedBudget', bad: undefined },
+  { field: 'declinedFailedBefore', bad: '5' },
+]
+
+/**
+ * §1.6's stream report — required, and its two empty-looking states kept apart (DEC-778, DEC-782).
+ *
+ * The ruling this block pins: the reader takes the **whole payload** and requires the `stream` key.
+ * `buildWorldsProbe` publishes it unconditionally from a non-optional source field, so a payload
+ * without it is a renderer that stopped publishing rather than an old capture — and the
+ * `readStream(raw.stream ?? null, c)` spelling would read that regression as the legal zero-layer
+ * world. `null` and all-zeros are different states: `null` is "no stream was composed", all-zeros is
+ * "a stream exists and has asked for nothing", which is the shape DEC-772's missing `cardOf` took.
+ */
+describe('probe.stream — required, and null is not a zeroed report', () => {
+  it.each(STREAM_FIELDS)('rejects a $field the renderer published wrong', ({ field, bad }) => {
+    const stream: ArtStreamReport = { ...streamReport(), [field]: bad }
+    const result = readWorldsProbe(probe({ stream }))
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.faults).toHaveLength(1)
+    expect(result.faults[0]).toContain(`probe.stream.${field}`)
+  })
+
+  it('rejects a payload that stopped publishing the key, rather than reading it as null', () => {
+    const raw = probe() as unknown as Record<string, unknown>
+    delete raw.stream
+    const result = readWorldsProbe(raw)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.faults).toHaveLength(1)
+    expect(result.faults[0]).toMatch(/probe\.stream: the key is absent/)
+    // The distinguishing assertion, not decoration: the fault must not be phrased as, or scored as,
+    // the legal no-stream world. `?? null` at the call site passes this file's other rows and fails
+    // exactly here.
+    expect(result.faults[0]).toMatch(/published as `null`/)
+  })
+
+  it('accepts a world composed with no stream at all', () => {
+    const result = readWorldsProbe(probe({ stream: null }))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.faults).toEqual([])
+    expect(result.probe.stream).toBeNull()
+  })
+
+  it('rejects a stream of pure garbage instead of scoring it clean', () => {
+    // The row that shows the field is *read*. Before this reader existed the payload validated with
+    // `ok: true` and zero faults, because `readWorldsProbe` makes only positive per-field checks and
+    // has no unknown-key rule — identical check counts are not evidence of acceptance logic.
+    const garbage = {
+      bytesFetched: 'no',
+      byteBudget: 'no',
+      swatchOnly: 'no',
+      requested: 'no',
+      resolved: 'no',
+      failed: 'no',
+      declinedExhausted: 'no',
+      declinedBudget: 'no',
+      declinedFailedBefore: 'no',
+    } as unknown as ArtStreamReport
+    const result = readWorldsProbe(probe({ stream: garbage }))
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.faults).toHaveLength(STREAM_FIELDS.length)
+  })
+
+  it('rejects a stream that is neither the report nor null', () => {
+    const result = readWorldsProbe(probe({ stream: 'idle' as unknown as ArtStreamReport }))
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.faults).toHaveLength(1)
+    expect(result.faults[0]).toMatch(/probe\.stream: expected the report object or null/)
+  })
+
+  /**
+   * The reader's structure, pinned as a difference of denominators rather than an absolute.
+   *
+   * An absolute count would have to be restated every time any unrelated field gains a check. The
+   * three payloads differ only in `stream`, so the deltas are exactly this reader's contribution:
+   * one presence check, one shape check, then nine per-field checks.
+   */
+  it('runs one presence check, one shape check and nine field checks', () => {
+    const keyless = probe() as unknown as Record<string, unknown>
+    delete keyless.stream
+
+    const absent = readWorldsProbe(keyless)
+    const composed = readWorldsProbe(probe({ stream: null }))
+    const live = readWorldsProbe(probe())
+
+    // The keyless payload has already spent the presence check, so these deltas are measured from a
+    // reader that ran one check, not from none: the full contribution on a live payload is eleven.
+    expect(composed.checked - absent.checked).toBe(1)
+    expect(live.checked - composed.checked).toBe(STREAM_FIELDS.length)
+    expect(live.checked - absent.checked).toBe(STREAM_FIELDS.length + 1)
   })
 })
 
@@ -353,7 +490,12 @@ describe('readWorldsProbe — one negative control per published field', () => {
     }
     walk(probe(), '')
 
-    const table = MUTANTS.map((m) => m.what + String(m.fault)).join('\n')
+    // Both tables count. `STREAM_FIELDS` is the stream sub-object's negative controls, and a field
+    // covered there is covered; what this guard refuses is a field covered by *neither*.
+    const table = [
+      ...MUTANTS.map((m) => m.what + String(m.fault)),
+      ...STREAM_FIELDS.map((f) => f.field),
+    ].join('\n')
     const unmentioned = [...leaves].filter((leaf) => {
       const field = leaf.split('.').pop() ?? leaf
       return !table.includes(field)

@@ -148,6 +148,7 @@ export function readWorldsProbe(raw, { expectedViewport = null } = {}) {
   }
 
   readPool(raw.pool, c)
+  readStream(raw, c)
   readSeams(raw.seams, c)
   readBandShares(raw.bandShares, c)
   readCells(raw.cells, c)
@@ -185,6 +186,66 @@ function readPool(pool, c) {
       `probe.pool: ${pool.resident} resident in a ${pool.layers}-layer pool`,
     )
   }
+}
+
+/**
+ * §1.6's stream report (DEC-778), validated on the **whole payload** rather than on `raw.stream`.
+ *
+ * > **Normative — the key is required, and `?? null` at the call site is the defect (DEC-782).**
+ * > `buildWorldsProbe` sets `stream` unconditionally from a *non-optional* `WorldsProbeSource`
+ * > field, so on any live payload the key is present and holds either the report or `null`. A
+ * > payload with no `stream` key is therefore not an old capture — it is a renderer that stopped
+ * > publishing, and `readStream(raw.stream ?? null, c)` would read that regression as the legal
+ * > zero-layer world. That is the exact collapse the field exists to prevent, so the presence check
+ * > comes first and a missing key fails the gate row.
+ *
+ * > **`null` is not a zeroed report.** `null` means no `ArtStream` was composed at all — a
+ * > zero-layer pool, which §1.6 makes a legal swatch-only world — so nothing was ever going to be
+ * > asked for. All-zeros means a stream exists and has asked for nothing, which is a live path that
+ * > is idle: the shape DEC-772's missing `cardOf` took. The two must never be collapsed.
+ *
+ * The gate **reads** `swatchOnly` and never recomputes `bytesFetched >= byteBudget` (DEC-744 B1 /
+ * DEC-746 D5): re-deriving it would assert against the gate's own model of the policy instead of
+ * the shipped one. Note also that these counters are session-**global** and cumulative, not the
+ * focused world's, so no per-world criterion may be written over them (DEC-782 N1).
+ */
+function readStream(raw, c) {
+  if (
+    !c.check(
+      'stream' in raw,
+      'probe.stream: the key is absent. `buildWorldsProbe` publishes it unconditionally, so a ' +
+        'payload without it is a renderer that stopped publishing the stream report — not a world ' +
+        'that composed without a stream, which is published as `null`.',
+    )
+  ) {
+    return
+  }
+
+  const stream = raw.stream
+  if (
+    !c.check(
+      stream === null || isObject(stream),
+      `probe.stream: expected the report object or null, got ${show(stream)}`,
+    )
+  ) {
+    return
+  }
+  // Legal and distinct from an all-zero report: no `ArtStream` was composed, so there are no
+  // counters to check rather than counters that read zero.
+  if (stream === null) return
+
+  // Byte counts are not asserted integral: `byteBudget` is a §1.12 ladder knob, and a gate that
+  // refused to run on a fractional budget would be refusing a legal renderer. Garbage is caught by
+  // the type and sign checks either way.
+  c.number(stream.bytesFetched, 'probe.stream.bytesFetched', { min: 0 })
+  c.number(stream.byteBudget, 'probe.stream.byteBudget', { min: 0 })
+  c.boolean(stream.swatchOnly, 'probe.stream.swatchOnly')
+  c.number(stream.requested, 'probe.stream.requested', { min: 0, integer: true })
+  c.number(stream.resolved, 'probe.stream.resolved', { min: 0, integer: true })
+  c.number(stream.failed, 'probe.stream.failed', { min: 0, integer: true })
+  c.number(stream.declinedExhausted, 'probe.stream.declinedExhausted', { min: 0, integer: true })
+  c.number(stream.declinedBudget, 'probe.stream.declinedBudget', { min: 0, integer: true })
+  c.number(stream.declinedFailedBefore, 'probe.stream.declinedFailedBefore', { min: 0, integer: true })
 }
 
 function readSeams(seams, c) {
