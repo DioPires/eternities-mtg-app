@@ -60,23 +60,47 @@ export function builtDataset(): string {
 }
 
 /**
- * Whether the built dataset is a **worlds** (v3) one — §2.4's `rowCells` is the field to test for
- * (DEC-751).
+ * Whether the built dataset can actually **compose a worlds roster** in the browser (DEC-751,
+ * DEC-788).
  *
  * Derived from the data rather than from `ETERNITIES_DATASET`, because that variable is consumed at
  * *build* time into `dist/index.html`'s meta tag and need not be set in the shell running the
  * tests. The one thing this must never do is answer "no" because it could not look: a missing
- * `dist/` throws out of `builtDataset` rather than returning false, so "not a worlds build" and
- * "nobody built" stay distinguishable. A spec that silently skipped its whole subject is the shape
- * of defect §1.12's rung assertion exists to prevent in the first place.
+ * `dist/` throws out of `builtDataset` — and a missing `manifest.json` throws out of `readJson` —
+ * rather than returning false, so "cannot compose" and "nobody built" stay distinguishable. A spec
+ * that silently skipped its whole subject is the shape of defect §1.12's rung assertion exists to
+ * prevent in the first place.
+ *
+ * **Two conditions, not one — this is DEC-788's fix.** The version this replaces tested only §2.4's
+ * `rowCells` and called that "is a worlds dataset". `rowCells` is the *geometry* half. Composition
+ * also needs `swatches.bin`: `EternitiesScene`'s `worldData` memo is `planes && stars && swatches`,
+ * so without that file the roster is never handed to the host and `probe.worlds()` stays null
+ * forever. The two halves come apart on exactly the dataset CI smokes — `ETERNITIES_DATASET=scale`,
+ * per `.github/workflows/ci.yml` — whose `planes.json` carries `rowCells` on 80 planes while the
+ * fixture ships no `swatches.bin` at all, by design: swatches are a per-card statistic computed
+ * from real Scryfall art, and a synthetic fixture has no printings to compute one from
+ * (`pipeline/src/eternities/pipeline/assemble.py`, where `swatches` is `| None` for this reason).
+ *
+ * So the old predicate answered "yes, worlds" for a build that provably cannot compose, §1.12's
+ * rung test ran instead of skipping, and it spent a 30 s poll waiting for a roster that never
+ * arrives. Measured on main `4daa6ab`: the `scale` build never composes inside **120 s**; the
+ * `worlds` build composes at **3.4 s**. Same machine, same SwiftShader, same harness — which is
+ * why raising the 30 s budget would have bought nothing but a slower red.
+ *
+ * Read from the manifest's own `files` list rather than by stat-ing `dist/`, because that list is
+ * the dataset's declaration of what it published and it cannot be fooled by the preview server's
+ * SPA fallback, which answers **200 with `index.html`** for a missing `.bin` rather than 404.
  */
-export function isWorldsDataset(): boolean {
-  const planes = readJson<{ planes: { rowCells?: number[] }[] }>(
-    'data',
-    builtDataset(),
-    'planes.json',
-  ).planes
-  return planes.some((plane) => Array.isArray(plane.rowCells) && plane.rowCells.length > 0)
+export function composesWorldsRoster(): boolean {
+  const hash = builtDataset()
+  const planes = readJson<{ planes: { rowCells?: number[] }[] }>('data', hash, 'planes.json').planes
+  const hasGeometry = planes.some(
+    (plane) => Array.isArray(plane.rowCells) && plane.rowCells.length > 0,
+  )
+  if (!hasGeometry) return false
+
+  const files = readJson<{ files: { path: string }[] }>('data', hash, 'manifest.json').files
+  return files.some((file) => file.path === 'swatches.bin')
 }
 
 export function routeTargets(): RouteTargets {
