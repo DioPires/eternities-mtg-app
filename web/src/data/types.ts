@@ -62,6 +62,45 @@ export function isWorldPlane(plane: PlaneRecord): plane is WorldPlane {
 }
 
 /**
+ * The swatch artefact's path, in the one place both the fetch and the gate below can read it.
+ *
+ * Two spellings of this string is the whole defect of DEC-794 in miniature: the gate asks the
+ * manifest whether a file by this name was published and `loadSwatches` then asks the network for
+ * it by name, so a typo in either would silently answer "this dataset has no worlds" on a dataset
+ * that does — and nothing would fail, because "no swatches" is a supported configuration.
+ */
+export const SWATCHES_FILE = 'swatches.bin'
+
+/**
+ * Whether the dataset **published** `swatches.bin` — asked of the manifest's own `files` list,
+ * which is the only honest answer (worlds spec §2.2; DEC-788, DEC-794).
+ *
+ * The obvious test, and the one this replaces at its call site, is `rowCells`: §2.4 makes that the
+ * field that says "worlds", `swatches.bin` is a worlds artefact, so the one was taken to imply the
+ * other. **It does not.** The two halves come apart on both committed fixtures — `fixture-scale`
+ * carries `rowCells` on 80 of its 88 planes and `fixture-small` on 3 of its 5, and neither ships a
+ * `swatches.bin` — and that is by design, not an oversight to be corrected: a swatch is a per-card
+ * statistic computed from real Scryfall art, and a synthetic fixture has no printings to compute
+ * one from (`pipeline/src/eternities/pipeline/assemble.py`, where `swatches` is `| None` for
+ * exactly this reason). Of the four datasets in `web/public/data`, only production v3 has both.
+ *
+ * **Do not answer this question by fetching the file and reading a status code.** `vite preview`
+ * serves a missing `.bin` as **HTTP 200 with `index.html`** — the SPA fallback — so such a check
+ * passes on a file that provably does not exist and the caller discovers its mistake one layer
+ * down, as a decode failure it reports as a broken artefact rather than an absent one. The manifest
+ * is the dataset's own statement of what it wrote, it is already loaded before this is asked, and
+ * it is the same ground truth `e2e/dataset.ts` reads to decide whether to skip §1.12's rung.
+ *
+ * Typed structurally rather than as {@link Manifest} so the e2e helpers, which parse the built
+ * `manifest.json` without the contract types, can ask the same function the same question.
+ */
+export function publishesSwatches(manifest: {
+  readonly files: ReadonlyArray<{ readonly path: string }>
+}): boolean {
+  return manifest.files.some((file) => file.path === SWATCHES_FILE)
+}
+
+/**
  * PRD 5.8/8.5.1's filter mask byte for a star that passes, on both sides of the GPU boundary.
  *
  * It lives here, in the contract module, because it is a contract between two files that never
