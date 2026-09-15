@@ -278,7 +278,13 @@ function sourceFor(
     // This fixture's world frame IS its local frame — the world sits at the origin and the camera
     // is given in the same coordinates — so the two pairs coincide here (DEC-804). That is a
     // property of the fixture, not of the payload: on a composed surface the local pair is
-    // orientation-folded and the two genuinely differ, which is what `worlds-centre.test.ts` drives.
+    // orientation-folded and the two genuinely differ as *vectors*, which is what
+    // `worlds-centre.test.ts` drives.
+    //
+    // They never differ in *length*, though, on any reachable state: the substitution is a rigid
+    // motion. So neither this fixture nor a composed surface can tell `radii`'s own operands from
+    // the published pair — which is why the tautology row below overrides these two fields by hand
+    // rather than posing anything (DEC-811, DEC-809 N4).
     worldCentre: new Vector3(0, 0, 0),
     worldCameraPosition: camera.position.clone(),
     viewport: VIEWPORT,
@@ -584,6 +590,52 @@ describe('§3.1 the served worlds payload', () => {
       const probe = buildWorldsProbe(sourceFor('ravnica', { radiiDistance }))
       expect(probe.radii).toBeCloseTo(radiiDistance, 9)
     }
+  })
+
+  /**
+   * `radii` comes off the **measurement** pair, so the payload's own audit is not a tautology
+   * (DEC-804 ask 3, DEC-811 closing DEC-809's N4).
+   *
+   * §3.1's fourth acceptance criterion is that a reader can check
+   * `radii == |cameraPosition − centre| / radius` on every read. That check has content only while
+   * `radii` and the two published world-space terms are **independently sourced**: `radii` is taken
+   * from `camera`/`centre`, which for a composed surface is the orientation-folded local pair, and
+   * `worldCameraPosition`/`worldCentre` are the untransformed pair. Rewrite line 412 as
+   * `source.worldCameraPosition.distanceTo(source.worldCentre) / radius` and the criterion checks a
+   * number against its own definition — it can never fail again, and the whole suite stays green.
+   * Three docblocks in DEC-804 assert "not a tautology"; this row is what enforces it.
+   *
+   * **It takes a source whose two frames disagree, and only a fixture can be one.** On a composed
+   * surface the substitution is a rigid motion, so the two pairs have the *same length* at every
+   * pose and every orientation by construction — which is exactly why sweeping the orientation
+   * cannot discriminate this: a rotation preserves both sides, so the tautology and the real
+   * arithmetic agree through the whole sweep. The pair below is therefore not a reachable renderer
+   * state, and that is deliberate: a falsifier for "these two are separately sourced" has to be
+   * able to tell them apart. [[a-constant-cannot-testify-to-its-own-provenance]]
+   */
+  it('reads `radii` off the LOCAL pair, so §3.1s payload audit cannot become a tautology', () => {
+    const base = sourceFor('ravnica', { radiiDistance: 2.6 })
+    // The world-space pair, moved to a pose the local pair is provably NOT at. Both numbers are
+    // unlike any default in this fixture (which builds both frames at the origin) and unlike each
+    // other, so neither can be read for the other by coincidence.
+    const WORLD_RADII = 7.25
+    const worldCentre = new Vector3(1000, -400, 250)
+    const source: WorldsProbeSource = {
+      ...base,
+      worldCentre,
+      worldCameraPosition: worldCentre.clone().add(new Vector3(0, base.radius * WORLD_RADII, 0)),
+    }
+    const probe = buildWorldsProbe(source)
+
+    // The measurement frame's answer, which is the one that ships.
+    expect(probe.radii).toBeCloseTo(2.6, 9)
+    // And the published pair genuinely says something else — so the two are separately sourced,
+    // which is the claim, rather than merely agreeing.
+    const centre = new Vector3(...probe.centre)
+    const eye = new Vector3(...probe.cameraPosition)
+    expect(centre.distanceTo(worldCentre)).toBe(0)
+    expect(eye.distanceTo(centre) / probe.radius).toBeCloseTo(WORLD_RADII, 9)
+    expect(probe.radii).not.toBeCloseTo(WORLD_RADII, 1)
   })
 
   it('publishes bandShares so the gate never re-derives W3 5% rule', () => {

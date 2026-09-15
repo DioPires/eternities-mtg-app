@@ -5,7 +5,8 @@
  * scored and 14 failed setup**, every one of them `could not reach 2.2 radii`. On a settled,
  * motionless rig `radii` drifted monotonically — `dominaria` 2.9203 → 2.1687 over 17.5 s while
  * `cameraDistance` held at 31.9293 to four decimals, and `azgol` 3.5140 → **17.4112**. Tables,
- * controls and the capture in `docs/worlds/gate-pose-defect.md`.
+ * controls and the capture are DEC-804's, evidence comment `3410ba98`; leg G's own write-up of them
+ * lands with leg G (it is not on main, so this file does not cite a path main does not carry).
  *
  * **The cause was that the worlds scene had no idea the multiverse turns.** PRD 8.5.3 rotates every
  * plane about `+Y` and PRD 5.3.15 drifts it around its `home`; the galaxy path applies both in its
@@ -41,12 +42,43 @@
  * The wiring itself is not tested here. `attachWorlds.setPlaneCentres` is called by `sceneHost`, and
  * a dropped call there would restore DEC-804 in full with every row below still green; that is
  * DEC-772's shape and it is covered where DEC-772's is, in `worlds-scene-seam.test.tsx`.
+ *
+ * ---
+ *
+ * **The four consumer rows (DEC-811, closing DEC-809's N1–N3).** The rows above pin `radii` and
+ * `mesh.position`. They are silent about the other four places the live centre is read, and each of
+ * those survived the whole of DEC-809's ten-mutant matrix at 1060/1060 green:
+ *
+ *  - **`modelMatrix`** (`worldSurface.ts:464`) — the highest-value gap of the four, because it is
+ *    the only one where the picture stays correct while the numbers the gate reads all move. The
+ *    matrix defines the frame every cell quantity is measured in; point it back at `source.home` and
+ *    the GPU still draws the sheet in the right place (that is `mesh.position`, which the row above
+ *    pins) and `radii` is still right (that is `localCamera.position`, which the hold rows pin),
+ *    while `onScreen`, `cellScreenRect`, `threshold.offer` and §1.6's `admit` are all computed as if
+ *    the world were at its t=0 home. DEC-804's exact signature, in the one quantity §3.1 scores.
+ *  - **§1.9's tether ends** (`attachWorlds.ts:449`), which share the vector by reference.
+ *  - **§1.8's system instance** (`systemMesh.ts:199`) and **§1.7's atmosphere shell**
+ *    (`atmosphere.ts:142`), the two consumers the `home` rename found at compile time.
+ *
+ * Each row below carries its **own** positive control, because for three of the four the wrong
+ * answer is a *placement* and nothing about a placement is loud: the control is the reverted
+ * expression's own value, measured in the same frame, and the row asserts the shipped value matches
+ * the live centre *and* that the reverted one is outside the bound it just passed. A bound that the
+ * defect would also satisfy is not a falsifier. [[a-bound-check-is-vacuous-when-the-bound-never-binds]]
  */
 
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { PerspectiveCamera, Scene, Vector2, Vector3, type WebGLRenderer } from 'three'
+import {
+  Matrix4,
+  PerspectiveCamera,
+  Quaternion,
+  Scene,
+  Vector2,
+  Vector3,
+  type WebGLRenderer,
+} from 'three'
 
 import { SceneMotion } from '../src/camera/motion'
 import { decodeStars, decodeSwatches } from '../src/data/decode'
@@ -58,7 +90,7 @@ import { PLANE_HOME, type PlaneCentreSource } from '../src/scene/worlds/centre'
 import type { WorldsSeams } from '../src/scene/worlds/seams'
 import { worldRadius } from '../src/scene/worlds/surfaceLaw'
 import { worldPlanesOf } from '../src/scene/worlds/worldSource'
-import { worldsProbeOf } from '../src/scene/worlds/worldsProbe'
+import { buildWorldsProbe, worldsProbeOf, type WorldsProbe } from '../src/scene/worlds/worldsProbe'
 
 const DATA = resolve(__dirname, '../public/data')
 
@@ -241,6 +273,108 @@ function hold(harness: Harness, slug: string, radii = 2.2): number[] {
 
 const spread = (values: readonly number[]): number => Math.max(...values) - Math.min(...values)
 
+/** The orientation the world-space oracle below requires. See its precondition assertion. */
+const IDENTITY = new Quaternion()
+
+/**
+ * `slug`'s payload, re-projected from **world space** about `centre`.
+ *
+ * The live source measures in the world's own frame: it reports `centre` as the origin and hands
+ * over the orientation-folded `localCamera` (see `WorldSurface.orientation`). This swaps *both* for
+ * the untransformed pair — the real camera, and a centre named by the caller — so it asks the
+ * renderer's own `cellScreenRect` and `cellGridPoint` the same question in the frame the scene graph
+ * is actually in. Every other field is the live source's, so the geometry, the arcs, the
+ * subdivision and the threshold cannot differ; the only thing that moves the answer is **where the
+ * composition put the world**, which is the quantity under test.
+ *
+ * That is also what makes `centre = plane.home` an exact model of the mutant rather than an
+ * analogue: `cellScreenRect`'s only frame inputs are the folded `matrixWorldInverse`, the projection
+ * and `near`, so `modelMatrix.compose(source.home, …)` publishes precisely this payload.
+ */
+function worldSpaceProbe(harness: Harness, slug: string, centre: Vector3): WorldsProbe {
+  const live = harness.worlds.probeSource(slug)
+  expect(live, `${slug} must be composed`).toBeTruthy()
+  const camera = harness.camera
+  return buildWorldsProbe({
+    ...live!,
+    centre,
+    camera: {
+      matrixWorldInverse: camera.matrixWorldInverse,
+      projectionMatrix: camera.projectionMatrix,
+      position: camera.position,
+      near: camera.near,
+    },
+  })
+}
+
+/**
+ * The share of `shipped`'s cells that `other` puts within a pixel of where `shipped` puts them.
+ *
+ * Keyed on the cell index rather than on array position, because `buildWorldsProbe` **drops** a cell
+ * whose rect clips away or whose centre falls behind the near plane — so a wrong centre shows up as
+ * much in the cells that vanish as in the ones that move, and a positional zip would pair a cell
+ * with its neighbour and read the difference as sub-pixel agreement.
+ */
+/**
+ * Far enough out that §1.5 puts **every** plane in step 2 and every world in step 8.
+ *
+ * Both passes *compact* their drawn instances to the front of the buffer with `mesh.count` set
+ * behind them, so on a partial draw instance `i` and roster entry `i` would be different planes and
+ * the whole comparison below would be between mismatched pairs. A full draw is what makes the slot
+ * index the roster index, and `drawnCount` is asserted at every sample so the mapping is checked
+ * rather than assumed.
+ */
+const SYSTEM_DISTANCE = 4000
+
+/**
+ * `Float32Array` instance buffers at multiverse scale — `|home|` runs to 110 — so this is a float32
+ * tolerance and not a float64 one. Worst shipped offset observed over both passes and every sample
+ * is **5.3e-6**; the defect it has to separate is 24 to 128 scene units, five orders the other way.
+ */
+const INSTANCE_TOLERANCE = 1e-3
+
+const instanceMatrix = new Matrix4()
+const instanceAt = new Vector3()
+const instanceLive = new Vector3()
+const instanceHome = new Vector3()
+
+/**
+ * Where an `InstancedMesh` put each of `planes`, against where the plane actually is.
+ *
+ * Returns both halves of the claim, because on their own neither is a falsifier:
+ * `worstLiveOffset` says the shipped placement tracks `planePosition`, and `movedSinceHome` counts
+ * the planes for which `home` and the live position are further apart than that bound — so the
+ * reverted `plane.home` expression is outside it at **every** instance rather than on average.
+ * [[a-total-is-invariant-under-misrouting]]
+ */
+function instancePlacement(
+  harness: Harness,
+  attribute: { readonly array: ArrayLike<number> },
+  planes: readonly PlaneRecord[],
+): { worstLiveOffset: number; movedSinceHome: number } {
+  let worstLiveOffset = 0
+  let movedSinceHome = 0
+  for (const [index, plane] of planes.entries()) {
+    instanceMatrix.fromArray(attribute.array, index * 16)
+    instanceAt.setFromMatrixPosition(instanceMatrix)
+    harness.motion.planePosition(instanceLive, plane)
+    instanceHome.set(plane.home[0], plane.home[1], plane.home[2])
+    worstLiveOffset = Math.max(worstLiveOffset, instanceAt.distanceTo(instanceLive))
+    if (instanceHome.distanceTo(instanceLive) > INSTANCE_TOLERANCE) movedSinceHome += 1
+  }
+  return { worstLiveOffset, movedSinceHome }
+}
+
+function agreementShare(shipped: WorldsProbe, other: WorldsProbe): number {
+  const byCell = new Map(other.cells.map((cell) => [cell.cell, cell]))
+  let agreeing = 0
+  for (const cell of shipped.cells) {
+    const mate = byCell.get(cell.cell)
+    if (mate && Math.hypot(cell.x - mate.x, cell.y - mate.y) <= 1) agreeing += 1
+  }
+  return agreeing / shipped.cells.length
+}
+
 describe('a world is where the camera thinks it is (DEC-804)', () => {
   describe('`radii` holds under normal motion', () => {
     for (const slug of SUBJECTS) {
@@ -351,7 +485,7 @@ describe('a world is where the camera thinks it is (DEC-804)', () => {
     // Expected GREEN on both trees, and that is the point. PRD 5.9 freezes the multiverse, so
     // `planePosition` is `home` and the two spellings coincide. Every worlds test in this repo that
     // runs under `?motion=0` was therefore blind to DEC-804 by construction, which is how a defect
-    // this large survived a green suite. See `docs/worlds/gate-pose-defect.md`.
+    // this large survived a green suite. See DEC-804, evidence comment `3410ba98`.
     const fixed = build({ reducedMotion: true })
     const unfixed = build({ reducedMotion: true, centreOf: PLANE_HOME })
     try {
@@ -365,5 +499,187 @@ describe('a world is where the camera thinks it is (DEC-804)', () => {
       fixed.dispose()
       unfixed.dispose()
     }
+  })
+
+  describe('the four other consumers of the live centre (DEC-811, DEC-809 N1-N3)', () => {
+    // 60 s a sample: 0.3142 rad of PRD 8.5.3's rotation, so a four-sample sweep covers a fifth of
+    // the 1,200 s period rather than a neighbourhood of t=0 — where `planePosition` *is* `home` and
+    // every row here is vacuous by construction.
+    const SAMPLE_SECONDS = 60
+    const SAMPLES = 4
+
+    for (const slug of ['alara', 'dominaria'] as const) {
+      it(`${slug}: every cell's (x, y) is the projection about the LIVE centre, swept over the angle`, () => {
+        const harness = build()
+        try {
+          const plane = planeFor(slug)
+          const radius = worldRadius(plane.cardCount)
+          const home = new Vector3(plane.home[0], plane.home[1], plane.home[2])
+          const live = new Vector3()
+
+          for (let sample = 0; sample <= SAMPLES; sample += 1) {
+            harness.step(sample === 0 ? 0 : SAMPLE_SECONDS, plane, radius * 2.2)
+            harness.motion.planePosition(live, plane)
+            const surface = harness.worlds.surfaces.find((s) => s.planeSlug === slug)!
+
+            // **The precondition the oracle rests on, asserted rather than assumed.** With
+            // `APPLY_PLANE_TILT` off (`spin.ts`) and no spin source installed, the orientation is
+            // the identity — so local-to-world is a pure *translation* and `cellScreenRect` gives
+            // the same answer in either frame. Turn either on and this row goes red loudly, which
+            // is the correct failure: `worldSpaceProbe` would no longer be an oracle, and a row
+            // that quietly kept passing would be asserting nothing.
+            expect(surface.orientation.angleTo(IDENTITY)).toBeLessThan(1e-12)
+
+            const shipped = worldsProbeOf(harness.worlds.probeSource(slug))!
+            // DEC-785 F1's trap: a well-formed payload of the wrong world reads as a measurement.
+            expect(shipped.planeSlug).toBe(slug)
+            expect(shipped.cells.length).toBeGreaterThan(0)
+
+            // Cell for cell, and on the three fields the frame can move: the projected centre
+            // §3.1's W2 samples the PNG at, the admission height W1 and W4 score, and the frustum
+            // verdict W4's denominator needs.
+            const atLive = worldSpaceProbe(harness, slug, live)
+            const byCell = new Map(atLive.cells.map((cell) => [cell.cell, cell]))
+            expect(byCell.size).toBe(shipped.cells.length)
+            let worstPx = 0
+            for (const cell of shipped.cells) {
+              const mate = byCell.get(cell.cell)!
+              expect(mate, `cell ${cell.cell} must survive in world space too`).toBeDefined()
+              worstPx = Math.max(worstPx, Math.hypot(cell.x - mate.x, cell.y - mate.y))
+              expect(cell.height).toBeCloseTo(mate.height, 6)
+              expect(cell.onScreen).toBe(mate.onScreen)
+            }
+            // Worst observed over both worlds and all five samples: **2.3e-12 px**. The bound is
+            // three orders looser than that and still eleven orders tighter than the defect, which
+            // moves cells by hundreds of pixels or off the frame altogether.
+            expect(worstPx).toBeLessThan(1e-9)
+            expect(agreementShare(shipped, atLive)).toBe(1)
+
+            // **The in-row positive control**, and it is the mutant's own payload rather than an
+            // analogue — see `worldSpaceProbe`. Not one cell of it lands within a pixel of where
+            // the shipped payload puts it, at **every** sample including the warm-up tick.
+            //
+            // > **The two worlds fail the mutant in two different shapes, which is why both are
+            // > here.** Measured at these poses: on `dominaria` (radius 9.9779, `|home|` 109.5740)
+            // > the wrong centre still publishes all **6,271** cells — the world is large enough to
+            // > stay in frame — and every one of them is simply in the wrong place, a silent
+            // > misplacement of exactly the kind §3.1 scores. On `alara` (radius 2.8455, `|home|`
+            // > 77.8935) it publishes **0** cells from the first rotated sample on: the world has
+            // > left the frame entirely, which reads as a *setup failure* rather than as a wrong
+            // > number. DEC-809 measured the same asymmetry on the unfixed browser build, where
+            // > `alara`'s payload carried no cell table at all.
+            //
+            // The warm-up tick is scored too, and the measurement behind it is worth banking: at
+            // t=0 the rotation has not turned, so the whole separation is PRD 5.3.15's **drift** —
+            // and that term alone is 0.8827 units on `alara` (0.3102 radii) and 0.8516 on
+            // `dominaria` (0.0854 radii), which already moves every cell well past a pixel at 2.2
+            // radii. So `home` is not the live position even at t=0 on the shipped roster. The
+            // regime where the two genuinely coincide is PRD 5.9's reduced motion, which zeroes
+            // *both* terms — that is the NEGATIVE CONTROL row above, and it is the one regime in
+            // which this row could not discriminate.
+            const atHome = worldSpaceProbe(harness, slug, home)
+            expect(agreementShare(shipped, atHome)).toBe(0)
+            // The separation the control just exploited, in radii — so the bound above is one the
+            // defect fails rather than one it would also pass. 0.085 at the warm-up tick; 3.42 on
+            // `dominaria` and 8.59 on `alara` one 60 s step later, rising to 12.87 and 32.14.
+            expect(home.distanceTo(live) / radius).toBeGreaterThan(sample === 0 ? 0.08 : 3)
+          }
+        } finally {
+          harness.dispose()
+        }
+      })
+    }
+
+    it('§1.9s tether ends SHARE the centre, so the ribbon cannot re-freeze at composition time', () => {
+      const harness = build()
+      try {
+        const focus = planeFor('dominaria')
+        // Named **before any frame has run**, which is the state a `.clone()` is worst in:
+        // `surface.centre` is still the constructor's t=0 seed, so a cloned end is pinned to `home`
+        // for the session. A clone taken later is pinned to whenever `setTether` ran, which this
+        // row also catches — the assertion is that the pad tracks, at every sample.
+        harness.worlds.setTether(['dominaria', 'azgol'])
+        expect(harness.worlds.tether.active).toBe(true)
+
+        const live = new Vector3()
+        const home = new Vector3()
+        // Per end, the pad's distance from its world's live centre in that world's own radii.
+        // `placePad` puts the pad on `end.centre + anchor * radius * PAD_LIFT` and `anchor` is a
+        // unit direction, so this ratio is a constant of the pass whatever the anchor is doing —
+        // which is what makes its *constancy* an assertion and not a restatement of the pose.
+        const lifts: [number[], number[]] = [[], []]
+        for (let sample = 1; sample <= SAMPLES; sample += 1) {
+          harness.step(SAMPLE_SECONDS, focus, worldRadius(focus.cardCount) * 2.2)
+          const ends = [
+            [harness.worlds.tether.pads[0], planeFor('dominaria')],
+            [harness.worlds.tether.pads[1], planeFor('azgol')],
+          ] as const
+          for (const [index, [pad, plane]] of ends.entries()) {
+            const radius = worldRadius(plane.cardCount)
+            harness.motion.planePosition(live, plane)
+            home.set(plane.home[0], plane.home[1], plane.home[2])
+            lifts[index === 0 ? 0 : 1].push(pad.position.distanceTo(live) / radius)
+            // The pad rides its world's surface, so it is inside a ball of just over one radius
+            // about the live centre.
+            expect(pad.position.distanceTo(live)).toBeLessThan(radius * 1.05)
+            // **And the bound binds.** A cloned end would put the pad within a radius of `home`
+            // instead, which is this far out — so the assertion above is one the defect fails
+            // rather than one it would also pass.
+            expect(home.distanceTo(live) / radius).toBeGreaterThan(2.05)
+          }
+        }
+        // `PAD_LIFT` is private to `tether.ts` and is pinned there; what matters here is that the
+        // ratio does not move, because a centre that had stopped tracking would show up as a pad
+        // walking away from its world one sample at a time.
+        for (const perEnd of lifts) {
+          expect(perEnd.length).toBe(SAMPLES)
+          expect(spread(perEnd)).toBeLessThan(1e-9)
+          expect(perEnd[0]!).toBeGreaterThan(1)
+        }
+      } finally {
+        harness.dispose()
+      }
+    })
+
+    it('§1.8s system instances are placed at the LIVE centre, all 87 of them', () => {
+      const harness = build()
+      try {
+        const focus = planeFor('dominaria')
+        for (let sample = 1; sample <= SAMPLES; sample += 1) {
+          harness.step(SAMPLE_SECONDS, focus, SYSTEM_DISTANCE)
+          const system = harness.worlds.system!
+          // The mapping from instance slot to plane, pinned rather than assumed — see
+          // {@link instancePlacement}.
+          expect(system.drawnCount).toBe(system.planes.length)
+          const placement = instancePlacement(harness, system.mesh.instanceMatrix, system.planes)
+          expect(placement.worstLiveOffset).toBeLessThan(INSTANCE_TOLERANCE)
+          // Every instance, not the aggregate: the reverted expression is wrong at all **87** of
+          // them — §1.8 draws every non-dust plane, moons included, and they orbit too.
+          expect(placement.movedSinceHome).toBe(system.planes.length)
+        }
+      } finally {
+        harness.dispose()
+      }
+    })
+
+    it('§1.7s atmosphere shells are placed at the LIVE centre, all 45 of them', () => {
+      const harness = build()
+      try {
+        const focus = planeFor('dominaria')
+        for (let sample = 1; sample <= SAMPLES; sample += 1) {
+          harness.step(SAMPLE_SECONDS, focus, SYSTEM_DISTANCE)
+          const atmosphere = harness.worlds.atmosphere!
+          // §1.7's *"every world that is drawn at all"*, which at this distance is all 45. The
+          // pass holds `worldPlanesOf(planes)`, which is what `WORLDS` is — so the count is also
+          // what pins slot `i` to `WORLDS[i]`.
+          expect(atmosphere.drawnCount).toBe(WORLDS.length)
+          const placement = instancePlacement(harness, atmosphere.mesh.instanceMatrix, WORLDS)
+          expect(placement.worstLiveOffset).toBeLessThan(INSTANCE_TOLERANCE)
+          expect(placement.movedSinceHome).toBe(WORLDS.length)
+        }
+      } finally {
+        harness.dispose()
+      }
+    })
   })
 })
