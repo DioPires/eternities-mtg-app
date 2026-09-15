@@ -25,7 +25,13 @@ import {
   loadSets,
   loadSwatches,
 } from '../data/load'
-import type { Manifest, PlanesFile, SearchFile } from '../data/types'
+import {
+  SWATCHES_FILE,
+  publishesSwatches,
+  type Manifest,
+  type PlanesFile,
+  type SearchFile,
+} from '../data/types'
 import { sceneErrors } from './errors'
 import { worldPlanesOf } from './worlds/worldSource'
 import { bootPositionMode } from './platform/capabilities'
@@ -60,12 +66,13 @@ export interface SceneDataState {
   /**
    * `swatches.bin`, on a **worlds** dataset only (worlds spec §2.2).
    *
-   * `null` on a v2 dataset, where the file does not exist, and `null` on a worlds dataset whose
-   * fetch failed — reported either way, never silently. What makes a dataset a worlds dataset is
-   * `planes.json` carrying `rowCells` (§2.4), and that is the test made before asking for the file
-   * at all; `load.ts` is explicit that once the caller has decided, a missing file is an error and
-   * not a degraded mode, because a world painted from anything but its cards' art is a picture that
-   * reads as the product working.
+   * `null` on any dataset that did not publish the file — a v2 one, or either fixture — and `null`
+   * on a dataset that published it and whose fetch failed, which is reported rather than passed
+   * over silently. The two cases are told apart before the fetch, by the manifest's `files` list
+   * and `planes.json`'s `rowCells` together (see the gate below, and {@link publishesSwatches});
+   * `load.ts` is explicit that once the caller has decided, a missing file is an error and not a
+   * degraded mode, because a world painted from anything but its cards' art is a picture that reads
+   * as the product working.
    *
    * **Failing this artefact does not fail the load, today.** §3.2 keeps the galaxy and the worlds
    * path coexisting until the gate, the owner, the W0.1 field reports and feature parity all clear,
@@ -223,16 +230,28 @@ export function useSceneData(): SceneDataState {
        *
        * Issued here, awaited after the star stream: the worlds surface cannot compose without it,
        * and it is ~200 KB against `stars.bin`'s megabytes, so it costs the stream nothing to have
-       * it in flight alongside. Asked for only when the roster says this is a worlds dataset —
-       * `rowCells` on at least one plane (§2.4) — because on v2 the file does not exist and a
-       * speculative fetch would put a 404 and a toast on every page load of the shipped product.
+       * it in flight alongside. Asked for only when the dataset can actually compose a world, and
+       * that is **two** questions, not one — because a speculative fetch is a broken artefact and a
+       * toast on every page load, which is the outcome this gate exists to prevent.
+       *
+       * - **Did the dataset publish the file?** {@link publishesSwatches}, off the manifest's own
+       *   `files` list. This half is DEC-794's fix. The gate used to be the `rowCells` test alone,
+       *   on the assumption that a roster carrying §2.4 geometry carries §2.2 colour too; both
+       *   committed fixtures break that assumption, and on those builds — which is what CI smokes
+       *   and what a local fixture run serves — this gate did the precise thing it was written to
+       *   prevent, on every single page load. See {@link publishesSwatches} for why the answer has
+       *   to come from the manifest and not from the network.
+       * - **Would anything consume it?** `rowCells` on at least one plane (§2.4). Kept, unchanged:
+       *   the swatches are the worlds surface's colour and nothing else reads them, so on a v2
+       *   dataset — which publishes no `swatches.bin` either — there is nothing to paint.
        */
-      const swatchLoad = worldPlanesOf(planes.planes).length
-        ? loadSwatches({ signal }).catch((error: unknown) => {
-            if (!signal.aborted) sceneErrors.report('swatches.bin', LOAD_ATTEMPTS, error)
-            return null
-          })
-        : Promise.resolve(null)
+      const swatchLoad =
+        publishesSwatches(manifest) && worldPlanesOf(planes.planes).length
+          ? loadSwatches({ signal }).catch((error: unknown) => {
+              if (!signal.aborted) sceneErrors.report(SWATCHES_FILE, LOAD_ATTEMPTS, error)
+              return null
+            })
+          : Promise.resolve(null)
 
       // PRD 8.7.5: the background artefacts wait for the first frame.
       //

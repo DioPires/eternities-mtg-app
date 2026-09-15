@@ -22,7 +22,8 @@
 
 import { type Page } from '@playwright/test'
 
-import { routeTargets } from './dataset'
+import { publishesSwatches } from '../src/data/types'
+import { builtDataset, readJson, routeTargets } from './dataset'
 import { expect, test, waitForScene } from './harness'
 
 const targets = routeTargets()
@@ -150,6 +151,59 @@ test('the dataset is fetched once, not once per consumer', async ({ page }) => {
     requested.filter((pathname) => pathname.endsWith('stars.bin')),
     'stars.bin was never requested, so the count above proves nothing',
   ).toHaveLength(1)
+})
+
+/**
+ * `swatches.bin` is asked for **if and only if** the dataset published one (§2.2, DEC-794).
+ *
+ * This is the call site of `useSceneData`'s swatch gate, and it is the half of DEC-788 that lives
+ * in the product. The gate used to be the `rowCells` test alone; both committed fixtures carry
+ * `rowCells` and publish no `swatches.bin`, so on a fixture build — which is what CI smokes and
+ * what a local fixture run serves — every page load fetched a file that cannot exist and ended at
+ * `sceneErrors.report('swatches.bin', …)`. Measured on main `4daa6ab`, `ETERNITIES_DATASET=scale`:
+ * one request, answered **HTTP 200 `text/html`, 1,358 bytes** by the preview server's SPA fallback,
+ * decoded as far as the magic and reported as a broken artefact.
+ *
+ * **Nothing already here could see that**, which is why it survived. The `problems` fixture watches
+ * for console errors and for statuses >= 400; this failure produces neither, because the fallback
+ * is a 200 and the loader reports through the toast queue rather than the console. So the
+ * assertions are the request count and the toast, directly.
+ *
+ * Both directions, from one run: the expectation is derived from the built dataset's own manifest,
+ * so this is the *positive* control on a worlds build (exactly one request, and no complaint about
+ * it, which together mean the bytes decoded) and the *negative* one on a fixture build (none). A
+ * check that only ran on one of the two would be the original defect's hiding place.
+ */
+test('swatches.bin is fetched if and only if the dataset published one (§2.2)', async ({ page }) => {
+  const asked: string[] = []
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname.endsWith('/swatches.bin')) asked.push(request.url())
+  })
+
+  await page.goto('/')
+  await waitForScene(page)
+
+  // Issued *before* `stars.bin` starts streaming (`useSceneData`), so a scene that is ready has
+  // either made this request already or is never going to — there is nothing to wait for here.
+  const manifest = readJson<{ files: { path: string }[] }>('data', builtDataset(), 'manifest.json')
+  const published = publishesSwatches(manifest)
+  expect(
+    asked,
+    published
+      ? `${builtDataset()} publishes swatches.bin and the page did not ask for exactly one — a ` +
+          'worlds dataset whose colour never arrives composes no roster at all'
+      : `${builtDataset()} publishes no swatches.bin, and the page asked for it anyway — the gate ` +
+          'in `useSceneData` is testing something other than the manifest again (DEC-794)',
+  ).toHaveLength(published ? 1 : 0)
+
+  // The user-visible half, and unconditional: published or not, no page load should end with the
+  // scene complaining about this artefact. Error toasts do not expire (`ui/Toasts.tsx`), so one
+  // raised during the load is still on screen here.
+  const toasts = await page.locator('.toasts .toast').allTextContents()
+  expect(
+    toasts.filter((text) => text.includes('swatches.bin')),
+    'the page reported a scene error about swatches.bin',
+  ).toEqual([])
 })
 
 test('/ renders and the breadcrumb reads Multiverse', async ({ page }) => {

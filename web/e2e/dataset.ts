@@ -39,7 +39,15 @@ export interface RouteTargets {
   readonly card: { readonly oracleId: string; readonly name: string }
 }
 
-function readJson<T>(...parts: string[]): T {
+/**
+ * A JSON artefact out of the **built** site, by path parts under `dist/`.
+ *
+ * Exported because a spec can need an artefact this module has no opinion about: `routes.spec.ts`
+ * reads the manifest's `files` list to know whether the built dataset published `swatches.bin`
+ * (DEC-794). Throws rather than answering "no" on a missing file, which is the property every
+ * caller here depends on — "nobody built" and "the build says no" have to stay distinguishable.
+ */
+export function readJson<T>(...parts: string[]): T {
   return JSON.parse(readFileSync(resolve(DIST, ...parts), 'utf8')) as T
 }
 
