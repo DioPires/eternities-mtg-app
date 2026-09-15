@@ -315,12 +315,21 @@ many planes landed there; a criterion that is silently skipped is how a gate pri
 measuring nothing.
 
 `--negative-controls` runs §3.1's matrix, and it is the run that says whether the instrument works
-at all. Expect **five red rows and two green**. The green rows are the ones to read first: in a
+at all. Expect **five red rows and four green**. The green rows are the ones to read first: in a
 matrix where everything is red, a broken baseline scores identically to a perfect guard, so only the
 rows expected to stay green can falsify the instrument. A red row that has gone green means the
 control stopped engaging, not that the renderer improved — the gate asserts each seam's read-back
 before it scores the row, and prints whether the witness was the renderer's own policy or merely an
 echo of the query parameter.
+
+**One measure in that matrix has no live control, and it is `homeLabels`.** §3.1's table lists a
+sixth red row — `labels forced on for empty planes` — which this gate does not run: forcing labels
+on for suppressed planes is renderer behaviour, and the build ships exactly four seams
+(`?swatch=mean`, `?bands=shuffle`, `?artThreshold=fixed24`, `?layers=N`), none of which reaches
+§1.8's suppression. The unsuppressed 66–77 reading that makes the row red was taken offline through
+the shipped layout code, so it shows the measure *can* fail without being a row the gate can run.
+Read a green `homeLabels` as "the moons are still quiet", never as "the home view is legible" — the
+second is what `worldsNeverLabelled` is for, and that one does have both its rows.
 
 Same two practical notes as §4.2: a real GPU and a local Chrome, and it builds the site itself
 unless you pass `--no-build`.

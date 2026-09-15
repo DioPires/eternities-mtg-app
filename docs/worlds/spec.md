@@ -2331,7 +2331,26 @@ comparable. It is added to `docs/refresh-runbook.md` as the per-refresh instrume
 The galaxy ships until **all four** of these hold:
 
 1. `worlds-gate.mjs` passes W1–W5 on the v3 production dataset, with the negative-control matrix
-   showing the expected **five red and two green** (§3.1);
+   showing the expected **five red and four green** (§3.1);
+
+   > **The count here was stale and is corrected (DEC-752).** "Five red and two green" was written
+   > when the matrix had seven rows. §3.1 has since added two expected-GREEN rows — `?layers=128`
+   > and the one-card world — so the green count is four, not two.
+   >
+   > **The red count stays five, and that is not the same as §3.1's table, which lists six.** The
+   > sixth is `labels forced on for empty planes`, the control for `homeLabels`, and
+   > `worlds-gate.mjs` does **not** run it: forcing labels on for suppressed planes is a renderer
+   > behaviour and `web/src/scene/worlds/seams.ts` ships exactly four seams — `?swatch=mean`,
+   > `?bands=shuffle`, `?artThreshold=fixed24`, `?layers=N`. None of them reaches §1.8's
+   > suppression, and leg G may not add one (DEC-744 B1 / DEC-746 D5). The 66–77 unsuppressed
+   > reading that makes the row red was taken offline, through the shipped `layout.ts` and
+   > `project.ts` against the pre-§1.8 candidate list — evidence that the measure *can* fail, but
+   > not a row the gate can run against a shipped build.
+   >
+   > So `homeLabels` ships **measured and scored, with no live falsifier**. It is a suppression
+   > regression check whose control is historical, which is weaker than every other row here and is
+   > recorded as such rather than counted as though the gate exercised it. Routed to the CEO for a
+   > ruling on whether §1.8 is owed a seam; it does not block the other eleven expectations.
 2. the owner accepts the judged criteria of §3.1 on the capture set;
 3. the W0.1 Windows field reports confirm concept B's cost class on the Iris Xe and the 780M — or the
    owner explicitly waives the hardware gate. This is the outstanding item the W2.3 record names, and
