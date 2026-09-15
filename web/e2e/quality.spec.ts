@@ -58,7 +58,7 @@ import { expect, test, type Page } from '@playwright/test'
 import type { ProbeState } from '../src/scene/probe'
 import { QUALITY_TIERS } from '../src/scene/quality/adaptiveQuality'
 import { artPoolSize } from '../src/scene/worlds/artPool'
-import { isWorldsDataset } from './dataset'
+import { composesWorldsRoster } from './dataset'
 
 /** Both because the pixel-ratio rung needs headroom, and small so SwiftShader can fill it. */
 const VIEWPORT = { width: 640, height: 360 }
@@ -478,8 +478,11 @@ test('the art pool steps with the ladder, at the size the driver grants (§1.12)
   page,
 }) => {
   test.skip(
-    !isWorldsDataset(),
-    'the art pool is a worlds-dataset object; build with ETERNITIES_DATASET=worlds to run this',
+    !composesWorldsRoster(),
+    'the art pool is a worlds-dataset object and this build cannot compose a roster — it carries ' +
+      'no swatches.bin, which `worldData` requires. CI builds ETERNITIES_DATASET=scale, a fixture ' +
+      'that has §2.4 rowCells but no swatches (DEC-788). Build with ETERNITIES_DATASET=worlds to ' +
+      'run this.',
   )
 
   /**
