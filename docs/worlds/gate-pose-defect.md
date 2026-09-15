@@ -1,10 +1,16 @@
-# The 2.2-radii pose is not reachable or stable on the shipped build
+# The 2.2-radii pose was not reachable or stable on the shipped build
+
+> **FIXED — see [Resolution](#resolution--dec-804-merged-as-pr-65-4aa3922) at the end.** DEC-804
+> fixed the product half and leg G fixed the gate half; the pose is reached on 45 of 45 worlds
+> today. Everything between here and that section is the finding **as it stood on 2026-09-15**, kept
+> in the present tense deliberately. Do not cite a number from this document as current: the whole
+> point of the finding is that these readings were taken at a pose the spec does not name.
 
 Measured on `dec752-worlds-gate-core` @ `4b21a2f`, base main `cc00cfe`, dataset `worlds`
 (`c9468f1125bcddff`), real Chrome + Metal, 1920×1080 dpr 1, 2026-09-15.
 
-This is the finding that stops leg G's acceptance run. It is recorded here rather than only in an
-issue comment because it invalidates a premise every §3.1 criterion is written on, and the next
+This is the finding that stopped leg G's acceptance run. It is recorded here rather than only in an
+issue comment because it invalidated a premise every §3.1 criterion is written on, and the next
 person to drive this app needs it before they trust a single number.
 
 ## The claim
@@ -136,6 +142,38 @@ match. Recorded here so the two are fixed together.
 
 ## Reproducing
 
-`web/scripts/scratch-centre-diag.mjs` (drift), `scratch-rm-control.mjs` (frozen control) and
-`scratch-zoom-diag.mjs` (per-notch rig state) are scratch instruments, not deliverables. Each starts
-its own preview on the `worlds` dataset and prints the tables above.
+`web/scripts/dec804-drift-diag.mjs` (drift), `dec804-frozen-control.mjs` (frozen control) and
+`dec804-zoom-diag.mjs` (per-notch rig state) are one-shot diagnostics kept for reproduction, in the
+shape `dec697-diag.mjs` already established. They are not part of the gate and nothing imports them:
+each starts its own preview on the `worlds` dataset and prints the tables above. Kept rather than
+deleted because the ruling they produced changed the product, and a ruling whose evidence cannot be
+re-run is a ruling nobody after today can check.
+
+## Resolution — DEC-804, merged as PR #65 (`4aa3922`)
+
+**Both defects are fixed, and this document is now a record rather than a live finding.**
+
+The product half was ruled a Design System defect and fixed at `worldSource.ts`: the centre now
+follows the rig instead of snapshotting `plane.home` at composition time. Note that the root-cause
+guess in *Suspected source* above was **inverted**, and the review (DEC-809) established the
+correct account: there was no reader of `multiverseAngle` in the worlds scene at all — the **camera
+orbited while the worlds stood still**. The symptom and the arithmetic in this document reproduce
+exactly; only the attribution of which side moved was wrong. Offering the guess as "a starting
+point, not a conclusion" is what kept it from being adopted as the fix.
+
+Verified live after the merge, on the full 45-world tour: the drive reaches 2.2 radii on every
+world, `captureFrame`'s across-the-capture stability guard (`|Δradii| > 1e-3`) no longer trips, and
+the setup failures this document reported — 14 of the first 15 worlds — are **0 of 45**.
+
+The gate half is fixed too, and by the method proposed here rather than a schedule: `driveToRadii`
+now measures the wheel's gain from one probe notch and solves `deltaY = ln(target/current) / k`.
+The gain is measured rather than copied from `attachRig.ts` on purpose — a copied constant would
+make the drive agree with the product by construction, and would go silently wrong the day the
+wheel is retuned.
+
+Consequence 3 below is also answered, and it is the one worth carrying forward: the payload now
+publishes `centre`, `cameraPosition` and `radius` beside `radii`, and
+`worlds-probe-read.mjs`'s `readPose` audits the identity `radii == |cameraPosition − centre| /
+radius` on **every** read. The defect survived a whole phase because every individual field was
+well-formed and nothing inside the payload disagreed with anything else inside it; the gate had to
+instrument the product from outside to see it. It cannot recur silently now.
