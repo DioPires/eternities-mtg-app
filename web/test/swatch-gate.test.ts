@@ -8,9 +8,14 @@
  * a committed `manifest.json` and checks its answer against the bytes on disk beside it.
  *
  * The predicate this replaced (`rowCells` on some plane, §2.4) passes a test written this way too,
- * on the datasets it was written against. What it fails is the *cross-check*: three of the four
- * datasets here disagree with it, and the last row below is what keeps that disagreement on the
- * record rather than leaving the fix looking like a matter of taste.
+ * on the datasets it was written against. What it fails is the *cross-check* — and DEC-796 has
+ * since taken the corpus half of that cross-check away, deliberately: the fixtures were the
+ * datasets on which "has geometry" and "publishes swatches" came apart, and giving them swatches is
+ * exactly what lets CI's build compose a worlds roster at all (DEC-788, DEC-793). So no committed
+ * dataset separates the two predicates any more, and the per-dataset rows below no longer catch a
+ * gate that answers from `contractVersion` instead of `files`. The last two rows carry that weight
+ * now, by striking a real manifest's swatch entry rather than by waiting for a dataset that
+ * disagrees to be checked out.
  */
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
@@ -73,26 +78,46 @@ describe('publishesSwatches', () => {
     },
   )
 
-  it('is not the `rowCells` test in disguise — the two halves come apart on both fixtures', () => {
-    const disagreed = datasets.filter(
-      (dataset) => dataset.planes.some(isWorldPlane) !== publishesSwatches(dataset.manifest),
+  it('is not the `rowCells` test in disguise — struck of its swatch entry, every dataset separates', () => {
+    // This row was written against a corpus where the two fixtures carried §2.4 geometry and
+    // published no swatches, so the corpus itself separated the two predicates and the check was a
+    // filter over it. DEC-796 took that separation away on purpose: a fixture with no `swatches.bin`
+    // can never compose a worlds roster, so CI's `ETERNITIES_DATASET=scale` build left every worlds
+    // surface skipping (DEC-788, DEC-793), and both fixtures now invent a swatch per card. Today no
+    // committed dataset disagrees — v3 publishes swatches and carries geometry, v2 has neither.
+    //
+    // The property is worth more than the corpus that happened to demonstrate it, so it is rebuilt
+    // here from the real manifests rather than pinned to them: strike the swatch entry and a
+    // dataset becomes exactly the shape DEC-788 found — §2.4 geometry, no `swatches.bin` — on which
+    // a correct predicate must say "no" while `rowCells` still says "yes". That binds per dataset
+    // instead of relying on one being checked out, and it is what the corpus can no longer do:
+    // measured on this tree, replacing the predicate with `contractVersion >= 3` leaves every
+    // per-dataset row above green, where before DEC-796 it turned both fixture rows red.
+    const publishing = datasets.filter(
+      (dataset) => publishesSwatches(dataset.manifest) && dataset.planes.some(isWorldPlane),
     )
 
-    // Both fixtures carry §2.4 geometry and publish no swatches, and that is by design: a swatch is
-    // computed from real Scryfall art and a synthetic roster has no printings to compute one from
-    // (`pipeline/src/eternities/pipeline/assemble.py`). If this row ever goes red because the
-    // fixtures gained swatch files, the gate is no longer under test on any checked-out dataset —
-    // which is the state DEC-794 was found in, and it is worth failing loudly rather than drifting
-    // into.
+    // Without this the loop below is an assertion-free green — the mistake the first row guards
+    // against, one level down.
     expect(
-      disagreed.map((dataset) => dataset.manifest.dataset).sort(),
-      'no committed dataset separates "has rowCells" from "published swatches" any more, so ' +
-        'nothing here can tell the two predicates apart',
-    ).toEqual(['fixture-scale', 'fixture-small'])
+      publishing.map((dataset) => dataset.manifest.dataset).sort(),
+      'no checked-out dataset has both halves, so striking one cannot separate the predicates',
+    ).toEqual(['fixture-scale', 'fixture-small', 'production'])
 
-    for (const dataset of disagreed) {
-      expect(dataset.planes.filter(isWorldPlane).length).toBeGreaterThan(0)
-      expect(publishesSwatches(dataset.manifest)).toBe(false)
+    for (const dataset of publishing) {
+      const struck = {
+        ...dataset.manifest,
+        files: dataset.manifest.files.filter((file) => file.path !== SWATCHES_FILE),
+      }
+
+      // Geometry is untouched by the strike, so `rowCells` cannot tell the two manifests apart...
+      expect(dataset.planes.some(isWorldPlane), `${dataset.hash} lost its geometry`).toBe(true)
+      // ...and the predicate under test must, or it is reading something other than the file list.
+      expect(
+        publishesSwatches(struck),
+        `${dataset.hash}: struck of its ${SWATCHES_FILE} entry and the gate still says it ` +
+          'publishes one — the answer is coming from somewhere other than `files`',
+      ).toBe(false)
     }
   })
 
