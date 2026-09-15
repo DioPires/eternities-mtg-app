@@ -439,32 +439,44 @@ describe('§1.6 the budget binds within a single frame (DEC-780)', () => {
     await h.settle()
   })
 
-  it('a throwing URL build strands no reservation, so later requests still admit (DEC-786 N1)', async () => {
+  it('a throwing URL build strands nothing: not the budget, not the slot, not the layer, and it does not reject (DEC-786 N1, DEC-791)', async () => {
     // `imageUri` throws on a printing id shorter than two characters (`data/images.ts`), and it is
-    // called in the request literal — which leaves `fetch` *before* the `try`, so the estimate's
-    // `finally` never runs. Charged above that literal, the 90 KiB was therefore held for the life
-    // of the session against a fetch that would never reconcile it, and every later frame paid for
-    // it. Unreachable on shipped data (36-char Scryfall ids), which is why the ordering rather than
-    // a guard is the fix, and why this row builds the short id by hand.
+    // called in the request literal — which used to leave `fetch` *before* any `try`, so no
+    // `finally` and no failure path ran. Unreachable on shipped data (36-char Scryfall ids), which
+    // is why this row builds the short id by hand. Four things were stranded by that one throw, and
+    // they were fixed in two goes: **DEC-786 N1** moved the charge below the literal, so the 90 KiB
+    // is no longer held for the life of the session; **DEC-791** put the literal inside the `try`,
+    // so the `inFlight` slot, the pool's RESERVED layer and the discarded promise take the failure
+    // path too. All four are scored here, because they share one cause and one line of fix.
     const FOUR = ART_CROP_ESTIMATED_BYTES * 4
     const h = harness({ layers: 256, byteBudget: FOUR, hold: true })
 
-    // `request` discards the fetch promise (`void this.fetch(...)`), so the throw escapes as an
-    // *unhandled rejection* — which vitest reports as a run-level error and exits 1 on while every
-    // row still prints green. Wrapping the instance's own method attaches a catch without touching
-    // what runs: same charge, same ordering, same timing, and the escape becomes something this row
-    // can assert on rather than something that fails the file out from under it.
+    // `request` discards the fetch promise (`void this.fetch(...)`), so how it settled is only
+    // observable at this seam. **Recording the outcome is not the same as catching it, and the
+    // difference is this row's history:** DEC-787's version *swallowed* the rejection and asserted
+    // that it happened, which is exactly what made this file blind to the leak DEC-791 fixes
+    // (DEC-792's hand-off note). This one hands `request` the original promise — so the product's
+    // `void` discards precisely what it discards in production — and attaches its recorder on a
+    // separate branch. That branch attaches *synchronously*, which is what keeps a regression a RED
+    // row here instead of a run-level vitest error that prints all 28 rows green and exits 1.
     const inner = h.stream as unknown as { fetch(...args: never[]): Promise<void> }
     const real = inner.fetch.bind(inner)
-    const escaped: string[] = []
-    inner.fetch = (...args: never[]) =>
-      real(...args).catch((error: unknown) => {
-        escaped.push(error instanceof Error ? error.message : String(error))
-      })
+    const settled: string[] = []
+    inner.fetch = (...args: never[]) => {
+      const promise = real(...args)
+      void promise.then(
+        () => settled.push('resolved'),
+        (error: unknown) => settled.push(`REJECTED: ${error instanceof Error ? error.message : String(error)}`),
+      )
+      return promise
+    }
 
     // The bad key first, so anything it strands is already charged when the valid four ask. `hold`,
     // so nothing settles and no credit can reach `bytesReserved` by the honest route either.
     h.stream.request(0, 'x', TS, () => 0)
+    // DEC-786 N1, and also this row's guard against vacuity: on a tree where `imageUri` stopped
+    // rejecting short ids the bad key would be admitted like any other and this would read 92,160.
+    // Every assertion below the drain would still pass there, so the row needs this line.
     expect(h.stream.report().bytesReserved).toBe(0)
 
     for (let key = 1; key <= 4; key += 1) {
@@ -477,9 +489,8 @@ describe('§1.6 the budget binds within a single frame (DEC-780)', () => {
     // running total then reads `3 + 1 = FOUR` exactly as it does below the literal. The row would
     // pass on both trees on this line alone. What separates them is *who* holds those four
     // estimates: three fetches and a ghost, or four fetches. So the line is kept as the budget's
-    // own sanity check and the discrimination is carried by the three below it, each of which
-    // measured differently on the unfixed tree: `bytesReserved` 92,160 after the bad key alone,
-    // `declinedBudget` 1, and three URLs rather than four.
+    // own sanity check and the discrimination is carried by the two below it, each of which
+    // measured differently on the unfixed tree: `declinedBudget` 1, and three URLs rather than four.
     expect(report.bytesReserved).toBe(FOUR)
     expect(report.declinedBudget).toBe(0)
     // Reserved, not merely counted: four URLs were actually built and handed to the queue. The bad
@@ -489,12 +500,50 @@ describe('§1.6 the budget binds within a single frame (DEC-780)', () => {
     expect(report.swatchOnly).toBe(true)
     expect(report.bytesFetched).toBe(0)
 
+    // DEC-791's first residual: the `inFlight` slot. `fetch` enters the key before it builds the
+    // URL, and only the settlement path below the `await` removes it, so a throw in between left
+    // the entry there for good. Reflected, because the map is private and deliberately has no seam
+    // (its two halves are a cancellation concern, not a probe one) — the behavioural consequence is
+    // asserted after the drain as well, and that half needs no reflection.
+    const inFlight = (h.stream as unknown as { inFlight: Map<number, string> }).inFlight
+    expect(inFlight.has(0)).toBe(false)
+    expect([...inFlight.keys()]).toEqual([1, 2, 3, 4])
+
+    // **`pool.reserved` is inert before the valid four settle, for the same reason `bytesReserved`
+    // is.** The strand displaces an admission, so it reads 4 on both trees. Draining separates
+    // them: the requests that really went out become resident, and any layer still RESERVED
+    // afterwards is one no fetch will ever come back for.
+    await h.drain()
     await h.settle()
-    // The positive control, and the reason this row is not vacuous: the short id really did throw,
-    // and really did throw out of `fetch`. Every assertion above also holds on a tree where
-    // `imageUri` simply stopped rejecting short ids — at which point the row would be testing
-    // nothing. Asserted after `settle`, since the catch above lands in a microtask.
-    expect(escaped).toEqual(['printing id x is too short'])
+    const drained = h.stream.report()
+    expect(h.pool.reserved).toBe(0)
+    expect(h.pool.resident).toBe(4)
+    expect(inFlight.size).toBe(0)
+    // The ledger balances: five requests counted, four bodies, one failure. A URL that cannot be
+    // built is a failure of this key rather than of the session, and counting it keeps
+    // `resolved + failed === requested` — a request that reached neither total is the shape the
+    // strand had.
+    expect(drained.requested).toBe(5)
+    expect(drained.resolved).toBe(4)
+    expect(drained.failed).toBe(1)
+    // DEC-791's third residual: nothing rejected. Five requests issued, five promises, all of them
+    // resolved — so the product's `void this.fetch(...)` discards nothing that could escape. On the
+    // pre-fix tree the list is the same length and its **first** entry reads
+    // `REJECTED: printing id x is too short`, which is why this is an ordered `toEqual` over five
+    // and not a count.
+    expect(settled).toEqual(['resolved', 'resolved', 'resolved', 'resolved', 'resolved'])
+
+    // DEC-791's second residual, behaviourally — and the reason the failure path is `pool.fail` and
+    // not `pool.release`. A printing id whose URL will not build this frame will not build next
+    // frame either, so the key has to leave the askable set (§1.6's "a failed key is never retried
+    // in the same session"); releasing it would re-throw once per frame per cell for the life of
+    // the session. On the unfixed tree this returns the stranded layer instead of `null`, because
+    // `reserve` hands back the layer a key already holds and the `inFlight` entry then suppresses
+    // the re-ask — a cell pointed at a layer whose art is never coming.
+    h.stream.beginFrame(1)
+    expect(h.stream.request(0, 'x', TS, () => 0)).toBeNull()
+    expect(h.stream.report().declinedFailedBefore).toBe(1)
+    expect(h.urls).toHaveLength(4)
   })
 
   it('re-consults the budget on LATER frames, which the landed-bytes spelling never did', async () => {
