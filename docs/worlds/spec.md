@@ -1487,6 +1487,28 @@ scale — which is the thing T7 said was missing.
 > page with no worlds on it score a green matrix — the `verify-browser --dataset all` shape of
 > failure, where two fixtures printed "all datasets verified" and neither had been read.
 
+> **Normative — the payload carries §1.6's stream report as `stream`, and `null` is not zeros
+> (DEC-778).** §1.6 already says the probe reports `swatchOnly` "so the gate can read it before it
+> reads W4"; until DEC-778 `ArtStreamReport` was computed and never published, so the sentence named
+> a field no reader could reach. The published object is the report verbatim — `bytesFetched`,
+> `byteBudget`, `swatchOnly`, `requested`, `resolved`, `failed`, and the three causes
+> `declinedExhausted` / `declinedBudget` / `declinedFailedBefore`, which stay three numbers because
+> W4's control has to tell them apart. Without it a budget-declined session and a threshold admitting
+> nothing are the same payload: `showingArt` false on every cell and no way to say why — the DEC-772
+> harness run that plateaued at **733 fetches** was separated from the other reading only by summing
+> `content-length` from outside the page.
+>
+> > `stream` is **`null`** where the world composed with no `ArtStream` at all, which a zero-layer
+> > pool is (§1.6's legal swatch-only world), and an **all-zero report** where a stream exists and
+> > nothing has asked it for anything. The second is a live path that is idle — the shape DEC-772's
+> > missing `cardOf` took — and a report synthesised for the first case would tell the gate a 64 MiB
+> > budget is unspent on a session that has no budget and no possibility of art.
+>
+> > A reader must not rebuild this from the network side: the Resource Timing API reads **0 bytes**
+> > for Scryfall, because `encodedBodySize` is zeroed cross-origin without `Timing-Allow-Origin`
+> > (DEC-772). `bytesFetched` is the queue's own `Blob.size`, charged on the decode-failure path as
+> > well as the success one, and it is the only byte count that is real.
+
 > **Normative — a cell's `(x, y)` is the PROJECTED CENTRE, not the centre of its rect (DEC-749).**
 > The payload carries both the rect above and the `(x, y, height)` triple the gate reads, with
 > `height ≡ rect.height`. The two centres are not the same point: measured over v3 at 1920×1080 the

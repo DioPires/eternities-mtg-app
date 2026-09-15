@@ -17,7 +17,7 @@
  * per-frame body touches neither, so a whole frame can be run and asserted in jsdom.
  */
 
-import { Mesh, Vector3, type DataArrayTexture, type ShaderMaterial } from 'three'
+import { Matrix4, Mesh, Quaternion, Vector3, type DataArrayTexture, type ShaderMaterial } from 'three'
 
 import { IMAGE_FADE_MS } from '../tuning'
 
@@ -118,6 +118,16 @@ const toCamera = new Vector3()
 const scratchNormal = new Vector3()
 
 /**
+ * The world's centre in its **own** frame, and the model matrix's scale.
+ *
+ * Both exist so the local-frame substitution has one spelling. §1.3's radius is not a scale on the
+ * model matrix — it is baked into `iSize` and into `uRadius`, and putting it here as well would
+ * apply it twice, which draws a world `radius²` across and still looks like a world.
+ */
+const LOCAL_ORIGIN = new Vector3(0, 0, 0)
+const UNIT_SCALE = new Vector3(1, 1, 1)
+
+/**
  * One composed world.
  *
  * > **Normative — residency drives the picture, admission drives the asking (§1.6, DEC-752).** A
@@ -203,6 +213,39 @@ export class WorldSurface {
   private crossoverValue: CrossoverState
   private medianHeightPxValue = 0
   private radiiValue = 0
+
+  /**
+   * This world's orientation — `tilt ∘ spin`, written by the owner once per frame (§1.3, DEC-750).
+   *
+   * > **Normative — the spin axis is the pole axis, `±Y` (CEO ruling, DEC-750).** See `spin.ts` for
+   * > the ruling, the measurement behind it and why `starfield/motion.ts` disagrees with both
+   * > datasets rather than with this file.
+   *
+   * **The frame does not rotate the cells; it rotates the camera.** Every per-cell quantity below —
+   * facing, the frustum test, the projected rect, the shade — is computed in the world's **own**
+   * frame, with the camera and the key light transformed into it once per frame and the orientation
+   * left on `mesh.quaternion` for the GPU. Rotating 6,271 normals instead would be the same answer
+   * at 6,271 times the cost, and would put a second copy of the orientation on the CPU side of a
+   * value the shader reads off the model matrix.
+   *
+   * That substitution is exact rather than approximate, and the one output it could have disturbed
+   * is checked: {@link WorldsProbe.radii} is `|camera.position − centre| / radius`, and a rigid
+   * motion preserves it — in the local frame the centre is the origin and the distance is the
+   * transformed camera's own length. `worlds-spin.test.ts` pins that equality against a rotated and
+   * an unrotated surface.
+   */
+  readonly orientation = new Quaternion()
+
+  /** The scratch the substitution above needs. All fixed size; nothing here allocates per frame. */
+  private readonly inverseOrientation = new Quaternion()
+  private readonly modelMatrix = new Matrix4()
+  private readonly localCamera: { -readonly [K in keyof ProbeCamera]: ProbeCamera[K] } = {
+    matrixWorldInverse: new Matrix4(),
+    projectionMatrix: new Matrix4(),
+    position: new Vector3(),
+    near: 0,
+  }
+  private readonly localLight = new Vector3(0, 0, 1)
 
   constructor(source: WorldSurfaceSource, options: WorldSurfaceOptions) {
     this.source = source
@@ -367,7 +410,27 @@ export class WorldSurface {
     stream?.beginFrame(this.frameIndex)
     threshold.begin()
 
-    const centreDistance = camera.position.distanceTo(source.centre)
+    // The world's own frame, once per frame (§1.3, DEC-750). See {@link WorldSurface.orientation}:
+    // from here down, "camera" is `this.localCamera`, the light is `this.localLight` and the world's
+    // centre is the origin — so every cell quantity below is computed against the geometry the GPU
+    // actually rasterises, whatever the orientation is.
+    this.mesh.quaternion.copy(this.orientation)
+    this.inverseOrientation.copy(this.orientation).invert()
+    this.modelMatrix.compose(source.centre, this.orientation, UNIT_SCALE)
+    this.localCamera.matrixWorldInverse.multiplyMatrices(camera.matrixWorldInverse, this.modelMatrix)
+    this.localCamera.projectionMatrix.copy(camera.projectionMatrix)
+    this.localCamera.position
+      .copy(camera.position)
+      .sub(source.centre)
+      .applyQuaternion(this.inverseOrientation)
+    this.localCamera.near = camera.near
+    this.localLight.copy(frame.lightDirection).applyQuaternion(this.inverseOrientation)
+    const local = this.localCamera
+
+    // `local.position` is the world-space offset put through a rotation, so its length IS
+    // `|camera.position - centre|`. Taken here rather than from the untransformed pair so that every
+    // distance in this method comes from one vector.
+    const centreDistance = local.position.length()
     this.radiiValue = source.radius > 0 ? centreDistance / source.radius : 0
     this.medianHeightPxValue = cellHeightPx(
       this.latArc,
@@ -380,8 +443,9 @@ export class WorldSurface {
 
     for (let cell = 0; cell < cardCount; cell += 1) {
       normalAt(source.normals, cell, scratchNormal)
-      worldPoint.copy(scratchNormal).multiplyScalar(this.lifted).add(source.centre)
-      toCamera.copy(camera.position).sub(worldPoint)
+      // Local, so no `+ centre`: the model matrix folded into `local.matrixWorldInverse` carries it.
+      worldPoint.copy(scratchNormal).multiplyScalar(this.lifted)
+      toCamera.copy(local.position).sub(worldPoint)
 
       const front = facesCamera(
         scratchNormal.x,
@@ -395,9 +459,9 @@ export class WorldSurface {
         worldPoint.x,
         worldPoint.y,
         worldPoint.z,
-        camera.matrixWorldInverse,
-        camera.projectionMatrix,
-        camera.near,
+        local.matrixWorldInverse,
+        local.projectionMatrix,
+        local.near,
       )
       // **The admission height is the projected rect's, and it is the SAME call the probe makes.**
       // A small-angle extent — `2 * latArc * radius` over the depth — is the obvious cheaper
@@ -413,11 +477,11 @@ export class WorldSurface {
         this.lonArc[cell]!,
         this.latArc,
         this.sheet.subdivision,
-        source.centre,
+        LOCAL_ORIGIN,
         this.lifted,
-        camera.matrixWorldInverse,
-        camera.projectionMatrix,
-        camera.near,
+        local.matrixWorldInverse,
+        local.projectionMatrix,
+        local.near,
         viewport.width,
         viewport.height,
       )
@@ -495,9 +559,18 @@ export class WorldSurface {
 
     this.sheet.layers.needsUpdate = true
     this.sheet.art.needsUpdate = true
-    ;(this.material.uniforms as { uLight: { value: Vector3 } }).uLight.value.copy(
-      frame.lightDirection,
-    )
+    const uniforms = this.material.uniforms as {
+      uLight: { value: Vector3 }
+      uSheetMix: { value: number }
+    }
+    // The light in the world's OWN frame, because the sheet's `iNormal` is in that frame too. The
+    // shader's `dot(normalize(vNormal), normalize(uLight))` is then the same product `shadeOf` takes
+    // for the probe, which is what §3.1 requires of the reported `shade`.
+    uniforms.uLight.value.copy(this.localLight)
+    // §1.5's cross-fade, which R1 computed and nothing applied (DEC-750). See `cellShaders.ts`: the
+    // sheet dissolves in over the band rather than blending, so §1.2's "steps 2-4 are opaque and
+    // depth-tested" survives having a cross-fade in the middle of it.
+    uniforms.uSheetMix.value = this.crossoverValue.sheetMix
   }
 
   /**
@@ -517,13 +590,21 @@ export class WorldSurface {
       normalOf: (cell, out) => normalAt(source.normals, cell, out),
       hueCounts: source.hueCounts,
       subdivision: this.sheet.subdivision,
-      centre: source.centre,
+      // The world's own frame, exactly as `update` measured in — see {@link
+      // WorldSurface.orientation}. Reporting the world-space centre and camera here instead would
+      // give a probe whose rects were of an unrotated world while the frame drew a rotated one, and
+      // the two agree at every orientation except the ones the world actually spends time in.
+      // `radii` is unchanged by the substitution: it is a distance, and this is a rigid motion.
+      centre: LOCAL_ORIGIN,
       radius: source.radius,
-      lightDirection: frame.lightDirection,
-      camera: frame.camera,
+      lightDirection: this.localLight,
+      camera: this.localCamera,
       viewport: frame.viewport,
       pool: this.options.pool.report(),
       threshold: this.thresholdReport,
+      // Read live, like every other field here — and `null` where there is no stream, which is
+      // §1.6's zero-layer swatch-only world rather than a stream that has done nothing (DEC-778).
+      stream: this.options.stream?.report() ?? null,
       seams: this.options.seams,
       artOf: (cell) => art[cell] ?? 0,
     }

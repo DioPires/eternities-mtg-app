@@ -265,7 +265,7 @@ describe('shader names (DEC-700)', () => {
 
   it('covers every material the scene builds, one name per program', () => {
     // A count, not a list: adding a material and leaving it out of `SHADER_NAMES` should be a
-    // deliberate act. There are 19 sites and 18 names, and the gap is the point of this test.
+    // deliberate act. There are 26 sites and 25 names, and the gap is the point of this test.
     //
     // Two *sites* share `SHADER_NAME_STAR_FIELD`: the drawn star field and the bloom source's copy
     // of it differ only in the values bound to five uniforms, which are not in the program cache
@@ -286,9 +286,20 @@ describe('shader names (DEC-700)', () => {
     // the value bound to `uRadius`, neither of which is in the program cache key — so it moves both
     // counts by one and leaves the gap where it was.
     //
-    // **The nineteenth site and eighteenth name are DEC-751's**: worlds §1.10's overflow ticks, a
-    // built-in `PointsMaterial`. One site, one name and one `Points` object for a whole card's
-    // dropped tail — 498 of them on Swamp.
+    // **The nineteenth to twenty-fourth sites and the eighteenth to twenty-third names are
+    // DEC-750's** — §1.2's remaining passes, and they sit on the wide side of the gap for three
+    // different reasons worth separating. `WorldSystem` and `WorldBelt` are one site and one name
+    // each, like the cell sheet: every instance differs only in per-instance attributes.
+    // `WorldAtmosphere` and `WorldAtmosphereCheap` are two of each, for exactly `PlaneGlow`'s
+    // reason — §1.12's tier 4 selects a different *fragment source* (`CHEAP_RIM`), which
+    // `getProgramCacheKey` makes a program of its own. `WorldTether` and `WorldTetherPad` are two
+    // sites and two names because the ribbon and the pads are different geometry with different
+    // shaders, and the two pads share one `padMaterial()` source site the way the two card faces
+    // share `faceMaterial()`.
+    //
+    // **The twenty-fifth site and twenty-fourth name are DEC-751's**: worlds §1.10's overflow
+    // ticks, a built-in `PointsMaterial`. One site, one name and one `Points` object for a whole
+    // card's dropped tail — 498 of them on Swamp.
     //
     // **This one is named against the rule above, and the exception is recorded rather than
     // hidden.** It is a `PointsMaterial` with the same defines as the background shells —
@@ -299,10 +310,10 @@ describe('shader names (DEC-700)', () => {
     // person. Flagged to DEC-700's owner to rule; the count stands either way, and if the ruling
     // is to share, this name and one of the two counts come back out together.
     //
-    // **The twentieth site and nineteenth name are DEC-751's §1.11 pick pass**: the cell sheet
-    // compiled with `ID_PASS`. Unlike the bloom copy above it genuinely is a second program —
+    // **The twenty-sixth site and twenty-fifth name are DEC-751's §1.11 pick pass**: the cell
+    // sheet compiled with `ID_PASS`. Unlike the bloom copy above it genuinely is a second program —
     // `defines` *is* a program cache key input — so it earns its own name under the rule rather
     // than against it, and the gap stays where it was.
-    expect(SHADER_NAMES).toHaveLength(19)
+    expect(SHADER_NAMES).toHaveLength(25)
   })
 })

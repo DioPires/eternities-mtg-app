@@ -179,6 +179,7 @@ varying vec3 vIdColour;
 uniform sampler2DArray uArt;
 uniform vec3 uLight;
 uniform vec3 uAmbient;
+uniform float uSheetMix;
 
 void main() {
 #ifdef ID_PASS
@@ -192,6 +193,22 @@ void main() {
   if (vFiltered > 0.5) discard;
   gl_FragColor = vec4(vIdColour, 1.0);
 #else
+  // §1.5's crossover, as a **dissolve** rather than an opacity (DEC-750).
+  //
+  // Inside the band a world draws in both step 2 and step 4 and "the two cross-fade", and §1.2 also
+  // says "steps 2-4 are opaque and depth-tested". Those two sentences are compatible exactly one
+  // way: blending the sheet would move it into three's transparent queue, where its order against
+  // the tether, the printing ring and the atmosphere becomes whichever centroid is further from the
+  // eye this frame. Discarding a hash-selected fraction of its fragments keeps the sheet opaque and
+  // depth-writing, and the system icosphere behind it shows through the discarded ones -- a
+  // cross-fade between the two representations with no sort order involved at all.
+  //
+  // The hash is screen-space, so the pattern holds still while the world moves through it. Keyed on
+  // the cell or the vertex it would swim; keyed in object space it would crawl across the surface.
+  if (uSheetMix < 1.0) {
+    if (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) > uSheetMix) discard;
+  }
+
   // Wrapped lambert: the *0.5 + 0.5 maps the terminator to 0.25 rather than to 0, which is what
   // keeps a mosaic legible around the limb. A hard terminator across a tiled surface reads as a
   // bug, not as night. Squaring AFTER the clamp, not before, makes the falloff perceptual.

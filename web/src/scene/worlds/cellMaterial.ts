@@ -22,6 +22,15 @@ export interface CellUniforms {
   readonly uArt: { value: DataArrayTexture | null }
   readonly uLight: { value: Vector3 }
   readonly uAmbient: { value: Vector3 }
+  /**
+   * §1.5's crossover mix — 0 at the band's floor, 1 at its ceiling (DEC-750).
+   *
+   * `crossoverState` has returned this since R1 and nothing consumed it, so a world crossing the
+   * band's floor popped its whole sheet on in one frame — the pop the band exists to stop. See the
+   * fragment shader: it is a **dissolve**, not an opacity, precisely so this material keeps the
+   * render state its header argues for.
+   */
+  readonly uSheetMix: { value: number }
   readonly [uniform: string]: IUniform
 }
 
@@ -44,6 +53,11 @@ export function createCellMaterial(radius: number, art: DataArrayTexture | null)
     uArt: { value: art },
     uLight: { value: new Vector3(0, 0, 1) },
     uAmbient: { value: new Vector3(0, 0, 0) },
+    // 1, not 0. A sheet that has never been ticked is fully drawn rather than fully dissolved: the
+    // opposite default makes a world invisible on the first frame after composition and on any frame
+    // a caller forgets to update, which reads as "the sheet did not build" — a failure with a
+    // completely different diagnosis.
+    uSheetMix: { value: 1 },
   }
 
   return new ShaderMaterial({

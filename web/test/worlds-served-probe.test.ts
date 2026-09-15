@@ -34,6 +34,8 @@ import {
   worldRadius,
 } from '../src/scene/worlds/surfaceLaw'
 import { cellScreenRect } from '../src/scene/worlds/probePayload'
+import { DEFAULT_BYTE_BUDGET } from '../src/scene/worlds/artStream'
+import type { ArtStreamReport } from '../src/scene/worlds/artStream'
 import { subdivisionFor } from '../src/scene/worlds/cellGeometry'
 import { HueClass } from '../src/data/types'
 
@@ -202,6 +204,27 @@ function f16(value: number): number {
   return s * Math.pow(2, e - 15) * (1 + m / 1024)
 }
 
+/**
+ * A stream that exists and has asked for nothing — the **live but idle** state (DEC-778).
+ *
+ * Not the same object as `stream: null`, which is a world composed with no `ArtStream` at all. The
+ * rows below assert the two stay apart: an all-zero report and an absent one answer different
+ * questions, and the gate reads the second before it reads W4.
+ */
+function idleStream(): ArtStreamReport {
+  return {
+    bytesFetched: 0,
+    byteBudget: DEFAULT_BYTE_BUDGET,
+    swatchOnly: false,
+    requested: 0,
+    resolved: 0,
+    failed: 0,
+    declinedExhausted: 0,
+    declinedBudget: 0,
+    declinedFailedBefore: 0,
+  }
+}
+
 /** A synthetic world: cells at the centre of each slot of the published `rowCells`. */
 function sourceFor(
   slug: string,
@@ -254,6 +277,9 @@ function sourceFor(
     viewport: VIEWPORT,
     pool: { layers: 224, resident: 100, reserved: 3, evictions: 17 },
     threshold: { effectiveThresholdPx: 24, wanting: 0, admitted: 0, adaptive: true },
+    // A stream that exists and has done nothing — the default so the null row below is a real
+    // second state rather than the fixture's own baseline (DEC-778).
+    stream: idleStream(),
     seams: {
       swatchMean: false,
       bandsShuffle: false,
@@ -488,6 +514,54 @@ describe('§3.1 the served worlds payload', () => {
     expect(probe.pool.evictions).toBe(925)
     expect(probe.seams.swatchMean).toBe(true)
     expect(probe.seams.layersRequested).toBe(128)
+  })
+
+  it('publishes §1.6 stream report, every field, distinctly (DEC-778)', () => {
+    // Nine distinct values, none of them equal to another and none equal to a plausible default.
+    // A pass-through that crossed two fields — `resolved` for `failed`, `declinedBudget` for
+    // `declinedExhausted` — is invisible against a report whose counters share values, and the
+    // crossed pair the gate would most likely hit is exactly the declined triple, whose whole
+    // reason for being three numbers is that W4's control needs the causes apart.
+    const stream: ArtStreamReport = {
+      bytesFetched: 93_012_345,
+      byteBudget: 67_108_864,
+      swatchOnly: true,
+      requested: 733,
+      resolved: 701,
+      failed: 11,
+      declinedExhausted: 57,
+      declinedBudget: 4_209,
+      declinedFailedBefore: 23,
+    }
+    const probe = buildWorldsProbe(sourceFor('ravnica', { stream }))
+    expect(probe.stream).toEqual(stream)
+    // Named individually as well as by `toEqual`, because these are the names leg G's validator
+    // binds to and a rename that kept the shape would otherwise only surface as a `undefined` on
+    // the gate side — which compares false against every floor and scores the frame RED.
+    expect(probe.stream?.swatchOnly).toBe(true)
+    expect(probe.stream?.bytesFetched).toBe(93_012_345)
+    expect(probe.stream?.byteBudget).toBe(67_108_864)
+    expect(probe.stream?.declinedExhausted).toBe(57)
+    expect(probe.stream?.declinedBudget).toBe(4_209)
+    expect(probe.stream?.declinedFailedBefore).toBe(23)
+  })
+
+  it('keeps "no stream at all" apart from "a stream that did nothing" (DEC-778)', () => {
+    // The distinction the gate branches on. `null` is a world composed with a zero-layer pool —
+    // §1.6's legal swatch-only world, where nothing was ever going to be asked. All-zeros is a
+    // wired stream that has asked for nothing, which is the shape DEC-772's missing `cardOf` took:
+    // the path existed and no cell ever reached it. Collapsing them reports the never-installed
+    // case as the never-fired one, and the gate's W4 note would then read a budget it does not have.
+    const absent = buildWorldsProbe(sourceFor('ravnica', { stream: null }))
+    const idle = buildWorldsProbe(sourceFor('ravnica', { stream: idleStream() }))
+    expect(absent.stream).toBeNull()
+    expect(idle.stream).not.toBeNull()
+    expect(idle.stream?.requested).toBe(0)
+    expect(idle.stream?.declinedBudget).toBe(0)
+    // An idle stream is NOT swatch-only: its budget is unspent, which is a different sentence from
+    // "there is no budget". A report synthesised for the absent case would have to pick one.
+    expect(idle.stream?.swatchOnly).toBe(false)
+    expect(idle.stream?.byteBudget).toBe(DEFAULT_BYTE_BUDGET)
   })
 
   it('reports the pose in radii, which is what W1 and W4 are specified at', () => {

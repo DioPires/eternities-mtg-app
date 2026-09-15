@@ -26,6 +26,7 @@
 import { Matrix4, Vector3 } from 'three'
 
 import type { ArtPoolReport } from './artPool'
+import type { ArtStreamReport } from './artStream'
 import type { Subdivision } from './cellGeometry'
 import type { ThresholdReport } from './adaptiveThreshold'
 import type { WorldsSeams } from './seams'
@@ -150,6 +151,36 @@ export interface WorldsProbe {
    */
   readonly cells: readonly WorldsProbeCell[]
   readonly pool: WorldsProbePool
+  /**
+   * §1.6's stream, as `ArtStream.report()` publishes it — or `null` on a build with no stream.
+   *
+   * > **Normative — the gate reads this BEFORE it reads W4 (§1.6, DEC-778).** §1.6 already says so
+   * > in as many words ("the probe reports `swatchOnly` so the gate can read it before it reads W4
+   * > — a session that went swatch-only part-way has a legitimate reason for a low art count"), and
+   * > until DEC-778 the report was computed and never published, so the sentence named a field no
+   * > reader could reach. Without it a budget-declined session and a threshold admitting nothing
+   * > are the same payload: `showingArt` false on every cell, and no way to say why.
+   *
+   * > Measured on the shipped path rather than argued (DEC-772): a harness run under normal motion
+   * > plateaued at **733 fetches** and declined every later want, with an art fraction decaying
+   * > toward zero — separated from an admitting-nothing threshold only by summing `content-length`
+   * > from outside the page. The three `declined*` counts are kept apart for the same reason
+   * > `ArtStream` counts them apart: collapsing them into one `declined` is how W4's control gets
+   * > scored green for the wrong cause.
+   *
+   * > **`null` is not a zeroed report, and the two must not be collapsed.** `null` means the world
+   * > composed with no `ArtStream` at all — a zero-layer pool, which §1.6 makes a legal swatch-only
+   * > world — so nothing was ever going to be asked. All-zeros means a stream exists and has asked
+   * > for nothing, which is a *live* path that is idle: the shape DEC-772's missing `cardOf` took,
+   * > where the stream was wired and no cell ever reached it. A single zeroed report for both would
+   * > report the never-installed case as the never-fired one.
+   *
+   * > Note for a reader tempted to rebuild this from the network side (DEC-772): the Resource
+   * > Timing API reads **0 bytes** for Scryfall, because `encodedBodySize` is zeroed cross-origin
+   * > without `Timing-Allow-Origin`. `bytesFetched` is the queue's own `Blob.size`, charged on the
+   * > decode-failure path as well as the success one, and it is the only byte count that is real.
+   */
+  readonly stream: ArtStreamReport | null
   /** Per band index, that band's share of the plane's cards. Gates W3's 5% rule. */
   readonly bandShares: readonly number[]
   /** The control-seam read-backs, so the gate can check each control actually engaged (§1.6). */
@@ -192,6 +223,14 @@ export interface WorldsProbeSource {
   readonly viewport: { readonly width: number; readonly height: number }
   readonly pool: ArtPoolReport
   readonly threshold: ThresholdReport
+  /**
+   * The stream's own report, or `null` where the surface holds no stream.
+   *
+   * Required rather than optional, and that is the point: a `?:` here would let a composition that
+   * never wires the stream type-check and publish `undefined`, which is the dropped-write shape —
+   * and it would land on the one field whose whole job is to say what the stream did.
+   */
+  readonly stream: ArtStreamReport | null
   readonly seams: WorldsSeams
   /** Cell `i`'s `iArt` cross-fade, 0 = swatch, 1 = art. */
   readonly artOf: (cell: number) => number
@@ -318,6 +357,7 @@ export function buildWorldsProbe(source: WorldsProbeSource): WorldsProbe {
       effectiveThresholdPx: threshold,
       evictions: source.pool.evictions,
     },
+    stream: source.stream,
     bandShares: bandShares(source.hueCounts),
     seams: source.seams,
   }

@@ -23,6 +23,7 @@ import {
   Scene,
   Vector2,
   Vector3,
+  type Points,
   type ShaderMaterial,
   type WebGLRenderer,
 } from 'three'
@@ -36,6 +37,8 @@ import { attachWorlds, DEFAULT_TIER_ART_LAYERS } from '../src/scene/worlds/attac
 import { KEY_LIGHT_OFF_AXIS, keyLightDirection } from '../src/scene/worlds/keyLight'
 import { artPoolSize } from '../src/scene/worlds/artPool'
 import { PICK_LAYER } from '../src/scene/picking/idPicker'
+import { DEFAULT_BYTE_BUDGET } from '../src/scene/worlds/artStream'
+import { BELT_POINT_SIZE_PX } from '../src/scene/worlds/beltShaders'
 import { CROSSOVER_HIGH_PX } from '../src/scene/worlds/lod'
 import { isWorldPlane, worldPlanesOf } from '../src/scene/worlds/worldSource'
 import { worldsProbeOf } from '../src/scene/worlds/worldsProbe'
@@ -84,6 +87,7 @@ interface Harness {
   readonly getSize: ReturnType<typeof vi.fn>
   readonly getDrawingBufferSize: ReturnType<typeof vi.fn>
   readonly copyTextureToTexture: ReturnType<typeof vi.fn>
+  readonly getPixelRatio: ReturnType<typeof vi.fn>
 }
 
 /**
@@ -100,11 +104,21 @@ function harness(): Harness {
     target.set(CSS_WIDTH * 2, CSS_HEIGHT * 2),
   )
   const copyTextureToTexture = vi.fn()
+  // 2, matching `getDrawingBufferSize`'s 2x above rather than defaulting to 1: §1.8's belt is sized
+  // in CSS px and `gl_PointSize` is in device px, so a stub that reported 1 would let the two
+  // spellings agree and the CSS-versus-device row below would stop discriminating them.
+  const getPixelRatio = vi.fn(() => 2)
   return {
-    gl: { getSize, getDrawingBufferSize, copyTextureToTexture } as unknown as WebGLRenderer,
+    gl: {
+      getSize,
+      getDrawingBufferSize,
+      copyTextureToTexture,
+      getPixelRatio,
+    } as unknown as WebGLRenderer,
     getSize,
     getDrawingBufferSize,
     copyTextureToTexture,
+    getPixelRatio,
   }
 }
 
@@ -170,7 +184,12 @@ beforeEach(() => {
   clock = 0
 })
 
-const roster = () => ({ planes: PLANES.planes, stars: STARS, swatches: SWATCHES })
+const roster = () => ({
+  planes: PLANES.planes,
+  stars: STARS,
+  swatches: SWATCHES,
+  multiverseRadius: PLANES.multiverseRadius,
+})
 
 describe('the worlds pass reaches the frame (§1.1, §1.2)', () => {
   it('composes one surface per world in the shipped roster, and puts each sheet in the scene', () => {
@@ -185,7 +204,6 @@ describe('the worlds pass reaches the frame (§1.1, §1.2)', () => {
     const group = rig.scene.getObjectByName('worlds')
     expect(group).toBeDefined()
     // Two meshes per world since DEC-751: the drawn sheet and §1.11's pick sheet.
-    expect(group!.children).toHaveLength(WORLDS.length * 2)
     for (const surface of rig.worlds.surfaces) {
       expect(surface.mesh.parent).toBe(group)
       expect(surface.pickMesh.parent).toBe(group)
@@ -208,6 +226,18 @@ describe('the worlds pass reaches the frame (§1.1, §1.2)', () => {
         (surface.mesh.material as ShaderMaterial).uniforms,
       )
     }
+
+    // §1.2's other passes share the group (DEC-750), so the sheets are counted by identity rather
+    // than by the group's size. Stated as an exact partition rather than as `>= WORLDS.length`: a
+    // pass that quietly added a second node per world -- one sheet plus one shell, say -- would
+    // satisfy an inequality and would double the scene graph.
+    const sheets = new Set(rig.worlds.surfaces.map((surface) => surface.mesh))
+    expect(group!.children.filter((child) => sheets.has(child as never))).toHaveLength(
+      WORLDS.length,
+    )
+    // Step 2, step 3, step 8, and §1.9's ribbon with its two pads: six nodes beside the two
+    // sheets each world contributes since DEC-751 (drawn + §1.11 pick).
+    expect(group!.children).toHaveLength(WORLDS.length * 2 + 6)
     rig.worlds.dispose()
   })
 
@@ -350,6 +380,107 @@ describe('the frame the payload is measured on (§3.1)', () => {
   })
 })
 
+/**
+ * The three §1.2 passes R2 added are wired through `runFrame`, and each takes a quantity the pass
+ * itself cannot check (DEC-773 F2, F3, M3).
+ *
+ * All three are the same shape: a pass that reports whatever the call site hands it, a unit test
+ * that hands it the right thing directly, and a call site nothing asserts. `worlds-tether` proves
+ * the ribbon halves nothing on a retina display *given a CSS height*; `worlds-surface-law` proves
+ * the crossover computes a `sheetMix`; `worlds-belt` proves `setBeltPixelRatio` multiplies. None of
+ * them can see the argument `attachWorlds` actually passes, and the stub here reports a **2x**
+ * display precisely so the CSS and device spellings are different numbers.
+ */
+describe('what runFrame hands R2s three passes (§1.7-§1.9)', () => {
+  it('hands the tether the CSS viewport height and never the drawing buffers', () => {
+    // **DEC-773 F3.** The prototype's defect was `viewport.y * gl.getPixelRatio()` at this call
+    // site — a half-width ribbon on every retina display, identical to a correct one at the dpr 1
+    // §3.1's gate runs at. `TetherPass.update` takes the height as a parameter and every row in
+    // `worlds-tether.test.ts` supplies it by hand, so the parameter was pinned and the argument was
+    // not.
+    const rig = build()
+    rig.worlds.setData(roster())
+    const update = vi.spyOn(rig.worlds.tether, 'update')
+    rig.tick()
+
+    expect(update).toHaveBeenCalled()
+    // Non-vacuous by construction: the stub's device height is twice its CSS height, so the two
+    // candidate arguments are 1080 and 2160 and the assertion separates them.
+    const ratio = rig.gl.gl.getPixelRatio()
+    expect(ratio).toBe(2)
+    expect(CSS_HEIGHT * ratio).not.toBe(CSS_HEIGHT)
+    for (const call of update.mock.calls) expect(call[1]).toBe(CSS_HEIGHT)
+    rig.worlds.dispose()
+  })
+
+  it('re-resolves the belts point size from the live ratio on every frame', () => {
+    // **DEC-773 M3.** `runFrame`'s in-source comment says a cached ratio "can be a rung behind" —
+    // the quality ladder moves rung 1, and the window crosses monitors — but commenting the call out
+    // entirely left the whole suite green, because the only thing that ever read the uniform was the
+    // build path. Driven here by *changing* the stub between ticks, which is the monitor change.
+    const rig = build()
+    rig.worlds.setData(roster())
+    const belt = rig.scene.getObjectByName('worlds-belt') as Points
+    expect(belt, 'the shipped roster has a dust plane, so there is a belt to measure').toBeDefined()
+    const uniforms = (belt.material as ShaderMaterial).uniforms
+
+    rig.tick()
+    expect(uniforms.uSizePx!.value).toBe(BELT_POINT_SIZE_PX * 2)
+
+    // The window moves to a 1x monitor. Nothing calls a setter; the next frame re-reads.
+    rig.gl.getPixelRatio.mockReturnValue(1)
+    rig.tick()
+    expect(uniforms.uSizePx!.value).toBe(BELT_POINT_SIZE_PX)
+
+    // And back up, so a write that only ever *lowered* the value fails too.
+    rig.gl.getPixelRatio.mockReturnValue(3)
+    rig.tick()
+    expect(uniforms.uSizePx!.value).toBe(BELT_POINT_SIZE_PX * 3)
+    rig.worlds.dispose()
+  })
+
+  it('writes §1.5s sheetMix into the uniform the shader reads, not just into the crossover', () => {
+    // **DEC-773 F2, and it is the R1 defect this leg exists to fix, one level up.** R1 computed
+    // `sheetMix` and nothing consumed it, so the sheet popped on at the band floor. Every assertion
+    // in the suite reads `surface.crossover.sheetMix` — the computed value — so replacing the
+    // uniform write with a constant `1` restores the pre-fix behaviour exactly and stays green.
+    // This row reads `material.uniforms.uSheetMix`, which is what `cellShaders.ts` dissolves by.
+    const rig = build()
+    rig.worlds.setData(roster())
+    const world = rig.worlds.surfaces.find((s) => s.planeSlug === 'dominaria')!
+    const mixAt = (): number =>
+      (world.material.uniforms as { uSheetMix: { value: number } }).uSheetMix.value
+
+    // Above the band the sheet is fully opaque — and the uniform's constructed default is also 1, so
+    // this pose alone proves nothing. It is here as the endpoint, not as the measurement.
+    poseAt(rig.camera, world.centre, world.radius, 2.2)
+    rig.tick()
+    expect(world.crossover.sheetMix).toBe(1)
+    expect(mixAt()).toBe(1)
+
+    // Inside the band, found by bisection because the crossover is a function of distance: this is
+    // the only pose where `sheetMix` is neither 0 nor 1 and the uniform can be told from a constant.
+    let near = 2.2
+    let far = 400
+    for (let i = 0; i < 60; i += 1) {
+      const mid = (near + far) / 2
+      poseAt(rig.camera, world.centre, world.radius, mid)
+      rig.tick()
+      if (world.crossover.sheetMix > 0 && world.crossover.sheetMix < 1) break
+      if (world.crossover.drawSheet) near = mid
+      else far = mid
+    }
+    expect(world.crossover.sheetMix).toBeGreaterThan(0)
+    expect(world.crossover.sheetMix).toBeLessThan(1)
+    expect(mixAt()).toBe(world.crossover.sheetMix)
+    // Stated against the constants too, so "the uniform equals the field" cannot be satisfied by a
+    // build that wrote the same constant into both.
+    expect(mixAt()).not.toBe(1)
+    expect(mixAt()).not.toBe(0)
+    rig.worlds.dispose()
+  })
+})
+
 describe('§1.7s key light, which the shade term is computed from', () => {
   it('sits 0.798 rad off the camera axis', () => {
     const camera = makeCamera()
@@ -440,6 +571,7 @@ describe('the shared art pool (§1.6, §1.12)', () => {
       planes: [...tiny, ...PLANES.planes.filter((p) => !isWorldPlane(p))],
       stars: STARS,
       swatches: SWATCHES,
+      multiverseRadius: PLANES.multiverseRadius,
     })
 
     /*
@@ -511,10 +643,11 @@ describe('the shared art pool (§1.6, §1.12)', () => {
     // disposed array texture — which draws a plausible picture until the driver reclaims it.
     expect(rig.worlds.pool).not.toBe(before)
     expect(rig.worlds.surfaces).toHaveLength(WORLDS.length)
-    // Two per world: the drawn sheet and §1.11's pick sheet. A rung step recomposes the roster, so
-    // this also catches a rebuild that forgot to re-add the pick mesh — which would leave the
-    // worlds unpickable from the first quality step onward, with the picture unchanged.
-    expect(rig.scene.getObjectByName('worlds')!.children).toHaveLength(WORLDS.length * 2)
+    // Two per world: the drawn sheet and §1.11's pick sheet, beside §1.2's six pass nodes
+    // (DEC-750). A rung step recomposes the roster, so this also catches a rebuild that forgot to
+    // re-add the pick mesh — which would leave the worlds unpickable from the first quality step
+    // onward, with the picture unchanged — and one that leaked or dropped a pass node.
+    expect(rig.scene.getObjectByName('worlds')!.children).toHaveLength(WORLDS.length * 2 + 6)
 
     // And back up: the rung is not one-way, and PRD 8.5.11's restore step walks it.
     rig.worlds.setArtLayers(QUALITY_TIERS[0]!.artPoolLayers)
@@ -574,6 +707,163 @@ describe('the shared art pool (§1.6, §1.12)', () => {
     // Every cell draws its swatch, which is what §1.4's shading path already does with nothing
     // resident — and the payload is still a measurement, not a setup failure.
     expect(worldsProbeOf(rig.worlds.probeSource())?.pool.layers).toBe(0)
+    rig.worlds.dispose()
+  })
+})
+
+/**
+ * §1.6's stream report, **on the shipped path** (DEC-778).
+ *
+ * `worlds-served-probe.test.ts` pins the payload's shape against a hand-built report; that proves
+ * the field is carried and nothing about where its numbers come from. These rows drive the real
+ * `ArtStream` through `attachWorlds` and read the counters back off `?probe=`, because the whole
+ * purpose of the field is a claim about what the *renderer's* stream did — and a constant cannot
+ * testify to its own provenance.
+ *
+ * Every assertion below is a **matrix**, never a single reading. §1.6 counts three decline causes
+ * separately precisely so W4's control can tell them apart, so each cause is shown non-zero under
+ * the input that produces it *and* zero under a control that differs in one thing: a row that only
+ * showed `declinedBudget > 0` under a zero budget would score identically against a stream that
+ * incremented all three counters together.
+ */
+describe('§1.6 the stream report reaches the probe (DEC-778)', () => {
+  /** A queue whose requests never land: these rows measure what is *asked*, not what arrives. */
+  function pendingQueue(): ImageQueue {
+    return {
+      request: () => new Promise<never>(() => {}),
+      cancel: () => {},
+      dispose: () => {},
+    } as unknown as ImageQueue
+  }
+
+  /** `printingId`s the stream can build a URL from — the wiring DEC-772 found missing. */
+  const CARD_OF = (plane: { slug: string }, card: number) => ({
+    printingId: `${plane.slug}:${card}`,
+    imageTs: 1,
+  })
+
+  /** Compose, pose at Dominaria and tick — the pose §3.1 states W4 at. */
+  function readAt(rig: Rig, ticks = 1) {
+    const world = rig.worlds.surfaces.find((s) => s.planeSlug === 'dominaria')!
+    poseAt(rig.camera, world.centre, world.radius, 2.2)
+    for (let i = 0; i < ticks; i += 1) rig.tick()
+    return worldsProbeOf(rig.worlds.probeSource())!
+  }
+
+  it('publishes zeros for a wired stream that nothing asked — not `null`', () => {
+    // The control every row below is read against, and a real state rather than a contrivance:
+    // this is the composition DEC-772 found shipped, where the stream existed and no cell could
+    // reach it because `sceneHost` supplied no `cardOf`. The payload has to be able to say that,
+    // and it must not say it the way a world with no stream at all says it.
+    const rig = build({ queue: pendingQueue() })
+    rig.worlds.setData(roster())
+    const probe = readAt(rig)
+    expect(probe.stream).not.toBeNull()
+    expect(probe.stream).toEqual({
+      bytesFetched: 0,
+      byteBudget: DEFAULT_BYTE_BUDGET,
+      swatchOnly: false,
+      requested: 0,
+      resolved: 0,
+      failed: 0,
+      declinedExhausted: 0,
+      declinedBudget: 0,
+      declinedFailedBefore: 0,
+    })
+    rig.worlds.dispose()
+  })
+
+  it('publishes `null` where there is no stream, which `?layers=0` is', () => {
+    // A zero-layer pool builds no `ArtStream` at all (§1.6's legal swatch-only world). That is a
+    // different sentence from the row above and the payload keeps it different: a synthesised
+    // zero report here would tell the gate a 64 MiB budget is unspent on a session that has no
+    // budget, no queue and no possibility of art.
+    const rig = build({ queue: pendingQueue(), cardOf: CARD_OF, seams: { ...NO_SEAMS, layersRequested: 0 } })
+    rig.worlds.setData(roster())
+    const probe = readAt(rig)
+    expect(probe.pool.layers).toBe(0)
+    expect(probe.stream).toBeNull()
+    rig.worlds.dispose()
+  })
+
+  it('counts a budget decline as `declinedBudget`, and an unspent budget as none', () => {
+    // `byteBudget: 0` is swatch-only from frame one — §1.6's documented degenerate case — so every
+    // admitted want is refused by the budget and nothing is ever requested.
+    const declined = build({ queue: pendingQueue(), cardOf: CARD_OF, byteBudget: 0 })
+    declined.worlds.setData(roster())
+    const spent = readAt(declined)
+    expect(spent.stream?.swatchOnly).toBe(true)
+    expect(spent.stream?.declinedBudget).toBeGreaterThan(0)
+    expect(spent.stream?.requested).toBe(0)
+    // The cause is the budget and not the pool: this world's pool is 224 layers and untouched.
+    expect(spent.stream?.declinedExhausted).toBe(0)
+    expect(spent.stream?.declinedFailedBefore).toBe(0)
+    declined.worlds.dispose()
+
+    // **The non-binding control.** Same rig, same pose, same roster, one input changed. Without it
+    // a stream that declined everything for any reason at all would score the row above green.
+    const funded = build({ queue: pendingQueue(), cardOf: CARD_OF })
+    funded.worlds.setData(roster())
+    const asking = readAt(funded)
+    expect(asking.stream?.swatchOnly).toBe(false)
+    expect(asking.stream?.declinedBudget).toBe(0)
+    expect(asking.stream?.requested).toBeGreaterThan(0)
+    funded.worlds.dispose()
+  })
+
+  it('counts a pool with nothing to give as `declinedExhausted`, and a full one as none', () => {
+    // `?artThreshold=fixed24` is the seam §3.1's W4 control drives exhaustion with; here the pool
+    // is pinned at one layer instead, which reaches the same refusal without also moving the
+    // threshold — so the counter that rises is attributable to the pool alone.
+    const starved = build({
+      queue: pendingQueue(),
+      cardOf: CARD_OF,
+      seams: { ...NO_SEAMS, layersRequested: 1 },
+    })
+    starved.worlds.setData(roster())
+    const short = readAt(starved)
+    expect(short.pool.layers).toBe(1)
+    expect(short.stream?.declinedExhausted).toBeGreaterThan(0)
+    // One layer, so exactly one key is ever reserved and asked for. Every other want is refused by
+    // the pool, and by the pool only — the budget is untouched.
+    expect(short.stream?.requested).toBe(1)
+    expect(short.stream?.declinedBudget).toBe(0)
+    starved.worlds.dispose()
+
+    // The control: the clamped 224-layer pool at the same pose declines nothing for exhaustion.
+    const roomy = build({ queue: pendingQueue(), cardOf: CARD_OF })
+    roomy.worlds.setData(roster())
+    const ample = readAt(roomy)
+    expect(ample.pool.layers).toBe(224)
+    expect(ample.stream?.declinedExhausted).toBe(0)
+    roomy.worlds.dispose()
+  })
+
+  it('charges the bytes of a body that failed to decode, and refuses that key after', async () => {
+    // The third cause, and the one that carries `bytesFetched` with it. A body that arrived and
+    // then failed to decode HAS been paid for (§1.6), so this row is the only place the published
+    // byte count is non-zero — and it is the queue's own `Blob.size`, never the Resource Timing
+    // API, which reads 0 for Scryfall cross-origin without `Timing-Allow-Origin` (DEC-772).
+    const BYTES = 90_112
+    const failing = {
+      request: () => Promise.resolve({ ok: false, reason: 'failed', bytes: BYTES }),
+      cancel: () => {},
+      dispose: () => {},
+    } as unknown as ImageQueue
+    const rig = build({ queue: failing, cardOf: CARD_OF, seams: { ...NO_SEAMS, layersRequested: 1 } })
+    rig.worlds.setData(roster())
+    // One tick files the request; the settle is a microtask, so it lands before the second tick
+    // asks again — and the second ask is the one that must be refused by the never-retry set.
+    const first = readAt(rig)
+    expect(first.stream?.requested).toBe(1)
+    await Promise.resolve()
+    const second = readAt(rig)
+    expect(second.stream?.failed).toBe(1)
+    expect(second.stream?.bytesFetched).toBe(BYTES)
+    expect(second.stream?.declinedFailedBefore).toBeGreaterThan(0)
+    // Charged, and still far under budget: `swatchOnly` must not trip on one failed body.
+    expect(second.stream?.byteBudget).toBe(DEFAULT_BYTE_BUDGET)
+    expect(second.stream?.swatchOnly).toBe(false)
     rig.worlds.dispose()
   })
 })
@@ -675,7 +965,7 @@ describe('§1.6 on the shipped roster (DEC-768 F1, F2)', () => {
       if (!rig || freshRigPerFrame) {
         rig?.worlds.dispose()
         rig = build({ seams: { ...NO_SEAMS, layersRequested: WOBBLE.capacity } })
-        rig.worlds.setData({ planes, stars: STARS, swatches: SWATCHES })
+        rig.worlds.setData({ planes, stars: STARS, swatches: SWATCHES, multiverseRadius: PLANES.multiverseRadius })
       }
       const subject = rig.worlds.surfaces.find((s) => s.planeSlug === WOBBLE.slug)!
       poseAt(rig.camera, subject.centre, subject.radius, WOBBLE.radii[frame % 2]!)
@@ -726,7 +1016,7 @@ describe('§3.2s coexistence, which has to actually cost nothing', () => {
       delete copy.rowCells
       return copy
     })
-    rig.worlds.setData({ planes: v2, stars: STARS, swatches: SWATCHES })
+    rig.worlds.setData({ planes: v2, stars: STARS, swatches: SWATCHES, multiverseRadius: PLANES.multiverseRadius })
 
     expect(rig.worlds.surfaces).toHaveLength(0)
     expect(rig.worlds.equirectArray).toBeNull()
@@ -751,7 +1041,7 @@ describe('§3.2s coexistence, which has to actually cost nothing', () => {
     // worked example happens to equal the constant. A three-world roster is what makes the claim
     // a claim about the *dataset* rather than about this dataset.
     const three = [...WORLDS.slice(0, 3), ...PLANES.planes.filter((p) => !isWorldPlane(p))]
-    rig.worlds.setData({ planes: three, stars: STARS, swatches: SWATCHES })
+    rig.worlds.setData({ planes: three, stars: STARS, swatches: SWATCHES, multiverseRadius: PLANES.multiverseRadius })
     expect(rig.worlds.surfaces).toHaveLength(3)
     expect(rig.worlds.equirectArray?.image.depth).toBe(3)
     rig.worlds.dispose()
@@ -766,7 +1056,13 @@ describe('§3.2s coexistence, which has to actually cost nothing', () => {
     expect(rig.worlds.surfaces).toHaveLength(0)
     expect(rig.worlds.equirectArray).toBeNull()
     expect(rig.worlds.pool.layers).toBe(0)
-    expect(rig.scene.getObjectByName('worlds')?.children).toHaveLength(0)
+    // The roster's nodes all go. §1.9's tether does **not**: it has the attachment's lifetime
+    // rather than the roster's -- `setEnds` is what shows it, and it is hidden until then -- so
+    // three nodes are expected to survive a teardown and only these three.
+    const after = rig.scene.getObjectByName('worlds')!.children
+    expect(after).toHaveLength(3)
+    expect(after.every((child) => child.name.startsWith('worlds-tether'))).toBe(true)
+    expect(after.every((child) => child.visible)).toBe(false)
     // A payload assembled after a teardown would be one from the previous roster.
     expect(rig.worlds.probeSource()).toBeNull()
     rig.worlds.dispose()
