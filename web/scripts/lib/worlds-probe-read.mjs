@@ -204,10 +204,18 @@ function readPool(pool, c) {
  * > asked for. All-zeros means a stream exists and has asked for nothing, which is a live path that
  * > is idle: the shape DEC-772's missing `cardOf` took. The two must never be collapsed.
  *
- * The gate **reads** `swatchOnly` and never recomputes `bytesFetched >= byteBudget` (DEC-744 B1 /
- * DEC-746 D5): re-deriving it would assert against the gate's own model of the policy instead of
- * the shipped one. Note also that these counters are session-**global** and cumulative, not the
- * focused world's, so no per-world criterion may be written over them (DEC-782 N1).
+ * The gate **reads** `swatchOnly` and never recomputes it (DEC-744 B1 / DEC-746 D5): re-deriving it
+ * would assert against the gate's own model of the policy instead of the shipped one.
+ *
+ * > **And the spelling a re-derivation would reach for is now the DEC-780 defect itself.**
+ * > `swatchOnly` is `bytesFetched + bytesReserved >= byteBudget` — the bytes *committed*, landed and
+ * > outstanding together — not `bytesFetched >= byteBudget`. A gate that recomputed the second form
+ * > would re-introduce the bug on the reading side after the stream had been fixed, and silently:
+ * > the two spellings disagree exactly while a request is in flight, which is the entire window the
+ * > fix exists to cover.
+ *
+ * Note also that these counters are session-**global** and cumulative, not the focused world's, so
+ * no per-world criterion may be written over them (DEC-782 N1).
  */
 function readStream(raw, c) {
   if (
@@ -238,6 +246,13 @@ function readStream(raw, c) {
   // refused to run on a fractional budget would be refusing a legal renderer. Garbage is caught by
   // the type and sign checks either way.
   c.number(stream.bytesFetched, 'probe.stream.bytesFetched', { min: 0 })
+  // Bytes charged to requests that have not settled (DEC-780). Checked for sign but for no relation
+  // to `bytesFetched`: the field is neither monotonic nor a subset of it — it rises when a request
+  // issues and falls when that request settles *whichever way* it settles, so `bytesReserved <=
+  // bytesFetched` would be a plausible-looking assertion that a correct stream violates on any frame
+  // that issued more than it has landed. `min: 0` is the real invariant: the charge and the credit
+  // are symmetric across every settlement, so a negative reading is a leaked credit.
+  c.number(stream.bytesReserved, 'probe.stream.bytesReserved', { min: 0 })
   c.number(stream.byteBudget, 'probe.stream.byteBudget', { min: 0 })
   c.boolean(stream.swatchOnly, 'probe.stream.swatchOnly')
   c.number(stream.requested, 'probe.stream.requested', { min: 0, integer: true })

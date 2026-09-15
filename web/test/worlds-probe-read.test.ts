@@ -61,11 +61,17 @@ const SHARES = Object.freeze([
  *
  * Every value is distinct and non-zero on purpose. A zeroed fixture would agree with a reader that
  * had silently substituted an all-zero report for the `null` case, which is the one collapse §1.6
- * forbids, and it would also agree with a reader that crossed two of the nine counters.
+ * forbids, and it would also agree with a reader that crossed two of the ten counters.
+ *
+ * `bytesReserved` is deliberately **larger** than `bytesFetched` rather than a slice of it. It is
+ * neither monotonic nor a subset (DEC-780) — a selection pass that issues every want for a pose
+ * before any of them lands is the shipped case, not a pathological one — so a fixture where the
+ * reserve was the smaller number would agree with a reader that had assumed containment.
  */
 function streamReport(overrides: Partial<ArtStreamReport> = {}): ArtStreamReport {
   return {
     bytesFetched: 4_194_304,
+    bytesReserved: 7_372_800,
     byteBudget: 67_108_864,
     swatchOnly: false,
     requested: 158,
@@ -153,7 +159,7 @@ describe('readWorldsProbe — the three outcomes', () => {
 })
 
 /**
- * The nine fields `ArtStreamReport` publishes, each broken alone and caught by name.
+ * The ten fields `ArtStreamReport` publishes, each broken alone and caught by name.
  *
  * At module scope so the table-completeness guard below can count these as the stream's negative
  * controls: they are the same kind of row as `MUTANTS`, kept separate only because they share the
@@ -161,6 +167,7 @@ describe('readWorldsProbe — the three outcomes', () => {
  */
 const STREAM_FIELDS: ReadonlyArray<{ readonly field: string; readonly bad: unknown }> = [
   { field: 'bytesFetched', bad: -1 },
+  { field: 'bytesReserved', bad: -90_000 },
   { field: 'byteBudget', bad: 'lots' },
   { field: 'swatchOnly', bad: 1 },
   { field: 'requested', bad: 1.5 },
@@ -247,9 +254,14 @@ describe('probe.stream — required, and null is not a zeroed report', () => {
    *
    * An absolute count would have to be restated every time any unrelated field gains a check. The
    * three payloads differ only in `stream`, so the deltas are exactly this reader's contribution:
-   * one presence check, one shape check, then nine per-field checks.
+   * one presence check, one shape check, then one check per field in `STREAM_FIELDS`.
+   *
+   * Stated against the table's length rather than a literal so that a field added to the report —
+   * `bytesReserved` was the tenth (DEC-780) — cannot be added to the reader while the count still
+   * reads as pinned. Adding the field without its negative-control row is what the completeness
+   * guard below refuses; adding the row without the reader check is what this refuses.
    */
-  it('runs one presence check, one shape check and nine field checks', () => {
+  it('runs one presence check, one shape check and one check per published field', () => {
     const keyless = probe() as unknown as Record<string, unknown>
     delete keyless.stream
 
@@ -258,7 +270,7 @@ describe('probe.stream — required, and null is not a zeroed report', () => {
     const live = readWorldsProbe(probe())
 
     // The keyless payload has already spent the presence check, so these deltas are measured from a
-    // reader that ran one check, not from none: the full contribution on a live payload is eleven.
+    // reader that ran one check, not from none: the full contribution on a live payload is twelve.
     expect(composed.checked - absent.checked).toBe(1)
     expect(live.checked - composed.checked).toBe(STREAM_FIELDS.length)
     expect(live.checked - absent.checked).toBe(STREAM_FIELDS.length + 1)

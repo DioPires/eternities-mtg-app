@@ -111,15 +111,38 @@ interface ProbePool {
 interface ProbeStream {
   /** Bytes charged this session, successes and decode failures alike. Monotonic. */
   bytesFetched: number;
+  /**
+   * Bytes committed to requests that have not settled yet (DEC-780).
+   *
+   * **Neither monotonic nor a subset of `bytesFetched`.** It rises when a request issues and falls
+   * when that request settles, whichever way it settles — so a gate asserting
+   * `bytesReserved <= bytesFetched` would be asserting something a correct stream violates on every
+   * frame that issues more than it has landed, which on this workload is the first frame of every
+   * pose. The only invariant is `>= 0`.
+   */
+  bytesReserved: number;
   byteBudget: number;
   /**
-   * The budget is spent and the stream has stopped asking.
+   * The budget is spent — committed, not merely landed — and the stream has stopped asking.
    *
-   * **The gate READS this and never recomputes `bytesFetched >= byteBudget`** (DEC-744 B1 /
-   * DEC-746 D5): re-deriving it asserts against the gate's own model of the policy rather than the
-   * shipped one. W4 reads it before it scores, because a session that went swatch-only part-way has
-   * a legitimate reason for a low art count. W4's rows must not, however, assume the budget *binds*
-   * — at §3.1's poses it does not (DEC-780).
+   * **The gate READS this and never recomputes it** (DEC-744 B1 / DEC-746 D5): re-deriving it
+   * asserts against the gate's own model of the policy rather than the shipped one. The definition
+   * is `bytesFetched + bytesReserved >= byteBudget`, and the older spelling
+   * `bytesFetched >= byteBudget` **is the DEC-780 defect** — so a gate that recomputed the obvious
+   * form would re-introduce the bug on the reading side after the renderer had been fixed.
+   *
+   * **The budget BINDS as of PR #57 (`1f58f3f`), and the earlier instruction not to assume it does
+   * is withdrawn.** Before DEC-780 every want for a pose was tested at `bytesFetched === 0`, so all
+   * 967 passed and the session spent 88.7 MiB against a 64 MiB budget. Today the admitted set is a
+   * nearest-first prefix of about **729 responses / 70.2 MiB** (+9.7%) — the overshoot being the
+   * 90 KiB estimate's error, since the prefix averages ~100,996 B against the roster's 96,159 B
+   * population mean. A W4 row scored against 967 / 88.7 MiB is now scored against the unfixed tree.
+   *
+   * **Score what crossed the network — response count and bytes — and never `declinedBudget > 0`.**
+   * The unfixed stream declines too (23,715 times in a 32 s run), just later, once the overspend has
+   * already landed. Both trees read "declines happen", so that predicate separates nothing; it is
+   * §3.1's W4 measure being carried by the wrong signal, arising in the instrument rather than in
+   * the renderer.
    */
   swatchOnly: boolean;
   /** Requests handed to the queue — not the same as cells wanting art. */
