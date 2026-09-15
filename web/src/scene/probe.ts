@@ -31,6 +31,22 @@ export interface ProbeState {
   readonly flying: boolean
   readonly cameraDistance: number
   readonly planeSlug: string | null
+  /**
+   * The multiverse's accumulated spin angle this frame, in radians (spec §3.1's W5; DEC-785 F2).
+   *
+   * `PlaneTable.multiverseAngle`, which `PlaneTable.advance` integrates and `starScene` mirrors into
+   * the background — the **renderer's own** azimuth, not one derived from a clock. W5 sweeps at
+   * least 12 azimuths and `azimuthSpacingFault` checks they are evenly spaced around the turn; a
+   * gate that computed the angle from elapsed time would be checking its own arithmetic against
+   * itself and would pass by construction on a sweep the renderer never took.
+   *
+   * **Frozen is a real reading, and it is published as one.** `starScene` advances the table with
+   * `motion` 0 under reduced motion, so this stays put; that is the truth the gate's `frozen` setup
+   * failure exists to catch, and synthesising advancement here would turn §3.1's named degeneracy —
+   * twelve samples of one frame, reported as a sweep — into a green matrix reading as the stronger
+   * claim. Nothing smooths it, defaults it, or wraps it beyond the table's own `% TAU`.
+   */
+  readonly multiverseAngle: number
   /** Cards of the focused plane whose shards have landed. */
   readonly cardsLoaded: number
   readonly thumbnails: {
@@ -264,8 +280,24 @@ export interface Probe {
    *
    * Separate from {@link Probe.state} because the per-cell array runs to thousands of entries on
    * Dominaria and has no business in the object the readout panel renders from every frame.
+   *
+   * **`slug` names the world to report, and a per-plane reading must pass it (DEC-785 F1).** The
+   * contract's §1 — *"cells are reported for the focused plane only"* — is what this argument
+   * serves: with no argument the payload describes whichever world is nearest in units of its
+   * **own** radius, which over the v3 roster is the focused one for just 3 of 45 at the gate's
+   * navigation pose, because dividing by each world's radius makes the minimum systematically the
+   * largest neighbour. That count is pose-dependent, which is why it is quoted with one. It is not
+   * a small-world artefact — Bloomburrow (299 cards) and Edge (276) misattribute too — and it is
+   * silent, since the payload that comes back is a perfectly well-formed reading of the wrong
+   * world. Check {@link WorldsProbe.planeSlug} against what you asked for either way.
+   *
+   * The no-argument path is unchanged for the readouts and drivers already written against it.
+   *
+   * `undefined` covers both "no such world on this roster" and §3.1's setup-failure states, which
+   * the gate branches on identically; {@link WorldsAttachment.probeSource} keeps them apart inside
+   * the app.
    */
-  worlds: () => WorldsProbe | undefined
+  worlds: (slug?: string) => WorldsProbe | undefined
 }
 
 declare global {

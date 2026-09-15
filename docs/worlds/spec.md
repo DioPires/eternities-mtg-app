@@ -1511,6 +1511,42 @@ scale — which is the thing T7 said was missing.
 > page with no worlds on it score a green matrix — the `verify-browser --dataset all` shape of
 > failure, where two fixtures printed "all datasets verified" and neither had been read.
 
+> **Normative — a per-plane reading passes the slug: `worlds(slug?)` (DEC-785 F1).** The per-world
+> tour takes its statistic *for the focused plane only*, and the no-argument call cannot deliver
+> that. With no argument the payload describes whichever world is nearest in units of **its own
+> radius**, and that metric does not name the focused world: dividing each distance by that world's
+> radius makes the minimum systematically the **largest neighbour**, so a big world far away
+> outranks the small one the camera is parked at. Measured over the v3 roster at the gate's own
+> navigation pose it named the focused world for **3 of 45** — and the failure is not confined to
+> degenerate worlds, since Bloomburrow (299 cards), Edge (276) and Fiora (146) all misattribute.
+>
+> > The argument is **additive**, and deliberately: the no-argument path is unchanged for the
+> > readouts and drivers already written against it, and the home view has no focused world to name.
+> > `worlds(slug)` returns that world's composed surface, and **`undefined` — never a neighbour —
+> > when the slug composed nothing**, which folds into the setup-failure branch above rather than
+> > inventing a fourth state.
+> >
+> > **The misattribution is silent**, which is why the seam contract's per-plane rule is not enough
+> > on its own: what comes back is a perfectly well-formed payload of the *wrong* world, with a
+> > plausible `radii` and a plausible `cells[]`. A reader must check `planeSlug` against the slug it
+> > asked for; the gate does, at the settle and again at the measurement pose.
+
+> **Normative — `ProbeState.multiverseAngle` is the renderer's azimuth, and a frozen one is a real
+> reading (DEC-785 F2).** An azimuth sweep needs the angle the frame was *drawn* at, and the gate may
+> not derive it from its own clock. Two reasons, and neither is fastidiousness: under reduced motion
+> `starScene` advances the plane table with `motion` 0, so a wall-clock sweep would report evenly
+> spaced azimuths of a scene frozen at exactly **one** — this section's own named degeneracy, reached
+> through the harness instead of through a short sweep, and still reading as the stronger claim; and
+> even with motion live, an angle computed from elapsed time makes an even-spacing check a test of
+> the gate's arithmetic against itself, passing by construction on a sweep the renderer never took.
+>
+> > The field is `PlaneTable.multiverseAngle` — the same integrated angle `starScene` mirrors into
+> > the background, never a second clock — published **always and unsmoothed**. Under reduced motion
+> > it therefore does not advance, and that is the specified behaviour rather than a gap: the gate
+> > reports a non-advancing angle as a named **setup failure**, which it can only do if the seam
+> > hands it the truth. Synthesising advancement here would convert the degeneracy above into a green
+> > sweep. No `?? 0` spelling: a seam that defaults the field is indistinguishable from a frozen one.
+
 > **Normative — the payload carries §1.6's stream report as `stream`, and `null` is not zeros
 > (DEC-778).** §1.6 already says the probe reports `swatchOnly` "so the gate can read it before it
 > reads W4"; until DEC-778 `ArtStreamReport` was computed and never published, so the sentence named

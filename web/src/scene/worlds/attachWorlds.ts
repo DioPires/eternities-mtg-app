@@ -144,15 +144,26 @@ export interface WorldsAttachment {
   /** Compose the roster, or tear it down. Idempotent in the identity of `data`. */
   setData: (data: WorldsData | null) => void
   /**
-   * The `?probe=` payload source (§3.1), or `null`.
+   * The `?probe=` payload source (§3.1), for `slug`'s world or — with no argument — for whichever
+   * world is nearest in radii.
    *
    * `null` — which the seam turns into `undefined` — on a page where **no world is composed**, and
    * *also* before the first tick has run: every field in the payload except the roster is frame
    * state, and assembling one from a camera that has never been read would publish a placeholder
    * that reads exactly like a measurement. §3.1 makes `undefined` a **setup failure** the gate
    * branches on, which is the correct reading of "the tick has not started".
+   *
+   * **`undefined` is the third answer and it is not the same claim as `null` (DEC-785 F1).** It
+   * means *this roster has no such world*, which only a call that named one can get; `null` stays
+   * "there is nothing to report yet" and is what every no-argument caller still sees. Both collapse
+   * to `undefined` at the public seam, because leg G branches on the payload's absence either way —
+   * but inside the app the two are different facts and a caller that conflated them could not tell
+   * a typo'd slug from a page that has not ticked.
+   *
+   * With a slug the selection is the slug, full stop: see the implementation for why the
+   * no-argument metric names the focused world for only 3 of 45.
    */
-  probeSource: () => WorldsProbeSource | null
+  probeSource: (slug?: string) => WorldsProbeSource | null | undefined
   /** §1.12's rung (DEC-751). Resizing the pool recomposes the roster — see the implementation. */
   setArtLayers: (tierLayers: number) => void
   /**
@@ -404,9 +415,14 @@ export function attachWorlds(options: WorldsAttachmentOptions): WorldsAttachment
     return surface.crossover.drawSystem || surface.crossover.drawSheet
   }
 
+  /** The composed surface for a slug, or `undefined` if that slug composed nothing. */
+  function surfaceFor(slug: string): WorldSurface | undefined {
+    return surfaces.find((candidate) => candidate.planeSlug === slug)
+  }
+
   /** One end of §1.9's tether, from a composed world. `null` if that slug composed nothing. */
   function tetherEnd(slug: string): TetherEnd | null {
-    const surface = surfaces.find((candidate) => candidate.planeSlug === slug)
+    const surface = surfaceFor(slug)
     if (!surface) return null
     return {
       centre: surface.centre.clone(),
@@ -584,12 +600,23 @@ export function attachWorlds(options: WorldsAttachmentOptions): WorldsAttachment
       composeRoster()
     },
 
-    probeSource: () => {
+    probeSource: (slug?: string) => {
       const frame = lastFrame
       if (!frame || surfaces.length === 0) return null
-      // The world the camera is at, in units of that world's **own** radius — the pose every §3.1
-      // criterion is stated against. Nearest in radii rather than in scene units, because a small
-      // world the camera is close to is the subject and a large one further away is not.
+      if (slug !== undefined) {
+        // §3.1's *"cells are reported for the focused plane only"*: the caller names the world it
+        // flew to, and no metric is consulted. `undefined` — never a neighbour — when that slug
+        // composed nothing, so a gate cannot read a payload it did not ask for.
+        const surface = surfaceFor(slug)
+        return surface ? surface.probeSource(frame) : undefined
+      }
+      // The smallest `radii` in the roster, which is **not** the focused world (DEC-785 F1).
+      // `radii` is camera distance in units of each world's *own* radius, so the minimum is
+      // systematically the largest world in the neighbourhood: measured over the v3 roster at the
+      // gate's navigation pose this names a world other than the focused one for 42 of 45 — a
+      // pose-dependent count, which is why it is quoted with one. It is kept, unchanged, because
+      // the home view has no focused world to name and existing readers are written against it —
+      // anything measuring a *named* world passes the slug and gets it.
       let nearest = surfaces[0]!
       for (const surface of surfaces) {
         if (surface.radii < nearest.radii) nearest = surface

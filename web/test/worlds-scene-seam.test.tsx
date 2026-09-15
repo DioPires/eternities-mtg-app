@@ -198,12 +198,13 @@ function servicesWith(scene: SceneHost): Services {
  * be nearest. Nothing else changes: every mutant line runs exactly as it does under `?probe=1`,
  * and `bench` is a shipped configuration rather than a hook opened for this file.
  */
-function mount(scene: SceneHost, worlds = true): void {
+function mount(scene: SceneHost, worlds = true, reducedMotion = true): SceneDataState {
+  const data = dataState(worlds)
   act(() => {
     render(
       <SceneView
-        data={dataState(worlds)}
-        reducedMotion
+        data={data}
+        reducedMotion={reducedMotion}
         chrome={false}
         bench={{ renderRunner: () => null }}
       />,
@@ -214,6 +215,37 @@ function mount(scene: SceneHost, worlds = true): void {
       },
     )
   })
+  // Returned so a row can read the **table** the page is running on. `multiverseAngle` is published
+  // off `resources.table`, and a row that only read the angle back off the probe could not tell the
+  // table's own integration from a number the seam invented. See the W5 rows at the end of the file.
+  return data
+}
+
+/**
+ * Step the loop by real 17 ms frames, starting from a timestamp it will accept as the future.
+ *
+ * **`FrameLoop.tick` takes an absolute timestamp, not a delta**, and `start()` seeds `lastNow` from
+ * `performance.now()`. So the bare `tick(17)` every other row in this file uses computes
+ * `max(0, (17 − performance.now()) / 1000)` — a delta of **0**. That is exactly right for those
+ * rows, which want the phases to run and nothing to move, and exactly wrong for a row about
+ * elapsed time: a frozen-angle assertion ticked that way passes on any tree at all, because no
+ * time ever passes. This returns a stepper whose deltas are real, so "frozen" means `motion` is 0
+ * rather than meaning the clock stood still.
+ */
+function frameStepper(scene: SceneHost): () => void {
+  const base = performance.now() + 1_000
+  let frame = 0
+  // Primes `lastNow` to `base`, so every measured frame below is 17 ms rather than the distance
+  // from whenever the loop happened to start.
+  act(() => {
+    scene.renderer.loop.tick(base)
+  })
+  return () => {
+    frame += 1
+    act(() => {
+      scene.renderer.loop.tick(base + frame * 17)
+    })
+  }
 }
 
 /** Put the camera `radii` of a world's own radius out, then tick. See `worlds-attach.test.ts`. */
@@ -309,6 +341,167 @@ describe('the `?probe=` worlds seam, served from a mounted scene (§3.1, DEC-768
       scene.renderer.loop.tick(17)
     })
     expect(window.__eternitiesProbe!.worlds()).toBeUndefined()
+  })
+
+  // --- §1's *"cells are reported for the focused plane only"* (DEC-785 F1) ---------------------
+
+  /**
+   * The pose the rows below sweep at, as a multiple of each world's **own** radius.
+   *
+   * **Not 2.2, and the reason is the whole finding.** `poseAtWorld` parks the camera at exactly
+   * `radii` of the world it names, so at any single multiple that world's `radii` is the roster
+   * *minimum* by construction and nearest-in-radii and focused-world agree for all 45 — which is
+   * precisely why four passing rows above, and a whole green suite, never saw DEC-785 F1. The
+   * harness could not express the disagreement it was supposed to be checking.
+   *
+   * At 8 the camera is far enough out in the target's own units that larger neighbours undercut it,
+   * and the two selections disagree for 27 of 45 — the same shape leg G measured live at the gate's
+   * navigation pose (42 of 45 there, where the rig's distance is not a multiple of anything).
+   * {@link DISCRIMINATING_AT_LEAST} is what stops this constant silently drifting back to a value
+   * where the rows are vacuous.
+   */
+  const SWEEP_RADII = 8
+
+  /** The floor on that disagreement. A pose that discriminates for fewer than this scores nothing. */
+  const DISCRIMINATING_AT_LEAST = 20
+
+  it('reports the world it was asked for, at a pose where a different one is nearest in radii', () => {
+    mount(scene)
+
+    const asked: string[] = []
+    const wrong: string[] = []
+    const disagreed: string[] = []
+
+    for (const target of scene.worlds.surfaces) {
+      const slug = target.planeSlug!
+      poseAtWorld(scene, slug, SWEEP_RADII)
+
+      // The nearest-in-radii world, recomputed here from the live surfaces — an **independent
+      // writer** of the no-argument path's answer, so the row below pins that path rather than
+      // restating it. `radii` is `|camera − centre| / radius`, each world in its own units.
+      let nearest = scene.worlds.surfaces[0]!
+      for (const candidate of scene.worlds.surfaces) {
+        if (candidate.radii < nearest.radii) nearest = candidate
+      }
+      if (nearest.planeSlug !== slug) disagreed.push(slug)
+
+      // What §3.1's per-plane tour reads. Kills the drop-the-slug mutant: with the argument
+      // ignored this is `nearest.planeSlug` for every world in `disagreed`.
+      const payload = window.__eternitiesProbe!.worlds(slug)
+      expect(payload, `worlds('${slug}') must answer at ${SWEEP_RADII} radii`).toBeDefined()
+      asked.push(payload!.planeSlug!)
+      if (payload!.planeSlug !== slug) wrong.push(`${slug} -> ${payload!.planeSlug}`)
+
+      // The no-argument path, unchanged and still nearest-in-radii — the CEO's "byte-for-byte"
+      // condition, checked rather than assumed. A fix that quietly rerouted this to navigation
+      // would move every reader already written against it.
+      expect(window.__eternitiesProbe!.worlds()!.planeSlug).toBe(nearest.planeSlug)
+    }
+
+    expect(wrong, 'every world must report itself').toEqual([])
+    expect(asked).toHaveLength(scene.worlds.surfaces.length)
+
+    // **The row above has to be able to fail.** Where the two selections agree, a seam that ignored
+    // the slug entirely would answer correctly by coincidence — so the sweep is only evidence if it
+    // contains worlds where they do not.
+    expect(
+      disagreed.length,
+      `the pose must discriminate: at ${SWEEP_RADII} radii nearest-in-radii named the focused world ` +
+        `for all ${scene.worlds.surfaces.length}, so these rows would pass on the unfixed tree too`,
+    ).toBeGreaterThanOrEqual(DISCRIMINATING_AT_LEAST)
+  })
+
+  it('answers `undefined` for a slug this roster did not compose, never a neighbour', () => {
+    mount(scene)
+    poseAtWorld(scene, 'dominaria', SWEEP_RADII)
+    const probe = window.__eternitiesProbe!
+
+    // A plane that is real and on the roster but composed **nothing** — it has no cards, so
+    // `worldPlanesOf` left it out. This is the case the gate hits on a mis-typed or retired slug,
+    // and it is a stronger subject than an invented string because the slug itself is legitimate.
+    const uncomposed = PLANES.planes.find(
+      (plane) => !WORLDS.some((world) => world.slug === plane.slug),
+    )
+    expect(uncomposed, 'the roster must contain a plane that composes no world').toBeDefined()
+
+    // Kills the fall-back-to-nearest mutant: at this pose `worlds()` is a *defined* payload for
+    // some other world, so returning that instead of `undefined` is the easy wrong answer.
+    expect(probe.worlds()).toBeDefined()
+    expect(probe.worlds(uncomposed!.slug)).toBeUndefined()
+    expect(probe.worlds('no-such-world-anywhere')).toBeUndefined()
+
+    // The control that stops the two lines above passing on a seam that answers `undefined` to
+    // everything — which is exactly what the pre-DEC-772 tree did.
+    expect(probe.worlds('dominaria')?.planeSlug).toBe('dominaria')
+  })
+
+  it('keeps "the tick has not run" and "no such world" apart below the seam', () => {
+    // Both collapse to `undefined` at `worlds()`, because leg G branches on the payload's absence
+    // either way. Inside the app they are different facts, and `probeSource` is where the
+    // distinction lives — so this is the only place it can be scored.
+    mount(scene)
+
+    // No tick yet: `lastFrame` is null. `null` is "nothing to report yet", for a slug that is
+    // perfectly well composed.
+    expect(scene.worlds.surfaces.some((s) => s.planeSlug === 'dominaria')).toBe(true)
+    expect(scene.worlds.probeSource('dominaria')).toBeNull()
+    expect(scene.worlds.probeSource()).toBeNull()
+
+    poseAtWorld(scene, 'dominaria', SWEEP_RADII)
+
+    // After a tick the same call answers, and only the unknown slug is `undefined` — so the two
+    // states are told apart by the value and not by the timing.
+    expect(scene.worlds.probeSource('dominaria')).not.toBeNull()
+    expect(scene.worlds.probeSource('no-such-world-anywhere')).toBeUndefined()
+  })
+
+  // --- W5's azimuth: `ProbeState.multiverseAngle` (DEC-785 F2) --------------------------------
+
+  it('publishes the table’s own multiverse angle, and it advances as the table advances', () => {
+    // Motion **on**, which is the deviation from every other row in this file and the whole point:
+    // `starScene` advances the table with `motion` 0 under reduced motion, so a frozen angle is the
+    // default state here and a row that ran reduced could not tell a live seam from a dead one.
+    const data = mount(scene, true, false)
+    const table = data.resources!.table
+    const step = frameStepper(scene)
+
+    const readings: number[] = []
+    for (let frame = 0; frame < 4; frame += 1) {
+      step()
+      // Against the **table**, not against the previous reading: this is what makes the field
+      // testify to its provenance rather than merely to its existence. A `multiverseAngle: 0`
+      // constant, a second clock, or `resources.table.time` by mistake all fail here — only the
+      // getter the spec names passes, and it has to match on every frame, not once.
+      expect(window.__eternitiesProbe!.state().multiverseAngle).toBe(table.multiverseAngle)
+      readings.push(window.__eternitiesProbe!.state().multiverseAngle)
+    }
+
+    // And it has to have *moved*. `toBe(table.multiverseAngle)` alone would hold on a tree where
+    // the table itself never advanced — the exact degeneracy §3.1 names, reported as a sweep.
+    expect(readings[0], 'the first tick must have advanced the angle off zero').toBeGreaterThan(0)
+    for (let i = 1; i < readings.length; i += 1) {
+      expect(readings[i], `frame ${i} must advance past frame ${i - 1}`).toBeGreaterThan(
+        readings[i - 1]!,
+      )
+    }
+  })
+
+  it('publishes a frozen angle under reduced motion, which is the truth the gate must see', () => {
+    // The negative control for the row above, and a **specification** rather than a limitation:
+    // leg G's gate reports `frozen` as a named setup failure, so the seam has to hand it a genuinely
+    // unmoving number. Synthesising advancement here would turn twelve samples of one frame into a
+    // green W5 sweep that reads as the stronger claim.
+    const data = mount(scene, true, true)
+    const table = data.resources!.table
+    // A **real** clock, for the reason in `frameStepper`'s header: ticked the way the other rows
+    // tick, this row would read zero on a tree with reduced motion wired to nothing at all.
+    const step = frameStepper(scene)
+
+    for (let frame = 0; frame < 4; frame += 1) {
+      step()
+      expect(window.__eternitiesProbe!.state().multiverseAngle).toBe(0)
+      expect(table.multiverseAngle).toBe(0)
+    }
   })
 })
 
