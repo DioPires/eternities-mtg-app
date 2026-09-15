@@ -136,7 +136,10 @@ export class AtmospherePass {
     let at = 0
     for (const plane of this.worlds) {
       if (!isDrawn(plane)) continue
-      centre.set(plane.home[0], plane.home[1], plane.home[2])
+      // This frame's centre, not `plane.home` (DEC-804). §1.7's shell sits on its world's limb; a
+      // shell at the t=0 home while the world tracks the multiverse is a rim detached from the
+      // globe it belongs to, which reads as bloom rather than as a placement error.
+      frame.centreOf(plane, centre)
       // §1.3's law, not `plane.radius` — the same refusal `buildWorldSource` makes, and for the same
       // reason: the shipped field is also written by the retiring galaxy path. A shell sized from a
       // stale radius is a halo that does not sit on its world's limb, which reads as bloom.

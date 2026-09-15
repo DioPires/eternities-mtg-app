@@ -432,6 +432,28 @@ export class SceneHost {
     this.teardown.push(
       attachMotionSync(this.renderer.loop, this.resources.table, navigation.rig.motion),
     )
+    // §1.2's centre, from the rig's own motion mirror (DEC-804). `SceneMotion.planePosition` is PRD
+    // 5.7.1's definition of a plane's tether point — `home`, plus PRD 5.3.15's drift, rotated by
+    // PRD 8.5.3's multiverse angle — and the line above has just made that mirror the plane table's.
+    // So the worlds scene and the camera now read one position from one clock.
+    //
+    // **Here, with `attachMotionSync`, and not in `setResources` beside `setSpinAngles`.** The spin
+    // angles come off the table directly; this needs the mirror, which belongs to the navigation, and
+    // this method is the one place both inputs are known to exist. The bench takes it too: `driveRig`
+    // gates the rig, not the clock, and a bench flying its own camera against unrotated worlds would
+    // be measuring a scene the product never draws.
+    //
+    // A dropped write here is DEC-804 restored in full silence — see `centre.ts` on `PLANE_HOME`.
+    // `worlds-centre.test.ts` drives this method rather than `attachWorlds`, so the wiring is what
+    // is under test and not the setter.
+    const motion = navigation.rig.motion
+    this.worldsAttachment.setPlaneCentres((plane, out) => {
+      // `planePosition` writes into `out` and returns it as the rig's allocation-free `MutVec3`
+      // (PRD 7.3.2), which is structurally a `Vector3`'s `{x, y, z}` but not one. The write is the
+      // contract; `out` is returned so callers can chain.
+      motion.planePosition(out, plane)
+      return out
+    })
     // The bench flies the camera itself. Attaching the rig as well would put two writers on one
     // camera and the path would stop being the path.
     if (this.driveRig) {

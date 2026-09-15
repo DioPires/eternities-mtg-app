@@ -192,7 +192,11 @@ export class SystemPass {
     for (const entry of this.entries) {
       if (entry.layer >= 0 && !drawsSystem(entry.plane)) continue
 
-      centre.set(entry.plane.home[0], entry.plane.home[1], entry.plane.home[2])
+      // Where the plane is this frame, not `plane.home` (DEC-804). The sheet and this instance
+      // cross-fade into each other across §1.5's band, so a step-2 instance left at the t=0 home
+      // while the step-4 sheet tracks the multiverse draws both representations of one world at
+      // two places at once — and inside the band both are visible.
+      frame.centreOf(entry.plane, centre)
       planeOrientation(entry.plane, spinAngleOf, orientation)
       scale.setScalar(entry.radius)
       this.mesh.setMatrixAt(at, matrix.compose(centre, orientation, scale))
