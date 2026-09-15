@@ -18,6 +18,9 @@ import {
   CARD_SHEEN_INTENSITY,
   CARD_SHEEN_WIDTH,
   PLANET_ACTIVE_GAIN,
+  PLANET_QUAD_HEIGHT,
+  PLANET_QUAD_WIDTH,
+  PLANET_RIM_WIDTH,
   THUMBNAIL_RIM_GAIN,
   THUMBNAIL_RIM_WIDTH,
 } from '../tuning'
@@ -205,23 +208,25 @@ void main() {
 `
 
 /**
- * PRD 5.6.7-9: a printing, as a small sphere textured with that printing's art crop.
+ * PRD 5.6.7-9 and worlds spec §1.10: a printing, as a **flat quad showing its whole `small` image**.
  *
- * Lit from the camera rather than from a scene light, because there is no scene light: the star
- * field is emissive and the multiverse has no sun. A hemispheric wrap keeps the terminator soft so
- * a planet reads as a sphere rather than as a disc with a hard edge.
+ * It was a sphere textured with the printing's `art_crop`, and both halves of that were the
+ * problem §1.10 set out to fix. Wrapping a card on a sphere distorts it — review §4.4's finding —
+ * and an `art_crop` is art without the frame, title or artist line, so showing one obliged the
+ * product to carry the artist's name beside every planet (review §10 Q3). A flat, unshaded quad
+ * showing the full card is undistorted and carries Scryfall's attribution on its own face, which
+ * satisfies the alternative clause. One change answers both.
+ *
+ * No normal and no view position reach the fragment stage any more, because nothing downstream can
+ * use them: the quad's normal is constant, so every lighting term computed from it is constant too.
+ * See {@link PLANET_FRAGMENT_SHADER} for what that does to the rim.
  */
 export const PLANET_VERTEX_SHADER = /* glsl */ `
 varying vec2 vUv;
-varying vec3 vNormalView;
-varying vec3 vViewPosition;
 
 void main() {
   vUv = uv;
-  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-  vViewPosition = mvPosition.xyz;
-  vNormalView = normalize(normalMatrix * normal);
-  gl_Position = projectionMatrix * mvPosition;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }
 `
 
@@ -238,10 +243,11 @@ uniform float uActive;
 uniform float uHover;
 
 varying vec2 vUv;
-varying vec3 vNormalView;
-varying vec3 vViewPosition;
 
 #define ACTIVE_GAIN ${glslFloat(PLANET_ACTIVE_GAIN)}
+#define QUAD_WIDTH ${glslFloat(PLANET_QUAD_WIDTH)}
+#define QUAD_HEIGHT ${glslFloat(PLANET_QUAD_HEIGHT)}
+#define RIM_WIDTH ${glslFloat(PLANET_RIM_WIDTH)}
 
 void main() {
   vec3 base = uGlow;
@@ -249,14 +255,28 @@ void main() {
     base = mix(uGlow, srgbToLinear(texture2D(uImage, vUv).rgb), uImageFade);
   }
 
-  vec3 normal = normalize(vNormalView);
-  vec3 toEye = normalize(-vViewPosition);
-  // Wrapped lambert: (n·l + 1) / 2, so the far limb is dim rather than black.
-  float lambert = clamp((dot(normal, toEye) + 1.0) * 0.5, 0.0, 1.0);
-  base *= mix(0.35, 1.15, lambert);
+  // §1.10: "undistorted, unshaded". The sphere's wrapped lambert is deliberately gone rather than
+  // simplified — on a constant normal it evaluates to one number for the whole quad, so it would
+  // survive as a flat multiplier that silently darkened every printing by 0.86 and read as a
+  // deliberate dimming choice.
 
-  // A fresnel rim, brightened while the planet is active or hovered.
-  float rim = pow(1.0 - clamp(dot(normal, toEye), 0.0, 1.0), 3.0);
+  /*
+   * PRD 5.6.9's mark, as a border instead of a fresnel term.
+   *
+   * **The fresnel could not come along, and it fails silently if it does.** It was
+   * pow(1 - dot(n, toEye), 3), and the quad faces the camera by construction — the ring hangs off
+   * a root that does lookAt(camera) — so dot(n, toEye) is 1 across the whole surface and that
+   * expression is identically **zero**. uActive and uHover would still be bound, still be set by
+   * setActivePrinting and setHoveredPlanet, and still multiply into a term worth nothing: the
+   * active printing and the hovered printing would simply stop being marked, with no error and no
+   * uniform left unwritten to notice.
+   *
+   * So distance-to-edge, measured in the **quad's own units**. vUv is the unit square and the quad
+   * is not square, so scaling by the quad's dimensions is what makes the border the same width on
+   * all four sides; in UV alone the left and right edges would be 1.4x thicker.
+   */
+  vec2 toEdge = min(vUv, 1.0 - vUv) * vec2(QUAD_WIDTH, QUAD_HEIGHT);
+  float rim = 1.0 - smoothstep(RIM_WIDTH * 0.5, RIM_WIDTH, min(toEdge.x, toEdge.y));
   float mark = 1.0 + uActive * (ACTIVE_GAIN - 1.0) + uHover * 0.6;
   base += rim * 0.35 * mark;
 

@@ -284,10 +284,17 @@ describe('the call site (review F1: it had test callers only)', () => {
   const sources = sourceFiles()
 
   it('has exactly one production writer of the filter mask', () => {
+    // Two owners of the method name now, and they are not two writers (spec §1.11, DEC-751):
+    // `attachWorlds` *forwards* the mask to the surfaces it composed, which is the only way a
+    // world built after the last push can arrive dimmed. The producer is still `app/filterMask.ts`
+    // alone, and that is what this row is about — anything else appearing here is a second
+    // authority for the dimming, which is the defect the file's header describes.
     const writers = sources
       .filter(
         ({ path, text }) =>
           path !== 'scene/starfield/starGeometry.ts' &&
+          path !== 'scene/worlds/worldSurface.ts' &&
+          path !== 'scene/worlds/attachWorlds.ts' &&
           /\.(setFilterMask|clearFilter)\s*\(/.test(text),
       )
       .map(({ path }) => path)
@@ -303,6 +310,20 @@ describe('the call site (review F1: it had test callers only)', () => {
       .map(({ path }) => path)
     expect(callers).not.toHaveLength(0)
     expect(callers).toContain('App.tsx')
+  })
+
+  it('and the worlds half is called from the scene', () => {
+    // The same deletion guard for §1.11's half, and it is not hypothetical here: DEC-768's F3
+    // found that either of `EternitiesScene`'s two worlds wiring lines could be deleted with the
+    // whole suite and tsc still green. This is a third line in the same component.
+    const callers = sources
+      .filter(
+        ({ path, text }) =>
+          path !== 'app/filterMask.ts' &&
+          /\b(useWorldsFilterMask|bindWorldsFilterMask)\s*\(/.test(text),
+      )
+      .map(({ path }) => path)
+    expect(callers).toContain('scene/EternitiesScene.tsx')
   })
 
   function sourceFiles(): Array<{ path: string; text: string }> {

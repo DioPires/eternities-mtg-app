@@ -129,9 +129,46 @@ export interface QualityTier {
   readonly bloomLevels: number
   /** PRD 8.5.8's default atlas capacity. Phase 3 reads it; Phase 2a only carries it. */
   readonly thumbnailCapacity: number
+  /**
+   * Layers the worlds art pool is *asked* for at this rung (worlds spec §1.12, DEC-751).
+   *
+   * **Asked for, not allocated.** The renderer runs this through
+   * {@link ../worlds/artPool.artPoolSize}, which clamps it to `maxArrayTextureLayers - 32`; on a
+   * WebGL 2 spec-minimum device that is 224 and the three top rungs all land there. Anything
+   * asserting on the rung — `e2e/quality.spec.ts` above all — must read the value the renderer
+   * reports, never this constant. See §1.12 and `artPool.ts`'s own note.
+   */
+  readonly artPoolLayers: number
   /** Which glow program this rung draws with (DEC-739). See {@link GlowQuality}. */
   readonly glow: GlowQuality
   readonly label: string
+}
+
+/**
+ * Which knob each field belongs to — the ladder's invariant, as data (DEC-753's R-b, DEC-751).
+ *
+ * The invariant is **one knob per rung, not one field** (DEC-747 N3): a knob may move several
+ * fields, but no two rungs may touch the same knob. Writing the grouping down here rather than
+ * leaving it in prose is what lets `test/quality-ladder.test.ts` check it, and the check is not
+ * decoration — the rung below this ladder's tier 3 was inert for a whole phase because
+ * `bloomScale` moved alone, and the worlds plan would have made tier 3 inert again by stepping a
+ * capacity the worlds path does not read.
+ *
+ * `label` is excluded deliberately: it names the rung, so it moves with whichever knob the rung
+ * turns and carries no cost of its own.
+ */
+export const QUALITY_KNOBS: Readonly<Record<string, readonly (keyof QualityTier)[]>> = {
+  'pixel-ratio': ['pixelRatioCap'],
+  bloom: ['bloomScale', 'bloomLevels'],
+  /**
+   * One knob, two fields, for the same reason bloom is: this is the budget for *resident card
+   * imagery*, and which field carries it is a function of which card path is live. The galaxy
+   * spends it on PRD 8.5.8's thumbnail atlas; worlds retires that atlas (§1.12) and spends it on
+   * the art pool. Until the cutover both paths ship, so the rung steps both — and after it, the
+   * atlas field goes and the knob is unchanged.
+   */
+  'card-imagery': ['thumbnailCapacity', 'artPoolLayers'],
+  glow: ['glow'],
 }
 
 /**
@@ -141,9 +178,28 @@ export interface QualityTier {
  * *One knob*, not one number (DEC-747 N3). Rung 2's knob is the bloom chain and it is two fields —
  * `bloomScale` 0.5 → 0.25 *and* `bloomLevels` 8 → 7 — because the chain's cost is the product of a
  * source size and a mip count, and moving only one of them is what made this rung inert before
- * (finding R3). The invariant the spec relies on is that no rung touches a knob another rung owns,
- * and that still holds: the four knobs are the pixel ratio, the bloom chain, the atlas capacity and
- * the glow program, and each belongs to one rung.
+ * (finding R3). The invariant the spec relies on is that no rung touches a knob another rung owns;
+ * {@link QUALITY_KNOBS} is that grouping as data and `test/quality-ladder.test.ts` enforces it.
+ *
+ * Rung 3 is worlds' rung (§1.12, DEC-753's ruling). Its knob is the resident card-image budget, and
+ * under worlds that is the art pool: **1,024 → 128 layers**, 48.00 → 6.00 MiB. Three things fix
+ * that shape and none of them is taste:
+ *
+ *  - the pool may step at **exactly one rung** (DEC-753 R-b), so §1.12's original 1,024/1,024/512/
+ *    256/128 column — which moved it at three — is not available;
+ *  - the step has to clear the clamp, or the rung is inert on the only hardware that matters. WebGL
+ *    2's spec minimum for `MAX_ARRAY_TEXTURE_LAYERS` is 256, so `artPoolSize` returns 224 for every
+ *    request at or above it. A rung of 1,024 → 256 reads 224 → 224 there: the exact defect this
+ *    rung was rewritten to remove, reintroduced on the device W0.1 is about to measure. 128 is
+ *    below the clamp, so the rung is live on a spec-minimum device *and* on this Mac;
+ *  - 128 is the pool size DEC-770's note N1 measured tier 4 against, so the gate's W4 expectation
+ *    at the bottom of the ladder is a measurement of what ships rather than of a neighbouring
+ *    configuration.
+ *
+ * The cost of one-rung-only is a cliff: a machine that walks to tier 3 loses seven eighths of its
+ * art capacity in one step and most cells fall back to their swatch (§1.4's degraded shading path,
+ * which is a real picture, not a black one). An intermediate pool size wants its own tier, and
+ * DEC-753 rules that a tier addition is a separate change.
  *
  * Rung 4 is DEC-739's addition. Review §3.5 asked for it by name — "new 4: a cheap glow variant
  * (one tap, no dither) because glow overdraw is the second cost" — and it is the bottom of the
@@ -151,6 +207,11 @@ export interface QualityTier {
  * three above it all draw the same image at fewer pixels, and this one draws a different, flatter
  * nebula. A machine that has walked down to here is a machine that was not going to hold 60 fps
  * with the picture it asked for.
+ *
+ * Under worlds the same `glow` field also picks the atmosphere rim's variant (§1.7, §1.12): DEC-753
+ * ruled that the cheap rim and the cheap glow are one quantity **if and only if one knob drives
+ * both**, so the rim reads this field and does not get a switch of its own. A rim that needed
+ * independent control would be a second knob and would need its own rung.
  */
 export const QUALITY_TIERS: readonly QualityTier[] = [
   {
@@ -158,6 +219,7 @@ export const QUALITY_TIERS: readonly QualityTier[] = [
     bloomScale: 0.5,
     bloomLevels: FULL,
     thumbnailCapacity: 512,
+    artPoolLayers: 1024,
     glow: 'full',
     label: 'full',
   },
@@ -166,6 +228,7 @@ export const QUALITY_TIERS: readonly QualityTier[] = [
     bloomScale: 0.5,
     bloomLevels: FULL,
     thumbnailCapacity: 512,
+    artPoolLayers: 1024,
     glow: 'full',
     label: 'pixel-ratio',
   },
@@ -174,6 +237,7 @@ export const QUALITY_TIERS: readonly QualityTier[] = [
     bloomScale: 0.25,
     bloomLevels: REDUCED,
     thumbnailCapacity: 512,
+    artPoolLayers: 1024,
     glow: 'full',
     label: 'bloom',
   },
@@ -182,14 +246,16 @@ export const QUALITY_TIERS: readonly QualityTier[] = [
     bloomScale: 0.25,
     bloomLevels: REDUCED,
     thumbnailCapacity: 256,
+    artPoolLayers: 128,
     glow: 'full',
-    label: 'thumbnails',
+    label: 'art-pool',
   },
   {
     pixelRatioCap: 1.0,
     bloomScale: 0.25,
     bloomLevels: REDUCED,
     thumbnailCapacity: 256,
+    artPoolLayers: 128,
     glow: 'cheap',
     label: 'glow',
   },

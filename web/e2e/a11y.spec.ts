@@ -311,6 +311,97 @@ test('9e reduced motion: the duration tokens collapse to zero and nothing animat
 })
 
 /**
+ * 9e (scene). The CSS half above cannot see the scene, and the scene is where PRD 5.9 mostly lives.
+ *
+ * **This caught a shipped defect (DEC-751).** `SceneHost.setReducedMotion` forwards to the card
+ * tier through `this.cardTierHandle?.`, and the card tier is built late — after `planes.json` lands.
+ * The setting arrives from a mount effect, so for every user who already had the preference when
+ * the page loaded, the forward hit a `null` and was gone; the tier kept its own `reducedMotion =
+ * false` default for the whole session and PRD 5.6.3's tilt and PRD 5.6.7's orbit ran anyway. The
+ * value is only re-sent on *change*, so the single way to get a correct scene was to toggle the OS
+ * setting after load — which is exactly what a hand check does, and why this was invisible.
+ *
+ * So the media state is set **before `goto`**, which is the shipped order and the broken one.
+ *
+ * The negative control is doing real work rather than decorating: "the planets did not move" is
+ * also what a page with no focused card, a dead probe or a stalled render loop reports, and all
+ * three would score this green with the freeze removed. The unreduced run has to show the same
+ * planets moving through the same seam before the reduced run's stillness means anything.
+ */
+test('9e reduced motion: the scene stops too, even when the preference precedes the page', async ({
+  page,
+}) => {
+  const read = (): Promise<Array<{ x: number; y: number } | null>> =>
+    page.evaluate(() => [0, 1, 2].map((i) => window.__eternitiesProbe!.planetScreen(i)))
+
+  /**
+   * Focus a card, then report whether the ring ever comes to rest.
+   *
+   * **Settle-based rather than two-point, because two points cannot tell an orbit from a camera.**
+   * PRD 6.2.3's fly-to is still running when the ring is first laid out, so a pair of samples taken
+   * across it differ whether or not the orbit is turning — that flaked exactly once, passing alone
+   * and failing in a full run, which is the tell. Resting is the property that separates the two:
+   * the camera arrives and stops, and only a frozen orbit stops with it.
+   */
+  const ringComesToRest = async (): Promise<boolean> => {
+    await page.waitForFunction(() => Boolean(window.__eternitiesProbe), null, { timeout: 60_000 })
+    const planes = await page.evaluate(() => window.__eternitiesProbe!.planes().slice(0, 1))
+    await page.evaluate((slug) => window.__eternitiesProbe!.focusPlane(slug), planes[0]!.slug)
+    // `focusCard` genuinely fails until the plane's shards are in, so this polls rather than sleeps.
+    await page.waitForFunction(() => window.__eternitiesProbe!.focusCard() !== -1, null, {
+      timeout: 90_000,
+    })
+    await page.evaluate(() => window.__eternitiesProbe!.focusCard())
+    /*
+     * Wait for the ring to be laid out, which is not the same as the card being focused.
+     * `rebuildPlanets` adds the meshes at their constructed origin and the frame loop moves them to
+     * their phases on the next tick, so an immediate read finds all 24 stacked on the card's
+     * centre — a *stiller* scene than a frozen one, and one that would score this green either way.
+     */
+    await page.waitForFunction(
+      () => {
+        const probe = window.__eternitiesProbe!
+        const [a, b] = [probe.planetScreen(0), probe.planetScreen(1)]
+        return Boolean(a && b) && (a!.x !== b!.x || a!.y !== b!.y)
+      },
+      null,
+      { timeout: 30_000 },
+    )
+
+    // 800 ms is 4.8 degrees of PRD 5.6.7's 60 s revolution — tens of pixels at these radii, far
+    // above the noise of a settled camera, which is bit-identical frame to frame.
+    for (let attempt = 0; attempt < 25; attempt += 1) {
+      const before = await read()
+      await page.waitForTimeout(800)
+      const after = await read()
+      expect(before, 'the probe reported no planet at all, so neither arm can be read').not.toEqual([
+        null,
+        null,
+        null,
+      ])
+      if (JSON.stringify(before) === JSON.stringify(after)) return true
+    }
+    return false
+  }
+
+  // The control, and it is doing real work: "the ring came to rest" is also what a dead probe, an
+  // unfocused card or a stalled loop reports, and all three would score the reduced arm green.
+  await page.goto('/?probe=1')
+  expect(
+    await ringComesToRest(),
+    'PRD 5.6.7s ring came to rest with motion on, so the reduced arm below proves nothing',
+  ).toBe(false)
+
+  // The shipped order, and the broken one: the preference is set before the page exists.
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.goto('/?probe=1')
+  expect(
+    await ringComesToRest(),
+    'PRD 5.6.7s ring kept orbiting under prefers-reduced-motion',
+  ).toBe(true)
+})
+
+/**
  * 9f. The one this port exists for.
  *
  * `write-vercel-json.mjs --check` already proves `vercel.json` matches `security-headers.mjs`; what

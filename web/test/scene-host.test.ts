@@ -38,6 +38,7 @@ function record(): { calls: string[]; targets: QualityRungTargets } {
       setBloomLevels: (v) => calls.push(`bloomLevels=${v}`),
       setStarBloomScale: (v) => calls.push(`starBloomScale=${v}`),
       setThumbnailCapacity: (v) => calls.push(`thumbnailCapacity=${v}`),
+      setArtPoolLayers: (v) => calls.push(`artPoolLayers=${v}`),
       setGlowQuality: (v) => calls.push(`glowQuality=${v}`),
     },
   }
@@ -61,6 +62,7 @@ describe('applyQualityTier (PRD 8.5.11: one announcement, every rung)', () => {
       'bloomLevels',
       'starBloomScale',
       'thumbnailCapacity',
+      'artPoolLayers',
       'glowQuality',
     ])
   })
@@ -88,7 +90,11 @@ describe('applyQualityTier (PRD 8.5.11: one announcement, every rung)', () => {
       bloomScale: 'bloom chain',
       bloomLevels: 'bloom chain',
       starBloomScale: 'bloom chain',
-      thumbnailCapacity: 'thumbnails',
+      // One knob, two consumers, for the same reason the bloom chain is one: rung 3 is the
+      // resident card-image budget, and which of the two reaches the picture depends on whether
+      // the page is on the galaxy's atlas or worlds' art pool (DEC-753, worlds §1.12).
+      thumbnailCapacity: 'card imagery',
+      artPoolLayers: 'card imagery',
       glowQuality: 'glow',
     }
 

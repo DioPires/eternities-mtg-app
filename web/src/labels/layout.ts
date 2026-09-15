@@ -35,6 +35,19 @@ const MAX_SHIFTS = 3
 const GAP_PX = 4
 /** And between a label box and the edge of the screen. */
 const EDGE_PX = 6
+/**
+ * How far past touching a shift lands, in pixels — what makes PRD 5.3.10's shift *budget* real.
+ *
+ * A push computed to `GAP_PX` exactly puts the two boxes at the separating distance, and
+ * `overlaps` tests that distance with a strict `<`: the comparison then turns on the float
+ * residual of the subtraction, roughly 1e-14 px. When it reads as still overlapping, the next
+ * push is 1e-14 wide and `y += 1e-14` does not move a double at all — so the label spends every
+ * remaining shift on the same coordinates and fades. Without this term a label gets **one**
+ * effective shift no matter what `MAX_SHIFTS` says, and the budget is decoration: 3, 6, 12 and 24
+ * all produce byte-identical output. A hundredth of a pixel is below anything the display can
+ * resolve and above anything double precision can lose.
+ */
+const SEPARATION_EPSILON_PX = 0.01
 
 /** PRD 5.4.5: set labels sit "at low priority beneath star labels", so they are placed last. */
 export type LabelTier = 'plane' | 'band'
@@ -301,8 +314,10 @@ export function layoutLabels(
       // axis it is least deeply penetrated on, which is the shortest way to stop overlapping.
       const dx = x - blocker.x
       const dy = y - blocker.y
-      const pushX = box.halfWidth + blocker.halfWidth + GAP_PX - Math.abs(dx)
-      const pushY = box.halfHeight + blocker.halfHeight + GAP_PX - Math.abs(dy)
+      const pushX =
+        box.halfWidth + blocker.halfWidth + GAP_PX + SEPARATION_EPSILON_PX - Math.abs(dx)
+      const pushY =
+        box.halfHeight + blocker.halfHeight + GAP_PX + SEPARATION_EPSILON_PX - Math.abs(dy)
       if (pushY <= pushX) y += (dy >= 0 ? 1 : -1) * pushY
       else x += (dx >= 0 ? 1 : -1) * pushX
       // A shift that would leave the screen is pulled back in, which usually means the next pass

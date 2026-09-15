@@ -9,7 +9,7 @@
 import { type DataArrayTexture, type IUniform, ShaderMaterial, Vector3 } from 'three'
 
 import { CELL_FRAGMENT_SHADER, CELL_VERTEX_SHADER } from './cellShaders'
-import { SHADER_NAME_WORLD_CELL } from '../shaderNames'
+import { SHADER_NAME_WORLD_CELL, SHADER_NAME_WORLD_CELL_PICK } from '../shaderNames'
 
 /**
  * The uniforms a world's sheet binds. One object per world — `uRadius` differs on every one.
@@ -69,6 +69,34 @@ export function createCellMaterial(radius: number, art: DataArrayTexture | null)
     fragmentShader: CELL_FRAGMENT_SHADER,
     // Cells are opaque masonry, not glows: they sort by depth and they write it. This is the
     // opposite of the star field, and the sheet is drawn in a different pass for that reason (§1.2).
+    transparent: false,
+    depthWrite: true,
+    depthTest: true,
+  })
+}
+
+/**
+ * The same sheet, compiled for PRD 8.5.6's id buffer (§1.11).
+ *
+ * > **Normative — it shares the draw material's uniforms object, not a copy (DEC-751).** The pick
+ * > pass has to agree with the picture about *where the cell is*, and `uRadius` is an input to that
+ * > placement. A copied uniforms object would be correct on the frame it was made and wrong on
+ * > every frame after any writer moved one — and the failure is silent in the worst way: the
+ * > picture stays right, only the pick target drifts, so nothing looks broken and clicks land on
+ * > the wrong card. Sharing the object makes the two physically incapable of disagreeing.
+ *
+ * `uArt` comes along unused — `ID_PASS` never samples it — which is deliberate: dropping it would
+ * mean two uniform shapes for one pair of programs and a second place to keep in step.
+ *
+ * @param uniforms the draw material's own `uniforms`, passed by reference
+ */
+export function createCellPickMaterial(uniforms: CellUniforms): ShaderMaterial {
+  return new ShaderMaterial({
+    name: SHADER_NAME_WORLD_CELL_PICK,
+    uniforms,
+    defines: { ID_PASS: '' },
+    vertexShader: CELL_VERTEX_SHADER,
+    fragmentShader: CELL_FRAGMENT_SHADER,
     transparent: false,
     depthWrite: true,
     depthTest: true,

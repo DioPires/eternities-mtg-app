@@ -29,11 +29,12 @@ import { useEffect, useMemo, useRef, type ReactElement } from 'react'
 
 import type { CameraRig } from '../camera/rig'
 import { vec, type MutVec3 } from '../camera/vec'
-import type { PlaneRecord, PlanesFile } from '../data/types'
-import { BLIND_ETERNITIES_SLUG } from '../data/types'
+import type { PlanesFile } from '../data/types'
+import { BLIND_ETERNITIES_SLUG, isWorldPlane } from '../data/types'
 import type { Level } from '../navigation/types'
 import type { FrameLoop } from '../scene/renderer/frameLoop'
 
+import { candidateFor, type MutableCandidate } from './candidate'
 import { layoutLabels, type LabelCandidate, type LabelPlacement } from './layout'
 import { createProjected, Projector } from './project'
 
@@ -53,38 +54,6 @@ export interface PlaneLabelsProps {
   readonly enabled?: boolean
   /** Vertical field of view in degrees; must match the canvas camera's. */
   readonly fov?: number
-}
-
-/** A mutable candidate record, reused every frame (PRD 7.3.2). */
-interface MutableCandidate {
-  key: string
-  text: string
-  sub: string | null
-  tier: 'plane' | 'band'
-  priority: number
-  x: number
-  y: number
-  radiusPx: number
-  depth: number
-  onScreen: boolean
-  widthPx: number
-}
-
-function candidateFor(plane: PlaneRecord): MutableCandidate {
-  return {
-    key: plane.slug,
-    text: plane.displayName,
-    // PRD 5.3.12: the card count sits beneath the name, and a zero-card plane shows none.
-    sub: plane.cardCount > 0 ? `${plane.cardCount}` : null,
-    tier: 'plane',
-    priority: plane.cardCount,
-    x: 0,
-    y: 0,
-    radiusPx: 0,
-    depth: 0,
-    onScreen: false,
-    widthPx: 0,
-  }
 }
 
 export function PlaneLabels({
@@ -124,12 +93,31 @@ export function PlaneLabels({
   const point = useMemo<MutVec3>(() => vec(), [])
   const placements = useMemo<LabelPlacement[]>(() => [], [])
 
-  // PRD 5.3.4: the dust spans the whole multiverse and has no centre worth labelling; its name is
-  // the HUD's job when it is focused.
-  const labelled = useMemo(
-    () => planes.planes.filter((plane) => plane.slug !== BLIND_ETERNITIES_SLUG),
-    [planes],
-  )
+  /**
+   * The home view's subjects.
+   *
+   * PRD 5.3.4: the dust spans the whole multiverse and has no centre worth labelling; its name is
+   * the HUD's job when it is focused. That is the whole rule on a v2 dataset — 87 of 88 planes.
+   *
+   * **On a worlds dataset the subject is the worlds (spec §1.11, DEC-751).** The moons are
+   * unlabelled until hover (§1.8) and the belt is dropped before projection, so the count is
+   * `worldsWithCards.length` — 45 on v3 — rather than the plane count. This is not cosmetic: the
+   * solver seats a bounded number of labels per frame and `priority` only *orders* them, so the 42
+   * moons are not competing for their own names, they are taking them from the worlds. Measured
+   * over a turn, the 42 empty planes seat ~2,587 label-frames that the worlds would otherwise
+   * have.
+   *
+   * Derived from the data, never from a version constant, for the reason §1.12 gives about its own
+   * two dataset-dependent rows: a constant is right on exactly one of the two datasets this build
+   * is guaranteed to meet. `isWorldPlane` tests `rowCells`, which §2.4 makes the field to test for
+   * and which no v2 plane carries — so a v2 page finds no worlds and keeps PRD 5.3.4's rule
+   * unchanged, and the galaxy's labelling is untouched until the cutover.
+   */
+  const labelled = useMemo(() => {
+    const withoutBelt = planes.planes.filter((plane) => plane.slug !== BLIND_ETERNITIES_SLUG)
+    const worlds = withoutBelt.filter(isWorldPlane)
+    return worlds.length > 0 ? worlds : withoutBelt
+  }, [planes])
   const candidates = useMemo(() => labelled.map(candidateFor), [labelled])
 
   // The band labels of PRD 5.4.5, for the focused plane only — no other plane's bands are legible
@@ -301,6 +289,20 @@ export function PlaneLabels({
         <div
           key={candidate.key}
           className={candidate.tier === 'band' ? 'label label-band' : 'label'}
+          /*
+           * §3.1's gate seam (`gate-seam-contract.md` §2a, owed by R3 to leg G).
+           *
+           * W5 counts *world* labels, and the gate's predicate is `opacity > 0.05` — because this
+           * overlay renders a div per candidate every frame and signals a drop through opacity
+           * alone, so `querySelectorAll('.label').length` is the candidate count regardless. That
+           * makes "which plane is this?" un-derivable from the DOM without this attribute: the
+           * text is a display name, not a slug.
+           *
+           * The `tier` guard is load-bearing rather than tidy. A band's key is `${slug}:${code}`,
+           * so without it every band label would answer to its plane's slug with a `:` glued on,
+           * and a `[data-plane-slug]` sweep would count a focused plane's set names as worlds.
+           */
+          {...(candidate.tier === 'plane' ? { 'data-plane-slug': candidate.key } : {})}
           ref={(node) => {
             nodes.current.set(candidate.key, node)
             // A fresh node carries no inline styles, so the cached values they would be compared

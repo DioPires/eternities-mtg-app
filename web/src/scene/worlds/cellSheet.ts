@@ -22,7 +22,7 @@ import { CELL_LIFT, cellSizeArc } from './surfaceLaw'
 
 /**
  * Bytes of per-instance attribute per cell: `iNormal` 12 + `iSize` 8 + `iSwatch` 12 + `iLayer` 4 +
- * `iArt` 4.
+ * `iArt` 4 + `iFiltered` 4.
  *
  * > **Normative — 40, amending §1.4's 52 (DEC-749).** The figure in §1.4 counts an `iEast` the
  * > sphere-following grid does not need: the centre normal already carries the cell's colatitude and
@@ -31,8 +31,24 @@ import { CELL_LIFT, cellSizeArc } from './surfaceLaw'
  * > 23,607 cells from 1.17 MiB to **0.90 MiB** and v3's 24,399 from 1.21 MiB to **0.93 MiB**.
  * > `eastOf` stays — `lod.ts` needs it to index the bake's columns, and it is where §1.5 pins the
  * > handedness — but no longer ships per cell.
+ *
+ * > **Amended to 44 by §1.11's filter (DEC-751).** PRD 5.8's dimming needs one more per-cell float,
+ * > and it is a separate attribute rather than a sentinel packed into `iArt` because the two have
+ * > different writers: the art stream owns `iArt` every frame and the store's filter evaluation
+ * > owns this one on change. Packing them would put two writers on one array, which is the shape
+ * > of defect the three-state pool exists to prevent one level down. The cost is 0.09 MiB on v3
+ * > (0.93 → 1.02), and §1.12's total moves with it.
+ *
+ * > **Amended to 48 by §1.11's picking (DEC-751).** The pick pass needs to name what it hit, and
+ * > the name has to be **multiverse-wide** rather than the `gl_InstanceID` §1.11's prose reaches
+ * > for. `gl_InstanceID` is 0-based *per sheet*, and §1.2 keeps all 45 sheets resident at once, so
+ * > two worlds' cell 5 would write the same id and the picker — which reads one integer out of a
+ * > pixel and has no idea which mesh wrote it — would resolve both to whichever world the consumer
+ * > guessed. That is the same aliasing `WorldSurfaceSource.artKeyBase` exists to prevent one level
+ * > down, and it takes the same cure: this attribute carries `artKeyBase + cardOfCell[cell]`, which
+ * > is the card's **star index**. Costs 0.09 MiB on v3 (1.02 → 1.11); §1.12's total moves with it.
  */
-export const CELL_INSTANCE_BYTES = 40
+export const CELL_INSTANCE_BYTES = 48
 
 /** What one world hands the sheet builder. All per-cell arrays are indexed by the card's cell id. */
 export interface CellSheetSource {
@@ -46,6 +62,15 @@ export interface CellSheetSource {
   readonly rows: Int32Array
   /** Linear RGB per cell, three floats in 0..1 (§2.2). */
   readonly swatches: Float32Array
+  /**
+   * Per cell, the **star index** of the card it draws — `artKeyBase + cardOfCell[cell]` (§1.11).
+   *
+   * Required rather than derived here, for the reason `cardOfCell` exists: `?bands=shuffle`
+   * permutes which card a cell draws, so the identity has to come from the surface that owns the
+   * permutation. Exact as a `Float32Array` — a float32 represents every integer below 2^24 and the
+   * multiverse has 28,587 stars, four orders of magnitude clear.
+   */
+  readonly stars: Float32Array
   /** The world's radius in scene units — `worldRadius(cardCount)`, or §1.8's floor. */
   readonly radius: number
 }
@@ -58,6 +83,14 @@ export interface CellSheet {
   readonly layers: InstancedBufferAttribute
   /** `iArt`, dynamic: the cross-fade, 0 = swatch, 1 = art. */
   readonly art: InstancedBufferAttribute
+  /**
+   * `iFiltered`, dynamic: 1 where PRD 5.8's filter excludes the cell's card, 0 otherwise.
+   *
+   * Written by the store's filter evaluation, never by the art stream (§1.11). A filtered cell
+   * drops to its swatch and dims; it never resolves to art at all, so the dim cannot reach a card
+   * image, which Scryfall's terms forbid (`docs/scryfall-policy.md` §5).
+   */
+  readonly filtered: InstancedBufferAttribute
 }
 
 /**
@@ -70,7 +103,7 @@ export interface CellSheet {
  * > times on a one-card world.
  */
 export function buildCellSheet(source: CellSheetSource): CellSheet {
-  const { cardCount, rowCells, normals, rows, swatches, radius } = source
+  const { cardCount, rowCells, normals, rows, swatches, stars, radius } = source
   const subdivision = subdivisionFor(rowCells)
 
   const geometry = new InstancedBufferGeometry()
@@ -88,15 +121,22 @@ export function buildCellSheet(source: CellSheetSource): CellSheet {
 
   const layers = new InstancedBufferAttribute(new Float32Array(cardCount).fill(LAYER_FREE), 1)
   const art = new InstancedBufferAttribute(new Float32Array(cardCount), 1)
+  // Zero is "passes the filter", which is also "no filter" — so an unfiltered page never writes
+  // this attribute at all and a world composed mid-filter is dimmed by the push that follows it.
+  const filtered = new InstancedBufferAttribute(new Float32Array(cardCount), 1)
   // Rewritten every frame by the art stream; the rest of the sheet is written once at build.
   layers.setUsage(DynamicDrawUsage)
   art.setUsage(DynamicDrawUsage)
+  filtered.setUsage(DynamicDrawUsage)
 
   geometry.setAttribute('iNormal', new InstancedBufferAttribute(normals, 3))
   geometry.setAttribute('iSize', new InstancedBufferAttribute(iSize, 2))
   geometry.setAttribute('iSwatch', new InstancedBufferAttribute(swatches, 3))
   geometry.setAttribute('iLayer', layers)
   geometry.setAttribute('iArt', art)
+  geometry.setAttribute('iFiltered', filtered)
+  // Static: a cell draws the same card for the life of the sheet. The pick pass is the only reader.
+  geometry.setAttribute('iStar', new InstancedBufferAttribute(stars, 1))
   geometry.instanceCount = cardCount
 
   // By hand, because three would compute it from a `position` attribute this geometry does not have
@@ -105,5 +145,5 @@ export function buildCellSheet(source: CellSheetSource): CellSheet {
   // the world's radius is. Leaving it null would have three cull worlds by a unit box.
   geometry.boundingSphere = new Sphere(new Vector3(0, 0, 0), radius * CELL_LIFT)
 
-  return { geometry, subdivision, layers, art }
+  return { geometry, subdivision, layers, art, filtered }
 }

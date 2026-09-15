@@ -265,7 +265,7 @@ describe('shader names (DEC-700)', () => {
 
   it('covers every material the scene builds, one name per program', () => {
     // A count, not a list: adding a material and leaving it out of `SHADER_NAMES` should be a
-    // deliberate act. There are 18 sites and 17 names, and the gap is the point of this test.
+    // deliberate act. There are 26 sites and 25 names, and the gap is the point of this test.
     //
     // Two *sites* share `SHADER_NAME_STAR_FIELD`: the drawn star field and the bloom source's copy
     // of it differ only in the values bound to five uniforms, which are not in the program cache
@@ -296,6 +296,24 @@ describe('shader names (DEC-700)', () => {
     // sites and two names because the ribbon and the pads are different geometry with different
     // shaders, and the two pads share one `padMaterial()` source site the way the two card faces
     // share `faceMaterial()`.
-    expect(SHADER_NAMES).toHaveLength(23)
+    //
+    // **The twenty-fifth site and twenty-fourth name are DEC-751's**: worlds §1.10's overflow
+    // ticks, a built-in `PointsMaterial`. One site, one name and one `Points` object for a whole
+    // card's dropped tail — 498 of them on Swamp.
+    //
+    // **This one is named against the rule above, and the exception is recorded rather than
+    // hidden.** It is a `PointsMaterial` with the same defines as the background shells —
+    // `sizeAttenuation: false`, no map — and blending is render state rather than a program cache
+    // key input, so three links **one** program for both and this name is a second roster row for
+    // it. The alternative is worse in the other direction: reusing `SHADER_NAME_BACKGROUND_LAYER`
+    // would label the printing ring's tail as a background shell wherever a name is read by a
+    // person. Flagged to DEC-700's owner to rule; the count stands either way, and if the ruling
+    // is to share, this name and one of the two counts come back out together.
+    //
+    // **The twenty-sixth site and twenty-fifth name are DEC-751's §1.11 pick pass**: the cell
+    // sheet compiled with `ID_PASS`. Unlike the bloom copy above it genuinely is a second program —
+    // `defines` *is* a program cache key input — so it earns its own name under the rule rather
+    // than against it, and the gap stays where it was.
+    expect(SHADER_NAMES).toHaveLength(25)
   })
 })

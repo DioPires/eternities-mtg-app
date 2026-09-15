@@ -80,3 +80,42 @@ export function useFilterMask(geometry: StarGeometry | null): void {
     return bindFilterMask(geometry)
   }, [geometry])
 }
+
+/**
+ * The same subscription, for the worlds path (spec §1.11, DEC-751).
+ *
+ * A separate binding rather than a second consumer inside {@link bindFilterMask}, because the two
+ * subjects have different lifetimes: the star geometry is built once with `planes.json`, while the
+ * worlds attachment outlives every roster it composes and rebuilds its surfaces on §1.12's rung.
+ * The attachment holds the last mask for exactly that reason, so this is a push, not a handshake.
+ *
+ * The rule the two share is the one that matters: **one writer**. `useFilterEvaluation` produces
+ * the evaluation, and these two functions are the only things that write it at a GPU.
+ */
+export function bindWorldsFilterMask(
+  worlds: WorldsFilterTarget,
+  source: FilterMaskSource = useStore,
+): () => void {
+  let last = source.getState().filterEvaluation
+  worlds.setFilterMask(last?.mask ?? null)
+  return source.subscribe((state) => {
+    // Identity on the wrapper, not on the array: `evaluateFilters` reuses its buffer, so the array
+    // is the same object across evaluations. Same reasoning as `bindFilterMask` above.
+    if (state.filterEvaluation === last) return
+    last = state.filterEvaluation
+    worlds.setFilterMask(last?.mask ?? null)
+  })
+}
+
+/** Just the method, so a test — and the type — need nothing of the renderer. */
+export interface WorldsFilterTarget {
+  setFilterMask: (mask: Uint8Array | null) => void
+}
+
+/** The React attachment for the worlds half. One call, from `EternitiesScene`. */
+export function useWorldsFilterMask(worlds: WorldsFilterTarget | null): void {
+  useEffect(() => {
+    if (worlds === null) return
+    return bindWorldsFilterMask(worlds)
+  }, [worlds])
+}

@@ -22,15 +22,18 @@
  */
 
 import {
+  BufferAttribute,
+  BufferGeometry,
   Group,
   Mesh,
   MeshBasicMaterial,
+  PlaneGeometry,
+  Points,
+  PointsMaterial,
   ShaderMaterial,
-  SphereGeometry,
   Texture,
   Vector3,
   Color,
-  type BufferGeometry,
 } from 'three'
 
 import { cardBackImageUri, printingImageUri, CARD_BACK_URI } from '../../data/images'
@@ -49,8 +52,12 @@ import {
   HUE_COLOURS,
   IMAGE_FADE_MS,
   PLANET_CAP,
-  PLANET_RADIUS,
-  PLANET_TEXTURE_PX,
+  PLANET_PERIOD_S,
+  PLANET_QUAD_HEIGHT,
+  PLANET_QUAD_WIDTH,
+  PLANET_SMALL_HEIGHT,
+  PLANET_SMALL_WIDTH,
+  PLANET_TICK_PX,
 } from '../tuning'
 import {
   CARD_FACE_FRAGMENT_SHADER,
@@ -65,6 +72,7 @@ import {
   SHADER_NAME_CARD_FACE,
   SHADER_NAME_CARD_PLANET,
   SHADER_NAME_CARD_PLANET_PICK,
+  SHADER_NAME_CARD_PRINTING_TICKS,
 } from '../shaderNames'
 import type { ImageQueue } from './imageQueue'
 import { planetLayout, planetPosition, type PlanetLayout } from './planets'
@@ -83,8 +91,16 @@ export const PLANET_ID_BASE = 0x800000
 export const CARD_IMAGE_WIDTH = 672
 export const CARD_IMAGE_HEIGHT = 936
 
-/** `art_crop` is 626 × 457; PRD 8.5.10 downscales it to 256 on the long side. */
-export const PLANET_TEXTURE_HEIGHT = Math.round((PLANET_TEXTURE_PX * 457) / 626)
+/**
+ * A printing's image, worlds spec §1.10: Scryfall's `small`, uploaded at its own size.
+ *
+ * Re-exported from the tuning constants rather than computed here, because the pair that used to
+ * live at this name *was* computed — `art_crop` is 626 × 457 and PRD 8.5.10 downscaled it to 256
+ * on the long side, so the height was a derivation of the width. `small` has no such step: the
+ * bytes on the GPU are the bytes Scryfall serves.
+ */
+export const PRINTING_IMAGE_WIDTH = PLANET_SMALL_WIDTH
+export const PRINTING_IMAGE_HEIGHT = PLANET_SMALL_HEIGHT
 
 interface ImageSlot {
   texture: Texture | null
@@ -166,7 +182,56 @@ export class FocusedCard {
   }
 
   private readonly faceGeometries: BufferGeometry[] = []
-  private readonly planetGeometry = new SphereGeometry(PLANET_RADIUS, 24, 16)
+  /**
+   * §1.10's flat quad, shared by every printing and by its pick mesh.
+   *
+   * **It needs no billboarding, and that is a property of where it hangs rather than luck.** A
+   * `PlaneGeometry` faces +Z, and this class's header records that `root` turns to face the camera
+   * every frame so the card never presents its edge to an orbiting viewer. The ring hangs off
+   * `root`, so the quads inherit exactly that facing — which is also why a `FrontSide` material is
+   * safe here and why the sphere's 24 × 16 tessellation was 384 triangles per printing, 27,648 on
+   * a capped card, to draw something the camera only ever sees one side of.
+   */
+  private readonly planetGeometry = new PlaneGeometry(PLANET_QUAD_WIDTH, PLANET_QUAD_HEIGHT)
+
+  /**
+   * §1.10's overflow ticks: one `Points` object for the whole tail, not one object per tick.
+   *
+   * Swamp drops 498 printings, so per-tick meshes would be 498 draw calls for five cards' worth of
+   * disclosure. The geometry holds each tick at its phase-zero position and the object is *rotated*
+   * on the orbit — one transform a frame for the whole tail, and it is also what guarantees the
+   * ticks cannot drift against the quads, since a single angle drives all of them.
+   */
+  private readonly tickMaterial = new PointsMaterial({
+    name: SHADER_NAME_CARD_PRINTING_TICKS,
+    color: new Color(0xffffff),
+    // `false`, so the mark is a fixed pixel size at any distance (§1.10: "1 px ticks"). With
+    // attenuation on, the tail would fade to nothing exactly when the card is far enough away for
+    // the disclosure to matter.
+    sizeAttenuation: false,
+    size: PLANET_TICK_PX,
+    transparent: true,
+    opacity: 0.55,
+    depthWrite: false,
+  })
+  private tickPoints: Points | null = null
+  /** Device pixels per CSS pixel, so a "1 px" tick is 1 **CSS** px on a 2x display too. */
+  private pixelRatio = 1
+
+  /**
+   * Tell the ring what a CSS pixel is worth (§1.10).
+   *
+   * `gl_PointSize` is in **device** pixels, so a `PointsMaterial` of size 1 draws a half-CSS-pixel
+   * mark on a 2x display — visible as a dimmer tick rather than as a missing one, which is the
+   * kind of wrong that never gets reported. The card tier already reads `getPixelRatio()` for the
+   * thumbnail fade; this rides the same read rather than adding a second one.
+   */
+  setPixelRatio(ratio: number): void {
+    const next = ratio > 0 ? ratio : 1
+    if (next === this.pixelRatio) return
+    this.pixelRatio = next
+    this.tickMaterial.size = PLANET_TICK_PX * next
+  }
   private readonly planets: Planet[] = []
 
   /**
@@ -189,7 +254,7 @@ export class FocusedCard {
   private card: CardRecord | null = null
   private starIndexValue = -1
   private activePrintingValue = 0
-  private layout: PlanetLayout = { slots: [], overflow: 0, rings: 0 }
+  private layout: PlanetLayout = { slots: [], overflow: 0, rings: 0, ticks: [] }
 
   /** PRD 5.6.3's spring: angle and angular velocity per axis, and the pointer's target. */
   private readonly tiltX: SpringState = { value: 0, rate: 0 }
@@ -201,6 +266,8 @@ export class FocusedCard {
   private flipTarget = 0
   private hoveredPlanet = -1
   private elapsed = 0
+  /** PRD 5.6.7's orbit clock, advanced only while motion is on. See `update`. */
+  private orbitElapsed = 0
 
   private readonly scratch = new Vector3()
   /**
@@ -423,6 +490,18 @@ export class FocusedCard {
   ): void {
     if (!this.root.visible) return
     this.elapsed += dt
+    /*
+     * The orbit's own clock (PRD 5.9, §1.10).
+     *
+     * Scaled *as it accumulates* rather than at the point of use. Multiplying `elapsed` by
+     * `motionScale` at the call site means turning motion off sends every printing back to its
+     * `t = 0` phase and turning it on again teleports the whole ring forward by however long the
+     * user spent with it off — the ring jumps twice. `planeTable.advance` states the rule this
+     * follows: "freezes every angle where it stands rather than resetting it, so toggling the
+     * setting mid-session never makes the field jump." The quads and §1.10's tick tail read this
+     * one accumulator, which is also what keeps them from drifting apart.
+     */
+    this.orbitElapsed += dt * motionScale
 
     this.root.position.set(worldPosition.x, worldPosition.y, worldPosition.z)
     this.scratch.set(cameraPosition.x, cameraPosition.y, cameraPosition.z)
@@ -449,10 +528,18 @@ export class FocusedCard {
     this.advanceFade(this.frontImage, this.frontMaterial, dt)
     this.advanceFade(this.backImage, this.backMaterial, dt)
 
+    if (this.tickPoints) {
+      // The same angle `planetPosition` adds to a slot's phase, applied once to the whole tail.
+      // Negative about +Z because the ring runs clockwise on screen: a phase of `p` draws at
+      // `(r sin p, r cos p)`, so advancing the phase rotates the plane the other way.
+      this.tickPoints.rotation.z =
+        -((2 * Math.PI) / PLANET_PERIOD_S) * this.orbitElapsed
+    }
+
     for (let i = 0; i < this.planets.length; i += 1) {
       const planet = this.planets[i]!
       const slot = this.layout.slots[i]!
-      planetPosition(slot, this.elapsed, motionScale, positionScratch)
+      planetPosition(slot, this.orbitElapsed, 1, positionScratch)
       planet.mesh.position.set(positionScratch.x, positionScratch.y, positionScratch.z)
       planet.pickMesh.position.copy(planet.mesh.position)
       this.advanceFade(planet.image, planet.material, dt)
@@ -575,7 +662,7 @@ export class FocusedCard {
     slot.since = 0
   }
 
-  /** PRD 5.6.7-8, plus PRD 8.5.10's 256 px art crops. */
+  /** PRD 5.6.7-8, as §1.10's flat `small` quads. */
   private rebuildPlanets(): void {
     this.clearPlanets()
     const card = this.card
@@ -611,15 +698,17 @@ export class FocusedCard {
       const planet: Planet = { mesh, pickMesh, material, image }
       this.planets.push(planet)
 
-      const url = printingImageUri(printing, 'art_crop')
+      // §1.10: the whole card at Scryfall's `small`, not a crop of its art. **No `resize`**, and
+      // that is the conversion paying for itself rather than an omission: PRD 8.5.10's decode-time
+      // downscale existed because an `art_crop` arrives at 626 × 457, and `small` arrives at
+      // 146 × 204 — already under the 256 px the downscale was aiming for. Resizing to 256 here
+      // would *upscale* 72 images and cost more than the sphere did.
+      const url = printingImageUri(printing, 'small')
       image.url = url
       void this.queue
         .request({
           key: image.key!,
           url,
-          // PRD 8.5.10: downscaled on decode. A full-size art crop is about 1 MB of texels and 72
-          // of them would be the whole GPU budget on their own.
-          resize: { width: PLANET_TEXTURE_PX, height: PLANET_TEXTURE_HEIGHT },
           // Behind the card's own faces, ahead of any thumbnail: the planets are what the user is
           // looking at once a card is focused.
           priority: () => (image.url === url ? -0.5 : null),
@@ -643,9 +732,46 @@ export class FocusedCard {
           this.pendingUploads.push({ texture, bitmap })
         })
     }
+    this.rebuildTicks()
+  }
+
+  /**
+   * Build the tick tail for the current layout (§1.10).
+   *
+   * Nothing at all when the cap does not bind, which is every card on the roster but five — the
+   * common path allocates no geometry, no material use and no scene node.
+   */
+  private rebuildTicks(): void {
+    const ticks = this.layout.ticks
+    if (ticks.length === 0) return
+    const positions = new Float32Array(ticks.length * 3)
+    const scratch = { x: 0, y: 0, z: 0 }
+    for (let i = 0; i < ticks.length; i += 1) {
+      // At t = 0: the object's rotation carries the orbit, so the geometry is the phase-zero ring.
+      planetPosition(ticks[i]!, 0, 0, scratch)
+      positions[i * 3] = scratch.x
+      positions[i * 3 + 1] = scratch.y
+      positions[i * 3 + 2] = scratch.z
+    }
+    const geometry = new BufferGeometry()
+    geometry.setAttribute('position', new BufferAttribute(positions, 3))
+    const points = new Points(geometry, this.tickMaterial)
+    points.layers.set(0)
+    // Not pickable. PRD 5.6.9's click target is a planet; a 1 px mark is not one, and §1.11's own
+    // conformance argument is the search path rather than a pixel-sized hit area.
+    this.tickPoints = points
+    this.orbitGroup.add(points)
+  }
+
+  private clearTicks(): void {
+    if (!this.tickPoints) return
+    this.orbitGroup.remove(this.tickPoints)
+    this.tickPoints.geometry.dispose()
+    this.tickPoints = null
   }
 
   private clearPlanets(): void {
+    this.clearTicks()
     for (const planet of this.planets) {
       if (planet.image.key !== null) this.queue.cancel(planet.image.key)
       planet.image.url = null
@@ -657,7 +783,7 @@ export class FocusedCard {
       ;(planet.pickMesh.material as ShaderMaterial).dispose()
     }
     this.planets.length = 0
-    this.layout = { slots: [], overflow: 0, rings: 0 }
+    this.layout = { slots: [], overflow: 0, rings: 0, ticks: [] }
   }
 
   /**
@@ -672,7 +798,7 @@ export class FocusedCard {
     if (this.frontImage.texture) bytes += CARD_IMAGE_WIDTH * CARD_IMAGE_HEIGHT * 4
     if (this.backImage.texture) bytes += CARD_IMAGE_WIDTH * CARD_IMAGE_HEIGHT * 4
     for (const planet of this.planets) {
-      if (planet.image.texture) bytes += PLANET_TEXTURE_PX * PLANET_TEXTURE_HEIGHT * 4
+      if (planet.image.texture) bytes += PRINTING_IMAGE_WIDTH * PRINTING_IMAGE_HEIGHT * 4
     }
     return bytes
   }
@@ -705,8 +831,8 @@ export class FocusedCard {
 }
 
 /**
- * PRD 5.6.7's orbiting printing sphere. One program for all of them — same sources, no defines — so
- * every slot's material carries the same name.
+ * PRD 5.6.7's orbiting printing, as §1.10's flat quad. One program for all of them — same sources,
+ * no defines — so every slot's material carries the same name.
  *
  * Extracted from `rebuildPlanets` so the boot-time warm-up can build one without a card
  * (`FocusedCard.warmupSpecs`, DEC-739). A factory rather than a shared singleton because each
@@ -729,7 +855,15 @@ function planetMaterial(active: number): ShaderMaterial {
   })
 }
 
-/** The same sphere into the id buffer (PRD 8.5.6), with its slot's id as a colour. */
+/**
+ * The same quad into the id buffer (PRD 8.5.6), with its slot's id as a colour.
+ *
+ * Sharing the draw geometry is what keeps the pick target from drifting off the picture, and §1.10
+ * makes the target *larger* than it was: the quad is 0.125 × 0.174 where the sphere it replaces was
+ * 0.116 across, so no printing became harder to click in the conversion. That still holds after
+ * DEC-776 F1 shrank the quad to clear its neighbours at every phase of the turn — both dimensions
+ * clear 0.116, which is why the fix was a smaller quad rather than a wider ring.
+ */
 function planetPickMaterial(id: number): ShaderMaterial {
   return new ShaderMaterial({
     name: SHADER_NAME_CARD_PLANET_PICK,
@@ -747,9 +881,12 @@ function planetPickMaterial(id: number): ShaderMaterial {
   })
 }
 
-/** PRD 7.2's worst case: a 72-printing card, both faces loaded and every planet textured. */
+/** PRD 7.2's worst case: a 72-printing card, both faces loaded and every printing textured. */
 export function worstCaseCardBytes(): number {
-  return CARD_IMAGE_WIDTH * CARD_IMAGE_HEIGHT * 4 * 2 + PLANET_CAP * PLANET_TEXTURE_PX * PLANET_TEXTURE_HEIGHT * 4
+  return (
+    CARD_IMAGE_WIDTH * CARD_IMAGE_HEIGHT * 4 * 2 +
+    PLANET_CAP * PRINTING_IMAGE_WIDTH * PRINTING_IMAGE_HEIGHT * 4
+  )
 }
 
 /**

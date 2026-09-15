@@ -25,8 +25,9 @@ import { ThresholdMemory, type AdaptiveThreshold, type ThresholdReport } from '.
 import { LAYER_FREE } from './artPool'
 import type { ArtPool } from './artPool'
 import { facesCamera, withinFrustum } from './cellSelection'
-import { createCellMaterial } from './cellMaterial'
+import { createCellMaterial, createCellPickMaterial, type CellUniforms } from './cellMaterial'
 import { buildCellSheet, type CellSheet } from './cellSheet'
+import { PICK_LAYER } from '../picking/idPicker'
 import {
   bakeEquirectLayer,
   buildRowIndex,
@@ -150,6 +151,10 @@ export class WorldSurface {
   readonly sheet: CellSheet
   readonly material: ShaderMaterial
   readonly mesh: Mesh
+  /** §1.11's pick material — the same GLSL with `ID_PASS`, sharing {@link material}'s uniforms. */
+  readonly pickMaterial: ShaderMaterial
+  /** The sheet on {@link PICK_LAYER}, so PRD 8.5.6's id pass hits cells (§1.11). */
+  readonly pickMesh: Mesh
   /** The world's 256x128 equirect bake, for §1.5's far LOD. Written once, at build. */
   readonly equirect: Uint8Array
   /**
@@ -261,6 +266,9 @@ export class WorldSurface {
       normals: source.normals,
       rows: source.rows,
       swatches: drawSwatches,
+      // §1.11's pick id, through `cardOfCell` and off `artKeyBase` — the same two terms
+      // `setFilterMask` composes, because they are the same question: which card is in this cell.
+      stars: buildCellStars(source.artKeyBase, this.cardOfCell),
       radius: source.radius,
     })
     this.material = createCellMaterial(source.radius, options.artTexture)
@@ -268,6 +276,15 @@ export class WorldSurface {
     // `frustumCulled` stays on: `buildCellSheet` sets the bounding sphere by hand precisely so that
     // three can cull this correctly, and turning it off here would waste that.
     this.mesh.position.copy(source.centre)
+
+    // §1.11's pick pass. The SAME geometry, so the two can never disagree about where a cell is,
+    // and the draw material's own uniforms object, so they can never disagree about `uRadius`.
+    this.pickMaterial = createCellPickMaterial(this.material.uniforms as CellUniforms)
+    this.pickMesh = new Mesh(this.sheet.geometry, this.pickMaterial)
+    this.pickMesh.position.copy(source.centre)
+    // The pick camera renders this layer and nothing else (`idPicker.ts`), which is also what keeps
+    // the pick mesh out of the drawn frame -- it is never "hidden", it is simply not in that pass.
+    this.pickMesh.layers.set(PICK_LAYER)
 
     // The bake reads the SAME swatches the sheet draws, so a control seam moves both LOD
     // representations together. Baking the unpermuted array would leave `?swatch=mean` and
@@ -336,6 +353,35 @@ export class WorldSurface {
   /** The multiverse-wide art key this world's cards start at. See {@link WorldSurfaceSource}. */
   get artKeyBase(): number {
     return this.source.artKeyBase
+  }
+
+  /**
+   * PRD 5.8's dimming mask, for this world's cells (§1.11).
+   *
+   * `mask` is the store's per-**star** evaluation — one byte per star over the whole multiverse,
+   * `FILTER_MASK_PASS` where the card matches — so this world's window into it starts at
+   * {@link artKeyBase}, the identity `swatches.bin` and the art pool are already keyed by. `null`
+   * clears, which is both "no filter" and "the filter was removed": one state, not two paths.
+   *
+   * Reads a card's byte through `cardOfCell` rather than through the cell index, because
+   * `?bands=shuffle` permutes which card a cell draws (§3.1's W3 control). Under that seam the two
+   * identities differ, and dimming by cell index would dim the wrong cards — a control that
+   * quietly changes a second thing is exactly what `seams.ts` is written against.
+   */
+  setFilterMask(mask: Uint8Array | null): void {
+    const filtered = this.sheet.filtered.array as Float32Array
+    const base = this.source.artKeyBase
+    for (let cell = 0; cell < filtered.length; cell += 1) {
+      if (mask === null) {
+        filtered[cell] = 0
+        continue
+      }
+      const star = base + this.cardOfCell[cell]!
+      // A star past the end of the mask is not "filtered out" — it is a mask that disagrees with
+      // the roster, and the honest reading of an absent byte is that nothing excluded this card.
+      filtered[cell] = star < mask.length && mask[star] === 0 ? 1 : 0
+    }
+    this.sheet.filtered.needsUpdate = true
   }
 
   /** The per-world scalar §1.5's crossover and §3.1's W1 are both written against. */
@@ -455,13 +501,30 @@ export class WorldSurface {
 
     const layers = this.sheet.layers.array as Float32Array
     const art = this.sheet.art.array as Float32Array
+    const filterMask = this.sheet.filtered.array as Float32Array
 
     for (let cell = 0; cell < cardCount; cell += 1) {
+      // §1.11: a filtered cell never resolves to art **at all**. That is the whole rule under
+      // worlds, and it is simpler than the thumbnail-era one: the cell is excluded from admission
+      // rather than admitted and then dimmed, so it never asks the stream for a printing and never
+      // holds a pool layer a visible cell could use. The dim is the shader's half.
       const admit =
+        filterMask[cell] === 0 &&
         this.frontFacing[cell] === 1 &&
         this.onScreen[cell] === 1 &&
         this.heightPx[cell]! >= effective
       this.admitted[cell] = admit ? 1 : 0
+
+      // A cell filtered *while* it held a layer keeps that layer until the pool evicts it, so
+      // admission alone is not enough: without this the card stays on screen, at full art, for as
+      // long as the LRU leaves it resident. §1.11 says a filtered cell shows its swatch, so it is
+      // dropped back to the swatch here and the layer is released to the cells that can use it.
+      if (filterMask[cell] !== 0) {
+        layers[cell] = LAYER_FREE
+        this.fade[cell] = 0
+        art[cell] = 0
+        continue
+      }
 
       const card = this.cardOfCell[cell]!
       // The **pool's** key, not this world's card index. One pool serves the whole multiverse, so a
@@ -593,6 +656,8 @@ export class WorldSurface {
   dispose(): void {
     this.sheet.geometry.dispose()
     this.material.dispose()
+    // Its own program, so its own disposal — the shared uniforms object is not a shared material.
+    this.pickMaterial.dispose()
   }
 }
 
@@ -640,6 +705,30 @@ function buildDrawSwatches(
     out[cell * 3] = swatches[card * 3] ?? 0
     out[cell * 3 + 1] = swatches[card * 3 + 1] ?? 0
     out[cell * 3 + 2] = swatches[card * 3 + 2] ?? 0
+  }
+  return out
+}
+
+/**
+ * Per cell, the star index of the card it draws — §1.11's pick id (DEC-751).
+ *
+ * The composition is `artKeyBase + cardOfCell[cell]`, and both terms are load-bearing in a way that
+ * is worth stating because each fails silently on its own:
+ *
+ *  - **without `cardOfCell`**, `?bands=shuffle` makes the pick name the card whose *cell* the
+ *    pointer is over rather than the card it is *looking at*. The seam permutes the swatch and the
+ *    art but not the id, so the page draws one card and focuses another, and only under a control
+ *    seam nothing else on the page reacts to;
+ *  - **without `artKeyBase`**, all 45 sheets number from 0 and the id buffer cannot say which world
+ *    wrote the pixel. Cell 5 of every world is star 5, so the picker resolves every world's sixth
+ *    card to the first world's sixth card. This is exactly the aliasing `artKeyBase`'s own doc
+ *    comment describes for the art pool, and it is silent for the same reason: the id is a valid
+ *    star index, so nothing downstream can tell it is the wrong one.
+ */
+function buildCellStars(artKeyBase: number, cardOfCell: Uint32Array): Float32Array {
+  const out = new Float32Array(cardOfCell.length)
+  for (let cell = 0; cell < cardOfCell.length; cell += 1) {
+    out[cell] = artKeyBase + cardOfCell[cell]!
   }
   return out
 }

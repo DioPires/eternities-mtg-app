@@ -57,6 +57,8 @@ import { expect, test, type Page } from '@playwright/test'
 
 import type { ProbeState } from '../src/scene/probe'
 import { QUALITY_TIERS } from '../src/scene/quality/adaptiveQuality'
+import { artPoolSize } from '../src/scene/worlds/artPool'
+import { isWorldsDataset } from './dataset'
 
 /** Both because the pixel-ratio rung needs headroom, and small so SwiftShader can fill it. */
 const VIEWPORT = { width: 640, height: 360 }
@@ -166,7 +168,7 @@ async function readQuality(page: Page): Promise<Quality> {
   })
 }
 
-const TIER_LABELS = ['full', 'pixel-ratio', 'bloom', 'thumbnails', 'glow'] as const
+const TIER_LABELS = ['full', 'pixel-ratio', 'bloom', 'art-pool', 'glow'] as const
 
 /**
  * The ladder has exactly this many rungs, asserted before anything else uses `TIER_LABELS`.
@@ -187,7 +189,7 @@ test('every rung of the quality ladder lands, and only its own rung (PRD 8.5.11,
   for (let index = 0; index < TIER_LABELS.length; index += 1) {
     tiers.push(await pinnedTier(page, index))
   }
-  const [full, pixelRatio, bloom, thumbnails, glow] = tiers as [
+  const [full, pixelRatio, bloom, cardImagery, glow] = tiers as [
     Quality,
     Quality,
     Quality,
@@ -249,11 +251,18 @@ test('every rung of the quality ladder lands, and only its own rung (PRD 8.5.11,
   expect(pixelRatio.bloomSource!.width / bloom.bloomSource!.width).toBeCloseTo(2, 5)
   expect(bloom.bloomLevels, 'the bloom rung drops a mip level').toBeLessThan(pixelRatio.bloomLevels)
 
-  // Rung 3 — the atlas capacity, with the two rungs above it held.
-  expect(thumbnails.drawingBuffer).toEqual(bloom.drawingBuffer)
-  expect(thumbnails.bloomSource).toEqual(bloom.bloomSource)
-  expect(thumbnails.bloomLevels).toBe(bloom.bloomLevels)
-  expect(thumbnails.thumbnailCapacity).toBeLessThan(bloom.thumbnailCapacity)
+  // Rung 3 — the resident **card-imagery** budget, with the two rungs above it held.
+  //
+  // Renamed off `thumbnails` by DEC-751: the rung now moves two fields, the atlas capacity here and
+  // the worlds art pool asserted in its own test below. That is one *knob* and two fields, which is
+  // W4.1's actual ladder invariant (DEC-756) — the two are the same resource on the two datasets, so
+  // stepping one without the other would degrade a galaxy page and leave a worlds page untouched.
+  // The tier's own label moved with it, and this file's `TIER_LABELS` did not: that staleness is
+  // what failed this spec on the first worlds build after the rung landed.
+  expect(cardImagery.drawingBuffer).toEqual(bloom.drawingBuffer)
+  expect(cardImagery.bloomSource).toEqual(bloom.bloomSource)
+  expect(cardImagery.bloomLevels).toBe(bloom.bloomLevels)
+  expect(cardImagery.thumbnailCapacity).toBeLessThan(bloom.thumbnailCapacity)
   // ...and nothing below rung 3 touches it.
   expect(bloom.thumbnailCapacity).toBe(full.thumbnailCapacity)
   expect(pixelRatio.thumbnailCapacity).toBe(full.thumbnailCapacity)
@@ -272,18 +281,18 @@ test('every rung of the quality ladder lands, and only its own rung (PRD 8.5.11,
   // `defines` on a live material re-links the program on the next draw, which is the several-hundred
   // millisecond first-use stall the boot warm-up exists to remove — so a rung meant to recover
   // frames would cost them.
-  expect(glow.glowShader, 'rung 4 draws the cheap glow program').not.toBe(thumbnails.glowShader)
+  expect(glow.glowShader, 'rung 4 draws the cheap glow program').not.toBe(cardImagery.glowShader)
   expect(glow.glowShader).toBe('PlaneGlowCheap')
   // ...and every rung above it draws the full one. Both directions, because a spec that only
   // checked the bottom rung would pass on a build where *every* tier drew the cheap glow.
-  for (const tier of [full, pixelRatio, bloom, thumbnails]) {
+  for (const tier of [full, pixelRatio, bloom, cardImagery]) {
     expect(tier.glowShader, `${tier.tier} must keep the full glow`).toBe('PlaneGlow')
   }
   // Rung 4 moves the glow and nothing else: the three quantities the rungs above it own are held.
-  expect(glow.drawingBuffer).toEqual(thumbnails.drawingBuffer)
-  expect(glow.bloomSource).toEqual(thumbnails.bloomSource)
-  expect(glow.bloomLevels).toBe(thumbnails.bloomLevels)
-  expect(glow.thumbnailCapacity).toBe(thumbnails.thumbnailCapacity)
+  expect(glow.drawingBuffer).toEqual(cardImagery.drawingBuffer)
+  expect(glow.bloomSource).toEqual(cardImagery.bloomSource)
+  expect(glow.bloomLevels).toBe(cardImagery.bloomLevels)
+  expect(glow.thumbnailCapacity).toBe(cardImagery.thumbnailCapacity)
 
   // The structural promise: "geometry and motion are never degraded". Same stars drawn, same
   // `uMotion`, at every rung including the bottom one.
@@ -441,6 +450,109 @@ test('the platform layer asks the GPU and the app acts on the answer (review §3
   // the count is a floor on coverage — but it must be a real floor, or a warm-up that silently
   // found nothing would pass.
   expect(state.warmup!.specs).toBeGreaterThanOrEqual(15)
+})
+
+/**
+ * Rung 5 — the art pool, spec §1.12 (DEC-751).
+ *
+ * **Relayed from leg G (DEC-752) as a live measurement against main `f049dca`.** Before the rung
+ * landed, `setArtLayers` had *zero callers*: the pool sat at `DEFAULT_TIER_ART_LAYERS = 1024` at
+ * every tier while §1.12's table claimed it stepped, and this file mentioned neither `pool` nor
+ * `layers` — so the rung was inert and nothing anywhere said so. That is the same class of defect
+ * as R2's `dpr` prop and R3's `resolutionScale` above, and it is caught the same way: read the
+ * effect off the **live pool**, never off `QUALITY_TIERS`.
+ *
+ * **Asserted against the CLAMPED value, which §1.12 requires and which is not a formality.**
+ * `ArtPool` reports `artPoolSize(tierLayers, maxArrayTextureLayers)` — the WebGL2 spec minimum for
+ * `MAX_ARRAY_TEXTURE_LAYERS` is 256, so on a spec-minimum device tiers 0-3 all clamp to the same
+ * pool and the *requested* number is a number nothing pays. Comparing the request against the
+ * report would pass on a driver that ignored the request entirely.
+ *
+ * **The shipped rung is 1024/1024/1024/128/128, not §1.12's earlier 1024/512/256/128.** Under the
+ * clamp above, 1024, 512 and 256 are *the same pool* on W0.1's spec-minimum hardware, so a 512 or
+ * 256 rung is inert on exactly the machine the ladder exists to serve — and W4.1's invariant is one
+ * real knob per rung. This is also the correction leg G's note asks for: "quality tier 4" and
+ * "`?layers=128`" name the same capacity once this rung exists, and tier 3 does too.
+ */
+test('the art pool steps with the ladder, at the size the driver grants (§1.12)', async ({
+  page,
+}) => {
+  test.skip(
+    !isWorldsDataset(),
+    'the art pool is a worlds-dataset object; build with ETERNITIES_DATASET=worlds to run this',
+  )
+
+  /**
+   * Wait for the roster to compose before reading the pool off it (DEC-779 X4).
+   *
+   * `pinnedTier` waits on the star field and the bloom chain — both galaxy-path readiness signals,
+   * neither of which says anything about the worlds roster. `worlds()` is `null` until a surface
+   * exists *and* a tick has run, so reading it straight after the field completes is a race the
+   * page wins only when the shards happen to land first. It lost that race on this runner and the
+   * failure reads as a flake rather than as "the test asked too early".
+   *
+   * Polled rather than slept, and still a **setup failure and never a skip** when the roster never
+   * arrives: a page with no worlds on it must not score this green. That is why the poll ends in
+   * the same throw it replaced instead of in a `test.skip`.
+   */
+  const readPool = async (): Promise<{ layers: number; maxLayers: number }> => {
+    await expect
+      .poll(async () => page.evaluate(() => window.__eternitiesProbe?.worlds() != null), {
+        timeout: 30_000,
+        message: 'the worlds roster never composed on this page',
+      })
+      .toBe(true)
+
+    return page.evaluate(() => {
+      const probe = window.__eternitiesProbe
+      if (!probe) throw new Error('?probe=1 did not install the probe')
+      const worlds = probe.worlds()
+      // A setup failure, never a skip: a page with no worlds on it must not score this green.
+      if (!worlds) throw new Error('the worlds probe is not installed on this page')
+      return {
+        layers: worlds.pool.layers,
+        maxLayers: probe.state().platform.maxArrayTextureLayers,
+      }
+    })
+  }
+
+  const pools: { layers: number; maxLayers: number }[] = []
+  for (let index = 0; index < TIER_LABELS.length; index += 1) {
+    await pinnedTier(page, index)
+    pools.push(await readPool())
+  }
+
+  const maxLayers = pools[0]!.maxLayers
+  expect(maxLayers, 'the platform layer never reported MAX_ARRAY_TEXTURE_LAYERS').toBeGreaterThan(0)
+
+  // Every tier reports exactly what the clamp grants for its request.
+  for (let index = 0; index < pools.length; index += 1) {
+    const requested = QUALITY_TIERS[index]!.artPoolLayers
+    expect(pools[index]!.layers, `${TIER_LABELS[index]} pool`).toBe(
+      artPoolSize(requested, maxLayers),
+    )
+  }
+
+  // ...and the rung is not inert *on this runner*. Stated as a precondition with its own message,
+  // in the idiom `expectAffordsLevels` sets above: on a driver generous enough that every tier
+  // clamps to the same pool, the inequality below would be asserting the clamp rather than the
+  // rung, and a future runner change should fail HERE with this explanation rather than quietly
+  // hollowing the assertion out.
+  const top = artPoolSize(QUALITY_TIERS[0]!.artPoolLayers, maxLayers)
+  const bottom = artPoolSize(QUALITY_TIERS[TIER_LABELS.length - 1]!.artPoolLayers, maxLayers)
+  expect(
+    bottom,
+    `a ${maxLayers}-layer driver clamps every tier to ${top}, so this rung is unobservable here`,
+  ).toBeLessThan(top)
+  expect(pools[pools.length - 1]!.layers).toBeLessThan(pools[0]!.layers)
+
+  // The step is monotonic — a rung that went back *up* on the way down would still satisfy the
+  // endpoints above.
+  for (let index = 1; index < pools.length; index += 1) {
+    expect(pools[index]!.layers, `${TIER_LABELS[index]} must not exceed the tier above`).toBeLessThanOrEqual(
+      pools[index - 1]!.layers,
+    )
+  }
 })
 
 test('an unpinned scene starts at full quality and reports no pin', async ({ page }) => {

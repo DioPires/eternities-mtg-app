@@ -78,8 +78,15 @@ export interface QualityRungTargets {
   setBloomLevels: (levels: number) => void
   /** Rung 2's third consumer: the field sizes its bloom-source sprites by the same fraction. */
   setStarBloomScale: (scale: number) => void
-  /** Rung 3. */
+  /**
+   * Rung 3, both halves — one knob, the resident card-image budget (`QUALITY_KNOBS`, DEC-753).
+   *
+   * The galaxy spends it on PRD 8.5.8's atlas and worlds spends it on §1.12's art pool, so which
+   * of the two moves the picture is a function of which card path the page is on. Both are driven
+   * from the one rung so that the cutover deletes a field rather than re-cutting the ladder.
+   */
   setThumbnailCapacity: (capacity: number) => void
+  setArtPoolLayers: (layers: number) => void
   /** Rung 4. */
   setGlowQuality: (quality: QualityTier['glow']) => void
 }
@@ -98,6 +105,7 @@ export function applyQualityTier(tier: QualityTier, targets: QualityRungTargets)
   targets.setBloomLevels(tier.bloomLevels)
   targets.setStarBloomScale(tier.bloomScale)
   targets.setThumbnailCapacity(tier.thumbnailCapacity)
+  targets.setArtPoolLayers(tier.artPoolLayers)
   targets.setGlowQuality(tier.glow)
 }
 
@@ -172,6 +180,13 @@ export class SceneHost {
   /** {@link attachDrive}'s one-shot guard, the same shape as `cardTierHandle` is for the tier. */
   private driveAttached = false
   private starsComplete = false
+  /**
+   * PRD 5.9's setting, held so {@link buildCardTier} can replay it (DEC-751).
+   *
+   * The same reason {@link tier}'s thumbnail capacity is held and replayed: the card tier is built
+   * late, and every `setX` that arrives before it exists hits a `?.` and is gone.
+   */
+  private reducedMotion = false
   private warmupStarted = false
   private warmupResult: ProgramWarmupResult | null = null
   private tier: QualityTier = QUALITY_TIERS[0]!
@@ -209,15 +224,17 @@ export class SceneHost {
       onSelect: (pick) => this.selected.emit(pick),
       onQualityChange: (tier) => this.applyTier(tier),
     })
-    // **After the assignment above, never inside it.** `applyTier` pushes the tier at the star
-    // field, so a starting announcement that fired from inside `attachStarScene` would reach a
-    // `starSceneHandle` that does not exist yet. See `StarSceneHandle.announceStartingTier`.
-    this.starSceneHandle.announceStartingTier()
-
     // The `worlds` phase (spec §1.2). Attached unconditionally and empty until `setWorldData`: a
     // phase whose subscriber arrives with the data is a phase that can end up with none at all,
     // which is DEC-761's F1 in miniature. Nothing is allocated here beyond the art pool, and on a
     // v2 dataset nothing ever composes — §3.2's "the two coexist at zero cost".
+    //
+    // **Before the announcement below, for the same reason the star field is assigned before it**
+    // (DEC-751): rung 3 now reaches the worlds art pool (§1.12), so an announcement that ran first
+    // would reach a `worldsAttachment` that does not exist. Ordering it here rather than guarding
+    // the setter with `?.` is deliberate — a dropped starting rung is not a crash, it is a page
+    // pinned to `?quality=4` that quietly allocates rung 0's 48 MiB pool, which is precisely the
+    // silent-wiring class DEC-761's F1 and DEC-747's two-writer finding are both about.
     //
     // **`cardOf` is not optional in the product, whatever its type says.** It is the only thing that
     // turns §1.6's admission into a fetch: without it `buildWorldSource` defaults the lookup to
@@ -232,6 +249,11 @@ export class SceneHost {
       loop,
       cardOf: (plane, card) => this.worldCardOf(plane, card),
     })
+
+    // **After the assignments above, never inside them.** `applyTier` pushes the tier at the star
+    // field, so a starting announcement that fired from inside `attachStarScene` would reach a
+    // `starSceneHandle` that does not exist yet. See `StarSceneHandle.announceStartingTier`.
+    this.starSceneHandle.announceStartingTier()
 
     // The stats the tick reports outwards, gathered last. `frameMs` and `cpuMs` are the loop's own
     // and are written by `SceneRenderer`'s `onTickEnd` hook, which by construction runs after every
@@ -429,6 +451,9 @@ export class SceneHost {
 
   /** PRD 5.9, from the settings store laid over the OS preference. */
   setReducedMotion(reduced: boolean): void {
+    // Recorded before it is forwarded, because the card tier may not exist yet. See
+    // {@link reducedMotion} and {@link buildCardTier}.
+    this.reducedMotion = reduced
     this.starSceneHandle.setReducedMotion(reduced)
     this.cardTierHandle?.setReducedMotion(reduced)
     this.navigation?.api.setReducedMotion(reduced)
@@ -510,6 +535,7 @@ export class SceneHost {
       setStarBloomScale: (scale) => this.starSceneHandle.setBloomScale(scale),
       // The tier may be announced before the card tier exists; `buildCardTier` re-applies it.
       setThumbnailCapacity: (capacity) => this.cardTierHandle?.setThumbnailCapacity(capacity),
+      setArtPoolLayers: (layers) => this.worldsAttachment.setArtLayers(layers),
       setGlowQuality: (glow) => this.starSceneHandle.setGlowQuality(glow),
     })
 
@@ -536,6 +562,21 @@ export class SceneHost {
     // The tier is built after the starting tier was announced, so the rung it missed is applied
     // here rather than waiting for the ladder to move.
     this.cardTierHandle.setThumbnailCapacity(this.tier.thumbnailCapacity)
+    /*
+     * And PRD 5.9's setting, for exactly the same reason (DEC-751).
+     *
+     * `setReducedMotion` runs from a mount effect, long before `planes.json` lands and this tier
+     * is built, so its `this.cardTierHandle?.` was a no-op for every user whose preference was
+     * already set when the page loaded — which is every user who has the preference at all. The
+     * tier then kept its own `reducedMotion = false` default for the rest of the session, and the
+     * card went on tilting and the ring went on orbiting.
+     *
+     * **It could only ever come right by accident**: the value is re-sent on *change*, so the one
+     * way to get a correct scene was to toggle the OS setting after the scene had loaded. That is
+     * why a browser check could confirm the setting "works" and the shipped path still be wrong —
+     * measured both ways in DEC-751, frozen = false before load and true after.
+     */
+    this.cardTierHandle.setReducedMotion(this.reducedMotion)
   }
 
   private maybeWarm(): void {

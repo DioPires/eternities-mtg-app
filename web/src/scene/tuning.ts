@@ -241,12 +241,95 @@ export const PLANET_CAP = PLANETS_PER_RING * PLANET_RING_COUNT
 /** PRD 5.6.7: "one revolution per 60 s", independent of the plane's spin. */
 export const PLANET_PERIOD_S = 60
 
-/** Planet radius and ring radii, in the card's own units. The first ring clears the card's corner. */
-export const PLANET_RADIUS = 0.058
+/** Ring radii, in the card's own units. The first ring clears the card's corner. */
 export const PLANET_RING_RADII: readonly number[] = [0.82, 1.12, 1.42]
 
-/** PRD 8.5.10: `art_crop` textures downscaled on decode to 256 px on the long side. */
-export const PLANET_TEXTURE_PX = 256
+/**
+ * Worlds spec §1.10: a printing is a flat quad showing its own `small` image, not a sphere.
+ *
+ * Scryfall's `small` is 146 × 204 and is uploaded **at its own size**. That is the point of the
+ * conversion rather than an incidental detail: PRD 8.5.10's 256 px `art_crop` exists because an
+ * `art_crop` arrives at 626 × 457 and has to be cut down, and `small` arrives already smaller than
+ * the size that downscale was aiming for. So the quad both retires the decode-time resize and
+ * shows the whole card instead of a crop of its art — which is what lets §1.10 satisfy Scryfall's
+ * alternative attribution clause without an artist credit beside each planet.
+ */
+export const PLANET_SMALL_WIDTH = 146
+export const PLANET_SMALL_HEIGHT = 204
+
+/**
+ * The chord between neighbours on the tightest ring a full complement of printings can land on.
+ *
+ * A ring seating `n` printings puts neighbours `2π/n` apart in angle, so the chord is
+ * `2r · sin(π/n)` — and a partial ring is always *wider* spaced than a full one, so the binding
+ * case is every ring at {@link PLANETS_PER_RING}. Taken as a minimum over the radii rather than
+ * from `PLANET_RING_RADII[0]` so that reordering or adding a radius cannot quietly stop this being
+ * the tightest one.
+ */
+const PLANET_RING_CHORD = Math.min(
+  ...PLANET_RING_RADII.map((radius) => 2 * radius * Math.sin(Math.PI / PLANETS_PER_RING)),
+)
+
+/**
+ * The quad's height in the card's own units, and its width **derived from the image it shows**.
+ *
+ * Derived rather than written as its own literal, because "undistorted" is §1.10's entire claim
+ * for the flat quad and a literal width can drift from the image's aspect while the picture stays
+ * completely plausible — a card squashed by a few percent still reads as a card, and nothing
+ * errors. Deriving makes the distortion unrepresentable instead of merely untested.
+ *
+ * **The height that fits is the one whose diagonal fits the chord, and the height is derived from
+ * that too.** The quads are axis-aligned and the ring turns underneath them, so two neighbours at
+ * chord `c` are offset by `(c·cos φ, c·sin φ)` where `φ` sweeps the whole turn. Axis-aligned rects
+ * of equal size overlap exactly when *both* offsets are inside the box, so they clear **at every
+ * phase of the turn** if and only if
+ *
+ * ```
+ *   c ≥ √(W² + H²) = H · √(1 + (146/204)²)
+ * ```
+ *
+ * i.e. the quad's **diagonal** fits the chord — not its width, and not its height. Checking width
+ * against the arc and height against the radial gap is the configuration at the *top* of the ring
+ * only; a quarter-revolution later the arc is spanned by the quad's height, and a height picked
+ * against the radial gap overlaps its neighbour. (That was the previous rule here, and it shipped a
+ * ring whose inner two circles overlapped by up to 10.8% of a quad's area — DEC-776 F1.)
+ *
+ * Solving that at equality on the tightest chord is what sizes the quad, so the constant below is
+ * the largest height §1.10's ring can hold. It is **smaller** than the height that shipped and the
+ * quad is still the larger pick target: at `0.174 × 0.125` both dimensions clear the retired
+ * sphere's 0.116 diameter, so the conversion still costs nothing in pickability — which is the
+ * claim the old comment here was making for the bigger quad.
+ */
+export const PLANET_QUAD_HEIGHT =
+  PLANET_RING_CHORD / Math.hypot(1, PLANET_SMALL_WIDTH / PLANET_SMALL_HEIGHT)
+export const PLANET_QUAD_WIDTH = (PLANET_QUAD_HEIGHT * PLANET_SMALL_WIDTH) / PLANET_SMALL_HEIGHT
+
+/**
+ * Width of the quad's rim, **in the card's units and not in UV** (§1.10, PRD 5.6.9).
+ *
+ * A sphere's rim came free from its own curvature: the fresnel term fell off towards the limb, so
+ * the mark was the same width all the way round whatever the silhouette was. A flat quad has a
+ * constant normal — the fresnel term is uniform across it — so the rim has to be drawn as a border
+ * in the surface's own coordinates, and those coordinates are not square. Insetting by a fraction
+ * of UV would make the left and right edges 204/146 = 1.4× thicker than the top and bottom.
+ */
+export const PLANET_RIM_WIDTH = 0.014
+
+/**
+ * Worlds spec §1.10: the ring's overflow, as 1 px ticks on a ring of their own.
+ *
+ * PRD 5.6.8 caps the ring at 72 and sends the remainder to the card panel, which
+ * `ui/CardPanel.tsx` has always done — it renders the true count and lists every printing
+ * uncapped. What has never existed is the *visual* tie: nothing in the scene says the ring dropped
+ * any, or which. §1.10 adds exactly that and widens nothing else.
+ *
+ * On production this draws on **five cards** — Swamp 570, Mountain 565, Forest 563, Plains 537,
+ * Island 535, with the next card at 60 printings — so it is cheap to build and cheap to get wrong
+ * unnoticed, which is why §1.10 asks for a unit test on the tick positions rather than a capture.
+ */
+export const PLANET_TICK_RADIUS = 1.62
+/** One CSS pixel, per §1.10. Not scaled by distance: a tick is a mark, not an object. */
+export const PLANET_TICK_PX = 1
 
 /** PRD 5.6.9: the active printing's planet is marked. A brighter rim, not a different shape. */
 export const PLANET_ACTIVE_GAIN = 1.8

@@ -15,6 +15,7 @@
 import { SHADE_AMBIENT, SHADE_GAIN } from './probePayload'
 import { CELL_INSET, CELL_LIFT } from './surfaceLaw'
 import { glslFloat } from '../starfield/shaders'
+import { FILTER_DIM } from '../tuning'
 
 /**
  * The floor under `sin(theta)` before it is divided into `iSize.x`.
@@ -33,6 +34,9 @@ const DEFINES = [
   ['SHADE_AMBIENT', SHADE_AMBIENT],
   ['SHADE_GAIN', SHADE_GAIN],
   ['SIN_THETA_FLOOR', SIN_THETA_FLOOR],
+  // PRD 5.8's dimming, shared with the star field's shader rather than restated: one constant, so
+  // a filtered star and a filtered cell dim by the same amount on the same page (spec 1.11).
+  ['FILTER_DIM', FILTER_DIM],
 ] as const
 
 /** The shared `#define` block, written from the TypeScript constants above. */
@@ -59,6 +63,20 @@ export const CELL_DEFINE_BLOCK = DEFINES.map(
  * > 51.6×-too-wide failure, and neither direction announces itself on a world near the equator
  * > where the factor is ~1. `sin(theta_r)` is recovered from the normal itself — `length(n.xz)` —
  * > so the two can never disagree about which row this is.
+ *
+ * > **Normative — `ID_PASS` compiles the same program into the pick material (§1.11, DEC-751).**
+ * > The point of PRD 8.5.6's id buffer is that the pick pass runs the *same vertex shader* as the
+ * > draw pass, so what it hits is where the cell actually is on screen. The cell sheet places its
+ * > vertices entirely in GLSL — a CPU raycast against this surface would have to re-implement the
+ * > parameterisation above, and would then be a second copy of the surface law free to drift from
+ * > it. Under `ID_PASS` the only difference is what the fragment writes.
+ * >
+ * > **The id is the card's star index, not `gl_InstanceID`.** §1.11's prose says `gl_InstanceID +
+ * > 1`, and that is per-sheet: with 45 sheets resident (§1.2) it aliases every world onto every
+ * > other. `iStar` is the multiverse-wide identity instead, which also lands the answer in the id
+ * > space `scenePicker.resolvePick` already resolves — so a picked cell arrives as a `star` and is
+ * > one, exactly as a thumbnail does, and "card focus and the printing ring pick as they do today"
+ * > needs no branch at all. See `cellSheet.ts`'s byte budget for the aliasing argument in full.
  */
 export const CELL_VERTEX_SHADER = /* glsl */ `
 ${CELL_DEFINE_BLOCK}
@@ -74,6 +92,8 @@ attribute vec2 iSize;    // arc-length half-extents, units of world radius (NOT 
 attribute vec3 iSwatch;  // linear RGB
 attribute float iLayer;  // art pool layer, or < 0 for none
 attribute float iArt;    // cross-fade, 0 = swatch, 1 = art
+attribute float iFiltered; // PRD 5.8 / spec 1.11: 1 = excluded by the filter
+attribute float iStar;   // spec 1.11: the card's multiverse-wide star index
 
 uniform float uRadius;
 
@@ -82,6 +102,10 @@ varying vec3 vSwatch;
 varying vec3 vNormal;
 varying float vLayer;
 varying float vArt;
+varying float vFiltered;
+#ifdef ID_PASS
+varying vec3 vIdColour;
+#endif
 
 void main() {
   vec3 n = normalize(iNormal);
@@ -110,6 +134,19 @@ void main() {
   vNormal = n;
   vLayer = iLayer;
   vArt = iArt;
+  vFiltered = iFiltered;
+
+#ifdef ID_PASS
+  // The same 24-bit little-endian encoding the star and thumbnail passes write, so one decoder in
+  // idPicker.ts reads every writer. +1 keeps 0 as "nothing here": the pick target is cleared to a
+  // transparent black that would otherwise decode as star 0.
+  float id = iStar + 1.0;
+  vIdColour = vec3(
+    mod(id, 256.0),
+    mod(floor(id / 256.0), 256.0),
+    mod(floor(id / 65536.0), 256.0)
+  ) / 255.0;
+#endif
 
   gl_Position = projectionMatrix * modelViewMatrix * vec4(p * (uRadius * CELL_LIFT), 1.0);
 }
@@ -134,6 +171,10 @@ varying vec3 vSwatch;
 varying vec3 vNormal;
 varying float vLayer;
 varying float vArt;
+varying float vFiltered;
+#ifdef ID_PASS
+varying vec3 vIdColour;
+#endif
 
 uniform sampler2DArray uArt;
 uniform vec3 uLight;
@@ -141,6 +182,17 @@ uniform vec3 uAmbient;
 uniform float uSheetMix;
 
 void main() {
+#ifdef ID_PASS
+  // PRD 5.8.3: a dimmed card does not respond to hover and is not focusable. The star shader's
+  // vPickable gate, restated for cells against the attribute that dims them -- so a filtered cell
+  // is unpickable for the same reason and by the same rule on both pages.
+  //
+  // Discarding is what makes the cell behind it reachable: a filtered cell that wrote a colour
+  // would still lay down depth in the pick target and occlude its neighbour, which is a filter that
+  // silently removes its neighbour's pick target too.
+  if (vFiltered > 0.5) discard;
+  gl_FragColor = vec4(vIdColour, 1.0);
+#else
   // §1.5's crossover, as a **dissolve** rather than an opacity (DEC-750).
   //
   // Inside the band a world draws in both step 2 and step 4 and "the two cross-fade", and §1.2 also
@@ -166,6 +218,14 @@ void main() {
 
   vec3 colour = vSwatch * shade + uAmbient;
 
+  // PRD 5.8 / spec 1.11: a filtered cell drops to its swatch and dims. The dim multiplies the
+  // SWATCH term and is applied BEFORE the art mix, which is what makes "never dims its art"
+  // structural rather than a convention -- at vArt = 1 the mix below returns the art unchanged
+  // however dim this is. Dimming a card image is a colour shift, which Scryfall's terms forbid
+  // (docs/scryfall-policy.md 5). The renderer also never admits a filtered cell to the art pool,
+  // so the two paths agree: a filtered cell has no art to dim in the first place.
+  colour *= mix(1.0, FILTER_DIM, clamp(vFiltered, 0.0, 1.0));
+
   if (vArt > 0.0 && vLayer >= 0.0) {
     // V is flipped here, not on upload: a DataArrayTexture ignores UNPACK_FLIP_Y_WEBGL, so the only
     // place the art's row order can be corrected is the sampler.
@@ -175,5 +235,6 @@ void main() {
   }
 
   gl_FragColor = vec4(colour, 1.0);
+#endif
 }
 `

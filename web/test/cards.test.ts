@@ -10,7 +10,8 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import type { BufferGeometry, Texture, Vector4, WebGLRenderer } from 'three'
+import { Vector3 } from 'three'
+import type { BufferGeometry, Mesh, Points, Texture, Vector4, WebGLRenderer } from 'three'
 
 import { ATLAS_BYTES, ATLAS_CELLS, ATLAS_COLUMNS, ThumbnailAtlas } from '../src/scene/cards/atlas'
 import {
@@ -18,7 +19,14 @@ import {
   stepSpring,
   worstCaseCardBytes,
   PLANET_ID_BASE,
+  PRINTING_IMAGE_HEIGHT,
+  PRINTING_IMAGE_WIDTH,
 } from '../src/scene/cards/focusedCard'
+import {
+  PLANET_FRAGMENT_SHADER,
+  PLANET_VERTEX_SHADER,
+} from '../src/scene/cards/cardShaders'
+import { glslFloat } from '../src/scene/starfield/shaders'
 import type { CardRecord, PrintingTuple } from '../src/data/types'
 import {
   GPU_CEILING_BYTES,
@@ -36,7 +44,7 @@ import {
   samePick,
   type PickResult,
 } from '../src/scene/picking/scenePicker'
-import { PICK_BUSY, PICK_MISS } from '../src/scene/picking/idPicker'
+import { PICK_BUSY, PICK_LAYER, PICK_MISS } from '../src/scene/picking/idPicker'
 import { cardEdgeGeometry, cardFaceGeometry } from '../src/scene/cards/roundedRect'
 import {
   ATLAS_CELL_HEIGHT,
@@ -48,6 +56,13 @@ import {
   IMAGE_CONCURRENCY,
   PLANETS_PER_RING,
   PLANET_CAP,
+  PLANET_PERIOD_S,
+  PLANET_QUAD_HEIGHT,
+  PLANET_QUAD_WIDTH,
+  PLANET_RING_RADII,
+  PLANET_SMALL_HEIGHT,
+  PLANET_SMALL_WIDTH,
+  PLANET_TICK_RADIUS,
   THUMBNAIL_FADE_FULL_PX,
   THUMBNAIL_GRACE_S,
 } from '../src/scene/tuning'
@@ -983,5 +998,532 @@ describe('PRD 5.6.2 card geometry', () => {
     }
     // Float32 attribute storage, so six places is the whole of the available precision here.
     expect(maxZ - minZ).toBeCloseTo(0.02, 6)
+  })
+})
+
+/**
+ * §1.10's overflow ticks, pinned as positions (worlds spec §1.10, DEC-751).
+ *
+ * The section asks for this by name — "pin it with a unit test on the tick positions, not with a
+ * capture" — and gives the reason: on the production roster this draws on **five cards**, so a
+ * defect here is invisible in every screenshot anyone would think to take.
+ *
+ * What is being pinned is a *mapping*, not a picture: each dropped printing gets one tick, at its
+ * own fraction of the release order, on a ring outside the quads. The digits below are all derived
+ * from that sentence rather than transcribed from a run.
+ */
+describe('§1.10 the ring marks the printings it dropped', () => {
+  it('draws no ticks at all until the cap actually binds', () => {
+    // The cap binds on five cards. Everything else must be untouched by this change, and the
+    // boundary is the interesting row: 72 is not overflow, 73 is one.
+    expect(planetLayout(1).ticks).toHaveLength(0)
+    expect(planetLayout(24).ticks).toHaveLength(0)
+    expect(planetLayout(PLANET_CAP).ticks).toHaveLength(0)
+    expect(planetLayout(PLANET_CAP).overflow).toBe(0)
+    expect(planetLayout(PLANET_CAP + 1).ticks).toHaveLength(1)
+  })
+
+  it('draws exactly one tick per dropped printing, and names which', () => {
+    // Swamp, the worst case on the roster: 570 printings, 72 quads, 498 ticks.
+    const layout = planetLayout(570)
+    expect(layout.slots).toHaveLength(PLANET_CAP)
+    expect(layout.overflow).toBe(498)
+    expect(layout.ticks).toHaveLength(498)
+    // Every dropped printing, once, and no printing that the ring already shows. A tick set that
+    // merely had the right *count* would pass a `toHaveLength` and still mark the wrong printings.
+    expect(layout.ticks.map((tick) => tick.printing)).toEqual(
+      Array.from({ length: 498 }, (_, i) => PLANET_CAP + i),
+    )
+    const shown = new Set(layout.slots.map((slot) => slot.printing))
+    expect(layout.ticks.some((tick) => shown.has(tick.printing))).toBe(false)
+  })
+
+  it('places a tick at its own fraction of the release order, not of the tail', () => {
+    // The distinguishing assertion (§1.10). Spacing the ticks evenly over the *tail* would put the
+    // first one at angle 0 and spread 498 marks around the whole circle, saying nothing about
+    // where in the card's history they fall. Placed against the whole sequence, printing 72 of 570
+    // sits about an eighth of the way round — just past the quads it follows.
+    const layout = planetLayout(570)
+    const first = layout.ticks[0]!
+    expect(first.printing).toBe(72)
+    expect(first.phase).toBeCloseTo((2 * Math.PI * 72) / 570, 12)
+    expect(first.phase).toBeGreaterThan(0)
+    // The last printing is nearly all the way round, and strictly short of a full turn — a tick at
+    // exactly 2*PI would sit on top of printing 0.
+    const last = layout.ticks[layout.ticks.length - 1]!
+    expect(last.printing).toBe(569)
+    expect(last.phase).toBeCloseTo((2 * Math.PI * 569) / 570, 12)
+    expect(last.phase).toBeLessThan(2 * Math.PI)
+    // Monotonic in release order, which is what makes the ring readable as a clock.
+    for (let i = 1; i < layout.ticks.length; i += 1) {
+      expect(layout.ticks[i]!.phase).toBeGreaterThan(layout.ticks[i - 1]!.phase)
+    }
+  })
+
+  it('puts the ticks outside every quad ring, so the tail reads as a tail', () => {
+    const layout = planetLayout(570)
+    for (const tick of layout.ticks) {
+      expect(tick.radius).toBe(PLANET_TICK_RADIUS)
+      for (const slot of layout.slots) expect(tick.radius).toBeGreaterThan(slot.radius)
+    }
+  })
+
+  it('orbits a tick on the same clock as the quads (PRD 5.6.7)', () => {
+    // One angular law for both, or the tail drifts against the ring it belongs to. Asserted as an
+    // *equality of angular advance* rather than as coordinates, because that is the claim.
+    const layout = planetLayout(570)
+    const tick = layout.ticks[0]!
+    const slot = layout.slots[0]!
+    const at = (thing: { phase: number; radius: number }, t: number) => {
+      const out = { x: 0, y: 0, z: 0 }
+      planetPosition(thing, t, 1, out)
+      return Math.atan2(out.x, out.y)
+    }
+    const quarter = PLANET_PERIOD_S / 4
+    const advance = (thing: { phase: number; radius: number }) => {
+      const before = at(thing, 0)
+      const after = at(thing, quarter)
+      return (after - before + 2 * Math.PI) % (2 * Math.PI)
+    }
+    expect(advance(tick)).toBeCloseTo(Math.PI / 2, 10)
+    expect(advance(tick)).toBeCloseTo(advance(slot), 10)
+    // And it is on the tick ring while it does it — the radius survives the orbit.
+    const out = { x: 0, y: 0, z: 0 }
+    planetPosition(tick, 12.3, 1, out)
+    expect(Math.hypot(out.x, out.y)).toBeCloseTo(PLANET_TICK_RADIUS, 10)
+  })
+
+  it('stops moving under reduced motion, as the quads do (PRD 5.9)', () => {
+    const tick = planetLayout(570).ticks[0]!
+    const a = { x: 0, y: 0, z: 0 }
+    const b = { x: 0, y: 0, z: 0 }
+    planetPosition(tick, 0, 0, a)
+    planetPosition(tick, 30, 0, b)
+    expect(b).toEqual(a)
+  })
+})
+
+/**
+ * §1.10's ticks reaching the scene graph (DEC-751).
+ *
+ * The layout rows above are arithmetic and would all stay green with nothing drawn at all — which
+ * is the exact shape of DEC-768's F3, where two worlds wiring lines could be deleted with the
+ * whole suite still passing. So this drives the real {@link FocusedCard} and asks the scene graph
+ * what is in it.
+ */
+describe('§1.10 the tick tail is in the scene, not only in the layout', () => {
+  function cardWith(printings: number): CardRecord {
+    const p: PrintingTuple[] = Array.from({ length: printings }, (_, i) => [
+      `0aeebaf5-8c7d-4636-9e82-${String(i).padStart(12, '0')}`,
+      1,
+      '1',
+      1700000000,
+      `${i}`,
+    ])
+    return { u: 'o-1', n: 'Basic', m: '{0}', t: 'Land', o: '', b: null, ci: 'C', r: 0, l: 'normal', p }
+  }
+
+  function tickPointsOf(card: FocusedCard): Points | null {
+    let found: Points | null = null
+    card.root.traverse((node) => {
+      if ((node as Points).isPoints) found = node as Points
+    })
+    return found
+  }
+
+  function queueStub(): ImageQueue {
+    return new ImageQueue({
+      fetchImpl: () => new Promise<Response>(() => {}),
+      decode: () => new Promise<ImageBitmap>(() => {}),
+    })
+  }
+
+  it('adds one point per dropped printing, and nothing when the cap does not bind', () => {
+    const queue = queueStub()
+    const card = new FocusedCard(queue)
+
+    // A card the cap does not touch draws no tail at all — the common path on the roster, and the
+    // control that stops the next assertion passing on a permanently-present object.
+    card.show(cardWith(24), 0, 0)
+    expect(tickPointsOf(card)).toBeNull()
+
+    // Swamp's shape: 570 printings, 72 quads, 498 marks.
+    card.show(cardWith(570), 0, 0)
+    const points = tickPointsOf(card)
+    expect(points).not.toBeNull()
+    expect(points!.geometry.getAttribute('position').count).toBe(498)
+
+    // And it goes away again when a card that does not overflow takes focus.
+    card.show(cardWith(24), 0, 0)
+    expect(tickPointsOf(card)).toBeNull()
+
+    card.dispose()
+    queue.dispose()
+  })
+
+  it('turns the tail on the orbit, and holds it still under reduced motion (PRD 5.9)', () => {
+    const queue = queueStub()
+    const card = new FocusedCard(queue)
+    card.show(cardWith(570), 0, 0)
+    const origin = { x: 0, y: 0, z: 0 }
+
+    const points = tickPointsOf(card)!
+    expect(points.rotation.z).toBe(0)
+
+    // A quarter of the orbit period turns the tail a quarter turn, in the same direction the
+    // quads go: `planetPosition` advances a phase, and the object's rotation is that advance.
+    card.update(PLANET_PERIOD_S / 4, origin, { x: 0, y: 0, z: 10 }, 1, false)
+    expect(points.rotation.z).toBeCloseTo(-Math.PI / 2, 10)
+
+    // Reduced motion freezes it where it stands rather than resetting it — `planeTable.advance`'s
+    // rule, and the reason the orbit clock is scaled as it accumulates rather than at the point of
+    // use. Scaling at the point of use sends the ring back to its t=0 phase when motion goes off
+    // and teleports it forward when it comes back: it jumps twice. The quads had that defect and
+    // this row covers them too, which is why the planet's position is asserted beside the tail's
+    // rotation — one clock, so one assertion could not have told them apart.
+    const held = points.rotation.z
+    const before = new Vector3()
+    card.root.updateMatrixWorld(true)
+    expect(card.planetWorldPosition(0, before)).toBe(true)
+
+    card.update(PLANET_PERIOD_S / 4, origin, { x: 0, y: 0, z: 10 }, 0, true)
+    expect(points.rotation.z).toBe(held)
+    const after = new Vector3()
+    card.root.updateMatrixWorld(true)
+    card.planetWorldPosition(0, after)
+    expect(after.distanceTo(before)).toBeLessThan(1e-9)
+
+    // And it picks up from where it stopped, rather than from the beginning.
+    card.update(PLANET_PERIOD_S / 4, origin, { x: 0, y: 0, z: 10 }, 1, false)
+    expect(points.rotation.z).toBeCloseTo(-Math.PI, 10)
+
+    card.dispose()
+    queue.dispose()
+  })
+})
+
+/**
+ * §1.10's first paragraph: a printing is a **flat `small` quad**, not a textured sphere.
+ *
+ * Its claims are "flat", "at their own aspect ratio", "undistorted", "unshaded" and "the active
+ * printing marked by a brighter rim" — and every one of them is invisible when wrong. A card
+ * squashed by a few percent still reads as a card; a uniformly dimmed ring reads as a styling
+ * choice; an active marker whose term evaluates to zero reads as nothing at all. So they are
+ * pinned here rather than left to a capture.
+ */
+describe('§1.10 the printings are flat quads', () => {
+  /**
+   * A GLSL source with its comments stripped, so a source-text assertion reads the **program**.
+   *
+   * Every shader row below would otherwise be satisfiable by prose, and in both directions. That is
+   * not hypothetical — it is what the first run of these rows did. The "no view-dependent term" row
+   * forbids `pow(1 - dot(n, toEye), 3)`, and the comment beside the rim quotes that expression
+   * verbatim in order to explain why it is gone; the "unshaded" row went red on the word `lambert`
+   * appearing in a comment that says the lambert was removed. A guard that cannot tell code from a
+   * note about code fails on an honest explanation and passes on a claim nobody implemented.
+   */
+  function glslCode(source: string): string {
+    const stripped = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
+    // A parser this small is only worth trusting if it fails loudly rather than degrading. If a
+    // rewrite ever leaves a comment marker standing, that is one failure here instead of six
+    // quietly weakened assertions downstream.
+    if (stripped.includes('/*') || stripped.includes('//')) {
+      throw new Error('glslCode left a comment marker behind')
+    }
+    return stripped
+  }
+
+  it('reads the program and not the prose around it', () => {
+    // The positive control for `glslCode`, and it is load-bearing rather than decorative: with the
+    // stripping inert, every row below still passes except the two that would be *wrong*.
+    expect(PLANET_FRAGMENT_SHADER).toContain('lambert')
+    expect(glslCode(PLANET_FRAGMENT_SHADER)).not.toContain('lambert')
+    expect(glslCode(PLANET_FRAGMENT_SHADER).length).toBeLessThan(PLANET_FRAGMENT_SHADER.length)
+    // And it does not eat the program on the way past.
+    expect(glslCode(PLANET_FRAGMENT_SHADER)).toContain('gl_FragColor')
+  })
+
+  function cardWith(printings: number): CardRecord {
+    const p: PrintingTuple[] = Array.from({ length: printings }, (_, i) => [
+      `0aeebaf5-8c7d-4636-9e82-${String(i).padStart(12, '0')}`,
+      1,
+      '1',
+      1700000000,
+      `${i}`,
+    ])
+    return { u: 'o-1', n: 'Basic', m: '{0}', t: 'Land', o: '', b: null, ci: 'C', r: 0, l: 'normal', p }
+  }
+
+  function queueStub(): ImageQueue {
+    return new ImageQueue({
+      fetchImpl: () => new Promise<Response>(() => {}),
+      decode: () => new Promise<ImageBitmap>(() => {}),
+    })
+  }
+
+  it('gives the quad the aspect of the image it shows, so a printing cannot be distorted', () => {
+    // Not "close to 0.7157" — **equal**, because the width is derived from the image's dimensions
+    // rather than written down. A literal within a percent of the aspect would pass a
+    // `toBeCloseTo` and squash all 72 printings on screen with nothing to report it.
+    expect(PLANET_QUAD_WIDTH / PLANET_QUAD_HEIGHT).toBe(
+      PRINTING_IMAGE_WIDTH / PRINTING_IMAGE_HEIGHT,
+    )
+    // And that is the *card's* aspect, which is what lets §1.10 retire the sphere: the ring and the
+    // focused card's own face now agree about the shape of a card.
+    expect(PLANET_QUAD_WIDTH / PLANET_QUAD_HEIGHT).toBeCloseTo(CARD_WIDTH / CARD_HEIGHT, 2)
+  })
+
+  it('puts a four-vertex plane in the scene, for the draw pass and the pick pass alike', () => {
+    const queue = queueStub()
+    const card = new FocusedCard(queue)
+    card.show(cardWith(4), 0, 0)
+
+    const meshes: Mesh[] = []
+    card.root.traverse((node) => {
+      if ((node as Mesh).isMesh) meshes.push(node as Mesh)
+    })
+    // Three for the card itself (front, back, edge) and two per printing — draw and pick.
+    const printingMeshes = meshes.filter((mesh) => mesh.geometry.getAttribute('position').count === 4)
+    expect(printingMeshes).toHaveLength(8)
+
+    for (const mesh of printingMeshes) {
+      const position = mesh.geometry.getAttribute('position')
+      // A quad, not a 24 x 16 sphere's 425 vertices. `position.count` rather than `geometry.type`:
+      // the type is a string three sets, and it would survive a swap that kept the label.
+      expect(position.count).toBe(4)
+      // Flat, and flat in the plane that faces the camera. The ring hangs off a root that does
+      // `lookAt(camera)`, so a quad in local XY needs no billboarding — and a quad that had drifted
+      // out of XY would be edge-on at some camera angles and invisible, intermittently.
+      for (let i = 0; i < position.count; i += 1) expect(position.getZ(i)).toBe(0)
+    }
+
+    // Four drawn and four in the pick pass, and the *same* geometry object behind all eight — so
+    // the hit target cannot drift off the picture. A second `PlaneGeometry` of equal size would
+    // satisfy every dimension assertion above and still be free to diverge later.
+    const drawn = printingMeshes.filter((mesh) => mesh.layers.mask === 1)
+    const picked = printingMeshes.filter((mesh) => mesh.layers.mask === 1 << PICK_LAYER)
+    expect(drawn).toHaveLength(4)
+    expect(picked).toHaveLength(4)
+    expect(new Set(printingMeshes.map((mesh) => mesh.geometry)).size).toBe(1)
+
+    card.dispose()
+    queue.dispose()
+  })
+
+  /**
+   * Sweep a whole revolution and report the closest any two quads come (DEC-776 F1).
+   *
+   * The quads are axis-aligned in the card's frame and the ring turns underneath them, so a single
+   * phase is a *sample*, not an answer — the arrangement that shipped is clear at `t = 0` and
+   * overlapping a quarter-revolution later. Everything here goes through the shipped
+   * `planetLayout` / `planetPosition`, so it measures the ring the product draws.
+   *
+   * Separation is reported as a ratio, not a boolean: axis-aligned rects of equal size overlap
+   * exactly when both centre offsets are inside the box, so `max(|dx|/width, |dy|/height) >= 1` is
+   * the clearance condition and the shortfall of the minimum below 1 says how badly. Width and
+   * height are arguments so the pre-fix size can be driven through the *same* instrument — which
+   * makes this a measurement taking its geometry as a parameter, so the shipped row below passes
+   * the shipped constants and nothing else, and the control is exactly the call-site mutation.
+   */
+  function closestQuadApproach(
+    printings: number,
+    width: number,
+    height: number,
+    steps = 720,
+  ): { separation: number; overlappingPairs: number; overlappingRings: number[] } {
+    const { slots } = planetLayout(printings)
+    const at = slots.map(() => ({ x: 0, y: 0, z: 0 }))
+    const overlappingRings = new Set<number>()
+    let separation = Infinity
+    let overlappingPairs = 0
+
+    for (let step = 0; step < steps; step += 1) {
+      const t = (PLANET_PERIOD_S * step) / steps
+      for (let i = 0; i < slots.length; i += 1) planetPosition(slots[i]!, t, 1, at[i]!)
+
+      let pairsThisStep = 0
+      for (let i = 0; i < slots.length; i += 1) {
+        for (let j = i + 1; j < slots.length; j += 1) {
+          const gap = Math.max(
+            Math.abs(at[i]!.x - at[j]!.x) / width,
+            Math.abs(at[i]!.y - at[j]!.y) / height,
+          )
+          if (gap < separation) separation = gap
+          // 1e-9 is a float allowance, not a clearance: the shipped height solves the diagonal
+          // condition at *equality*, so the tightest pair touches at exactly 1 and lands either
+          // side of it in doubles. The defect this row exists for sits at 0.79.
+          if (gap < 1 - 1e-9) {
+            pairsThisStep += 1
+            overlappingRings.add(slots[i]!.ring)
+            overlappingRings.add(slots[j]!.ring)
+          }
+        }
+      }
+      overlappingPairs = Math.max(overlappingPairs, pairsThisStep)
+    }
+
+    return {
+      separation,
+      overlappingPairs,
+      overlappingRings: [...overlappingRings].sort((a, b) => a - b),
+    }
+  }
+
+  it('takes its height from the tightest ring chord, through the diagonal condition', () => {
+    // The clearance sweep below proves the quad fits; this proves *why* it is the size it is.
+    // Without it a height that happened to fit — transcribed, or left over from another ring's
+    // arithmetic — would be indistinguishable from one derived from the ring the code ships.
+    const chords = PLANET_RING_RADII.map(
+      (radius) => 2 * radius * Math.sin(Math.PI / PLANETS_PER_RING),
+    )
+    const diagonal = Math.hypot(PLANET_QUAD_WIDTH, PLANET_QUAD_HEIGHT)
+    expect(diagonal).toBeCloseTo(Math.min(...chords), 12)
+    // And the tightest ring is the innermost one, so a reordered `PLANET_RING_RADII` would be
+    // caught here rather than showing up as an overlap on a ring nobody thought to sweep.
+    expect(Math.min(...chords)).toBe(chords[0])
+  })
+
+  it('keeps the quads off each other at every phase of the turn, not just at the top', () => {
+    // 72 fills all three rings; 18 is where overlap began on the production roster before the fix;
+    // 570 is Swamp, the worst card on it. All three go through the shipped layout functions.
+    for (const printings of [2, 18, 24, 25, 48, 72, 570]) {
+      const { separation, overlappingPairs } = closestQuadApproach(
+        printings,
+        PLANET_QUAD_WIDTH,
+        PLANET_QUAD_HEIGHT,
+      )
+      expect({ printings, overlappingPairs }).toEqual({ printings, overlappingPairs: 0 })
+      expect(separation).toBeGreaterThanOrEqual(1 - 1e-9)
+    }
+  })
+
+  it('sizes the quad so that clearance *binds* — the ring holds nothing larger', () => {
+    // Without this the row above is satisfied by any small enough quad, including one shrunk to
+    // nothing. The tightest ring's closest approach has to sit on the boundary, so a quad even a
+    // percent taller would overlap: that is what makes the derived height the largest one §1.10's
+    // ring can hold rather than a number that merely happens to fit.
+    // Asserted as "a fractionally larger quad overlaps" rather than as an upper bound on the
+    // sampled minimum, because the sampled minimum is *not* a property of the ring: the true
+    // closest approach is exactly 1 at an irrational phase, and any finite sweep reads slightly
+    // above it and converges down as the step count rises. The overlap count does not drift —
+    // widen the quad and the dip goes below 1 over a whole neighbourhood of phases, which 720
+    // steps cannot miss.
+    for (const scale of [1.002, 1.01, 1.1]) {
+      const larger = closestQuadApproach(
+        24,
+        PLANET_QUAD_WIDTH * scale,
+        PLANET_QUAD_HEIGHT * scale,
+      )
+      expect({ scale, overlaps: larger.overlappingPairs > 0 }).toEqual({ scale, overlaps: true })
+    }
+    // Non-binding control: shrinking instead leaves the ring clear, so the row above is testing the
+    // boundary and not merely that this instrument reports overlap for any input.
+    const smaller = closestQuadApproach(
+      24,
+      PLANET_QUAD_WIDTH * 0.998,
+      PLANET_QUAD_HEIGHT * 0.998,
+    )
+    expect(smaller.overlappingPairs).toBe(0)
+  })
+
+  it('positive control: the instrument sees the height that shipped overlapping', () => {
+    // DEC-776 F1's own measurement, re-run here. Without this row a sweep that could not see the
+    // defect would read exactly like a sweep that proves it is gone. The pre-fix quad was
+    // 0.24 tall at the same derived aspect, and the review found 16 simultaneous pairs.
+    const preFixHeight = 0.24
+    const preFixWidth = (preFixHeight * PLANET_SMALL_WIDTH) / PLANET_SMALL_HEIGHT
+    const preFix = closestQuadApproach(72, preFixWidth, preFixHeight)
+    expect(preFix.overlappingPairs).toBe(16)
+    expect(preFix.separation).toBeLessThan(1)
+
+    // Rings 0 and 1 collide and 1.42 always cleared — which is the *attribution*, and it is what
+    // makes this a control for the diagonal rule rather than a control for "this instrument reports
+    // overlap". An outer ring that also went red would mean the instrument was measuring something
+    // else: 1.42's chord is 0.371 against the pre-fix quad's 0.295 diagonal, so it cannot overlap.
+    expect(preFix.overlappingRings).toEqual([0, 1])
+
+    // Onset is a *count*, and it is where the review put the blast radius: 17 printings sit one
+    // ring apart at a chord of 0.302, wider than the pre-fix diagonal; 18 at 0.285 is not. So the
+    // control separates cards that reached the defect from cards that never could.
+    expect(closestQuadApproach(17, preFixWidth, preFixHeight).overlappingPairs).toBe(0)
+    expect(closestQuadApproach(18, preFixWidth, preFixHeight).overlappingPairs).toBeGreaterThan(0)
+  })
+
+  it('makes no printing harder to click than the sphere it replaces', () => {
+    // The pick mesh shares the quad, so the hit area *is* the quad. Both dimensions have to clear
+    // the sphere's 0.116 diameter, or the conversion would have bought a better picture with
+    // pickability — and nothing on screen would say so. Still true after DEC-776 F1's shrink:
+    // 0.125 x 0.174 against 0.116.
+    const sphereDiameter = 0.058 * 2
+    expect(PLANET_QUAD_WIDTH).toBeGreaterThan(sphereDiameter)
+    expect(PLANET_QUAD_HEIGHT).toBeGreaterThan(sphereDiameter)
+  })
+
+  it('asks for the whole card at `small`, not a crop of its art', () => {
+    const requested: string[] = []
+    const queue = new ImageQueue({
+      fetchImpl: (input: RequestInfo | URL) => {
+        // `ImageQueue` passes the request's url, which is a plain string. Narrowed rather than
+        // stringified: `String(new Request(...))` is "[object Object]", and a url assertion
+        // against that would pass or fail for reasons that have nothing to do with the image size.
+        expect(typeof input).toBe('string')
+        requested.push(input as string)
+        return new Promise<Response>(() => {})
+      },
+      decode: () => new Promise<ImageBitmap>(() => {}),
+    })
+    const card = new FocusedCard(queue)
+    card.show(cardWith(4), 0, 0)
+
+    const ring = requested.filter((url) => !url.includes('/large/'))
+    expect(ring).toHaveLength(4)
+    for (const url of ring) {
+      expect(url).toContain('/small/')
+      // The sphere's source. §1.10 drops it for the reason review §10 Q3 records: an `art_crop`
+      // carries no title, frame or artist line, so showing one obliges an artist credit beside
+      // every planet, while a whole card carries its attribution on its own face.
+      expect(url).not.toContain('/art_crop/')
+    }
+
+    card.dispose()
+    queue.dispose()
+  })
+
+  it('marks the active printing with a term that is not identically zero on a flat quad', () => {
+    /*
+     * The trap this row exists for, and it is the one thing in this conversion that fails
+     * **silently**. The sphere's rim was `pow(1 - dot(n, toEye), 3)`. The quad faces the camera by
+     * construction, so `dot(n, toEye)` is 1 across the whole surface and that expression is
+     * identically zero. Ported across unchanged it leaves `uActive` and `uHover` bound, still
+     * written by `setActivePrinting`/`setHoveredPlanet`, and multiplied into nothing: PRD 5.6.9's
+     * mark stops existing, with no error raised and no uniform left unwritten to notice.
+     *
+     * So no view-dependent term reaches the fragment stage at all, and the rim is distance to the
+     * quad's own edge instead.
+     */
+    expect(glslCode(PLANET_FRAGMENT_SHADER)).not.toContain('vNormalView')
+    expect(glslCode(PLANET_FRAGMENT_SHADER)).not.toContain('vViewPosition')
+    expect(glslCode(PLANET_FRAGMENT_SHADER)).not.toContain('dot(')
+    expect(glslCode(PLANET_VERTEX_SHADER)).not.toContain('normalMatrix')
+    expect(glslCode(PLANET_FRAGMENT_SHADER)).toContain('vec2 toEdge = min(vUv, 1.0 - vUv)')
+    expect(glslCode(PLANET_FRAGMENT_SHADER)).toContain('uActive * (ACTIVE_GAIN - 1.0)')
+  })
+
+  it('measures the rim in the quads units, not in UV, so the border is even on four sides', () => {
+    // The quad is 146:204, so a rim inset by a fraction of UV would be 1.4x thicker on the left and
+    // right edges than on the top and bottom. Scaling by both dimensions is what evens it, so both
+    // have to reach the shader — and reach it carrying the quad's real size, not a second literal.
+    const code = glslCode(PLANET_FRAGMENT_SHADER)
+    expect(code).toContain('* vec2(QUAD_WIDTH, QUAD_HEIGHT)')
+    expect(code).toContain(`#define QUAD_WIDTH ${glslFloat(PLANET_QUAD_WIDTH)}`)
+    expect(code).toContain(`#define QUAD_HEIGHT ${glslFloat(PLANET_QUAD_HEIGHT)}`)
+  })
+
+  it('is unshaded — no lighting term survived the conversion', () => {
+    // "Unshaded" is not a style note here. The wrapped lambert it replaces collapses to a single
+    // constant on a flat quad, so carried over it would dim every printing by that constant
+    // forever and read as a deliberate choice.
+    expect(glslCode(PLANET_FRAGMENT_SHADER)).not.toContain('lambert')
+    expect(glslCode(PLANET_FRAGMENT_SHADER)).not.toMatch(/base\s*\*=/)
   })
 })
