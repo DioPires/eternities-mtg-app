@@ -132,6 +132,38 @@ export interface WorldsProbe {
   readonly planeSlug: string | null
   /** Camera distance in units of the plane's radius — W1 and W4 are both specified at a pose. */
   readonly radii: number
+  /**
+   * The world's centre in world space, `[x, y, z]` — PRD 5.7.1's `planePosition` (DEC-804).
+   *
+   * > **Normative — the payload carries the terms `radii` is built from, so the gate does not have
+   * > to trust it (DEC-804 ask 3, CEO ruling).** Until this leg the payload carried `radii` and
+   * > neither of its operands, and the gate had no way to tell a pose reading from a defect: leg G
+   * > measured `radii` running 2.9203 → 2.1687 on a rig whose `cameraDistance` was constant to four
+   * > decimals, and could only reach that conclusion by instrumenting the product from outside.
+   * > With these three fields `radii == |cameraPosition − centre| / radius` is checkable on every
+   * > read, and a reader that finds it violated is looking at a renderer that has drifted from its
+   * > own arithmetic.
+   * >
+   * > The check is **not a tautology**, because the two sides come from different frames.
+   * > `WorldSurface` measures in the world's own frame — centre at the origin, camera counter-
+   * > rotated — and `radii` is that local camera's length; these are the untransformed world-space
+   * > pair. Agreement to float precision (~1e-6 relative, not exact equality) says the local-frame
+   * > substitution is a rigid motion, which is the one assumption the substitution rests on.
+   * >
+   * > **Additive**, deliberately: `readWorldsProbe` has no unknown-key rule and every field the
+   * > gate already reads is unchanged.
+   */
+  readonly centre: readonly [number, number, number]
+  /** The camera's position in world space, `[x, y, z]` — {@link centre}'s other term. */
+  readonly cameraPosition: readonly [number, number, number]
+  /**
+   * §1.3's radius in scene units, **before** §1.4's lift — `radii`'s divisor.
+   *
+   * `worldRadius(cardCount)`, never `planes.json`'s `radius` field. The two agree on v3 to 4.7e-7
+   * and a gate that used the published field would be dividing by a number the renderer does not,
+   * which is exactly the kind of near-agreement that survives review (`worldSource.ts`).
+   */
+  readonly radius: number
   /** CSS px. Must match the screenshot's dimensions at dpr 1, or every colour sample is off. */
   readonly viewport: { readonly width: number; readonly height: number }
   /**
@@ -224,12 +256,29 @@ export interface WorldsProbeSource {
   /** Per {@link HueClass}, the plane's card count in that class — {@link bandShares}' input. */
   readonly hueCounts: readonly number[]
   readonly subdivision: Subdivision
+  /**
+   * The world's centre **in the frame `camera` is expressed in**, which for a composed surface is
+   * the world's own local frame, where it is the origin. See `WorldSurface.probeSource`.
+   */
   readonly centre: Vector3
   /** The world's radius in scene units, **before** §1.4's lift. */
   readonly radius: number
   /** §1.7's key light, as a unit vector in world space. */
   readonly lightDirection: Vector3
   readonly camera: ProbeCamera
+  /**
+   * The world's centre in **world** space this frame — PRD 5.7.1's `planePosition` (DEC-804).
+   *
+   * Distinct from {@link centre} on purpose, and the pair is the point. `centre` and `camera` are
+   * the *measurement* frame: `WorldSurface` folds the orientation into the camera and reports the
+   * world at its own origin, which is exact but unauditable, because every term of `radii` is then
+   * a number the surface chose. These two are the untransformed pair, so a reader can recompute
+   * `radii` from quantities it can also check against the scene — and a centre that has stopped
+   * tracking the multiverse shows up here as a world sitting where the camera is not looking.
+   */
+  readonly worldCentre: Vector3
+  /** The camera's position in **world** space this frame — {@link worldCentre}'s other term. */
+  readonly worldCameraPosition: Vector3
   readonly viewport: { readonly width: number; readonly height: number }
   readonly pool: ArtPoolReport
   readonly threshold: ThresholdReport
@@ -356,9 +405,16 @@ export function buildWorldsProbe(source: WorldsProbeSource): WorldsProbe {
     })
   }
 
+  const worldCentre = source.worldCentre
+  const worldCamera = source.worldCameraPosition
   return {
     planeSlug: source.planeSlug,
     radii: radius > 0 ? camera.position.distanceTo(source.centre) / radius : 0,
+    // Read off the source, not recomputed from anything above: the whole value of these three is
+    // that they are the renderer's own terms. See {@link WorldsProbe.centre}.
+    centre: [worldCentre.x, worldCentre.y, worldCentre.z],
+    cameraPosition: [worldCamera.x, worldCamera.y, worldCamera.z],
+    radius,
     viewport: { width: viewport.width, height: viewport.height },
     cells,
     pool: {

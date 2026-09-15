@@ -42,6 +42,7 @@ import { act, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Texture, Vector3, type WebGLRenderer } from 'three'
 
+import { SceneMotion } from '../src/camera/motion'
 import { ServicesProvider, createNavStore, type Services } from '../src/app/services'
 import { decodeStars, decodeSwatches } from '../src/data/decode'
 import type { CardRecord, PlaneShardFile, PlanesFile } from '../src/data/types'
@@ -502,6 +503,56 @@ describe('the `?probe=` worlds seam, served from a mounted scene (§3.1, DEC-768
       expect(window.__eternitiesProbe!.state().multiverseAngle).toBe(0)
       expect(table.multiverseAngle).toBe(0)
     }
+  })
+
+  // --- The centre the worlds are drawn at (DEC-804) --------------------------------------------
+
+  it('draws every world at the position the camera flies to, not at `plane.home`', () => {
+    // **A wiring row, and the fourth of the shape this file was written for.** M1 dropped the probe
+    // source, M2 dropped the world data, DEC-772 dropped `cardOf`; this one is
+    // `sceneHost.attachDrive`'s `setPlaneCentres` call. Delete that one line and the worlds scene
+    // silently reverts to `PLANE_HOME` — `worlds-centre.test.ts` stays green in full, because it
+    // wires the law itself, and `radii` starts drifting again on a rig that never moved. There is
+    // no type error to catch it: the setter has a default, for the cold start, exactly as
+    // `cardOf` did.
+    //
+    // Motion **on**, for the same reason as the two rows above: under PRD 5.9's freeze
+    // `planePosition` *is* `home` and the mutant is indistinguishable from the fix.
+    const data = mount(scene, true, false)
+    const table = data.resources!.table
+    const step = frameStepper(scene)
+
+    // An independent mirror of PRD 5.7.1's law, fed from the **page's own table** — the same
+    // hand-over `motionSync` makes. Compared against the scene graph, not against another copy of
+    // the arithmetic: `mesh.position` is where the GPU rasterises the sheet.
+    const mirror = new SceneMotion(PLANES, {})
+    mirror.setExternalClock(true)
+    const expected = new Vector3()
+    const home = new Vector3()
+
+    let moved = 0
+    for (let frame = 0; frame < 12; frame += 1) {
+      step()
+      mirror.syncClock(table.time, table.multiverseAngle)
+      for (const plane of WORLDS) {
+        const surface = scene.worlds.surfaces.find((s) => s.planeSlug === plane.slug)
+        if (!surface) continue
+        mirror.planePosition(expected, plane)
+        expect(
+          surface.mesh.position.distanceTo(expected),
+          `${plane.slug} is drawn at ${surface.mesh.position.toArray().join()}, camera flies to ${expected.toArray().join()}`,
+        ).toBeLessThan(1e-9)
+        home.set(plane.home[0], plane.home[1], plane.home[2])
+        if (expected.distanceTo(home) > 1e-6) moved += 1
+      }
+    }
+
+    // The control: the roster has to have actually left `home` over those twelve frames, or the
+    // equality above is two names for one unmoving number. 45 worlds x 12 frames, less the first
+    // frame's zero angle.
+    expect(moved, 'the multiverse must have turned for this row to mean anything').toBeGreaterThan(
+      WORLDS.length * 8,
+    )
   })
 })
 

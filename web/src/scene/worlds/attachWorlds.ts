@@ -60,6 +60,7 @@ import { ArtPool, artPoolSize } from './artPool'
 import { ArtStream } from './artStream'
 import { AtmospherePass, type RimQuality } from './atmosphere'
 import { buildBelt, disposeBelt, setBeltPixelRatio } from './belt'
+import { PLANE_HOME, type PlaneCentreSource } from './centre'
 import { keyLightDirection } from './keyLight'
 import {
   RENDER_ORDER_BELT,
@@ -185,6 +186,18 @@ export interface WorldsAttachment {
    * See `spin.ts` for the CEO's axis ruling and the measurement behind it.
    */
   setSpinAngles: (spinAngleOf: SpinAngleSource | null) => void
+  /**
+   * Where every plane is this frame — PRD 5.7.1's `planePosition` (DEC-804). See `centre.ts`.
+   *
+   * **The rig's `SceneMotion`, never a second copy of the rotation.** `planes.json`'s `home` is the
+   * multiverse stopped at t=0; PRD 5.3.15's drift and PRD 8.5.3's rotation move a world away from
+   * it, and the camera tethers to the moved position. Until this leg the worlds scene read `home`
+   * and contained no reader of `multiverseAngle` at all — so the camera orbited and the worlds did
+   * not, and `radii` drifted on a rig that never moved.
+   *
+   * `null` restores {@link PLANE_HOME}, which is the pre-navigation state and the mutation control.
+   */
+  setPlaneCentres: (centreOf: PlaneCentreSource | null) => void
   /**
    * §1.9's two ends, or `null` to hide the tether.
    *
@@ -360,6 +373,8 @@ export function attachWorlds(options: WorldsAttachmentOptions): WorldsAttachment
   /** By `PlaneRecord.index`, so §1.5's crossover can be asked about a plane rather than a surface. */
   let surfaceOfPlane = new Map<number, WorldSurface>()
   let spinAngleOf: SpinAngleSource = NO_SPIN
+  /** PRD 5.7.1's `planePosition`, pushed in by the host. See {@link WorldsAttachment.setPlaneCentres}. */
+  let centreOf: PlaneCentreSource = PLANE_HOME
   let rimQuality: RimQuality = 'full'
   /** §1.9's flow pulse runs on wall time, so it is the one thing here that accumulates. */
   let elapsedSeconds = 0
@@ -425,7 +440,13 @@ export function attachWorlds(options: WorldsAttachmentOptions): WorldsAttachment
     const surface = surfaceFor(slug)
     if (!surface) return null
     return {
-      centre: surface.centre.clone(),
+      // **By reference, not cloned (DEC-804).** `update` rewrites `surface.centre` every frame, so
+      // sharing the vector is what makes this file's own claim two functions down — "both worlds
+      // drift and turn under them" — true. A clone was a snapshot of the composition-time home:
+      // the ribbon stayed behind while its worlds orbited away, and `advanceAnchor`'s `radii` drove
+      // §1.9's anchor slide off a distance to a world that was no longer there. Nothing in
+      // `TetherPass` writes `end.centre`; it is read in all nine places it appears.
+      centre: surface.centre,
       radius: surface.radius,
       // Seeded on the pole rather than on a zero vector: the first frame's `advanceAnchor` lerps
       // from whatever is here, and a zero vector normalises to NaN and takes the whole ribbon with
@@ -460,6 +481,7 @@ export function attachWorlds(options: WorldsAttachmentOptions): WorldsAttachment
       fovRadians: (camera.fov * Math.PI) / 180,
       deltaSeconds,
       lightDirection: light,
+      centreOf,
     }
     lastFrame = frame
     elapsedSeconds += deltaSeconds
@@ -469,7 +491,14 @@ export function attachWorlds(options: WorldsAttachmentOptions): WorldsAttachment
       // frame it projects in, and reading it afterwards would measure last frame's rotation against
       // this frame's camera. See `spin.ts` for the axis ruling.
       const plane = worldPlanes[index]
-      if (plane) planeOrientation(plane, spinAngleOf, surface.orientation)
+      if (plane) {
+        planeOrientation(plane, spinAngleOf, surface.orientation)
+        // The positional half of the same sentence (DEC-804): where this world is, before it
+        // measures anything. Read afterwards it would project this frame's camera against last
+        // frame's position — which is the defect this leg fixes, one frame deep instead of a
+        // session deep, and invisible for the same reason.
+        frame.centreOf(plane, surface.centre)
+      }
       surface.update(frame)
       // §1.2's partition, applied. A world below the band's floor draws only in step 2 — R2's
       // system instance — and one inside the band draws in **both**, which is why this reads the
@@ -660,6 +689,10 @@ export function attachWorlds(options: WorldsAttachmentOptions): WorldsAttachment
 
     setSpinAngles: (next) => {
       spinAngleOf = next ?? NO_SPIN
+    },
+
+    setPlaneCentres: (next) => {
+      centreOf = next ?? PLANE_HOME
     },
 
     setTether: (slugs) => {

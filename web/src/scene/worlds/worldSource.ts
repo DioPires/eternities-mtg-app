@@ -142,7 +142,12 @@ export function buildWorldSource(
     // and that carried `log N` as recently as `dabe2c9a`. Deriving it means a dataset cannot move
     // the surface law without moving §1.3.
     radius: worldRadius(cardCount),
-    centre: new Vector3(plane.home[0], plane.home[1], plane.home[2]),
+    // `home`, and named `home` rather than `centre` because that is all it is (DEC-804). A world's
+    // centre is PRD 5.7.1's `planePosition` — this, plus PRD 5.3.15's drift, rotated by the
+    // multiverse angle — and it moves every frame. Composition time is exactly where that value
+    // cannot be known, so this carries the fixture and `WorldSurface.centre` carries the position.
+    // The two were one field until leg G measured `radii` drifting 2.92 → 2.17 on a motionless rig.
+    home: new Vector3(plane.home[0], plane.home[1], plane.home[2]),
     cardOf: options.cardOf ?? (() => null),
     // The multiverse-wide art key (§1.6). `starOffset` is already the identity `swatches.bin` is
     // encoded in star order against, and the checks above have just proved this window lies inside

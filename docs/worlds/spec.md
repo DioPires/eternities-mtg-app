@@ -1572,6 +1572,38 @@ scale — which is the thing T7 said was missing.
 > > (DEC-772). `bytesFetched` is the queue's own `Blob.size`, charged on the decode-failure path as
 > > well as the success one, and it is the only byte count that is real.
 
+> **Normative — the payload carries the terms `radii` is built from: `centre`, `cameraPosition`,
+> `radius` (DEC-804).** A world's centre is PRD 5.7.1's `planePosition` — `home`, plus PRD 5.3.15's
+> drift, rotated by PRD 8.5.3's multiverse angle — so "2.2 radii" is **world-relative**, and §3.1's
+> wording is unchanged by this. What changed is that the pose is now checkable: until DEC-804 the
+> payload carried `radii` and neither of its operands, and the gate was required to trust a number it
+> had no way to audit.
+>
+> > **The check is `radii == |cameraPosition − centre| / radius`, to float precision and not to
+> > equality.** It is not a tautology, because the two sides are taken in different frames:
+> > `WorldSurface` measures in the world's own frame — centre at the origin, camera counter-rotated
+> > by the orientation — while these three are the untransformed world-space pair. Agreement says the
+> > local-frame substitution is a rigid motion, which is the one assumption that substitution rests
+> > on. Measured on the shipped build, the worst residual over a 17.5 s hold on `dominaria` and
+> > `azgol` is **4.4e-16**.
+>
+> > **What this was for.** Leg G's acceptance run could take no §3.1 reading at all: 1 of the first
+> > 15 worlds scored and 14 failed setup, because `radii` drifted on a rig that was not moving —
+> > `dominaria` 2.9250 → 2.1723 over 17.5 s with `cameraDistance` constant at 31.9293, `azgol` by
+> > **14.41 radii**. The worlds scene had snapshotted `plane.home` at composition time and contained
+> > no reader of `multiverseAngle` at all, so the camera orbited and the worlds did not. The visible
+> > half was a capture of the focused world in the bottom-left corner of its own frame with empty
+> > dust centred: `alara`'s on-screen cells centred at **(342, 887)** of 1920×1080, 379 of 510
+> > visible. After the fix, **(960, 539)** and 510 of 510. `scripts/worlds-centre-hold.mjs` is the
+> > instrument, and it is written to be run against an unfixed tree as well — the frozen control
+> > passes on **both**, which is why a suite that measures only under `?motion=0` cannot see this
+> > class of defect at all.
+>
+> > The fields are **additive**: `readWorldsProbe` has no unknown-key rule and no field the gate
+> > already reads has moved. `radius` is §1.3's `worldRadius(cardCount)`, never `planes.json`'s
+> > `radius` — the two agree to 4.7e-7, and a gate dividing by the published field would be dividing
+> > by a number the renderer does not use.
+
 > **Normative — a cell's `(x, y)` is the PROJECTED CENTRE, not the centre of its rect (DEC-749).**
 > The payload carries both the rect above and the `(x, y, height)` triple the gate reads, with
 > `height ≡ rect.height`. The two centres are not the same point: measured over v3 at 1920×1080 the

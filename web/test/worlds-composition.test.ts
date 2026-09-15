@@ -31,6 +31,7 @@ import {
   worldRadiusPx,
 } from '../src/scene/worlds/lod'
 import { ART_FADE_S, WorldSurface, type WorldFrame } from '../src/scene/worlds/worldSurface'
+import { PLANE_HOME } from '../src/scene/worlds/centre'
 import { buildWorldsProbe } from '../src/scene/worlds/worldsProbe'
 import { bandBoundaries, bandOfCosTheta, cellDrawAngles, drawRadius, rowColatitude, worldRadius } from '../src/scene/worlds/surfaceLaw'
 import type { WorldsSeams } from '../src/scene/worlds/seams'
@@ -108,7 +109,7 @@ function sourceFor(world: World) {
     swatches,
     hueCounts: [cardCount, 0, 0, 0, 0, 0, 0],
     radius: worldRadius(cardCount),
-    centre: CENTRE,
+    home: CENTRE,
     cardOf: (card: number) => ({ printingId: `p${card}`, imageTs: 1 }),
     // This file composes **one** world at a time, so every base is as good as every other here and
     // nothing below can tell 0 from `starOffset`. The assertion that can is in
@@ -138,6 +139,10 @@ function frameAt(distance: number, deltaSeconds = 0): WorldFrame {
     fovRadians: FOV,
     deltaSeconds,
     lightDirection: LIGHT,
+    // Inert in this file and stated anyway (DEC-804). `WorldSurface` reads its own `centre`, which
+    // the attachment writes; `WorldFrame.centreOf` is what §1.2's steps 2 and 8 read, and neither
+    // pass is composed here. `PLANE_HOME` is the honest value for a fixture centred at the origin.
+    centreOf: PLANE_HOME,
   }
 }
 
@@ -178,6 +183,7 @@ function frameLookingAway(world: World, radii: number): WorldFrame {
     fovRadians: FOV,
     deltaSeconds: 0,
     lightDirection: LIGHT,
+    centreOf: PLANE_HOME,
   }
 }
 

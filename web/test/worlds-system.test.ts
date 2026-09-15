@@ -25,6 +25,7 @@ import { decodeStars, decodeSwatches } from '../src/data/decode'
 import type { PlaneRecord, PlanesFile } from '../src/data/types'
 import { FrameLoop } from '../src/scene/renderer/frameLoop'
 import { attachWorlds } from '../src/scene/worlds/attachWorlds'
+import { PLANE_HOME } from '../src/scene/worlds/centre'
 import {
   SHADER_NAME_WORLD_ATMOSPHERE,
   SHADER_NAME_WORLD_ATMOSPHERE_CHEAP,
@@ -271,6 +272,10 @@ describe('§1.2 step 2: the instance count is planes below the band, not worlds 
       fovRadians: (55 * Math.PI) / 180,
       deltaSeconds: 1 / 60,
       lightDirection: new Vector3(0, 0, 1),
+      // §1.8's instances are placed at this (DEC-804). `PLANE_HOME` keeps the pass at the t=0
+      // positions these tint assertions were derived against; where the placement itself is the
+      // subject, `worlds-centre.test.ts` sweeps the angle instead.
+      centreOf: PLANE_HOME,
     }
     const tintOf = (pass: SystemPass, index: number): [number, number, number] => {
       pass.update(frame, () => 0, () => true)

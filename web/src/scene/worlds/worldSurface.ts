@@ -39,6 +39,7 @@ import { cellScreenRect } from './probePayload'
 import { cellDrawAngles, drawRadius, rowColatitude, rowOfUnitY } from './surfaceLaw'
 import { shufflePermutation, type WorldsSeams } from './seams'
 import type { ArtStream } from './artStream'
+import type { PlaneCentreSource } from './centre'
 import type { ProbeCamera, WorldsProbeSource } from './worldsProbe'
 
 /** The printing a cell's art comes from. `null` for a card with no printing to fetch. */
@@ -65,7 +66,16 @@ export interface WorldSurfaceSource {
   readonly hueCounts: readonly number[]
   /** The world's radius in scene units, **before** §1.4's lift. */
   readonly radius: number
-  readonly centre: Vector3
+  /**
+   * `planes.json`'s `home` — the world's centre with the multiverse **stopped at t=0**.
+   *
+   * Not where the world is. See `centre.ts`: PRD 5.3.15 drifts a plane around `home` and PRD 8.5.3
+   * rotates the whole multiverse about `+Y`, so the live position is PRD 5.7.1's `planePosition`
+   * and it is {@link WorldSurface.centre}, written per frame. This field is the composition-time
+   * fixture and is the **seed** for that vector, nothing more — reading it as a position is
+   * DEC-804.
+   */
+  readonly home: Vector3
   /** The printing for a **card** index — called with a card, never with a cell. See `cardOfCell`. */
   readonly cardOf: (card: number) => WorldCard | null
   /**
@@ -108,6 +118,15 @@ export interface WorldFrame {
   readonly deltaSeconds: number
   /** §1.7's key light, a unit vector in world space. */
   readonly lightDirection: Vector3
+  /**
+   * Where each plane is **this frame** (DEC-804). See `centre.ts`.
+   *
+   * On the frame rather than passed beside it because §1.2's steps 2, 4, 7 and 8 all place geometry
+   * at a world's centre and all four take a {@link WorldFrame}: a centre supplied to some of them
+   * and not others is a system icosphere at one position cross-fading into a cell sheet at another,
+   * across §1.5's whole band, which draws as a smear rather than as an error.
+   */
+  readonly centreOf: PlaneCentreSource
 }
 
 /** §1.6's art cross-fade, in seconds. PRD 7.3.5 — "images fade in over 200 ms". */
@@ -236,6 +255,26 @@ export class WorldSurface {
    */
   readonly orientation = new Quaternion()
 
+  /**
+   * This world's centre in world space — written by the owner once per frame (DEC-804).
+   *
+   * The positional twin of {@link orientation}, and it exists for the identical reason: the value
+   * is a function of the scene clock, the clock belongs to the plane table, and a pass that derived
+   * it would be a second integration of an angle the camera has already integrated. `attachWorlds`
+   * writes this from {@link WorldFrame.centreOf} immediately before {@link update}, in the same
+   * loop and one line from `planeOrientation`.
+   *
+   * Seeded from `source.home` so a surface that has never ticked is at its t=0 position rather than
+   * at the origin — the multiverse's centre is a **place**, and a world parked there would draw a
+   * plausible globe in the middle of the belt.
+   *
+   * > Everything downstream reads *this*, never `source.home`: `mesh.position` and
+   * > `pickMesh.position` (so the pick pass cannot select a cell the draw pass put elsewhere), the
+   * > model matrix that defines the local frame, and §1.9's tether ends, which hold this vector **by
+   * > reference**. `source.home` has exactly one reader left, three lines below.
+   */
+  readonly centre = new Vector3()
+
   /** The scratch the substitution above needs. All fixed size; nothing here allocates per frame. */
   private readonly inverseOrientation = new Quaternion()
   private readonly modelMatrix = new Matrix4()
@@ -273,15 +312,18 @@ export class WorldSurface {
     })
     this.material = createCellMaterial(source.radius, options.artTexture)
     this.mesh = new Mesh(this.sheet.geometry, this.material)
+    // The t=0 seed for the live centre — see {@link centre}. `update` rewrites both meshes'
+    // positions from it every frame; this is only what they show before the first tick.
+    this.centre.copy(source.home)
     // `frustumCulled` stays on: `buildCellSheet` sets the bounding sphere by hand precisely so that
     // three can cull this correctly, and turning it off here would waste that.
-    this.mesh.position.copy(source.centre)
+    this.mesh.position.copy(this.centre)
 
     // §1.11's pick pass. The SAME geometry, so the two can never disagree about where a cell is,
     // and the draw material's own uniforms object, so they can never disagree about `uRadius`.
     this.pickMaterial = createCellPickMaterial(this.material.uniforms as CellUniforms)
     this.pickMesh = new Mesh(this.sheet.geometry, this.pickMaterial)
-    this.pickMesh.position.copy(source.centre)
+    this.pickMesh.position.copy(this.centre)
     // The pick camera renders this layer and nothing else (`idPicker.ts`), which is also what keeps
     // the pick mesh out of the drawn frame -- it is never "hidden", it is simply not in that pass.
     this.pickMesh.layers.set(PICK_LAYER)
@@ -334,11 +376,6 @@ export class WorldSurface {
   /** `planes.json`'s slug, or `null` — the name §3.1's criteria are stated against. */
   get planeSlug(): string | null {
     return this.source.planeSlug
-  }
-
-  /** The world's centre in scene units (`plane.home`). */
-  get centre(): Vector3 {
-    return this.source.centre
   }
 
   /** §1.3's radius, **before** §1.4's lift. `drawRadius` is what the sheet actually draws at. */
@@ -415,13 +452,21 @@ export class WorldSurface {
     // centre is the origin — so every cell quantity below is computed against the geometry the GPU
     // actually rasterises, whatever the orientation is.
     this.mesh.quaternion.copy(this.orientation)
+    // The live centre, onto both meshes, **every frame** (DEC-804). Set once at construction it
+    // was `plane.home` for the session, so the sheet stood still while PRD 8.5.3 rotated the
+    // multiverse the camera flies in — `radii` drifting 2.92 → 2.17 on a rig that never moved, and
+    // the focused world in the corner of its own capture. The pick mesh is written from the same
+    // vector on the same line for the reason it shares the geometry: two positions is a pick pass
+    // that selects a cell the draw pass has drawn somewhere else.
+    this.mesh.position.copy(this.centre)
+    this.pickMesh.position.copy(this.centre)
     this.inverseOrientation.copy(this.orientation).invert()
-    this.modelMatrix.compose(source.centre, this.orientation, UNIT_SCALE)
+    this.modelMatrix.compose(this.centre, this.orientation, UNIT_SCALE)
     this.localCamera.matrixWorldInverse.multiplyMatrices(camera.matrixWorldInverse, this.modelMatrix)
     this.localCamera.projectionMatrix.copy(camera.projectionMatrix)
     this.localCamera.position
       .copy(camera.position)
-      .sub(source.centre)
+      .sub(this.centre)
       .applyQuaternion(this.inverseOrientation)
     this.localCamera.near = camera.near
     this.localLight.copy(frame.lightDirection).applyQuaternion(this.inverseOrientation)
@@ -599,6 +644,13 @@ export class WorldSurface {
       radius: source.radius,
       lightDirection: this.localLight,
       camera: this.localCamera,
+      // The same two points in **world** space, additively, so the gate can recompute `radii`
+      // instead of trusting it (DEC-804 ask 3). Not a second derivation of the payload's own
+      // number: `radii` comes out of the local pair above, these are the untransformed pair, and
+      // requiring `|worldCameraPosition − worldCentre| / radius == radii` is what checks the
+      // substitution this class makes. A drifting centre fails it in world space first.
+      worldCentre: this.centre,
+      worldCameraPosition: frame.camera.position,
       viewport: frame.viewport,
       pool: this.options.pool.report(),
       threshold: this.thresholdReport,

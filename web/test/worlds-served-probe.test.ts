@@ -275,6 +275,12 @@ function sourceFor(
       position: camera.position.clone(),
       near: camera.near,
     },
+    // This fixture's world frame IS its local frame — the world sits at the origin and the camera
+    // is given in the same coordinates — so the two pairs coincide here (DEC-804). That is a
+    // property of the fixture, not of the payload: on a composed surface the local pair is
+    // orientation-folded and the two genuinely differ, which is what `worlds-centre.test.ts` drives.
+    worldCentre: new Vector3(0, 0, 0),
+    worldCameraPosition: camera.position.clone(),
     viewport: VIEWPORT,
     pool: { layers: 224, resident: 100, reserved: 3, evictions: 17 },
     threshold: { effectiveThresholdPx: 24, wanting: 0, admitted: 0, adaptive: true },
