@@ -41,6 +41,7 @@ from ..contract.models import (
     Printing,
     SetRecord,
     StarRecord,
+    Swatch,
 )
 from . import layout, rng, surface
 
@@ -381,6 +382,7 @@ def build(spec: FixtureSpec) -> Dataset:
     planes: list[Plane] = []
     stars: list[StarRecord] = []
     cards: list[Card] = []
+    swatches: list[Swatch] = []
     for index, slug in enumerate(ordered_slugs):
         entry = by_slug[slug]
         card_count = counts[slug]
@@ -422,6 +424,10 @@ def build(spec: FixtureSpec) -> Dataset:
                 )
             )
             cards.append(row.card)
+            # Appended in the same loop as the star it belongs to, because star order *is* the
+            # swatch encoding (§2.2) — the browser's lookup is `starIndex * 8 + 16`, with no map
+            # to catch a column assembled in some other order.
+            swatches.append(_synthetic_swatch(row.card.oracle_id))
 
         palette = _palette(rows)
         planes.append(
@@ -458,6 +464,7 @@ def build(spec: FixtureSpec) -> Dataset:
         sets=sets,
         stars=stars,
         cards=cards,
+        swatches=swatches,
         multiverse_radius=MULTIVERSE_RADIUS,
     )
 
@@ -568,6 +575,62 @@ def _plane_cards(
 
     rows.sort(key=lambda r: (r.band, int(r.hue), r.card.oracle_id))
     return rows
+
+
+# --- the synthetic art statistic (§2.2) ----------------------------------------------------
+#
+# Per-channel base ranges, and then the per-corner swing around that base. Both are stated in the
+# channel's *encoded* width — 5 bits for red and blue, 6 for green — because that is what
+# `swatches.bin` stores and what a reader checking these numbers against the file will see.
+#
+# The bounds deliberately exclude both ends of every channel. A component sitting at 0 or at its
+# maximum is indistinguishable from a cleared buffer or a saturated default, so a swatch that
+# happened to land there could not testify that the data path ran at all. `base +/- swing` is
+# closed inside the channel, so no clamp is needed and no value is ever pushed onto an endpoint.
+_SWATCH_CHANNELS: Final[tuple[tuple[str, int, int, int], ...]] = (
+    # (name, base low, base high, per-corner swing)
+    ("r", 6, 25, 4),  # 5-bit: spans 2..29 of 0..31
+    ("g", 12, 51, 8),  # 6-bit: spans 4..59 of 0..63
+    ("b", 6, 25, 4),  # 5-bit: spans 2..29 of 0..31
+)
+
+
+def _synthetic_swatch(oracle_id: str) -> Swatch:
+    """Invent one card's 2x2 RGB565 art statistic from its own id (worlds spec §2.2).
+
+    The fixtures have no Scryfall printings and so no art to take a real statistic from, but the
+    absence of the file is not free: ``swatches.bin`` is half of what ``worldData`` needs, so a
+    dataset without one can never compose a worlds roster and every worlds surface it would have
+    exercised goes untested (DEC-793). Inventing the statistic is consistent with what a fixture
+    already is — its planes, cards and printings are invented by the same seeded rules — and it is
+    the one thing that turns ``fixture-scale`` into a dataset the worlds path can actually run on.
+
+    **A base per card, then a swing per corner, rather than four independent draws.** The four
+    samples are not what the product draws: ``worldSource.ts`` reduces them to a single linear-RGB
+    triple by taking their mean, and the mean of four independent uniforms has a quarter of the
+    variance of one. Drawing the corners independently would therefore pull every card's *drawn*
+    colour toward the middle of the range — 30,000 cards in much the same grey — which is the one
+    failure this data exists to avoid: a swatch column that barely varies between cards cannot show
+    a misrouted star lookup, because reading the wrong card's swatch would return nearly the same
+    colour (a total is invariant under misrouting). The base carries the per-card spread that the
+    mean keeps; the swing keeps the four corners genuinely different from each other, so the 2x2
+    stays a 2x2 rather than one value written four times.
+
+    Keyed on ``oracle_id`` — itself a ``uuid5`` of ``("card", slug, index)`` — so the column is a
+    pure function of the roster and reproduces byte for byte on every run, on every machine. No
+    global RNG is consulted here and no clock or path enters the key (PRD 8.2).
+    """
+    samples: list[int] = []
+    for corner in range(4):
+        packed = 0
+        for name, low, high, swing in _SWATCH_CHANNELS:
+            base = rng.integer(low, high, oracle_id, "swatch", name)
+            offset = rng.integer(-swing, swing, oracle_id, "swatch", name, corner)
+            # RGB565 packs red in the top 5 bits, green in the middle 6, blue in the low 5.
+            packed = (packed << (6 if name == "g" else 5)) | (base + offset)
+        samples.append(packed)
+    first, second, third, fourth = samples
+    return (first, second, third, fourth)
 
 
 def _mana_cost(oracle_id: str, identity: str) -> str:

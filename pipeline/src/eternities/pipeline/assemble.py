@@ -108,9 +108,15 @@ def build_dataset(
 ) -> tuple[Dataset, AssemblyStats]:
     """Lay out every plane and card and return the dataset the encoder writes.
 
-    ``swatches`` is optional so the fixtures — which have no Scryfall printings to fetch art for —
-    can build a dataset without one; production always passes it, and a dataset built without one
-    carries no ``swatches.bin``.
+    ``swatches`` is optional so a caller with no warmed cache can still assemble a dataset;
+    production always passes one, and a dataset built without it carries no ``swatches.bin``.
+
+    Note that the *fixtures* do not come through here at all — :mod:`eternities.fixtures.generate`
+    builds their :class:`Dataset` directly, and since DEC-796 it invents a swatch per card from
+    that card's own id (§2.2's schema, no art required). This path is the Scryfall one, where a
+    swatch is a real pixel statistic and a missing one is :class:`MissingSwatchError` rather than
+    something to fabricate: inventing art data for production would put colours on the mosaic that
+    no card actually has.
     """
     roster = {p.slug: p for p in appendices.planes}
     missing_swatches: list[str] = []

@@ -98,6 +98,15 @@ export function builtDataset(): string {
  * Read from the manifest's own `files` list rather than by stat-ing `dist/`, because that list is
  * the dataset's declaration of what it published and it cannot be fooled by the preview server's
  * SPA fallback, which answers **200 with `index.html`** for a missing `.bin` rather than 404.
+ *
+ * **DEC-796 closed the gap the paragraph above describes, and this predicate is deliberately
+ * unchanged by it.** The fixtures now carry a synthetic `swatches.bin` — invented from each card's
+ * own id rather than measured from art a fixture does not have — so `ETERNITIES_DATASET=scale`
+ * satisfies *both* halves and §1.12's rung runs in CI instead of skipping. That moves the answer,
+ * not the question: this still asks the dataset what it published, which is what keeps it correct
+ * for a v2 dataset, for a fixture built before that change, and for any future dataset shipping
+ * one half. Relaxing it back to `rowCells` alone would re-introduce DEC-788's 30 s red the moment
+ * the two halves came apart again.
  */
 export function composesWorldsRoster(): boolean {
   const hash = builtDataset()

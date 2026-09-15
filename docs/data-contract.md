@@ -473,8 +473,23 @@ tuples, the spiral fields present, no `swatches.bin` (DEC-757 note 2).
 **Data.** The 88-plane roster of DEC-745, 28 603 cards, 45 worlds and 42 dark moons — not the 29/57
 split the spec illustrates, which predates PR #41's overrides being baked into a dataset. Every
 artefact re-hashes: the test vector moved from `contract/test-vectors/v2/` to `v3/`, the fixtures
-are `2e6f120ee85a5b23` and `f6f712c6e70a6a51`, and production is `c9468f1125bcddff` with
+were `2e6f120ee85a5b23` and `f6f712c6e70a6a51`, and production is `c9468f1125bcddff` with
 `dabe2c9a68b4d799` kept on disk and still named by `active`. §8.1 has the measured budget.
+
+**The fixture hashes moved again in DEC-796**, to `7588f66591d5900f` (small) and
+`36e442aea0130106` (scale), when both fixtures gained a `swatches.bin`. A fixture has no art to
+take §5.1's statistic from, so the column is *invented* from each card's own id: a base per card,
+then a per-corner swing around it, with every component held off both ends of its channel so that
+no sample can be mistaken for a cleared buffer or a saturated default. The reason is not tidiness.
+`EternitiesScene`'s `worldData` memo is `planes && stars && swatches`, so a dataset without the
+file can never compose a worlds roster — and CI smokes `ETERNITIES_DATASET=scale`, which left
+every worlds surface, §1.12's art-pool rung included, skipping rather than running (DEC-788,
+DEC-793). The base-then-swing shape is the part worth keeping: the browser reduces the four
+samples to their **mean**, and the mean of four independent draws has a quarter of the variance of
+one, so independent corners would have delivered 30 000 cards in much the same grey — a column
+that cannot expose a misrouted star lookup, because reading the wrong card's swatch would return
+nearly the same colour. `active` was left where it was. Production is untouched: its swatches are
+still real pixel statistics, and §8.1's figures are unchanged.
 
 Three things a reviewer should check rather than take on trust:
 

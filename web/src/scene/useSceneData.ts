@@ -27,13 +27,12 @@ import {
 } from '../data/load'
 import {
   SWATCHES_FILE,
-  publishesSwatches,
+  shouldLoadSwatches,
   type Manifest,
   type PlanesFile,
   type SearchFile,
 } from '../data/types'
 import { sceneErrors } from './errors'
-import { worldPlanesOf } from './worlds/worldSource'
 import { bootPositionMode } from './platform/capabilities'
 import { createNebulaTexture } from './starfield/nebulaTexture'
 import { PlaneTable } from './starfield/planeTable'
@@ -66,10 +65,11 @@ export interface SceneDataState {
   /**
    * `swatches.bin`, on a **worlds** dataset only (worlds spec §2.2).
    *
-   * `null` on any dataset that did not publish the file — a v2 one, or either fixture — and `null`
+   * `null` on any dataset that did not publish the file — a v2 one, the fixtures until DEC-796 gave
+   * them a synthetic swatch column of their own — and `null`
    * on a dataset that published it and whose fetch failed, which is reported rather than passed
    * over silently. The two cases are told apart before the fetch, by the manifest's `files` list
-   * and `planes.json`'s `rowCells` together (see the gate below, and {@link publishesSwatches});
+   * and `planes.json`'s `rowCells` together (see the gate below, and {@link shouldLoadSwatches});
    * `load.ts` is explicit that once the caller has decided, a missing file is an error and not a
    * degraded mode, because a world painted from anything but its cards' art is a picture that reads
    * as the product working.
@@ -234,24 +234,18 @@ export function useSceneData(): SceneDataState {
        * that is **two** questions, not one — because a speculative fetch is a broken artefact and a
        * toast on every page load, which is the outcome this gate exists to prevent.
        *
-       * - **Did the dataset publish the file?** {@link publishesSwatches}, off the manifest's own
-       *   `files` list. This half is DEC-794's fix. The gate used to be the `rowCells` test alone,
-       *   on the assumption that a roster carrying §2.4 geometry carries §2.2 colour too; both
-       *   committed fixtures break that assumption, and on those builds — which is what CI smokes
-       *   and what a local fixture run serves — this gate did the precise thing it was written to
-       *   prevent, on every single page load. See {@link publishesSwatches} for why the answer has
-       *   to come from the manifest and not from the network.
-       * - **Would anything consume it?** `rowCells` on at least one plane (§2.4). Kept, unchanged:
-       *   the swatches are the worlds surface's colour and nothing else reads them, so on a v2
-       *   dataset — which publishes no `swatches.bin` either — there is nothing to paint.
+       * Both questions live in {@link shouldLoadSwatches}, with the reasoning for each half. They
+       * were spelled inline here until DEC-807, which is what left the *conjunction* unfalsifiable
+       * once DEC-796 gave the fixtures a swatch column and no committed dataset separated the two
+       * halves any more: dropping either conjunct was invisible to the whole suite. Named, the
+       * decision can be struck at directly, and `web/test/swatch-gate.test.ts` does.
        */
-      const swatchLoad =
-        publishesSwatches(manifest) && worldPlanesOf(planes.planes).length
-          ? loadSwatches({ signal }).catch((error: unknown) => {
-              if (!signal.aborted) sceneErrors.report(SWATCHES_FILE, LOAD_ATTEMPTS, error)
-              return null
-            })
-          : Promise.resolve(null)
+      const swatchLoad = shouldLoadSwatches(manifest, planes.planes)
+        ? loadSwatches({ signal }).catch((error: unknown) => {
+            if (!signal.aborted) sceneErrors.report(SWATCHES_FILE, LOAD_ATTEMPTS, error)
+            return null
+          })
+        : Promise.resolve(null)
 
       // PRD 8.7.5: the background artefacts wait for the first frame.
       //

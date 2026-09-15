@@ -77,12 +77,18 @@ export const SWATCHES_FILE = 'swatches.bin'
  *
  * The obvious test, and the one this replaces at its call site, is `rowCells`: §2.4 makes that the
  * field that says "worlds", `swatches.bin` is a worlds artefact, so the one was taken to imply the
- * other. **It does not.** The two halves come apart on both committed fixtures — `fixture-scale`
- * carries `rowCells` on 80 of its 88 planes and `fixture-small` on 3 of its 5, and neither ships a
- * `swatches.bin` — and that is by design, not an oversight to be corrected: a swatch is a per-card
- * statistic computed from real Scryfall art, and a synthetic fixture has no printings to compute
- * one from (`pipeline/src/eternities/pipeline/assemble.py`, where `swatches` is `| None` for
- * exactly this reason). Of the four datasets in `web/public/data`, only production v3 has both.
+ * other. **It does not** — they are independent facts about a dataset, and asking the one actually
+ * in question is what keeps this correct as the corpus changes underneath it.
+ *
+ * It has already changed once. When DEC-794 replaced the `rowCells` test, both committed fixtures
+ * carried §2.4 geometry and shipped no `swatches.bin`, so they were the datasets that separated the
+ * two halves. DEC-796 then gave them a synthetic swatch column — invented per card from its own id,
+ * a fixture having no Scryfall art to take the real statistic from — because a dataset without the
+ * file can never compose a worlds roster, which left CI's `ETERNITIES_DATASET=scale` build skipping
+ * every worlds surface (DEC-788, DEC-793). So all three v3 datasets now carry both halves and the
+ * v2 one carries neither: **no checked-out dataset separates the two predicates any more.**
+ * `web/test/swatch-gate.test.ts` rebuilds that separation from the real manifests rather than
+ * relying on one being present, which is what stops this from quietly becoming `rowCells` again.
  *
  * **Do not answer this question by fetching the file and reading a status code.** `vite preview`
  * serves a missing `.bin` as **HTTP 200 with `index.html`** — the SPA fallback — so such a check
@@ -98,6 +104,41 @@ export function publishesSwatches(manifest: {
   readonly files: ReadonlyArray<{ readonly path: string }>
 }): boolean {
   return manifest.files.some((file) => file.path === SWATCHES_FILE)
+}
+
+/**
+ * The swatch gate itself: **did the dataset publish the file** and **would anything read it**
+ * (§2.2; DEC-794, and lifted out of its call site by DEC-807).
+ *
+ * `useSceneData` spelled this conjunction inline. Both halves were individually well tested —
+ * {@link publishesSwatches} against every committed manifest, {@link isWorldPlane} against §2.4 —
+ * and the *conjunction* was not, because the only thing that could falsify it was a dataset on
+ * which the two halves disagree, and DEC-796 removed the last of those from the corpus on purpose
+ * (it gave both fixtures a swatch column so CI's build can compose a worlds roster at all). The
+ * measured consequence: reverting the gate to `rowCells` alone failed `e2e/routes.spec.ts` on main
+ * and passed on that branch. A decision that cannot be named cannot be struck at, so it is named
+ * here and `web/test/swatch-gate.test.ts` strikes each half of a real dataset in turn — which is a
+ * falsifier the corpus no longer has to supply.
+ *
+ * Both halves are load-bearing and neither implies the other:
+ *
+ * - **Published?** Off the manifest's own `files` list. A speculative fetch of an artefact the
+ *   dataset never wrote is a decode failure and a permanent error toast on every page load — the
+ *   outcome this gate exists to prevent — and `vite preview` answers it **200 `text/html`**, so the
+ *   network cannot be asked instead. See {@link publishesSwatches}.
+ * - **Consumed?** `rowCells` on at least one plane (§2.4). The swatches are the worlds surface's
+ *   colour and nothing else reads them, so on a v2 dataset there is nothing to paint even if a
+ *   swatch column were somehow beside it.
+ *
+ * Spelled with {@link isWorldPlane} rather than `worldPlanesOf` — the same predicate, and
+ * `worldPlanesOf` is literally `planes.filter(isWorldPlane)` — so the contract module does not have
+ * to import the renderer's to answer a question about the data.
+ */
+export function shouldLoadSwatches(
+  manifest: { readonly files: ReadonlyArray<{ readonly path: string }> },
+  planes: readonly PlaneRecord[],
+): boolean {
+  return publishesSwatches(manifest) && planes.some(isWorldPlane)
 }
 
 /**

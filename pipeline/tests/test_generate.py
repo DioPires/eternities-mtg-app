@@ -16,7 +16,7 @@ import pytest
 
 from eternities.contract.enums import BLIND_ETERNITIES_SLUG, SHARD_SIZE, HueClass, hue_class_for
 from eternities.contract.models import PlaneSetRef
-from eternities.fixtures import SMALL, build, generate
+from eternities.fixtures import SCALE, SMALL, build, generate
 from eternities.fixtures.generate import (
     BLIND_ETERNITIES_SHARE,
     FixtureSpec,
@@ -355,6 +355,83 @@ def test_an_empty_plane_gets_a_flat_palette_rather_than_a_division_by_zero():
     palette = generate._palette([])
     assert abs(sum(palette) - 1.0) < 1e-9
     assert len(set(palette)) == 1
+
+
+# --- the synthetic art statistic (§2.2, DEC-796) ----------------------------------------------
+#
+# These tests are the reason the column exists at all. `fixture-scale` carries swatches so the
+# worlds roster can compose in CI (DEC-793), and a column that composed but said nothing would buy
+# that coverage in name only: every worlds surface would then run against data that cannot show a
+# bug. So each test pins one property that makes a drawn swatch load-bearing rather than decorative.
+
+
+def _channels(sample: int) -> tuple[int, int, int]:
+    """One packed RGB565 sample back into its (5, 6, 5)-bit components."""
+    return (sample >> 11, (sample >> 5) & 0x3F, sample & 0x1F)
+
+
+def test_a_swatch_column_reproduces_exactly_between_builds():
+    """The dataset name is a content hash (PRD 4.9.1), so a swatch that drifted would move it."""
+    first = build(SMALL)
+    second = build(SMALL)
+    assert first.swatches == second.swatches
+    assert first.swatches, "a fixture with no swatches cannot compose a worlds roster"
+
+
+def test_the_swatch_column_is_parallel_to_the_stars():
+    """Star order *is* the encoding (§2.2): the browser's lookup is ``starIndex * 8 + 16``."""
+    dataset = build(SMALL)
+    assert len(dataset.swatches) == len(dataset.stars)
+
+
+def test_swatches_differ_between_cards_rather_than_repeating_one_value():
+    """A constant column cannot show a misrouted lookup.
+
+    Reading the wrong card's swatch is invisible when every card's swatch is the same, and the
+    worlds surface reads this column by star index across the whole roster. Asserted on the *drawn*
+    quantity as well — ``worldSource.ts`` reduces the four samples to their mean — because a column
+    whose records differ but whose means do not would still paint every cell the same colour.
+    """
+    dataset = build(SMALL)
+    assert len(set(dataset.swatches)) == len(dataset.swatches)
+    means = {
+        tuple(sum(c) / 4 for c in zip(*(_channels(s) for s in swatch), strict=True))
+        for swatch in dataset.swatches
+    }
+    assert len(means) == len(dataset.swatches)
+
+
+def test_the_records_stay_distinct_at_the_scale_ci_actually_builds():
+    """The row above runs on 500 cards; CI smokes ``SCALE``'s 30,000 (`.github/workflows/ci.yml`).
+
+    Distinctness is the property a misrouted star lookup shows up in, and it is the one that gets
+    *harder* with roster size — 30,000 draws collide where 500 do not — so asserting it only on
+    ``SMALL`` proves it exactly where it is cheapest and never on the dataset the worlds surface is
+    developed against. Measured 30,000/30,000; a ``SCALE`` build costs ~1.3 s.
+
+    **Records only, deliberately.** The *mean* is quantized, and at 30,000 cards 347 of them
+    coincide (29,653 distinct) — arithmetic, not a defect. So the means half of the row above is
+    honest for the fixture it names and must not be generalised to this one.
+    """
+    dataset = build(SCALE)
+    assert len(set(dataset.swatches)) == len(dataset.swatches)
+
+
+def test_no_component_sits_on_a_channel_endpoint_and_no_2x2_is_one_value_four_times():
+    """0 and full scale are what a cleared buffer and a saturated default look like.
+
+    A swatch that landed on either could not testify that the data path ran at all, and four
+    identical samples would make the 2x2 one value written four times — so the corners are
+    asserted distinct as well. PRD 8.2's seeded rules make both properties reproducible, not lucky.
+    """
+    dataset = build(SMALL)
+    for swatch in dataset.swatches:
+        assert len(set(swatch)) > 1, f"{swatch} is one value written four times"
+        for sample in swatch:
+            red, green, blue = _channels(sample)
+            assert 0 < red < 31, f"red {red} sits on a 5-bit endpoint"
+            assert 0 < green < 63, f"green {green} sits on a 6-bit endpoint"
+            assert 0 < blue < 31, f"blue {blue} sits on a 5-bit endpoint"
 
 
 def test_the_shard_count_covers_every_dust_card():

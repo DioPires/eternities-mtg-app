@@ -222,13 +222,16 @@ function main() {
    * in which losing data makes the number look better (DEC-757 note 5).
    *
    * Keyed on the manifest's own file list rather than on `contractVersion`, which the review
-   * suggested and which the fixtures falsify: both fixture datasets are contract **v3 and have no
-   * `swatches.bin`**, legitimately — the generator invents planes and never fetches card art, so
-   * there is no art statistic to emit — and CI measures them on every run. `contractVersion >= 3`
-   * fails those two jobs. The manifest is the dataset's own declaration of what it shipped (PRD
-   * 4.9.1: every entry carries a `sha256`), so it separates the three real cases that exist —
-   * production v3 declares the file, a v3 fixture does not, v2 has no such concept — and it
-   * generalises: *any* declared artefact that is not on disk is a corrupt dataset, not a 0.
+   * suggested. The manifest is the dataset's own declaration of what it shipped (PRD 4.9.1: every
+   * entry carries a `sha256`), and it generalises where a version number does not: *any* declared
+   * artefact that is not on disk is a corrupt dataset, not a 0.
+   *
+   * The case that originally falsified `contractVersion >= 3` was the fixtures, which were v3 and
+   * shipped no `swatches.bin` — CI measures them on every run, so that rule failed those two jobs.
+   * DEC-796 has since given both fixtures a synthetic swatch column, so today the split is v3
+   * declares the file and v2 has no such concept. Keying on the manifest is still the right rule
+   * and is what keeps this correct without a re-edit each time a dataset gains or loses an
+   * artefact.
    */
   const datasetFile = (name) => {
     const path = join(dir, name)
