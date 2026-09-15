@@ -439,6 +439,64 @@ describe('§1.6 the budget binds within a single frame (DEC-780)', () => {
     await h.settle()
   })
 
+  it('a throwing URL build strands no reservation, so later requests still admit (DEC-786 N1)', async () => {
+    // `imageUri` throws on a printing id shorter than two characters (`data/images.ts`), and it is
+    // called in the request literal — which leaves `fetch` *before* the `try`, so the estimate's
+    // `finally` never runs. Charged above that literal, the 90 KiB was therefore held for the life
+    // of the session against a fetch that would never reconcile it, and every later frame paid for
+    // it. Unreachable on shipped data (36-char Scryfall ids), which is why the ordering rather than
+    // a guard is the fix, and why this row builds the short id by hand.
+    const FOUR = ART_CROP_ESTIMATED_BYTES * 4
+    const h = harness({ layers: 256, byteBudget: FOUR, hold: true })
+
+    // `request` discards the fetch promise (`void this.fetch(...)`), so the throw escapes as an
+    // *unhandled rejection* — which vitest reports as a run-level error and exits 1 on while every
+    // row still prints green. Wrapping the instance's own method attaches a catch without touching
+    // what runs: same charge, same ordering, same timing, and the escape becomes something this row
+    // can assert on rather than something that fails the file out from under it.
+    const inner = h.stream as unknown as { fetch(...args: never[]): Promise<void> }
+    const real = inner.fetch.bind(inner)
+    const escaped: string[] = []
+    inner.fetch = (...args: never[]) =>
+      real(...args).catch((error: unknown) => {
+        escaped.push(error instanceof Error ? error.message : String(error))
+      })
+
+    // The bad key first, so anything it strands is already charged when the valid four ask. `hold`,
+    // so nothing settles and no credit can reach `bytesReserved` by the honest route either.
+    h.stream.request(0, 'x', TS, () => 0)
+    expect(h.stream.report().bytesReserved).toBe(0)
+
+    for (let key = 1; key <= 4; key += 1) {
+      h.stream.request(key, `${key}${ID.slice(2)}`, TS, () => 0)
+    }
+
+    const report = h.stream.report()
+    // **`bytesReserved` is not the discriminator here, and reading it as one is the trap.** Above
+    // the literal the stranded estimate eats one of the four slots, so only three admit — and the
+    // running total then reads `3 + 1 = FOUR` exactly as it does below the literal. The row would
+    // pass on both trees on this line alone. What separates them is *who* holds those four
+    // estimates: three fetches and a ghost, or four fetches. So the line is kept as the budget's
+    // own sanity check and the discrimination is carried by the three below it, each of which
+    // measured differently on the unfixed tree: `bytesReserved` 92,160 after the bad key alone,
+    // `declinedBudget` 1, and three URLs rather than four.
+    expect(report.bytesReserved).toBe(FOUR)
+    expect(report.declinedBudget).toBe(0)
+    // Reserved, not merely counted: four URLs were actually built and handed to the queue. The bad
+    // key is not among them, having thrown before `queue.request` — so `requested` reads five while
+    // only four can ever fetch, and asserting `requested` alone would not see the difference.
+    expect(h.urls).toHaveLength(4)
+    expect(report.swatchOnly).toBe(true)
+    expect(report.bytesFetched).toBe(0)
+
+    await h.settle()
+    // The positive control, and the reason this row is not vacuous: the short id really did throw,
+    // and really did throw out of `fetch`. Every assertion above also holds on a tree where
+    // `imageUri` simply stopped rejecting short ids — at which point the row would be testing
+    // nothing. Asserted after `settle`, since the catch above lands in a microtask.
+    expect(escaped).toEqual(['printing id x is too short'])
+  })
+
   it('re-consults the budget on LATER frames, which the landed-bytes spelling never did', async () => {
     // The second half of the defect. Even had the first frame bound, `request` returns early for a
     // key that is resident or in flight, so a budget tested only on completion is never reached
@@ -526,7 +584,9 @@ describe('§1.6 the budget binds within a single frame (DEC-780)', () => {
     expect(cancelled.stream.report().bytesReserved).toBe(ART_CROP_ESTIMATED_BYTES)
     cancelled.stream.reset()
     await cancelled.settle()
-    // `reset()` cancels, the cancellation rejects, and the `finally` credits the estimate back, so
+    // `reset()` cancels, the cancellation *resolves* — `cancel` settles a waiting request with
+    // `CANCELLED` and an in-flight abort is caught in `run()`, so `queue.request` has no reject
+    // path at all (DEC-786 N3) — and the `finally` credits the estimate back on that resolve, so
     // a reservation cannot outlive a dataset swap. This row does **not** separate the running sum
     // from `inFlight.size * ART_CROP_ESTIMATED_BYTES` — the derived spelling reads zero here too,
     // and passes every row in this file. That mutant is equivalent for the reason `bytesReserved`'s

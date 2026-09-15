@@ -46,7 +46,11 @@ export function pageUri(setCode: string, collectorNumber: string): string {
  * The two slots of a {@link PrintingTuple} that address its image: the printing id, and the
  * `imageTs` every image URI is cache-busted by.
  *
- * **This exists so those slot numbers are written once (DEC-777 N5).** `PrintingTuple` is
+ * **This exists so those slot numbers are written once (DEC-777 N5).** Once meaning: every read
+ * that *addresses an image* comes through here — `printingImageUri`, and through it
+ * `cardBackImageUri`, which hand-rolled the pair until DEC-786 N2. Slot 0 is still read directly
+ * where it is wanted as an identity rather than an address (a React key, the art stream's queue
+ * key); those never pair it with slot 3, so they are not the swap this guards. `PrintingTuple` is
  * `[id, setId, rarity, imageTs, collector, artist?]`, and **indices 0, 2 and 4 are all `string`** —
  * so `printing[2]` (rarity) or `printing[4]` (collector number) where `printing[0]` was meant is a
  * silent swap `tsc` cannot see, surfacing only as a 404 on a URL nothing asserts. Index 3 is the
@@ -132,6 +136,6 @@ export function cardBackImageUri(
   if (back?.id !== undefined && back.ts !== undefined) {
     return imageUri(back.id, back.ts, size, 'front')
   }
-  if (hasBackImage(card.l)) return imageUri(printing[0], printing[3], size, 'back')
+  if (hasBackImage(card.l)) return printingImageUri(printing, size, 'back')
   return null
 }
