@@ -57,8 +57,14 @@ const MUTANTS = [
   {
     file: VIEW,
     name: 'DEC-768 M1 — the probe seam is handed no `worldsSource` (optional, so not a type error)',
-    from: '    worldsSource: () => scene3d.worldsProbeSource(),\n',
+    from: '    worldsSource: (slug) => scene3d.worldsProbeSource(slug),\n',
     to: '',
+  },
+  {
+    file: VIEW,
+    name: 'DEC-785 F1 — the supplier is handed the slug and drops it (optional param, so not a type error)',
+    from: '    worldsSource: (slug) => scene3d.worldsProbeSource(slug),',
+    to: '    worldsSource: () => scene3d.worldsProbeSource(),',
   },
   {
     file: VIEW,

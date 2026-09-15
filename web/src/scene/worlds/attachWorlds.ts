@@ -612,9 +612,10 @@ export function attachWorlds(options: WorldsAttachmentOptions): WorldsAttachment
       }
       // The smallest `radii` in the roster, which is **not** the focused world (DEC-785 F1).
       // `radii` is camera distance in units of each world's *own* radius, so the minimum is
-      // systematically the largest world in the neighbourhood: measured over the v3 roster this
-      // names a world other than the focused one for 42 of 45. It is kept, unchanged, because the
-      // home view has no focused world to name and existing readers are written against it —
+      // systematically the largest world in the neighbourhood: measured over the v3 roster at the
+      // gate's navigation pose this names a world other than the focused one for 42 of 45 — a
+      // pose-dependent count, which is why it is quoted with one. It is kept, unchanged, because
+      // the home view has no focused world to name and existing readers are written against it —
       // anything measuring a *named* world passes the slug and gets it.
       let nearest = surfaces[0]!
       for (const surface of surfaces) {

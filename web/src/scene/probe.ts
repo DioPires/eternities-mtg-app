@@ -284,9 +284,10 @@ export interface Probe {
    * **`slug` names the world to report, and a per-plane reading must pass it (DEC-785 F1).** The
    * contract's §1 — *"cells are reported for the focused plane only"* — is what this argument
    * serves: with no argument the payload describes whichever world is nearest in units of its
-   * **own** radius, which over the v3 roster is the focused one for just 3 of 45, because dividing
-   * by each world's radius makes the minimum systematically the largest neighbour. That is not a
-   * small-world artefact — Bloomburrow (299 cards) and Edge (276) misattribute too — and it is
+   * **own** radius, which over the v3 roster is the focused one for just 3 of 45 at the gate's
+   * navigation pose, because dividing by each world's radius makes the minimum systematically the
+   * largest neighbour. That count is pose-dependent, which is why it is quoted with one. It is not
+   * a small-world artefact — Bloomburrow (299 cards) and Edge (276) misattribute too — and it is
    * silent, since the payload that comes back is a perfectly well-formed reading of the wrong
    * world. Check {@link WorldsProbe.planeSlug} against what you asked for either way.
    *
