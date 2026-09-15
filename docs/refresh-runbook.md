@@ -275,6 +275,59 @@ Two practical notes. It needs a **real GPU** and a local Chrome — a software r
 answer a question about bloom or shimmer — so it runs on the refresher's machine, not in CI. And it
 builds the site itself unless you pass `--no-build`, so it will pick up the dataset you just made.
 
+### 4.3 The worlds gate — every refresh that touches the v3 dataset
+
+```sh
+cd web
+node scripts/worlds-gate.mjs --dataset worlds --out ../worlds-gate-<new-hash>
+node scripts/worlds-gate.mjs --dataset worlds --negative-controls --out ../worlds-gate-<new-hash>-controls
+```
+
+`worlds-gate.mjs` is the acceptance instrument for the worlds spec's §3.1 — W1 through W5 — and it
+is **a check, not a capture tool**. That is the whole difference from §4.2: `visual-gate.mjs` fails
+only if it cannot reach a checkpoint and leaves the judging to the owner, while this one compares
+measured values against floors and exits non-zero when one is missed. The frames it writes are
+evidence for a verdict it has already reached, not the verdict itself.
+
+Run it on every refresh that rebuilds the v3 dataset, and for the same reason §4.2 gives: the
+criteria are computed from the data. §1.3's cell sheet is laid out from `rowCells` and the surface's
+colour comes from `swatches.bin`, so a refresh can move W1's worst plane or collapse a W3 band pair
+without a line of rendering code changing.
+
+**Which dataset — and the one rule that matters.** Pass `--dataset worlds`, which is the role that
+points at the v3 directory. **Never repoint `datasets.json`'s `active` to test the worlds path.**
+`active` is contract v2, `READABLE_CONTRACT_VERSIONS` is `{2, 3}` for the dual-scene period, and v3
+*drops* the shear triple that `camera/motion.ts:229-234` and `scene/starfield/planeTable.ts:149-152`
+still read — through `?? 0`. So repointing it early does not throw and does not warn: the spiral
+shear flattens to zero and the galaxy keeps rendering, wrong, with no instrument watching. `active`
+moves exactly once, in the cutover PR, in the same commit that deletes the galaxy scene.
+
+The two v3 *fixtures* are not a substitute either. Both declare contract v3 and carry `rowCells`,
+but neither carries `swatches.bin`, so no `WorldSurfaceSource` can be constructed against them and
+the failure surfaces inside the loader — where it reads as a renderer defect rather than as a
+missing fixture artefact. Fixture-backed assertions are limited to what `planes.json` alone answers.
+
+**Reading the output.** Every row prints the measure it aimed at, not just its criterion: W2 and W4
+are conjunctions and a conjunction hides which half did the work. Three verdicts, and the third is
+not a kind of failure — `insufficient` means the subject was outside the criterion's domain, which
+on the v3 roster is the ordinary state of the six one-card worlds for W2 and W3. The run prints how
+many planes landed there; a criterion that is silently skipped is how a gate prints green while
+measuring nothing.
+
+`--negative-controls` runs §3.1's matrix, and it is the run that says whether the instrument works
+at all. Expect **five red rows and two green**. The green rows are the ones to read first: in a
+matrix where everything is red, a broken baseline scores identically to a perfect guard, so only the
+rows expected to stay green can falsify the instrument. A red row that has gone green means the
+control stopped engaging, not that the renderer improved — the gate asserts each seam's read-back
+before it scores the row, and prints whether the witness was the renderer's own policy or merely an
+echo of the query parameter.
+
+Same two practical notes as §4.2: a real GPU and a local Chrome, and it builds the site itself
+unless you pass `--no-build`.
+
+**At the cutover this section replaces §4.2**, which retires with the galaxy along with PRD 9.3's
+criterion 2 and review T7.
+
 ---
 
 ## 5. Open the pull request
