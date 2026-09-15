@@ -318,6 +318,63 @@ describe("W1 — cells are resolvable at framing distance", () => {
     ]);
     expect(w1.measures[0]?.value).toBe(30);
   });
+
+  /**
+   * W1's domain, which it did not have until the 45-world tour walked into it.
+   *
+   * Six worlds presented **no** front-facing cell at the measurement pose. A world turned away has
+   * no median front-facing height at all, and scoring that absence as a failure both reds the gate
+   * on a sampling artefact and — worse — outranks the genuine sub-floor world underneath it.
+   */
+  describe("a world with no front-facing cell is outside the domain, not the worst world", () => {
+    /** One turned-away world, one comfortable world, one genuinely below the floor. */
+    const mixed = () => [
+      { slug: "moag", cells: [{ height: 400, frontFacing: false }] },
+      { slug: "alara", cells: [{ height: 59, frontFacing: true }] },
+      { slug: "dominaria", cells: [{ height: 17.45, frontFacing: true }] },
+    ];
+
+    it("names the sub-floor world, not the turned-away one", () => {
+      const w1 = evaluateW1(mixed());
+      // The whole point: `dominaria` is the finding, `moag` is noise. Before the fix `moag` won,
+      // because a null median compared as smaller than every number.
+      expect(w1.worstPlane).toBe("dominaria");
+      expect(w1.measures[0]?.value).toBeCloseTo(17.45, 10);
+      expect(w1.status).toBe("fail");
+    });
+
+    it("counts the turned-away world rather than dropping it", () => {
+      // Reported, not silently excluded: a criterion that quietly stops measuring planes is how a
+      // gate comes to print green while measuring nothing.
+      expect(evaluateW1(mixed()).undefinedPlanes).toEqual(["moag"]);
+      expect(evaluateW1(mixed()).measures[0]?.label).toContain("2 of 3 worlds");
+    });
+
+    it("still goes GREEN when every measurable world clears the floor", () => {
+      // The row that makes the fix a domain rule rather than a way of losing failures: with the
+      // sub-floor world removed, the turned-away world must not keep the criterion red.
+      const w1 = evaluateW1([
+        { slug: "moag", cells: [{ height: 400, frontFacing: false }] },
+        { slug: "alara", cells: [{ height: 59, frontFacing: true }] },
+      ]);
+      expect(w1.status).toBe("pass");
+      expect(w1.worstPlane).toBe("alara");
+    });
+
+    it("reports insufficient — never pass — when no world presented a cell at all", () => {
+      // Nothing measurable anywhere is a harness failure, and the one case that must not read as a
+      // clean run. `pass` stays false so a caller branching on it cannot mistake it for green.
+      const w1 = evaluateW1([
+        { slug: "moag", cells: [{ height: 400, frontFacing: false }] },
+        { slug: "ergamon", cells: [{ height: 300, frontFacing: false }] },
+      ]);
+      expect(w1.status).toBe("insufficient");
+      expect(w1.pass).toBe(false);
+      expect(w1.measures[0]?.insufficientReason).toMatch(
+        /no plane presented a front-facing cell/,
+      );
+    });
+  });
 });
 
 describe("W2 — the mosaic reads as tiles", () => {

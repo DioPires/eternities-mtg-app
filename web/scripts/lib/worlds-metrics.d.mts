@@ -84,6 +84,14 @@ export interface W1Criterion extends Criterion {
     readonly medianHeightPx: number | null;
   }>;
   readonly worstPlane: string | null;
+  /**
+   * The worlds that presented no front-facing cell at the pose, so W1 is undefined on them.
+   *
+   * Named rather than counted: six one-card worlds that happened to be turned away at this azimuth,
+   * and a build that has stopped drawing cells, are the same number and completely different
+   * findings.
+   */
+  readonly undefinedPlanes: readonly string[];
 }
 
 export interface W2Criterion extends Criterion {

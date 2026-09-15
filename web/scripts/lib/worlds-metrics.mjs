@@ -477,6 +477,34 @@ function criterion(id, title, measures, extra = {}) {
  * claim about every world, and pooling lets 28 comfortable worlds carry one that is not. The Blind
  * Eternities is not a world and must not be in `planes` — it has cards but no cell sheet (§1.8), so
  * the statistic is undefined there and "every plane with cards" would wrongly make this 30.
+ *
+ * ## W1 has a domain too, and a plane outside it is not the worst plane (DEC-752, measured)
+ *
+ * **A plane with no front-facing cell has no median front-facing cell height.** That is the absence
+ * of a measurement, exactly as §3.1's normative note already says for W2's four-sample floor and
+ * W3's qualifying-pair rule — and W1 was left out of that note on reasoning that was about
+ * *magnitude*: a one-cell world's cell is enormous, so it can never be the smallest. True, and
+ * beside the point. The case that bites is a world whose cells are all **turned away** at the
+ * measured azimuth, where the statistic does not exist at any size.
+ *
+ * It is not hypothetical and it is not rare. On the 45-world acceptance tour **six worlds reported
+ * zero front-facing cells at the pose** — belenon, ergamon, gobakhan, moag, pyrulea and shandalar,
+ * each holding 1 or 2 cards — while muraganda, regatha and segovia, also one-card worlds, happened
+ * to present theirs. Which side a world falls on is a property of the azimuth it was sampled at,
+ * not of the build: [[one-frame-of-a-moving-system-is-a-sample]], on the one criterion that had no
+ * third verdict to report it with.
+ *
+ * The old reduce treated a `null` median as *smaller than every number*, so such a world became the
+ * worst plane, carried a `null` into the measure, and `measure()` scores a missing value as `fail`.
+ * **That is a red gate reporting a world whose cells were merely facing away** — and it outranks
+ * and hides the real reading underneath it, which on this run was dominaria genuinely below the
+ * floor at 17.45 px. A criterion that fails for two unrelated reasons and names only one is how a
+ * gate spends a phase pointing at the wrong defect.
+ *
+ * So the worst plane is taken over the planes W1 is *defined* on, the undefined ones are counted
+ * and named rather than dropped, and the criterion reports `insufficient` only if **no** plane
+ * offered a median — which would mean the tour never saw a front-facing cell anywhere, a harness
+ * failure and not a product verdict.
  */
 export function evaluateW1(planes) {
   const perPlane = planes.map(({ slug, cells }) => ({
@@ -486,13 +514,14 @@ export function evaluateW1(planes) {
     ),
   }));
 
-  const worst = perPlane.reduce(
+  const measured = perPlane.filter((p) => p.medianHeightPx !== null);
+  const undefinedPlanes = perPlane
+    .filter((p) => p.medianHeightPx === null)
+    .map((p) => p.slug);
+
+  const worst = measured.reduce(
     (acc, p) =>
-      acc === null ||
-      p.medianHeightPx === null ||
-      p.medianHeightPx < acc.medianHeightPx
-        ? p
-        : acc,
+      acc === null || p.medianHeightPx < acc.medianHeightPx ? p : acc,
     null,
   );
 
@@ -502,13 +531,30 @@ export function evaluateW1(planes) {
     [
       measure(
         "minMedianCellHeightPx",
-        `median front-facing cell height, worst of ${planes.length} worlds`,
+        `median front-facing cell height, worst of ${measured.length} of ${planes.length} worlds`,
         worst === null ? null : worst.medianHeightPx,
         FLOORS.cellHeightPx,
         "min",
+        {
+          // Only when *nothing* was measurable. One unmeasurable world among 44 measurable ones is
+          // reported and stepped over; forty-five of them is the tour having gone wrong, and the
+          // gate should say so rather than score it.
+          insufficient: measured.length === 0,
+          why:
+            measured.length === 0
+              ? `no plane presented a front-facing cell (${planes.length} planes toured)`
+              : null,
+        },
       ),
     ],
-    { perPlane, worstPlane: worst === null ? null : worst.slug },
+    {
+      perPlane,
+      worstPlane: worst === null ? null : worst.slug,
+      // Named, not merely counted: which worlds fell outside the domain is the difference between a
+      // sampling artefact and a build that has stopped drawing cells, and a bare count cannot tell
+      // those apart.
+      undefinedPlanes,
+    },
   );
 }
 
