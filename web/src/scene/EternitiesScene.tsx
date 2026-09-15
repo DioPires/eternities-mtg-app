@@ -482,7 +482,11 @@ export function SceneView({
     // A getter, not a value, and deliberately not a dep of the seam's effect: the world the payload
     // describes changes as the camera flies, and a seam that re-installed on each change would be
     // swapped out from under a driver mid-assertion. See `ProbeSeamDeps.worldsSource`.
-    worldsSource: () => scene3d.worldsProbeSource(),
+    //
+    // `slug` is forwarded, not dropped: this arrow is the whole join between `worlds(slug)` and the
+    // attachment's per-slug lookup, and a `() => scene3d.worldsProbeSource()` here would type-check,
+    // answer a payload for every call, and silently reinstate DEC-785 F1's 42-of-45 misattribution.
+    worldsSource: (slug) => scene3d.worldsProbeSource(slug),
   })
 
   const benchContext = useBenchSeam({

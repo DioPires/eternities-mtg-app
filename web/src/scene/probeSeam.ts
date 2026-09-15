@@ -70,8 +70,12 @@ export interface ProbeSeamDeps {
    * camera flies, and a seam that re-installed on each change would be swapped out from under a
    * driver mid-assertion — the same reason `focusedStarRef` is a ref. Absent entirely on a build
    * with no worlds renderer, which is what makes `worlds()` return `undefined` there.
+   *
+   * Takes {@link Probe.worlds}' optional slug and must forward it (DEC-785 F1). The parameter is
+   * optional, so a supplier that quietly ignores it is not a type error — and one that did would
+   * answer every call with the nearest-in-radii world while reading exactly like a working seam.
    */
-  readonly worldsSource?: () => WorldsProbeSource | null
+  readonly worldsSource?: (slug?: string) => WorldsProbeSource | null | undefined
 }
 
 export function useProbeSeam(deps: ProbeSeamDeps): void {
@@ -158,6 +162,11 @@ export function useProbeSeam(deps: ProbeSeamDeps): void {
         flying: snap?.flight !== null && snap?.flight !== undefined,
         cameraDistance: built?.rig.distanceToTether ?? 0,
         planeSlug: deps.focusedSlugRef.current,
+        // The table's own integrated angle, read live — never a second clock, and with no `?? 0`
+        // fallback to hide a table that is not there (DEC-785 F2, DEC-782's presence rule).
+        // `resources` is non-null for the life of this closure; the effect returns above if it is
+        // not, which is what makes the direct read honest rather than lucky.
+        multiverseAngle: resources.table.multiverseAngle,
         cardsLoaded: deps.cardsRef.current.size,
         thumbnails: {
           drawn: handle?.stats.drawn ?? 0,
@@ -249,7 +258,10 @@ export function useProbeSeam(deps: ProbeSeamDeps): void {
       thumbnailStars: () => [...(scene.cardTier?.drawnStars ?? [])],
       // `undefined`, never an empty payload: leg G scores a missing seam as a setup failure and an
       // empty one as a world that drew no cells. See `worldsProbeOf`.
-      worlds: () => worldsProbeOf(deps.worldsSource?.()),
+      //
+      // `slug` is passed straight through, including when it is `undefined` — that is the no-arg
+      // path and it must reach the attachment as a genuine absence, not as a string (DEC-785 F1).
+      worlds: (slug) => worldsProbeOf(deps.worldsSource?.(slug)),
       planetScreen: (index) => {
         const handle = scene.cardTier?.card
         const camera = scene.renderer.camera

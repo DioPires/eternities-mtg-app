@@ -359,9 +359,13 @@ export class SceneHost {
    *
    * A method rather than a value: the world the payload describes changes as the camera flies, and
    * the seam installs this as a getter so a driver is never holding a stale one mid-assertion.
+   *
+   * `slug` names the world to report, which is how §3.1's per-plane tour gets the plane it flew to
+   * rather than the one that happens to be nearest in its own radii (DEC-785 F1); `undefined` comes
+   * back when the roster has no such world. See {@link WorldsAttachment.probeSource}.
    */
-  worldsProbeSource(): WorldsProbeSource | null {
-    return this.worldsAttachment.probeSource()
+  worldsProbeSource(slug?: string): WorldsProbeSource | null | undefined {
+    return this.worldsAttachment.probeSource(slug)
   }
 
   /** The worlds pass itself, for the tests and for the legs that add passes beside it. */
