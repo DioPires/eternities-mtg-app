@@ -665,6 +665,49 @@ describe("W4 — art resolves without exhausting", () => {
     expect(w4.measures.find((m) => m.key === "artFraction")?.value).toBe(1);
   });
 
+  /**
+   * The capacity ceiling — reported on every row, and scoring nothing (DEC-770 N1).
+   *
+   * A showing cell holds a layer, so `min(1, layers / wanting)` bounds `artFraction` whatever the
+   * policy does. The rows below fix both that arithmetic and the fact that it is *not* wired to the
+   * verdict, because the tempting fix — excusing a row whose ceiling sits under the floor — would
+   * retire `?artThreshold=fixed24`, which is W4's only falsifier and is starved on purpose.
+   */
+  describe("capacity ceiling", () => {
+    it("reports what the pool could show, not what it did", () => {
+      const w4 = evaluateW4(cells(2_759, 1_024), settled(0), PROTOTYPE_POOL);
+      // 1,024 layers against 2,759 cells wanting art.
+      expect(w4.capacityCeiling).toBeCloseTo(1_024 / 2_759, 6);
+      // ...and the fraction actually shown is a different, lower number: the ceiling is a bound on
+      // the row, not a restatement of it.
+      const fraction = w4.measures.find((m) => m.key === "artFraction");
+      expect(fraction?.value).toBeCloseTo(1_024 / 2_759, 6);
+    });
+
+    it("caps at 1 rather than reporting spare capacity as headroom above full", () => {
+      const w4 = evaluateW4(cells(90, 90), settled(0), { layers: 224, resident: 90 });
+      expect(w4.capacityCeiling).toBe(1);
+    });
+
+    it("is null where nothing wants art, rather than dividing by zero", () => {
+      const w4 = evaluateW4(cells(0, 0), settled(0), { layers: 128, resident: 0 });
+      expect(w4.capacityCeiling).toBeNull();
+    });
+
+    it("leaves the fixed24 control RED even though its ceiling is under the floor", () => {
+      // The row this guard exists for. `fixed24` starves the pool deliberately, so its ceiling is
+      // 0.37 against a 0.9 floor — exactly the shape a "the floor was unreachable" excuse would
+      // forgive, and forgiving it would make W4's only falsifier inert.
+      const { drawn, wanted } = PROTOTYPE.tetherSurface;
+      const w4 = evaluateW4(cells(wanted, drawn), settled(0), PROTOTYPE_POOL);
+      expect(w4.capacityCeiling).toBeLessThan(0.9);
+      const fraction = w4.measures.find((m) => m.key === "artFraction");
+      // `fail`, and specifically not `insufficient`: the row must stay a claim about the picture.
+      // An excused ceiling would land here as `insufficient`, which reports as "not measured".
+      expect(fraction?.status).toBe("fail");
+    });
+  });
+
   it("passes the unexhausted prototype pose, dominaria-frame at 333/333", () => {
     const { drawn, wanted, evicted } = PROTOTYPE.dominariaFrame;
     const w4 = evaluateW4(cells(wanted, drawn), settled(evicted), PROTOTYPE_POOL);

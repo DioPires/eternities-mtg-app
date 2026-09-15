@@ -780,8 +780,34 @@ export function evaluateW4(cells, evictionTimeline, pool) {
       poolLayers: pool.layers,
       belowShippedPool: pool.layers < SMALLEST_SHIPPED_POOL_LAYERS,
       streamNeverRan: dead,
+      capacityCeiling: capacityCeiling(wanting.length, pool),
     },
   );
+}
+
+/**
+ * The highest `artFraction` the pool could show, whatever the policy does (DEC-770 N1).
+ *
+ * A showing cell holds a layer, so a pool of `L` layers cannot show art on more than `L` cells at
+ * once: the ceiling is `min(1, L / wanting)`. This is arithmetic about the capacity rather than a
+ * reading of a frame, which is why it is reported on **every** W4 row and not only on the rows that
+ * look starved — a ceiling is evidence about what the row could have said.
+ *
+ * > **Reported, and deliberately NOT wired to the verdict.** §3.1's floor is 0.9, and where this
+ * > ceiling falls below it the floor is unreachable and the row reds a renderer that did nothing
+ * > wrong. Lowering the floor to match is *not* a safe local fix, for two reasons. First,
+ * > `?artThreshold=fixed24` produces exhaustion **on purpose** — 1,024 drawn against 2,759 wanted —
+ * > and it is W4's only falsifier, so a rule that excused a starved pool would silently retire the
+ * > control. Second, under the *adaptive* policy the threshold's whole job is to fit demand to
+ * > capacity, so a ceiling below 1 there is a claim about the policy, and may be the very failure W4
+ * > exists to catch. Which of the two a given row is cannot be settled from the arithmetic: it needs
+ * > a live reading on the shipped rung, and DEC-770 N1's figures predate that rung existing at all
+ * > (`setArtLayers` had zero callers until DEC-751, so every tier ran at 1,024 layers). Printing the
+ * > ceiling beside the fraction is what lets that reading be taken without re-plumbing a gate run.
+ */
+function capacityCeiling(wanting, pool) {
+  if (wanting === 0) return null;
+  return Math.min(1, pool.layers / wanting);
 }
 
 /**

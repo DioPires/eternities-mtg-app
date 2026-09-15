@@ -118,6 +118,12 @@ export interface W4Criterion extends Criterion {
    * indistinguishable from a policy that exhausts, and it makes both W4 matrix rows inert.
    */
   readonly streamNeverRan: boolean;
+  /**
+   * The highest `artFraction` this pool could show — `min(1, layers / wanting)`, or `null` where
+   * nothing wants art. Reported and **not** scored: see `capacityCeiling` in the implementation for
+   * why the 0.9 floor is not lowered to match it, and what a live reading has to settle first.
+   */
+  readonly capacityCeiling: number | null;
 }
 
 export interface W5Criterion extends Criterion {
