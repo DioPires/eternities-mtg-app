@@ -16,8 +16,9 @@
  * > worlds scene did not: `worldSource.ts` snapshotted `home` at composition time, and
  * > `attachWorlds` contained **no reader of `multiverseAngle` at all**.
  * >
- * > So the camera orbited and the worlds stood still. Measured on the shipped build (leg G,
- * > `docs/worlds/gate-pose-defect.md`): on a settled, motionless rig `cameraDistance` held at
+ * > So the camera orbited and the worlds stood still. Measured on the shipped build by leg G's
+ * > acceptance run (DEC-804, evidence comment `3410ba98`; leg G's own tables land with leg G and
+ * > are not on main): on a settled, motionless rig `cameraDistance` held at
  * > 31.9293 to four decimals while `radii` ran 2.9203 → 2.1687 over 17.5 s on `dominaria`, and
  * > 3.5140 → **17.4112** on `azgol`. The error scales with `|home| / radius`, which is what it must
  * > do when the camera is flying a circle the world is not on. The visible half is a capture of the

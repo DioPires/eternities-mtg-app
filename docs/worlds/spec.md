@@ -1588,16 +1588,26 @@ scale — which is the thing T7 said was missing.
 > > `azgol` is **4.4e-16**.
 >
 > > **What this was for.** Leg G's acceptance run could take no §3.1 reading at all: 1 of the first
-> > 15 worlds scored and 14 failed setup, because `radii` drifted on a rig that was not moving —
-> > `dominaria` 2.9250 → 2.1723 over 17.5 s with `cameraDistance` constant at 31.9293, `azgol` by
-> > **14.41 radii**. The worlds scene had snapshotted `plane.home` at composition time and contained
-> > no reader of `multiverseAngle` at all, so the camera orbited and the worlds did not. The visible
-> > half was a capture of the focused world in the bottom-left corner of its own frame with empty
-> > dust centred: `alara`'s on-screen cells centred at **(342, 887)** of 1920×1080, 379 of 510
-> > visible. After the fix, **(960, 539)** and 510 of 510. `scripts/worlds-centre-hold.mjs` is the
-> > instrument, and it is written to be run against an unfixed tree as well — the frozen control
-> > passes on **both**, which is why a suite that measures only under `?motion=0` cannot see this
-> > class of defect at all.
+> > 15 worlds scored and 14 failed setup, because `radii` drifted on a rig that was not moving. Leg
+> > G's own tables read `dominaria` **2.9203 → 2.1687** over 17.5 s with `cameraDistance` constant at
+> > 31.9293, and `azgol` **3.5140 → 17.4112** — a span of 13.90 radii. The worlds scene had
+> > snapshotted `plane.home` at composition time and contained no reader of `multiverseAngle` at
+> > all, so the camera orbited and the worlds did not. The visible half was a capture of the focused
+> > world in the bottom-left corner of its own frame with empty dust centred.
+> >
+> > **Three instruments, and the numbers are not interchangeable — attribute each reading to the run
+> > that took it (DEC-809 N7).** `scripts/worlds-centre-hold.mjs` is the fix leg's own harness, and
+> > its unfixed-tree readings are a *different run* from leg G's: `dominaria` 2.9250 → 2.1723 and
+> > `azgol` by 14.41 radii, with `alara`'s on-screen cells centred at **(342, 887)** of 1920×1080,
+> > 379 of 510 visible, against **(960, 539)** and 510 of 510 after the fix. The review's independent
+> > instrument (DEC-809) is a third: at that identical camera it found `alara`'s unfixed payload
+> > carried **no cell table at all** — 0 of 0, not 379 of 510 — so the 379 figure is that harness's
+> > and does not reproduce. All three agree on `cameraDistance` to four decimals and on the sign and
+> > scale of the drift, which is the claim; none of them is a source for the others' digits.
+> >
+> > `worlds-centre-hold.mjs` is written to be run against an unfixed tree as well — the frozen
+> > control passes on **both**, which is why a suite that measures only under `?motion=0` cannot see
+> > this class of defect at all.
 >
 > > The fields are **additive**: `readWorldsProbe` has no unknown-key rule and no field the gate
 > > already reads has moved. `radius` is §1.3's `worldRadius(cardCount)`, never `planes.json`'s
