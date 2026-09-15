@@ -107,6 +107,41 @@ export function publishesSwatches(manifest: {
 }
 
 /**
+ * The swatch gate itself: **did the dataset publish the file** and **would anything read it**
+ * (§2.2; DEC-794, and lifted out of its call site by DEC-807).
+ *
+ * `useSceneData` spelled this conjunction inline. Both halves were individually well tested —
+ * {@link publishesSwatches} against every committed manifest, {@link isWorldPlane} against §2.4 —
+ * and the *conjunction* was not, because the only thing that could falsify it was a dataset on
+ * which the two halves disagree, and DEC-796 removed the last of those from the corpus on purpose
+ * (it gave both fixtures a swatch column so CI's build can compose a worlds roster at all). The
+ * measured consequence: reverting the gate to `rowCells` alone failed `e2e/routes.spec.ts` on main
+ * and passed on that branch. A decision that cannot be named cannot be struck at, so it is named
+ * here and `web/test/swatch-gate.test.ts` strikes each half of a real dataset in turn — which is a
+ * falsifier the corpus no longer has to supply.
+ *
+ * Both halves are load-bearing and neither implies the other:
+ *
+ * - **Published?** Off the manifest's own `files` list. A speculative fetch of an artefact the
+ *   dataset never wrote is a decode failure and a permanent error toast on every page load — the
+ *   outcome this gate exists to prevent — and `vite preview` answers it **200 `text/html`**, so the
+ *   network cannot be asked instead. See {@link publishesSwatches}.
+ * - **Consumed?** `rowCells` on at least one plane (§2.4). The swatches are the worlds surface's
+ *   colour and nothing else reads them, so on a v2 dataset there is nothing to paint even if a
+ *   swatch column were somehow beside it.
+ *
+ * Spelled with {@link isWorldPlane} rather than `worldPlanesOf` — the same predicate, and
+ * `worldPlanesOf` is literally `planes.filter(isWorldPlane)` — so the contract module does not have
+ * to import the renderer's to answer a question about the data.
+ */
+export function shouldLoadSwatches(
+  manifest: { readonly files: ReadonlyArray<{ readonly path: string }> },
+  planes: readonly PlaneRecord[],
+): boolean {
+  return publishesSwatches(manifest) && planes.some(isWorldPlane)
+}
+
+/**
  * PRD 5.8/8.5.1's filter mask byte for a star that passes, on both sides of the GPU boundary.
  *
  * It lives here, in the contract module, because it is a contract between two files that never
