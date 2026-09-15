@@ -128,10 +128,16 @@ const sleep = (ms) => new Promise((wake) => setTimeout(wake, ms))
 /**
  * Bytes the page has taken off `cards.scryfall.io`, summed from the responses themselves.
  *
- * §1.6's per-session byte budget is the one refusal that does **not** appear in the `?probe=`
- * payload — `ArtStreamReport.swatchOnly` is computed and never published — so a session that has
- * stopped asking because it spent its budget is indistinguishable, from the payload alone, from one
- * whose threshold is admitting nothing. This is the outside measurement that tells them apart.
+ * **The outside reading, and it was once the only one.** §1.6's byte budget used to be invisible in
+ * the `?probe=` payload, so a session that had stopped asking because it spent its budget could not
+ * be told from one whose threshold was admitting nothing. DEC-778 published the whole
+ * `ArtStreamReport` as `WorldsProbe.stream`, so the stream's own accounting is in every row too —
+ * see {@link READ}. That does not retire this sum.
+ *
+ * Keep both, because they are independent instruments and the pair is what makes DEC-780's
+ * acceptance row mean anything: `stream.bytesFetched` is the renderer saying what it charged
+ * itself, and this is the network saying what actually crossed it. A budget that bound by
+ * mis-counting its own bytes would satisfy the first and not the second.
  *
  * **Not the Resource Timing API**, which was the first attempt and read a flat `0.0 MiB` for the
  * whole run: `encodedBodySize` and `transferSize` are zeroed for a cross-origin response without
@@ -231,6 +237,12 @@ const READ = (world) => {
     effectiveThresholdPx: payload.pool.effectiveThresholdPx,
     viewport: payload.viewport,
     seams: payload.seams,
+    // §1.6's own accounting (DEC-778 published it; DEC-780 made it able to bind). Presence-required
+    // rather than `payload.stream ?? null`: a missing key is a renderer that stopped publishing the
+    // field, and `null` is a world composed with no `ArtStream` at all — a zero-layer pool. Reading
+    // the two as the same thing is what would let a build that lost the field report an unspent
+    // budget instead of an error.
+    stream: 'stream' in payload ? payload.stream : 'ABSENT',
   }
 }
 
@@ -304,6 +316,67 @@ function verdictOf(samples) {
   }
 }
 
+/**
+ * §1.6's accounting, appended to every sample line (DEC-780).
+ *
+ * `ABSENT` and `null` are printed as themselves rather than folded into zeros. A build whose probe
+ * stopped publishing the field, and a world composed with no `ArtStream`, both have *no* budget
+ * story — printing `0.0/64.0` for either would be this harness inventing an unspent budget.
+ */
+function budgetColumns(stream) {
+  if (stream === 'ABSENT') return ' stream=ABSENT\n'
+  if (stream === null) return ' stream=null(no ArtStream)\n'
+  const mib = (n) => (n / 1048576).toFixed(1)
+  return (
+    ` charged=${mib(stream.bytesFetched).padStart(6)}` +
+    `+${mib(stream.bytesReserved)}/${mib(stream.byteBudget)}MiB` +
+    ` swatchOnly=${stream.swatchOnly ? 'YES' : ' no'}` +
+    ` declBudget=${String(stream.declinedBudget).padStart(5)}\n`
+  )
+}
+
+/**
+ * What §1.6's budget actually cost this session, in the one quantity that separates the two trees.
+ *
+ * **It is not `declinedBudget > 0`, and reading it that way was this harness's own first mistake.**
+ * The unfixed tree declines *plenty* — 23,715 of them at t=32 s — because once 88.7 MiB has landed
+ * the running total is over 64 MiB and every later frame is refused. Those declines are a post-hoc
+ * observation, not a control: they begin after the money is gone. Scored on their presence, the
+ * defect and the fix both read "BINDS" and the row says nothing. That is a measure carried by the
+ * wrong signal.
+ *
+ * The quantity that does separate them is **what crossed the network**: the unfixed tree issues all
+ * 967 requests in one frame at `bytesFetched === 0` and spends 88.7 MiB (+38.6%); the fixed tree
+ * stops at 729 and spends 70.2 MiB (+9.7%). So this reports the spend against the budget and the
+ * overshoot as a percentage, and leaves "binding" to be read off that.
+ *
+ * The residual +9.7% is not slack in the mechanism — it is `ART_CROP_ESTIMATED_BYTES`'s error made
+ * visible. The budget admits exactly 64 MiB / 90 KiB = 729 bodies, and those 729 average 100,996 B
+ * against the 92,160 B estimate. Note they are *heavier* than the roster's 96,159 B population
+ * mean: the queue serves nearest-first, so the admitted set is a priority-ordered prefix and not a
+ * sample. The overshoot is systematic and proportional, **not** one request wide. A row whose spend
+ * never reaches the budget is not a failure; it is the non-binding case, and it is named.
+ */
+function budgetVerdict(run) {
+  const last = run.samples[run.samples.length - 1]
+  const stream = last?.stream
+  if (!stream || stream === 'ABSENT') return 'NOT MEASURABLE — the probe published no stream report'
+  const mib = (n) => (n / 1048576).toFixed(1)
+  const spent = stream.bytesFetched
+  const budget = stream.byteBudget
+  // The renderer's own charge against the network's. They are not equal by construction — the
+  // flight's bytes are on the outside count and `content-length` is absent on some responses — so
+  // this reports the pair and lets a reader judge, rather than asserting an equality that is false.
+  const outside = `outside=${mib(last.bytes)} MiB / ${last.fetched} responses`
+  if (spent < budget) {
+    return `did NOT bind — spent ${mib(spent)} of ${mib(budget)} MiB, ` +
+      `declinedBudget=${stream.declinedBudget}. The non-binding case; ${outside}`
+  }
+  const over = ((spent / budget - 1) * 100).toFixed(1)
+  return `spent ${mib(spent)} MiB against a ${mib(budget)} MiB budget (+${over}%), ` +
+    `${stream.declinedBudget} declines, swatchOnly=${stream.swatchOnly}; ${outside}`
+}
+
 const args = parseArgs(process.argv.slice(2))
 const { url, stop } = await startPreview(args.dataset)
 const browser = await puppeteer.launch({
@@ -329,6 +402,16 @@ try {
     if (message.type() === 'error') consoleErrors.push(message.text().slice(0, 200))
   })
 
+  // DEC-777 N6. Every configuration below runs on THIS ONE page, so rows after the first read a
+  // warm HTTP cache: row 3's flight was measured costing 247 fetches / 22.6 MiB before its clock
+  // started. Fractions are unaffected and row 1 is genuinely cold, so row 1's timings are the only
+  // quotable ones — printed here rather than left in a review comment, because the thing a later
+  // reader does with this output is quote a number out of it.
+  process.stderr.write(
+    '\nNOTE: all configurations share one browser page. Row 1 is cold; rows 2+ read a warm HTTP\n' +
+      '      cache, so quote TIMINGS from row 1 only. Fractions and byte charges are unaffected.\n',
+  )
+
   for (const configuration of CONFIGURATIONS) {
     process.stderr.write(`\n=== ${configuration.name} (${configuration.query}) ===\n`)
     const run = await measure(page, url, configuration, args.seconds, args.every)
@@ -347,10 +430,12 @@ try {
           `resident=${String(s.resident).padStart(5)}/${s.layers} ` +
           `evict=${String(s.evictions).padStart(5)} thr=${s.effectiveThresholdPx.toFixed(2)} ` +
           `fetched=${String(s.fetched).padStart(5)} ` +
-          `MiB=${(s.bytes / 1048576).toFixed(1).padStart(6)}\n`,
+          `MiB=${(s.bytes / 1048576).toFixed(1).padStart(6)}` +
+          budgetColumns(s.stream),
       )
     }
     process.stderr.write(`  -> ${run.verdict.verdict}\n`)
+    process.stderr.write(`  -> §1.6 budget: ${budgetVerdict(run)}\n`)
   }
   errors.push(...consoleErrors)
 } finally {

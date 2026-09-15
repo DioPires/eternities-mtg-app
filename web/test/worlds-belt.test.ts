@@ -165,12 +165,18 @@ describe('the belt reads the positions the pipeline shipped (§1.8, §2.1)', () 
     // load-bearing at a roster where they diverge; this is that roster.
     expect(DUST.radius, 'the coincidence this row exists for').toBe(PLANES.multiverseRadius)
 
+    // **Both inputs move, and that is DEC-781 R2-N1.** Halving `plane.radius` alone separates the
+    // two *fields*, but leaves `multiverseRadius` at today's value — so the argument could be
+    // replaced by the literal `130` and this row stayed green, which distinguishes a field rather
+    // than exercising a value. Doubling it makes the row respond to the argument itself, and widens
+    // the gap to the dust plane's own radius from 2x to 4x while it is at it.
     const divergent: PlaneRecord = { ...DUST, radius: DUST.radius / 2 }
+    const R = PLANES.multiverseRadius * 2
     const points = buildBelt({
       plane: divergent,
       stars: STARS,
       planes: PLANES.planes,
-      multiverseRadius: PLANES.multiverseRadius,
+      multiverseRadius: R,
       pixelRatio: 1,
     })
     const position = points.geometry.getAttribute('position')
@@ -179,14 +185,14 @@ describe('the belt reads the positions the pipeline shipped (§1.8, §2.1)', () 
     for (let i = 0; i < position.count; i += 1) {
       maxRadial = Math.max(maxRadial, Math.hypot(position.getX(i), position.getZ(i)))
     }
-    const R = PLANES.multiverseRadius
     const decodeSlack = R * 2 ** -11
 
-    // The belt is still at 1.12 R of the **multiverse**, with the plane's own radius halved beneath
-    // it. Both bounds, so a belt that had collapsed to nothing would fail the first.
+    // The belt sits at 1.12 of the **multiverse** radius it was handed — a doubled one here — with
+    // the dust plane's own radius a quarter of that beneath it. Both bounds, so a belt that had
+    // collapsed to nothing would fail the first.
     expect(maxRadial).toBeGreaterThan(R * BELT_RADIUS_FACTOR * (1 - BELT_RADIAL_JITTER))
     expect(maxRadial).toBeLessThanOrEqual(R * BELT_RADIUS_FACTOR * (1 + BELT_RADIAL_JITTER) + decodeSlack)
-    // And `plane.radius` cannot produce that: it is half, and the jitter is ±6%.
+    // And `plane.radius` cannot produce that: it is a quarter of R now, against a ±6% jitter.
     expect(maxRadial).toBeGreaterThan(divergent.radius * BELT_RADIUS_FACTOR * (1 + BELT_RADIAL_JITTER))
     disposeBelt(points)
   })

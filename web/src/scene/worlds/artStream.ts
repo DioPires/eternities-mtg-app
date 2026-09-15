@@ -27,11 +27,28 @@
  * > Layers already resident keep drawing their art; §1.4's shading path degrades to the swatch only
  * > for cells that never got one. A budget that evicted what it had already paid for would spend
  * > the session's bytes and then throw away the picture they bought.
+ *
+ * > **Normative — the budget is charged when a request *issues*, and reconciled when it settles
+ * > (§1.6, DEC-780).** The obvious reading — charge `Blob.size` on completion, compare the running
+ * > total against the budget — cannot bind on this workload, and shipped not binding: the selection
+ * > pass issues every want for a pose in one frame, so all 967 requests tested the budget at zero
+ * > bytes fetched and all 967 passed, spending **88.7 MiB against a 64 MiB budget**. So an issuing
+ * > request reserves {@link ART_CROP_ESTIMATED_BYTES} against the budget up front, and releases
+ * > that estimate for the body's real size once the queue settles it. The quantity
+ * > {@link ArtStream.swatchOnly} tests is the **sum** of landed and outstanding bytes.
+ *
+ * > **The defect is not "it never declines" — it is "it declines too late", and the difference
+ * > matters to anyone measuring this.** The unfixed stream does eventually refuse: once 88.7 MiB
+ * > has landed the total is over budget and every later frame is declined, 23,715 times in a 32 s
+ * > run. Those refusals are a post-hoc observation of money already spent. A gate scored on
+ * > `declinedBudget > 0` reads **both** trees as passing and tells you nothing; the quantity that
+ * > separates them is what crossed the network — 967 requests / 88.7 MiB before, 729 / 70.2 MiB
+ * > after. See {@link ART_CROP_ESTIMATED_BYTES} for why the remainder is +9.7% and not zero.
  */
 
 import { imageUri, type ImageSize } from '../../data/images'
 
-import type { ImageQueue, ImageRequest } from '../cards/imageQueue'
+import type { ImageQueue, ImageRequest, ImageResult } from '../cards/imageQueue'
 
 import type { ArtPool } from './artPool'
 
@@ -106,17 +123,81 @@ export function letterbox(
  */
 export const DEFAULT_BYTE_BUDGET = 64 * 1024 * 1024
 
+/**
+ * What one in-flight request is charged against the budget before its body arrives, in bytes.
+ *
+ * > **Normative — the budget is charged at *issue* time, and this is the price (§1.6, DEC-780).**
+ * > A budget consulted only against bytes that have already landed cannot bind on this workload.
+ * > The selection pass issues every want for a pose in **one frame**: on the shipped policy that is
+ * > 967 calls to {@link ArtStream.request} before a single byte returns, so every one of them tests
+ * > `bytesFetched >= byteBudget` at `bytesFetched === 0` and passes. Later frames never re-consult
+ * > it, because a key that is resident or in flight returns before the test. Measured on DEC-772's
+ * > harness: **88.7 MiB fetched against a 64 MiB budget.** §1.6 is normative that over budget the
+ * > stream stops asking; charging only on completion is what made it unable to.
+ *
+ * 90 KiB is Scryfall's median `art_crop`, the same figure {@link DEFAULT_BYTE_BUDGET}'s header
+ * sizes the budget against. It sits a little *under* the 96,159-byte mean measured over all 967
+ * fetches, so reconciliation corrects the estimate upward as bodies land rather than throttling a
+ * session early on a guess.
+ *
+ * **What the estimate bounds is the number of requests admitted, not the bytes they turn out to
+ * cost.** `byteBudget / ART_CROP_ESTIMATED_BYTES` is 67,108,864/92,160 = 728.2, so a session admits
+ * exactly **729** bodies and then stops — measured, not argued, on DEC-772's harness at §3.1's
+ * pose. The session's spend is `729 * (whatever those 729 actually weigh)`, so the overshoot is the
+ * estimate's error against *that* mean, systematically and in one direction.
+ *
+ * **The admitted set is not a random sample of the roster, and it is heavier than one.** The queue
+ * serves nearest-first, so the 729 that get through are a priority-ordered prefix:
+ *
+ * | tree | responses | spent | mean body | vs 64 MiB |
+ * |---|---|---|---|---|
+ * | pre-DEC-780 (charge on completion) | 967 — the whole want set | 88.7 MiB | 96,159 B | **+38.6%** |
+ * | this file | **729** | 70.2 MiB | **100,996 B** | **+9.7%** |
+ *
+ * 96,159 B over all 967 is the population mean, and it reproduces DEC-772's 96,155 independently.
+ * The admitted prefix means 100,996 B — about 5% heavier — and 100,996/92,160 = 1.0959 is the
+ * +9.7% exactly. **So do not predict the overshoot from the population mean**; it under-states it,
+ * which is the direction that matters.
+ *
+ * The constant sits under both means deliberately: §1.6's budget is a spend ceiling for a prefetch,
+ * and starving the picture is the worse failure. Anyone who needs a hard cap should raise this
+ * constant — the count law above says exactly what that buys — and **not** re-spell
+ * {@link ArtStream.swatchOnly}, which is the change that reintroduces DEC-780.
+ */
+export const ART_CROP_ESTIMATED_BYTES = 90 * 1024
+
 /** What the probe reports about the stream (§3.1). */
 export interface ArtStreamReport {
   /** Bytes charged this session — successes and decode failures alike. Monotonic. */
   readonly bytesFetched: number
+  /**
+   * Bytes committed to requests that have not settled yet, at
+   * {@link ART_CROP_ESTIMATED_BYTES} apiece (§1.6, DEC-780).
+   *
+   * > **Not monotonic, and not a subset of {@link ArtStreamReport.bytesFetched}.** It rises when a
+   * > request issues and falls when that request settles — whichever way it settles. A body that
+   * > arrived moves its estimate into `bytesFetched`; one that was dropped or cancelled moves it
+   * > nowhere, because nothing was paid for it.
+   *
+   * > A reader wanting "what this session has committed" wants the **sum** of the two, which is
+   * > what {@link ArtStreamReport.swatchOnly} is computed from. Do not re-derive that boolean
+   * > (DEC-744 B1, DEC-746 D5) — this field is published so the sum is *legible*, not so the test
+   * > can be repeated. It is the reason a report can show `swatchOnly` true while `bytesFetched` is
+   * > still under `byteBudget`: the difference is in flight.
+   */
+  readonly bytesReserved: number
   readonly byteBudget: number
   /**
-   * The budget is spent and the stream has stopped asking (§1.6).
+   * The budget is spent — committed, not merely landed — and the stream has stopped asking (§1.6).
    *
    * > The gate reads this before it reads W4: a session that went swatch-only part-way through has
    * > a legitimate reason for a low art count, and scoring it as a threshold failure would be the
    * > measure being carried by the wrong signal.
+   *
+   * > **Read it; do not recompute it** (DEC-744 B1, DEC-746 D5). It is
+   * > `bytesFetched + bytesReserved >= byteBudget`, not `bytesFetched >= byteBudget` — the second
+   * > spelling is the DEC-780 defect, and a gate that re-derived it would re-introduce the bug on
+   * > the reading side after the stream had been fixed.
    */
   readonly swatchOnly: boolean
   /** Requests handed to the queue. Not the same as cells wanting art — see {@link ArtStream.request}. */
@@ -181,6 +262,26 @@ export class ArtStream {
   private readonly inFlight = new Map<number, string>()
 
   private bytesFetched = 0
+  /**
+   * The estimate standing against every request that has issued and not settled (§1.6, DEC-780).
+   *
+   * A running sum rather than `inFlight.size * ART_CROP_ESTIMATED_BYTES`, and the two are
+   * **behaviourally equivalent on every path this class has** — the derived spelling passes the
+   * whole suite, and it is recorded as an accepted equivalent mutant rather than chased with a
+   * contrived row. They diverge at exactly one instant: inside the synchronous turn that ran
+   * {@link ArtStream.reset}, where `inFlight` is already cleared but the requests it held have not
+   * rejected yet, so the sum still holds their estimates and the derived form reads zero. Nothing
+   * observes that instant — `reset()`'s only caller drops the stream on the next line
+   * (`attachWorlds.ts`'s `releasePool`), so the object carrying the stale charge never serves
+   * another request.
+   *
+   * The sum is kept because it is **symmetric with the release**: one `+=` where a request issues,
+   * one `-=` in the `finally` that every settlement passes through, so the audit for "is this
+   * balanced" is two lines in one method. Deriving it instead would make the charge depend on a
+   * map whose clearing rule is set by a different concern (cancellation), which is a coupling that
+   * is free today and would not stay free.
+   */
+  private bytesReserved = 0
   private requested = 0
   private resolved = 0
   private failed = 0
@@ -197,12 +298,13 @@ export class ArtStream {
   }
 
   get swatchOnly(): boolean {
-    return this.bytesFetched >= this.byteBudget
+    return this.bytesFetched + this.bytesReserved >= this.byteBudget
   }
 
   report(): ArtStreamReport {
     return {
       bytesFetched: this.bytesFetched,
+      bytesReserved: this.bytesReserved,
       byteBudget: this.byteBudget,
       swatchOnly: this.swatchOnly,
       requested: this.requested,
@@ -228,6 +330,13 @@ export class ArtStream {
    * either. Each cause is counted separately because §3.1's W4 row and its control need to tell
    * them apart — collapsing them into one `declined` is how a control gets scored green for the
    * wrong reason.
+   *
+   * **The two early returns above the budget test are not holes in it (DEC-780).** A key the pool
+   * already holds, and a key already in flight, are both keys this session has *already* paid or
+   * committed for; re-charging them per frame per cell is the double-count the three-state pool
+   * exists to avoid. Everything that would cost a new body passes through the `swatchOnly` test on
+   * every call, including on frames after the first — which is precisely what was untrue while the
+   * charge happened on completion.
    */
   request(key: number, printingId: string, imageTs: number, priority: () => number | null): number | null {
     const held = this.pool.layerOf(key)
@@ -270,6 +379,10 @@ export class ArtStream {
   ): Promise<void> {
     const queueKey = `worlds-art:${printingId}`
     this.inFlight.set(key, queueKey)
+    // Charged here, before the await, so it is committed in the same synchronous turn the caller's
+    // `request()` ran in. That is what lets the *next* call in the same frame see it — the whole of
+    // DEC-780 is that a frame issues all its wants before any of them can land.
+    this.bytesReserved += ART_CROP_ESTIMATED_BYTES
     const request: ImageRequest = {
       key: queueKey,
       url: imageUri(printingId, imageTs, this.imageSize),
@@ -278,7 +391,18 @@ export class ArtStream {
       // `createImageBitmap` the full 128x96 bakes a 2.7% horizontal stretch in at decode time.
       resize: { width: this.box.width, height: this.box.height },
     }
-    const result = await this.queue.request(request)
+    let result: ImageResult
+    try {
+      result = await this.queue.request(request)
+    } finally {
+      // Symmetric with the charge above across **every** way the queue can settle — resolved,
+      // `'failed'`, `'dropped'`, `'cancelled'`, and the already-disposed short circuit — and in a
+      // `finally` so a throw on the way out cannot strand it either. A path that returned without
+      // crediting the estimate back would leave `bytesReserved` permanently high and the session
+      // permanently swatch-only, which is this fix failing in the opposite direction: a stream that
+      // stops asking for reasons that are no longer true.
+      this.bytesReserved -= ART_CROP_ESTIMATED_BYTES
+    }
     this.inFlight.delete(key)
 
     if (result.ok) {

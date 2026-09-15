@@ -36,6 +36,7 @@
 
 import type { CameraRig } from '../../camera/rig'
 import { attachCameraRig } from '../../camera/attachRig'
+import { printingImageKey } from '../../data/images'
 import type { PlaneRecord } from '../../data/types'
 import type { SceneNavigation } from '../../navigation/scene'
 import { attachCardTier, type CardTierHandle, type PlaneCards, type PlanetLabelState } from '../cards/cardTier'
@@ -513,7 +514,10 @@ export class SceneHost {
   private worldCardOf(plane: WorldPlane, card: number): WorldCard | null {
     const record = this.worldCards.get(plane.starOffset + card)
     const printing = record?.p[0]
-    return printing ? { printingId: printing[0], imageTs: printing[3] } : null
+    // `printingImageKey`, not `printing[0]`/`printing[3]` by hand (DEC-777 N5): indices 0, 2 and 4
+    // are all `string`, so a slot swap here is invisible to `tsc` and would surface only as a 404.
+    // `data/images` owns that pair, and it is the same pair `printingImageUri` reads.
+    return printing ? printingImageKey(printing) : null
   }
 
   /**

@@ -42,12 +42,34 @@ export function pageUri(setCode: string, collectorNumber: string): string {
   return `${PAGE_ORIGIN}/card/${encodeURIComponent(setCode)}/${encodeURIComponent(collectorNumber)}`
 }
 
+/**
+ * The two slots of a {@link PrintingTuple} that address its image: the printing id, and the
+ * `imageTs` every image URI is cache-busted by.
+ *
+ * **This exists so those slot numbers are written once (DEC-777 N5).** `PrintingTuple` is
+ * `[id, setId, rarity, imageTs, collector, artist?]`, and **indices 0, 2 and 4 are all `string`** —
+ * so `printing[2]` (rarity) or `printing[4]` (collector number) where `printing[0]` was meant is a
+ * silent swap `tsc` cannot see, surfacing only as a 404 on a URL nothing asserts. Index 3 is the
+ * one that is `number`-typed, and therefore the one slot mistake the compiler does catch.
+ *
+ * Callers that want a URL should use {@link printingImageUri}. This is for the ones that have to
+ * carry the pair itself: the worlds art stream (§1.6) keys its queue on the printing id and builds
+ * the URL later, so it cannot take a finished string.
+ */
+export function printingImageKey(printing: PrintingTuple): {
+  readonly printingId: string
+  readonly imageTs: number
+} {
+  return { printingId: printing[0], imageTs: printing[3] }
+}
+
 export function printingImageUri(
   printing: PrintingTuple,
   size: ImageSize,
   face: CardFaceSide = 'front',
 ): string {
-  return imageUri(printing[0], printing[3], size, face)
+  const { printingId, imageTs } = printingImageKey(printing)
+  return imageUri(printingId, imageTs, size, face)
 }
 
 export function printingPageUri(printing: PrintingTuple, setCode: string): string {

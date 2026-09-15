@@ -308,19 +308,52 @@ function measureAt(
   tether: TetherPass,
   view: PerspectiveCamera,
   i: number,
-): { halfWidthPx: number; screen: [number, number]; viewDepth: number; radial: number } {
+): {
+  halfWidthPx: number
+  screen: [number, number]
+  viewDepth: number
+  radial: number
+  obliquity: number
+} {
   const array = positions(tether)
   const left = new Vector3(array[i * 6], array[i * 6 + 1], array[i * 6 + 2])
   const right = new Vector3(array[i * 6 + 3], array[i * 6 + 4], array[i * 6 + 5])
   const centre = left.clone().add(right).multiplyScalar(0.5)
   const [lx, ly] = pixelsOf(view, left)
   const [rx, ry] = pixelsOf(view, right)
+  const e = view.matrixWorld.elements
+  const cameraRight = new Vector3(e[0] ?? 1, e[1] ?? 0, e[2] ?? 0).normalize()
+  const cameraUp = new Vector3(e[4] ?? 0, e[5] ?? 1, e[6] ?? 0).normalize()
   const forward = new Vector3(0, 0, -1).applyQuaternion(view.quaternion)
+  const offset = centre.clone().sub(view.position)
+  const viewDepth = offset.dot(forward)
+  const side = right.clone().sub(left).normalize()
+  const sideForward = side.dot(forward)
   return {
     halfWidthPx: Math.hypot(rx - lx, ry - ly) / 2,
     screen: pixelsOf(view, centre),
-    viewDepth: centre.clone().sub(view.position).dot(forward),
+    viewDepth,
     radial: centre.distanceTo(view.position),
+    /**
+     * How far this sample's side vector leans out of the image plane: `|dπ(ŝ)| / (fovScale / d)`,
+     * which is exactly the factor by which the full projection differs from the `fovScale / depth`
+     * one-liner at this sample.
+     *
+     * **A coverage statistic, never the correctness one (DEC-781 R2-N2).** The row's claim stays
+     * `halfWidthPx === 2.1`, measured by projecting the written vertices through the camera's own
+     * matrices. This only answers "did the sweep reach the regime where the two formulas disagree
+     * at all" — and on both poses that shipped it is **exactly 1.0000 at every in-frame sample**,
+     * so the row read 2.1 under either formula and the one-liner's kill was riding the flare row.
+     * It is derived from the written vertices rather than from `ribbonise`'s internals, but it is
+     * the same arithmetic, which is exactly why it must not stand in for the assertion.
+     */
+    obliquity:
+      viewDepth <= 0
+        ? 1
+        : Math.hypot(
+            side.dot(cameraRight) - (offset.dot(cameraRight) / viewDepth) * sideForward,
+            side.dot(cameraUp) - (offset.dot(cameraUp) / viewDepth) * sideForward,
+          ),
   }
 }
 
@@ -333,14 +366,24 @@ describe('the ribbon holds a constant CSS width at every depth and everywhere in
     // `depth / cos θ`. The half-width then grows toward the frame edge while every sample still
     // divides out to 2.1 under the same substitution — which is why this row projects.
     const { tether } = pass()
-    // **Two poses, because one cannot carry both claims.** Broadside puts the span across the
-    // frame's whole width at a nearly constant depth (the off-axis half of the sweep); oblique runs
-    // it away from the eye and keeps it near the axis (the depth half). A row with only the second
-    // is the row that shipped, and it could not see F7.
+    // **Three poses, because no one of them carries all three claims.** Broadside puts the span
+    // across the frame's whole width at a nearly constant depth (the off-axis half of the sweep);
+    // oblique runs it away from the eye and keeps it near the axis (the depth half). A row with
+    // only the second is the row that shipped, and it could not see F7.
+    //
+    // The third is DEC-781 R2-N2, and it is what makes this row able to refute the **one-liner**
+    // rather than only the radial spelling. `fovScale / depth` is exact whenever the side vector
+    // lies in the image plane, and on the first two poses it does: `obliquity` is 1.0000 at every
+    // one of their 170 in-frame samples, so both formulas write the same vertices and this row read
+    // 2.1 under either. Killing the one-liner was left riding the flare row by accident. The
+    // diagonal pose tilts the span out of the image plane — the span off-axis in the direction
+    // *perpendicular* to its own screen run — and takes `obliquity` to 1.14, where the one-liner
+    // would write a 2.403 px ribbon.
     const rows: ReturnType<typeof measureAt>[] = []
     for (const [eye, at] of [
       [new Vector3(110, 40, 150), new Vector3(110, 0, 0)],
       [new Vector3(0, 40, 60), new Vector3(110, 0, 0)],
+      [new Vector3(30, 30, 40), new Vector3(150, -90, 0)],
     ] as const) {
       const view = camera(eye.clone(), at.clone())
       for (let frame = 0; frame < 30; frame += 1) tether.update(view, CSS_HEIGHT, frame / 60, 1 / 60)
@@ -366,6 +409,13 @@ describe('the ribbon holds a constant CSS width at every depth and everywhere in
     expect(Math.max(...depths) / Math.min(...depths)).toBeGreaterThan(1.5)
     const inflation = rows.map((row) => row.radial / row.viewDepth)
     expect(Math.max(...inflation), `worst pre-fix inflation swept`).toBeGreaterThan(1.2)
+    // And the same guard for the **one-liner** (DEC-781 R2-N2), stated as that defect's own size:
+    // `fovScale / depth` errs by exactly `obliquity`, so requiring the sweep to reach 1.10 says the
+    // poses include ones where the one-liner was at least 10% wide. Without this the third pose
+    // could be re-tuned away and the row would quietly stop refuting it, which is the state it was
+    // in before — no assertion fails when a sweep stops covering a regime it never named.
+    const obliquity = rows.map((row) => row.obliquity)
+    expect(Math.max(...obliquity), `worst one-liner error swept`).toBeGreaterThan(1.1)
 
     for (const row of rows) {
       expect(

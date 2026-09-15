@@ -37,7 +37,7 @@ import { attachWorlds, DEFAULT_TIER_ART_LAYERS } from '../src/scene/worlds/attac
 import { KEY_LIGHT_OFF_AXIS, keyLightDirection } from '../src/scene/worlds/keyLight'
 import { artPoolSize } from '../src/scene/worlds/artPool'
 import { PICK_LAYER } from '../src/scene/picking/idPicker'
-import { DEFAULT_BYTE_BUDGET } from '../src/scene/worlds/artStream'
+import { ART_CROP_ESTIMATED_BYTES, DEFAULT_BYTE_BUDGET } from '../src/scene/worlds/artStream'
 import { BELT_POINT_SIZE_PX } from '../src/scene/worlds/beltShaders'
 import { CROSSOVER_HIGH_PX } from '../src/scene/worlds/lod'
 import { isWorldPlane, worldPlanesOf } from '../src/scene/worlds/worldSource'
@@ -761,6 +761,10 @@ describe('§1.6 the stream report reaches the probe (DEC-778)', () => {
     expect(probe.stream).not.toBeNull()
     expect(probe.stream).toEqual({
       bytesFetched: 0,
+      // Zero because nothing has been *asked*, not because nothing has landed (DEC-780). This world
+      // has no `cardOf`, so no request ever issues and nothing is ever charged at issue time either
+      // — the all-zero report stays exactly as true of the wired-but-idle state as it was.
+      bytesReserved: 0,
       byteBudget: DEFAULT_BYTE_BUDGET,
       swatchOnly: false,
       requested: 0,
@@ -865,6 +869,99 @@ describe('§1.6 the stream report reaches the probe (DEC-778)', () => {
     expect(second.stream?.byteBudget).toBe(DEFAULT_BYTE_BUDGET)
     expect(second.stream?.swatchOnly).toBe(false)
     rig.worlds.dispose()
+  })
+
+  /**
+   * A queue that actually delivers a body (DEC-782 N3).
+   *
+   * Every row above this one uses `pendingQueue` or the failing queue, so until it existed **no
+   * row in either touched file resolved a fetch on the shipped `attachWorlds` path** — and
+   * `report()` could hardcode `resolved: 0` with both files staying green. The success path is also
+   * the only one that charges `bytesFetched` from a body that *worked*, which the spec asserts and
+   * nothing exercised through the probe.
+   */
+  function resolvingQueue(bytes: number): ImageQueue {
+    return {
+      request: () =>
+        Promise.resolve({
+          ok: true,
+          bytes,
+          // `ArtStream` uploads this and then closes it; the stub only has to survive both.
+          bitmap: { width: 128, height: 93, close: () => {} },
+        }),
+      cancel: () => {},
+      dispose: () => {},
+    } as unknown as ImageQueue
+  }
+
+  it('counts a body that arrived as `resolved`, and charges its bytes (DEC-782 N3)', async () => {
+    const BYTES = 96_159
+    const rig = build({
+      queue: resolvingQueue(BYTES),
+      cardOf: CARD_OF,
+      seams: { ...NO_SEAMS, layersRequested: 1 },
+    })
+    rig.worlds.setData(roster())
+    const first = readAt(rig)
+    expect(first.stream?.requested).toBe(1)
+    // Still zero at this instant, which is the point: the request has issued and nothing has landed.
+    expect(first.stream?.resolved).toBe(0)
+    expect(first.stream?.bytesFetched).toBe(0)
+    // ...and DEC-780's charge is already standing against the budget, before any byte exists.
+    expect(first.stream?.bytesReserved).toBe(ART_CROP_ESTIMATED_BYTES)
+
+    // Two microtasks: the queue's own settle, then the stream's continuation past its `await`.
+    await Promise.resolve()
+    await Promise.resolve()
+    const second = readAt(rig)
+    expect(second.stream?.resolved).toBe(1)
+    expect(second.stream?.bytesFetched).toBe(BYTES)
+    // Reconciled: the estimate is gone and the real body replaced it. Asserting the pair is what
+    // separates "charged at issue and released" from "never charged at all" — both read
+    // `bytesReserved === 0` here, and only this one also moved `bytesFetched`.
+    expect(second.stream?.bytesReserved).toBe(0)
+    expect(second.stream?.failed).toBe(0)
+    expect(second.stream?.declinedFailedBefore).toBe(0)
+    rig.worlds.dispose()
+  })
+
+  it('binds the byte budget mid-frame on the SHIPPED path, with a non-binding control (DEC-780)', () => {
+    // The unit rows in `worlds-art-fetch.test.ts` prove this against `ArtStream` directly. This one
+    // proves the composition has it: `attachWorlds` builds the stream, the selection pass issues
+    // every want for the pose in ONE tick, and the budget has to refuse part-way through that tick.
+    // A budget consulted on landed bytes cannot — nothing has landed inside a single tick.
+    const ADMITS = 4
+    const bound = build({
+      queue: pendingQueue(),
+      cardOf: CARD_OF,
+      byteBudget: ART_CROP_ESTIMATED_BYTES * ADMITS,
+      // Far more layers than the budget admits, so a refusal here cannot be exhaustion in disguise.
+      seams: { ...NO_SEAMS, layersRequested: 256 },
+    })
+    bound.worlds.setData(roster())
+    const capped = readAt(bound)
+    expect(capped.stream?.requested).toBe(ADMITS)
+    expect(capped.stream?.declinedBudget).toBeGreaterThan(0)
+    expect(capped.stream?.declinedExhausted).toBe(0)
+    expect(capped.stream?.swatchOnly).toBe(true)
+    // Zero bytes have landed — the whole of the DEC-780 defect in one assertion.
+    expect(capped.stream?.bytesFetched).toBe(0)
+    expect(capped.stream?.bytesReserved).toBe(ART_CROP_ESTIMATED_BYTES * ADMITS)
+    bound.worlds.dispose()
+
+    // The control: same roster, same pose, same pool, same tick — only the budget moves. Without it
+    // a stream that had simply capped outstanding requests at four would pass the row above.
+    const slack = build({
+      queue: pendingQueue(),
+      cardOf: CARD_OF,
+      seams: { ...NO_SEAMS, layersRequested: 256 },
+    })
+    slack.worlds.setData(roster())
+    const free = readAt(slack)
+    expect(free.stream?.requested).toBeGreaterThan(ADMITS)
+    expect(free.stream?.declinedBudget).toBe(0)
+    expect(free.stream?.swatchOnly).toBe(false)
+    slack.worlds.dispose()
   })
 })
 
