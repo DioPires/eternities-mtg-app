@@ -66,7 +66,8 @@ export interface SceneDataState {
   /**
    * `swatches.bin`, on a **worlds** dataset only (worlds spec §2.2).
    *
-   * `null` on any dataset that did not publish the file — a v2 one, or either fixture — and `null`
+   * `null` on any dataset that did not publish the file — a v2 one, the fixtures until DEC-796 gave
+   * them a synthetic swatch column of their own — and `null`
    * on a dataset that published it and whose fetch failed, which is reported rather than passed
    * over silently. The two cases are told apart before the fetch, by the manifest's `files` list
    * and `planes.json`'s `rowCells` together (see the gate below, and {@link publishesSwatches});
@@ -236,11 +237,14 @@ export function useSceneData(): SceneDataState {
        *
        * - **Did the dataset publish the file?** {@link publishesSwatches}, off the manifest's own
        *   `files` list. This half is DEC-794's fix. The gate used to be the `rowCells` test alone,
-       *   on the assumption that a roster carrying §2.4 geometry carries §2.2 colour too; both
-       *   committed fixtures break that assumption, and on those builds — which is what CI smokes
-       *   and what a local fixture run serves — this gate did the precise thing it was written to
-       *   prevent, on every single page load. See {@link publishesSwatches} for why the answer has
-       *   to come from the manifest and not from the network.
+       *   on the assumption that a roster carrying §2.4 geometry carries §2.2 colour too — and both
+       *   committed fixtures broke that assumption, so on the builds CI smokes and a local fixture
+       *   run serves, this gate did the precise thing it was written to prevent, on every single
+       *   page load. DEC-796 has since given the fixtures a swatch column, so the assumption happens
+       *   to hold on every dataset checked out today; the half stays because what makes it right is
+       *   that it asks the question, not that some dataset currently answers it differently. See
+       *   {@link publishesSwatches} for why the answer has to come from the manifest and not from
+       *   the network.
        * - **Would anything consume it?** `rowCells` on at least one plane (§2.4). Kept, unchanged:
        *   the swatches are the worlds surface's colour and nothing else reads them, so on a v2
        *   dataset — which publishes no `swatches.bin` either — there is nothing to paint.

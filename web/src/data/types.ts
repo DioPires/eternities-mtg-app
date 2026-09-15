@@ -77,12 +77,18 @@ export const SWATCHES_FILE = 'swatches.bin'
  *
  * The obvious test, and the one this replaces at its call site, is `rowCells`: §2.4 makes that the
  * field that says "worlds", `swatches.bin` is a worlds artefact, so the one was taken to imply the
- * other. **It does not.** The two halves come apart on both committed fixtures — `fixture-scale`
- * carries `rowCells` on 80 of its 88 planes and `fixture-small` on 3 of its 5, and neither ships a
- * `swatches.bin` — and that is by design, not an oversight to be corrected: a swatch is a per-card
- * statistic computed from real Scryfall art, and a synthetic fixture has no printings to compute
- * one from (`pipeline/src/eternities/pipeline/assemble.py`, where `swatches` is `| None` for
- * exactly this reason). Of the four datasets in `web/public/data`, only production v3 has both.
+ * other. **It does not** — they are independent facts about a dataset, and asking the one actually
+ * in question is what keeps this correct as the corpus changes underneath it.
+ *
+ * It has already changed once. When DEC-794 replaced the `rowCells` test, both committed fixtures
+ * carried §2.4 geometry and shipped no `swatches.bin`, so they were the datasets that separated the
+ * two halves. DEC-796 then gave them a synthetic swatch column — invented per card from its own id,
+ * a fixture having no Scryfall art to take the real statistic from — because a dataset without the
+ * file can never compose a worlds roster, which left CI's `ETERNITIES_DATASET=scale` build skipping
+ * every worlds surface (DEC-788, DEC-793). So all three v3 datasets now carry both halves and the
+ * v2 one carries neither: **no checked-out dataset separates the two predicates any more.**
+ * `web/test/swatch-gate.test.ts` rebuilds that separation from the real manifests rather than
+ * relying on one being present, which is what stops this from quietly becoming `rowCells` again.
  *
  * **Do not answer this question by fetching the file and reading a status code.** `vite preview`
  * serves a missing `.bin` as **HTTP 200 with `index.html`** — the SPA fallback — so such a check

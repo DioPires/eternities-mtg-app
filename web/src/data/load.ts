@@ -191,9 +191,10 @@ export async function loadSets(options: RetryOptions = {}): Promise<SetsSidecar>
  * its card's art*, so a world painted from anything else is a picture that reads as the product
  * working. The caller decides whether the dataset has a swatch file to ask for at all —
  * `publishesSwatches` in `data/types.ts`, off the manifest's own `files` list, and **not**
- * `rowCells`, which both committed fixtures carry while publishing no swatches (DEC-794). Once it
- * has decided, a missing file is an error, not a degraded mode. `decodeSwatches` throws on kind and
- * on length for the same reason.
+ * `rowCells`, which says only that the dataset has §2.4 geometry and not that it published this
+ * file (DEC-794; the two were last separated by the fixtures, until DEC-796 gave them swatches of
+ * their own). Once it has decided, a missing file is an error, not a degraded mode. `decodeSwatches`
+ * throws on kind and on length for the same reason.
  *
  * It lands on the before-intro row beside `stars.bin` rather than in the `search.json` + `sets.bin`
  * pair, which §2.2 makes normative — the pair is at 95% of its reported target and this file is
