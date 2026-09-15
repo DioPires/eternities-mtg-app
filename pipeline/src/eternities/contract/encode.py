@@ -184,9 +184,14 @@ def encode_artefacts(
 
     artefacts.append(EncodedArtefact("stars.bin", encode_stars(dataset.stars)))
 
-    # §2.2: its own file, fetched with `stars.bin`, and only when there is one. A dataset built
-    # without a swatch cache — every fixture — simply has no `swatches.bin`, which is a missing
-    # file the loader can see rather than a file of zeroes it cannot.
+    # §2.2: its own file, fetched with `stars.bin`, and only when there is one. A dataset with no
+    # swatch column simply has no `swatches.bin`, which is a missing file the loader can see rather
+    # than a file of zeroes it cannot.
+    #
+    # That case is now a v2 dataset rather than a fixture: since DEC-796 both fixtures invent a
+    # swatch per card from its own id, because a dataset without the file can never compose a
+    # worlds roster and so silently drops every worlds surface out of CI (DEC-793). The branch
+    # stays because the column is still what decides, and the committed v2 dataset has none.
     if dataset.swatches:
         artefacts.append(EncodedArtefact("swatches.bin", encode_swatches(dataset.swatches)))
 

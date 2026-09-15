@@ -2,7 +2,7 @@
   "contractVersion": 3,
   "pipelineVersion": "0.5.0",
   "dataset": "fixture-small",
-  "dataHash": "2e6f120ee85a5b23",
+  "dataHash": "7588f66591d5900f",
   "asOf": "2026-09-04",
   "generatedAt": "2026-09-04T00:00:00Z",
   "scryfallBulkUpdatedAt": null,
@@ -69,6 +69,11 @@
       "path": "stars.bin",
       "bytes": 6016,
       "sha256": "968612b1ee79ce223216abd20d273f12998535bf07c1a5ea73aec184c018dcc1"
+    },
+    {
+      "path": "swatches.bin",
+      "bytes": 4016,
+      "sha256": "67f2f76ec80debc9213f9f8c32d4e29255f1969907ea510295db5217c84a2ad3"
     }
   ]
 }

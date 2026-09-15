@@ -479,10 +479,11 @@ test('the art pool steps with the ladder, at the size the driver grants (§1.12)
 }) => {
   test.skip(
     !composesWorldsRoster(),
-    'the art pool is a worlds-dataset object and this build cannot compose a roster — it carries ' +
-      'no swatches.bin, which `worldData` requires. CI builds ETERNITIES_DATASET=scale, a fixture ' +
-      'that has §2.4 rowCells but no swatches (DEC-788). Build with ETERNITIES_DATASET=worlds to ' +
-      'run this.',
+    'the art pool is a worlds-dataset object and this build cannot compose a roster — it is ' +
+      'missing §2.4 rowCells or swatches.bin, both of which `worldData` requires (DEC-788). Since ' +
+      'DEC-796 the fixtures carry a synthetic swatches.bin, so CI\'s ETERNITIES_DATASET=scale ' +
+      'build composes and reaches this test; a v2 dataset still cannot. Build with ' +
+      'ETERNITIES_DATASET=scale or =worlds to run this.',
   )
 
   /**
