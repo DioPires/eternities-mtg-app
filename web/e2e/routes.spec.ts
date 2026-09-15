@@ -157,8 +157,8 @@ test('the dataset is fetched once, not once per consumer', async ({ page }) => {
  * `swatches.bin` is asked for **if and only if** the dataset published one (§2.2, DEC-794).
  *
  * This is the call site of `useSceneData`'s swatch gate, and it is the half of DEC-788 that lives
- * in the product. The gate used to be the `rowCells` test alone; both committed fixtures carry
- * `rowCells` and publish no `swatches.bin`, so on a fixture build — which is what CI smokes and
+ * in the product. The gate used to be the `rowCells` test alone; both committed fixtures carried
+ * `rowCells` and published no `swatches.bin`, so on a fixture build — which is what CI smokes and
  * what a local fixture run serves — every page load fetched a file that cannot exist and ended at
  * `sceneErrors.report('swatches.bin', …)`. Measured on main `4daa6ab`, `ETERNITIES_DATASET=scale`:
  * one request, answered **HTTP 200 `text/html`, 1,358 bytes** by the preview server's SPA fallback,
@@ -169,10 +169,28 @@ test('the dataset is fetched once, not once per consumer', async ({ page }) => {
  * is a 200 and the loader reports through the toast queue rather than the console. So the
  * assertions are the request count and the toast, directly.
  *
- * Both directions, from one run: the expectation is derived from the built dataset's own manifest,
- * so this is the *positive* control on a worlds build (exactly one request, and no complaint about
- * it, which together mean the bytes decoded) and the *negative* one on a fixture build (none). A
- * check that only ran on one of the two would be the original defect's hiding place.
+ * **One direction, on every build CI produces — and DEC-796 is what took the other away**
+ * (DEC-805 F1, DEC-807). The expectation is derived from the built dataset's own manifest, so the
+ * assertion reads whichever way that dataset points. What decides whether it can *fail* is a
+ * different question: the defect above is a gate answering from `rowCells` instead of from the
+ * manifest, and only a dataset carrying §2.4 geometry with **no** `swatches.bin` makes those two
+ * answers differ. Both fixtures were that dataset. DEC-796 gave them a synthetic swatch column so
+ * CI's `ETERNITIES_DATASET=scale` build can compose a worlds roster at all (DEC-788, DEC-793), and
+ * no checked-out dataset is that shape any more. Measured, one harness against both trees: restore
+ * the `rowCells`-only gate and this test **fails on main `a697a93`** (1 failed / 8 passed) and
+ * **passes 9/9** here.
+ *
+ * So what this runs on `scale`, on `small` and on a worlds build is the **fetched** direction:
+ * exactly one request, and no complaint about it, which together mean the bytes decoded. The
+ * unfetched direction is still *reached* — an unset `ETERNITIES_DATASET` builds v2 `production`,
+ * which publishes no swatches — but it no longer *discriminates*, because that dataset carries no
+ * `rowCells` either, so the old gate declines the fetch too, for the wrong reason. Do not read the
+ * `toHaveLength(0)` branch as a live negative control.
+ *
+ * The falsifier for the gate's conjunction lives in `web/test/swatch-gate.test.ts` instead, against
+ * the named `shouldLoadSwatches` (DEC-807): it strikes each half off a real manifest in turn, which
+ * is exactly the separation the corpus can no longer supply. What stays here is the half no unit
+ * test can reach — that the product itself issues, or does not issue, the request.
  */
 test('swatches.bin is fetched if and only if the dataset published one (§2.2)', async ({ page }) => {
   const asked: string[] = []
