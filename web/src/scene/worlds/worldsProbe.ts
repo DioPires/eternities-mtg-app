@@ -154,6 +154,16 @@ export interface WorldsProbe {
   /**
    * §1.6's stream, as `ArtStream.report()` publishes it — or `null` on a build with no stream.
    *
+   * > **This is the session-wide stream, shared by every world, and its counters are cumulative
+   * > (DEC-782 N1).** Unlike `cells`, `pool.resident` or `rect`, nothing here is scoped to
+   * > `planeSlug`: one `ArtStream` serves the whole multiverse, so a payload read at world *N* of a
+   * > tour reports what *every* world before it asked for. Measured on a 45-world tour: `requested`
+   * > saturates at **224 by the third stop**, and at `azgol` — a two-cell world — the payload still
+   * > reports 224 requests, **none of them azgol's**, with a stop-to-stop delta of zero. Sibling
+   * > `pool.evictions` says the same of itself; this field did not, which is why a reader could take
+   * > a per-world reading off it without noticing. **Attribute a count to a world only by
+   * > differencing two reads**, and treat any single read as a session total.
+   *
    * > **Normative — the gate reads this BEFORE it reads W4 (§1.6, DEC-778).** §1.6 already says so
    * > in as many words ("the probe reports `swatchOnly` so the gate can read it before it reads W4
    * > — a session that went swatch-only part-way has a legitimate reason for a low art count"), and

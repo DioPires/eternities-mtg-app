@@ -14,11 +14,10 @@
 
 import { Matrix4, Vector3 } from 'three'
 
-import type { ArtPoolReport } from './artPool'
-import type { ArtStreamReport } from './artStream'
-import type { ThresholdReport } from './adaptiveThreshold'
+// `ArtPoolReport`, `ArtStreamReport`, `ThresholdReport` and `WorldsSeams` were imported here for
+// the dead `ProbePayload` interface below and went with it (DEC-782 N2). `worldsProbe.ts` imports
+// them for the live shape.
 import type { Subdivision } from './cellGeometry'
-import type { WorldsSeams } from './seams'
 
 /** §1.4's ambient floor: no cell is ever fully black, so the night side still reads as surface. */
 export const SHADE_AMBIENT = 0.1
@@ -74,22 +73,14 @@ export interface ProbeCell {
   readonly showingArt: boolean
 }
 
-/** What `?probe=` publishes each frame. */
-export interface ProbePayload {
-  readonly cells: readonly ProbeCell[]
-  readonly pool: ArtPoolReport
-  readonly threshold: ThresholdReport
-  readonly stream: ArtStreamReport
-  /**
-   * The seam read-backs, so the gate can check each control actually engaged (§1.6, DEC-752).
-   *
-   * Without them a seam that silently fails to parse its own query parameter runs the *unmodified*
-   * policy, its criterion passes, and the matrix records a passing control.
-   */
-  readonly seams: WorldsSeams
-  /** The clamped pool size the renderer actually allocated — what §1.12's ladder asserts against. */
-  readonly layersAllocated: number
-}
+// `ProbePayload` was declared here and is deliberately gone (DEC-782 N2). Nothing referenced it —
+// `WorldsProbe` in `worldsProbe.ts` is the live shape and the only one the served payload is built
+// from — and while it sat here unread it declared `stream: ArtStreamReport` **non-nullable**, which
+// is exactly the shape DEC-778 made normative against: `null` is a world composed with no
+// `ArtStream` at all, and an all-zero report is a stream that exists and has been asked nothing.
+// A second, dead declaration of the payload, in the file whose header calls itself the normative
+// renderer surface, is worse than none: it is where a reader goes to check the contract, and it
+// disagreed with the contract.
 
 /**
  * The unit-sphere position of a point on a cell's parameter grid.

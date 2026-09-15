@@ -34,7 +34,7 @@ import {
   worldRadius,
 } from '../src/scene/worlds/surfaceLaw'
 import { cellScreenRect } from '../src/scene/worlds/probePayload'
-import { DEFAULT_BYTE_BUDGET } from '../src/scene/worlds/artStream'
+import { ART_CROP_ESTIMATED_BYTES, DEFAULT_BYTE_BUDGET } from '../src/scene/worlds/artStream'
 import type { ArtStreamReport } from '../src/scene/worlds/artStream'
 import { subdivisionFor } from '../src/scene/worlds/cellGeometry'
 import { HueClass } from '../src/data/types'
@@ -214,6 +214,7 @@ function f16(value: number): number {
 function idleStream(): ArtStreamReport {
   return {
     bytesFetched: 0,
+    bytesReserved: 0,
     byteBudget: DEFAULT_BYTE_BUDGET,
     swatchOnly: false,
     requested: 0,
@@ -517,13 +518,20 @@ describe('§3.1 the served worlds payload', () => {
   })
 
   it('publishes §1.6 stream report, every field, distinctly (DEC-778)', () => {
-    // Nine distinct values, none of them equal to another and none equal to a plausible default.
+    // Ten distinct values, none of them equal to another and none equal to a plausible default.
     // A pass-through that crossed two fields — `resolved` for `failed`, `declinedBudget` for
     // `declinedExhausted` — is invisible against a report whose counters share values, and the
     // crossed pair the gate would most likely hit is exactly the declined triple, whose whole
     // reason for being three numbers is that W4's control needs the causes apart.
+    //
+    // `bytesReserved` (DEC-780) is the tenth, and it is the one most at risk of being crossed with
+    // its neighbour: both are byte counts, both are large, and a pass-through that published
+    // `bytesFetched` for both would look entirely plausible in a payload dump. Three outstanding
+    // requests at `ART_CROP_ESTIMATED_BYTES` apiece, so the value is also arithmetically unlike the
+    // landed total rather than merely a different number.
     const stream: ArtStreamReport = {
       bytesFetched: 93_012_345,
+      bytesReserved: 3 * ART_CROP_ESTIMATED_BYTES,
       byteBudget: 67_108_864,
       swatchOnly: true,
       requested: 733,
@@ -540,6 +548,7 @@ describe('§3.1 the served worlds payload', () => {
     // the gate side — which compares false against every floor and scores the frame RED.
     expect(probe.stream?.swatchOnly).toBe(true)
     expect(probe.stream?.bytesFetched).toBe(93_012_345)
+    expect(probe.stream?.bytesReserved).toBe(276_480)
     expect(probe.stream?.byteBudget).toBe(67_108_864)
     expect(probe.stream?.declinedExhausted).toBe(57)
     expect(probe.stream?.declinedBudget).toBe(4_209)

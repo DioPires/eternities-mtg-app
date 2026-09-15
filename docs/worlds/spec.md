@@ -735,6 +735,30 @@ with a 30-frame grace: a layer wanted this frame is never evicted.
 > to decode has been paid for, and a budget that charged only successes would under-count exactly
 > the traffic it exists to bound.
 >
+> **Normative — the budget is charged when a request *issues*, and reconciled when it settles
+> (DEC-780).** Charging `Blob.size` on completion and comparing the running total is the obvious
+> reading, it is what shipped, and it **cannot bind on this workload**: the selection pass issues
+> every want for a pose in one frame, so all 967 requests test the budget at `bytesFetched === 0`
+> and all 967 pass; later frames return early on a resident or in-flight key and never re-consult
+> it. Measured at §3.1's pose, that spent **88.7 MiB against a 64 MiB budget**. An issuing request
+> therefore reserves an estimated body size up front and releases that estimate for the real
+> `Blob.size` when the queue settles it — on *every* settlement, `dropped` and `cancelled`
+> included, or a stream goes permanently swatch-only on bytes it never spent. `swatchOnly` is the
+> sum of landed **and outstanding** bytes.
+>
+> > **What binds is a request count, and the overshoot is the estimate's error.** `byteBudget /
+> > estimate` bodies are admitted — 729 at today's 64 MiB and 90 KiB — and the session spends what
+> > those 729 weigh. Measured, one harness across both trees: **729 responses / 70.2 MiB, +9.7%**
+> > against **967 / 88.7 MiB, +38.6%**. The admitted set is a nearest-first *prefix*, so its
+> > 100,996-byte mean runs ~5% above the roster's 96,159-byte population mean; predicting the
+> > overshoot from the population mean under-states it.
+>
+> > **Do not gate on `declinedBudget > 0`.** The unfixed stream declines too — 23,715 times in a
+> > 32 s run — but only *after* the 88.7 MiB has landed, because the running total is over budget
+> > by then. Both trees read "declines happen", so the signal separates nothing. What separates
+> > them is the bytes that crossed the network. This is §3.1's W4 measure being carried by the
+> > wrong signal, arising in the instrument rather than the renderer.
+>
 > **Normative — degrading is not tearing down.** Over budget the stream stops *asking*. Layers
 > already resident keep drawing their art and are not evicted; §1.4's shading path degrades to the
 > swatch only for cells that never got one. The probe reports `swatchOnly` so the gate can read it
@@ -1491,6 +1515,9 @@ scale — which is the thing T7 said was missing.
 > (DEC-778).** §1.6 already says the probe reports `swatchOnly` "so the gate can read it before it
 > reads W4"; until DEC-778 `ArtStreamReport` was computed and never published, so the sentence named
 > a field no reader could reach. The published object is the report verbatim — `bytesFetched`,
+> `bytesReserved` (DEC-780: bytes committed to requests that have not settled, so a reader can see
+> why `swatchOnly` can be true while `bytesFetched` is still under `byteBudget` — the difference is
+> in flight; **not** monotonic and **not** a subset of `bytesFetched`),
 > `byteBudget`, `swatchOnly`, `requested`, `resolved`, `failed`, and the three causes
 > `declinedExhausted` / `declinedBudget` / `declinedFailedBefore`, which stay three numbers because
 > W4's control has to tell them apart. Without it a budget-declined session and a threshold admitting

@@ -427,6 +427,24 @@ describe('§1.6s art stream, asked by the shipped composition (DEC-772)', () => 
     expect(done(), what).toBe(true)
   }
 
+  /**
+   * Spin a fixed number of turns and assert nothing about them — for rows whose subject is an
+   * **absence** (DEC-777 N4).
+   *
+   * `settleUntil` cannot express that: its loop exits the moment its predicate holds, so
+   * `settleUntil(() => true, ...)` returns without awaiting a single turn and a row that used it to
+   * "let the fetches happen" before asserting none did was asserting against zero elapsed time. The
+   * absence was guaranteed by the harness, not by the code. This gives the code real turns to fail
+   * in, so a fetch that *would* happen has somewhere to show up.
+   */
+  async function settleTurns(turns = 20): Promise<void> {
+    for (let turn = 0; turn < turns; turn += 1) {
+      await act(async () => {
+        await new Promise((wake) => setTimeout(wake, 0))
+      })
+    }
+  }
+
   it('asks Scryfall for the art of the cells it admits, through the shipped path', async () => {
     mount(scene)
     const probe = window.__eternitiesProbe!
@@ -470,8 +488,39 @@ describe('§1.6s art stream, asked by the shipped composition (DEC-772)', () => 
     for (const id of requested) {
       expect(wanted.has(id), `${id} is not printing 0 of any admitted cell's card`).toBe(true)
     }
+    // **A floor, not just "more than zero" (DEC-777 N2).** `> 0` plus one-directional containment
+    // detects the wiring being *absent* — DEC-772's exact shape — and nothing else: a
+    // `cell % 8 === 0` regression drops 87.5% of the requests and both assertions above stay green.
+    //
+    // The floor cannot be tied to `artRequests`, which is what reached the *network*: the queue's
+    // six-way concurrency bounds that at this instant, so it reads a dozen against 158 admitted
+    // cells and any honest floor on it would be vacuous. The stream's own `requested` counts every
+    // `request()` that issued, and DEC-778 published it, so it is readable from here now.
+    //
+    // What binds it is the pool, not the admitted set: 64 layers against far more admitted cells,
+    // so the stream asks for exactly `layers` and records the rest as `declinedExhausted`. That
+    // equality is stronger than a fraction — it says the stream asked for every layer it could get.
+    const stream = payload.stream!
+    expect(stream.requested).toBe(payload.pool.layers)
+    expect(stream.declinedExhausted).toBeGreaterThan(0)
+    expect(stream.declinedFailedBefore).toBe(0)
+    // Not the budget: 64 bodies is far under 64 MiB, and a row where the budget bound here would be
+    // scoring §1.6's byte rule where it means to score the wiring (DEC-780).
+    expect(stream.declinedBudget).toBe(0)
+
     // §1.6's de-duplication: one request per key, however many frames want it.
-    expect(new Set(requested).size).toBe(requested.length)
+    //
+    // **That claim needs a second frame, and until DEC-777 N3 there was only ever one.** Within a
+    // single frame every admitted cell already has a distinct key, so the assertion held by
+    // construction and deleting `if (this.inFlight.has(key)) return layer` from `artStream.ts` left
+    // this row green. Ticking again, with the same cells admitted and their requests still in
+    // flight, is the state that guard exists for.
+    poseAtWorld(scene, 'dominaria', 2.2)
+    const afterSecondFrame = artRequests.map(printingIdOf)
+    expect(new Set(afterSecondFrame).size).toBe(afterSecondFrame.length)
+    // And the second frame must not have re-asked: `requested` counts keys, so a per-frame re-ask
+    // inflates it past the pool that bounds it.
+    expect(probe.worlds()!.stream!.requested).toBe(payload.pool.layers)
 
     // **The assertion above has to be able to fail.** A card with a single printing satisfies
     // "index 0" under every index rule, so if every requested card were single-printing the p[0]
@@ -491,7 +540,9 @@ describe('§1.6s art stream, asked by the shipped composition (DEC-772)', () => 
     // at this point in the session, which is why it takes both rows to tell them apart.
     mount(scene)
     poseAtWorld(scene, 'dominaria', 2.2)
-    await settleUntil(() => true, 'the tick must run')
+    // Real turns, not `settleUntil(() => true)` — see `settleTurns` (DEC-777 N4). This row's claim
+    // is that nothing is asked for, and a wait that waits for nothing cannot support it.
+    await settleTurns()
 
     const payload = window.__eternitiesProbe!.worlds()!
     expect(payload.cells.some((cell) => cell.frontFacing && cell.onScreen && cell.wantsArt)).toBe(
