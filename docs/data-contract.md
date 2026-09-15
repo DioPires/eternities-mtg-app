@@ -316,6 +316,25 @@ Four things a reviewer should read off it rather than take on trust.
 4. **The largest shard grew 21.1 KB** (6.2%), which is the `artist` field arriving inline on
    16 042 printings of `dominaria.0.json`. Against a 1.5 MB target that is a 24% row.
 
+### 8.2 Basis of record: local brotli against served bytes
+
+Every number in §8 and §8.1 is local brotli q11. Production does not serve those bytes. The policy
+below was settled by DEC-766 on DEC-741's evidence (comment `6e9487de`) and is repeated in the
+header of `web/scripts/check-budget.mjs`, so that it is read rather than re-litigated.
+
+- **The blocking gate stays on local brotli q11.** It is hermetic — no deployment and no
+  credential — so it runs on every PR. That is why it is the basis, and not the served bytes.
+- **The edge does not compress at q11.** On the search pair, local reads ~669 KB where production
+  serves **724.2 KB** on the same dataset hash: local under-reported by 55.2 KB. This is one
+  reading on one pair, recorded as an **observed divergence**. It is deliberately not applied to
+  the gate as an offset or a correction — the gate keeps reporting what it measures.
+- **Served bytes are the truth-instrument, and they are production-only.** The owner declined a
+  Vercel Protection Bypass for Automation token, so there is no per-PR preview measurement. Served
+  bytes are re-measured against production after merge, whenever a wave touches a budgeted payload.
+- **The search-pair overage is deferred.** 724.2 KB served against the 700 KB target is documented
+  and non-blocking. Raise-the-target versus diet-the-payload is ruled when a wave next touches the
+  search pair; re-measure served bytes at that point.
+
 ## 9. Plane detail — `planes/<slug>.<n>.json`
 
 **Amendment A1:** *every* plane shards at `shardSize` = 2000 cards per file, not only the Blind Eternities. The filename always carries the shard number, including for a one-shard plane, so the loader has one code path. A card's shard is `floor(localIndex / 2000)` and needs no lookup table (PRD 8.3), where `localIndex = starIndex - plane.starOffset`.
@@ -411,7 +430,7 @@ The card's plane is not repeated in the shard; the URL's plane slug and the `pla
 ## 10. Enforcement
 
 - `contract/test-vectors/v2/` holds a hand-checkable dataset: `vector.json` (the inputs and the expected derived URIs) plus the encoded `stars.bin`, `sets.bin`, `manifest.json`, `planes.json`, `search.json`, `planes/*.json`. Python re-encodes it and asserts byte equality; TypeScript decodes it and asserts the values round-trip. Both run in CI. The directory is named for the `contractVersion` it speaks; the v1 vector it replaced is in git history at `888f9f4`.
-- `web/scripts/check-budget.mjs` measures **brotli-encoded** size of the built shell and of the data directory's files, and checks them against the PRD 7.2 table plus the A1 row. Ceilings fail the build; targets are reported, and a row at or above 90% of its target is warned about so the run before the miss is visible.
+- `web/scripts/check-budget.mjs` measures **brotli-encoded** size of the built shell and of the data directory's files, and checks them against the PRD 7.2 table plus the A1 row. Ceilings fail the build; targets are reported, and a row at or above 90% of its target is warned about so the run before the miss is visible. The basis of that measure — local brotli q11, and how it relates to what production actually serves — is §8.2.
 - Adding a field is a minor change and bumps `pipelineVersion`. Changing a byte layout, a section id, an enum value, or a filename bumps `contractVersion` and requires a review by the Frontend Engineer and the Interactive Tools Engineer.
 
 ## 11. Change log
