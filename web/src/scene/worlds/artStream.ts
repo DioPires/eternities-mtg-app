@@ -203,6 +203,17 @@ export interface ArtStreamReport {
   /** Requests handed to the queue. Not the same as cells wanting art — see {@link ArtStream.request}. */
   readonly requested: number
   readonly resolved: number
+  /**
+   * Requests that will never produce a picture this session, and whose keys the pool refuses from
+   * here on: a body that arrived and would not decode, and — DEC-791 — a printing id whose URL
+   * could not be built at all. Both are "this key has no art", which is the only distinction
+   * §1.6's no-retry rule draws.
+   *
+   * > Not to be confused with {@link ArtStreamReport.declinedFailedBefore}, which counts the
+   * > *later* wants these refuse. `resolved + failed` is what became of the
+   * > {@link ArtStreamReport.requested} that have settled; the `declined*` three are wants that
+   * > never became requests at all.
+   */
   readonly failed: number
   /**
    * Wants the stream refused to ask for, by cause. A pool with nothing to give is exhaustion, which
@@ -362,6 +373,11 @@ export class ArtStream {
     // inflate `requested` into a per-frame count and make the probe's fetch total meaningless.
     if (this.inFlight.has(key)) return layer
     this.requested += 1
+    // Discarded deliberately: the caller is a selection pass that has no use for a promise, and
+    // `fetch` settles every failure it can name into the pool and the counters rather than out
+    // through here (DEC-791). What is left is the one rejection that must **not** be swallowed —
+    // the caller's own `upload` throwing, which is a GL fault in code this class does not own and
+    // wants in the console, not absorbed into `failed` as if a fetch had gone wrong.
     void this.fetch(key, printingId, imageTs, priority)
     return layer
   }
@@ -379,36 +395,63 @@ export class ArtStream {
   ): Promise<void> {
     const queueKey = `worlds-art:${printingId}`
     this.inFlight.set(key, queueKey)
-    const request: ImageRequest = {
-      key: queueKey,
-      url: imageUri(printingId, imageTs, this.imageSize),
-      priority,
-      // The letterboxed size, not the layer size — see `letterbox`'s header for why handing
-      // `createImageBitmap` the full 128x96 bakes a 2.7% horizontal stretch in at decode time.
-      resize: { width: this.box.width, height: this.box.height },
-    }
-    // Charged before the await, so it is committed in the same synchronous turn the caller's
-    // `request()` ran in. That is what lets the *next* call in the same frame see it — the whole of
-    // DEC-780 is that a frame issues all its wants before any of them can land.
-    //
-    // Below the literal, not above it (DEC-786 N1): `imageUri` throws on a printing id shorter than
-    // two characters, and that throw leaves `fetch` before the `try` below — so a charge taken
-    // first would be stranded by the one exception on this path that the `finally` cannot catch.
-    // Unreachable on shipped data (36-char Scryfall ids), but the ordering is free and the failure
-    // it prevents is permanent: 90 KiB held against the budget for the life of the session, with no
-    // fetch to reconcile it. Nothing else here can throw, so this stays the whole of the fix.
-    this.bytesReserved += ART_CROP_ESTIMATED_BYTES
     let result: ImageResult
+    // The outer boundary means "this key cannot be fetched at all", and it exists because building
+    // the URL can say so: `imageUri` throws on a printing id shorter than two characters
+    // (`data/images.ts`). DEC-786 N1 already moved the charge below the literal so that throw could
+    // not strand 90 KiB against the budget; **the throw still left this method before anything
+    // else, and three more things were stranded by it** (DEC-791) — the `inFlight` slot entered on
+    // the line above, the pool's RESERVED layer the caller claimed before calling, and the promise
+    // itself, which `request` discards (`void this.fetch(...)`) and which therefore escaped as an
+    // unhandled rejection. Inside the `try`, all four take the one failure path below.
+    //
+    // Unreachable on shipped data — Scryfall printing ids are 36-char UUIDs — and that is the point
+    // of putting the literal inside a `try` rather than validating the id: the cost is one nesting
+    // level, and what it buys is that the *class* of failure is handled rather than this instance
+    // of it. `imageUri` is the only expression in here that can throw today.
     try {
-      result = await this.queue.request(request)
-    } finally {
-      // Symmetric with the charge above across **every** way the queue can settle — resolved,
-      // `'failed'`, `'dropped'`, `'cancelled'`, and the already-disposed short circuit — and in a
-      // `finally` so a throw on the way out cannot strand it either. A path that returned without
-      // crediting the estimate back would leave `bytesReserved` permanently high and the session
-      // permanently swatch-only, which is this fix failing in the opposite direction: a stream that
-      // stops asking for reasons that are no longer true.
-      this.bytesReserved -= ART_CROP_ESTIMATED_BYTES
+      const request: ImageRequest = {
+        key: queueKey,
+        url: imageUri(printingId, imageTs, this.imageSize),
+        priority,
+        // The letterboxed size, not the layer size — see `letterbox`'s header for why handing
+        // `createImageBitmap` the full 128x96 bakes a 2.7% horizontal stretch in at decode time.
+        resize: { width: this.box.width, height: this.box.height },
+      }
+      // Charged before the await, so it is committed in the same synchronous turn the caller's
+      // `request()` ran in. That is what lets the *next* call in the same frame see it — the whole
+      // of DEC-780 is that a frame issues all its wants before any of them can land.
+      //
+      // Below the request literal, not above it (DEC-786 N1). The nesting keeps that ordering
+      // load-bearing rather than incidental: the charge and its credit stay a two-line pair in one
+      // scope, and no path that skipped the literal can reach either of them.
+      this.bytesReserved += ART_CROP_ESTIMATED_BYTES
+      try {
+        result = await this.queue.request(request)
+      } finally {
+        // Symmetric with the charge above across **every** way the queue can settle — resolved,
+        // `'failed'`, `'dropped'`, `'cancelled'`, and the already-disposed short circuit — and in a
+        // `finally` so a throw on the way out cannot strand it either. A path that returned without
+        // crediting the estimate back would leave `bytesReserved` permanently high and the session
+        // permanently swatch-only, which is this fix failing in the opposite direction: a stream
+        // that stops asking for reasons that are no longer true.
+        this.bytesReserved -= ART_CROP_ESTIMATED_BYTES
+      }
+    } catch {
+      // **`fail`, not `release`, and the difference is the churn this would otherwise cause.** The
+      // two differ on whether the key stays askable, and a printing id whose URL does not build
+      // this frame will not build next frame either — released, it would be re-requested and
+      // re-throw once per frame per cell for the rest of the session. So it goes into the pool's
+      // failed set, which is §1.6's "a failed key is never retried in the same session" applied to
+      // the one failure that happens before the network rather than on it.
+      //
+      // Counted in `failed` for the same reason the decode failure below is: `request()` has
+      // already incremented `requested`, and a request that reached neither `resolved` nor `failed`
+      // is invisible in the probe's ledger. No bytes are charged — nothing crossed the wire.
+      this.inFlight.delete(key)
+      this.failed += 1
+      this.pool.fail(key)
+      return
     }
     this.inFlight.delete(key)
 
