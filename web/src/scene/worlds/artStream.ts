@@ -379,10 +379,6 @@ export class ArtStream {
   ): Promise<void> {
     const queueKey = `worlds-art:${printingId}`
     this.inFlight.set(key, queueKey)
-    // Charged here, before the await, so it is committed in the same synchronous turn the caller's
-    // `request()` ran in. That is what lets the *next* call in the same frame see it — the whole of
-    // DEC-780 is that a frame issues all its wants before any of them can land.
-    this.bytesReserved += ART_CROP_ESTIMATED_BYTES
     const request: ImageRequest = {
       key: queueKey,
       url: imageUri(printingId, imageTs, this.imageSize),
@@ -391,6 +387,17 @@ export class ArtStream {
       // `createImageBitmap` the full 128x96 bakes a 2.7% horizontal stretch in at decode time.
       resize: { width: this.box.width, height: this.box.height },
     }
+    // Charged before the await, so it is committed in the same synchronous turn the caller's
+    // `request()` ran in. That is what lets the *next* call in the same frame see it — the whole of
+    // DEC-780 is that a frame issues all its wants before any of them can land.
+    //
+    // Below the literal, not above it (DEC-786 N1): `imageUri` throws on a printing id shorter than
+    // two characters, and that throw leaves `fetch` before the `try` below — so a charge taken
+    // first would be stranded by the one exception on this path that the `finally` cannot catch.
+    // Unreachable on shipped data (36-char Scryfall ids), but the ordering is free and the failure
+    // it prevents is permanent: 90 KiB held against the budget for the life of the session, with no
+    // fetch to reconcile it. Nothing else here can throw, so this stays the whole of the fix.
+    this.bytesReserved += ART_CROP_ESTIMATED_BYTES
     let result: ImageResult
     try {
       result = await this.queue.request(request)
