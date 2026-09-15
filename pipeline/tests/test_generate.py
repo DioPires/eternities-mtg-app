@@ -16,7 +16,7 @@ import pytest
 
 from eternities.contract.enums import BLIND_ETERNITIES_SLUG, SHARD_SIZE, HueClass, hue_class_for
 from eternities.contract.models import PlaneSetRef
-from eternities.fixtures import SMALL, build, generate
+from eternities.fixtures import SCALE, SMALL, build, generate
 from eternities.fixtures.generate import (
     BLIND_ETERNITIES_SHARE,
     FixtureSpec,
@@ -399,6 +399,22 @@ def test_swatches_differ_between_cards_rather_than_repeating_one_value():
         for swatch in dataset.swatches
     }
     assert len(means) == len(dataset.swatches)
+
+
+def test_the_records_stay_distinct_at_the_scale_ci_actually_builds():
+    """The row above runs on 500 cards; CI smokes ``SCALE``'s 30,000 (`.github/workflows/ci.yml`).
+
+    Distinctness is the property a misrouted star lookup shows up in, and it is the one that gets
+    *harder* with roster size — 30,000 draws collide where 500 do not — so asserting it only on
+    ``SMALL`` proves it exactly where it is cheapest and never on the dataset the worlds surface is
+    developed against. Measured 30,000/30,000; a ``SCALE`` build costs ~1.3 s.
+
+    **Records only, deliberately.** The *mean* is quantized, and at 30,000 cards 347 of them
+    coincide (29,653 distinct) — arithmetic, not a defect. So the means half of the row above is
+    honest for the fixture it names and must not be generalised to this one.
+    """
+    dataset = build(SCALE)
+    assert len(set(dataset.swatches)) == len(dataset.swatches)
 
 
 def test_no_component_sits_on_a_channel_endpoint_and_no_2x2_is_one_value_four_times():
