@@ -1176,3 +1176,129 @@ describe('§1.6 the pool invariant, under the stream rather than in isolation', 
     expect(h.pool.report().layers).toBe(8)
   })
 })
+
+/**
+ * A distinct, well-formed printing id per key. `imageUri` throws below two characters, and the
+ * queue joins by `worlds-art:<printingId>` — so two keys sharing an id would be one request and the
+ * counts below would be measuring the join rather than the stream.
+ */
+const idOfKey = (key: number): string => `${ID.slice(0, -6)}${String(key).padStart(6, '0')}`
+
+/** Admitted, with a priority the queue will not drop. See `WorldSurface.priorityOf`. */
+const ADMITTED = (): number => -100
+
+describe('§1.6 a satisfied want set stops asking (DEC-833)', () => {
+  /**
+   * DEC-833 asserted the opposite: that on a frozen pose the stream "never stops requesting cells
+   * the pool already holds", at ~17.7 req/s forever. **It does stop, and these rows are why the
+   * live reading was something else.** Measured against the shipped composition with the OS
+   * `prefers-reduced-motion` preference emulated — the input `App.tsx`'s `useReducedMotion` actually
+   * reads — `requested` is flat at 1,151 for 45 s and `pool.evictions` is 0. The baseline arm's
+   * 17.7/s is the world's spin carrying *new* cells across the admission boundary at ~18/s, one
+   * fetch each: over 60 s, 1,691 of 1,946 distinct keys were asked for exactly once and none more
+   * than three times.
+   *
+   * DEC-752's `--motion0` control could not see that, because `?motion=0` is **inert** on the route
+   * the gate drives (`?probe=shell`): `motionOverride`'s own header records that the seam is laid
+   * over `?probe=1`, `/bench` and `?selfcheck` and that "the shell deliberately does not" read it.
+   * Both arms were the same build, which is why they agreed to two decimal places.
+   *
+   * These rows are the standing guard on the property that measurement establishes, so a future
+   * change that *does* introduce a re-request is caught here rather than in a 150 s browser run.
+   */
+  it('counts one request per key however many frames want it — the resident early return', async () => {
+    const h = harness({ layers: 64 })
+    const want = Array.from({ length: 40 }, (_, i) => i)
+
+    h.stream.beginFrame(1)
+    for (const key of want) h.stream.request(key, idOfKey(key), TS, ADMITTED)
+    await h.drain()
+    expect(h.stream.report().requested).toBe(40)
+    expect(h.stream.report().resolved).toBe(40)
+    expect(h.pool.resident).toBe(40)
+
+    // The frozen pose, 200 frames of it. The selection pass re-offers the whole want set every
+    // frame — that is `WorldSurface.update`'s second loop, unconditionally — so what must not grow
+    // is what the stream does with it.
+    for (let frame = 2; frame <= 201; frame += 1) {
+      h.stream.beginFrame(frame)
+      for (const key of want) h.stream.request(key, idOfKey(key), TS, ADMITTED)
+    }
+    await h.drain()
+
+    // Not 40 x 201. The mutant this kills is dropping `request`'s `layerOf` early return.
+    expect(h.stream.report().requested).toBe(40)
+    // The wire, not the counter: a bookkeeping-only guard would pass the line above and still fetch.
+    expect(h.urls.length).toBe(40)
+    expect(h.stream.report().resolved).toBe(40)
+    // A pool with 24 layers spare, and a want set that never changes, has nothing to evict.
+    expect(h.pool.evictions).toBe(0)
+    expect(h.pool.resident).toBe(40)
+  })
+
+  it('counts one request per key while the fetch is still in flight — the reserved early return', async () => {
+    // The other half, and the one a resident-only guard would miss: between the ask and the landing
+    // the key is RESERVED, not resident, so `layerOf` returns null and the guard above does not fire.
+    const h = harness({ layers: 64, hold: true })
+    h.stream.beginFrame(1)
+    h.stream.request(7, idOfKey(7), TS, ADMITTED)
+    for (let frame = 2; frame <= 51; frame += 1) {
+      h.stream.beginFrame(frame)
+      h.stream.request(7, idOfKey(7), TS, ADMITTED)
+    }
+    expect(h.pool.layerOf(7)).toBeNull()
+    expect(h.pool.reserved).toBe(1)
+    expect(h.stream.report().requested).toBe(1)
+    expect(h.urls.length).toBe(1)
+    await h.drain()
+    expect(h.pool.resident).toBe(1)
+    expect(h.stream.report().requested).toBe(1)
+  })
+
+  it('asks once per newly admitted cell when the want set SLIDES — the live baseline, in miniature', async () => {
+    // The negative control for the two rows above, and the quantitative statement behind the live
+    // 18/s. A stream that could not ask at all would score them green; this row only passes if it
+    // asks, and asks the *minimum*.
+    //
+    // A spinning world slides the admitted set across a roster larger than the pool: dominaria is
+    // 6,271 cards into 1,024 layers, ~942 admitted at the scored pose, turning over at ~18 cells/s
+    // against an eviction rate of 18.4/s. The claim is that those two are the SAME number — that
+    // every eviction pays for exactly one newly admitted cell and the stream adds nothing.
+    const LAYERS = 120
+    const WINDOW = 24
+    const STEP = 3
+    const FRAMES = 80
+    const h = harness({ layers: LAYERS })
+    const evictionsAt = new Map<number, number>()
+
+    for (let frame = 1; frame <= FRAMES; frame += 1) {
+      h.stream.beginFrame(frame)
+      const first = (frame - 1) * STEP
+      for (let i = 0; i < WINDOW; i += 1) {
+        h.stream.request(first + i, idOfKey(first + i), TS, ADMITTED)
+      }
+      await h.drain()
+      evictionsAt.set(frame, h.pool.evictions)
+    }
+
+    // `LAYERS` is sized so the pool saturates only after the first arrivals have aged past
+    // `EVICTION_GRACE_FRAMES` (30): it fills around frame (120-24)/3 = 32, by which point keys 0-2
+    // were last wanted on frame 1. Without that headroom `claimLayer` finds no victim outside the
+    // grace window, `reserve` returns null, and the row would be scoring exhaustion instead.
+    expect(h.stream.report().declinedExhausted).toBe(0)
+
+    const distinct = WINDOW + (FRAMES - 1) * STEP
+    // One ask per cell the window newly admitted, and not one more. 261, not 80 x 24 = 1,920.
+    expect(h.stream.report().requested).toBe(distinct)
+    expect(h.urls.length).toBe(distinct)
+    // One eviction per admission past capacity, and not one more.
+    expect(h.pool.evictions).toBe(distinct - LAYERS)
+    // The control: this row DOES churn, so the zeros above are a guard and not a dead stream.
+    expect(h.pool.evictions).toBeGreaterThan(0)
+    expect(h.pool.resident).toBe(LAYERS)
+
+    // The rate law stated as a rate: in the steady state the pool evicts exactly `STEP` a frame —
+    // the turnover of the want set — because that is how many cells the slide newly admits.
+    expect(evictionsAt.get(70)! - evictionsAt.get(50)!).toBe(20 * STEP)
+  })
+})
