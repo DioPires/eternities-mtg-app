@@ -492,16 +492,29 @@ describe('§3.1 the control seams, which R1 owns and leg G consumes', () => {
     expect(readWorldsSeams('')).toEqual({
       swatchMean: false,
       bandsShuffle: false,
+      artOff: false,
       artThresholdFixed24: false,
       layersRequested: null,
     })
     expect(readWorldsSeams('?swatch=mean').swatchMean).toBe(true)
     expect(readWorldsSeams('?bands=shuffle').bandsShuffle).toBe(true)
+    expect(readWorldsSeams('?art=off').artOff).toBe(true)
     expect(readWorldsSeams('?artThreshold=fixed24').artThresholdFixed24).toBe(true)
     expect(readWorldsSeams('?layers=128').layersRequested).toBe(128)
+    // The pair the gate actually runs (DEC-821): `?art=off` composes with the swatch-perturbing
+    // seams, and reading one must not set the other.
+    expect(readWorldsSeams('?art=off&swatch=mean')).toMatchObject({ artOff: true, swatchMean: true })
+    expect(readWorldsSeams('?art=off&bands=shuffle')).toMatchObject({
+      artOff: true,
+      bandsShuffle: true,
+    })
     // A control that half-parses is worse than one that does not parse at all, because the run
     // still produces numbers.
     expect(readWorldsSeams('?swatch=Mean').swatchMean).toBe(false)
+    expect(readWorldsSeams('?art=Off').artOff).toBe(false)
+    expect(readWorldsSeams('?art=0').artOff).toBe(false)
+    expect(readWorldsSeams('?art=').artOff).toBe(false)
+    expect(readWorldsSeams('?artThreshold=fixed24').artOff).toBe(false)
     expect(readWorldsSeams('?artThreshold=24').artThresholdFixed24).toBe(false)
     expect(readWorldsSeams('?layers=-8').layersRequested).toBeNull()
     expect(readWorldsSeams('?layers=abc').layersRequested).toBeNull()

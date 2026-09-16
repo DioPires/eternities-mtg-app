@@ -1,15 +1,18 @@
 /**
  * The worlds gate's control seams (spec §3.1, §1.6) — **normative renderer surface, owned here**.
  *
- * DEC-744's B1 ruling, restated on DEC-746's D5 because §3.1 and §4 word it inconsistently: there
- * are **five** seams, `?probe=` is one of them, and **all five are R1's**. Leg G consumes them and
- * may not patch the build to get them, because the acceptance gate's whole subject is the behaviour
- * of the *shipped* policy — a control that runs against a patched renderer measures the patch.
+ * DEC-744's B1 ruling, restated on DEC-746's D5 because §3.1 and §4 word it inconsistently: the
+ * seams are **R1's**, `?probe=` is one of them, and leg G consumes them and may not patch the build
+ * to get them — because the acceptance gate's whole subject is the behaviour of the *shipped*
+ * policy, and a control that runs against a patched renderer measures the patch. That ruling named
+ * five; the board's `art_off_seam` ruling on DEC-752 (answered 2026-09-16, DEC-821) added the
+ * sixth, for the reason {@link WorldsSeams.artOff} states.
  *
  * | Seam | Turns off | Negative control for |
  * |---|---|---|
  * | `?swatch=mean` | the per-card swatch | W2 — the surface carries per-card colour |
  * | `?bands=shuffle` | the latitude-is-colour law | W3 — bands are separable in Lab |
+ * | `?art=off` | the art path; every cell draws its swatch | W2 / W3 — it is what makes the two rows above reach the capture |
  * | `?artThreshold=fixed24` | the per-frame quantile | W4 — art is chosen, not exhausted |
  * | `?layers=N` | the tier's pool size | W4 / §1.12 — the ladder moves the pool |
  * | `?probe=` | nothing; it *reports* | every row, and the read-backs below |
@@ -52,6 +55,29 @@ export interface WorldsSeams {
    * > single band must change**, which only a global permutation produces.
    */
   readonly bandsShuffle: boolean
+  /**
+   * **Art off: every cell draws its swatch, and the stream is never asked for a printing.**
+   *
+   * > **Why a sixth seam exists at all (board ruling `art_off_seam`, DEC-752, DEC-821).** The two
+   * > seams above perturb the **swatch**; at §3.1's 2.2-radii pose the capture is mostly **art** —
+   * > `artFraction` measured 0.61–0.76, roughly seven cells in ten — so on the capture both are
+   * > inert. Measured on DEC-816: `?swatch=mean` leaves `W2.lightnessIqr` at 24.89 against no-seam
+   * > siblings reading 16.09 / 21.28 / 25.89, inside the spread; `?bands=shuffle` moves
+   * > `W3.minAdjacentBandDeltaE` only 0.815 → 0.476, and the shipped aggregate already scores
+   * > *below* that (0.4253 on ravnica), so no floor separates the build from its own falsifier.
+   * > Both seams engage — every read-back moves — so this was never wiring: at that pose the
+   * > capture and the swatch are different quantities. `?art=off&swatch=mean` and
+   * > `?art=off&bands=shuffle` are the rows that discriminate.
+   *
+   * > **Not `?layers=0`, which is also swatch-only (§1.6).** A zero-layer pool moves
+   * > `pool.layers` — the quantile's own divisor — and composes **no stream at all**, so the
+   * > payload's `stream` goes `null` and the threshold policy is answering a different question.
+   * > This seam leaves the pool, the texture, the stream and admission byte-identical to the
+   * > no-seam run: `wantsArt` reports the same set, `admitted` is the same count, and the single
+   * > difference is that no cell asks and no cell draws. A control that also moved the renderer's
+   * > configuration would measure the configuration.
+   */
+  readonly artOff: boolean
   /** The prototype's constant 24 px threshold: no histogram, no hysteresis, let the pool run out. */
   readonly artThresholdFixed24: boolean
   /** A requested art-pool size, before {@link artPoolSize} clamps it. `null` means "use the tier". */
@@ -66,6 +92,10 @@ export function readWorldsSeams(
   return {
     swatchMean: params.get('swatch') === 'mean',
     bandsShuffle: params.get('bands') === 'shuffle',
+    // Exact, like every other seam here: `?art=0`, `?art=none` and `?art=Off` are typos, and a
+    // control that half-parses is worse than one that does not parse at all, because the run still
+    // produces numbers. `?art=` with no value is the same typo and reads as absent.
+    artOff: params.get('art') === 'off',
     artThresholdFixed24: params.get('artThreshold') === 'fixed24',
     layersRequested: readLayers(params.get('layers')),
   }

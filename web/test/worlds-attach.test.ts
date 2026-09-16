@@ -35,7 +35,7 @@ import { ImageQueue } from '../src/scene/cards/imageQueue'
 import { QUALITY_TIERS } from '../src/scene/quality/adaptiveQuality'
 import { attachWorlds, DEFAULT_TIER_ART_LAYERS } from '../src/scene/worlds/attachWorlds'
 import { KEY_LIGHT_OFF_AXIS, keyLightDirection } from '../src/scene/worlds/keyLight'
-import { artPoolSize } from '../src/scene/worlds/artPool'
+import { artPoolSize, LAYER_FREE } from '../src/scene/worlds/artPool'
 import { PICK_LAYER } from '../src/scene/picking/idPicker'
 import { ART_CROP_ESTIMATED_BYTES, DEFAULT_BYTE_BUDGET } from '../src/scene/worlds/artStream'
 import { BELT_POINT_SIZE_PX } from '../src/scene/worlds/beltShaders'
@@ -71,6 +71,7 @@ const WORLDS = worldPlanesOf(PLANES.planes)
 const NO_SEAMS: WorldsSeams = {
   swatchMean: false,
   bandsShuffle: false,
+  artOff: false,
   artThresholdFixed24: false,
   layersRequested: null,
 }
@@ -726,30 +727,53 @@ describe('the shared art pool (§1.6, §1.12)', () => {
  * showed `declinedBudget > 0` under a zero budget would score identically against a stream that
  * incremented all three counters together.
  */
+/** A queue whose requests never land: rows using it measure what is *asked*, not what arrives. */
+function pendingQueue(): ImageQueue {
+  return {
+    request: () => new Promise<never>(() => {}),
+    cancel: () => {},
+    dispose: () => {},
+  } as unknown as ImageQueue
+}
+
+/** `printingId`s the stream can build a URL from — the wiring DEC-772 found missing. */
+const CARD_OF = (plane: { slug: string }, card: number) => ({
+  printingId: `${plane.slug}:${card}`,
+  imageTs: 1,
+})
+
+/** Compose, pose at Dominaria and tick — the pose §3.1 states W4 at. */
+function readAt(rig: Rig, ticks = 1) {
+  const world = rig.worlds.surfaces.find((s) => s.planeSlug === 'dominaria')!
+  poseAt(rig.camera, world.centre, world.radius, 2.2)
+  for (let i = 0; i < ticks; i += 1) rig.tick()
+  return worldsProbeOf(rig.worlds.probeSource())!
+}
+
+/**
+ * A queue that actually delivers a body (DEC-782 N3).
+ *
+ * Every row that predates it uses {@link pendingQueue} or a failing queue, so until it existed **no
+ * row in either touched file resolved a fetch on the shipped `attachWorlds` path** — and `report()`
+ * could hardcode `resolved: 0` with both files staying green. The success path is also the only one
+ * that charges `bytesFetched` from a body that *worked*, which the spec asserts and nothing
+ * exercised through the probe.
+ */
+function resolvingQueue(bytes: number): ImageQueue {
+  return {
+    request: () =>
+      Promise.resolve({
+        ok: true,
+        bytes,
+        // `ArtStream` uploads this and then closes it; the stub only has to survive both.
+        bitmap: { width: 128, height: 93, close: () => {} },
+      }),
+    cancel: () => {},
+    dispose: () => {},
+  } as unknown as ImageQueue
+}
+
 describe('§1.6 the stream report reaches the probe (DEC-778)', () => {
-  /** A queue whose requests never land: these rows measure what is *asked*, not what arrives. */
-  function pendingQueue(): ImageQueue {
-    return {
-      request: () => new Promise<never>(() => {}),
-      cancel: () => {},
-      dispose: () => {},
-    } as unknown as ImageQueue
-  }
-
-  /** `printingId`s the stream can build a URL from — the wiring DEC-772 found missing. */
-  const CARD_OF = (plane: { slug: string }, card: number) => ({
-    printingId: `${plane.slug}:${card}`,
-    imageTs: 1,
-  })
-
-  /** Compose, pose at Dominaria and tick — the pose §3.1 states W4 at. */
-  function readAt(rig: Rig, ticks = 1) {
-    const world = rig.worlds.surfaces.find((s) => s.planeSlug === 'dominaria')!
-    poseAt(rig.camera, world.centre, world.radius, 2.2)
-    for (let i = 0; i < ticks; i += 1) rig.tick()
-    return worldsProbeOf(rig.worlds.probeSource())!
-  }
-
   it('publishes zeros for a wired stream that nothing asked — not `null`', () => {
     // The control every row below is read against, and a real state rather than a contrivance:
     // this is the composition DEC-772 found shipped, where the stream existed and no cell could
@@ -871,29 +895,6 @@ describe('§1.6 the stream report reaches the probe (DEC-778)', () => {
     rig.worlds.dispose()
   })
 
-  /**
-   * A queue that actually delivers a body (DEC-782 N3).
-   *
-   * Every row above this one uses `pendingQueue` or the failing queue, so until it existed **no
-   * row in either touched file resolved a fetch on the shipped `attachWorlds` path** — and
-   * `report()` could hardcode `resolved: 0` with both files staying green. The success path is also
-   * the only one that charges `bytesFetched` from a body that *worked*, which the spec asserts and
-   * nothing exercised through the probe.
-   */
-  function resolvingQueue(bytes: number): ImageQueue {
-    return {
-      request: () =>
-        Promise.resolve({
-          ok: true,
-          bytes,
-          // `ArtStream` uploads this and then closes it; the stub only has to survive both.
-          bitmap: { width: 128, height: 93, close: () => {} },
-        }),
-      cancel: () => {},
-      dispose: () => {},
-    } as unknown as ImageQueue
-  }
-
   it('counts a body that arrived as `resolved`, and charges its bytes (DEC-782 N3)', async () => {
     const BYTES = 96_159
     const rig = build({
@@ -962,6 +963,133 @@ describe('§1.6 the stream report reaches the probe (DEC-778)', () => {
     expect(free.stream?.declinedBudget).toBe(0)
     expect(free.stream?.swatchOnly).toBe(false)
     slack.worlds.dispose()
+  })
+})
+
+/**
+ * §1.6's swatch-only control seam, `?art=off` (DEC-821; board ruling `art_off_seam` on DEC-752).
+ *
+ * The seam exists because at §3.1's 2.2-radii pose the capture is mostly **art** — `artFraction`
+ * measured 0.61–0.76 on DEC-816 — so `?swatch=mean` and `?bands=shuffle`, which perturb the
+ * *swatch*, move nothing a screenshot can see. Its whole contract is therefore a **pair** of claims,
+ * and both are scored below: art is gone, and **nothing else is**. A seam that also moved the pool,
+ * the threshold or the admitted set would hand W2 and W3 a control whose readings differ from the
+ * build for a reason that has nothing to do with the criterion.
+ *
+ * Every row is a matrix against a no-seam sibling built from the same roster at the same pose, for
+ * the reason the block above gives: a rig that asked for nothing because its queue, its budget or
+ * its `cardOf` was missing would score the seam green without the seam existing.
+ */
+describe('§1.6 `?art=off` — the swatch-only control seam (DEC-821)', () => {
+  /** Enough ticks for a resolved layer to finish §1.6's 200 ms cross-fade at 17 ms a frame. */
+  const TICKS = 14
+  const BYTES = 96_159
+
+  /** Pose at Dominaria, tick, and drain the two microtasks each landing body needs. */
+  async function drawArtAt(rig: Rig, ticks: number) {
+    const world = rig.worlds.surfaces.find((s) => s.planeSlug === 'dominaria')!
+    poseAt(rig.camera, world.centre, world.radius, 2.2)
+    for (let i = 0; i < ticks; i += 1) {
+      rig.tick()
+      // The queue's own settle, then the stream's continuation past its `await`.
+      await Promise.resolve()
+      await Promise.resolve()
+    }
+    return {
+      probe: worldsProbeOf(rig.worlds.probeSource())!,
+      /** The attribute the shader samples the pool with: `LAYER_FREE` is "draw the swatch". */
+      layers: world.sheet.layers.array as Float32Array,
+    }
+  }
+
+  it('asks for nothing and draws nothing, against a control that does both', async () => {
+    const off = build({
+      queue: resolvingQueue(BYTES),
+      cardOf: CARD_OF,
+      seams: { ...NO_SEAMS, artOff: true },
+    })
+    off.worlds.setData(roster())
+    const dark = await drawArtAt(off, TICKS)
+    // The pool is untouched, and untouched by the only thing that could touch it: a stream that
+    // exists, is funded and has a `cardOf` to build URLs from. All three of those are true here.
+    expect(dark.probe.stream).not.toBeNull()
+    expect(dark.probe.stream?.requested).toBe(0)
+    expect(dark.probe.stream?.bytesFetched).toBe(0)
+    expect(dark.probe.stream?.bytesReserved).toBe(0)
+    expect(dark.probe.pool.resident).toBe(0)
+    expect(dark.probe.pool.evictions).toBe(0)
+    // `artFraction` is `showing / wanting` (§3.1). Its numerator is zero...
+    expect(dark.probe.cells.filter((c) => c.showingArt)).toEqual([])
+    // ...and its denominator is **not**, which is what makes that a measurement rather than a pose
+    // with nothing on screen: these cells asked, and every one of them drew its swatch instead.
+    expect(dark.probe.cells.filter((c) => c.wantsArt).length).toBeGreaterThan(0)
+    expect([...dark.layers].every((layer) => layer === LAYER_FREE)).toBe(true)
+    off.worlds.dispose()
+
+    // The control: same roster, same pose, same queue, same tick count, one input changed.
+    const lit = build({ queue: resolvingQueue(BYTES), cardOf: CARD_OF })
+    lit.worlds.setData(roster())
+    const shown = await drawArtAt(lit, TICKS)
+    expect(shown.probe.stream?.requested).toBeGreaterThan(0)
+    expect(shown.probe.pool.resident).toBeGreaterThan(0)
+    expect(shown.probe.cells.some((c) => c.showingArt)).toBe(true)
+    expect([...shown.layers].some((layer) => layer !== LAYER_FREE)).toBe(true)
+    lit.worlds.dispose()
+  })
+
+  it('moves the picture and NOTHING else — same threshold, same admitted set, same pool', () => {
+    // `pendingQueue` on both sides so nothing lands: the subject here is what the frame *decided*,
+    // and residency would only add a difference the seam is allowed to have.
+    const off = build({
+      queue: pendingQueue(),
+      cardOf: CARD_OF,
+      seams: { ...NO_SEAMS, artOff: true },
+    })
+    off.worlds.setData(roster())
+    const dark = readAt(off)
+    const darkThreshold = off.worlds.surfaces.find((s) => s.planeSlug === 'dominaria')!.threshold
+    const on = build({ queue: pendingQueue(), cardOf: CARD_OF })
+    on.worlds.setData(roster())
+    const lit = readAt(on)
+    const litThreshold = on.worlds.surfaces.find((s) => s.planeSlug === 'dominaria')!.threshold
+
+    // Bit equality on §1.6's whole report — the quantile, its hysteresis, and the wanting and
+    // admitted counts, which the payload folds down to one number. This is the assertion that makes
+    // `?art=off&swatch=mean` a *control* for W2 rather than a second variable: the two runs measure
+    // the same cells, want the same art and admit at the same height.
+    expect(darkThreshold).toEqual(litThreshold)
+    expect(darkThreshold.wanting).toBeGreaterThan(0)
+    expect(dark.cells.filter((c) => c.wantsArt).map((c) => c.cell)).toEqual(
+      lit.cells.filter((c) => c.wantsArt).map((c) => c.cell),
+    )
+    expect(dark.cells.map((c) => c.height)).toEqual(lit.cells.map((c) => c.height))
+
+    // **Not `?layers=0`.** That seam is also swatch-only and it reaches it by composing no stream
+    // against a zero-layer pool, which moves the quantile's own divisor and publishes `null` where
+    // the report should be. This one leaves both standing; the payload is how the gate can tell.
+    expect(dark.pool).toEqual(lit.pool)
+    expect(dark.pool.layers).toBeGreaterThan(0)
+    expect(dark.stream).not.toBeNull()
+
+    // The one difference, in both directions.
+    expect(dark.stream?.requested).toBe(0)
+    expect(lit.stream?.requested).toBeGreaterThan(0)
+    off.worlds.dispose()
+    on.worlds.dispose()
+  })
+
+  it('echoes the seam in `worlds().seams`, with a no-seam control that reads false', () => {
+    // §1.6's read-back rule, on the sixth seam: without it a seam that silently failed to parse
+    // would run the unmodified policy and hand the matrix a control it had scored green.
+    const off = build({ seams: { ...NO_SEAMS, artOff: true } })
+    off.worlds.setData(roster())
+    expect(readAt(off).seams.artOff).toBe(true)
+    off.worlds.dispose()
+
+    const on = build()
+    on.worlds.setData(roster())
+    expect(readAt(on).seams.artOff).toBe(false)
+    on.worlds.dispose()
   })
 })
 
