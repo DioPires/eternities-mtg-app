@@ -23,6 +23,7 @@
  *   node scripts/worlds-gate.mjs                       # the full acceptance run
  *   node scripts/worlds-gate.mjs --negative-controls   # §3.1's matrix
  *   node scripts/worlds-gate.mjs --only baseline       # one row
+ *   node scripts/worlds-gate.mjs --reverse             # the runbook's tour-order control
  */
 
 import { spawn, execFileSync } from 'node:child_process'
@@ -926,6 +927,7 @@ function parseArgs(argv) {
     minAzimuths: W5_MIN_AZIMUTHS,
     captures: true,
     tourLimit: null,
+    reverse: false,
   }
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--dataset') args.dataset = argv[++i]
@@ -936,6 +938,7 @@ function parseArgs(argv) {
     else if (argv[i] === '--only') args.only = argv[++i].split(',').map((s) => s.trim())
     else if (argv[i] === '--min-azimuths') args.minAzimuths = Number(argv[++i])
     else if (argv[i] === '--tour-limit') args.tourLimit = Number(argv[++i])
+    else if (argv[i] === '--reverse') args.reverse = true
     else throw new Error(`unknown argument ${argv[i]}`)
   }
   for (const id of args.only ?? []) {
@@ -992,10 +995,16 @@ async function runRow(browser, url, row, { roster, args, baselineProbe }) {
   }
 
   // ---- W1–W4 rows -----------------------------------------------------------------------------
-  const subjects =
+  // `--reverse` is the runbook's order control, and it takes the SAME set the forward run took
+  // before reversing it — `slice` then `reverse`, never `reverse` then `slice`, which under
+  // `--tour-limit` would tour a different set of worlds and compare two tours instead of two
+  // orders. Per-world sessions are supposed to make a world's W4 independent of where in the tour
+  // it sits; this is the reading that checks it rather than assuming it.
+  const toured =
     row.tour === 'all'
       ? roster.worldsWithCards.slice(0, args.tourLimit ?? roster.worldsWithCards.length)
       : [roster.worldsWithCards.find((p) => p.slug === row.subject)]
+  const subjects = args.reverse ? [...toured].reverse() : toured
   if (subjects.some((s) => s === undefined)) {
     throw new Error(`row ${row.id} names world ${row.subject}, which is not in this dataset`)
   }
