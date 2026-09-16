@@ -14,8 +14,9 @@
  */
 
 import type { PlaneRecord, PlanesFile } from '../data/types'
-import { BLIND_ETERNITIES_SLUG } from '../data/types'
+import { BLIND_ETERNITIES_SLUG, isWorldPlane } from '../data/types'
 import type { Level } from '../navigation/types'
+import { SILHOUETTE_FRAMING_RADII, framingRadii } from '../scene/worlds/surfaceLaw'
 
 import type { SceneMotion } from './motion'
 import { copy, distance, set, type MutVec3, vec } from './vec'
@@ -77,6 +78,22 @@ export function levelOfTether(kind: TetherKind): Level {
 }
 
 /**
+ * A plane's arrival distance, in units of its own radius (worlds spec §1.3, DEC-818).
+ *
+ * > **Normative — a world is framed on its CELLS; a plane with no cell sheet is framed on its
+ * > silhouette (board ruling on DEC-816 R1).** `surfaceLaw.framingRadii` carries the law and the
+ * > measurements behind it. This wrapper is the *domain*: §2.4 makes `rowCells` the field that says
+ * > a plane has a surface at all, and the 42 empty planes and the Blind Eternities have no cells to
+ * > frame. Handing those to the cell law would divide by a row count that does not exist.
+ *
+ * `isWorldPlane` is the same predicate `worldSource` tests, deliberately — two spellings of "does
+ * this plane have a sheet" is how the camera comes to frame a world the renderer draws as a moon.
+ */
+export function planeFramingRadii(plane: PlaneRecord): number {
+  return isWorldPlane(plane) ? framingRadii(plane.rowCells) : SILHOUETTE_FRAMING_RADII
+}
+
+/**
  * Distance limits and framing per level, all derived from data rather than hand-tuned per plane —
  * the roster is the whole of Appendix A and will not be curated by hand.
  */
@@ -108,7 +125,7 @@ export class Framing {
       // "the camera never intersects a galaxy disc" without the collision push ever engaging.
       min: r * 1.4,
       max: r * 8,
-      frame: r * 3.2,
+      frame: r * planeFramingRadii(plane),
       polar: HOME_POLAR,
     })
   }

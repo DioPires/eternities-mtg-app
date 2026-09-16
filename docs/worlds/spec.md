@@ -167,6 +167,70 @@ detail and had no equirect rung at all; 27 is a prototype count and is not produ
   > §1.8 relationship this floor exists to preserve. Even a 2× raise costs 17 worlds. The ruling does
   > not depend on the exact pixel figure — the lever is wrong in kind at every magnitude. **The pick
   > floor is screen-space and belongs to §1.11.**
+- **Framing distance.** `frameDistance = radius · min(3.2, 1.006 + cellArc · focalPx / 30)`, where
+  `cellArc` is the cell's drawn latitudinal extent in units of world radius — `π · 0.93 · 1.006 /
+  rowCells.length` — and `focalPx` is the reference viewport's `1080 / (2·tan(55°/2))`. A plane with
+  no `rowCells` is framed at the flat `3.2 · radius` this replaces. `surfaceLaw.framingRadii` is the
+  law; `camera/framing.ts` is its only caller.
+
+  > **Normative — a world is framed on its CELLS, a plane without a sheet on its silhouette
+  > (board ruling on DEC-816 R1, DEC-818).** A sphere at `k · radius` subtends the same angle
+  > whatever its radius, so the flat `3.2 · radius` this replaces drew **every** world's disc at the
+  > same size and let every world's *cells* shrink as `1/rows ≈ 1/√N`. Dominaria's 81 rows put its
+  > median front-facing cell at **17.48–17.58 px `[shipped]`** — 15.50–19.35 `[tilted]` — against §3.1's
+  > W1 floor of 24, while a one-card world read 685. The floor and the pose are right — the board
+  > ruled both stand — and the framing distance was framing the wrong thing. It is also the only term
+  > in `cell px = f(cell arc, distance)` a renderer may choose: the arc is the pipeline's, and §1.4's
+  > lift and inset are fixed by the picture.
+  >
+  > **Normative — every W1 figure in this section is labelled with the ORIENTATION ARM it was
+  > measured in, and the two are not interchangeable (DEC-822).** `[shipped]` is the arm the running
+  > build renders: `planeOrientation` is the single writer of `surface.orientation`
+  > (`attachWorlds.ts`), and it gates the pole tilt on `APPLY_PLANE_TILT` — **`false`** since DEC-750.
+  > `[tilted]` applies §1.3's `planes.json` quaternion unconditionally, which is what
+  > `worlds-framing.test.ts` poses and therefore what every assertion in that file pins. **Keep both.**
+  > The tilted arm is the correct — and more conservative — bound for the day the flag flips; the
+  > shipped arm is what the build produces today. A number carried out of this section without its
+  > arm is not reproducible.
+  >
+  > **W1's per-world median is a family over the approach azimuth whose WIDTH is arm-dependent.** The
+  > rig arrives at `HOME_POLAR` at whatever azimuth the flight inherited. Under `[tilted]` the pole
+  > swings in and out of the front-facing cap and brings a cohort of squat polar cells with it, and
+  > the spread is **11% on dominaria and 15% on ravnica**. Under `[shipped]` the pole is upright, so
+  > turning the azimuth *is* a spin about that pole — it maps each row-ring onto itself — and the
+  > family collapses to **0.3% and 0.6%**. Measured through the shipped probe over 24 azimuths
+  > (`worlds-framing.test.ts` re-derives the tilted column; DEC-822 re-measured both from an
+  > independent harness).
+  >
+  > **One world sat under the floor `[shipped]`; two `[tilted]`.** At the old flat 3.2 radii the
+  > worlds under 24 px are **dominaria alone (17.48) `[shipped]`** — ravnica is green at *every*
+  > azimuth there, 28.64–28.99 — and **dominaria 15.50 *and* ravnica 23.88 `[tilted]`**. Leg G's
+  > single-azimuth tour drew dominaria 17.14 and ravnica 28.49, and its ravnica draw sits inside the
+  > shipped band: the draw was sound, not lucky. **Ravnica's 3.2 → 3.080 move is margin, not repair.**
+  > Never re-pin a single-frame W1 number *once `APPLY_PLANE_TILT` is true* — the rule §3.1 already
+  > states for W5 binds here the day the flag moves. It does not bind today, and leg G's single-draw
+  > gate is sound for exactly that reason (DEC-822's ruling on DEC-752).
+  >
+  > **The constant is 30 px of *near* cell, and it is deliberately not W1's 24.** The law sizes the
+  > cell at the sub-camera point, which sits well above the median: the front-facing cap runs out to
+  > the limb, where a cell is foreshortened to a few px. **28 px is the falsifier in the `[tilted]`
+  > arm only**, where it leaves ravnica at 23.88, still under; `[shipped]`, 28 px breaches nothing
+  > (worst 27.04) and the first breach is at **24 px** (dominaria 23.63) — about 25% of headroom, not
+  > one step. At 30 the worst-azimuth medians are **28.74 (dominaria, 3.2 → 2.261 radii) and 30.19
+  > (ravnica, 3.2 → 3.080) `[shipped]`, a 20% margin**; 25.55 and 25.21 `[tilted]`, a 5% margin. Both
+  > are worst-of-24 subsample minima and therefore upper bounds — at 240 azimuths tilted dominaria
+  > drifts to 25.48 ([[a-subsample-minimum-drifts-with-sample-density]]). Dominaria's disc still sits
+  > inside the reference frame at 1,023 px of 1,080. The two branches meet at **46.3 rows**, so on the
+  > shipped roster exactly those two worlds move and the other 43 are framed at the distance they were
+  > before, to the bit — which is what makes "no green world regresses" a property of the law rather
+  > than a re-run.
+  >
+  > **The reference viewport is §3.1's own — 1920×1080 CSS at dpr 1, the camera's 55° vertical fov —
+  > and a pixel floor has no world-space spelling without one.** Only the height and the vertical fov
+  > enter; the aspect moves screen `x` alone. A shorter viewport therefore frames a world at the same
+  > distance and reads fewer pixels per cell. That is a stated limit and not an oversight: `Framing`
+  > is the headless camera layer and has no live viewport, so tracking the window would put a
+  > render-loop dependency in the navigation layer. Priced here rather than left implicit.
 - **Bands.** Seven classes — W, U, B, R, G, gold, colourless — laid out **mirrored about the
   equator**: colourless is split between the two ice caps, each mono colour is a matched pair of
   bands, gold is the single equatorial belt. North to south:
@@ -1557,7 +1621,10 @@ scale — which is the thing T7 said was missing.
 > >
 > > (G's 30-card figure, 11.6%, is additionally one commit stale: `55d3b15`'s exact-N
 > > apportionment moved shenmeng to 13.0%.) W1's floor binds on the
-> > *largest* world, and Dominaria's 25.3 px moves by 0.003 px between the two models. **No W1 row
+> > *largest* world, and Dominaria's cell height moves by **0.012%** between the two models —
+> > `γ/sin γ` is 1.0001 there, whatever the pose. (This clause used to quote Appendix A's prototype
+> > 25.3 px as the base; the ratio is what carries the argument and it is pose-free, so the
+> > superseded absolute is dropped rather than re-measured — DEC-818.) **No W1 row
 > > can discriminate them at any N**, which is a stronger statement of G's "the gate is structurally
 > > blind" than the lift figures support — so §1.4's 1,262-sub-quad envelope assertion is not
 > > belt-and-braces, it is the only guard, and it stays in scope.
@@ -1790,11 +1857,39 @@ an assertion there.
 
 | # | Criterion | Measurement | Floor |
 |---|---|---|---|
-| **W1** | **Cells are resolvable at framing distance.** | At the plane-level settle for each of `worldsWithCards` (**29** on the 87-plane roster, **45** on v3), the median on-screen height of front-facing cells. Not the Blind Eternities: it has cards but no cell sheet (§1.8), so the statistic is undefined there — `planesWithCards` would be 30 / 46 and would include it. | **≥ 24 CSS px.** Binds on the largest plane: Dominaria measured 25.3 px at 3× radius. |
+| **W1** | **Cells are resolvable at framing distance.** | At the plane-level settle for each of `worldsWithCards` (**29** on the 87-plane roster, **45** on v3), the median on-screen height of front-facing cells. Not the Blind Eternities: it has cards but no cell sheet (§1.8), so the statistic is undefined there — `planesWithCards` would be 30 / 46 and would include it. | **≥ 24 CSS px.** Binds on the largest plane: Dominaria **28.74** at its worst azimuth, at §1.3's framing distance — a **20% margin** (`[shipped]`, the arm the build renders; `[tilted]` it is Ravnica 25.21 and 5% — §1.3 on the two arms). |
 | **W2** | **The mosaic reads as tiles, not as a wash.** This is T7's replacement. | Sample the captured frame at the centre of every front-facing cell ≥ 6 px tall, convert to CIELAB. Report the median ΔE to a cell's nearest on-screen neighbour, and the interquartile range of L\* **across the iso-shade subset** — the cells whose reported `shade` lies within ±2.5% of the median shade. | **median neighbour ΔE ≥ 6** and **iso-shade IQR(L\*) ≥ 8**. |
 | **W3** | **Latitude reads as colour.** | Group the same samples by band. For every pair of bands adjacent **in §1.3's 13-band chain** (a chain, not a cycle: the two ice caps are its two ends and are the furthest apart of any pair) where the smaller holds ≥ 5% of the plane's cards, the ΔE between their mean a\*b\*. | **≥ 10** for every such pair. |
 | **W4** | **Art resolves without exhausting.** | At the surface view (2.2× radius), after a 5 s settle: the fraction of on-screen front-facing cells above the effective threshold that are showing art, and evictions per second over the last 2 s. | **≥ 90%** showing art, **≤ 5 evictions/s**. |
 | **W5** | **The home view is not a wall of labels.** | Count rendered plane labels in the DOM at the home view. | **≤ `worldsWithCards.length`** — **29** on the 87-plane roster and **45** on v3 (measured, not predicted — §1.2). Not the Blind Eternities, the same exclusion W1 makes and for the matching reason: `PlaneLabels` drops it before projection (PRD 5.3.4), so it can never carry a label — `planesWithCards` would be 30 / 46 and would leave the ceiling one short of ever binding. Read it from the dataset under test; today the view renders 82. |
+
+> **Normative — W1's pose is the *plane-level settle*, which §1.3 now makes per-world, and it is
+> **not** W4's 2.2-radii surface view (DEC-818).** The two are one row apart in this table and were
+> conflated once already: DEC-752's acceptance comment and the DEC-818 routing that followed it both
+> record dominaria's 17.15 px "at the 2.2-radii pose". The gate itself is right — `evaluateW1` reads
+> `settleCells` unless a row sets `w1At: 'pose'`, and 17.145 is exactly the median of the settle
+> cells — but at 2.2 radii that same world reads **29.36** and clears the floor, so the mislabel
+> makes a real defect look like an already-fixed one. **Quote W1 against the settle and W4 against
+> 2.2, and name which when either number travels.**
+>
+> **And the settle is no longer one number.** Until DEC-818 it was a flat `3.2 · radius` for every
+> plane, which is why "the plane-level settle" and "3.2 radii" were interchangeable; §1.3's framing
+> law now returns 2.261 for dominaria and 3.080 for ravnica and 3.2 for the other 43. A gate row that
+> hard-codes 3.2 for W1 is measuring a pose the product does not stop at. The Appendix A figure this
+> row used to quote — *"Dominaria measured 25.3 px at 3× radius"* — is a **prototype** number and is
+> superseded: it was taken before §1.3's 4:3 cell aspect, which puts 6,271 cards on 81 rows where the
+> prototype's tiling implies ~60, and it is not reproducible on the shipped build at any pose.
+>
+> **A W1 number taken offline at `HOME_POLAR` reads ~2% HIGH against the rig, because the rig does
+> not arrive at `HOME_POLAR` (DEC-822 N2).** `HOME_POLAR` is 60°; measured off the probe's own
+> `centre` and `cameraPosition`, the settle arrives at **63.13° on dominaria and 61.82° on ravnica**,
+> and the statistic falls **0.12–0.20 px per degree** there. The 29.36 above is a live-rig artefact
+> value and is right; an offline `HOME_POLAR` sweep of that same pose reads 29.94, which is the same
+> 2% gap. So `worlds-framing.test.ts`'s pinned numbers — all posed at `HOME_POLAR` — are an **offline
+> approximation biased ~2% high**, deliberately, because the arrival polar is per-world and only two
+> of the 45 have been read. The bias does not eat the margin: re-measured at the arrival polars the
+> new law gives dominaria 25.56–31.15 and ravnica 26.63–34.52 `[tilted]`, both clear. **Do not
+> compare an offline `HOME_POLAR` figure to a gate artefact without pricing the 2%.**
 
 > **Normative — W2's IQR(L\*) half is measured on an iso-shade subset, and the un-subsetted version
 > it replaces could not fail (DEC-749, on DEC-752's finding).** §1.4's shade runs
