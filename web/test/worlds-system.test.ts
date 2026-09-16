@@ -75,6 +75,7 @@ const MOONS = PLANES.planes.filter((plane) => plane.cardCount === 0)
 const NO_SEAMS: WorldsSeams = {
   swatchMean: false,
   bandsShuffle: false,
+  artOff: false,
   artThresholdFixed24: false,
   layersRequested: null,
 }

@@ -43,10 +43,47 @@ const TEST = 'test/worlds-attach.test.ts'
 
 const ATTACH = 'src/scene/worlds/attachWorlds.ts'
 const SURFACE = 'src/scene/worlds/worldSurface.ts'
+const PROBE = 'src/scene/worlds/worldsProbe.ts'
 const LIGHT = 'src/scene/worlds/keyLight.ts'
 const LOOP = 'src/scene/renderer/frameLoop.ts'
 
 const MUTANTS = [
+  {
+    file: SURFACE,
+    name: '?art=off is inert — the seam parses, echoes, and every cell still draws art (DEC-821)',
+    from: '      if (seams.artOff) {\n        layers[cell] = LAYER_FREE',
+    to: '      if (false) {\n        layers[cell] = LAYER_FREE',
+  },
+  {
+    file: SURFACE,
+    name: '?art=off is permanently ON — the shipped build never draws art at all (DEC-821)',
+    from: '      if (seams.artOff) {\n        layers[cell] = LAYER_FREE',
+    to: '      if (true) {\n        layers[cell] = LAYER_FREE',
+  },
+  {
+    file: SURFACE,
+    name: '?art=off suppresses the DRAW but still asks, so the pool is not untouched (DEC-821)',
+    from: '      if (seams.artOff) {\n        layers[cell] = LAYER_FREE\n        this.fade[cell] = 0\n        art[cell] = 0\n        continue\n      }\n\n      const card = this.cardOfCell[cell]!',
+    to: '      const card = this.cardOfCell[cell]!',
+    // The rest of the suppression, moved below the request: art still never draws, and only the
+    // "asked for nothing" half of the seam's contract fails. A row scoring the picture alone lives.
+    also: {
+      from: '      layers[cell] = resident\n      const next = this.fade[cell]! + fadeStep',
+      to: '      if (seams.artOff) {\n        layers[cell] = LAYER_FREE\n        this.fade[cell] = 0\n        art[cell] = 0\n        continue\n      }\n      layers[cell] = resident\n      const next = this.fade[cell]! + fadeStep',
+    },
+  },
+  {
+    file: ATTACH,
+    name: 'the attachment never consults the URL, so no seam engages in a browser (DEC-821)',
+    from: '  const seams = options.seams ?? readWorldsSeams()',
+    to: "  const seams = options.seams ?? readWorldsSeams('')",
+  },
+  {
+    file: PROBE,
+    name: 'the payload hardcodes artOff: false, so the seam has no read-back (DEC-821)',
+    from: '    seams: source.seams,',
+    to: '    seams: { ...source.seams, artOff: false },',
+  },
   {
     file: SURFACE,
     name: 'the art pool is keyed by the per-world card index (45 worlds alias onto one key space)',

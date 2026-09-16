@@ -439,7 +439,7 @@ export class WorldSurface {
    */
   update(frame: WorldFrame): void {
     const { camera, viewport, fovRadians } = frame
-    const { pool, threshold, stream } = this.options
+    const { pool, threshold, stream, seams } = this.options
     const source = this.source
     const cardCount = source.cardCount
 
@@ -565,6 +565,22 @@ export class WorldSurface {
       // long as the LRU leaves it resident. §1.11 says a filtered cell shows its swatch, so it is
       // dropped back to the swatch here and the layer is released to the cells that can use it.
       if (filterMask[cell] !== 0) {
+        layers[cell] = LAYER_FREE
+        this.fade[cell] = 0
+        art[cell] = 0
+        continue
+      }
+
+      // `?art=off` (§1.6, DEC-821): the swatch-only control seam. **After** admission and **before**
+      // the request, which is the whole of its design — the frame still measures and still reports
+      // exactly what it would have asked for, so `wantsArt` names the same set as the no-seam run
+      // and only `showingArt` moves. That is what lets W2's and W3's swatch-perturbing controls
+      // reach the capture at all: at §3.1's pose seven cells in ten draw art, so a control that
+      // moves the swatch moves nothing anyone can see (see `seams.ts` for the measurement).
+      //
+      // The three writes are §1.6's swatch-only cell, spelled exactly as the filtered branch above
+      // and as a zero-layer pool reaches by having nothing resident — not a fourth path.
+      if (seams.artOff) {
         layers[cell] = LAYER_FREE
         this.fade[cell] = 0
         art[cell] = 0

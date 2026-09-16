@@ -34,7 +34,8 @@ import {
   worldRadius,
 } from '../src/scene/worlds/surfaceLaw'
 import { cellScreenRect } from '../src/scene/worlds/probePayload'
-import { ART_CROP_ESTIMATED_BYTES, DEFAULT_BYTE_BUDGET } from '../src/scene/worlds/artStream'
+import { ART_CROP_ESTIMATED_BYTES, defaultByteBudget } from '../src/scene/worlds/artStream'
+import { DEFAULT_TIER_ART_LAYERS } from '../src/scene/worlds/attachWorlds'
 import type { ArtStreamReport } from '../src/scene/worlds/artStream'
 import { subdivisionFor } from '../src/scene/worlds/cellGeometry'
 import { HueClass } from '../src/data/types'
@@ -205,6 +206,15 @@ function f16(value: number): number {
 }
 
 /**
+ * What {@link idleStream} carries as its budget: the shipped rung's derived default (DEC-812).
+ *
+ * Derived rather than transcribed, and from the same rung `attachWorlds` defaults to, because the
+ * budget is no longer a constant — it moves with §1.12's pool rung. A literal here would go on
+ * asserting a retired figure while passing.
+ */
+const IDLE_BUDGET = defaultByteBudget(DEFAULT_TIER_ART_LAYERS)
+
+/**
  * A stream that exists and has asked for nothing — the **live but idle** state (DEC-778).
  *
  * Not the same object as `stream: null`, which is a world composed with no `ArtStream` at all. The
@@ -214,8 +224,11 @@ function f16(value: number): number {
 function idleStream(): ArtStreamReport {
   return {
     bytesFetched: 0,
+    // Zero on both counts, and after DEC-812 they are no longer the same statement: nothing has
+    // been charged this session, and nothing stands behind a resident layer.
+    bytesOutstanding: 0,
     bytesReserved: 0,
-    byteBudget: DEFAULT_BYTE_BUDGET,
+    byteBudget: IDLE_BUDGET,
     swatchOnly: false,
     requested: 0,
     resolved: 0,
@@ -296,6 +309,7 @@ function sourceFor(
     seams: {
       swatchMean: false,
       bandsShuffle: false,
+      artOff: false,
       artThresholdFixed24: false,
       layersRequested: null,
     },
@@ -517,6 +531,9 @@ describe('§3.1 the served worlds payload', () => {
         seams: {
           swatchMean: true,
           bandsShuffle: false,
+          // `true`, unlike the field's own default: a fixture that agreed with the value a dropped
+          // echo would publish leaves a pass-through hardcoding `artOff: false` green (DEC-821).
+          artOff: true,
           artThresholdFixed24: true,
           layersRequested: 128,
         },
@@ -526,6 +543,8 @@ describe('§3.1 the served worlds payload', () => {
     expect(probe.pool.layers).toBe(0)
     expect(probe.pool.evictions).toBe(925)
     expect(probe.seams.swatchMean).toBe(true)
+    expect(probe.seams.artOff).toBe(true)
+    expect(probe.seams.bandsShuffle).toBe(false)
     expect(probe.seams.layersRequested).toBe(128)
   })
 
@@ -543,6 +562,11 @@ describe('§3.1 the served worlds payload', () => {
     // landed total rather than merely a different number.
     const stream: ArtStreamReport = {
       bytesFetched: 93_012_345,
+      // DEC-812's eleventh, and the one now most at risk of being crossed: `bytesFetched` is the
+      // session ledger and `bytesOutstanding` is what the budget tests, they are both large byte
+      // counts, and a pass-through that published the ledger for both would read as plausible AND
+      // would re-publish the retired semantics. So it is arithmetically unlike its neighbour here.
+      bytesOutstanding: 41_337_000,
       bytesReserved: 3 * ART_CROP_ESTIMATED_BYTES,
       byteBudget: 67_108_864,
       swatchOnly: true,
@@ -560,6 +584,7 @@ describe('§3.1 the served worlds payload', () => {
     // the gate side — which compares false against every floor and scores the frame RED.
     expect(probe.stream?.swatchOnly).toBe(true)
     expect(probe.stream?.bytesFetched).toBe(93_012_345)
+    expect(probe.stream?.bytesOutstanding).toBe(41_337_000)
     expect(probe.stream?.bytesReserved).toBe(276_480)
     expect(probe.stream?.byteBudget).toBe(67_108_864)
     expect(probe.stream?.declinedExhausted).toBe(57)
@@ -582,7 +607,7 @@ describe('§3.1 the served worlds payload', () => {
     // An idle stream is NOT swatch-only: its budget is unspent, which is a different sentence from
     // "there is no budget". A report synthesised for the absent case would have to pick one.
     expect(idle.stream?.swatchOnly).toBe(false)
-    expect(idle.stream?.byteBudget).toBe(DEFAULT_BYTE_BUDGET)
+    expect(idle.stream?.byteBudget).toBe(IDLE_BUDGET)
   })
 
   it('reports the pose in radii, which is what W1 and W4 are specified at', () => {

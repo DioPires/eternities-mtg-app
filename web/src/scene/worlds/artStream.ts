@@ -17,16 +17,32 @@
  * | at most 6 concurrent | `imageQueue`'s `concurrency`, from `tuning.IMAGE_CONCURRENCY` |
  * | cache-busted by the contract's `imageTs` | `data/images`' `imageUri`, which appends `?<ts>` |
  * | a failed key never retried in the same session | {@link ArtPool.hasFailed}, checked here |
- * | **a per-session byte budget that degrades to swatch-only** | **here** — nothing else had it** |
+ * | **a byte budget on outstanding art spend, degrading to swatch-only** | **here** — nothing else had it** |
  *
  * The fifth is this file's own, and it needs the byte count `imageQueue` now reports: a budget
  * against the network cannot be derived from a decoded `ImageBitmap`, whose footprint is a constant
  * `128 * 96 * 4` regardless of what crossed the wire.
  *
+ * > **Normative — the budget bounds what is *outstanding*, and eviction reclaims (§1.6, DEC-812).**
+ * > The quantity tested is settled bytes standing behind **resident layers**, plus in-flight
+ * > reservations; when the pool's LRU evicts a layer, the stream credits that key's own body size
+ * > back. §1.6 used to call this a "per-session byte budget" and it was implemented as one — a
+ * > running total nothing ever subtracted from. Leg G's 45-world acceptance tour measured what that
+ * > costs: `bytesFetched` crossed 64 MiB at the **eighth** world and then froze exactly, along with
+ * > `requested` and `resolved`, so all thirty-seven worlds after it rendered art-free for the life
+ * > of the page. The cut was a step function of *tour position* and not of demand — a 676-cell world
+ * > early got full art, a 302-cell world late got none — and `pool.evictions` read **0** on all 45
+ * > worlds, which is the tell: the budget refused before the pool was ever consulted, so the LRU
+ * > never ran and never reclaimed. Swatch-only is now a condition a session comes back out of.
+ *
  * > **Normative — degrading is not tearing down (§1.6).** Over budget, the stream stops *asking*.
  * > Layers already resident keep drawing their art; §1.4's shading path degrades to the swatch only
  * > for cells that never got one. A budget that evicted what it had already paid for would spend
- * > the session's bytes and then throw away the picture they bought.
+ * > the session's bytes and then throw away the picture they bought. **The reclaim above does not
+ * > contradict this, and the direction is what separates them**: the pool's LRU decides what to
+ * > evict, under demand for *layers*, and the budget follows it down; the budget never asks for an
+ * > eviction to buy itself room. That is also why {@link defaultByteBudget} is derived from the pool
+ * > — so the pool is the thing under pressure and the budget is a backstop behind it.
  *
  * > **Normative — the budget is charged when a request *issues*, and reconciled when it settles
  * > (§1.6, DEC-780).** The obvious reading — charge `Blob.size` on completion, compare the running
@@ -35,7 +51,7 @@
  * > bytes fetched and all 967 passed, spending **88.7 MiB against a 64 MiB budget**. So an issuing
  * > request reserves {@link ART_CROP_ESTIMATED_BYTES} against the budget up front, and releases
  * > that estimate for the body's real size once the queue settles it. The quantity
- * > {@link ArtStream.swatchOnly} tests is the **sum** of landed and outstanding bytes.
+ * > {@link ArtStream.swatchOnly} tests is the **sum** of outstanding and in-flight bytes.
  *
  * > **The defect is not "it never declines" — it is "it declines too late", and the difference
  * > matters to anyone measuring this.** The unfixed stream does eventually refuse: once 88.7 MiB
@@ -44,6 +60,12 @@
  * > `declinedBudget > 0` reads **both** trees as passing and tells you nothing; the quantity that
  * > separates them is what crossed the network — 967 requests / 88.7 MiB before, 729 / 70.2 MiB
  * > after. See {@link ART_CROP_ESTIMATED_BYTES} for why the remainder is +9.7% and not zero.
+ *
+ * > **The same warning survives DEC-812, for a second reason.** A tree with the
+ * > session-cumulative budget declines *constantly* once it has frozen — leg G's tour counted
+ * > `declinedBudget` climbing to 3,052,268 — and a fixed tree declines too, whenever a burst
+ * > out-runs the pool. The signal that separates them is not that declines happen, it is that the
+ * > fixed tree's `requested` and `resolved` **keep moving** and its `pool.evictions` are non-zero.
  */
 
 import { imageUri, type ImageSize } from '../../data/images'
@@ -111,17 +133,58 @@ export function letterbox(
 }
 
 /**
- * The default per-session budget, in bytes.
+ * The mean body of an **admitted** `art_crop`, in bytes — measured, not Scryfall's published median.
  *
- * Sized against the number §1.6 is reacting to: the prototype's one camera pose at
- * `tether-surface` spent ~1,900 `art_crop` fetches, roughly **170 MB**. 64 MB is comfortably above
- * what the adaptive threshold needs for a long session — a full pool at tier 4 is ~1,024 fetches,
- * ~92 MB at Scryfall's ~90 KB median `art_crop`, and the threshold's near-zero steady-state
- * eviction means a session re-fetches little of it — while still being *below* what a single
- * un-thresholded pose costs. It is a backstop against a pathological session, not a per-frame
- * budget, and it is a knob so §1.12's ladder can lower it.
+ * The admitted set is not a random sample of the roster and is heavier than one: the queue serves
+ * nearest-first, so what gets through is a priority-ordered prefix. Over DEC-772's harness at §3.1's
+ * pose the population mean across all 967 wants is 96,159 B while the admitted prefix means
+ * **100,996 B**, about 5% heavier. {@link defaultByteBudget} sizes against the heavier of the two,
+ * because under-stating the mean is the direction that makes the budget bind early.
  */
-export const DEFAULT_BYTE_BUDGET = 64 * 1024 * 1024
+export const ART_CROP_ADMITTED_MEAN_BYTES = 100_996
+
+/**
+ * How far {@link defaultByteBudget} sits above a full pool's measured cost.
+ *
+ * The budget's job after DEC-812 is to be a **backstop**, not the binding constraint: §1.6's pool
+ * and §1.6's adaptive threshold are what bound how much art a frame asks for, and a default that
+ * bound first would be the session-cumulative defect wearing a residency spelling — a full pool
+ * would sit *at* the budget, nothing further would ever be asked for, and so nothing would ever be
+ * evicted to reclaim it. The headroom is what keeps the release valve open.
+ *
+ * 1.5 is the factor by which the mean admitted body would have to grow before the budget bound at a
+ * full pool. That is the number this constant buys and the honest way to state it: art would have
+ * to average **151,494 B** — half as much again as the 100,996 B measured — for a full pool to go
+ * swatch-only. Below that the pool evicts, the stream reclaims, and the budget stays slack.
+ */
+export const BYTE_BUDGET_HEADROOM = 1.5
+
+/**
+ * The default budget for a pool of `poolLayers` layers, in bytes (§1.6, §1.12, DEC-812).
+ *
+ * > **Normative — the default is derived from the pool, not typed in (DEC-812).** The retired
+ * > constant was a flat 64 MiB sized against *one camera pose*, and it read as deliberate because
+ * > §1.6 called it "per-session": 1,024 layers at the 100,996 B admitted mean is **98.6 MiB of
+ * > settled bytes at a full pool**, so a full pool was already half as much again as the whole
+ * > budget. Under {@link ArtStream.swatchOnly}'s residency semantics that number would bind before
+ * > the pool ever did, which is exactly the state leg G measured: art dead from the eighth world on.
+ * > Deriving it means the two move together — §1.12's ladder lowers the rung and the budget follows
+ * > it down, instead of a 128-layer tier carrying a ceiling sized for 1,024.
+ *
+ * At tier 0's 1,024 layers this is **147.9 MiB**, and the figure is meant to look large: it is a
+ * bound on a quantity the pool already bounds, kept so a session whose bodies are pathologically
+ * heavy still has a ceiling. §1.12's `byteBudget` option overrides it — see
+ * {@link ArtStreamOptions.byteBudget} for what a budget *below* a full pool means.
+ *
+ * The `max(1, ...)` floor is for a zero-layer pool, which §1.6 makes legal. A pool with nothing to
+ * give must refuse for **exhaustion**, and a budget of zero would make it refuse for budget instead
+ * — the same cause-attribution error §3.1's W4 control exists to tell apart. (`attachWorlds` never
+ * builds a stream over a zero-layer pool, so this is a floor under a reachable constructor call
+ * rather than under a shipped path.)
+ */
+export function defaultByteBudget(poolLayers: number): number {
+  return Math.ceil(Math.max(1, poolLayers) * ART_CROP_ADMITTED_MEAN_BYTES * BYTE_BUDGET_HEADROOM)
+}
 
 /**
  * What one in-flight request is charged against the budget before its body arrives, in bytes.
@@ -135,55 +198,85 @@ export const DEFAULT_BYTE_BUDGET = 64 * 1024 * 1024
  * > harness: **88.7 MiB fetched against a 64 MiB budget.** §1.6 is normative that over budget the
  * > stream stops asking; charging only on completion is what made it unable to.
  *
- * 90 KiB is Scryfall's median `art_crop`, the same figure {@link DEFAULT_BYTE_BUDGET}'s header
- * sizes the budget against. It sits a little *under* the 96,159-byte mean measured over all 967
- * fetches, so reconciliation corrects the estimate upward as bodies land rather than throttling a
- * session early on a guess.
+ * 90 KiB is Scryfall's median `art_crop`. It sits a little *under* both measured means — the
+ * 96,159-byte population mean over all 967 fetches at §3.1's pose and the
+ * {@link ART_CROP_ADMITTED_MEAN_BYTES} of the admitted prefix — so reconciliation corrects the
+ * estimate upward as bodies land rather than throttling a session early on a guess.
  *
- * **What the estimate bounds is the number of requests admitted, not the bytes they turn out to
- * cost.** `byteBudget / ART_CROP_ESTIMATED_BYTES` is 67,108,864/92,160 = 728.2, so a session admits
- * exactly **729** bodies and then stops — measured, not argued, on DEC-772's harness at §3.1's
- * pose. The session's spend is `729 * (whatever those 729 actually weigh)`, so the overshoot is the
- * estimate's error against *that* mean, systematically and in one direction.
+ * **What the estimate bounds is how many requests may be outstanding at once, not what a session
+ * spends.** `byteBudget / ART_CROP_ESTIMATED_BYTES` is the number of bodies that may be in flight
+ * simultaneously with an empty pool behind them; each one that settles hands its estimate back and
+ * leaves the *real* body standing in {@link ArtStreamReport.bytesOutstanding} instead.
  *
- * **The admitted set is not a random sample of the roster, and it is heavier than one.** The queue
- * serves nearest-first, so the 729 that get through are a priority-ordered prefix:
- *
- * | tree | responses | spent | mean body | vs 64 MiB |
- * |---|---|---|---|---|
- * | pre-DEC-780 (charge on completion) | 967 — the whole want set | 88.7 MiB | 96,159 B | **+38.6%** |
- * | this file | **729** | 70.2 MiB | **100,996 B** | **+9.7%** |
- *
- * 96,159 B over all 967 is the population mean, and it reproduces DEC-772's 96,155 independently.
- * The admitted prefix means 100,996 B — about 5% heavier — and 100,996/92,160 = 1.0959 is the
- * +9.7% exactly. **So do not predict the overshoot from the population mean**; it under-states it,
- * which is the direction that matters.
+ * > **The count law that used to live here was a law about a session, and DEC-812 retired it.**
+ * > While the budget was session-cumulative, `byteBudget / estimate` was the number of bodies a
+ * > *page* would ever admit — 729 at the retired 64 MiB — and the table below was the overshoot
+ * > against that one-shot total:
+ * >
+ * > | tree | responses | spent | mean body | vs 64 MiB |
+ * > |---|---|---|---|---|
+ * > | pre-DEC-780 (charge on completion) | 967 — the whole want set | 88.7 MiB | 96,159 B | **+38.6%** |
+ * > | post-DEC-780, pre-DEC-812 | **729** | 70.2 MiB | **100,996 B** | **+9.7%** |
+ * >
+ * > Both rows are one pose of one world. What neither could show is the second world: on the
+ * > pre-DEC-812 tree the 729th body was the *last one of the session*, and leg G's 45-world tour
+ * > measured exactly that — art at 1.000 through the eighth world, 0.000 on all thirty-seven after
+ * > it. A session now admits as many bodies as the pool can hold layers for, repeatedly, and the
+ * > figures above are kept as the provenance of {@link ART_CROP_ADMITTED_MEAN_BYTES} rather than as
+ * > a live prediction.
  *
  * The constant sits under both means deliberately: §1.6's budget is a spend ceiling for a prefetch,
- * and starving the picture is the worse failure. Anyone who needs a hard cap should raise this
- * constant — the count law above says exactly what that buys — and **not** re-spell
- * {@link ArtStream.swatchOnly}, which is the change that reintroduces DEC-780.
+ * and starving the picture is the worse failure. Anyone who needs a hard cap should lower
+ * {@link ArtStreamOptions.byteBudget} and **not** re-spell {@link ArtStream.swatchOnly}, which is
+ * the change that reintroduces DEC-780.
  */
 export const ART_CROP_ESTIMATED_BYTES = 90 * 1024
 
 /** What the probe reports about the stream (§3.1). */
 export interface ArtStreamReport {
-  /** Bytes charged this session — successes and decode failures alike. Monotonic. */
+  /**
+   * Bytes this session has pulled off the network — successes and decode failures alike. Monotonic.
+   *
+   * > **This is the session ledger, and after DEC-812 it is no longer what the budget is tested
+   * > against.** It is expected to climb past `byteBudget` on any long session and that is not a
+   * > fault: a page that visits forty worlds has legitimately fetched more art than any one of them
+   * > can hold. The quantity the budget bounds is {@link ArtStreamReport.bytesOutstanding}.
+   * > Reading this field as "the budget" is the defect leg G measured — see that field's note.
+   */
   readonly bytesFetched: number
+  /**
+   * Settled bytes that still have a **resident layer standing behind them** (§1.6, DEC-812).
+   *
+   * > **Normative — the budget bounds outstanding spend, not the session's total.** It rises by a
+   * > body's real `Blob.size` when that body lands on a layer, and falls by exactly that key's own
+   * > size when the pool evicts the layer. §1.6's older "per-session byte budget" was a total that
+   * > nothing ever subtracted from, which made swatch-only **terminal**: leg G's 45-world tour
+   * > crossed 64 MiB at the eighth world and every world after it rendered art-free for the life of
+   * > the page, with `pool.evictions` at 0 throughout because the budget refused before the pool was
+   * > ever asked. Swatch-only is now a condition a session recovers from as demand moves.
+   *
+   * > Not every charged byte is outstanding, and the gap is deliberate. A body that arrived and
+   * > would not decode is in `bytesFetched` and **not** here — no layer stands behind it, and the
+   * > pool's no-retry set is what stops the session paying for it twice. Same for a body that landed
+   * > after a `reset()` took its reservation away: charged, dropped, never resident.
+   */
+  readonly bytesOutstanding: number
   /**
    * Bytes committed to requests that have not settled yet, at
    * {@link ART_CROP_ESTIMATED_BYTES} apiece (§1.6, DEC-780).
    *
    * > **Not monotonic, and not a subset of {@link ArtStreamReport.bytesFetched}.** It rises when a
    * > request issues and falls when that request settles — whichever way it settles. A body that
-   * > arrived moves its estimate into `bytesFetched`; one that was dropped or cancelled moves it
-   * > nowhere, because nothing was paid for it.
+   * > arrived moves its estimate into `bytesFetched`, and into
+   * > {@link ArtStreamReport.bytesOutstanding} as well if it reached a layer; one that was dropped
+   * > or cancelled moves it nowhere, because nothing was paid for it.
    *
-   * > A reader wanting "what this session has committed" wants the **sum** of the two, which is
-   * > what {@link ArtStreamReport.swatchOnly} is computed from. Do not re-derive that boolean
-   * > (DEC-744 B1, DEC-746 D5) — this field is published so the sum is *legible*, not so the test
-   * > can be repeated. It is the reason a report can show `swatchOnly` true while `bytesFetched` is
-   * > still under `byteBudget`: the difference is in flight.
+   * > A reader wanting "what this session is currently committed to" wants the **sum** of this and
+   * > `bytesOutstanding`, which is what {@link ArtStreamReport.swatchOnly} is computed from. Do not
+   * > re-derive that boolean (DEC-744 B1, DEC-746 D5) — the two components are published so the sum
+   * > is *legible*, not so the test can be repeated. They are the reason a report can show
+   * > `swatchOnly` true while `bytesOutstanding` is still under `byteBudget`: the difference is in
+   * > flight.
    */
   readonly bytesReserved: number
   readonly byteBudget: number
@@ -195,9 +288,15 @@ export interface ArtStreamReport {
    * > measure being carried by the wrong signal.
    *
    * > **Read it; do not recompute it** (DEC-744 B1, DEC-746 D5). It is
-   * > `bytesFetched + bytesReserved >= byteBudget`, not `bytesFetched >= byteBudget` — the second
-   * > spelling is the DEC-780 defect, and a gate that re-derived it would re-introduce the bug on
-   * > the reading side after the stream had been fixed.
+   * > `bytesOutstanding + bytesReserved >= byteBudget`. Both of the older spellings are defects that
+   * > shipped: `bytesFetched >= byteBudget` is DEC-780 (it cannot bind inside the one frame that
+   * > issues every want), and `bytesFetched + bytesReserved >= byteBudget` is DEC-812 (it binds, and
+   * > then never un-binds, because `bytesFetched` is monotonic). A gate that re-derived either would
+   * > re-introduce the bug on the reading side after the stream had been fixed.
+   *
+   * > **Recoverable, which it was not before DEC-812.** It goes false again when the pool evicts
+   * > layers this stream is charged for — that is the whole of the fix — so a tour reads it true
+   * > under a burst and false again once the burst has settled and demand has moved on.
    */
   readonly swatchOnly: boolean
   /** Requests handed to the queue. Not the same as cells wanting art — see {@link ArtStream.request}. */
@@ -227,7 +326,22 @@ export interface ArtStreamReport {
 export interface ArtStreamOptions {
   readonly pool: ArtPool
   readonly queue: ImageQueue
-  /** Defaults to {@link DEFAULT_BYTE_BUDGET}. `0` is a legal swatch-only session from frame one. */
+  /**
+   * Defaults to {@link defaultByteBudget} of `pool.layers`. `0` is a legal swatch-only session from
+   * frame one.
+   *
+   * > **A budget set *below* a full pool's settled cost is a deliberate spend cap, and it degrades
+   * > the way §1.6 says (DEC-812).** The reclaim that makes swatch-only recoverable is driven by the
+   * > pool's own LRU, and the LRU only runs when something asks the pool for a layer — so a budget
+   * > that binds while the pool still has free layers stops the asking, nothing is evicted, and the
+   * > session stays swatch-only until demand or the dataset changes. That is §1.6's normative
+   * > behaviour ("over budget the stream stops asking; layers already resident keep drawing their
+   * > art — a budget that evicted what it had already paid for would spend the session's bytes and
+   * > then throw away the picture they bought") and not the DEC-812 defect, which was that the
+   * > **default** sat below a full pool and so made the terminal state the ordinary one. Anything
+   * > at or above `defaultByteBudget(pool.layers)` recovers; §1.12's ladder should move the pool
+   * > rung, which moves the derived default with it, rather than reaching for this knob.
+   */
   readonly byteBudget?: number
   /**
    * Hand a decoded bitmap to the caller's uploader, which is the only part of this that touches GL.
@@ -274,6 +388,31 @@ export class ArtStream {
 
   private bytesFetched = 0
   /**
+   * The running sum of {@link settledBytes}, which is what {@link ArtStream.swatchOnly} tests.
+   *
+   * Kept as a sum rather than derived from the map for the same reason {@link bytesReserved} is:
+   * one `+=` where a body becomes resident, one `-=` in the eviction listener, so "is this
+   * balanced" is two lines. Unlike `bytesReserved` the derived spelling would also be O(resident)
+   * on a getter the selection pass calls once per admitted cell per frame.
+   */
+  private bytesOutstanding = 0
+  /**
+   * Per key, the real `Blob.size` of the body standing behind its resident layer (§1.6, DEC-812).
+   *
+   * **Per key, because the reclaim credits back a body and not an average.** The pool evicts a
+   * specific layer holding a specific key, and art bodies are not uniform — the measured spread
+   * across one pose runs from a few KiB to several hundred. A reclaim of
+   * {@link ART_CROP_ESTIMATED_BYTES}, or of the running mean, drifts the outstanding total away
+   * from the truth in whichever direction that session's art happens to lean, and drifts it
+   * *permanently*: nothing downstream ever re-measures it.
+   *
+   * Bounded by the pool: an entry is written only where {@link ArtPool.resolve} handed back a
+   * layer, and deleted when that layer is evicted, so `settledBytes.size <= pool.resident` holds by
+   * construction. Nothing else removes a resident layer — `release` and `fail` only ever take back
+   * a RESERVED one — so eviction is the sole reclaim path and the sole way an entry can die.
+   */
+  private readonly settledBytes = new Map<number, number>()
+  /**
    * The estimate standing against every request that has issued and not settled (§1.6, DEC-780).
    *
    * A running sum rather than `inFlight.size * ART_CROP_ESTIMATED_BYTES`, and the two are
@@ -305,16 +444,23 @@ export class ArtStream {
     this.queue = options.queue
     this.upload = options.upload
     this.imageSize = options.imageSize ?? 'art_crop'
-    this.byteBudget = Math.max(0, options.byteBudget ?? DEFAULT_BYTE_BUDGET)
+    this.byteBudget = Math.max(0, options.byteBudget ?? defaultByteBudget(this.pool.layers))
+    // Registered here, in the constructor, rather than on the first request: a listener attached
+    // lazily would miss every eviction that happened before it, and the charge those evictions were
+    // meant to credit back would stand for the session — DEC-812 again, in a smaller window.
+    this.pool.onEvict((key) => {
+      this.reclaim(key)
+    })
   }
 
   get swatchOnly(): boolean {
-    return this.bytesFetched + this.bytesReserved >= this.byteBudget
+    return this.bytesOutstanding + this.bytesReserved >= this.byteBudget
   }
 
   report(): ArtStreamReport {
     return {
       bytesFetched: this.bytesFetched,
+      bytesOutstanding: this.bytesOutstanding,
       bytesReserved: this.bytesReserved,
       byteBudget: this.byteBudget,
       swatchOnly: this.swatchOnly,
@@ -462,9 +608,19 @@ export class ArtStream {
         // The reservation is gone. The pool never evicts a RESERVED layer, so the only way here is
         // a `reset()` between the request and its landing — a dataset swap. Drop the bitmap rather
         // than uploading it into whatever now owns the layer.
+        //
+        // Charged in `bytesFetched` — the body crossed the wire — and deliberately **not** in
+        // `bytesOutstanding`: no layer stands behind it, so there is no eviction that could ever
+        // credit it back, and counting it would be a permanent charge for a picture nobody has
+        // (DEC-812's whole shape, at one key's scale).
         result.bitmap.close()
         return
       }
+      // The real body replaces the estimate as the thing standing against the budget. Recorded per
+      // key, because the pool will name this key when it evicts the layer and the credit has to be
+      // this body's own size.
+      this.settledBytes.set(key, result.bytes)
+      this.bytesOutstanding += result.bytes
       this.resolved += 1
       this.upload(layer, result.bitmap, this.box)
       result.bitmap.close()
@@ -472,7 +628,16 @@ export class ArtStream {
     }
 
     if (result.reason === 'failed') {
-      // A body that arrived and then failed to decode has still been paid for.
+      // A body that arrived and then failed to decode has still been paid for, so it is charged in
+      // the session ledger — a budget that only counted successes would under-count exactly the
+      // traffic §1.6 exists to bound.
+      //
+      // **It is not outstanding, and that is a ruling and not an oversight (DEC-812).** The key
+      // holds no layer — `pool.fail` hands the reservation straight back — so nothing could ever
+      // evict it, and an outstanding charge with no resident layer behind it is charge that stands
+      // for the life of the page. What stops the session paying for it repeatedly instead is the
+      // pool's no-retry set, which this line's `fail` puts the key into: §1.6's "a failed key is
+      // never retried in the same session" is the bound on this path, and the budget is not.
       this.bytesFetched += result.bytes
       this.failed += 1
       this.pool.fail(key)
@@ -482,6 +647,25 @@ export class ArtStream {
     // again when the camera comes back is correct. So the key must **not** enter the pool's failed
     // set — but the reservation has to go back, or a dropped request holds a layer for the session.
     this.pool.release(key)
+  }
+
+  /**
+   * The pool evicted `key`'s layer: its body no longer stands against the budget (§1.6, DEC-812).
+   *
+   * Wired to {@link ArtPool.onEvict} in the constructor. This is the release valve the
+   * session-cumulative budget never had — without it `bytesOutstanding` is monotonic, swatch-only
+   * is terminal, and a session's art dies at whichever world crosses the budget.
+   *
+   * The absent-key early return is not a guard against a bug, it is the ordinary case: the pool
+   * evicts by layer and announces whatever key it displaced, and a key this stream never charged
+   * for — one whose body was dropped after a `reset()`, or one resident from before a swap — has
+   * no entry to credit. Crediting a default for it would invent bytes.
+   */
+  private reclaim(key: number): void {
+    const bytes = this.settledBytes.get(key)
+    if (bytes === undefined) return
+    this.settledBytes.delete(key)
+    this.bytesOutstanding -= bytes
   }
 
   /**

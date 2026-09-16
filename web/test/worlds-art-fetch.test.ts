@@ -17,13 +17,15 @@ import { describe, expect, it } from 'vitest'
 import { ImageQueue } from '../src/scene/cards/imageQueue'
 import { ArtPool } from '../src/scene/worlds/artPool'
 import {
+  ART_CROP_ADMITTED_MEAN_BYTES,
   ART_CROP_ESTIMATED_BYTES,
   ART_CROP_HEIGHT,
   ART_CROP_WIDTH,
   ART_LAYER_HEIGHT,
   ART_LAYER_WIDTH,
   ArtStream,
-  DEFAULT_BYTE_BUDGET,
+  BYTE_BUDGET_HEADROOM,
+  defaultByteBudget,
   letterbox,
 } from '../src/scene/worlds/artStream'
 
@@ -55,7 +57,14 @@ interface Harness {
 function harness(options: {
   layers?: number
   byteBudget?: number
-  bytes?: number
+  /**
+   * The body size, flat or **per URL** (DEC-812).
+   *
+   * Per URL because the reclaim credits back a specific key's body, and a reclaim of a constant —
+   * the estimate, the running mean, anything uniform — is indistinguishable from the right one while
+   * every body weighs the same. A test whose art is all one size cannot see that mutant.
+   */
+  bytes?: number | ((url: string) => number)
   hold?: boolean
   fail?: (url: string) => boolean
   decodeThrows?: boolean
@@ -71,10 +80,12 @@ function harness(options: {
       if (init) inits.push(init)
       const respond = (): unknown => {
         if (options.fail?.(url)) return { ok: false, status: 404 }
+        const size =
+          typeof options.bytes === 'function' ? options.bytes(url) : (options.bytes ?? BODY_BYTES)
         return {
           ok: true,
           status: 200,
-          blob: () => Promise.resolve({ size: options.bytes ?? BODY_BYTES } as Blob),
+          blob: () => Promise.resolve({ size } as Blob),
         }
       }
       if (!options.hold) return Promise.resolve(respond() as Response)
@@ -128,11 +139,26 @@ function harness(options: {
       // Bounded rather than `while (queue.stats.inFlight + queue.stats.waiting > 0)`: a stall is a
       // real failure mode of this fix — a reservation that is never credited back stops the queue
       // from draining — and an unbounded loop would hang the suite instead of failing a row.
+      //
+      // **The stream's reservation is part of the exit condition, and the queue's two counters
+      // alone are not enough (DEC-812).** There is a window in which a request has been dequeued
+      // and its fetch has resolved — so `waiting` and `inFlight` both read 0 — while the stream is
+      // still a microtask or two from `pool.resolve`. Measured: a burst of eight into an
+      // eight-layer pool returned from here with **six** resident and two reservations outstanding,
+      // which reads as a pool that refused work it had in fact queued. `bytesReserved` is the
+      // stream-side half of the same question and it is zero exactly when no request is in flight,
+      // so the three together mean "nothing is pending anywhere".
       for (let round = 0; round < 24; round += 1) {
         const held = [...gates.keys()]
         for (const url of held) gates.get(url)?.()
         await settle()
-        if (queue.stats.inFlight === 0 && queue.stats.waiting === 0) return
+        if (
+          queue.stats.inFlight === 0 &&
+          queue.stats.waiting === 0 &&
+          stream.report().bytesReserved === 0
+        ) {
+          return
+        }
       }
     },
     pending: () => gates.size,
@@ -651,20 +677,235 @@ describe('§1.6 the budget binds within a single frame (DEC-780)', () => {
     expect(ART_CROP_ESTIMATED_BYTES).toBeLessThan(96_159)
   })
 
-  it('admits exactly `byteBudget / estimate` bodies — the law the live overshoot is read from', () => {
-    // The shipped pair, not a scaled-down one: 64 MiB against 90 KiB is 728.18, so a session admits
-    // 729 and stops. That count is what the live harness measured (729 responses / 70.2 MiB against
-    // the unfixed tree's 967 / 88.7 MiB), and `artStream.ts` derives the +9.7% overshoot from it —
-    // so it is pinned here rather than left as a figure in a comment. A `Math.floor` in place of the
-    // strict `>=` in `swatchOnly`, or any re-tuning of either constant, moves this row first.
-    const admitted = Math.floor(DEFAULT_BYTE_BUDGET / ART_CROP_ESTIMATED_BYTES) + 1
-    expect(admitted).toBe(729)
+  it('admits `byteBudget / estimate` requests AT ONCE — what the estimate actually bounds', () => {
+    // The count law, stated as what it is after DEC-812: a bound on how many bodies may be
+    // outstanding simultaneously with an empty pool behind them, not on what a session will ever
+    // fetch. The pool is far larger than the admission count, so the pool cannot be what refused.
+    const BUDGET = ART_CROP_ESTIMATED_BYTES * 50
+    const h = harness({ layers: 512, byteBudget: BUDGET, hold: true })
+    for (let key = 0; key < 80; key += 1) h.stream.request(key, `${key}${ID.slice(3)}`, TS, () => 0)
+    const report = h.stream.report()
+    expect(Math.floor(BUDGET / ART_CROP_ESTIMATED_BYTES)).toBe(50)
+    expect(report.requested).toBe(50)
+    expect(report.declinedBudget).toBe(80 - 50)
+    expect(report.declinedExhausted).toBe(0)
+    expect(report.bytesFetched).toBe(0)
+  })
+})
 
-    const h = harness({ layers: 1024, hold: true })
-    for (let key = 0; key < 800; key += 1) h.stream.request(key, `${key}${ID.slice(3)}`, TS, () => 0)
-    expect(h.stream.report().requested).toBe(729)
-    expect(h.stream.report().declinedBudget).toBe(800 - 729)
-    expect(h.stream.report().bytesFetched).toBe(0)
+/**
+ * The budget is a bound on **outstanding** spend, and eviction reclaims (DEC-812).
+ *
+ * Every row in the block above lets the budget fill and then asks whether it bound. None of them
+ * asks whether it ever *un*-binds, and it never did: `bytesFetched` is monotonic, so once a session
+ * had spent 64 MiB the stream was swatch-only for the life of the page. Leg G's 45-world acceptance
+ * tour is what made that visible — full art through the eighth world, **0.000 on all thirty-seven
+ * after it**, `pool.evictions` reading 0 throughout because the budget refused before the pool was
+ * ever consulted, so the LRU never ran.
+ *
+ * **What separates the trees is not that declines happen.** The unfixed tour declined 3,052,268
+ * times; a fixed tree declines too, whenever a burst out-runs the pool. So no row here gates on
+ * `declinedBudget > 0` (§1.6's own note, DEC-791). What separates them is that a fixed session's
+ * `resolved` keeps moving and its evictions are non-zero — art arriving at the *fortieth* world.
+ *
+ * Bodies below are **distinct sizes**, which the rows above did not need. A reclaim that credits
+ * back a constant — the estimate, a running mean, anything uniform — is indistinguishable from one
+ * that credits the evicted key's own body while every body weighs the same.
+ */
+describe('§1.6 the budget releases what the pool evicts (DEC-812)', () => {
+  /** Eight cells per world, five worlds, one pool that holds exactly one world. */
+  const PER_WORLD = 8
+  const WORLDS = 5
+
+  /** A printing id per (world, cell), and the size of the body it returns. */
+  const idOf = (world: number, cell: number): string => `w${world}c${cell}${ID.slice(4)}`
+  /** Distinct per key, and unlike every default: no two bodies weigh the same. */
+  const sizeOf = (world: number, cell: number): number => BODY_BYTES + world * 1_301 + cell * 137
+  /** The harness hands back the URL; `imageUri` puts the printing id in it verbatim. */
+  const sizeForUrl = (url: string): number => {
+    const id = /\/([^/]+)\.jpg/.exec(url)?.[1] ?? ''
+    const parsed = /^w(\d+)c(\d+)/.exec(id)
+    if (!parsed) throw new Error(`unroutable art url ${url}`)
+    return sizeOf(Number(parsed[1]), Number(parsed[2]))
+  }
+  const worldTotal = (world: number): number =>
+    Array.from({ length: PER_WORLD }, (_, cell) => sizeOf(world, cell)).reduce((a, b) => a + b, 0)
+
+  /** Past §1.6's 30-frame grace window, so the previous world's layers are evictable. */
+  const frameOf = (world: number): number => world * 100
+
+  it('gives every world art, not just the ones before the budget filled', async () => {
+    // **The composition row, and the one the unfixed tree fails.** A pool that holds exactly one
+    // world, visited five times over, under the *shipped* derived default — no contrived budget.
+    // On the unfixed tree the landed total is monotonic: world 2 gets six of its eight cells and
+    // worlds 3, 4 and 5 get nothing at all, which is leg G's tour in miniature.
+    const h = harness({ layers: PER_WORLD, bytes: sizeForUrl })
+    expect(h.stream.byteBudget).toBe(defaultByteBudget(PER_WORLD))
+
+    for (let world = 0; world < WORLDS; world += 1) {
+      h.stream.beginFrame(frameOf(world))
+      for (let cell = 0; cell < PER_WORLD; cell += 1) {
+        h.stream.request(world * 100 + cell, idOf(world, cell), TS, () => cell)
+      }
+      await h.drain()
+      // Every cell of the world in front of the camera is showing its own art, on world 5 exactly
+      // as on world 1. This is the assertion that reads 0-of-8 on the unfixed tree from world 3 on.
+      for (let cell = 0; cell < PER_WORLD; cell += 1) {
+        expect(h.pool.layerOf(world * 100 + cell)).not.toBeNull()
+      }
+      expect(h.pool.resident).toBe(PER_WORLD)
+      expect(h.stream.swatchOnly).toBe(false)
+    }
+
+    const report = h.stream.report()
+    expect(report.requested).toBe(WORLDS * PER_WORLD)
+    expect(report.resolved).toBe(WORLDS * PER_WORLD)
+    expect(report.declinedBudget).toBe(0)
+    // Non-zero evictions are the mechanism, and they read **0 on all 45 worlds** of the unfixed
+    // tour: four world-transitions, a whole pool recycled at each.
+    expect(h.pool.report().evictions).toBe((WORLDS - 1) * PER_WORLD)
+    // Outstanding is the last world's bodies and nothing else — the four before it were credited
+    // back as their layers went. `bytesFetched` is all forty, and it is **over budget**, which is
+    // exactly right: a session that has toured five worlds has legitimately fetched more art than
+    // any one of them can hold.
+    expect(report.bytesOutstanding).toBe(worldTotal(WORLDS - 1))
+    expect(report.bytesFetched).toBe(
+      Array.from({ length: WORLDS }, (_, w) => worldTotal(w)).reduce((a, b) => a + b, 0),
+    )
+    expect(report.bytesFetched).toBeGreaterThan(h.stream.byteBudget)
+    // …and that last line passes on the unfixed tree too, which is why it is not the discriminator.
+    // The pair above it — `resolved` at forty and evictions non-zero — is.
+  })
+
+  it("credits back the evicted key's OWN body, not a constant", async () => {
+    // The mutant: reclaim `ART_CROP_ESTIMATED_BYTES`, or the mean, or any fixed figure. With one
+    // body size in play that mutant is invisible; with eight distinct ones it lands on the wrong
+    // number. One eviction, named and arithmetically pinned.
+    const h = harness({ layers: PER_WORLD, bytes: sizeForUrl })
+    h.stream.beginFrame(frameOf(0))
+    for (let cell = 0; cell < PER_WORLD; cell += 1) {
+      h.stream.request(cell, idOf(0, cell), TS, () => cell)
+    }
+    await h.drain()
+    expect(h.stream.report().bytesOutstanding).toBe(worldTotal(0))
+
+    // One new key on a later frame. The pool is full, so it evicts the least-recently-wanted layer
+    // — layer 0, holding cell 0, since the whole world was touched on one frame and the LRU scan
+    // takes the first of the tied.
+    h.stream.beginFrame(frameOf(1))
+    expect(h.stream.request(999, idOf(1, 0), TS, () => 0)).not.toBeNull()
+    expect(h.pool.layerOf(0)).toBeNull()
+    expect(h.pool.report().evictions).toBe(1)
+    // Credited the moment the pool displaced it, before the replacement's body exists.
+    expect(h.stream.report().bytesOutstanding).toBe(worldTotal(0) - sizeOf(0, 0))
+    await h.drain()
+    expect(h.stream.report().bytesOutstanding).toBe(worldTotal(0) - sizeOf(0, 0) + sizeOf(1, 0))
+
+    // The three constants a reclaim would plausibly be written with, each shown to give a different
+    // answer. Without these the row asserts a number that several wrong implementations also hit.
+    for (const wrong of [ART_CROP_ESTIMATED_BYTES, ART_CROP_ADMITTED_MEAN_BYTES, sizeOf(0, 7)]) {
+      expect(wrong).not.toBe(sizeOf(0, 0))
+    }
+  })
+
+  it('binds on resident bytes with nothing in flight, which is the new predicates own domain', async () => {
+    // The row that kills a hardcoded `swatchOnly = false`, with an injected budget that actually
+    // binds — a bound-check is vacuous while the bound never binds. It also pins the boundary
+    // `ArtStreamOptions.byteBudget` documents: a budget set BELOW a full pool is a deliberate spend
+    // cap. The pool still has fourteen free layers here, so nothing will ever ask it for one,
+    // nothing will be evicted, and nothing will be reclaimed — §1.6's "over budget the stream stops
+    // asking", which is correct behaviour for a hand-set cap and is precisely why the *default* is
+    // derived from the pool instead.
+    // Exactly two bodies, not two-and-a-byte: the predicate is `>=`, so the budget has to be the
+    // pair's own weight for residency alone to reach it with nothing in flight.
+    const h = harness({ layers: 16, byteBudget: BODY_BYTES * 2 })
+    for (const key of [1, 2]) {
+      h.stream.request(key, `${key}${ID.slice(1)}`, TS, () => 0)
+      await h.settle()
+    }
+    const report = h.stream.report()
+    // Nothing in flight: the whole charge is residency, so this row cannot pass on `bytesReserved`.
+    expect(report.bytesReserved).toBe(0)
+    expect(report.bytesOutstanding).toBe(BODY_BYTES * 2)
+    expect(h.stream.swatchOnly).toBe(true)
+    expect(h.stream.request(3, `3${ID.slice(1)}`, TS, () => 0)).toBeNull()
+    expect(h.stream.report().declinedBudget).toBe(1)
+    expect(h.pool.resident).toBe(2)
+    expect(h.pool.report().evictions).toBe(0)
+  })
+
+  it('sizes the default ABOVE a full pool, which is what keeps the reclaim reachable', () => {
+    // Design consequence 3 of the ruling. If the default sat below a full pool's settled cost, a
+    // full pool would sit *at* the budget, nothing further would be asked for, nothing would be
+    // evicted and nothing reclaimed — DEC-812's deadlock rebuilt in residency spelling. The retired
+    // 64 MiB was exactly there: 1,024 layers at the admitted mean is 98.6 MiB.
+    expect(1024 * ART_CROP_ADMITTED_MEAN_BYTES).toBeGreaterThan(64 * 1024 * 1024)
+    for (const layers of [16, 128, 256, 1024]) {
+      expect(defaultByteBudget(layers)).toBeGreaterThan(layers * ART_CROP_ADMITTED_MEAN_BYTES)
+    }
+    // Responds to its input rather than returning a constant, and by the factor it claims to.
+    expect(defaultByteBudget(256)).toBe(defaultByteBudget(128) * 2)
+    expect(defaultByteBudget(1)).toBe(Math.ceil(ART_CROP_ADMITTED_MEAN_BYTES * BYTE_BUDGET_HEADROOM))
+    expect(BYTE_BUDGET_HEADROOM).toBeGreaterThan(1)
+    // The zero-layer floor. A pool with nothing to give must refuse for EXHAUSTION; a budget of
+    // zero would make it refuse for budget, and §3.1's W4 control reads those two apart.
+    expect(defaultByteBudget(0)).toBe(defaultByteBudget(1))
+  })
+
+  it('lets the POOL refuse first at the shipped default, not the budget', async () => {
+    // The behavioural half of the row above: same burst, no injected budget. What runs out is
+    // layers, and the cause is recorded as exhaustion — the state `?artThreshold=fixed24` exists to
+    // produce, and one a budget that bound first would have stolen.
+    const LAYERS = 64
+    const h = harness({ layers: LAYERS, hold: true, bytes: sizeForUrl })
+    for (let cell = 0; cell < 100; cell += 1) {
+      h.stream.request(cell, idOf(0, cell), TS, () => cell)
+    }
+    const report = h.stream.report()
+    expect(h.stream.byteBudget).toBe(defaultByteBudget(LAYERS))
+    expect(report.requested).toBe(LAYERS)
+    expect(report.declinedExhausted).toBe(100 - LAYERS)
+    expect(report.declinedBudget).toBe(0)
+    expect(report.swatchOnly).toBe(false)
+    await h.drain()
+  })
+
+  it('charges a decode failure to the ledger and NOT to outstanding', async () => {
+    // Design consequence 2. The body crossed the wire, so §1.6 charges it; but `pool.fail` hands
+    // the reservation straight back, so no layer stands behind it and no eviction could ever credit
+    // it. An outstanding charge with nothing resident behind it is charge that stands for the life
+    // of the page — DEC-812 at one key's scale. What bounds this path instead is the no-retry set.
+    const h = harness({ layers: 8, decodeThrows: true })
+    h.stream.request(1, ID, TS, () => 0)
+    await h.settle()
+    const report = h.stream.report()
+    expect(report.failed).toBe(1)
+    expect(report.bytesFetched).toBe(BODY_BYTES)
+    expect(report.bytesOutstanding).toBe(0)
+    expect(h.pool.resident).toBe(0)
+    // The bound on the path, asserted rather than asserted-about: the key cannot be asked for again.
+    expect(h.stream.request(1, ID, TS, () => 0)).toBeNull()
+    expect(h.stream.report().declinedFailedBefore).toBe(1)
+    expect(h.urls).toHaveLength(1)
+  })
+
+  it('charges a body whose reservation vanished, and leaves nothing outstanding', async () => {
+    // The other path that charges without residency: the body lands and `pool.resolve` has no
+    // reservation to promote, so the bitmap is dropped. Driven here by taking the reservation back
+    // directly — the product's door to this state is a `reset()` between the request and its
+    // landing — because what is being asserted is the accounting, not the door.
+    const h = harness({ layers: 8, hold: true })
+    h.stream.request(1, ID, TS, () => 0)
+    await h.settle()
+    h.pool.release(1)
+    await h.drain()
+    const report = h.stream.report()
+    expect(report.bytesFetched).toBe(BODY_BYTES)
+    expect(report.bytesOutstanding).toBe(0)
+    expect(report.bytesReserved).toBe(0)
+    expect(report.resolved).toBe(0)
+    expect(h.pool.resident).toBe(0)
+    expect(h.uploads).toHaveLength(0)
   })
 })
 
