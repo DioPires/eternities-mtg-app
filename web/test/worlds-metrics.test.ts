@@ -836,14 +836,19 @@ describe("W4 — art resolves without exhausting", () => {
 
   /**
    * The stream report at the entry to a world's visit, in the fresh session the gate now gives each
-   * world: nothing fetched, nothing in flight, the whole 64 MiB budget still to spend.
+   * world: nothing outstanding, nothing in flight, the whole budget still to spend, and the renderer
+   * saying so.
    *
    * Passed explicitly at every call site rather than defaulted, because that is what the signature
    * is for — a default would switch `budgetBoundAtEntry` off on every row here and leave the guard
    * exercised only where it is itself the subject.
+   *
+   * This is the shape of all 111 entry readings on record, which is why the DEC-812 spelling change
+   * moved no landed number and why that is not reassuring — see {@link budgetBoundAtEntry}.
    */
   const FRESH_SESSION = {
-    bytesFetched: 0,
+    swatchOnly: false,
+    bytesOutstanding: 0,
     bytesReserved: 0,
     byteBudget: 64 * 1024 * 1024,
   };
@@ -1333,8 +1338,13 @@ describe("W4 — art resolves without exhausting", () => {
    * mechanisms, one zero numerator — and a guard written against one says nothing about the other.
    */
   describe("a budget spent before the world was visited is a setup failure", () => {
+    /**
+     * dominaria's own entry report from that run, as the renderer would publish it today: the
+     * session is holding more than its budget and says so.
+     */
     const SPENT = {
-      bytesFetched: 67_163_595,
+      swatchOnly: true,
+      bytesOutstanding: 67_163_595,
       bytesReserved: 0,
       byteBudget: 67_108_864,
     };
@@ -1354,7 +1364,7 @@ describe("W4 — art resolves without exhausting", () => {
       const art = carried.measures.find((m) => m.key === "artFraction");
       expect(art?.status).toBe("insufficient");
       expect(art?.insufficientReason).toMatch(
-        /already spent before this world/,
+        /already committed before this world/,
       );
       expect(carried.status).not.toBe("pass");
       // Both halves: with every request declined for budget nothing is admitted, so nothing is
@@ -1382,15 +1392,20 @@ describe("W4 — art resolves without exhausting", () => {
     });
 
     it("does not fire one byte short of the budget", () => {
-      // The boundary is the renderer's own `>=`, and the row below it must stay a scored reading —
-      // otherwise the guard is not "was this stream allowed to fetch" but "was it nearly out", and
-      // the last world before the cap would lose a real failure. Same demand and the same starved
-      // numerator as the bound row above; only the entry spend differs, and the verdict flips.
+      // The boundary is the renderer's, and the row below it must stay a scored reading — otherwise
+      // the guard is not "was this stream allowed to fetch" but "was it nearly out", and the last
+      // world before the cap would lose a real failure. Same demand and the same starved numerator
+      // as the bound row above; only the renderer's verdict differs, and ours flips with it.
       const nearly = evaluateW4(
         cells(967, 100),
         settled(0),
         { layers: 1_024, resident: 100 },
-        { bytesFetched: 67_108_863, bytesReserved: 0, byteBudget: 67_108_864 },
+        {
+          swatchOnly: false,
+          bytesOutstanding: 67_108_863,
+          bytesReserved: 0,
+          byteBudget: 67_108_864,
+        },
       );
 
       expect(nearly.budgetBoundAtEntry).toBe(false);
@@ -1399,42 +1414,100 @@ describe("W4 — art resolves without exhausting", () => {
       );
     });
 
-    it("counts bytes in flight, as the renderer does", () => {
-      // `artStream.ts` declines on `bytesFetched + bytesReserved >= byteBudget`, not on
-      // `bytesFetched` alone: a session whose remaining budget is entirely reserved by in-flight
-      // requests is just as forbidden to fetch. Reading only the landed bytes would put the guard
-      // off for exactly the window in which the stream is refusing.
-      const inFlight = evaluateW4(
+    /**
+     * **The two rows that make this a read rather than a re-derivation (DEC-820 rider 2).**
+     *
+     * The guard used to carry its own copy of the renderer's condition. That copy was correct when
+     * written and wrong after DEC-812, and nothing here noticed, because every fixture had been
+     * chosen to sit far from the boundary in agreement with both spellings. These two put the flag
+     * and the arithmetic into open disagreement, in both directions, so a guard that recomputes
+     * fails one of them whichever stale spelling it reaches for.
+     */
+    it("believes the renderer over the byte counts when a long session has been evicting", () => {
+      // The DEC-812 shape, and the one that matters: a session that has fetched far more than its
+      // budget over its lifetime while *holding* almost none of it, because the pool evicted and the
+      // stream reclaimed. The renderer is fetching happily. A guard recomputing the retired
+      // `bytesFetched + bytesReserved >= byteBudget` calls this budget-bound and throws away a real
+      // W4 reading on a healthy world — the guard swallowing what it exists to protect.
+      // Declared as a `const` rather than inline so the extra `bytesFetched` survives TypeScript's
+      // excess-property check. It is here on purpose: it is what makes this row a mutation kill
+      // rather than a rename. With it present the retired spelling is *evaluable* — and wrong,
+      // 90,040,620 + 0 >= 19,391,232 — so a guard that reaches for it goes red here. The numbers are
+      // the DEC-820 reclaim positive control's, measured live at `?layers=128` on dominaria.
+      const entry = {
+        swatchOnly: false,
+        bytesFetched: 90_040_620,
+        bytesOutstanding: 11_991_323,
+        bytesReserved: 0,
+        byteBudget: 19_391_232,
+      };
+
+      const evicting = evaluateW4(
+        cells(967, 100),
+        settled(29),
+        { layers: 128, resident: 128 },
+        entry,
+      );
+
+      expect(evicting.budgetBoundAtEntry).toBe(false);
+      expect(
+        evicting.measures.find((m) => m.key === "artFraction")?.status,
+      ).toBe("fail");
+    });
+
+    it("believes the renderer when it declares swatch-only under a slack-looking budget", () => {
+      // The other direction. Nothing in the byte counts is near the budget, so every re-derivation
+      // — retired or current — reads "plenty left"; the renderer nonetheless reports `swatchOnly`.
+      // Whatever produced that, it is the shipped policy's answer to "may this stream fetch", and
+      // the gate's job is to read it, not to overrule it with arithmetic of its own.
+      const declared = evaluateW4(
         cells(967, 0),
         settled(0),
         { layers: 1_024, resident: 837 },
         {
-          bytesFetched: 40_000_000,
-          bytesReserved: 27_108_864,
+          swatchOnly: true,
+          bytesOutstanding: 1_000,
+          bytesReserved: 0,
           byteBudget: 67_108_864,
         },
       );
 
-      expect(inFlight.budgetBoundAtEntry).toBe(true);
+      expect(declared.budgetBoundAtEntry).toBe(true);
+      expect(
+        declared.measures.find((m) => m.key === "artFraction")?.status,
+      ).toBe("insufficient");
     });
 
     it("refuses an entry report that omits a field rather than defaulting it to zero", () => {
-      // The same provenance trap as `pool.resident`, and it bites in the same direction: an absent
-      // `bytesReserved` reads as 0, which switches the guard off precisely at the boundary.
+      // `swatchOnly` is the predicate, so its absence is the silent one: `undefined` is falsy, and a
+      // guard that let it through would read every world as "allowed to fetch" and disqualify
+      // nothing, which is the guard switched off.
       expect(() =>
         evaluateW4(
           cells(967, 0),
           settled(0),
           PROTOTYPE_POOL,
           // @ts-expect-error — the omission is the thing under test.
-          { bytesFetched: 67_163_595, byteBudget: 67_108_864 },
+          { bytesOutstanding: 67_163_595, bytesReserved: 0, byteBudget: 67_108_864 },
         ),
-      ).toThrow(/bytesReserved/);
+      ).toThrow(/swatchOnly/);
+
+      // The byte counts no longer decide anything, but they are what the disqualification message
+      // quotes, and a setup failure reported as `undefined outstanding` names no cause at all.
+      expect(() =>
+        evaluateW4(
+          cells(967, 0),
+          settled(0),
+          PROTOTYPE_POOL,
+          // @ts-expect-error — the omission is the thing under test.
+          { swatchOnly: true, byteBudget: 67_108_864 },
+        ),
+      ).toThrow(/bytesOutstanding/);
 
       expect(() =>
         // @ts-expect-error — a missing entry report entirely.
         evaluateW4(cells(967, 0), settled(0), PROTOTYPE_POOL),
-      ).toThrow(/bytesFetched/);
+      ).toThrow(/swatchOnly/);
     });
   });
 });

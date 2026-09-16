@@ -290,12 +290,14 @@ export declare function streamNeverRan(
   pool: { readonly layers: number; readonly resident: number },
 ): boolean;
 /**
- * Was the session's art byte budget already spent when this world's visit began? The renderer's own
- * condition (`bytesFetched + bytesReserved >= byteBudget`), read on the report taken at **entry**.
- * All three fields are required: an absent `bytesReserved` reads as 0 and switches the guard off.
+ * Was the session's art byte budget already committed when this world's visit began? The renderer's
+ * own `swatchOnly`, **read** off the report taken at **entry** and never recomputed (DEC-820 rider
+ * 2): the byte spelling it would be recomputed from has been retired twice, by DEC-780 and again by
+ * DEC-812. The byte counts are required because the disqualification message quotes them.
  */
 export declare function budgetBoundAtEntry(stream: {
-  readonly bytesFetched: number;
+  readonly swatchOnly: boolean;
+  readonly bytesOutstanding: number;
   readonly bytesReserved: number;
   readonly byteBudget: number;
 }): boolean;
@@ -309,7 +311,8 @@ export declare function evaluateW4(
   evictionTimeline: readonly EvictionSample[],
   pool: { readonly layers: number; readonly resident: number },
   entryStream: {
-    readonly bytesFetched: number;
+    readonly swatchOnly: boolean;
+    readonly bytesOutstanding: number;
     readonly bytesReserved: number;
     readonly byteBudget: number;
   },

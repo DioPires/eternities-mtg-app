@@ -61,16 +61,26 @@ const SHARES = Object.freeze([
  *
  * Every value is distinct and non-zero on purpose. A zeroed fixture would agree with a reader that
  * had silently substituted an all-zero report for the `null` case, which is the one collapse §1.6
- * forbids, and it would also agree with a reader that crossed two of the ten counters.
+ * forbids, and it would also agree with a reader that crossed two of the eleven counters.
  *
  * `bytesReserved` is deliberately **larger** than `bytesFetched` rather than a slice of it. It is
  * neither monotonic nor a subset (DEC-780) — a selection pass that issues every want for a pose
  * before any of them lands is the shipped case, not a pathological one — so a fixture where the
  * reserve was the smaller number would agree with a reader that had assumed containment.
+ *
+ * `bytesOutstanding` is strictly **less** than `bytesFetched` (DEC-812). It is what is left standing
+ * after the pool evicted a body the session had already fetched, so the two are equal only in a
+ * session that has evicted nothing — which is precisely the tour that hid the reclaim at DEC-820.
+ * Picking them equal here would agree with a reader that had crossed the two fields, and with one
+ * that computed `swatchOnly` from the retired `bytesFetched` spelling. The pair also keeps
+ * `swatchOnly` false under the shipped `bytesOutstanding + bytesReserved >= byteBudget` rule
+ * (3,145,728 + 7,372,800 = 10,518,528, well under the 67,108,864 budget), so the fixture's declared
+ * `swatchOnly: false` is consistent with its own counters rather than contradicting them.
  */
 function streamReport(overrides: Partial<ArtStreamReport> = {}): ArtStreamReport {
   return {
     bytesFetched: 4_194_304,
+    bytesOutstanding: 3_145_728,
     bytesReserved: 7_372_800,
     byteBudget: 67_108_864,
     swatchOnly: false,
@@ -211,6 +221,10 @@ describe('readWorldsProbe — the three outcomes', () => {
  */
 const STREAM_FIELDS: ReadonlyArray<{ readonly field: string; readonly bad: unknown }> = [
   { field: 'bytesFetched', bad: -1 },
+  // A negative outstanding balance is the reclaim's own failure mode (DEC-812/DEC-820): a body
+  // credited back twice, or credited without having been charged. Distinct from `bytesFetched`'s
+  // `-1` so a reader that crossed the two fields fails on the field name in the fault.
+  { field: 'bytesOutstanding', bad: -4096 },
   { field: 'bytesReserved', bad: -90_000 },
   { field: 'byteBudget', bad: 'lots' },
   { field: 'swatchOnly', bad: 1 },
@@ -270,6 +284,7 @@ describe('probe.stream — required, and null is not a zeroed report', () => {
     // has no unknown-key rule — identical check counts are not evidence of acceptance logic.
     const garbage = {
       bytesFetched: 'no',
+      bytesOutstanding: 'no',
       byteBudget: 'no',
       swatchOnly: 'no',
       requested: 'no',
@@ -301,9 +316,11 @@ describe('probe.stream — required, and null is not a zeroed report', () => {
    * one presence check, one shape check, then one check per field in `STREAM_FIELDS`.
    *
    * Stated against the table's length rather than a literal so that a field added to the report —
-   * `bytesReserved` was the tenth (DEC-780) — cannot be added to the reader while the count still
-   * reads as pinned. Adding the field without its negative-control row is what the completeness
-   * guard below refuses; adding the row without the reader check is what this refuses.
+   * `bytesReserved` was the tenth (DEC-780), `bytesOutstanding` the eleventh (DEC-812) — cannot be
+   * added to the reader while the count still reads as pinned. Adding the field without its
+   * negative-control row is what the completeness guard below refuses; adding the row without the
+   * reader check is what this refuses. Both retirements arrived this way, which is why the pin is
+   * a delta and not a number anybody has to remember to restate.
    */
   it('runs one presence check, one shape check and one check per published field', () => {
     const keyless = probe() as unknown as Record<string, unknown>
@@ -314,7 +331,7 @@ describe('probe.stream — required, and null is not a zeroed report', () => {
     const live = readWorldsProbe(probe())
 
     // The keyless payload has already spent the presence check, so these deltas are measured from a
-    // reader that ran one check, not from none: the full contribution on a live payload is twelve.
+    // reader that ran one check, not from none: the full contribution on a live payload is thirteen.
     expect(composed.checked - absent.checked).toBe(1)
     expect(live.checked - composed.checked).toBe(STREAM_FIELDS.length)
     expect(live.checked - absent.checked).toBe(STREAM_FIELDS.length + 1)

@@ -282,12 +282,20 @@ function readPool(pool, c) {
  * The gate **reads** `swatchOnly` and never recomputes it (DEC-744 B1 / DEC-746 D5): re-deriving it
  * would assert against the gate's own model of the policy instead of the shipped one.
  *
- * > **And the spelling a re-derivation would reach for is now the DEC-780 defect itself.**
- * > `swatchOnly` is `bytesFetched + bytesReserved >= byteBudget` — the bytes *committed*, landed and
- * > outstanding together — not `bytesFetched >= byteBudget`. A gate that recomputed the second form
- * > would re-introduce the bug on the reading side after the stream had been fixed, and silently:
- * > the two spellings disagree exactly while a request is in flight, which is the entire window the
- * > fix exists to cover.
+ * > **And the spelling a re-derivation would reach for has now been the defect TWICE.**
+ * > `swatchOnly` is `bytesOutstanding + bytesReserved >= byteBudget` (DEC-812) — what the session
+ * > still *holds*, resident and in flight together. It is not `bytesFetched >= byteBudget`, which
+ * > DEC-780 retired, and it is no longer `bytesFetched + bytesReserved >= byteBudget`, which DEC-812
+ * > retired in turn: `bytesFetched` never decreases, so once the pool begins evicting, that form
+ * > charges the session for bodies it no longer holds and declares a healthy world swatch-only for
+ * > ever. A gate recomputing either retired form would re-introduce the bug on the reading side
+ * > after the stream had been fixed, and silently — each pair of spellings disagrees exactly over
+ * > the window its own fix exists to cover (a request in flight for DEC-780, an eviction for
+ * > DEC-812).
+ * >
+ * > The rule generalises past both spellings: **read the field, never re-derive it.** Two
+ * > retirements in two legs is the measurement that this policy's spelling is not stable enough to
+ * > copy into a reader.
  *
  * Note also that these counters are session-**global** and cumulative, not the focused world's, so
  * no per-world criterion may be written over them (DEC-782 N1).
@@ -321,6 +329,18 @@ function readStream(raw, c) {
   // refused to run on a fractional budget would be refusing a legal renderer. Garbage is caught by
   // the type and sign checks either way.
   c.number(stream.bytesFetched, 'probe.stream.bytesFetched', { min: 0 })
+  // Bytes of bodies the session still holds: fetched, minus what the pool has since evicted and the
+  // stream reclaimed (DEC-812). This is the field the budget actually bounds, and the one
+  // `swatchOnly` is computed from — `bytesFetched` is now a lifetime total that only rises.
+  //
+  // Asserted for sign and for nothing else, deliberately. `bytesOutstanding <= bytesFetched` holds
+  // in the shipped stream and is tempting to write here, but it is the arithmetic of the very fix
+  // under test rather than an independent invariant, so a reader asserting it would be checking
+  // DEC-812 against itself. `min: 0` is the real one: the reclaim credits back exactly the bytes a
+  // body was charged, so a negative reading is a double-credit — a body reclaimed twice, or
+  // reclaimed without having been charged. That is the failure the eviction listener could
+  // plausibly have, which is what makes this check worth its row (DEC-820 rider 3).
+  c.number(stream.bytesOutstanding, 'probe.stream.bytesOutstanding', { min: 0 })
   // Bytes charged to requests that have not settled (DEC-780). Checked for sign but for no relation
   // to `bytesFetched`: the field is neither monotonic nor a subset of it — it rises when a request
   // issues and falls when that request settles *whichever way* it settles, so `bytesReserved <=

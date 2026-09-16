@@ -906,11 +906,9 @@ export function streamNeverRan(wanting, pool) {
  * **Was the session's byte budget already spent before this world was ever asked for anything?**
  *
  * `stream` is the {@link ArtStreamReport} read at the *entry* to a world's visit, before the camera
- * flies to it. `artStream.ts:312` declines a request when `bytesFetched + bytesReserved >=
- * byteBudget`, and that budget is a **session-lifetime backstop, not a per-frame one** — its own
- * header says a session admits `byteBudget / ART_CROP_ESTIMATED_BYTES` = **729 bodies and then
- * stops**. A per-world criterion read after the session hit that cap is a reading of the *tour*,
- * not of the world.
+ * flies to it. The stream declines a request once its budget is committed, and that budget is a
+ * **backstop against a pathological session, not a per-frame one**. A per-world criterion read
+ * after the session hit that cap is a reading of the *tour*, not of the world.
  *
  * > **Measured, and it is why this guard exists (45-world acceptance run, main `28ec706`).** Toured
  * > in one page, `bytesFetched` crossed 64 MiB at **capenna, the 8th world**. From `dominaria`
@@ -929,23 +927,47 @@ export function streamNeverRan(wanting, pool) {
  * spend carried in from earlier worlds disqualifies the reading. `?artThreshold=fixed24` starves
  * the policy inside one world, so it is untouched by this.
  *
- * The predicate is the renderer's own, deliberately: this is not a check on whether the budget is
- * *correct* — it is the question "was this stream allowed to fetch", which only the shipped
- * condition answers. Presence is required on all three fields ({@link readStream}'s reason,
- * DEC-782): an absent `bytesReserved` would read as 0 and switch the guard off near the boundary.
+ * **The predicate is READ, not recomputed, and that is the whole of it (DEC-820 rider 2).** The
+ * question is "was this stream allowed to fetch", and the only thing that answers it without
+ * asserting the gate's model of the policy against the shipped one is the renderer's own
+ * `swatchOnly` flag (DEC-744 B1 / DEC-746 D5, the rule {@link readStream} states from the reading
+ * side).
+ *
+ * > **This function used to recompute it, and the spelling it copied has since been retired
+ * > TWICE.** It carried `bytesFetched + bytesReserved >= byteBudget` — correct when written
+ * > (DEC-780), a defect after DEC-812. `bytesFetched` is a lifetime total that never decreases, so
+ * > on a session that has begun evicting, the copied form calls the budget spent while the shipped
+ * > stream is still happily fetching, and W4 would disqualify **healthy** worlds as "budget already
+ * > gone" — the guard swallowing exactly the readings it exists to protect. The shipped quantity is
+ * > `bytesOutstanding + bytesReserved >= byteBudget`: what the session still *holds*.
+ * >
+ * > It was inert when caught, and that is the uncomfortable part rather than the reassuring one.
+ * > Across all 111 entry readings on record (accept3, accept4, controls1, order-fwd/rev and the
+ * > DEC-820 reclaim control) the entry spend is 0 and `swatchOnly` is false, so both spellings
+ * > returned false and no landed number moved. A stale copy of a policy is not discovered by the
+ * > numbers it produces on a tour built to avoid the condition it gets wrong.
+ *
+ * Presence is still required rather than defaulted ({@link readStream}'s reason, DEC-782), but note
+ * what it now buys: the three byte counts no longer enter the verdict at all — they are what the
+ * disqualification message quotes — so an omission can no longer switch the guard off near a
+ * boundary. It can only produce a report that says `undefined`. `swatchOnly` is the one field whose
+ * absence would be silent, and it is a boolean, so there is no "nearly" for it to sit next to.
  */
 export function budgetBoundAtEntry(stream) {
-  for (const key of ["bytesFetched", "bytesReserved", "byteBudget"]) {
-    if (typeof stream?.[key] !== "number") {
+  if (typeof stream?.swatchOnly !== "boolean") {
+    throw new TypeError(
+      "W4 needs the entry stream report's swatchOnly: it is the renderer's own answer to whether " +
+        "the stream was allowed to fetch, and re-deriving it from the byte counts is the DEC-812 defect",
+    );
+  }
+  for (const key of ["bytesOutstanding", "bytesReserved", "byteBudget"]) {
+    if (typeof stream[key] !== "number") {
       throw new TypeError(
-        `W4 needs the entry stream report's ${key}: without it a tour's carried-over spend reads as a policy failure`,
+        `W4 needs the entry stream report's ${key}: the disqualification message quotes it, and a tour's carried-over spend must be reported in the numbers that produced it`,
       );
     }
   }
-  return (
-    stream.byteBudget > 0 &&
-    stream.bytesFetched + stream.bytesReserved >= stream.byteBudget
-  );
+  return stream.swatchOnly;
 }
 
 /**
@@ -970,10 +992,11 @@ export function evaluateW4(cells, evictionTimeline, pool, entryStream) {
       `layers, but nothing is resident, so no layer was ever handed out. This is a setup failure, ` +
       `not a policy failure — see DEC-772.`
     : bound
-      ? `the session's ${entryStream.byteBudget}-byte art budget was already spent before this ` +
-        `world was visited (${entryStream.bytesFetched} fetched + ${entryStream.bytesReserved} ` +
-        `reserved at entry), so every request here was declined for budget. This measures the ` +
-        `tour, not the world — give each world its own session.`
+      ? `the session's ${entryStream.byteBudget}-byte art budget was already committed before this ` +
+        `world was visited (${entryStream.bytesOutstanding} outstanding + ` +
+        `${entryStream.bytesReserved} reserved at entry, the renderer reporting swatchOnly), so ` +
+        `every request here was declined for budget. This measures the tour, not the world — give ` +
+        `each world its own session.`
       : null;
 
   // **An empty denominator is W4's domain, the same way four samples are W2's (DEC-752).** "The
