@@ -2111,6 +2111,35 @@ an assertion there.
 > dedicated matrix row below. What may not happen is a whole-multiverse aggregate quietly averaging
 > over them: a single degenerate world is exactly what an aggregate seam measure does not catch.
 
+> **Normative amendment — W2's lightness half carries its own, larger domain: 20 iso-shade cells
+> (DEC-752, ruling `w2_ring` on DEC-816 R3; supersedes the "4 sampled cells" threshold for this half
+> only).** The 4 above is the domain of the **sampled set**, which is what the neighbour half walks.
+> The lightness half is an IQR over the **iso-shade ring**, and ±2.5% of the median shade selects a
+> sliver of the disc by construction — so that half spends its life at the bottom of its domain and
+> four cells is not enough to make it reproducible. Measured across two 45-world acceptance runs of
+> the same head (`21737f3`) on the same dataset (`c9468f1125bcddff`):
+>
+> | ring ≥ | worlds scored | worst run-to-run move | worst world              | smallest IQR seen |
+> | ------ | ------------- | --------------------- | ------------------------ | ----------------- |
+> | 4      | 20            | 58.4%                 | capenna (16.04 → 38.54)  | 4.40              |
+> | 6      | 15            | 56.6%                 | arcavios (5.87 → 13.55)  | 4.40              |
+> | 8      | 11            | 55.4%                 | theros (32.23 → 14.38)   | 14.05             |
+> | 14     | 6             | 18.9%                 | innistrad (27.73 → 22.48)| 14.46             |
+> | 20     | 2             | **7.6%**              | dominaria (26.34 → 28.52)| 26.34             |
+>
+> **Both worlds that carried W2's RED were scored off six cells** — ixalan 4.40/4.53 and arcavios
+> 5.87/13.55, the latter moving by 131% of the floor between two runs of one build. The verdict does
+> not turn on the exact threshold: from ring ≥ 8 upward every world clears the floor of 8 on both
+> runs and the smallest reading anywhere in that set is 14.05, so anywhere in 8…20 gives the same
+> GREEN and only the stability of the surviving statistics changes. 20 is the conservative end of a
+> range whose verdict is constant.
+>
+> **The cost, stated: at 20 the half scores 2 of the 45 worlds** (dominaria 64, ravnica 22) and the
+> aggregate is the worse of two. **The subject of the `swatch-mean` control row is therefore no longer
+> a free choice** — a control measured on a world below the domain reports `insufficient`, which is
+> not RED, and the matrix would record a retired falsifier as a passing row. The gate refuses to score
+> that row without a qualifying ring (`W2_CONTROL_SUBJECT_MIN_RING`) rather than reporting it.
+
 **Owner-judged, carried over from 9.3 unchanged:** motion perceptible within 3 s of arriving at any
 level; no aliasing shimmer on slow camera moves (recordings cast at the drawing buffer's own
 resolution — half-size is the one scale that hides it, DEC-661); art fade-ins never noticed as
@@ -2135,6 +2164,32 @@ events; the focused card's tilt feels physical; and, new, **the tether reads as 
 | W4        | both                                   | `?layers=128` — tier 4's pool, unmodified policy                                                                                                                            | **GREEN** |
 | W5        | `worldsNeverLabelled`                  | **viewport 1920×1080** — the non-binding partner to the row above, differing in that one parameter                                                                          | **GREEN** |
 | all       | all                                    | the unmodified build on the v3 production dataset                                                                                                                           | **GREEN** |
+
+> **Measured, and not yet repaired — three of the RED rows above do not go RED (DEC-752, matrix run
+> `controls1`, head `21737f3`, dominaria, one build).** The table is an intention; this is what the
+> seams actually do. Every seam **engaged** (requested and echoed) and the two with a policy
+> read-back moved that policy, so this is not a wiring failure:
+>
+> | row / measure                        | with the seam | siblings **without** it   | floor | verdict on the control |
+> | ------------------------------------ | ------------- | ------------------------- | ----- | ---------------------- |
+> | `?swatch=mean` → `lightnessIqr`      | 24.89         | 16.09 / 21.28 / 25.89     | ≥ 8   | **inert** — inside the sibling spread |
+> | `?swatch=mean` → `medianNeighbourDeltaE` | 15.73     | 19.37 / 23.79 / 25.72     | ≥ 6   | moves, stays 2.6× above the floor |
+> | `?bands=shuffle` → `minAdjacentBandDeltaE` | 0.476   | 0.815 / 1.116 / 1.121 / 1.450 | ≥ 10 | moves; both sides already RED |
+>
+> **One mechanism explains all three: at the 2.2-radii pose the sampled pixel is mostly card _art_,
+> and both seams perturb the _swatch_.** `artFraction` on these rows is 0.61–0.76, so roughly seven
+> cells in ten draw art whatever the swatch is set to; the iso-shade ring inherits the same ratio
+> (~43 of its 62 cells), which is why the lightness half — the narrowest set — does not move at all
+> while the neighbour half, averaged over 1,362 cells, at least halves. §3.1 defines W2 and W3 on the
+> **swatch** and requires sampling the **capture**; at this pose those are not the same quantity.
+>
+> **Consequence for W3 specifically, which is why its floor cannot simply be lowered.** The shipped
+> build's aggregate `minAdjacentBandDeltaE` is the worst of 28 worlds and reads **0.4253** (ravnica),
+> *below* the shuffled control's **0.4757**. Any floor that passes the shipped build therefore also
+> passes `?bands=shuffle`: on the criterion as aggregated there is **no floor that separates the
+> build from its own negative control**. Per-world on dominaria a floor in (0.476, 0.815] would
+> separate them, but W3 scores the worst world, not dominaria. Recorded here rather than acted on —
+> the choice belongs to the board.
 
 > **Normative — the measure keys in this table are the keys the module emits.** `checkControlRow`
 > resolves a row by `{criterion, measure}` and reports `W1 has no measure "…"` when the name is not

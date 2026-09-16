@@ -35,6 +35,7 @@ import puppeteer from 'puppeteer-core'
 import { decodePng } from './lib/png-sample.mjs'
 import {
   FLOORS,
+  W2_CONTROL_SUBJECT_MIN_RING,
   W5_MIN_AZIMUTHS,
   azimuthSpacingFault,
   checkControlRow,
@@ -828,7 +829,11 @@ const MATRIX = [
     id: 'swatch-mean',
     label: '?swatch=mean — every cell takes the plane’s mean swatch',
     seams: { swatchMean: true },
+    // dominaria, and not for size alone: it is one of only two v3 worlds whose iso-shade ring
+    // clears the lightness half's domain, so it is one of only two worlds on which this row can
+    // return RED rather than `insufficient`. `requireRing` makes that a checked precondition.
     subject: 'dominaria',
+    requireRing: true,
     expect: [
       { criterion: 'W2', measure: 'medianNeighbourDeltaE', expect: 'RED' },
       { criterion: 'W2', measure: 'lightnessIqr', expect: 'RED' },
@@ -1082,6 +1087,36 @@ async function runRow(browser, url, row, { roster, args, baselineProbe }) {
       evidence,
       visits,
       errors,
+    }
+  }
+
+  // **A control that goes `insufficient` is not a control — it died on its precondition arm.**
+  // W2's lightness half is scored over the iso-shade ring and its domain is `W2_MIN_RING_SAMPLES`
+  // (ruling `w2_ring`), which on the v3 roster only dominaria (61–64) and ravnica (22) clear. So the
+  // subject of `swatch-mean` — the half's only falsifier — is load-bearing, and moving it to any
+  // other world would turn a RED expectation into a silent `n/a`. The row declares that it needs a
+  // ring and the run refuses to score it without one, rather than reporting a retired falsifier as
+  // a passing matrix.
+  if (row.requireRing) {
+    const rings = good.map((v) => ({ slug: v.slug, ring: v.w2?.isoShadeSampled ?? 0 }))
+    const short = rings.filter((r) => r.ring < W2_CONTROL_SUBJECT_MIN_RING)
+    if (short.length > 0) {
+      return {
+        row,
+        setupFailure: {
+          reason: 'control-subject-below-ring-domain',
+          detail:
+            `row ${row.id} must falsify W2.lightnessIqr, whose domain is ` +
+            `${W2_CONTROL_SUBJECT_MIN_RING} iso-shade cells, but its subject offers ` +
+            `${short.map((r) => `${r.slug}: ${r.ring}`).join(', ')} — the row would report ` +
+            `insufficient, which is not RED`,
+        },
+        criteria: [],
+        checks: [],
+        evidence,
+        visits,
+        errors,
+      }
     }
   }
 

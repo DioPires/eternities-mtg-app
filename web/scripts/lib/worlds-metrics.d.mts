@@ -241,6 +241,8 @@ export declare function rowCellsFaults(
 export declare const W2_MIN_CELL_PX: number;
 export declare const W2_ISO_SHADE_TOLERANCE: number;
 export declare const W2_MIN_SAMPLES: number;
+export declare const W2_MIN_RING_SAMPLES: number;
+export declare const W2_CONTROL_SUBJECT_MIN_RING: number;
 export declare const W3_MIN_BAND_SHARE: number;
 export declare const LABEL_VISIBLE_MIN_OPACITY: number;
 export declare function isLabelVisible(label: RenderedLabel): boolean;

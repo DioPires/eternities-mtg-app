@@ -22,6 +22,8 @@ import {
   FLOORS,
   ROSTER_V3,
   W2_MIN_SAMPLES,
+  W2_MIN_RING_SAMPLES,
+  W2_CONTROL_SUBJECT_MIN_RING,
   W3_MIN_BAND_SHARE,
   checkControlRow,
   deltaE76,
@@ -522,22 +524,55 @@ describe("W2 — the mosaic reads as tiles", () => {
       ).not.toBe("insufficient");
     });
 
-    it("still scores a ring that meets the domain — the guard binds, it does not swallow", () => {
-      // One cell more, and the same flat colour that produced the 0.020: at the domain the measure
-      // is a measurement again and this frame is a real red. Without this row the fix above would
-      // be indistinguishable from "stop scoring the lightness half".
-      const w2 = evaluateW2(ringOf(4, [[128, 128, 128]]));
+    /**
+     * **The two domains are different numbers, and this is the row that says so (ruling `w2_ring`).**
+     *
+     * A ring of `W2_MIN_SAMPLES` used to be scored. It is now out of domain, because four cells is
+     * where an IQR stops being a gap between two points and *not* where it stops moving: across the
+     * two 45-world acceptance runs, worlds admitted at a ring of four moved `lightnessIqr` by up to
+     * 58% of its own value between two runs of the same build.
+     *
+     * Asserting the strict inequality rather than the literal 20 is deliberate — the finding is that
+     * the lightness half needs a *larger* domain than the sampled set does, and a test pinned to 20
+     * would go green again the day someone quietly lowered both to four together.
+     */
+    it("puts a four-cell ring out of domain — the lightness half's domain is the larger one", () => {
+      expect(W2_MIN_RING_SAMPLES).toBeGreaterThan(W2_MIN_SAMPLES);
 
-      expect(w2.isoShadeSampled).toBe(4);
-      expect(w2.isoShadeThin).toBe(false);
-      const lightness = w2.measures.find((m) => m.key === "lightnessIqr");
+      const w2 = evaluateW2(ringOf(W2_MIN_SAMPLES, [[128, 128, 128]]));
+
+      expect(w2.isoShadeSampled).toBe(W2_MIN_SAMPLES);
+      expect(w2.isoShadeThin).toBe(true);
+      expect(w2.measures.find((m) => m.key === "lightnessIqr")?.status).toBe(
+        "insufficient",
+      );
+    });
+
+    it("scores the ring one cell below and one cell at the domain differently", () => {
+      // The guard binds and does not swallow: the *same flat wash* that goes `insufficient` one
+      // cell short is a real, scored RED at the domain. Without this pair the change above would be
+      // indistinguishable from "stop scoring the lightness half", which is the over-correction the
+      // ruling explicitly did not pick.
+      const below = evaluateW2(
+        ringOf(W2_MIN_RING_SAMPLES - 1, [[128, 128, 128]]),
+      );
+      const at = evaluateW2(ringOf(W2_MIN_RING_SAMPLES, [[128, 128, 128]]));
+
+      expect(below.isoShadeThin).toBe(true);
+      expect(below.measures.find((m) => m.key === "lightnessIqr")?.status).toBe(
+        "insufficient",
+      );
+
+      expect(at.isoShadeSampled).toBe(W2_MIN_RING_SAMPLES);
+      expect(at.isoShadeThin).toBe(false);
+      const lightness = at.measures.find((m) => m.key === "lightnessIqr");
       expect(lightness?.status).toBe("fail");
       expect(lightness?.value).toBeLessThan(1);
     });
 
     it("passes at the domain when the ring really does vary in lightness", () => {
       const w2 = evaluateW2(
-        ringOf(4, [
+        ringOf(W2_MIN_RING_SAMPLES, [
           [20, 20, 20],
           [90, 90, 90],
           [170, 170, 170],
@@ -545,9 +580,44 @@ describe("W2 — the mosaic reads as tiles", () => {
         ]),
       );
 
-      expect(w2.isoShadeSampled).toBe(4);
+      expect(w2.isoShadeSampled).toBe(W2_MIN_RING_SAMPLES);
       expect(w2.measures.find((m) => m.key === "lightnessIqr")?.status).toBe(
         "pass",
+      );
+    });
+
+    /**
+     * **The falsifier has to clear the domain it is falsifying against.**
+     *
+     * `swatch-mean` is the only negative control W2's lightness half has. Raising the ring domain
+     * to 20 put that control one edit from dying on its precondition arm: a control row measured on
+     * a world whose ring is smaller than the domain reports `insufficient`, which is not RED, and
+     * the matrix would record a retired falsifier as a passing row.
+     *
+     * Measured, on the two acceptance runs: dominaria's ring is 61 and 64, ravnica's is 22, and
+     * **every other world on the v3 roster is under 20**. So the matrix's subject is not a free
+     * choice any more, and this row is what makes moving it a test failure rather than a silence.
+     */
+    it("keeps the swatch-mean control's subject above the domain it must go red against", () => {
+      expect(W2_CONTROL_SUBJECT_MIN_RING).toBeGreaterThanOrEqual(
+        W2_MIN_RING_SAMPLES,
+      );
+
+      // dominaria at its measured ring, washed flat by `?swatch=mean`: scored, and RED.
+      const control = evaluateW2(ringOf(61, [[128, 128, 128]]));
+      expect(control.isoShadeSampled).toBeGreaterThanOrEqual(
+        W2_CONTROL_SUBJECT_MIN_RING,
+      );
+      expect(control.measures.find((m) => m.key === "lightnessIqr")?.status).toBe(
+        "fail",
+      );
+
+      // The same wash on the largest ring any *other* v3 world offers but dominaria and ravnica —
+      // eight cells, forgotten-realms — is not a control at all. This is the row that would go
+      // quietly green if the subject moved.
+      const tooSmall = evaluateW2(ringOf(8, [[128, 128, 128]]));
+      expect(tooSmall.measures.find((m) => m.key === "lightnessIqr")?.status).toBe(
+        "insufficient",
       );
     });
   });

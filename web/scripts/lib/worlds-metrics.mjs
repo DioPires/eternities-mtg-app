@@ -61,7 +61,23 @@ export const FLOORS = {
    * between ~2 and ~20 the floor lands. Do not build a green expectation on the 8 itself.
    */
   lightnessIqr: 8,
-  /** W3: ΔE between the mean a\*b\* of two bands adjacent on the sphere. */
+  /**
+   * W3: ΔE between the mean a\*b\* of two bands adjacent on the sphere.
+   *
+   * **Left at 10 against the ruling `lower_floor` (DEC-816 R4), because the ruling's own evidence
+   * falsifies it — deliberately not "taken in passing".** The ask was to lower this to what the
+   * shipped swatches support. Measured on the `controls1` matrix run (head `21737f3`, one build):
+   * the shipped aggregate is **0.4253** (ravnica, worst of 28 worlds) and `?bands=shuffle` — W3's
+   * only negative control — reads **0.4757**. The build scores *below* its own falsifier, so every
+   * floor that greens the build also greens the shuffled frame, and W3 becomes a criterion that
+   * cannot fail. A floor in (0.476, 0.815] separates them on dominaria alone, but the measure is the
+   * worst world and not dominaria.
+   *
+   * Lowering it would satisfy the ruling's words and destroy the thing the ruling was protecting, so
+   * the number stays and the finding goes back to the board. See §3.1's control-matrix note for why
+   * both swatch-perturbing seams are weak here: at the 2.2-radii pose 61–76% of sampled cells draw
+   * card art, and both seams move the swatch.
+   */
   bandDeltaE: 10,
   /** W4: fraction of cells above the effective threshold that are showing art. */
   artFraction: 0.9,
@@ -257,6 +273,62 @@ export const W2_ISO_SHADE_TOLERANCE = 0.025;
  * Four is the threshold because an IQR needs two quartiles to be a spread rather than a gap.
  */
 export const W2_MIN_SAMPLES = 4;
+
+/**
+ * W2's **lightness** half needs a ring this large — a bigger domain than `W2_MIN_SAMPLES`, and the
+ * difference is the point (ruling `w2_ring`, DEC-816 R3).
+ *
+ * Four cells is the floor below which an IQR is not a spread at all. It is not the floor above which
+ * an IQR is *reproducible*, and the lightness half is the one measure here whose domain is a sliver
+ * of the disc by construction, so it is the one that spends its life near that floor. Measured
+ * across the two 45-world acceptance runs (`accept3`, `accept4`, same head `21737f3`, same dataset
+ * hash `c9468f1125bcddff`), the worst run-to-run move of `lightnessIqr` against the smallest ring
+ * admitted:
+ *
+ * | ring ≥ | worlds scored | worst run-to-run move | worst world | smallest IQR seen |
+ * |---|---|---|---|---|
+ * | 4 | 20 | 58.4% | capenna (16.04 → 38.54) | 4.40 |
+ * | 6 | 15 | 56.6% | arcavios (5.87 → 13.55) | 4.40 |
+ * | 8 | 11 | 55.4% | theros (32.23 → 14.38) | 14.05 |
+ * | 14 | 6 | 18.9% | innistrad (27.73 → 22.48) | 14.46 |
+ * | 20 | 2 | **7.6%** | dominaria (26.34 → 28.52) | 26.34 |
+ *
+ * The statistic does not settle until the ring is in the teens, which is what an IQR's ~1/√n
+ * standard error predicts and what the table measures. **The two worlds that carried W2's RED were
+ * both scored off six cells** — ixalan 4.40/4.53 and arcavios 5.87/13.55 — while arcavios moved by
+ * 131% of the floor between two runs of the same build. A statistic that can do that is not evidence
+ * about a renderer.
+ *
+ * ## Why the verdict does not turn on the exact number
+ *
+ * From ring ≥ 8 upward, **every world clears the floor of 8 on both runs**, and the smallest reading
+ * anywhere in that set is 14.05 — 1.76× the floor. So anywhere in 8…20 the lightness half goes GREEN
+ * on this dataset and only the stability of the surviving statistics changes. That is what makes 20
+ * safe rather than tuned: it is the conservative end of a range whose verdict is constant, not a
+ * number picked because it produced the answer. `W2_MIN_SAMPLES` is deliberately left at 4 — it
+ * guards a different set, for a different reason, and merging them would put the neighbour half's
+ * 20-cell worlds out of domain for no evidence at all.
+ *
+ * ## The cost, stated
+ *
+ * At 20 the lightness half scores **2 of 45 worlds** (dominaria 64, ravnica 22); the aggregate is the
+ * worse of two. That is thin coverage and it is the price of the ruling. It does **not** cost the
+ * measure its falsifier: `swatch-mean`, W2's only negative control, runs on dominaria, whose ring is
+ * 61–64 — the control clears the new domain by 3×. See `W2_CONTROL_SUBJECT_MIN_RING`, which exists
+ * so that a later edit moving the control to a smaller world fails a test instead of silently
+ * turning the row `insufficient` and retiring the falsifier.
+ */
+export const W2_MIN_RING_SAMPLES = 20;
+
+/**
+ * The ring a world must offer to be a legal subject for W2's `swatch-mean` control row.
+ *
+ * A negative control that goes `insufficient` is not a control — it dies on the precondition arm and
+ * reports nothing about the measure it exists to falsify. Raising the lightness half's domain to 20
+ * put that failure one edit away, so the requirement is written down and tested rather than left as
+ * a property of whichever world the matrix happens to name.
+ */
+export const W2_CONTROL_SUBJECT_MIN_RING = W2_MIN_RING_SAMPLES;
 
 /** W3 only compares a band pair when the smaller band holds at least this share of the plane. */
 export const W3_MIN_BAND_SHARE = 0.05;
@@ -586,9 +658,11 @@ export function evaluateW1(planes) {
  * shade from the normal: it would then be asserting against its own model of the light rather than
  * against the shipped one.
  *
- * Below `W2_MIN_SAMPLES` cells a half reports `insufficient` rather than failing — **each half
- * against the set it is itself computed over**, which for the lightness half is the iso-shade
- * subset and not the sampled set. See `isoThin` below.
+ * Below its domain a half reports `insufficient` rather than failing — **each half against the set
+ * it is itself computed over, and against its own domain size**. The neighbour half walks the
+ * sampled set and needs `W2_MIN_SAMPLES`; the lightness half is an IQR over the iso-shade ring and
+ * needs `W2_MIN_RING_SAMPLES`, which is five times larger because a sliver-sized ring gives an IQR
+ * that moves by half its own value between two runs of one build. See `isoThin` below.
  */
 export function evaluateW2(samples) {
   const kept = samples.filter(
@@ -637,11 +711,19 @@ export function evaluateW2(samples) {
   // of 8 from two cells**, and `capenna`, `fiora` and `shenmeng` were scored from two or three —
   // four planes reddening W2 on a statistic with no domain, under a guard that read 21, 76, 31 and
   // 7 sampled cells and waved all four through. An IQR over two points is the spread of two points.
-  const isoThin = isoShade.length < W2_MIN_SAMPLES;
+  //
+  // Giving the half its own domain was the first half of the repair; **four was still too small a
+  // domain to be one**, which the two acceptance runs then showed directly — see
+  // `W2_MIN_RING_SAMPLES` for the table. Both fixes are the same finding at two magnitudes.
+  //
+  // The domain is `W2_MIN_RING_SAMPLES`, not `W2_MIN_SAMPLES`: four is where an IQR stops being a
+  // gap between two points, twenty is where it stops moving between two runs of the same build.
+  // The ruling `w2_ring` (DEC-816 R3) settles which of those a criterion is entitled to assert on.
+  const isoThin = isoShade.length < W2_MIN_RING_SAMPLES;
   const isoWhy = isoThin
     ? `only ${isoShade.length} of ${kept.length} sampled cells lie within ` +
-      `±${W2_ISO_SHADE_TOLERANCE * 100}% of the median shade, below W2's domain of ` +
-      `${W2_MIN_SAMPLES}`
+      `±${W2_ISO_SHADE_TOLERANCE * 100}% of the median shade, below the lightness half's domain ` +
+      `of ${W2_MIN_RING_SAMPLES}`
     : null;
 
   return criterion(
