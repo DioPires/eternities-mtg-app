@@ -922,6 +922,13 @@ export function evictionRate(samples, windowS = W4_EVICTION_WINDOW_S) {
  * | 965 / 1024 | 0 |
  * | **1020 / 1024** | **18.357** |
  *
+ * **`saturated` is a NECESSARY condition, never a sufficient one — it says the reading *could* have
+ * moved, not that it should have.** `claimLayer` runs only on an admission, so a full pool with no
+ * new key to admit evicts nothing. Measured, not argued: at `?layers=128` the adaptive threshold
+ * rises to 37.82 px, demand collapses to 14 cells that are already resident, and the pool sits at
+ * **128/128 with `evictions` flat at 0 for 150 s**. Reading `saturated` as "should have churned"
+ * would score that row backwards.
+ *
  * **It is a lower bound, deliberately, and that is why it is reported and not scored.** Occupancy is
  * `resident + reserved`; `?probe=` publishes only `resident`, so a pool sitting at `layers` with a
  * reserved layer in flight reads below `layers` here. Scoring an `insufficient` off a bound that can
