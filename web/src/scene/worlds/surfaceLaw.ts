@@ -268,20 +268,35 @@ export const FRAMING_REFERENCE_FOV_RADIANS = (55 * Math.PI) / 180
  * > **Normative — this is NOT W1's 24 px floor, and the gap is measured (§3.1, DEC-818).** W1 scores
  * > the **median** front-facing cell, and the median sits well below the cell nearest the eye: the
  * > front-facing cap runs out to the limb, where a cell is foreshortened to a few px. Worse, the
- * > ratio is not a constant — it moves with the approach azimuth, because §1.3's pole is tilted by
- * > `planes.json`'s quaternion and a pole swinging into view brings a cohort of squat polar cells
- * > with it. Measured through the shipped probe over the 45-world roster at `HOME_POLAR`
- * > (`worlds-framing.test.ts` re-derives every number below), the **worst-azimuth** median at the
- * > old flat 3.2 radii is **15.50 px on dominaria** and **23.88 px on ravnica** — two worlds under
- * > the floor, not one. Leg G's single-azimuth tour saw 17.14 and 28.49 and reported ravnica green:
- * > one draw from a family with an 11-14% spread.
+ * > ratio is not a constant — under `[tilted]` it moves with the approach azimuth, because §1.3's
+ * > pole is tilted by `planes.json`'s quaternion and a pole swinging into view brings a cohort of
+ * > squat polar cells with it. Measured through the shipped probe over the 45-world roster at
+ * > `HOME_POLAR` (`worlds-framing.test.ts` re-derives the tilted column; DEC-822 re-measured both
+ * > arms from an independent harness), the **worst-azimuth** median at the old flat 3.2 radii is
+ * > **17.48 px on dominaria, alone under the floor `[shipped]`** — 15.50 on dominaria and 23.88 on
+ * > ravnica, **two** worlds, `[tilted]`. Leg G's single-azimuth tour saw 17.14 and 28.49; its
+ * > ravnica draw sits inside the shipped band (28.64-28.99, 0.6% wide), so that draw was sound.
  *
- * **28 px is the falsifier and it is one step away.** At 28 the law leaves dominaria at 23.95 and
- * never pulls ravnica in at all (23.88): both still under. At 30 they read 25.55 and 25.21 — a 5%
- * margin on the worst world — while dominaria's disc still fits the reference frame at 1,023 px of
- * 1,080. 31 buys 9% of margin for 97% of the frame height, which is a different composition, not a
- * safer one. This is deliberately the only tuned constant in the law: the rest — {@link CELL_LIFT},
- * {@link CELL_INSET}, the reference viewport — are quoted from elsewhere.
+ * > **Every figure here carries its ORIENTATION ARM (DEC-822).** `[shipped]` is what the build
+ * > renders: `planeOrientation` is the single writer of `surface.orientation` and gates the tilt on
+ * > `APPLY_PLANE_TILT`, **`false`** since DEC-750. `[tilted]` applies the quaternion unconditionally
+ * > and is what `worlds-framing.test.ts` pins. Both are kept — the tilted arm is the more
+ * > conservative bound and the live one the day the flag flips.
+ *
+ * **28 px is the falsifier in the `[tilted]` arm, and there it is one step away.** At 28 the row
+ * that reds is **ravnica at 23.88**, which the law never pulls in at all; dominaria comes to 24.02
+ * at the 24-azimuth comb the test ships, so the older "both still under" (23.95) is a 120-sample
+ * reading and is not reproducible at the shipped resolution. **`[shipped]`, 28 px breaches nothing**
+ * — worst 27.04 — and the first breach is **24 px**, dominaria 23.63: roughly 25% of headroom rather
+ * than one step, so the case for 30 rests on the tilted arm
+ * ([[a-bound-check-is-vacuous-when-the-bound-never-binds]]). At 30 the worst world reads **28.74
+ * `[shipped]`, a 20% margin** — 25.55 and 25.21 `[tilted]`, 5% — while dominaria's disc still fits
+ * the reference frame at 1,023 px of 1,080. Both margins are worst-of-24 subsample minima and
+ * therefore upper bounds: at 240 azimuths tilted dominaria drifts to 25.48
+ * ([[a-subsample-minimum-drifts-with-sample-density]]). 31 buys 9% of margin for 97% of the frame
+ * height, which is a different composition, not a safer one. This is deliberately the only tuned
+ * constant in the law: the rest — {@link CELL_LIFT}, {@link CELL_INSET}, the reference viewport —
+ * are quoted from elsewhere.
  */
 export const CELL_FRAMING_PX = 30
 
@@ -292,7 +307,8 @@ export const CELL_FRAMING_PX = 30
  * > board ruling on DEC-816 R1).** A sphere at `k x radius` subtends the same angle whatever its
  * > radius, so under the old flat `3.2 x radius` every world's disc was the same size on screen and
  * > every world's **cells** shrank as `1/rows` — which is `~sqrt(N)`. Dominaria's 81 rows put its
- * > median front-facing cell at 15.5-17.1 px against W1's 24 px floor while a one-card world read
+ * > median front-facing cell at 17.48-17.58 px `[shipped]` — 15.50-19.35 `[tilted]`, see
+ * > {@link CELL_FRAMING_PX} on the two arms — against W1's 24 px floor while a one-card world read
  * > 685. The floor and the criterion are right and the framing distance was measuring the wrong
  * > thing: it is the one term in `cell px = f(cell arc, distance)` that a renderer may choose.
  *

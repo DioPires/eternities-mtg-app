@@ -12,18 +12,45 @@
  * > checked against the distance the camera was placed at on every single sample. A W1 number taken
  * > at a pose nobody verified is the defect DEC-804 spent a leg on.
  *
- * ## W1's per-world median is a FAMILY over the approach azimuth, not a constant
+ * ## EVERY NUMBER IN THIS FILE IS THE `[tilted]` ARM, WHICH THE BUILD DOES NOT RENDER TODAY
+ *
+ * > **Normative — read this before quoting anything below (DEC-822).** `sweepMedians` poses with
+ * > `worldOrientation(plane.tilt, 0, ...)`, applying §1.3's `planes.json` quaternion
+ * > **unconditionally**. The product composes orientation through `planeOrientation` — the single
+ * > writer of `surface.orientation` — and that gates the tilt on `APPLY_PLANE_TILT`, **`false`**
+ * > since DEC-750. So this file measures a configuration the shipped build does not run, and it does
+ * > so **deliberately**: the tilted arm is the more conservative bound and the one that goes live
+ * > the day the flag flips. It is kept as the assertion arm for that reason. **Every pinned figure
+ * > here is `[tilted]`; the `[shipped]` figure is quoted beside it wherever it differs, and
+ * > `docs/worlds/spec.md` §1.3 carries both columns.**
+ *
+ * ## W1's per-world median is a FAMILY over the approach azimuth — 11-15% wide `[tilted]`, 0.3-0.6% `[shipped]`
  *
  * The rig arrives at `HOME_POLAR` — 30 deg of elevation — at whatever azimuth the flight inherited,
  * and §1.3 tilts every world's pole by `planes.json`'s own quaternion. So as the azimuth turns, the
  * tilted pole swings in and out of the front-facing cap and takes a cohort of squat polar cells with
  * it. Measured here at 3.2 radii, dominaria's median runs **15.50 to 19.35 px** and ravnica's
- * **23.88 to 32.66** — spreads of 11% and 15% about their own middles.
+ * **23.88 to 32.66** — spreads of 11% and 15% about their own middles. **`[shipped]` those bands are
+ * 17.48-17.58 and 28.64-28.99**, 0.3% and 0.6% wide: with the pole upright, turning the azimuth is a
+ * spin about that pole, which maps each row-ring onto itself.
  *
  * **Leg G's acceptance tour samples one azimuth per world**, and the draw it got was dominaria 17.14
- * and ravnica 28.49. That is why its run reported one world under the floor and this file reports
- * two: 28.49 and 23.88 are the same world on the same build. Every bound below is therefore taken
- * over the sweep and never at a frame — [[one-frame-of-a-moving-system-is-a-sample]].
+ * and ravnica 28.49. That draw was **sound**, not lucky: 28.49 sits inside the 0.6%-wide shipped
+ * band, so leg G's "one world under the floor" is the correct count for the build that ships. This
+ * file reports two because it measures the tilted arm, where ravnica's worst azimuth is 23.88 and a
+ * single draw would be a coin flip. Every bound below is therefore taken over the sweep and never at
+ * a frame — [[one-frame-of-a-moving-system-is-a-sample]] — which is the rule that binds the day
+ * `APPLY_PLANE_TILT` flips.
+ *
+ * ## The pose is `HOME_POLAR`, which is an OFFLINE APPROXIMATION ~2% HIGH
+ *
+ * `HOME_POLAR` is 60 deg; read off the probe's own `centre` and `cameraPosition`, the rig actually
+ * settles at **63.13 deg on dominaria and 61.82 deg on ravnica**, and the statistic falls 0.12-0.20
+ * px per degree there (DEC-822 N2). So every figure in this file is about **2% high** against the
+ * product. It is left at `HOME_POLAR` rather than re-pinned because the arrival polar is per-world
+ * and only two of the 45 have been measured; re-pinning 45 poses off two readings would trade a
+ * stated bias for an unstated one. The bias does not eat the margin — at the measured arrival polars
+ * the new law gives dominaria 25.56-31.15 and ravnica 26.63-34.52 `[tilted]`, both clear of 24.
  */
 
 import { readFileSync } from 'node:fs'
@@ -72,6 +99,12 @@ const VIEWPORT = { width: 1920, height: FRAMING_REFERENCE_VIEWPORT_HEIGHT_PX }
  * worst one within a fraction of a pixel of the 120-sample sweep the constant was chosen against
  * (dominaria 25.55 at 120, 25.55 at 24). Evenly spaced and never random — leg G measured a random
  * comb reporting a false extremum 2.5% of the time on W5's own sweep.
+ *
+ * > **A worst-of-N is a subsample minimum, so every margin below is an UPPER bound (DEC-822).** Take
+ * > the comb to 240 and tilted dominaria drifts 25.550 -> 25.477; ravnica is stable at 25.208 across
+ * > n=24/48/120/240. The drift is small enough not to move any verdict here, and it is the reason
+ * > the reported margin is quoted as "at least" rather than as the margin —
+ * > [[a-subsample-minimum-drifts-with-sample-density]].
  */
 const AZIMUTHS = 24
 
@@ -101,10 +134,17 @@ const NO_SEAMS: WorldsSeams = {
 }
 
 /**
- * The rig's arrival pose: `distance` from `centre`, at `HOME_POLAR`, looking in.
+ * The rig's arrival pose, approximated: `distance` from `centre`, at `HOME_POLAR`, looking in.
  *
  * The azimuth is the sweep parameter. The polar is the rig's own `framePolar` and is **not** swept:
  * a fly-to arrives there, and sweeping it would measure poses the product does not stop at.
+ *
+ * > **`HOME_POLAR` is where the fly-to aims, not where it lands — this pose is ~2% high (DEC-822
+ * > N2).** Measured off the probe's `centre` and `cameraPosition`, the settle arrives at 63.13 deg
+ * > on dominaria and 61.82 on ravnica against `HOME_POLAR`'s 60, and the statistic falls 0.12-0.20
+ * > px/deg there. Every number this function feeds is therefore an offline approximation biased
+ * > **high** — the conservative direction for a floor is *low*, so the bias is stated rather than
+ * > relied on, and the margins below are quoted with it in view. See the file header.
  */
 function frameAt(distance: number, centre: Vector3, azimuth: number): WorldFrame {
   const camera = new PerspectiveCamera(55, VIEWPORT.width / VIEWPORT.height, 0.1, 10_000)
@@ -146,6 +186,14 @@ function median(values: readonly number[]): number {
  * assumption: §1.3 spins a world about its own pole, which maps each row-ring onto itself, and a
  * 12-angle sweep moves dominaria's median by 0.16% — against 11% for the azimuth. The tilt, which
  * does move it, is read from `planes.json` and applied.
+ *
+ * > **This line is the `[tilted]` arm, and it is the one thing here the product does not do
+ * > (DEC-822).** `worldOrientation(plane.tilt, 0, ...)` applies the quaternion unconditionally;
+ * > `planeOrientation` — the product's single writer of `surface.orientation` — gates it on
+ * > `APPLY_PLANE_TILT`, `false` since DEC-750. Swap this one call for `planeOrientation` and the
+ * > 11% family collapses to 0.3%, because with the pole upright the azimuth sweep *is* the spin
+ * > measured above. Kept tilted on purpose: it is the conservative bound and the live one the day
+ * > the flag flips. See the file header for both columns.
  */
 function sweepMedians(plane: WorldPlane, radii: number): number[] {
   const surface = new WorldSurface(buildWorldSource(plane, STARS, SWATCHES), {
@@ -250,9 +298,17 @@ describe('§1.3 the framing distance frames cells, not silhouettes (DEC-818)', (
     // The margin on the binding world, reported rather than left to the bound. A row that only
     // asserts ">= 24" cannot tell 24.01 from 240, and the whole question this leg answered was how
     // much slack the law leaves.
+    //
+    // > **4% is the `[tilted]` bound; `[shipped]` the margin is 20% (DEC-822).** The binding world
+    // > differs with the arm too — ravnica at 25.21 here, dominaria at 28.74 shipped. The bound is
+    // > left at the tilted figure because that is the arm this file poses and the smaller of the
+    // > two; a 20% bound asserted against a tilted sweep would red on a build that is fine.
     expect(ranked[0]!.worst!, `worst five: ${worstFive}`).toBeGreaterThan(W1_FLOOR_PX * 1.04)
     // The worst five, pinned by name and to a tenth of a pixel. A bound alone cannot tell which
     // worlds are carrying the law, and those five are the rows a future roster refresh moves first.
+    //
+    // > `[shipped]` this order is **dominaria 28.74, ravnica 30.19, innistrad 33.78, new-phyrexia
+    // > 37.05, zendikar 39.02** — the same five worlds, with the top two swapped (DEC-822).
     expect(ranked.slice(0, 5).map((r) => r.slug)).toEqual([
       'ravnica',
       'dominaria',
@@ -267,10 +323,18 @@ describe('§1.3 the framing distance frames cells, not silhouettes (DEC-818)', (
     expect(ranked[4]!.worst!).toBeCloseTo(36.12, 1)
   })
 
-  it('is what the OLD flat 3.2-radii law could not do — two worlds, not one', () => {
+  it('is what the OLD flat 3.2-radii law could not do — two worlds [tilted], one [shipped]', () => {
     // The falsifier, and it is a measurement of the shipped roster rather than a fixture: restoring
     // `frame: r * 3.2` in `Framing.plane` — or making `framingRadii` return the cap — puts these two
     // worlds back under the floor, and the row above goes red with them named.
+    //
+    // > **The count this row asserts is the `[tilted]` one (DEC-822 B2).** In the arm the build
+    // > actually renders, **dominaria alone** is under the floor at 3.2 — 17.48 px — and ravnica is
+    // > green at every azimuth (28.64-28.99). Ravnica's 3.2 -> 3.080 move is **margin, not repair**.
+    // > The two-world count is real, it is just real in the arm this file poses; it becomes the
+    // > shipped count the day `APPLY_PLANE_TILT` flips. Both are kept because the defect and the
+    // > repair hold either way: dominaria is under 24 px in **both** arms, and the law carries it to
+    // > 28.74 `[shipped]` / 25.55 `[tilted]`.
     const under = WORLDS.map((plane) => ({
       slug: plane.slug,
       worst: worstMedian(plane, SILHOUETTE_FRAMING_RADII),
