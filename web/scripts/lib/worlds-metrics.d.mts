@@ -188,15 +188,16 @@ export interface W4Criterion extends Criterion {
    * The highest `artFraction` this pool could show — `min(1, layers / wanting)`, or `null` where
    * nothing wants art.
    *
-   * **Scored since 2026-09-16**, via `artFractionBar`. See `reachableBar` in the implementation,
-   * which carries the arithmetic *and* the vacuity the ruling introduces: on a saturated pool
-   * `artFraction` equals this ceiling exactly, so the bar can never bind.
+   * **Scored since 2026-09-16**, via `artFractionBar`. See `reachableBar` in the implementation: on
+   * a saturated pool `artFraction` equals this ceiling exactly, so a bar that is only a *fraction* of
+   * it could never bind — which is why the bar carries an absolute floor as well.
    */
   readonly capacityCeiling: number | null;
   /**
-   * The bar `artFraction` was actually scored against: `FLOORS.artFraction × capacityCeiling`
-   * (rulings `split_measures` + `floor_times_ceiling`), or the flat floor where nothing wants art.
-   * Reported so a verdict cannot be read without the bar it was taken against.
+   * The bar `artFraction` was actually scored against:
+   * `max(FLOORS.artFraction × capacityCeiling, FLOORS.artFractionAbsolute)` (rulings
+   * `split_measures` + `floor_times_ceiling`, then `absolute_floor`), or the flat floor where
+   * nothing wants art. Reported so a verdict cannot be read without the bar it was taken against.
    */
   readonly artFractionBar: number;
 }
@@ -268,6 +269,11 @@ export declare const FLOORS: {
   readonly lightnessIqr: number;
   readonly bandDeltaE: number;
   readonly artFraction: number;
+  /**
+   * The floor `artFraction` clears whatever the pool's ceiling is (ruling `absolute_floor`). On a
+   * saturated pool this is equivalent to "demand may exceed capacity by at most `1 / this`".
+   */
+  readonly artFractionAbsolute: number;
   readonly evictionsPerSecond: number;
 };
 

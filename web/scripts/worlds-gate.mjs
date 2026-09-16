@@ -926,9 +926,12 @@ const MATRIX = [
       //
       // The row's RED therefore rests on `artFraction` alone. That half survives the reachable bar
       // because this row is *budget*-starved, not *pool*-starved: its demand fits its pool, so its
-      // ceiling is 1 and its bar is the unmodified 0.9 against ~0.37. Appendix A's pool-starved
-      // `tether-surface` capture is the other reading of "the fixed24 control" and would NOT survive
-      // it — see `reachableBar` in `lib/worlds-metrics.mjs`.
+      // ceiling is 1 and its bar is the unmodified 0.9 against ~0.37 — it never goes near the
+      // absolute floor. Appendix A's pool-starved `tether-surface` capture is the other reading of
+      // "the fixed24 control", and it is the one that did NOT survive `floor_times_ceiling`: it
+      // passed both halves at 37% art until ruling `absolute_floor` (card `74114193`) floored the
+      // bar at 0.5. Two rows, one name in §3.1, and only one of them was ever in danger — see
+      // `reachableBar` in `lib/worlds-metrics.mjs`.
       { criterion: 'W4', measure: 'evictionsPerSecond', expect: 'N/A' },
     ],
   },

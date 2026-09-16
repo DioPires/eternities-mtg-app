@@ -1894,9 +1894,39 @@ an assertion there.
 | **W1** | **Cells are resolvable at framing distance.** | At the plane-level settle for each of `worldsWithCards` (**29** on the 87-plane roster, **45** on v3), the median on-screen height of front-facing cells; the verdict is the **worst** world, not the pooled median. Not the Blind Eternities: it has cards but no cell sheet (§1.8), so the statistic is undefined there — `planesWithCards` would be 30 / 46 and would include it. | **≥ 24 CSS px.** Binds on the largest plane: Dominaria **28.74** at its worst azimuth, at §1.3's framing distance — a **20% margin** (`[shipped]`, the arm the build renders; `[tilted]` it is Ravnica 25.21 and 5% — §1.3 on the two arms). |
 | **W2** | **The mosaic reads as tiles, not as a wash.** This is T7's replacement. | Sample the captured frame at the centre of every front-facing cell ≥ 6 px tall, convert to CIELAB. Report the median ΔE to a cell's nearest on-screen neighbour, and the interquartile range of L\* **across the iso-shade subset** — the cells whose reported `shade` lies within ±2.5% of the median shade. | **median neighbour ΔE ≥ 6** and **iso-shade IQR(L\*) ≥ 8**. |
 | **W3** | **Latitude reads as colour.** | Group the same samples by band. For every pair of bands adjacent **in §1.3's 13-band chain** (a chain, not a cycle: the two ice caps are its two ends and are the furthest apart of any pair) where the smaller holds ≥ 5% of the plane's cards, the ΔE between their mean a\*b\*. | **≥ 10** for every such pair. |
-| **W4** | **Art resolves without exhausting.** | At the surface view (2.2× radius), after a 5 s settle: the fraction of on-screen front-facing cells above the effective threshold that are showing art, and evictions per second over the last 2 s. | **≥ 90%** showing art, **≤ 5 evictions/s**. |
+| **W4** | **Art resolves without exhausting.** | At the surface view (2.2× radius), after a 5 s settle: the fraction of on-screen front-facing cells above the effective threshold that are showing art, and evictions per second over the last 2 s. **Demand as a multiple of pool capacity is reported alongside them and is not scored.** | **`artFraction ≥ max(0.9 × capacityCeiling, 0.5)`** and **≤ 5 evictions/s** — see the amendment note below; the published flat **≥ 90%** is the bar only where demand fits the pool. |
 | **W5** | **The home view is not a wall of labels**, and every world is still reachable from it. | Two halves, both over a **sweep of ≥ 12 azimuths** — the home view is a family of frames, not a pose (see below). **Ceiling:** the worst-case count of plane labels **at opacity > 0.05** over the sweep; a node count is not a measurement here. **Reachability:** the number of `worldsWithCards` carrying no such label at **any** sampled azimuth, with those slugs named. | **Ceiling ≤ `worldsWithCards.length`** — **29** on the 87-plane roster and **45** on v3 (measured, not predicted — §1.2), derived from the dataset under test and never a literal. The belt is *not* added: it is in `planesWithCards` but `PlaneLabels.tsx:116` filters it by slug before projection (PRD 5.3.4), so it can never carry a label and `planesWithCards` would leave the ceiling one short of ever binding. **Reachability = 0 worlds.** Below 12 azimuths both halves report `insufficient`. |
 
+> **Normative — W4's art floor is a bar derived from pool capacity, not the flat 90% this table
+> published (DEC-752, three board rulings, 2026-09-16).** The flat floor was unreachable by
+> construction on a small pool: a showing cell holds a layer, so `artFraction` cannot exceed
+> `capacityCeiling = min(1, layers / wanting)`, and at quality tier 4 dominaria's ceiling is **0.624**
+> — the row was scored against a bar its hardware could not reach. The amended criterion, and the
+> order the three rulings landed in, because each repairs the one before it:
+>
+> 1. **`split_measures`** (card `62f32092`) — score `artFraction` against a **reachable** bar, and add
+>    a separate `demandFitsCapacity` measure so the overshoot the bar forgives stays visible.
+> 2. **`floor_times_ceiling`** (card `2e92df81`) — that bar is `0.9 × capacityCeiling`: *show 90% of
+>    what your pool could show*. **`demand_measure_scored` = `reported_only`** on the same card, so
+>    the new measure carries a verdict and no colour.
+> 3. **`absolute_floor`** (card `74114193`) — floor the bar at **0.5**, because rule 2 alone **could
+>    not fail on a saturated pool**. There `showing == layers`, so `artFraction == capacityCeiling`
+>    *exactly* and the value clears a bar that is a fixed fraction of that same ceiling at **every**
+>    capacity — 37%, 10%, 1%. This was not hypothetical: it greened Appendix A's `tether-surface`
+>    capture, the frame §3.1 names as W4's own falsifier, at 37% art.
+>
+> **What the 0.5 says, in the terms the criterion is about:** on a saturated pool `artFraction` clears
+> it iff `wanting / layers ≤ 2`, so the absolute floor **is** a scored 2× bound on demand-over-capacity
+> for exactly the frames where the pool is the constraint. The board's admissible interval was
+> (0.371, 0.610] — above the capture that must red, at or below tier 4's measured 0.610 that must
+> green — which is [1.64×, 2.69×) in overshoot terms. Do not read the 0.5 as calibrated more finely.
+>
+> **The two frames §3.1 calls "the fixed24 control" are not the same row, and only one was ever at
+> risk.** The *live* `?artThreshold=fixed24` row is **budget**-starved: its demand fits its pool, its
+> ceiling is 1, its bar is the unmodified 0.9, and it stayed RED through all three rulings. Appendix
+> A's capture is **pool**-starved. A control named once and measured twice is how the green went
+> unnoticed for half a day.
+>
 > **Normative — W1's pose is the *plane-level settle*, which §1.3 now makes per-world, and it is
 > **not** W4's 2.2-radii surface view (DEC-818).** The two are one row apart in this table and were
 > conflated once already: DEC-752's acceptance comment and the DEC-818 routing that followed it both

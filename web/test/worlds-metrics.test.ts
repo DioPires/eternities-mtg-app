@@ -978,20 +978,21 @@ describe("W4 — art resolves without exhausting", () => {
       HEALTHY_EXIT,
     );
 
-    // The row is still RED — but **on the eviction half alone** since the reachable bar landed, and
-    // that is a change in what this control proves rather than a detail of how it is spelled.
+    // RED on **both** halves, which is what §3.1 has always claimed of this frame — but it was RED
+    // on the eviction half alone for the few hours `floor_times_ceiling` stood without an absolute
+    // floor under it. Ruling `absolute_floor` (card `74114193`) restored the art half.
     expect(w4.pass).toBe(false);
     expect(w4.measures.find((m) => m.key === "evictionsPerSecond")?.pass).toBe(
       false,
     );
-    // 1,024 of 2,759 is 37%, and it now PASSES: the pool is saturated, so `artFraction` equals the
-    // capacity ceiling exactly and the bar — 0.9 × that ceiling — sits below it by construction.
-    // Asserted rather than deleted, because a control that quietly stopped covering half of what it
-    // used to cover is the failure this matrix exists to prevent.
+    // 1,024 of 2,759 is 37%, against a bar of 0.5. The bar is the absolute floor and **not**
+    // `0.9 × ceiling` (0.334), which this value would clear — so this row is also the witness that
+    // the `max` is the term doing the work here.
     const fraction = w4.measures.find((m) => m.key === "artFraction");
     expect(fraction?.value).toBeCloseTo(0.371, 3);
-    expect(fraction?.bound).toBeCloseTo(0.9 * (1_024 / 2_759), 6);
-    expect(fraction?.status).toBe("pass");
+    expect(fraction?.bound).toBe(0.5);
+    expect(fraction?.bound).toBeGreaterThan(0.9 * (1_024 / 2_759));
+    expect(fraction?.status).toBe("fail");
     // What sees the starvation instead — and it cannot colour the row.
     const demand = w4.measures.find((m) => m.key === "demandFitsCapacity");
     expect(demand?.value).toBeCloseTo(2_759 / 1_024, 6);
@@ -1000,19 +1001,19 @@ describe("W4 — art resolves without exhausting", () => {
   });
 
   /**
-   * **The vacuity the reachable bar introduces, stated as a test rather than left to be
-   * rediscovered** (DEC-752, rulings `split_measures` + `floor_times_ceiling`).
+   * **The vacuity `floor_times_ceiling` introduced, and the floor that closes it** (DEC-752, ruling
+   * `absolute_floor`, board card `74114193`).
    *
    * A showing cell holds a layer, so on a pool with every layer in use `showing == layers` and
-   * `artFraction == layers / wanting == capacityCeiling` exactly. The bar is `0.9 × capacityCeiling`,
-   * so the ratio of value to bar is `1 / 0.9` **whatever the capacity and whatever the demand**. A
-   * saturated pool can never fail this half — at 37%, at 10%, at 1%.
+   * `artFraction == layers / wanting == capacityCeiling` exactly. Against a bar of
+   * `0.9 × capacityCeiling` the ratio of value to bar was therefore `1 / 0.9` **whatever the capacity
+   * and whatever the demand** — a saturated pool could not fail this half at 37%, at 10%, or at 1%.
    *
-   * That is the ruling as the board made it, and this row exists so the next person to read a green
-   * `artFraction` on a starved frame finds the reason here instead of deriving it from a surprise.
-   * See `a-bound-check-is-vacuous-when-the-bound-never-binds`.
+   * These rows were written asserting that vacuity, and they now assert its repair, against the same
+   * three fixtures. A bound-check that cannot fail is not a weaker check, it is not a check; see
+   * `a-bound-check-is-vacuous-when-the-bound-never-binds`.
    */
-  it("cannot fail artFraction on a saturated pool, at any capacity", () => {
+  it("fails artFraction on a saturated pool that is starving it, at every capacity", () => {
     // Three capacities spanning two orders of magnitude, each drawing every layer it has against a
     // demand far beyond it. One of them is Appendix A's own `tether-surface` capture.
     for (const [layers, wanted] of [
@@ -1029,13 +1030,53 @@ describe("W4 — art resolves without exhausting", () => {
       );
       const fraction = w4.measures.find((m) => m.key === "artFraction");
       expect(fraction?.value).toBeCloseTo(layers / wanted, 9);
+      // The bar is the absolute floor on all three: `0.9 × ceiling` is 0.334, 0.029 and 0.0009, each
+      // of which the value would clear. Asserting the bar and not only the colour is what keeps this
+      // a test of *which* term bound.
+      expect(fraction?.bound).toBe(0.5);
       expect(
         fraction?.status,
         `${layers} layers against ${wanted} cells wanting art`,
-      ).toBe("pass");
+      ).toBe("fail");
     }
     // The last of those shows 0.1% of the art that was wanted.
     expect(16 / 16_000).toBeCloseTo(0.001, 6);
+  });
+
+  /**
+   * **What the 0.5 actually says, as the claim rather than the number** (ruling `absolute_floor`).
+   *
+   * On a saturated pool `artFraction == ceiling == layers / wanting`, so clearing an absolute floor
+   * `f` is exactly `wanting / layers <= 1 / f`. At `f = 0.5` the floor *is* the rule "demand may
+   * exceed pool capacity by at most 2×" — which gives `demandFitsCapacity`, left `reported_only` by
+   * ruling `demand_measure_scored`, a scored bound of 2× on precisely the frames where the pool is
+   * the constraint.
+   *
+   * The equivalence is swept rather than asserted at one point, because a single row on either side
+   * of a boundary can hold for reasons that have nothing to do with the boundary.
+   */
+  it("is a 2x overshoot bound on a saturated pool — swept across the boundary", () => {
+    const LAYERS = 1_000;
+    for (const overshoot of [1.0, 1.5, 1.9, 1.99, 2.0, 2.01, 2.5, 2.69, 4.0]) {
+      const wanted = Math.round(LAYERS * overshoot);
+      const w4 = evaluateW4(
+        cells(wanted, LAYERS),
+        settled(0),
+        { layers: LAYERS, resident: LAYERS },
+        FRESH_SESSION,
+        HEALTHY_EXIT,
+      );
+      const fraction = w4.measures.find((m) => m.key === "artFraction");
+      const demand = w4.measures.find((m) => m.key === "demandFitsCapacity");
+      // The art half's colour and "is the overshoot within 2x" are the same predicate here...
+      expect(fraction?.status, `${overshoot}x overshoot`).toBe(
+        overshoot <= 2 ? "pass" : "fail",
+      );
+      // ...and the unscored measure reports the very quantity the floor is bounding, so the two
+      // halves of the ruling can be read against each other instead of taken on faith.
+      expect(demand?.value).toBeCloseTo(wanted / LAYERS, 6);
+      expect(demand?.scored).toBe(false);
+    }
   });
 
   /**
@@ -1047,15 +1088,15 @@ describe("W4 — art resolves without exhausting", () => {
    * spread over a settled window is 0/s and passes. The gate must take the rate over §3.1's own
    * 2 s window rather than reading the counter, which is what `evictionRate` is for.
    *
-   * > **And since the reachable bar landed, the art half no longer fails here either, so this frame
-   * > is W4-GREEN outright.** The sentence above — "the art half certainly is" red — was written
-   * > against the flat 0.9 floor and is now false of this fixture: the pool is saturated, so
-   * > `artFraction` equals its ceiling and clears `0.9 × ceiling`. **Appendix A's `tether-surface`
-   * > capture, once its pool settles, passes both halves of W4 while showing 37% of the art it
-   * > wanted.** That is the consequence of rulings `split_measures` + `floor_times_ceiling` at its
-   * > sharpest, and it is asserted below rather than described, so it cannot drift back into prose.
+   * > **The art half is red here again, and the round trip is the reason this row is worth reading.**
+   * > Under `floor_times_ceiling` alone the sentence above — "the art half certainly is" red — went
+   * > false of this fixture: the pool is saturated, so `artFraction` equalled its ceiling and cleared
+   * > `0.9 × ceiling`, and the settled `tether-surface` frame passed **both** halves of W4 while
+   * > showing 37% of the art it wanted. Ruling `absolute_floor` put a 0.5 under the bar and the
+   * > sentence is true again. What the frame demonstrates either way is that the *eviction* half
+   * > cannot be inferred from Appendix A's cumulative 925 — that half still passes here, settled.
    */
-  it("passes the settled tether-surface frame outright, 37% art and all", () => {
+  it("reds the settled tether-surface frame on art alone — its evictions are not a rate", () => {
     const { drawn, wanted, evicted } = PROTOTYPE.tetherSurface;
     const w4 = evaluateW4(
       cells(wanted, drawn),
@@ -1064,16 +1105,21 @@ describe("W4 — art resolves without exhausting", () => {
       FRESH_SESSION,
       HEALTHY_EXIT,
     );
-    // The original claim of this row, unchanged: 925 cumulative is not a rate.
+    // The original claim of this row, unchanged: 925 cumulative is not a rate. This is the half
+    // §3.1 reads as red by inference and the gate declines to.
     expect(w4.measures.find((m) => m.key === "evictionsPerSecond")?.value).toBe(
       0,
     );
-    // The new one. Both halves green on a frame §3.1 names as its control.
-    expect(w4.measures.find((m) => m.key === "artFraction")?.status).toBe(
-      "pass",
+    expect(w4.measures.find((m) => m.key === "evictionsPerSecond")?.pass).toBe(
+      true,
     );
-    expect(w4.status).toBe("pass");
-    // The only measure that still objects, and it is `reported_only` by ruling.
+    // And the half that does bind, restored by the absolute floor: 37% against 0.5.
+    const fraction = w4.measures.find((m) => m.key === "artFraction");
+    expect(fraction?.status).toBe("fail");
+    expect(fraction?.bound).toBe(0.5);
+    expect(w4.status).toBe("fail");
+    // The measure that objected even while the row was green, and is `reported_only` by ruling —
+    // it agrees with the art half now rather than standing alone.
     const demand = w4.measures.find((m) => m.key === "demandFitsCapacity");
     expect(demand?.status).toBe("fail");
     expect(demand?.scored).toBe(false);
@@ -1103,11 +1149,13 @@ describe("W4 — art resolves without exhausting", () => {
    *
    * > **The paragraph this block used to carry said the ceiling is deliberately not wired to the
    * > verdict, "because the tempting fix would retire `?artThreshold=fixed24`". The board wired it
-   * > anyway, and the worry was half right.** It is wrong about the *live* `fixed24` row, which is
-   * > budget-starved rather than pool-starved: its demand fits its pool, its ceiling is 1, its bar is
-   * > the unmodified 0.9, and it stays RED — that row is tested below. It is right about Appendix A's
-   * > pool-starved `tether-surface` capture, which now passes this half. Both are called "the fixed24
-   * > control" in §3.1, and the card that carried the ruling to the board described only the first.
+   * > anyway, the worry was half right, and it took a second ruling to settle.** It was always wrong
+   * > about the *live* `fixed24` row, which is budget-starved rather than pool-starved: its demand
+   * > fits its pool, its ceiling is 1, its bar is the unmodified 0.9, and it stayed RED throughout —
+   * > that row is tested below. It was right about Appendix A's pool-starved `tether-surface`
+   * > capture, which passed this half until ruling `absolute_floor` put a 0.5 under the bar. Both are
+   * > called "the fixed24 control" in §3.1, and the card that carried `floor_times_ceiling` to the
+   * > board described only the first — which is how a named control went green for half a day.
    */
   describe("capacity ceiling", () => {
     it("reports what the pool could show, not what it did", () => {
@@ -1175,7 +1223,7 @@ describe("W4 — art resolves without exhausting", () => {
 
     it("publishes the bar it scored against, not just the ceiling it derived it from", () => {
       // A verdict that cannot be read without re-deriving its own bound is the shape the fold's
-      // missing denominator had. 0.9 × 1,024/2,759.
+      // missing denominator had.
       const w4 = evaluateW4(
         cells(2_759, 1_024),
         settled(0),
@@ -1183,13 +1231,38 @@ describe("W4 — art resolves without exhausting", () => {
         FRESH_SESSION,
         HEALTHY_EXIT,
       );
-      expect(w4.artFractionBar).toBeCloseTo(0.9 * (1_024 / 2_759), 9);
+      expect(w4.artFractionBar).toBe(0.5);
       expect(w4.measures.find((m) => m.key === "artFraction")?.bound).toBe(
         w4.artFractionBar,
       );
-      // And the bar is strictly below the flat floor here, so the two are distinguishable — a row
-      // where they coincided would pass whichever one the code actually used.
+      // The bar is strictly between the two terms it is the `max` of, so all three numbers are
+      // distinguishable here — a row where any two coincided would pass whichever the code used.
       expect(w4.artFractionBar).toBeLessThan(0.9);
+      expect(w4.artFractionBar).toBeGreaterThan(0.9 * (1_024 / 2_759));
+    });
+
+    it("takes the ceiling term, not the floor, wherever the ceiling term is higher", () => {
+      // The other side of the `max`, without which the floor would be the whole rule and
+      // `floor_times_ceiling` would have been reverted rather than repaired. Tier 4's numbers:
+      // 0.9 × 0.6244 = 0.5619, above the 0.5.
+      const tier4 = evaluateW4(
+        cells(205, 125),
+        settled(0),
+        { layers: 128, resident: 128 },
+        FRESH_SESSION,
+        HEALTHY_EXIT,
+      );
+      expect(tier4.artFractionBar).toBeCloseTo(0.9 * (128 / 205), 9);
+      expect(tier4.artFractionBar).toBeGreaterThan(0.5);
+      // ...and a frame whose demand fits outright keeps the unmodified flat floor.
+      const roomy = evaluateW4(
+        cells(90, 90),
+        settled(0),
+        { layers: 224, resident: 90 },
+        FRESH_SESSION,
+        HEALTHY_EXIT,
+      );
+      expect(roomy.artFractionBar).toBe(0.9);
     });
   });
 

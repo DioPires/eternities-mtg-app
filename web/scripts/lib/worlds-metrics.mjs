@@ -137,6 +137,28 @@ export const FLOORS = {
   bandDeltaE: 0.55,
   /** W4: fraction of cells above the effective threshold that are showing art. */
   artFraction: 0.9,
+  /**
+   * W4: the floor `artFraction` must clear **however small the pool's ceiling is** — the second
+   * term of `max(FLOORS.artFraction × ceiling, this)`. See {@link reachableBar}.
+   *
+   * **Ruling `absolute_floor`** (board card `74114193`, 2026-09-16), closing the vacuity
+   * `floor_times_ceiling` opened: without it, a saturated pool passes at every capacity, because
+   * `artFraction == ceiling` exactly there and the bar is a fixed fraction of that same ceiling.
+   *
+   * ## What the 0.5 means, stated as the claim it makes rather than as a number
+   *
+   * On a saturated pool `artFraction == ceiling == 1 / (wanting / layers)`, so the row passes iff
+   * `wanting / layers <= 1 / 0.5`. **The absolute floor is exactly the rule "demand may exceed pool
+   * capacity by at most 2×"** — it gives `demandFitsCapacity`, which ruling `demand_measure_scored`
+   * left `reported_only`, a scored bound of 2× on the frames where the pool is the constraint. That
+   * equivalence is the reason this number is defensible and not a taste, and it is pinned by a test.
+   *
+   * The board's interval was (0.371, 0.610]: above Appendix A's `tether-surface` capture, which must
+   * red, and at or below tier 4's measured 0.610, which must green. In overshoot terms that is
+   * [1.64×, 2.69×), and 2× is the round number inside it — 21% clear of the control below, 25% clear
+   * of the shipped rung above. Do not read the 0.5 as calibrated more finely than that.
+   */
+  artFractionAbsolute: 0.5,
   /** W4: evictions per second, averaged over the last 2 s. A ceiling, not a floor. */
   evictionsPerSecond: 5,
 };
@@ -1166,8 +1188,9 @@ export function cellsWantingArt(cells) {
  *
  * `artFraction` is scored against a **reachable bar** rather than §3.1's flat 0.9 — ruling
  * `split_measures`, disambiguated to `bar = FLOORS.artFraction × capacityCeiling` by ruling
- * `floor_times_ceiling`. See {@link reachableBar}, **including the vacuity it introduces**, which
- * is stated there in full and is not a detail.
+ * `floor_times_ceiling`, then floored at `FLOORS.artFractionAbsolute` by ruling `absolute_floor`
+ * (board card `74114193`) because the product of the first two could not bind on a saturated pool.
+ * See {@link reachableBar} for the arithmetic, which is not a detail.
  *
  * `demandFitsCapacity` is the second half of `split_measures`: the overshoot the bar now forgives,
  * reported so it is visible. Ruling `demand_measure_scored` = `reported_only`, so it carries a
@@ -1294,47 +1317,57 @@ export function evaluateW4(cells, evictionTimeline, pool, entryStream, exitStrea
 }
 
 /**
- * The bar `artFraction` is scored against: `FLOORS.artFraction × capacityCeiling`.
+ * The bar `artFraction` is scored against:
+ * `max(FLOORS.artFraction × capacityCeiling, FLOORS.artFractionAbsolute)`.
  *
- * Ruling `floor_times_ceiling` (board card `2e92df81`, 2026-09-16), disambiguating `split_measures`.
- * Read it as "show 90% of what your pool could show" in place of "show 90% of what is wanted".
+ * Two rulings, and the second exists because the first had a hole in it:
  *
- * `null` ceiling — nothing wants art — leaves the flat floor, because there is no capacity claim to
+ * - **`floor_times_ceiling`** (board card `2e92df81`) made the bar a fraction of what the pool could
+ *   show, rather than §3.1's flat 0.9. Read it as "show 90% of what your pool could show".
+ * - **`absolute_floor`** (board card `74114193`) added the `max(…, 0.5)`, because the first rule
+ *   alone **could not bind on a saturated pool at all**. See below.
+ *
+ * `null` ceiling — nothing wants art — leaves the flat 0.9, because there is no capacity claim to
  * make and the measure is out of domain there anyway.
  *
- * ## THE BAR CANNOT BIND ON A SATURATED POOL, AND THAT IS ARITHMETIC (DEC-752, measured)
- *
- * This is stated here rather than in a hand-back because anyone reading the bar needs it.
+ * ## Why the second term is load-bearing, and it is arithmetic (DEC-752, measured)
  *
  * A showing cell holds a layer. When the pool is the binding constraint and every layer is in use,
- * `showing == layers`, so `artFraction == layers / wanting == capacityCeiling` **exactly**, and
- * `value / bar == 1 / 0.9 > 1` for **any** capacity and **any** demand. A fully-utilised pool
- * therefore passes `artFraction` at every rung — 37%, 10%, 1% — and the measure has stopped being a
- * claim about how much art the picture shows. It has become a claim about pool *utilisation*.
+ * `showing == layers`, so `artFraction == layers / wanting == capacityCeiling` **exactly**. Against
+ * a bar that is a fixed *fraction* of that same ceiling, the ratio of value to bar is `1 / 0.9` for
+ * **any** capacity and **any** demand: a fully-utilised pool passed at every rung — 37%, 10%, 1% —
+ * and the measure had stopped being a claim about how much art the picture shows.
  *
- * The consequence lands on §3.1's own named control. Appendix A's `tether-surface` capture is
- * 1,024 drawn of 2,759 wanted into a 1,024-layer pool: ceiling 0.37115, bar 0.33403, value
- * **0.37115** — `pass`. **The prototype capture the spec cites as W4's falsifier is GREEN on this
- * half.** It was put to the board as "`fixed24` stays RED because its ceiling is 1", which is true
- * of the **live** `?artThreshold=fixed24` row — that one is *budget*-starved, not *pool*-starved, so
- * its demand fits its pool and its bar stays the unmodified 0.9 against 0.37 — and false of the
- * prototype's pool-starved capture. Both are called "the fixed24 control" in §3.1.
+ * The consequence landed on §3.1's own named control. Appendix A's `tether-surface` capture is 1,024
+ * drawn of 2,759 wanted into a 1,024-layer pool: ceiling 0.37115, and under `floor_times_ceiling`
+ * alone the bar was 0.33403 against a value of 0.37115 — `pass`. The prototype capture the spec
+ * cites as W4's falsifier went GREEN, and green on **both** halves once its pool settles. The card
+ * that carried `floor_times_ceiling` to the board said "`fixed24` stays RED because its ceiling is
+ * 1", which is true of the **live** `?artThreshold=fixed24` row — *budget*-starved, so its demand
+ * fits its pool, its ceiling is 1 and its bar is the unmodified 0.9 — and false of the prototype's
+ * *pool*-starved capture. §3.1 calls both of them "the fixed24 control".
  *
- * What still keeps the control alive, and it is worth being precise about which:
+ * The 0.5 closes exactly that: `tether-surface` scores 0.37115 against a bar of **0.5** and is RED
+ * again, on the art half, for showing too little art.
  *
- * 1. the **live** row's `artFraction`, whose ceiling really is 1;
- * 2. `evictionsPerSecond`, which the same ruling's `exit_domain` half turns from a false GREEN into
- *    `insufficient` on the live row and leaves RED on the churning prototype fixture;
- * 3. `demandFitsCapacity`, which reports the 2.69× overshoot — and is `reported_only`, so it cannot
- *    red anything.
+ * ## The floor's real content: demand may overshoot capacity by at most 2×
  *
- * So no W4 row can go red for showing too little art while its pool is saturated. That is the
- * ruling as written; it is recorded here so the next reader does not have to rediscover it from a
- * green row. See `a-bound-check-is-vacuous-when-the-bound-never-binds`.
+ * Because `artFraction == ceiling` on a saturated pool, `value >= 0.5` iff `wanting / layers <= 2`.
+ * So on the frames where the pool is the constraint, the absolute floor **is** a scored bound of 2×
+ * on `demandFitsCapacity` — the measure ruling `demand_measure_scored` left `reported_only`. It is
+ * worth knowing that the two are the same claim on those frames, because it means the unscored
+ * measure is not the only thing standing between a starved pool and a green row.
+ *
+ * Where the pool is *not* the constraint the two terms come apart, and both still do work: the live
+ * `fixed24` row's demand fits its pool (ceiling 1, bar 0.9) and it fails at 0.37 on the first term,
+ * having never been near the second.
+ *
+ * See `a-bound-check-is-vacuous-when-the-bound-never-binds` — this function is now that note's
+ * worked example in both directions.
  */
 function reachableBar(ceiling) {
   if (ceiling === null) return FLOORS.artFraction;
-  return FLOORS.artFraction * ceiling;
+  return Math.max(FLOORS.artFraction * ceiling, FLOORS.artFractionAbsolute);
 }
 
 /**
@@ -1357,14 +1390,16 @@ function demandPerLayer(wanting, pool) {
  * look starved — a ceiling is evidence about what the row could have said.
  *
  * > **WIRED TO THE VERDICT SINCE 2026-09-16 — the paragraph below is the argument the board
- * > overruled, kept because it is the record of what the ruling costs.** `artFraction` is now scored
- * > against `FLOORS.artFraction ×` this ceiling ({@link reachableBar}, rulings `split_measures` +
- * > `floor_times_ceiling`), and the second worry below — that this hides a policy overshooting — is
- * > answered by `demandFitsCapacity`, which reports the overshoot and is not scored. The first worry
- * > below turned out to be **half right in a way the card did not put to the board**: the *live*
- * > `fixed24` row is budget-starved, keeps a ceiling of 1 and stays RED, but Appendix A's
- * > pool-starved `tether-surface` capture goes GREEN on this half. {@link reachableBar} carries the
- * > arithmetic.
+ * > overruled, kept because it is the record of what the ruling cost and of what it took to repair.**
+ * > `artFraction` is scored against `FLOORS.artFraction ×` this ceiling, floored at
+ * > `FLOORS.artFractionAbsolute` ({@link reachableBar}; rulings `split_measures` +
+ * > `floor_times_ceiling`, then `absolute_floor`). The second worry below — that this hides a policy
+ * > overshooting — is answered twice over: by `demandFitsCapacity`, which reports the overshoot and
+ * > is not scored, and by the absolute floor, which on a saturated pool *is* a 2× bound on that same
+ * > overshoot. **The first worry below was right, and it took a second ruling to settle**: under
+ * > `floor_times_ceiling` alone, Appendix A's pool-starved `tether-surface` capture went GREEN on
+ * > this half — the control retiring exactly as feared — while the *live* `fixed24` row, which is
+ * > budget-starved and keeps a ceiling of 1, stayed RED throughout. The floor reds the capture again.
  * >
  * > **(Superseded)** Reported, and deliberately NOT wired to the verdict. §3.1's floor is 0.9, and
  * > where this ceiling falls below it the floor is unreachable and the row reds a renderer that did
