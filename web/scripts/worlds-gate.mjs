@@ -55,6 +55,7 @@ import {
   cellSamples,
   readWorldsProbe,
   seamEvidence,
+  seamQuery,
 } from './lib/worlds-probe-read.mjs'
 
 const WEB_ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)))
@@ -925,16 +926,6 @@ const MATRIX = [
     expect: [{ criterion: 'W5', measure: 'worldsNeverLabelled', expect: 'GREEN' }],
   },
 ]
-
-/** The query string for a row's seams. Nothing here invents a seam: these are R1's four spellings. */
-function seamQuery(seams) {
-  const parts = []
-  if (seams.swatchMean) parts.push('swatch=mean')
-  if (seams.bandsShuffle) parts.push('bands=shuffle')
-  if (seams.artThresholdFixed24) parts.push('artThreshold=fixed24')
-  if (typeof seams.layersRequested === 'number') parts.push(`layers=${seams.layersRequested}`)
-  return parts.length === 0 ? '' : `&${parts.join('&')}`
-}
 
 // ---------------------------------------------------------------------------------------------
 // The run

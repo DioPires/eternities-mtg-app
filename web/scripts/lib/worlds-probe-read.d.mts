@@ -103,3 +103,10 @@ export declare function seamEvidence(
   requested: Partial<WorldsProbe['seams']>,
   baseline?: WorldsProbe | null,
 ): readonly SeamEvidence[]
+
+/**
+ * The `&`-prefixed query tail for a row's seams, or `''` when none is set. The write half of the
+ * contract {@link seamEvidence} reads back — see the implementation for why it lives beside it
+ * rather than in `worlds-gate.mjs`.
+ */
+export declare function seamQuery(seams: Partial<WorldsProbe['seams']>): string

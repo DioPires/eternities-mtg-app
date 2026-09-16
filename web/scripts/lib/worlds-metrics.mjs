@@ -971,14 +971,27 @@ export function budgetBoundAtEntry(stream) {
 }
 
 /**
+ * The cells W4 scores: front-facing, on screen, and asking for art.
+ *
+ * > **Exported so there is exactly one spelling of it.** `?art=off`'s policy witness
+ * > ({@link seamEvidence}) has to say "the cells still wanted art and the stream was asked for
+ * > none", and the *still wanted* half is this predicate. A second copy over in the probe reader
+ * > would be a re-derivation of a policy the renderer already reports — the DEC-812 defect rider 2
+ * > removed from {@link budgetBoundAtEntry}, re-introduced one module over. The witness and the
+ * > criterion must agree on which cells count, or `art=off` could read `wanting > 0` on a frame W4
+ * > scores as wanting nothing.
+ */
+export function cellsWantingArt(cells) {
+  return cells.filter((c) => c.frontFacing && c.onScreen && c.wantsArt);
+}
+
+/**
  * `entryStream` is the stream report read **before** the visit began — see
  * {@link budgetBoundAtEntry}. It is a required positional for the same reason `pool` is: defaulted,
  * it would default the guard off, and the guard off is the defect.
  */
 export function evaluateW4(cells, evictionTimeline, pool, entryStream) {
-  const wanting = cells.filter(
-    (c) => c.frontFacing && c.onScreen && c.wantsArt,
-  );
+  const wanting = cellsWantingArt(cells);
   const showing = wanting.filter((c) => c.showingArt);
   const dead = streamNeverRan(wanting.length, pool);
   const bound = budgetBoundAtEntry(entryStream);

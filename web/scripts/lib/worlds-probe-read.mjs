@@ -35,6 +35,7 @@
  */
 
 import { samplePixel } from './png-sample.mjs'
+import { cellsWantingArt } from './worlds-metrics.mjs'
 
 /** §1.3's chain is thirteen bands over seven colour classes — `bandShares` has one entry each. */
 const BANDS = 13
@@ -362,6 +363,12 @@ function readSeams(seams, c) {
   if (!c.check(isObject(seams), `probe.seams: expected an object, got ${show(seams)}`)) return
   c.boolean(seams.swatchMean, 'probe.seams.swatchMean')
   c.boolean(seams.bandsShuffle, 'probe.seams.bandsShuffle')
+  // The sixth seam (DEC-821). Checked here for the same reason as the four above and for one more:
+  // `artOffRow` compares this field to the requested boolean with `===`, so a payload that stopped
+  // publishing it would read `undefined === false` — which is *false* on an unseamed row, marking a
+  // correctly-unseamed run as a seam that failed to echo. A missing field must be read as a
+  // malformed payload, not as a control that did not engage.
+  c.boolean(seams.artOff, 'probe.seams.artOff')
   c.boolean(seams.artThresholdFixed24, 'probe.seams.artThresholdFixed24')
   c.check(
     seams.layersRequested === null ||
@@ -528,6 +535,32 @@ export function artCells(probe) {
 }
 
 /**
+ * The query string for a row's seams. Nothing here invents a seam: these are the renderer's own
+ * spellings — R1's four, plus `?art=off` (DEC-821), which `seams.ts` parses as the sixth.
+ *
+ * > **Here rather than in `worlds-gate.mjs`, and not for tidiness.** This function and
+ * > {@link seamEvidence} are the two halves of one contract: this one turns the row's `seams` into
+ * > the URL, that one checks the same object against what came back. The gate is a CLI that runs
+ * > `main()` on import, so a `seamQuery` living there cannot be tested at all — and the failure it
+ * > has is a *silent* one. Drop a spelling and the run still loads a page, still measures, still
+ * > produces numbers; it simply measures the unmodified build. `seamEvidence` catches it at run
+ * > time via the echo, but only on a row that reaches a live renderer.
+ *
+ * The spelling is the seam. `worlds-seam-query.test.ts` round-trips every one of these through
+ * `readWorldsSeams` — the renderer's own parser, not a second copy of the table — because the two
+ * sides sit across a process boundary where a rename cannot be a type error.
+ */
+export function seamQuery(seams) {
+  const parts = []
+  if (seams.swatchMean) parts.push('swatch=mean')
+  if (seams.bandsShuffle) parts.push('bands=shuffle')
+  if (seams.artOff) parts.push('art=off')
+  if (seams.artThresholdFixed24) parts.push('artThreshold=fixed24')
+  if (typeof seams.layersRequested === 'number') parts.push(`layers=${seams.layersRequested}`)
+  return parts.length === 0 ? '' : `&${parts.join('&')}`
+}
+
+/**
  * Did the control seam actually engage?
  *
  * > A seam that silently fails to parse its own query parameter runs the **unmodified** policy, its
@@ -535,13 +568,14 @@ export function artCells(probe) {
  * > `verify-browser --dataset all` shape of failure, where a whole run was green because it was
  * > measuring nothing. R1 adopted the read-back for this reason and `?probe=` publishes `seams`.
  *
- * **The read-back is not equally strong on all four seams, and this function says which.** Two of
+ * **The read-back is not equally strong on all five seams, and this function says which.** Three of
  * them have a *policy* witness in the payload and two have only the URL echo:
  *
  * | Seam | Witness | Strength |
  * |---|---|---|
  * | `?artThreshold=fixed24` | `pool.effectiveThresholdPx === 24` | `policy` — the renderer ran it |
  * | `?layers=N` | `pool.layers` moved off the baseline's | `policy`, given a baseline run |
+ * | `?art=off` | `stream.requested === 0` against `wanting > 0`, pool unmoved | `policy` — see {@link artOffRow} |
  * | `?swatch=mean` | `seams.swatchMean` | `echo` — the parameter parsed, nothing more |
  * | `?bands=shuffle` | `seams.bandsShuffle` | `echo` |
  *
@@ -551,6 +585,14 @@ export function artCells(probe) {
  * evidence that the policy engaged, so nothing in the shipped matrix rests on an echo alone. The
  * gate records the strength per row anyway, because that argument is a property of the current
  * matrix and not of the seam, and it stops being true the moment a row is added.
+ *
+ * > **`?art=off` is why the two echo-only rows are still worth their place.** Both perturb the
+ * > *swatch*, and at §3.1's pose seven cells in ten draw art, so a swatch that moves moves almost
+ * > nothing the capture can see — DEC-824 measured the bare rows at 0.9793 and 4.6730, both under
+ * > W2's floor. Composed with `?art=off` every cell draws its swatch and the perturbation reaches
+ * > the pixels. The sibling for a composed row is therefore **`?art=off` alone**, never the bare
+ * > build: `?art=off` on its own already moves W2, and scoring the composition against the bare run
+ * > would credit the seam under test with the whole of that move.
  *
  * `baseline` is a probe read from the same page with no seams set; `null` means none was taken,
  * which downgrades the `?layers=N` witness to an echo and says so.
@@ -562,6 +604,7 @@ export function seamEvidence(probe, requested, baseline = null) {
   rows.push(
     echoRow('swatch=mean', requested.swatchMean === true, seams.swatchMean, 'W2'),
     echoRow('bands=shuffle', requested.bandsShuffle === true, seams.bandsShuffle, 'W3'),
+    artOffRow(probe, requested, baseline),
   )
 
   const wantFixed24 = requested.artThresholdFixed24 === true
@@ -600,6 +643,85 @@ export function seamEvidence(probe, requested, baseline = null) {
     // Unrequested seams must read back false, or the run is measuring a control it did not ask for.
     engaged: row.echoed && row.policyMoved !== false,
   }))
+}
+
+/**
+ * `?art=off` — the sixth seam (DEC-821), and the only one of the three W2/W3 seams with a **policy**
+ * witness rather than an echo.
+ *
+ * > The seam sits *after* admission and *before* the request (`worldSurface.ts`), and that placement
+ * > is what makes it witnessable: the frame still decides which cells want art and still reports
+ * > them, so `wantsArt` names the same set as the no-seam run while the stream is asked for nothing.
+ * > The witness is that pair read against each other — **`stream.requested === 0` while
+ * > `cellsWantingArt > 0`** — because neither half alone says anything. `requested === 0` on a frame
+ * > where nothing wanted art is the empty world, not the seam; `wanting > 0` is true of every
+ * > unseamed run.
+ *
+ * **`pool.layers` unmoved is the third clause, and it is the one that separates this seam from the
+ * control it must not be confused with.** `?layers=0` also reaches zero requests against a wanting
+ * frame — by taking the capacity away. `?art=off` leaves the pool at its shipped size and declines
+ * to ask, which is what makes it a control on the *art path* rather than on the *pool*. Checking it
+ * needs the no-seam sibling, so without a `baseline` the row says so and keeps the two clauses it
+ * can still read.
+ *
+ * Three ways this degrades to no witness at all, each reported rather than scored `false`:
+ *
+ * - **`stream === null`** — no `ArtStream` was composed, so there was no request to decline. A
+ *   null report is not an all-zero one, and a frame with no stream would read `requested === 0`
+ *   whether or not the seam parsed.
+ * - **`wanting === 0`** — the frame has no cell asking for art, so the seam has nothing to suppress
+ *   and the reading is true of the unseamed build too. The precondition arm, not the measure.
+ * - **the seam was not requested** — an unset `?art=off` promises nothing about the counters; the
+ *   run is free to request whatever it likes. Only the *set* direction has a witness, exactly as
+ *   `?artThreshold=fixed24`'s does.
+ */
+function artOffRow(probe, requested, baseline) {
+  const want = requested.artOff === true
+  const echoed = probe.seams.artOff === want
+  if (!want) {
+    return {
+      seam: 'art=off',
+      criterion: 'W2/W3',
+      requested: false,
+      echoed,
+      witness: 'echo',
+      policyMoved: null,
+      detail: `seams echo = ${probe.seams.artOff}; unset, so the counters promise nothing`,
+    }
+  }
+
+  const wanting = cellsWantingArt(probe.cells).length
+  const layersHeld = baseline === null ? null : probe.pool.layers === baseline.pool.layers
+  const detail =
+    `stream.requested = ${probe.stream === null ? 'null (no ArtStream composed)' : probe.stream.requested}` +
+    `, cells wanting art = ${wanting}, pool.layers = ${probe.pool.layers}` +
+    (baseline === null
+      ? ' (no baseline run, so "pool unmoved" is unchecked)'
+      : `, baseline ${baseline.pool.layers}`)
+
+  // The two degenerate frames. `null`, not `false`: the seam is not shown to have failed, it is
+  // shown to be unwitnessable here, and the difference is the whole of the precondition arm.
+  if (probe.stream === null || wanting === 0) {
+    return {
+      seam: 'art=off',
+      criterion: 'W2/W3',
+      requested: true,
+      echoed,
+      witness: 'echo',
+      policyMoved: null,
+      detail: `${detail} — no policy witness on this frame`,
+    }
+  }
+
+  return {
+    seam: 'art=off',
+    criterion: 'W2/W3',
+    requested: true,
+    echoed,
+    witness: 'policy',
+    policyMoved: probe.stream.requested === 0 && (layersHeld === null || layersHeld),
+    detail,
+  }
 }
 
 function echoRow(seam, requested, reported, criterion) {

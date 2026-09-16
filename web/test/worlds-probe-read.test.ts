@@ -25,6 +25,7 @@ import {
   readWorldsProbe,
   seamEvidence,
 } from '../scripts/lib/worlds-probe-read.mjs'
+import { evaluateW4 } from '../scripts/lib/worlds-metrics.mjs'
 
 /**
  * A cell that passes every check.
@@ -143,6 +144,7 @@ function probe(overrides: Partial<WorldsProbe> = {}): WorldsProbe {
     seams: {
       swatchMean: false,
       bandsShuffle: false,
+      artOff: false,
       artThresholdFixed24: false,
       layersRequested: null,
     },
@@ -517,6 +519,7 @@ const MUTANTS: ReadonlyArray<{
       seams: {
         swatchMean: 'true' as unknown as boolean,
         bandsShuffle: false,
+        artOff: false,
         artThresholdFixed24: false,
         layersRequested: null,
       },
@@ -529,6 +532,7 @@ const MUTANTS: ReadonlyArray<{
       seams: {
         swatchMean: false,
         bandsShuffle: false,
+        artOff: false,
         artThresholdFixed24: false,
         layersRequested: 12.5,
       },
@@ -536,11 +540,29 @@ const MUTANTS: ReadonlyArray<{
     fault: /seams\.layersRequested/,
   },
   {
+    // The seam whose absence would otherwise read as a *failed echo* rather than a broken payload:
+    // `artOffRow` compares `seams.artOff === want` and an unseamed row wants `false`, so a renderer
+    // that stopped publishing the field would mark a correct run's control as not engaged. The
+    // reader has to reject it first.
+    what: 'the art=off read-back missing',
+    payload: probe({
+      seams: {
+        swatchMean: false,
+        bandsShuffle: false,
+        artOff: undefined as unknown as boolean,
+        artThresholdFixed24: false,
+        layersRequested: null,
+      },
+    }),
+    fault: /seams\.artOff/,
+  },
+  {
     what: 'the bands=shuffle read-back missing',
     payload: probe({
       seams: {
         swatchMean: false,
         bandsShuffle: undefined as unknown as boolean,
+        artOff: false,
         artThresholdFixed24: false,
         layersRequested: null,
       },
@@ -553,6 +575,7 @@ const MUTANTS: ReadonlyArray<{
       seams: {
         swatchMean: false,
         bandsShuffle: false,
+        artOff: false,
         artThresholdFixed24: undefined as unknown as boolean,
         layersRequested: null,
       },
@@ -786,6 +809,7 @@ describe('seamEvidence', () => {
         seams: {
           swatchMean: false,
           bandsShuffle: false,
+          artOff: false,
           artThresholdFixed24: true,
           layersRequested: null,
         },
@@ -805,6 +829,7 @@ describe('seamEvidence', () => {
         seams: {
           swatchMean: false,
           bandsShuffle: false,
+          artOff: false,
           artThresholdFixed24: true,
           layersRequested: null,
         },
@@ -820,6 +845,7 @@ describe('seamEvidence', () => {
         seams: {
           swatchMean: true,
           bandsShuffle: false,
+          artOff: false,
           artThresholdFixed24: false,
           layersRequested: null,
         },
@@ -829,11 +855,121 @@ describe('seamEvidence', () => {
     expect(row).toMatchObject({ requested: false, echoed: false, engaged: false })
   })
 
+  // ---- ?art=off, the sixth seam (DEC-821) -------------------------------------------------------
+  // The only W2/W3 seam with a policy witness. Every row below asks the same question of it: can
+  // this reading be told apart from the run that did *not* engage the seam?
+  describe('art=off', () => {
+    const artOff = { artOff: true } as const
+    const seams = {
+      swatchMean: false,
+      bandsShuffle: false,
+      artOff: true,
+      artThresholdFixed24: false,
+      layersRequested: null,
+    }
+    /** The seam's own shape: cells still want art, the stream was asked for none. */
+    const suppressed = (overrides: Partial<WorldsProbe> = {}): WorldsProbe =>
+      probe({ seams, stream: streamReport({ requested: 0 }), ...overrides })
+    const rowOf = (p: WorldsProbe, baseline: WorldsProbe | null = null) =>
+      seamEvidence(p, artOff, baseline).find((r) => r.seam === 'art=off')
+
+    it('reads the policy, not the echo: no request against a frame that still wants art', () => {
+      expect(rowOf(suppressed())).toMatchObject({
+        witness: 'policy',
+        echoed: true,
+        policyMoved: true,
+        engaged: true,
+      })
+    })
+
+    it('catches the seam that suppresses the draw but still asks the stream', () => {
+      // `mutate-attach.mjs`'s third mutant, on this side of the seam. The cells go swatch-only and
+      // the capture looks exactly right, but the pool was still worked — so the row is no longer a
+      // control on the art path, and the echo alone could never say so. `requested` is the default
+      // 158 here: a real number the unseamed run would also produce.
+      expect(rowOf(probe({ seams }))).toMatchObject({
+        witness: 'policy',
+        echoed: true,
+        policyMoved: false,
+        engaged: false,
+      })
+    })
+
+    it('refuses the reading that ?layers=0 would also produce', () => {
+      // Zero requests against a wanting frame is *not* on its own the seam: taking the capacity away
+      // reaches the same two counters. The third clause is the pool holding its shipped size, and it
+      // needs the no-seam sibling to be checkable at all.
+      const starved = suppressed({ pool: { layers: 0, resident: 0, effectiveThresholdPx: 31.5, evictions: 12 } })
+      expect(rowOf(starved, probe())).toMatchObject({ policyMoved: false, engaged: false })
+      // Same payload, same seam, sibling that agrees on capacity — the clause is doing the work.
+      expect(rowOf(starved, starved)).toMatchObject({ policyMoved: true, engaged: true })
+    })
+
+    it('does not claim a witness on a frame where no cell wants art', () => {
+      // The precondition arm. `requested === 0` is true of the empty world whether or not the seam
+      // parsed, so this frame cannot testify — and saying so is different from scoring it failed.
+      const empty = suppressed({ cells: [cell(0, { wantsArt: false }), cell(1, { wantsArt: false })] })
+      expect(rowOf(empty)).toMatchObject({ witness: 'echo', policyMoved: null, engaged: true })
+      expect(rowOf(empty)?.detail).toMatch(/no policy witness on this frame/)
+    })
+
+    it('does not read a null stream as an all-zero one', () => {
+      // No `ArtStream` was composed, so there was no request to decline.
+      const noStream = suppressed({ stream: null })
+      expect(rowOf(noStream)).toMatchObject({ witness: 'echo', policyMoved: null, engaged: true })
+      expect(rowOf(noStream)?.detail).toMatch(/no ArtStream composed/)
+    })
+
+    it('promises nothing about the counters when the seam was not requested', () => {
+      // The shipped build requests art, and that must not read as a failed control. Only the set
+      // direction has a witness — exactly as `?artThreshold=fixed24`'s does.
+      expect(seamEvidence(probe(), {}).find((r) => r.seam === 'art=off')).toMatchObject({
+        requested: false,
+        witness: 'echo',
+        echoed: true,
+        policyMoved: null,
+        engaged: true,
+      })
+    })
+
+    it('catches the seam engaging that the run never asked for', () => {
+      expect(seamEvidence(probe({ seams }), {}).find((r) => r.seam === 'art=off')).toMatchObject({
+        requested: false,
+        echoed: false,
+        engaged: false,
+      })
+    })
+
+    it('counts the same cells W4 scores', () => {
+      // The witness says "the frame still wanted art"; W4 says "this many cells wanted art". If the
+      // two used different predicates, `art=off` could claim a witness on a frame W4 reads as empty
+      // — the seam testifying about cells the criterion is not scoring.
+      //
+      // One off-screen and one back-facing cell: both are `wantsArt`, and neither counts for either
+      // side. The witness must decline the frame, and W4 must report it as wanting nothing.
+      const entry = streamReport({ requested: 0 })
+      const offFrame = suppressed({
+        cells: [cell(0, { onScreen: false }), cell(1, { frontFacing: false })],
+        stream: entry,
+      })
+      expect(rowOf(offFrame)).toMatchObject({ witness: 'echo', policyMoved: null })
+
+      const w4 = evaluateW4(artCells(offFrame), [], offFrame.pool, entry)
+      expect(w4.wanting).toBe(0)
+      // And the same three cells with the flags on: both sides see the frame, so the disagreement
+      // above is the predicate agreeing, not both sides being blind to every fixture.
+      const onFrame = suppressed()
+      expect(rowOf(onFrame)).toMatchObject({ witness: 'policy', policyMoved: true })
+      expect(evaluateW4(artCells(onFrame), [], onFrame.pool, entry).wanting).toBe(3)
+    })
+  })
+
   it('marks the two colour seams as echo-only, because the payload has no witness for them', () => {
     const rows = seamEvidence(
       probe({
         seams: {
           swatchMean: true,
+          artOff: false,
           bandsShuffle: true,
           artThresholdFixed24: false,
           layersRequested: null,
@@ -856,6 +992,7 @@ describe('seamEvidence', () => {
       seams: {
         swatchMean: false,
         bandsShuffle: false,
+        artOff: false,
         artThresholdFixed24: false,
         layersRequested: 128,
       },
@@ -877,6 +1014,7 @@ describe('seamEvidence', () => {
       seams: {
         swatchMean: false,
         bandsShuffle: false,
+        artOff: false,
         artThresholdFixed24: false,
         layersRequested: 128,
       },
