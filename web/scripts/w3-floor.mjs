@@ -4,9 +4,10 @@
  *
  * §3.1 folds W3 to the **worst world**, so the floor has to sit between two worst-cases and not
  * between two dominaria readings: above the control tour's minimum and at or below the shipped
- * tour's. `FLOORS.bandDeltaE` has been held at 10 since DEC-816 precisely because on the *bare*
- * build no such gap exists — the shipped aggregate (0.4253, ravnica) scores below its own shuffled
- * falsifier (0.4757), so every floor that greens the build also greens the control.
+ * tour's. `FLOORS.bandDeltaE` was held at 10 from DEC-816 to DEC-752 because on the figures of the
+ * day no such gap existed — the shipped aggregate (0.4253, ravnica) scored *below* its own shuffled
+ * falsifier (0.4757), which is a criterion that cannot fail. Both numbers have since moved; the
+ * point of this script is that the next person does not have to take mine on trust either.
  *
  * Usage:
  *   node scripts/w3-floor.mjs worlds-gate/dec826-w3floor

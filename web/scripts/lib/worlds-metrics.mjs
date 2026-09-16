@@ -64,21 +64,49 @@ export const FLOORS = {
   /**
    * W3: ΔE between the mean a\*b\* of two bands adjacent on the sphere.
    *
-   * **Left at 10 against the ruling `lower_floor` (DEC-816 R4), because the ruling's own evidence
-   * falsifies it — deliberately not "taken in passing".** The ask was to lower this to what the
-   * shipped swatches support. Measured on the `controls1` matrix run (head `21737f3`, one build):
-   * the shipped aggregate is **0.4253** (ravnica, worst of 28 worlds) and `?bands=shuffle` — W3's
-   * only negative control — reads **0.4757**. The build scores *below* its own falsifier, so every
-   * floor that greens the build also greens the shuffled frame, and W3 becomes a criterion that
-   * cannot fail. A floor in (0.476, 0.815] separates them on dominaria alone, but the measure is the
-   * worst world and not dominaria.
+   * **Derived, not chosen — and the derivation is re-runnable (DEC-752, DEC-824).** The ruling
+   * `hold_pending_control` held this at 10 while `?art=off` was built; it retires here. Every figure
+   * below is measured on one tree (leg G on main `28d4676`), one build per arm, at the 2.2-radii
+   * pose. `w3-floor-shipped` / `w3-floor-control` + `scripts/w3-floor.mjs` re-take them.
    *
-   * Lowering it would satisfy the ruling's words and destroy the thing the ruling was protecting, so
-   * the number stays and the finding goes back to the board. See §3.1's control-matrix note for why
-   * both swatch-perturbing seams are weak here: at the 2.2-radii pose 61–76% of sampled cells draw
-   * card art, and both seams move the swatch.
+   * | reading | value | binds |
+   * |---|---|---|
+   * | acceptance tour, unmodified build, worst of 28 worlds | **0.7070** (ravnica) | floor ≤ this |
+   * | `?art=off&bands=shuffle` on dominaria — W3's control row | **0.4234** | floor > this |
+   * | `?art=off` on dominaria — the control's sibling | 1.2935 | floor ≤ this |
+   *
+   * So the floor may sit in **(0.4234, 0.7070]**, and 0.55 is that interval's geometric midpoint to
+   * two figures: 30% above the control, 29% below the build. Two significant figures on purpose —
+   * a third would claim a precision the spread between two sessions does not support.
+   *
+   * **The DEC-816 impasse is gone because its figures moved, not because it was argued away.** That
+   * ruling recorded the shipped aggregate at 0.4253, *below* its own shuffled falsifier at 0.4757,
+   * which is a criterion that cannot fail. On this tree the shipped aggregate reads **0.7070**. The
+   * old pair was taken at head `21737f3`, before DEC-804's centre fix, DEC-812's budget and DEC-814's
+   * belt rotation; do not carry either number forward. What is *not* re-measured here is the **bare**
+   * `?bands=shuffle` tour, so the impasse is not disproved in its own terms — the shipped matrix's
+   * W3 control is a dominaria row, and that row is what this floor is required to red.
+   *
+   * ### Three things this floor does not claim, each measured
+   *
+   * 1. **A tour-wide `?art=off` row would go RED against it.** That arm's worst world is avishkar at
+   *    **0.4505**, under 0.55. No shipped row asserts it — `art-off` is a dominaria row at 1.2935 —
+   *    but a tour-wide sibling added later will red, and that is the arithmetic and not a defect.
+   *    Greening both would need a floor in (0.4234, 0.4505], a 0.027-wide window that is inside the
+   *    session-to-session spread.
+   * 2. **`?bands=shuffle` is one permutation, seeded by a constant** (`shufflePermutation`,
+   *    `0x9e3779b9`). It reproduces exactly, which proves the route is deterministic and not that the
+   *    value is the statistic. Measured consequence: on **8 of 28 worlds the shuffled frame scores
+   *    *higher* than the unshuffled one** (amonkhet, avishkar, edge, fiora, ikoria, kaldheim, rabiah,
+   *    ravnica). The control's direction is a property of the draw, per world — it does not correlate
+   *    with cell count, band count or the smallest qualifying band share. The aggregate still reds
+   *    because some world always draws badly, but a floor derived over several seeds would be a
+   *    stronger object than this one.
+   * 3. **It is a property of the shipped swatches, so a refresh can invalidate it** without a line of
+   *    rendering code changing. The runbook's §4.3 says to re-derive on every refresh that rebuilds
+   *    the v3 dataset, and one world — ravnica — is the whole of the upper bound.
    */
-  bandDeltaE: 10,
+  bandDeltaE: 0.55,
   /** W4: fraction of cells above the effective threshold that are showing art. */
   artFraction: 0.9,
   /** W4: evictions per second, averaged over the last 2 s. A ceiling, not a floor. */

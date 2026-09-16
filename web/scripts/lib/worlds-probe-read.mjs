@@ -587,12 +587,15 @@ export function seamQuery(seams) {
  * matrix and not of the seam, and it stops being true the moment a row is added.
  *
  * > **`?art=off` is why the two echo-only rows are still worth their place.** Both perturb the
- * > *swatch*, and at §3.1's pose seven cells in ten draw art, so a swatch that moves moves almost
- * > nothing the capture can see — DEC-824 measured the bare rows at 0.9793 and 4.6730, both under
- * > W2's floor. Composed with `?art=off` every cell draws its swatch and the perturbation reaches
- * > the pixels. The sibling for a composed row is therefore **`?art=off` alone**, never the bare
- * > build: `?art=off` on its own already moves W2, and scoring the composition against the bare run
- * > would credit the seam under test with the whole of that move.
+ * > *swatch*, and at §3.1's pose `artFraction` measures 0.987–0.997 — essentially every cell draws
+ * > art over its swatch — so a swatch that moves moves almost nothing the capture can see. Bare,
+ * > `?swatch=mean` reads 25.81 / 28.01 against a no-seam spread of 27.34–27.86 / 24.42–30.75: inside
+ * > its own baseline's noise. Composed with `?art=off` every cell draws its swatch, the perturbation
+ * > reaches the pixels, and the same row reads **0.954 / 4.673** — both under W2's floors.
+ * >
+ * > The sibling for a composed row is therefore **`?art=off` alone**, never the bare build:
+ * > `?art=off` on its own already moves W2 to 17.92 / 16.50, and scoring the composition against the
+ * > bare run would credit the seam under test with the whole of that move.
  *
  * `baseline` is a probe read from the same page with no seams set; `null` means none was taken,
  * which downgrades the `?layers=N` witness to an echo and says so.

@@ -65,7 +65,8 @@ describe('seamQuery round-trips through the renderer parser', () => {
 
   it('composes the two rows DEC-824 measured, without either seam swallowing the other', () => {
     // `?art=off&swatch=mean` and `?art=off&bands=shuffle` are W2's and W3's real control rows: the
-    // bare colour seams move the swatch, and at §3.1's pose seven cells in ten draw art over it.
+    // bare colour seams move the swatch, and at §3.1's pose `artFraction` reads 0.987-0.997, so
+    // essentially every cell draws art over it.
     expect(roundTrip({ artOff: true, swatchMean: true })).toEqual({
       ...NONE,
       artOff: true,

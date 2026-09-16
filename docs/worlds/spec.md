@@ -745,12 +745,16 @@ fetches (≈ 170 MB) for one camera pose.
 > `wantsArt` denominator that is unchanged. **Everything else is unchanged too** — the pool is the
 > tier's, the stream is composed, and the quantile, its hysteresis and the admitted set read
 > bit-identically to the same pose with the seam absent. That is the seam's whole purpose: at
-> §3.1's 2.2-radii pose `artFraction` measures 0.61–0.76, so roughly seven cells in ten draw
-> **art**, and the two seams that perturb the **swatch** move nothing the capture can see — measured
-> on DEC-816, `?swatch=mean` leaves `lightnessIqr` at 24.89 inside a no-seam sibling spread of
-> 16.09–25.89, and `?bands=shuffle` moves `minAdjacentBandDeltaE` only 0.815 → 0.476 while the
-> shipped aggregate already scores below it at 0.4253. `?art=off&swatch=mean` and
-> `?art=off&bands=shuffle` are the composed rows that discriminate. `?layers=0` is *also*
+> §3.1's 2.2-radii pose `artFraction` measures **0.987–0.997** over four dominaria sessions, so
+> essentially every cell draws **art**, and the two seams that perturb the **swatch** move nothing
+> the capture can see — measured on DEC-816, `?swatch=mean` leaves `lightnessIqr` at 24.89 inside a
+> no-seam sibling spread of 16.09–25.89, and `?bands=shuffle` moves `minAdjacentBandDeltaE` only
+> 0.815 → 0.476. (This paragraph first said 0.61–0.76, "roughly seven cells in ten". That was taken
+> before DEC-812 raised the art byte budget from 67,108,864 to 155,129,856, after which dominaria no
+> longer starves mid-visit — the seam's case got **stronger**, which is why the stale figure never
+> surfaced as a failure. Re-measured on DEC-752, main `28d4676`.) `?art=off&swatch=mean` and
+> `?art=off&bands=shuffle` are the composed rows that discriminate, and measured they do: the first
+> reads 0.954 / 4.673 against a `?art=off` sibling at 17.92 / 16.50. `?layers=0` is *also*
 > swatch-only (§1.6's zero-layer pool) and is **not** a substitute: it moves `pool.layers` — the
 > quantile's own divisor — and composes no `ArtStream` at all, so its payload reports `stream` as
 > `null`, which would run W2's and W3's controls against a differently-configured renderer.
@@ -2168,10 +2172,11 @@ events; the focused card's tilt feels physical; and, new, **the tether reads as 
 | W5        | `worldsNeverLabelled`                  | **viewport 1920×1080** — the non-binding partner to the row above, differing in that one parameter                                                                          | **GREEN** |
 | all       | all                                    | the unmodified build on the v3 production dataset                                                                                                                           | **GREEN** |
 
-> **Measured, and not yet repaired — three of the RED rows above do not go RED (DEC-752, matrix run
-> `controls1`, head `21737f3`, dominaria, one build).** The table is an intention; this is what the
-> seams actually do. Every seam **engaged** (requested and echoed) and the two with a policy
-> read-back moved that policy, so this is not a wiring failure:
+> **Measured, diagnosed and repaired — the three RED rows that did not go RED now do (DEC-752,
+> DEC-821, DEC-824).** The history is kept because it is the argument for the sixth seam, and because
+> the diagnosis is the reusable part. On matrix run `controls1` (head `21737f3`, dominaria, one
+> build), every seam **engaged** — requested, echoed, and where there was a policy witness the policy
+> had moved — and three rows still failed to falsify anything:
 >
 > | row / measure                        | with the seam | siblings **without** it   | floor | verdict on the control |
 > | ------------------------------------ | ------------- | ------------------------- | ----- | ---------------------- |
@@ -2179,20 +2184,43 @@ events; the focused card's tilt feels physical; and, new, **the tether reads as 
 > | `?swatch=mean` → `medianNeighbourDeltaE` | 15.73     | 19.37 / 23.79 / 25.72     | ≥ 6   | moves, stays 2.6× above the floor |
 > | `?bands=shuffle` → `minAdjacentBandDeltaE` | 0.476   | 0.815 / 1.116 / 1.121 / 1.450 | ≥ 10 | moves; both sides already RED |
 >
-> **One mechanism explains all three: at the 2.2-radii pose the sampled pixel is mostly card _art_,
-> and both seams perturb the _swatch_.** `artFraction` on these rows is 0.61–0.76, so roughly seven
-> cells in ten draw art whatever the swatch is set to; the iso-shade ring inherits the same ratio
-> (~43 of its 62 cells), which is why the lightness half — the narrowest set — does not move at all
-> while the neighbour half, averaged over 1,362 cells, at least halves. §3.1 defines W2 and W3 on the
-> **swatch** and requires sampling the **capture**; at this pose those are not the same quantity.
+> **One mechanism explained all three: at the 2.2-radii pose the sampled pixel is card _art_, and
+> both seams perturb the _swatch_.** `artFraction` at that pose measures **0.987–0.997** — ten cells
+> in ten — so the swatch is a layer the capture does not show. §3.1 defines W2 and W3 on the
+> **swatch** and requires sampling the **capture**; at this pose those were not the same quantity,
+> and a seam that moves only the swatch is inert by construction rather than by accident.
 >
-> **Consequence for W3 specifically, which is why its floor cannot simply be lowered.** The shipped
-> build's aggregate `minAdjacentBandDeltaE` is the worst of 28 worlds and reads **0.4253** (ravnica),
-> *below* the shuffled control's **0.4757**. Any floor that passes the shipped build therefore also
-> passes `?bands=shuffle`: on the criterion as aggregated there is **no floor that separates the
-> build from its own negative control**. Per-world on dominaria a floor in (0.476, 0.815] would
-> separate them, but W3 scores the worst world, not dominaria. Recorded here rather than acted on —
-> the choice belongs to the board.
+> **The repair is `?art=off` (DEC-821): drop every cell to its swatch, so the swatch _is_ the
+> capture.** Composed, both W2 halves fall below their floors, measured on main `28d4676`:
+>
+> | row | `medianNeighbourDeltaE` (≥ 6) | `lightnessIqr` (≥ 8) | `minAdjacentBandDeltaE` |
+> | --- | --- | --- | --- |
+> | no seams | 27.41 – 27.86 | 24.42 – 28.84 | 2.354 – 3.050 |
+> | `?art=off` — **the sibling** | 17.92 | 16.50 | 1.329 – 1.333 |
+> | `?art=off&swatch=mean` | **0.954** | **4.673** | — |
+> | `?art=off&bands=shuffle` | — | — | **0.422 – 0.423** |
+>
+> Read the composed rows against `?art=off` **alone**, never against the bare build: the seam moves
+> W2 by itself, and scoring the composition against `baseline` would credit the seam under test with
+> that move too.
+>
+> **W3's floor, re-derived rather than argued down (ruling `hold_pending_control`, now retired).**
+> The impasse recorded here was that the shipped aggregate read **0.4253** (ravnica, worst of 28),
+> *below* its own shuffled control at **0.4757** — a criterion that cannot fail. On main `28d4676`
+> the shipped aggregate reads **0.7070**, so the impasse's figures have moved out from under it; the
+> old pair predates DEC-804's centre fix, DEC-812's budget and DEC-814's belt rotation and must not
+> be re-carried. The floor is now **0.55**, derived from three live readings —
+> acceptance tour worst 0.7070, the composed control 0.4234, the sibling 1.2935 — which leaves the
+> interval (0.4234, 0.7070]; 0.55 is its geometric midpoint to two figures, 30% above the control and
+> 29% below the build. `scripts/w3-floor.mjs` re-derives it; §4.3 of the runbook says when.
+>
+> **Three things that floor does not claim, each measured and none of them a defect.** A tour-wide
+> `?art=off` row would go RED against it (that arm's worst world is avishkar at 0.4505; no shipped
+> row asserts it). `?bands=shuffle` is **one permutation seeded by a constant**, so it reproduces
+> exactly without being the statistic — on **8 of 28 worlds the shuffled frame scores _higher_ than
+> the unshuffled one**, and the direction does not correlate with cell count, band count or band
+> share. And the floor is a property of the shipped swatches, resting on one world (ravnica) from
+> above, so a refresh can invalidate it without a line of rendering code changing.
 
 > **Normative — the measure keys in this table are the keys the module emits.** `checkControlRow`
 > resolves a row by `{criterion, measure}` and reports `W1 has no measure "…"` when the name is not

@@ -760,10 +760,63 @@ describe("W3 — latitude reads as colour", () => {
     expect(w3.pairs.length).toBe(BAND_ORDER.length - 1);
   });
 
-  it("goes RED on its control — ?bands=shuffle", () => {
+  it("collapses on its control — ?bands=shuffle", () => {
+    // **The claim here is the collapse, not a verdict against the shipped floor.** This is a model
+    // world: its absolute ΔE scale is set by `productionSwatch` and the stride permutation, so
+    // asserting `value < FLOORS.bandDeltaE` was tying a synthetic fixture to a constant derived from
+    // the *real* swatches — and when DEC-752 re-derived that constant from 10 to 0.55, this row went
+    // green while measuring exactly what it always had. The fixture had not changed; the coupling
+    // had always been wrong.
+    //
+    // What the control actually establishes is that scattering the classes across latitudes drives
+    // every band's mean a*b* onto the plane's mean. That is a ratio, and it is enormous: 25.23 banded
+    // against 0.82 shuffled, a 30× collapse. Whether the collapsed value clears the shipped floor is
+    // a question about the shipped swatches, and `w3-floor-shipped` / `w3-floor-control` answer it on
+    // the live build.
+    const banded3 = evaluateW3(banded, BAND_SHARES);
     const w3 = evaluateW3(shuffled, BAND_SHARES);
+    const collapsed = w3.measures[0]?.value ?? Infinity;
+    const separated = banded3.measures[0]?.value ?? 0;
+    expect(collapsed).toBeLessThan(separated / 10);
+    // Not ≈ 0: the residue is the sampling asymmetry between two bands holding different counts of
+    // the same seven classes, and pinning it to zero would be asserting the fixture is balanced
+    // rather than that the seam works.
+    expect(collapsed).toBeLessThan(1);
+  });
+
+  // The floor comparison itself, which the collapse row above deliberately no longer carries. Two
+  // adjacent bands of one flat colour each, chosen to straddle `FLOORS.bandDeltaE`: one pair 27%
+  // under it, one 157% over. Both rows matter — the RED one alone cannot tell a working comparison
+  // from a criterion that reds on everything.
+  const twoBands = (other: Rgb): CellSample[] => [
+    ...Array.from({ length: 20 }, (_, i) => ({
+      x: i, y: 0, height: 20, frontFacing: true, band: 5, rgb: [120, 120, 120] as Rgb, shade: 0.9,
+    })),
+    ...Array.from({ length: 20 }, (_, i) => ({
+      x: i, y: 40, height: 20, frontFacing: true, band: 6, rgb: other, shade: 0.9,
+    })),
+  ];
+  const twoBandShares = BAND_ORDER.map((_, i) => (i === 5 || i === 6 ? 0.5 : 0));
+
+  it("reds a band pair that has converged below the floor", () => {
+    const w3 = evaluateW3(twoBands([121, 120, 120]), twoBandShares);
+    expect(w3.measures[0]?.value).toBeCloseTo(0.4016, 3);
     expect(w3.pass).toBe(false);
-    expect(w3.measures[0]?.value).toBeLessThan(FLOORS.bandDeltaE);
+  });
+
+  it("greens the same pair once it separates — the floor is a threshold, not a veto", () => {
+    const w3 = evaluateW3(twoBands([122, 120, 118]), twoBandShares);
+    expect(w3.measures[0]?.value).toBeCloseTo(1.412, 3);
+    expect(w3.pass).toBe(true);
+  });
+
+  it("keeps those two fixtures straddling the floor", () => {
+    // The precondition the pair above rests on. `FLOORS.bandDeltaE` is re-derived from the shipped
+    // swatches whenever they move (DEC-752), and a floor that drifted outside this bracket would
+    // send both rows the same way — leaving a two-sided test that had quietly become one-sided.
+    // This fails loudly and says to re-pick the colours instead.
+    expect(FLOORS.bandDeltaE).toBeGreaterThan(0.4016);
+    expect(FLOORS.bandDeltaE).toBeLessThan(1.412);
   });
 
   it("skips a pair whose smaller band is under the 5% share", () => {
