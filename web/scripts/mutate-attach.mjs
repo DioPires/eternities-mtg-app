@@ -19,6 +19,19 @@
  *    harness poses the camera by hand, so there is no `rig` subscriber to be run in the wrong
  *    order, and every number comes out identical. Killed by an assertion against `TICK_PHASES`
  *    itself — a source pin, and said so at the site.
+ *  - **The payload holds the live camera** (LIVE again on DEC-825, against a row written *for* it).
+ *    `worlds-attach.test.ts` had "publishes the camera the measurement was made with, not the live
+ *    one", and it pinned `WorldsProbeSource.camera` — which is `WorldSurface.localCamera`, scratch
+ *    the *surface* writes inside `update`. No mutation of `attachWorlds` can move it between two
+ *    reads taken without a tick, so the row was green on both trees; its positive control was
+ *    vacuous for the same reason, comparing a world-space position against a local-frame one.
+ *    Killed by moving the row onto `WorldsProbe.cameraPosition` — the only field that carries
+ *    `frame.camera` out, by reference — plus DEC-804's cross-frame invariant.
+ *
+ * **Two rows below were SKIPping — `from` no longer resolved — from the leg that factored
+ * `composeRoster` out of `setData` until DEC-825 found them.** A SKIP scores as a failure and this
+ * script exits 1, but nothing runs it on a schedule, so the two sat there reachable and not
+ * discriminating. Re-anchor a row rather than delete it, and re-run before quoting a clean matrix.
  *
  * Run: `node scripts/mutate-attach.mjs`
  */
@@ -67,14 +80,27 @@ const MUTANTS = [
   {
     file: ATTACH,
     name: 'the pool is allocated even when the roster has no worlds (48 MiB on every v2 page)',
-    from: '      if (worlds.length === 0) return\n      allocatePool()',
-    to: '      allocatePool()\n      if (worlds.length === 0) return',
+    // Re-anchored on DEC-825. Both sites drifted out from under the old spellings when
+    // `composeRoster` was factored out of `setData` — two indents shallower, and with
+    // `worldPlanes = worlds` landing between the guard and the allocation — and a `from` that no
+    // longer resolves is a row that has silently stopped guarding anything.
+    from: '    if (worlds.length === 0) return\n    worldPlanes = worlds\n    allocatePool()',
+    to: '    worldPlanes = worlds\n    allocatePool()\n    if (worlds.length === 0) return',
   },
   {
     file: ATTACH,
     name: 'the equirect array is sized from a constant, not from the dataset',
-    from: '      equirectArray = createEquirectArray(worlds.length)',
-    to: '      equirectArray = createEquirectArray(45)',
+    from: '    equirectArray = createEquirectArray(worlds.length)',
+    to: '    equirectArray = createEquirectArray(45)',
+  },
+  {
+    file: SURFACE,
+    // The other half of the row above: it asserts that `radii` and the world-space pair disagree
+    // only by a rigid motion, and the reason that is not a tautology is that the two come from
+    // different frames. This mutant collapses them into one frame — the check has to see it.
+    name: 'the payload measures in world space, so `radii` stops being the local frames own length',
+    from: '      camera: this.localCamera,',
+    to: '      camera: { ...this.localCamera, position: frame.camera.position },',
   },
   {
     file: ATTACH,
