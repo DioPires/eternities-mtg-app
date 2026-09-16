@@ -832,6 +832,20 @@ than a continuous smear. Radial jitter ±6%, vertical jitter ±3.5% of the belt 
 deterministic hash — a mathematically clean ring reads as a UI element, not as debris. Colour is a
 year ramp, HSL hue 0.62 → 0.0, cold at 1993 to warm at 2026.
 
+> **Normative — the belt turns with the multiverse (DEC-814, ruling on DEC-813).** PRD 5.3.13's
+> *"the entire multiverse rotates about its vertical axis"* covers the belt, and PRD 8.5.3's
+> rotation applies to it for the ordinary reason: its points **are** star records, the dust plane's
+> own, scaled by `multiverseRadius` (§2.1). PRD 5.3.13 names the background parallax as the fixed
+> reference; the belt is data, 14.70% of everything on v3, and there is no exemption anywhere in
+> this document or the PRD. The renderer takes the **same accumulated angle the worlds take** —
+> `SceneMotion.multiverseRotation`, which is the number `planePosition` has already rotated every
+> world by — and applies it as the belt object's own `+Y` rotation, because the belt is the one
+> object in §1.2 centred on the system origin rather than at a plane position. The buffer stays at
+> t=0; a second integration of the angle is the failure `docs/camera-and-labels.md` §2 records. It
+> matters because the belt is clumped in azimuth by construction — one arc per set — so a fixed belt
+> shears a full turn against every world per `MULTIVERSE_PERIOD_S` while every individual frame
+> still looks like a belt.
+
 > **Normative — `sizeAttenuation: false`, size 2 px.** The belt sits at 1.12 R and Dominaria's
 > `home` is 108.8 units out, so a fly-in puts belt points a few units from the eye. With attenuation
 > on they become ~70 px squares, which looks exactly like "the cells are drawn in the wrong place"
