@@ -911,6 +911,35 @@ const MATRIX = [
     expect: [{ criterion: 'W3', measure: 'minAdjacentBandDeltaE', expect: 'RED' }],
   },
   {
+    // **W4's art half has no other live falsifier, and this row is why it needs one.** The `fixed24`
+    // row below was §3.1's, and on the shipped tree it no longer perturbs anything: the adaptive
+    // quantile at a 1,024-layer pool already sits *at* the 24 px floor, so forcing 24 px changes the
+    // threshold by nothing, and since the byte budget became capacity-derived it is 155 MB against
+    // ~95 MB outstanding, so nothing is starved either. Measured both ways — see the comment on that
+    // row. A seam can engage and still move no pixel; see `a-control-can-perturb-the-wrong-layer`.
+    //
+    // Composing the two seams restores the condition Appendix A actually captured, which was never
+    // "a fixed threshold" on its own but **a fixed threshold against a pool too small for it**:
+    // 24 px keeps demand at dominaria's full ~945 cells while the pool holds 128, a ~7.4x overshoot
+    // against `tether-surface`'s 2.69x. That is *pool* starvation, the reading `fixed24` alone used
+    // to deliver by exhausting a flat 64 MB budget and no longer can.
+    //
+    // **This row can only be RED because of ruling `absolute_floor`**, which is what makes it worth
+    // having rather than merely a louder version of the old one. A pool-starved frame is saturated,
+    // so `artFraction` equals its ceiling exactly; against `0.9 x ceiling` it passed at every
+    // capacity, and this row would have been GREEN at ~13% art. It is the live counterpart of the
+    // `tether-surface` fixture in `worlds-metrics.test.ts` — same defect, same arithmetic, measured
+    // in the shipped composition rather than read off the prototype's capture.
+    id: 'fixed24-layers-128',
+    label: '?artThreshold=fixed24&layers=128 — a prototype threshold against a tier-4 pool',
+    seams: { artThresholdFixed24: true, layersRequested: 128 },
+    subject: 'dominaria',
+    expect: [
+      { criterion: 'W4', measure: 'artFraction', expect: 'RED' },
+      { criterion: 'W4', measure: 'demandFitsCapacity', expect: 'RED' },
+    ],
+  },
+  {
     id: 'fixed24',
     label: '?artThreshold=fixed24 — the prototype’s constant threshold, no quantile',
     seams: { artThresholdFixed24: true },
