@@ -315,17 +315,42 @@ many planes landed there; a criterion that is silently skipped is how a gate pri
 measuring nothing.
 
 `--negative-controls` runs §3.1's matrix, and it is the run that says whether the instrument works
-at all. Expect **five red rows and four green**. The green rows are the ones to read first: in a
+at all. Expect **five red rows and six green**. The green rows are the ones to read first: in a
 matrix where everything is red, a broken baseline scores identically to a perfect guard, so only the
 rows expected to stay green can falsify the instrument. A red row that has gone green means the
 control stopped engaging, not that the renderer improved — the gate asserts each seam's read-back
 before it scores the row, and prints whether the witness was the renderer's own policy or merely an
 echo of the query parameter.
 
+**W2's and W3's controls are composed with `?art=off`, and their sibling is `?art=off` alone.** Read
+`artoff-swatch-mean` and `artoff-bands-shuffle` against the `art-off` row, never against `baseline`.
+Both colour seams perturb the *swatch*, and at the 2.2-radii pose essentially every sampled cell
+draws card **art** over its swatch, so the bare seams move a layer the capture almost never shows —
+measured on one build, `?swatch=mean` alone lands inside its own no-seam spread, which is a control
+that proves nothing. `?art=off` drops every cell to its swatch so that a swatch seam can reach the
+pixels. It also moves W2 on its own, and that is exactly why it is the sibling: scoring a composed
+row against the bare build would credit the seam under test with the whole of `?art=off`'s move.
+
+**Re-deriving W3's floor.** `FLOORS.bandDeltaE` has to sit between two **worst-world** readings, not
+between two dominaria ones, because §3.1 folds W3 to the worst world. The two rows that measure that
+pair are marked `derivation: true` — runnable by name, kept out of `--negative-controls` because they
+are two full tours and a gate that takes two hours is a gate that stops being run:
+
+```sh
+node scripts/worlds-gate.mjs --dataset worlds --no-captures \
+  --only w3-floor-shipped,w3-floor-control --out ../w3floor-<new-hash>
+node scripts/w3-floor.mjs ../w3floor-<new-hash>
+```
+
+It prints the per-world pair, both aggregates, and the interval a floor may sit in — or reports that
+no separating floor exists, which is a finding rather than a number to pick. Re-run it whenever the
+swatch palette moves: the floor is a property of the shipped swatches, so a refresh can invalidate it
+without a line of rendering code changing.
+
 **One measure in that matrix has no live control, and it is `homeLabels`.** §3.1's table lists a
 sixth red row — `labels forced on for empty planes` — which this gate does not run: forcing labels
-on for suppressed planes is renderer behaviour, and the build ships exactly four seams
-(`?swatch=mean`, `?bands=shuffle`, `?artThreshold=fixed24`, `?layers=N`), none of which reaches
+on for suppressed planes is renderer behaviour, and none of the six shipped seams (`?probe=`,
+`?swatch=mean`, `?bands=shuffle`, `?art=off`, `?artThreshold=fixed24`, `?layers=N`) reaches
 §1.8's suppression. The unsuppressed 66–77 reading that makes the row red was taken offline through
 the shipped layout code, so it shows the measure *can* fail without being a row the gate can run.
 Read a green `homeLabels` as "the moons are still quiet", never as "the home view is legible" — the

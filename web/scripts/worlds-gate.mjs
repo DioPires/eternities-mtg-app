@@ -850,10 +850,40 @@ const MATRIX = [
     w1At: 'pose',
     expect: [{ criterion: 'W1', measure: 'minMedianCellHeightPx', expect: 'RED' }],
   },
+  // ---- W2 and W3's controls, composed with ?art=off (DEC-821) ----------------------------------
+  // Both colour seams perturb the **swatch**, and at this pose essentially every sampled cell draws
+  // card art over its swatch — `artFraction` reads 0.9628 and 0.9968 on the two no-seam sessions
+  // below. So the bare seams move a layer the capture almost never shows: measured on the same
+  // build, `?swatch=mean` alone reads 25.8128 / 28.0085 against a no-seam spread of
+  // 27.3439–27.7164 / 27.2260–30.7455 — *inside its own baseline's noise*, which is a control that
+  // proves nothing. `?art=off` drops every cell to its swatch, and only then does a swatch seam
+  // reach the pixels the criterion samples.
+  //
+  // `art-off` below is the sibling these two are read against — **never the bare build**. The seam
+  // moves W2 on its own (27.3/30.7 → 17.8/16.8) because a swatch mosaic is genuinely flatter than
+  // card art, so scoring the composition against the shipped baseline would be a two-variable
+  // comparison crediting the seam under test with the whole of that move.
   {
-    id: 'swatch-mean',
-    label: '?swatch=mean — every cell takes the plane’s mean swatch',
-    seams: { swatchMean: true },
+    id: 'art-off',
+    label: '?art=off alone — the sibling the two composed rows below are read against',
+    seams: { artOff: true },
+    subject: 'dominaria',
+    requireRing: true,
+    // Expected GREEN on every measure, and that is the point of the row: `?art=off` is not a
+    // falsifier. It removes card art and leaves §1.4's swatch palette and §1.3's band chain exactly
+    // as the build composes them, so a picture made only of swatches still has to clear all three
+    // floors. If this row goes RED the composed rows below say nothing — their redness would be
+    // the seam that is *common* to them, not the seam each is testing.
+    expect: [
+      { criterion: 'W2', measure: 'medianNeighbourDeltaE', expect: 'GREEN' },
+      { criterion: 'W2', measure: 'lightnessIqr', expect: 'GREEN' },
+      { criterion: 'W3', measure: 'minAdjacentBandDeltaE', expect: 'GREEN' },
+    ],
+  },
+  {
+    id: 'artoff-swatch-mean',
+    label: '?art=off&swatch=mean — every cell takes the plane’s mean swatch, and draws it',
+    seams: { artOff: true, swatchMean: true },
     // dominaria, and not for size alone: it is one of only two v3 worlds whose iso-shade ring
     // clears the lightness half's domain, so it is one of only two worlds on which this row can
     // return RED rather than `insufficient`. `requireRing` makes that a checked precondition.
@@ -865,9 +895,9 @@ const MATRIX = [
     ],
   },
   {
-    id: 'bands-shuffle',
-    label: '?bands=shuffle — cards permuted across the plane’s cells, grid and band unchanged',
-    seams: { bandsShuffle: true },
+    id: 'artoff-bands-shuffle',
+    label: '?art=off&bands=shuffle — cards permuted across the plane’s cells, grid and band unchanged',
+    seams: { artOff: true, bandsShuffle: true },
     subject: 'dominaria',
     expect: [{ criterion: 'W3', measure: 'minAdjacentBandDeltaE', expect: 'RED' }],
   },
@@ -890,6 +920,49 @@ const MATRIX = [
       { criterion: 'W4', measure: 'artFraction', expect: 'GREEN' },
       { criterion: 'W4', measure: 'evictionsPerSecond', expect: 'GREEN' },
     ],
+  },
+  {
+    id: 'no-seams',
+    label: 'dominaria at the 2.2-radii pose with no seams — the sibling every control row is read from',
+    seams: {},
+    subject: 'dominaria',
+    requireRing: true,
+    // The row that says what the *unseamed* capture is made of at the pose the criteria measure at.
+    // Its `artFraction` is the number §1.6's argument for `?art=off` rests on: if almost every cell
+    // draws art, a seam that only moves the swatch moves nothing the capture shows.
+    expect: [
+      { criterion: 'W2', measure: 'medianNeighbourDeltaE', expect: 'GREEN' },
+      { criterion: 'W2', measure: 'lightnessIqr', expect: 'GREEN' },
+      { criterion: 'W3', measure: 'minAdjacentBandDeltaE', expect: 'GREEN' },
+      { criterion: 'W4', measure: 'artFraction', expect: 'GREEN' },
+    ],
+  },
+  // ---- W3's floor, derivable rather than asserted ----------------------------------------------
+  // `FLOORS.bandDeltaE` has to sit between two **worst-world** readings, because §3.1 folds W3 to
+  // the worst world and not to dominaria. These two rows are how that pair is measured: same tour,
+  // same pose, differing in the one seam under test. `derivation: true` keeps them out of
+  // `--negative-controls` — they are two full tours — while leaving them runnable:
+  //
+  //   node scripts/worlds-gate.mjs --only w3-floor-shipped,w3-floor-control --no-captures \
+  //     --out worlds-gate/w3floor && node scripts/w3-floor.mjs worlds-gate/w3floor
+  //
+  // `expect: []` because nothing here is scored. A derivation that asserted its own answer would be
+  // deriving the floor from a run that already assumed it.
+  {
+    id: 'w3-floor-shipped',
+    label: 'W3 floor derivation: ?art=off over the full tour (the shipped side)',
+    seams: { artOff: true },
+    tour: 'all',
+    derivation: true,
+    expect: [],
+  },
+  {
+    id: 'w3-floor-control',
+    label: 'W3 floor derivation: ?art=off&bands=shuffle over the full tour (the control side)',
+    seams: { artOff: true, bandsShuffle: true },
+    tour: 'all',
+    derivation: true,
+    expect: [],
   },
   {
     id: 'one-card-world',
@@ -1196,11 +1269,16 @@ async function main() {
 
   // `--only` names rows explicitly; `--negative-controls` runs the whole matrix; a bare run is the
   // acceptance run, which is the baseline row over the full roster.
+  // `derivation` rows are reachable by `--only` and never by `--negative-controls`. They are how a
+  // floor gets re-derived rather than re-asserted — a constant cannot testify to its own provenance,
+  // and a derivation nobody can re-run is a number with a story attached. They are excluded from the
+  // matrix because they are full tours: two of them would add ninety world-visits to every controls
+  // run, and a gate that takes two hours is a gate that stops being run.
   const selected =
     args.only !== null
       ? MATRIX.filter((row) => args.only.includes(row.id))
       : args.negativeControls
-        ? MATRIX
+        ? MATRIX.filter((row) => row.derivation !== true)
         : MATRIX.filter((row) => row.id === 'baseline')
 
   const { url, stop } = await startPreview(args.dataset)
@@ -1222,8 +1300,18 @@ async function main() {
     // A no-seam probe from the same page shape, so `?layers=N`'s witness has a baseline to have
     // moved *off*. Without one the row is downgraded to an echo, and the gate says so rather than
     // quietly scoring a weaker control as a strong one.
+    //
+    // **`?art=off` needs it too, and for the opposite reading** — its third clause is `pool.layers`
+    // *unmoved*, which is what separates the seam from `?layers=0`. Keying this on the layers rows
+    // alone would silently drop that clause from every `--only` selection that happens not to
+    // include one, leaving the strongest half of the witness unchecked on exactly the runs a
+    // reviewer reaches for. The condition is per-seam because the need is.
     let baselineProbe = null
-    if (selected.some((row) => typeof row.seams.layersRequested === 'number')) {
+    if (
+      selected.some(
+        (row) => typeof row.seams.layersRequested === 'number' || row.seams.artOff === true,
+      )
+    ) {
       const { page } = await openPage(browser, url, { seams: {} })
       // Bare for the same reason as the seam-evidence read: the baseline exists to carry
       // `pool.layers`, which is session-global, and it is taken on a freshly opened page that has
