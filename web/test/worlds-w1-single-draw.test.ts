@@ -327,6 +327,20 @@ describe('W1 is scored from one azimuth, and that is a claim about APPLY_PLANE_T
       // a comb and a pose, so the only variable between them is the quaternion.
       expect(row.tilted, `${row.slug} tilted family half-width`).toBeGreaterThan(8)
       expect(row.tilted / row.shipped, `${row.slug} arm ratio`).toBeGreaterThan(20)
+      // **The bound is not free to drift, and this row is why.** `SINGLE_DRAW_WIDTH_PCT` never
+      // binds on the shipped tree — the family is 0.2% against a bound of 1 — so relaxing it to 20
+      // would leave the guard admitting the exact 11% configuration it exists to forbid, and the
+      // mutation matrix found that **no other row here notices**
+      // ([[a-bound-check-is-vacuous-when-the-bound-never-binds]]). Pinning it strictly between the
+      // two measured arms makes the constant a consequence of the measurement rather than a
+      // number someone may retune to clear a red.
+      expect(SINGLE_DRAW_WIDTH_PCT, `${row.slug}: the bound must reject the tilted arm`).toBeLessThan(
+        row.tilted,
+      )
+      expect(
+        SINGLE_DRAW_WIDTH_PCT,
+        `${row.slug}: the bound must accept the shipped arm`,
+      ).toBeGreaterThan(row.shipped)
     }
 
     // Pinned, because the ratio is the finding: turning the tilt on widens dominaria's family by
