@@ -98,6 +98,8 @@ export interface W2Criterion extends Criterion {
   readonly sampled: number;
   /** How many of `sampled` fell in the iso-shade ring the lightness half is measured over. */
   readonly isoShadeSampled: number;
+  /** `true` when the iso-shade ring itself is below W2's domain, whatever `sampled` reads. */
+  readonly isoShadeThin: boolean;
   readonly medianShade: number | null;
 }
 
@@ -126,6 +128,13 @@ export interface W4Criterion extends Criterion {
    * indistinguishable from a policy that exhausts, and it makes both W4 matrix rows inert.
    */
   readonly streamNeverRan: boolean;
+  /**
+   * `true` when the session's art byte budget was already spent before this world was visited, so
+   * every request here was declined for budget. Moves **both** halves to `insufficient`: the
+   * numerator is forced to 0 and, since an eviction is the far end of an admission, so is the
+   * eviction rate. Entry, not exit — a world that exhausts the budget on its own demand still fails.
+   */
+  readonly budgetBoundAtEntry: boolean;
   /**
    * The highest `artFraction` this pool could show — `min(1, layers / wanting)`, or `null` where
    * nothing wants art. Reported and **not** scored: see `capacityCeiling` in the implementation for
@@ -225,7 +234,9 @@ export interface PlaneRecord {
 export declare const WORLD_KINDS: readonly string[];
 export declare function rowsClosedForm(cardCount: number): number;
 /** One fault string per violation of §1.3's checkable table invariants; empty when clean. */
-export declare function rowCellsFaults(planes: readonly PlaneRecord[]): string[];
+export declare function rowCellsFaults(
+  planes: readonly PlaneRecord[],
+): string[];
 
 export declare const W2_MIN_CELL_PX: number;
 export declare const W2_ISO_SHADE_TOLERANCE: number;
@@ -276,11 +287,30 @@ export declare function streamNeverRan(
   wanting: number,
   pool: { readonly layers: number; readonly resident: number },
 ): boolean;
-/** `pool` is required on purpose: a W4 count without its capacity is not a reading of the renderer. */
+/**
+ * Was the session's art byte budget already spent when this world's visit began? The renderer's own
+ * condition (`bytesFetched + bytesReserved >= byteBudget`), read on the report taken at **entry**.
+ * All three fields are required: an absent `bytesReserved` reads as 0 and switches the guard off.
+ */
+export declare function budgetBoundAtEntry(stream: {
+  readonly bytesFetched: number;
+  readonly bytesReserved: number;
+  readonly byteBudget: number;
+}): boolean;
+/**
+ * `pool` is required on purpose: a W4 count without its capacity is not a reading of the renderer.
+ * `entryStream` is required for the same reason — defaulted, it would default off the guard that
+ * separates a world's own exhaustion from a tour's carried-over spend.
+ */
 export declare function evaluateW4(
   cells: readonly ArtCell[],
   evictionTimeline: readonly EvictionSample[],
   pool: { readonly layers: number; readonly resident: number },
+  entryStream: {
+    readonly bytesFetched: number;
+    readonly bytesReserved: number;
+    readonly byteBudget: number;
+  },
 ): W4Criterion;
 export declare const W5_MIN_AZIMUTHS: number;
 export declare const W5_AZIMUTH_UNIFORMITY_TOLERANCE: number;

@@ -550,6 +550,24 @@ function foldCriteria(perPlane) {
  */
 async function visitWorld(page, world, { dir, captures, pose = SURFACE_RADII }) {
   const slug = world.slug
+
+  // ---- the entry reading -----------------------------------------------------------------------
+  // **Taken before the camera moves, and W4 is scored against it.** The art byte budget is a
+  // session-lifetime backstop (`artStream.ts`: 729 bodies and then the stream stops asking), so a
+  // world visited after the session hit that cap measures the tour rather than the world. See
+  // `budgetBoundAtEntry`. This read is deliberately *bare*: the budget is a property of the session
+  // and of no world, and at this instant the camera has not been asked for `slug` yet — a threaded
+  // slug here would either fail on an uncomposed world or claim the reading is about one.
+  const entry = await readProbe(page)
+  if (!entry.ok) return { slug, ok: false, detail: `entry read: ${entry.reason}: ${entry.detail}` }
+  const entryStream = entry.probe.stream
+  if (entryStream === null) {
+    // `null` is a build with no stream at all, and it is not an all-zero report (DEC-778). W4 is
+    // unscorable without one, and defaulting the entry spend to zero is precisely the shape that
+    // lets a spent budget read as a policy failure.
+    return { slug, ok: false, detail: 'the payload reports no art stream, so W4 has no entry reading' }
+  }
+
   await flyToPlane(page, slug)
   await hold(page, 2)
 
@@ -645,14 +663,41 @@ async function visitWorld(page, world, { dir, captures, pose = SURFACE_RADII }) 
     offFrame: offFrame.length,
     poolLayers: probe.pool.layers,
     effectiveThresholdPx: probe.pool.effectiveThresholdPx,
+    // Three readings of one session-global object, and the names say which is which. R1's own note
+    // on this field is that a single read is a session total and a world's own share exists only as
+    // a difference of two — so the difference is taken here rather than left to a reader of the
+    // report to remember not to attribute `stream` to `slug`.
+    entryStream,
     stream: probe.stream,
+    streamDelta: streamDelta(entryStream, probe.stream),
     settleCells,
     poseCells: probe.cells.map((c) => ({ height: c.height, frontFacing: c.frontFacing })),
+    // The samples W2 and W3 are computed from, kept so a verdict can be re-derived — and a floor or
+    // a tolerance re-swept — without another GPU run. They are the expensive half of this gate:
+    // every one is a pixel read out of a capture taken at an asserted pose.
+    samples,
     w2: evaluateW2(samples),
     w3: evaluateW3(samples, probe.bandShares),
-    w4: evaluateW4(artCells(probe), timeline, probe.pool),
+    w4: evaluateW4(artCells(probe), timeline, probe.pool, entryStream),
     probeChecked: frame.checked,
   }
+}
+
+/**
+ * A world's own share of the session-wide stream counters: the exit report minus the entry one.
+ *
+ * `null` where either end is missing, never a zero-filled object — an absent reading and a world
+ * that asked for nothing are different facts, and only one of them is a measurement.
+ */
+function streamDelta(before, after) {
+  if (before === null || after === null) return null
+  const delta = {}
+  for (const key of Object.keys(after)) {
+    const a = after[key]
+    const b = before[key]
+    delta[key] = typeof a === 'number' && typeof b === 'number' ? a - b : a
+  }
+  return delta
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -919,12 +964,15 @@ async function openPage(browser, url, { seams = {}, viewport = VIEWPORT }) {
 async function runRow(browser, url, row, { roster, args, baselineProbe }) {
   console.log(`\n── ${row.id}: ${row.label}`)
   const viewport = row.viewport ?? VIEWPORT
-  const { page, errors } = await openPage(browser, url, { seams: row.seams, viewport })
   const dir = resolve(args.out, row.id)
   mkdirSync(dir, { recursive: true })
-  try {
-    // ---- W5 rows ------------------------------------------------------------------------------
-    if (row.w5) {
+
+  // ---- W5 rows --------------------------------------------------------------------------------
+  // The home view is one page: the sweep's parameter is the multiverse rotation and the criterion
+  // is about the whole roster at once, so there is no per-world session to give it.
+  if (row.w5) {
+    const { page, errors } = await openPage(browser, url, { seams: row.seams, viewport })
+    try {
       const swept = await sweepHomeView(page, { minAzimuths: args.minAzimuths })
       if (!swept.ok) return { row, setupFailure: swept, criteria: [], checks: [], errors }
       const w5 = evaluateW5(swept.sweep, roster.metricsRoster, {
@@ -933,20 +981,37 @@ async function runRow(browser, url, row, { roster, args, baselineProbe }) {
       })
       writeFileSync(resolve(dir, 'sweep.json'), `${JSON.stringify(swept, null, 2)}\n`)
       return { row, criteria: [w5], checks: scoreRow(row, [w5]), sweep: swept, errors }
+    } finally {
+      await page.close()
     }
+  }
 
-    // ---- W1–W4 rows ---------------------------------------------------------------------------
-    const subjects =
-      row.tour === 'all'
-        ? roster.worldsWithCards.slice(0, args.tourLimit ?? roster.worldsWithCards.length)
-        : [roster.worldsWithCards.find((p) => p.slug === row.subject)]
-    if (subjects.some((s) => s === undefined)) {
-      throw new Error(`row ${row.id} names world ${row.subject}, which is not in this dataset`)
-    }
+  // ---- W1–W4 rows -----------------------------------------------------------------------------
+  const subjects =
+    row.tour === 'all'
+      ? roster.worldsWithCards.slice(0, args.tourLimit ?? roster.worldsWithCards.length)
+      : [roster.worldsWithCards.find((p) => p.slug === row.subject)]
+  if (subjects.some((s) => s === undefined)) {
+    throw new Error(`row ${row.id} names world ${row.subject}, which is not in this dataset`)
+  }
 
-    const visits = []
-    for (const world of subjects) {
-      const visit = await visitWorld(page, world, {
+  const errors = []
+  const visits = []
+  const evidencePerWorld = []
+  let probeNow = null
+
+  // **One session per world, and this is a correctness requirement rather than hygiene.** W1-W3 are
+  // pose-and-pixel measurements that would survive a shared page, but W4 is not: the art stream and
+  // its byte budget are session-global and cumulative (`worldsProbe.ts` says so of this very
+  // field), so on a shared page a world's W4 is a function of *where in the tour it was visited*.
+  // Measured before this changed, on the 45-world run at main `28ec706`: the budget bound at the
+  // 8th world and the remaining 37 all read `artFraction` 0. Per-world sessions make the reading
+  // order-independent, which is a property the reversed-order control in the runbook checks rather
+  // than assumes. `budgetBoundAtEntry` is the backstop for anyone who tours a shared page anyway.
+  for (const world of subjects) {
+    const opened = await openPage(browser, url, { seams: row.seams, viewport })
+    try {
+      const visit = await visitWorld(opened.page, world, {
         dir,
         captures: args.captures,
         pose: row.pose ?? SURFACE_RADII,
@@ -954,55 +1019,86 @@ async function runRow(browser, url, row, { roster, args, baselineProbe }) {
       visits.push(visit)
       if (!visit.ok) {
         console.log(`  ${world.slug}: SETUP FAILURE — ${visit.detail}`)
-        continue
+      } else {
+        console.log(
+          `  ${world.slug}: ${visit.cardinality.reported}/${visit.cardinality.cardCount} cells, ` +
+            `pool ${visit.poolLayers}, threshold ${visit.effectiveThresholdPx.toFixed(2)}px, ` +
+            `W2 ${visit.w2.status} W3 ${visit.w3.status} W4 ${visit.w4.status}`,
+        )
       }
-      console.log(
-        `  ${world.slug}: ${visit.cardinality.reported}/${visit.cardinality.cardCount} cells, ` +
-          `pool ${visit.poolLayers}, threshold ${visit.effectiveThresholdPx.toFixed(2)}px, ` +
-          `W2 ${visit.w2.status} W3 ${visit.w3.status} W4 ${visit.w4.status}`,
-      )
-    }
 
-    const good = visits.filter((v) => v.ok)
-    if (good.length === 0) {
-      return {
-        row,
-        setupFailure: { reason: 'no-visit', detail: visits.map((v) => `${v.slug}: ${v.detail}`).join('; ') },
-        criteria: [],
-        checks: [],
-        errors,
+      // The seam is asserted to have *engaged* before any criterion of this row is read. A seam that
+      // silently fails to parse runs the unmodified policy, its criterion passes, and the matrix
+      // records a passing control — which reads as a passing gate.
+      //
+      // **Bare on purpose, and one of only two such reads left.** `seamEvidence` reads `seams` and
+      // `pool`, both session-global; threading a slug would turn a whole-session reading into a
+      // claim about one world. Taken once per session now that each world has its own, so the row's
+      // seam evidence is 45 independent page loads agreeing rather than one read at the end.
+      const read = await readProbe(opened.page)
+      if (read.ok) {
+        probeNow = read.probe
+        evidencePerWorld.push({ slug: world.slug, evidence: seamEvidence(read.probe, row.seams, baselineProbe) })
       }
+    } finally {
+      errors.push(...opened.errors)
+      await opened.page.close()
     }
-
-    // The seam is asserted to have *engaged* before any criterion of this row is read. A seam that
-    // silently fails to parse runs the unmodified policy, its criterion passes, and the matrix
-    // records a passing control — which reads as a passing gate.
-    //
-    // **Bare on purpose, and one of only two such reads left.** `seamEvidence` reads `seams` and
-    // `pool` only, both session-global, and this is taken after the tour with no world in view —
-    // there is no slug to pass that would not be a fiction. Threading one here would turn a
-    // whole-session reading into a claim about an arbitrary world and would fail outright on a page
-    // where that world is uncomposed.
-    const probeNow = await readProbe(page)
-    const evidence = probeNow.ok ? seamEvidence(probeNow.probe, row.seams, baselineProbe) : []
-
-    const criteria = [
-      evaluateW1(
-        good.map((v) => ({ slug: v.slug, cells: row.w1At === 'pose' ? v.poseCells : v.settleCells })),
-      ),
-      foldCriteria(good.map((v) => ({ slug: v.slug, criterion: v.w2 }))),
-      foldCriteria(good.map((v) => ({ slug: v.slug, criterion: v.w3 }))),
-      foldCriteria(good.map((v) => ({ slug: v.slug, criterion: v.w4 }))),
-    ].filter((c) => c !== null)
-
-    writeFileSync(
-      resolve(dir, 'visits.json'),
-      `${JSON.stringify({ visits, evidence, criteria }, null, 2)}\n`,
-    )
-    return { row, criteria, checks: scoreRow(row, criteria), evidence, visits, errors, probe: probeNow.ok ? probeNow.probe : null }
-  } finally {
-    await page.close()
   }
+
+  const good = visits.filter((v) => v.ok)
+  if (good.length === 0) {
+    return {
+      row,
+      setupFailure: { reason: 'no-visit', detail: visits.map((v) => `${v.slug}: ${v.detail}`).join('; ') },
+      criteria: [],
+      checks: [],
+      errors,
+    }
+  }
+
+  // One session's evidence stands for the row, and the others are checked against it rather than
+  // discarded: with a page per world the same seam is now exercised on every load, so a seam that
+  // engages on some loads and not others is a fact this row can see. Disagreement is a setup
+  // failure, because a criterion folded over sessions that ran different policies is not a reading.
+  const evidence = evidencePerWorld.length === 0 ? [] : evidencePerWorld[0].evidence
+  const disagreeing = evidencePerWorld.filter(
+    (e) =>
+      e.evidence.length !== evidence.length ||
+      e.evidence.some((row_, i) => row_.engaged !== evidence[i].engaged),
+  )
+  if (disagreeing.length > 0) {
+    return {
+      row,
+      setupFailure: {
+        reason: 'seam-disagreement',
+        detail:
+          `the row's seams engaged on ${evidencePerWorld.length - disagreeing.length} of ` +
+          `${evidencePerWorld.length} sessions; they disagree on ` +
+          `${disagreeing.map((e) => e.slug).join(', ')}`,
+      },
+      criteria: [],
+      checks: [],
+      evidence,
+      visits,
+      errors,
+    }
+  }
+
+  const criteria = [
+    evaluateW1(
+      good.map((v) => ({ slug: v.slug, cells: row.w1At === 'pose' ? v.poseCells : v.settleCells })),
+    ),
+    foldCriteria(good.map((v) => ({ slug: v.slug, criterion: v.w2 }))),
+    foldCriteria(good.map((v) => ({ slug: v.slug, criterion: v.w3 }))),
+    foldCriteria(good.map((v) => ({ slug: v.slug, criterion: v.w4 }))),
+  ].filter((c) => c !== null)
+
+  writeFileSync(
+    resolve(dir, 'visits.json'),
+    `${JSON.stringify({ visits, evidence, evidencePerWorld, criteria }, null, 2)}\n`,
+  )
+  return { row, criteria, checks: scoreRow(row, criteria), evidence, visits, errors, probe: probeNow }
 }
 
 /** Score a row's expectations. `checkControlRow` owns the comparison; this only names the row. */

@@ -21,6 +21,7 @@ import {
   BAND_ORDER,
   FLOORS,
   ROSTER_V3,
+  W2_MIN_SAMPLES,
   W3_MIN_BAND_SHARE,
   checkControlRow,
   deltaE76,
@@ -460,6 +461,96 @@ describe("W2 — the mosaic reads as tiles", () => {
     expect(w2.sampled).toBeLessThan(mosaic.length);
     expect(w2.sampled).toBeGreaterThan(0);
   });
+
+  /**
+   * **The lightness half's domain is the ring, not the sampled set (DEC-752, found by the 45-world
+   * acceptance run at main `28ec706`).**
+   *
+   * `W2_MIN_SAMPLES` guarded `sampled` for both halves. The neighbour half walks `sampled`, but the
+   * lightness half is an IQR over the iso-shade ring, and ±2.5% of the median shade selects a few
+   * per cent of the disc by construction — so the guard was a bound that could not bind for it.
+   * Live consequence: `kylem` scored `lightnessIqr` **0.020 against a floor of 8 from two cells**,
+   * with `capenna`, `fiora` and `shenmeng` scored from two or three, and all four were counted as
+   * planes failing W2 while the guard read their 21, 76, 31 and 7 sampled cells and passed them.
+   * An IQR over two points is the spread of two points.
+   */
+  describe("the iso-shade ring carries its own sample-size domain", () => {
+    /**
+     * A disc whose shades are spread far enough apart that the ±2.5% ring around the median holds
+     * exactly `ringSize` cells — the live shape, where the ring is a sliver of a well-sampled
+     * plane. Every cell is well over the 6 px floor and front-facing, so `sampled` is never the
+     * binding constraint.
+     */
+    const ringOf = (ringSize: number, ringRgb: [number, number, number][]) => {
+      const spread: CellSample[] = Array.from({ length: 40 }, (_, i) => ({
+        x: 100 + i * 20,
+        y: 500,
+        height: 40,
+        frontFacing: true,
+        band: 6,
+        // 0.30 to 1.08 in steps of 0.02: the median lands on 0.70 and the ±2.5% window is
+        // ±0.0175, so no other cell in the ladder falls inside it.
+        shade: 0.3 + i * 0.02,
+        rgb: [40 + i * 4, 60, 200 - i * 4] as [number, number, number],
+      }));
+      const ring: CellSample[] = Array.from({ length: ringSize }, (_, i) => ({
+        x: 1500 + i * 20,
+        y: 700,
+        height: 40,
+        frontFacing: true,
+        band: 6,
+        shade: 0.7,
+        rgb: ringRgb[i % ringRgb.length] as [number, number, number],
+      }));
+      // Drop the ladder's own 0.70 rung so the ring is exactly `ringSize`.
+      return [...spread.filter((c) => Math.abs(c.shade - 0.7) > 1e-9), ...ring];
+    };
+
+    it("reports insufficient when the ring is below the domain, however many cells were sampled", () => {
+      const w2 = evaluateW2(ringOf(3, [[128, 128, 128]]));
+
+      expect(w2.sampled).toBeGreaterThanOrEqual(W2_MIN_SAMPLES * 5);
+      expect(w2.isoShadeSampled).toBe(3);
+      expect(w2.isoShadeThin).toBe(true);
+      const lightness = w2.measures.find((m) => m.key === "lightnessIqr");
+      expect(lightness?.status).toBe("insufficient");
+      expect(lightness?.insufficientReason).toMatch(/median shade/);
+      // The neighbour half is untouched: its own domain is the sampled set and that is amply met.
+      // Scoring both halves off one set is the defect; scoring neither would be the over-correction.
+      expect(
+        w2.measures.find((m) => m.key === "medianNeighbourDeltaE")?.status,
+      ).not.toBe("insufficient");
+    });
+
+    it("still scores a ring that meets the domain — the guard binds, it does not swallow", () => {
+      // One cell more, and the same flat colour that produced the 0.020: at the domain the measure
+      // is a measurement again and this frame is a real red. Without this row the fix above would
+      // be indistinguishable from "stop scoring the lightness half".
+      const w2 = evaluateW2(ringOf(4, [[128, 128, 128]]));
+
+      expect(w2.isoShadeSampled).toBe(4);
+      expect(w2.isoShadeThin).toBe(false);
+      const lightness = w2.measures.find((m) => m.key === "lightnessIqr");
+      expect(lightness?.status).toBe("fail");
+      expect(lightness?.value).toBeLessThan(1);
+    });
+
+    it("passes at the domain when the ring really does vary in lightness", () => {
+      const w2 = evaluateW2(
+        ringOf(4, [
+          [20, 20, 20],
+          [90, 90, 90],
+          [170, 170, 170],
+          [240, 240, 240],
+        ]),
+      );
+
+      expect(w2.isoShadeSampled).toBe(4);
+      expect(w2.measures.find((m) => m.key === "lightnessIqr")?.status).toBe(
+        "pass",
+      );
+    });
+  });
 });
 
 /**
@@ -673,6 +764,20 @@ describe("W4 — art resolves without exhausting", () => {
   /** The prototype's own pool — Appendix A's `tether-surface` drew 1,024 layers. */
   const PROTOTYPE_POOL = { layers: 1_024, resident: 1_024 };
 
+  /**
+   * The stream report at the entry to a world's visit, in the fresh session the gate now gives each
+   * world: nothing fetched, nothing in flight, the whole 64 MiB budget still to spend.
+   *
+   * Passed explicitly at every call site rather than defaulted, because that is what the signature
+   * is for — a default would switch `budgetBoundAtEntry` off on every row here and leave the guard
+   * exercised only where it is itself the subject.
+   */
+  const FRESH_SESSION = {
+    bytesFetched: 0,
+    bytesReserved: 0,
+    byteBudget: 64 * 1024 * 1024,
+  };
+
   it("goes RED on its control — ?artThreshold=fixed24 — reproducing tether-surface", () => {
     const { drawn, wanted, evicted } = PROTOTYPE.tetherSurface;
     // The pool is exhausted and churning: the prototype reached this pose "with no sign of
@@ -682,7 +787,12 @@ describe("W4 — art resolves without exhausting", () => {
       { t: 2.5, evictions: evicted - 120 },
       { t: 5, evictions: evicted },
     ];
-    const w4 = evaluateW4(cells(wanted, drawn), churning, PROTOTYPE_POOL);
+    const w4 = evaluateW4(
+      cells(wanted, drawn),
+      churning,
+      PROTOTYPE_POOL,
+      FRESH_SESSION,
+    );
 
     expect(w4.pass).toBe(false);
     const fraction = w4.measures.find((m) => m.key === "artFraction");
@@ -705,7 +815,12 @@ describe("W4 — art resolves without exhausting", () => {
    */
   it("reads 925 cumulative evictions as passing once the pool has settled", () => {
     const { drawn, wanted, evicted } = PROTOTYPE.tetherSurface;
-    const w4 = evaluateW4(cells(wanted, drawn), settled(evicted), PROTOTYPE_POOL);
+    const w4 = evaluateW4(
+      cells(wanted, drawn),
+      settled(evicted),
+      PROTOTYPE_POOL,
+      FRESH_SESSION,
+    );
     expect(w4.measures.find((m) => m.key === "evictionsPerSecond")?.value).toBe(
       0,
     );
@@ -717,7 +832,12 @@ describe("W4 — art resolves without exhausting", () => {
     // §1.6 defines demand relative to pool capacity, so a 128-layer pool does not starve: the
     // effective threshold rises until ~128 cells want art and ~128 resolve. Condemning this row
     // would be condemning the low-end device the ladder exists to protect.
-    const w4 = evaluateW4(cells(128, 128), settled(4_100), { layers: 128, resident: 128 });
+    const w4 = evaluateW4(
+      cells(128, 128),
+      settled(4_100),
+      { layers: 128, resident: 128 },
+      FRESH_SESSION,
+    );
     expect(w4.pass).toBe(true);
     expect(w4.measures.find((m) => m.key === "artFraction")?.value).toBe(1);
   });
@@ -732,7 +852,12 @@ describe("W4 — art resolves without exhausting", () => {
    */
   describe("capacity ceiling", () => {
     it("reports what the pool could show, not what it did", () => {
-      const w4 = evaluateW4(cells(2_759, 1_024), settled(0), PROTOTYPE_POOL);
+      const w4 = evaluateW4(
+        cells(2_759, 1_024),
+        settled(0),
+        PROTOTYPE_POOL,
+        FRESH_SESSION,
+      );
       // 1,024 layers against 2,759 cells wanting art.
       expect(w4.capacityCeiling).toBeCloseTo(1_024 / 2_759, 6);
       // ...and the fraction actually shown is a different, lower number: the ceiling is a bound on
@@ -742,12 +867,22 @@ describe("W4 — art resolves without exhausting", () => {
     });
 
     it("caps at 1 rather than reporting spare capacity as headroom above full", () => {
-      const w4 = evaluateW4(cells(90, 90), settled(0), { layers: 224, resident: 90 });
+      const w4 = evaluateW4(
+        cells(90, 90),
+        settled(0),
+        { layers: 224, resident: 90 },
+        FRESH_SESSION,
+      );
       expect(w4.capacityCeiling).toBe(1);
     });
 
     it("is null where nothing wants art, rather than dividing by zero", () => {
-      const w4 = evaluateW4(cells(0, 0), settled(0), { layers: 128, resident: 0 });
+      const w4 = evaluateW4(
+        cells(0, 0),
+        settled(0),
+        { layers: 128, resident: 0 },
+        FRESH_SESSION,
+      );
       expect(w4.capacityCeiling).toBeNull();
     });
 
@@ -756,7 +891,12 @@ describe("W4 — art resolves without exhausting", () => {
       // 0.37 against a 0.9 floor — exactly the shape a "the floor was unreachable" excuse would
       // forgive, and forgiving it would make W4's only falsifier inert.
       const { drawn, wanted } = PROTOTYPE.tetherSurface;
-      const w4 = evaluateW4(cells(wanted, drawn), settled(0), PROTOTYPE_POOL);
+      const w4 = evaluateW4(
+        cells(wanted, drawn),
+        settled(0),
+        PROTOTYPE_POOL,
+        FRESH_SESSION,
+      );
       expect(w4.capacityCeiling).toBeLessThan(0.9);
       const fraction = w4.measures.find((m) => m.key === "artFraction");
       // `fail`, and specifically not `insufficient`: the row must stay a claim about the picture.
@@ -767,7 +907,12 @@ describe("W4 — art resolves without exhausting", () => {
 
   it("passes the unexhausted prototype pose, dominaria-frame at 333/333", () => {
     const { drawn, wanted, evicted } = PROTOTYPE.dominariaFrame;
-    const w4 = evaluateW4(cells(wanted, drawn), settled(evicted), PROTOTYPE_POOL);
+    const w4 = evaluateW4(
+      cells(wanted, drawn),
+      settled(evicted),
+      PROTOTYPE_POOL,
+      FRESH_SESSION,
+    );
     expect(w4.pass).toBe(true);
   });
 
@@ -830,7 +975,7 @@ describe("W4 — art resolves without exhausting", () => {
         showingArt: false,
       })),
     ];
-    const w4 = evaluateW4(cells, settled(0), PROTOTYPE_POOL);
+    const w4 = evaluateW4(cells, settled(0), PROTOTYPE_POOL, FRESH_SESSION);
 
     expect(w4.wanting).toBe(90);
     expect(w4.showing).toBe(90);
@@ -850,7 +995,7 @@ describe("W4 — art resolves without exhausting", () => {
         showingArt: false,
       })),
     ];
-    const w4 = evaluateW4(cells, settled(0), PROTOTYPE_POOL);
+    const w4 = evaluateW4(cells, settled(0), PROTOTYPE_POOL, FRESH_SESSION);
 
     expect(w4.wanting).toBe(90);
     expect(w4.showing).toBe(90);
@@ -873,7 +1018,12 @@ describe("W4 — art resolves without exhausting", () => {
    * renderer when it is a property of the harness.
    */
   it("records the capacity beside the count, because the quantile is relative to it", () => {
-    const w4 = evaluateW4(visible(90), settled(0), { layers: 224, resident: 90 });
+    const w4 = evaluateW4(
+      visible(90),
+      settled(0),
+      { layers: 224, resident: 90 },
+      FRESH_SESSION,
+    );
     expect(w4.poolLayers).toBe(224);
     expect(w4.belowShippedPool).toBe(false);
   });
@@ -891,11 +1041,21 @@ describe("W4 — art resolves without exhausting", () => {
 
   it("flags a sub-shipped capacity as a harness reading without calling the measurement absent", () => {
     // Tier 4's 128 is the smallest rung; 64 is below every configuration a browser can be in.
-    const harness = evaluateW4(visible(90), settled(0), { layers: 64, resident: 64 });
-    const shipped = evaluateW4(visible(90), settled(0), {
-      layers: SMALLEST_SHIPPED_POOL_LAYERS,
-      resident: 1,
-    });
+    const harness = evaluateW4(
+      visible(90),
+      settled(0),
+      { layers: 64, resident: 64 },
+      FRESH_SESSION,
+    );
+    const shipped = evaluateW4(
+      visible(90),
+      settled(0),
+      {
+        layers: SMALLEST_SHIPPED_POOL_LAYERS,
+        resident: 1,
+      },
+      FRESH_SESSION,
+    );
 
     expect(harness.belowShippedPool).toBe(true);
     expect(shipped.belowShippedPool, "128 is tier 4, and tier 4 ships").toBe(
@@ -914,16 +1074,26 @@ describe("W4 — art resolves without exhausting", () => {
   it("puts the boundary at tier 4 itself, not one layer either side of it", () => {
     // A bound-check is vacuous when the bound never binds, so both sides of it are named.
     expect(
-      evaluateW4(visible(1), settled(0), {
-        layers: SMALLEST_SHIPPED_POOL_LAYERS - 1,
-        resident: 1,
-      }).belowShippedPool,
+      evaluateW4(
+        visible(1),
+        settled(0),
+        {
+          layers: SMALLEST_SHIPPED_POOL_LAYERS - 1,
+          resident: 1,
+        },
+        FRESH_SESSION,
+      ).belowShippedPool,
     ).toBe(true);
     expect(
-      evaluateW4(visible(1), settled(0), {
-        layers: SMALLEST_SHIPPED_POOL_LAYERS,
-        resident: 1,
-      }).belowShippedPool,
+      evaluateW4(
+        visible(1),
+        settled(0),
+        {
+          layers: SMALLEST_SHIPPED_POOL_LAYERS,
+          resident: 1,
+        },
+        FRESH_SESSION,
+      ).belowShippedPool,
     ).toBe(false);
     expect(SMALLEST_SHIPPED_POOL_LAYERS).toBe(128);
   });
@@ -941,10 +1111,15 @@ describe("W4 — art resolves without exhausting", () => {
    */
   describe("a dead art stream is a setup failure, not a policy failure", () => {
     it("reports insufficient when the pool has capacity and demand but nothing resident", () => {
-      const dead = evaluateW4(cells(1_008, 0), settled(0), {
-        layers: 1_024,
-        resident: 0,
-      });
+      const dead = evaluateW4(
+        cells(1_008, 0),
+        settled(0),
+        {
+          layers: 1_024,
+          resident: 0,
+        },
+        FRESH_SESSION,
+      );
 
       expect(dead.streamNeverRan).toBe(true);
       const art = dead.measures.find((m) => m.key === "artFraction");
@@ -963,10 +1138,15 @@ describe("W4 — art resolves without exhausting", () => {
     it("does not fire on a policy that genuinely exhausts", () => {
       // The prototype's own capture: art resolved, then the pool churned. `resident` is non-zero,
       // so the stream demonstrably ran and 37% is a true reading of the policy.
-      const exhausted = evaluateW4(cells(2_759, 1_024), settled(925), {
-        layers: 1_024,
-        resident: 1_024,
-      });
+      const exhausted = evaluateW4(
+        cells(2_759, 1_024),
+        settled(925),
+        {
+          layers: 1_024,
+          resident: 1_024,
+        },
+        FRESH_SESSION,
+      );
 
       expect(exhausted.streamNeverRan).toBe(false);
       expect(
@@ -978,10 +1158,15 @@ describe("W4 — art resolves without exhausting", () => {
       // A zero-layer pool is a measurement, not a setup failure (`?layers=0`, or a device whose
       // limit is slack). Nothing is resident there *by construction*, so keying on `resident`
       // alone would misread the one configuration the spec explicitly blesses.
-      const swatchOnly = evaluateW4(cells(1_008, 0), settled(0), {
-        layers: 0,
-        resident: 0,
-      });
+      const swatchOnly = evaluateW4(
+        cells(1_008, 0),
+        settled(0),
+        {
+          layers: 0,
+          resident: 0,
+        },
+        FRESH_SESSION,
+      );
 
       expect(swatchOnly.streamNeverRan).toBe(false);
     });
@@ -989,21 +1174,168 @@ describe("W4 — art resolves without exhausting", () => {
     it("does not fire when nothing wants art", () => {
       // No demand means no layer *should* be resident. Firing here would flag a world that is
       // simply too far away as broken.
-      const idle = evaluateW4(cells(0, 0), settled(0), {
-        layers: 1_024,
-        resident: 0,
-      });
+      const idle = evaluateW4(
+        cells(0, 0),
+        settled(0),
+        {
+          layers: 1_024,
+          resident: 0,
+        },
+        FRESH_SESSION,
+      );
 
       expect(idle.streamNeverRan).toBe(false);
+    });
+
+    it("calls the forced zero an absent eviction reading too", () => {
+      // An eviction is the far end of an admission. A pool with nothing resident has handed out no
+      // layer, so it can evict none, and `evictionsPerSecond` is 0 whatever the policy would do —
+      // scoring that 0 green is scoring a number the reading could not have moved. Half a criterion
+      // passing on a frame it never measured is how a dead row reads as a half-healthy one.
+      const dead = evaluateW4(
+        cells(1_008, 0),
+        settled(0),
+        { layers: 1_024, resident: 0 },
+        FRESH_SESSION,
+      );
+
+      expect(
+        dead.measures.find((m) => m.key === "evictionsPerSecond")?.status,
+      ).toBe("insufficient");
     });
 
     it("refuses a pool that omits resident rather than silently passing", () => {
       // The guard's own provenance trap: `undefined === 0` is false, so an omitted field would
       // switch the check off and restore the false RED. Same argument as `pool` being positional.
       expect(() =>
-        // @ts-expect-error — the omission is the thing under test.
-        evaluateW4(cells(1_008, 0), settled(0), { layers: 1_024 }),
+        evaluateW4(
+          cells(1_008, 0),
+          settled(0),
+          // @ts-expect-error — the omission is the thing under test.
+          { layers: 1_024 },
+          FRESH_SESSION,
+        ),
       ).toThrow(/pool\.resident/);
+    });
+  });
+
+  /**
+   * **A tour's carried-over spend is not this world's policy failing (DEC-752, measured on the
+   * 45-world acceptance run at main `28ec706`).**
+   *
+   * The art byte budget is session-lifetime and cumulative — `artStream.ts` sizes it as "a backstop
+   * against a pathological session", 729 bodies and then the stream stops asking. Toured in one
+   * page, `bytesFetched` crossed 64 MiB at the **8th** world; the remaining **37** each reported
+   * `showing` 0 of up to 967 wanting, with `declinedBudget` climbing to 3,046,465, and W4 scored
+   * every one of them a flat `fail` at `artFraction` 0 on a renderer doing exactly as specified.
+   *
+   * `streamNeverRan` cannot see it: that guard asks whether anything is *resident*, and a session
+   * that has spent its budget is still holding the layers it bought on the first seven worlds. Two
+   * mechanisms, one zero numerator — and a guard written against one says nothing about the other.
+   */
+  describe("a budget spent before the world was visited is a setup failure", () => {
+    const SPENT = {
+      bytesFetched: 67_163_595,
+      bytesReserved: 0,
+      byteBudget: 67_108_864,
+    };
+
+    it("reports insufficient on a world entered with the budget already gone", () => {
+      // dominaria's own row from that run: 967 cells wanting art, 0 showing, a full pool of
+      // residents bought by earlier worlds.
+      const carried = evaluateW4(
+        cells(967, 0),
+        settled(0),
+        { layers: 1_024, resident: 837 },
+        SPENT,
+      );
+
+      expect(carried.budgetBoundAtEntry).toBe(true);
+      expect(carried.streamNeverRan).toBe(false);
+      const art = carried.measures.find((m) => m.key === "artFraction");
+      expect(art?.status).toBe("insufficient");
+      expect(art?.insufficientReason).toMatch(
+        /already spent before this world/,
+      );
+      expect(carried.status).not.toBe("pass");
+      // Both halves: with every request declined for budget nothing is admitted, so nothing is
+      // evicted, and the eviction rate is 0 by construction rather than by policy.
+      expect(
+        carried.measures.find((m) => m.key === "evictionsPerSecond")?.status,
+      ).toBe("insufficient");
+    });
+
+    it("scores a world that spends the budget itself, because that is W4 failing", () => {
+      // Entry, not exit. The budget is untouched when this world is entered and its own demand
+      // exhausts it — a real reading of the product, and the case the guard must not swallow.
+      // `?artThreshold=fixed24` is exactly this shape, and it is W4's only falsifier.
+      const ownSpend = evaluateW4(
+        cells(2_759, 1_024),
+        settled(925),
+        PROTOTYPE_POOL,
+        FRESH_SESSION,
+      );
+
+      expect(ownSpend.budgetBoundAtEntry).toBe(false);
+      expect(
+        ownSpend.measures.find((m) => m.key === "artFraction")?.status,
+      ).toBe("fail");
+    });
+
+    it("does not fire one byte short of the budget", () => {
+      // The boundary is the renderer's own `>=`, and the row below it must stay a scored reading —
+      // otherwise the guard is not "was this stream allowed to fetch" but "was it nearly out", and
+      // the last world before the cap would lose a real failure. Same demand and the same starved
+      // numerator as the bound row above; only the entry spend differs, and the verdict flips.
+      const nearly = evaluateW4(
+        cells(967, 100),
+        settled(0),
+        { layers: 1_024, resident: 100 },
+        { bytesFetched: 67_108_863, bytesReserved: 0, byteBudget: 67_108_864 },
+      );
+
+      expect(nearly.budgetBoundAtEntry).toBe(false);
+      expect(nearly.measures.find((m) => m.key === "artFraction")?.status).toBe(
+        "fail",
+      );
+    });
+
+    it("counts bytes in flight, as the renderer does", () => {
+      // `artStream.ts` declines on `bytesFetched + bytesReserved >= byteBudget`, not on
+      // `bytesFetched` alone: a session whose remaining budget is entirely reserved by in-flight
+      // requests is just as forbidden to fetch. Reading only the landed bytes would put the guard
+      // off for exactly the window in which the stream is refusing.
+      const inFlight = evaluateW4(
+        cells(967, 0),
+        settled(0),
+        { layers: 1_024, resident: 837 },
+        {
+          bytesFetched: 40_000_000,
+          bytesReserved: 27_108_864,
+          byteBudget: 67_108_864,
+        },
+      );
+
+      expect(inFlight.budgetBoundAtEntry).toBe(true);
+    });
+
+    it("refuses an entry report that omits a field rather than defaulting it to zero", () => {
+      // The same provenance trap as `pool.resident`, and it bites in the same direction: an absent
+      // `bytesReserved` reads as 0, which switches the guard off precisely at the boundary.
+      expect(() =>
+        evaluateW4(
+          cells(967, 0),
+          settled(0),
+          PROTOTYPE_POOL,
+          // @ts-expect-error — the omission is the thing under test.
+          { bytesFetched: 67_163_595, byteBudget: 67_108_864 },
+        ),
+      ).toThrow(/bytesReserved/);
+
+      expect(() =>
+        // @ts-expect-error — a missing entry report entirely.
+        evaluateW4(cells(967, 0), settled(0), PROTOTYPE_POOL),
+      ).toThrow(/bytesFetched/);
     });
   });
 });
@@ -1592,7 +1924,9 @@ describe("§1.3's rowCells table", () => {
   const PUBLISHED = (
     JSON.parse(
       readFileSync(
-        fileURLToPath(new URL("../../docs/worlds/rowcells-v3.json", import.meta.url)),
+        fileURLToPath(
+          new URL("../../docs/worlds/rowcells-v3.json", import.meta.url),
+        ),
         "utf8",
       ),
     ) as { worlds: Record<string, PublishedWorld> }
@@ -1620,7 +1954,9 @@ describe("§1.3's rowCells table", () => {
     const planes = worlds();
     const alara = planes.find((w) => w.slug === "alara");
     if (!alara) throw new Error("alara is not in the vendored v3 table");
-    return planes.map((p) => (p === alara ? { ...p, rowCells: edit(p.rowCells) } : p));
+    return planes.map((p) =>
+      p === alara ? { ...p, rowCells: edit(p.rowCells) } : p,
+    );
   };
   const at = (cells: readonly number[], i: number) => cells[i] ?? 0;
 
@@ -1641,12 +1977,20 @@ describe("§1.3's rowCells table", () => {
     // gate asserting strict symmetry — or the ≤1-pair relaxation, or ≤2 — goes RED on all of them
     // against a correct renderer. Dominaria differs in 15 mirrored pairs; the other four carry a
     // pair differing by two.
-    const asymmetric = ["dominaria", "innistrad", "zendikar", "theros", "thunder-junction"];
+    const asymmetric = [
+      "dominaria",
+      "innistrad",
+      "zendikar",
+      "theros",
+      "thunder-junction",
+    ];
     for (const slug of asymmetric) {
       const cells = published(slug).rowCells;
       const pairs = cells.filter((c, i) => c !== cells[cells.length - 1 - i]);
       expect(pairs.length).toBeGreaterThan(0);
-      expect(rowCellsFaults(worlds().filter((w) => w.slug === slug))).toEqual([]);
+      expect(rowCellsFaults(worlds().filter((w) => w.slug === slug))).toEqual(
+        [],
+      );
     }
   });
 
@@ -1654,7 +1998,9 @@ describe("§1.3's rowCells table", () => {
   // mutant that broke the table wholesale would die at the first check and prove only that one.
   it("catches a dropped card, which is §1.3's silent direction", () => {
     // One fewer card placed; rows, the floor and the row count are all still right.
-    const faults = rowCellsFaults(mutate((cells) => cells.map((c, i) => (i === 4 ? c - 1 : c))));
+    const faults = rowCellsFaults(
+      mutate((cells) => cells.map((c, i) => (i === 4 ? c - 1 : c))),
+    );
     expect(faults).toHaveLength(1);
     expect(faults[0]).toContain("Σ rowCells is 509 against 510 cards");
   });
@@ -1676,7 +2022,9 @@ describe("§1.3's rowCells table", () => {
       mutate((cells) =>
         cells
           .slice(0, -1)
-          .map((c, i, a) => (i === a.length - 1 ? c + at(cells, cells.length - 1) : c)),
+          .map((c, i, a) =>
+            i === a.length - 1 ? c + at(cells, cells.length - 1) : c,
+          ),
       ),
     );
     expect(faults).toHaveLength(1);
@@ -1684,12 +2032,14 @@ describe("§1.3's rowCells table", () => {
   });
 
   it("catches a table on a plane that has no cell sheet, and a world with none", () => {
-    expect(rowCellsFaults([{ slug: "a-moon", kind: "moon", cardCount: 2, rowCells: [2] }])).toEqual([
-      "a-moon: kind moon carries a rowCells table",
-    ]);
-    expect(rowCellsFaults([{ slug: "ergamon", kind: "irregular", cardCount: 1 }])).toEqual([
-      "ergamon: world with no rowCells table",
-    ]);
+    expect(
+      rowCellsFaults([
+        { slug: "a-moon", kind: "moon", cardCount: 2, rowCells: [2] },
+      ]),
+    ).toEqual(["a-moon: kind moon carries a rowCells table"]);
+    expect(
+      rowCellsFaults([{ slug: "ergamon", kind: "irregular", cardCount: 1 }]),
+    ).toEqual(["ergamon: world with no rowCells table"]);
   });
 
   it("records that the closed form's `min(rows, N)` clamp is unreachable", () => {
@@ -1697,7 +2047,8 @@ describe("§1.3's rowCells table", () => {
     // assertion is `rows == rows_closed` on every input, and this is the sweep that says so. A
     // reader scoring that clause as a tested guard is reading a decoration (DEC-752 → DEC-749).
     const binding = [];
-    for (let n = 1; n <= 200_000; n += 1) if (rowsClosedForm(n) > n) binding.push(n);
+    for (let n = 1; n <= 200_000; n += 1)
+      if (rowsClosedForm(n) > n) binding.push(n);
     expect(binding).toEqual([]);
 
     // ...and the control for that sweep: the floor's *other* half, `max(1, ·)`, does bind — at

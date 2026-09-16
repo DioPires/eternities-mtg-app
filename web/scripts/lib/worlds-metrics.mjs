@@ -129,7 +129,10 @@ export const WORLD_KINDS = Object.freeze(["spiral", "irregular"]);
  * not the shipped ones and must never be asserted (DEC-748, and see `rowCellsFaults`).
  */
 export function rowsClosedForm(cardCount) {
-  return Math.max(1, Math.round(Math.PI / Math.sqrt((4 * Math.PI) / ((4 / 3) * cardCount))));
+  return Math.max(
+    1,
+    Math.round(Math.PI / Math.sqrt((4 * Math.PI) / ((4 / 3) * cardCount))),
+  );
 }
 
 /**
@@ -196,7 +199,10 @@ export function rowCellsFaults(planes) {
     const has = Object.hasOwn(plane, "rowCells");
     if (!isWorld) {
       // Absent, not empty: an empty array would read as "a world with no rows" downstream.
-      if (has) faults.push(`${plane.slug}: kind ${plane.kind} carries a rowCells table`);
+      if (has)
+        faults.push(
+          `${plane.slug}: kind ${plane.kind} carries a rowCells table`,
+        );
       continue;
     }
     if (!has) {
@@ -212,11 +218,17 @@ export function rowCellsFaults(planes) {
       );
     }
     const empty = cells.findIndex((c) => c < 1);
-    if (empty !== -1) faults.push(`${plane.slug}: row ${empty} holds ${cells[empty]} cells`);
+    if (empty !== -1)
+      faults.push(`${plane.slug}: row ${empty} holds ${cells[empty]} cells`);
 
-    const want = Math.max(1, Math.min(rowsClosedForm(plane.cardCount), plane.cardCount));
+    const want = Math.max(
+      1,
+      Math.min(rowsClosedForm(plane.cardCount), plane.cardCount),
+    );
     if (cells.length !== want) {
-      faults.push(`${plane.slug}: ${cells.length} rows against the closed form's ${want}`);
+      faults.push(
+        `${plane.slug}: ${cells.length} rows against the closed form's ${want}`,
+      );
     }
   }
   return faults;
@@ -574,7 +586,9 @@ export function evaluateW1(planes) {
  * shade from the normal: it would then be asserting against its own model of the light rather than
  * against the shipped one.
  *
- * Below `W2_MIN_SAMPLES` cells both halves report `insufficient` rather than failing.
+ * Below `W2_MIN_SAMPLES` cells a half reports `insufficient` rather than failing — **each half
+ * against the set it is itself computed over**, which for the lightness half is the iso-shade
+ * subset and not the sampled set. See `isoThin` below.
  */
 export function evaluateW2(samples) {
   const kept = samples.filter(
@@ -614,6 +628,22 @@ export function evaluateW2(samples) {
             W2_ISO_SHADE_TOLERANCE * medianShade,
         );
 
+  // **The lightness half's domain is the iso-shade subset, and only that subset.** `thin` above
+  // counts `kept`, which is the set the *neighbour* half walks; the lightness half is an IQR over
+  // the ring, and the ring is a small fraction of `kept` by construction — ±2.5% of the median
+  // shade is about 7% of the shade range §1.7's light spans, so a plane with a hundred sampled
+  // cells offers a handful. Guarding the IQR on `kept` is a bound that cannot bind for it:
+  // measured on the 45-world acceptance run, `kylem` scored `lightnessIqr` **0.020 against a floor
+  // of 8 from two cells**, and `capenna`, `fiora` and `shenmeng` were scored from two or three —
+  // four planes reddening W2 on a statistic with no domain, under a guard that read 21, 76, 31 and
+  // 7 sampled cells and waved all four through. An IQR over two points is the spread of two points.
+  const isoThin = isoShade.length < W2_MIN_SAMPLES;
+  const isoWhy = isoThin
+    ? `only ${isoShade.length} of ${kept.length} sampled cells lie within ` +
+      `±${W2_ISO_SHADE_TOLERANCE * 100}% of the median shade, below W2's domain of ` +
+      `${W2_MIN_SAMPLES}`
+    : null;
+
   return criterion(
     "W2",
     "The mosaic reads as tiles, not as a wash",
@@ -632,10 +662,15 @@ export function evaluateW2(samples) {
         iqr(isoShade.map((l) => l.L)),
         FLOORS.lightnessIqr,
         "min",
-        { insufficient: thin, why },
+        { insufficient: thin || isoThin, why: why ?? isoWhy },
       ),
     ],
-    { sampled: kept.length, isoShadeSampled: isoShade.length, medianShade },
+    {
+      sampled: kept.length,
+      isoShadeSampled: isoShade.length,
+      isoShadeThin: isoThin,
+      medianShade,
+    },
   );
 }
 
@@ -785,12 +820,79 @@ export function streamNeverRan(wanting, pool) {
   return pool.layers > 0 && pool.resident === 0 && wanting > 0;
 }
 
-export function evaluateW4(cells, evictionTimeline, pool) {
+/**
+ * **Was the session's byte budget already spent before this world was ever asked for anything?**
+ *
+ * `stream` is the {@link ArtStreamReport} read at the *entry* to a world's visit, before the camera
+ * flies to it. `artStream.ts:312` declines a request when `bytesFetched + bytesReserved >=
+ * byteBudget`, and that budget is a **session-lifetime backstop, not a per-frame one** — its own
+ * header says a session admits `byteBudget / ART_CROP_ESTIMATED_BYTES` = **729 bodies and then
+ * stops**. A per-world criterion read after the session hit that cap is a reading of the *tour*,
+ * not of the world.
+ *
+ * > **Measured, and it is why this guard exists (45-world acceptance run, main `28ec706`).** Toured
+ * > in one page, `bytesFetched` crossed 64 MiB at **capenna, the 8th world**. From `dominaria`
+ * > onward every one of the remaining 37 worlds reported `showing` = **0** of up to 967 wanting,
+ * > `declinedBudget` climbing to **3,046,465**, and W4 scored each a flat `fail` at `artFraction`
+ * > 0 — 37 false REDs on a renderer that was behaving exactly as specified.
+ * >
+ * > **{@link streamNeverRan} does not catch this, and the reason generalises.** That guard asks
+ * > whether anything is *resident*; a session that has spent its budget is still holding the
+ * > layers it bought on the first seven worlds, so `pool.resident` is large, the guard passes, and
+ * > the row reds. Two different mechanisms produce the same zero numerator, and a guard written
+ * > against one of them says nothing about the other.
+ *
+ * **Entry, not exit — and that is what keeps W4's falsifier alive.** A world whose *own* demand
+ * exhausts the budget within its own fresh session is a genuine W4 failure and must stay RED; only
+ * spend carried in from earlier worlds disqualifies the reading. `?artThreshold=fixed24` starves
+ * the policy inside one world, so it is untouched by this.
+ *
+ * The predicate is the renderer's own, deliberately: this is not a check on whether the budget is
+ * *correct* — it is the question "was this stream allowed to fetch", which only the shipped
+ * condition answers. Presence is required on all three fields ({@link readStream}'s reason,
+ * DEC-782): an absent `bytesReserved` would read as 0 and switch the guard off near the boundary.
+ */
+export function budgetBoundAtEntry(stream) {
+  for (const key of ["bytesFetched", "bytesReserved", "byteBudget"]) {
+    if (typeof stream?.[key] !== "number") {
+      throw new TypeError(
+        `W4 needs the entry stream report's ${key}: without it a tour's carried-over spend reads as a policy failure`,
+      );
+    }
+  }
+  return (
+    stream.byteBudget > 0 &&
+    stream.bytesFetched + stream.bytesReserved >= stream.byteBudget
+  );
+}
+
+/**
+ * `entryStream` is the stream report read **before** the visit began — see
+ * {@link budgetBoundAtEntry}. It is a required positional for the same reason `pool` is: defaulted,
+ * it would default the guard off, and the guard off is the defect.
+ */
+export function evaluateW4(cells, evictionTimeline, pool, entryStream) {
   const wanting = cells.filter(
     (c) => c.frontFacing && c.onScreen && c.wantsArt,
   );
   const showing = wanting.filter((c) => c.showingArt);
   const dead = streamNeverRan(wanting.length, pool);
+  const bound = budgetBoundAtEntry(entryStream);
+
+  // Both mechanisms forbid an *admission*, and an eviction is the far end of an admission: a pool
+  // that cannot take a layer in cannot push one out, so `evictionsPerSecond` is 0 by construction
+  // and passing it would be scoring a number the reading could not have moved. Named separately
+  // from `artFraction`'s reason so the report says which of the two produced the zero.
+  const noAdmission = dead
+    ? `the art stream never ran: ${wanting.length} cells want art and the pool has ${pool.layers} ` +
+      `layers, but nothing is resident, so no layer was ever handed out. This is a setup failure, ` +
+      `not a policy failure — see DEC-772.`
+    : bound
+      ? `the session's ${entryStream.byteBudget}-byte art budget was already spent before this ` +
+        `world was visited (${entryStream.bytesFetched} fetched + ${entryStream.bytesReserved} ` +
+        `reserved at entry), so every request here was declined for budget. This measures the ` +
+        `tour, not the world — give each world its own session.`
+      : null;
 
   return criterion(
     "W4",
@@ -802,15 +904,7 @@ export function evaluateW4(cells, evictionTimeline, pool) {
         wanting.length === 0 ? null : showing.length / wanting.length,
         FLOORS.artFraction,
         "min",
-        dead
-          ? {
-              insufficient: true,
-              why:
-                `the art stream never ran: ${wanting.length} cells want art and the pool has ` +
-                `${pool.layers} layers, but nothing is resident, so no layer was ever handed out. ` +
-                `This is a setup failure, not a policy failure — see DEC-772.`,
-            }
-          : {},
+        noAdmission === null ? {} : { insufficient: true, why: noAdmission },
       ),
       measure(
         "evictionsPerSecond",
@@ -818,6 +912,7 @@ export function evaluateW4(cells, evictionTimeline, pool) {
         evictionRate(evictionTimeline),
         FLOORS.evictionsPerSecond,
         "max",
+        noAdmission === null ? {} : { insufficient: true, why: noAdmission },
       ),
     ],
     {
@@ -826,6 +921,7 @@ export function evaluateW4(cells, evictionTimeline, pool) {
       poolLayers: pool.layers,
       belowShippedPool: pool.layers < SMALLEST_SHIPPED_POOL_LAYERS,
       streamNeverRan: dead,
+      budgetBoundAtEntry: bound,
       capacityCeiling: capacityCeiling(wanting.length, pool),
     },
   );
@@ -905,21 +1001,27 @@ export const W5_AZIMUTH_UNIFORMITY_TOLERANCE = 0.01;
  *
  * Returns `null` when the spacing is fine, or the reason it is not.
  */
-export function azimuthSpacingFault(azimuths, tolerance = W5_AZIMUTH_UNIFORMITY_TOLERANCE) {
+export function azimuthSpacingFault(
+  azimuths,
+  tolerance = W5_AZIMUTH_UNIFORMITY_TOLERANCE,
+) {
   const turn = Math.PI * 2;
   const n = azimuths.length;
   if (n < 2) return null;
 
   // Fold onto [0, 2π) first: a sampler that walks past a full turn is still uniform, and a sampler
   // that reports negative angles is too. `%` keeps the sign in JS, so add a turn before folding.
-  const sorted = azimuths.map((a) => ((a % turn) + turn) % turn).sort((x, y) => x - y);
+  const sorted = azimuths
+    .map((a) => ((a % turn) + turn) % turn)
+    .sort((x, y) => x - y);
 
   const ideal = turn / n;
   const slack = ideal * tolerance;
   for (let i = 0; i < n; i += 1) {
     // The last gap wraps: it is what makes a comb covering only half the turn fail rather than read
     // as n−1 perfect gaps.
-    const gap = i === n - 1 ? sorted[0] + turn - sorted[i] : sorted[i + 1] - sorted[i];
+    const gap =
+      i === n - 1 ? sorted[0] + turn - sorted[i] : sorted[i + 1] - sorted[i];
     if (Math.abs(gap - ideal) > slack) {
       return (
         `azimuths are not evenly spaced around the turn (gap ${gap.toFixed(4)} rad against an ` +
