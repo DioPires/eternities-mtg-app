@@ -111,6 +111,28 @@ export const FLOORS = {
    * 3. **It is a property of the shipped swatches, so a refresh can invalidate it** without a line of
    *    rendering code changing. The runbook's §4.3 says to re-derive on every refresh that rebuilds
    *    the v3 dataset, and one world — ravnica — is the whole of the upper bound.
+   *
+   * ### Retracted: this number separates nothing (DEC-752, routed from DEC-830)
+   *
+   * Everything above stands as the record of how 0.55 was picked. It is **not** a floor a verdict may
+   * rest on. The upper bound it was derived from — the acceptance tour's 0.7070 — is flagged above as
+   * n=1, and at n=3 on one unchanged dataset, one roster, one 26-world W3 domain and one pose the
+   * same fold draws **0.4253 (`accept4`) / 0.7070 (`dec826-bare`) / 0.8005 (`accept3`)**. 0.55 is
+   * inside that span, so the row's colour is settled by the draw. Worse for the derivation, the
+   * shipped arm's lowest (0.4253) is *below* the composed control's highest (0.4477): the two arms
+   * **overlap**, which is `w3-floor.mjs`'s "no separating floor exists" outcome.
+   *
+   * The DEC-816 impasse is therefore not gone. `accept4` re-drew 0.4253 on leg G with DEC-804,
+   * DEC-812 and DEC-814 all in the tree, and DEC-830 re-drew it again — the figure did not move out
+   * from under the impasse, it recurs.
+   *
+   * **The mechanism is the fold, not the renderer.** A minimum over the in-domain worlds of a
+   * per-world minimum over band pairs falls as the population grows: truncated to the first 8 worlds
+   * the same dataset reads 1.3499/1.3926 over 5 in-domain planes, and over the full 43 it reads
+   * 0.25–0.80. The worst plane's identity drifts with it — innistrad, ravnica, eldraine,
+   * forgotten-realms, avishkar over five draws. Replacing the fold with a statistic that converges is
+   * a §3.1 amendment and the owner's call; this leg measures and does not move the criterion. Until
+   * it is settled, **a GREEN W3 row is not evidence** (spec §3.2, condition 1).
    */
   bandDeltaE: 0.55,
   /** W4: fraction of cells above the effective threshold that are showing art. */

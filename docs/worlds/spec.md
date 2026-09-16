@@ -2233,6 +2233,77 @@ events; the focused card's tilt feels physical; and, new, **the tether reads as 
 > share. And the floor is a property of the shipped swatches, resting on one world (ravnica) from
 > above, so a refresh can invalidate it without a line of rendering code changing.
 
+> **Retraction — the interval `(0.4477, 0.7070]` does not exist, and 0.55 does not separate
+> anything (DEC-752, routed from DEC-830).** The block above flags its own weakness in one line —
+> "the upper bound is n=1 and is the less-tested half" — and that line turns out to carry the whole
+> derivation. Re-read off the gate's own summaries rather than off this document, the upper bound is
+> not a reading but a **draw from a distribution that straddles the floor**:
+>
+> | run | worlds visited | W3 in-domain | `minAdjacentBandDeltaE` | worst plane | `artFraction` |
+> | --- | --- | --- | --- | --- | --- |
+> | `accept3` | 45 | 26 fail / 17 insufficient | **0.8005** | innistrad | 0.6956 |
+> | `dec826-bare` | 45 | 26 / 17 | **0.7070** | ravnica | 0.7447 |
+> | `accept4` | 45 | 26 / 17 | **0.4253** | ravnica | 0.6952 |
+> | `acceptance2` | 45 | 28 / 17 | 0.5316 | forgotten-realms | 0.0000 |
+> | `acceptance` | 45 | 28 / 17 | 0.2528 | eldraine | 0.0000 |
+> | `order-fwd` | 8 | 5 / 3 | 1.3499 | avishkar | 0.9896 |
+> | `order-rev` | 8 | 5 / 3 | 1.3926 | avishkar | 0.9896 |
+>
+> Read the top three rows alone. They are the same dataset (`c9468f1125bcddff`), the same 45-world
+> roster, the same 26-world W3 domain, and the same 2.2-radii pose, and they span **0.4253 – 0.8005,
+> a factor of 1.9, with 0.55 inside it**. The floor was set from the middle one. Two further draws
+> on DEC-830's tree — 0.1632 and 1.2100/1.2259 — widen the same span without changing its verdict.
+>
+> **0.4253 was not a retired figure.** The block above dismisses it as predating DEC-804's centre
+> fix, DEC-812's budget and DEC-814's belt rotation. It does not: `accept4` drew it on leg G, with
+> all three in the tree, and DEC-830 re-drew it again. The impasse's figures did not move out from
+> under the impasse — the impasse is reproducible, and the composed control's worst reading
+> (**0.4477**, n=4) sits *above* the shipped arm's lowest (**0.4253**). The two intervals **overlap**,
+> which is `w3-floor.mjs`'s documented "no separating floor exists" outcome rather than a floor to
+> pick.
+>
+> **Why the fold moves this much, which is the part that generalises.** §3.1 folds W3 to the worst
+> world, and each world's own reading is already the closest of its qualifying band pairs — so the
+> tour value is a **minimum of minima over a population**, and its expected value falls as the
+> population grows. The last two rows measure exactly that on the same dataset: truncated to the
+> first 8 worlds alphabetically the fold reads 1.35 and 1.39 over 5 in-domain planes; over the full
+> 43 it reads 0.25 – 0.80. The worst plane's *identity* is not stable either — innistrad, ravnica,
+> eldraine, forgotten-realms, avishkar across five draws — which is what a min over a fluctuating
+> population looks like from the outside.
+>
+> **That it is the fold and not the renderer is measurable, and it was measured.** The three
+> full-roster draws above put the same 28 worlds in W3's domain, and their per-world readings are on
+> disk in each run's `baseline/visits.json`. Re-folded four ways over exactly those 28 values:
+>
+> | fold | `accept3` | `dec826-bare` | `accept4` | spread |
+> | --- | --- | --- | --- | --- |
+> | **min** (shipped) | 0.8005 | 0.7070 | 0.4253 | **1.88×** |
+> | p10 | 1.3190 | 1.4626 | 0.8962 | 1.63× |
+> | p25 | 2.1101 | 1.9939 | 1.9588 | **1.08×** |
+> | median | 3.0965 | 3.0155 | 3.6764 | 1.22× |
+> | mean | 4.0393 | 3.9835 | 4.1361 | **1.04×** |
+>
+> `scripts/w3-fold.mjs` prints this table from the run directories; it is not a figure to take on
+> trust here. The underlying frames are the same frames — only the choice of fold decides whether the
+> criterion reproduces. At p25 or the mean the three draws agree to within 8%; at the minimum they
+> disagree by a factor of two. **"Use a quantile" is not by itself the fix**: p10 still swings 1.63×,
+> because the low tail is where all of the movement lives. The volatility is not spread evenly
+> either — ulgrotha reads 12.13 / 11.90 / 12.00 across the three (1.02×) while avishkar reads
+> 1.39 / 2.03 / 5.74 (4.14×) — so the fold is sampling whichever world happens to draw badly that
+> session, and 0.55 is a bet on which one that is.
+>
+> So a converging statistic exists in this data — p25 or the mean over in-domain worlds, with the
+> worst plane and its value still reported as evidence rather than as the score. **Choosing one is a
+> §3.1 amendment and belongs to the owner, not to this leg**; leg G records the measurement and does
+> not move the criterion. Note what the change would *not* buy: it makes W3 reproducible, and it does
+> not by itself re-establish separation from `?art=off&bands=shuffle`, which has to be re-derived
+> under whichever fold is chosen — and re-derived from the arms' *distributions*, since that is the
+> error this block exists to retract.
+>
+> Until that is settled, `FLOORS.bandDeltaE` stays at 0.55 **as a recorded non-separating value**,
+> not as an accepted floor, and §3.2's condition 1 may not be read as cleared for W3 on the strength
+> of a GREEN row — see the note there.
+
 > **Normative — the measure keys in this table are the keys the module emits.** `checkControlRow`
 > resolves a row by `{criterion, measure}` and reports `W1 has no measure "…"` when the name is not
 > one a criterion actually returned, so a typo here surfaces as a failing row with a confusing
@@ -2463,6 +2534,17 @@ The galaxy ships until **all four** of these hold:
    > regression check whose control is historical, which is weaker than every other row here and is
    > recorded as such rather than counted as though the gate exercised it. Routed to the CEO for a
    > ruling on whether §1.8 is owed a seam; it does not block the other eleven expectations.
+   >
+   > **A GREEN W3 row does not clear this condition, and today it cannot (DEC-752, routed from
+   > DEC-830).** `minAdjacentBandDeltaE` folds to a minimum of minima over the in-domain worlds, and
+   > on one unchanged dataset at one pose it draws **0.4253 – 0.8005** with `FLOORS.bandDeltaE` at
+   > **0.55** inside that span — so whether the row prints GREEN is settled by the draw, and the
+   > shipped arm's lowest reading sits *below* the composed control's highest. The §3.1 retraction
+   > block carries the seven-run table and the reason. Condition 1 therefore reads: `GATE: GREEN`
+   > **plus** a W3 floor that separates the shipped arm from `?art=off&bands=shuffle` across
+   > sessions, not at one. Until the owner rules on §3.1's fold, **a green W3 is evidence of a lucky
+   > tour and nothing else** — re-running until one appears would be the failure this condition
+   > exists to prevent.
 2. the owner accepts the judged criteria of §3.1 on the capture set;
 3. the W0.1 Windows field reports confirm concept B's cost class on the Iris Xe and the 780M — or the
    owner explicitly waives the hardware gate. This is the outstanding item the W2.3 record names, and

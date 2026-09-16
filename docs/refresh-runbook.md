@@ -347,6 +347,27 @@ no separating floor exists, which is a finding rather than a number to pick. Re-
 swatch palette moves: the floor is a property of the shipped swatches, so a refresh can invalidate it
 without a line of rendering code changing.
 
+**Run each arm more than once, and read the shipped arm's _minimum_ against the control's _maximum_.**
+As shipped, `FLOORS.bandDeltaE` is 0.55 and it separates nothing: on one unchanged dataset the shipped
+arm drew 0.4253 / 0.7070 / 0.8005 across three sessions, and the composed control's worst was 0.4477 —
+the arms overlap, so the row's colour is the draw. The cause is the fold, a minimum over the in-domain
+worlds of a per-world minimum, whose expected value falls as the population grows: the same dataset
+truncated to 8 worlds reads 1.35–1.39 and over the full 43 reads 0.25–0.80. A single tour per arm
+cannot see any of that. **Until the owner rules on §3.1's fold, do not read a GREEN W3 row as an
+accepted criterion** — spec §3.2, condition 1, says why.
+
+`scripts/w3-fold.mjs` is the instrument for that half. Point it at two or more gate run directories
+and it re-scores W3 five ways over the worlds in the domain of *all* of them:
+
+```sh
+node scripts/w3-fold.mjs --row baseline worlds-gate/accept3 worlds-gate/dec826-bare worlds-gate/accept4
+```
+
+It reports the spread of each fold, the per-world spread worst-first, and whether the same world
+scored the shipped fold every session — on the three runs above, two different worlds did. Use it
+before quoting any W3 aggregate: one tour cannot tell a build that moved from a fold that sampled a
+different plane.
+
 **One measure in that matrix has no live control, and it is `homeLabels`.** §3.1's table lists a
 sixth red row — `labels forced on for empty planes` — which this gate does not run: forcing labels
 on for suppressed planes is renderer behaviour, and none of the six shipped seams (`?probe=`,
