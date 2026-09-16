@@ -31,7 +31,24 @@
  * > "§1.6 a satisfied want set stops asking (DEC-833)".
  * >
  * > What the baseline arm does cost, and what a bound on the eviction rate is really defending:
- * > **147.8 MiB over 60.1 s = 2,518 KiB/s, sustained for as long as the page is open.**
+ * > **≈1,380–1,415 KiB/s (~1.4 MiB/s), sustained for as long as the page is open** — 1,382 on
+ * > DEC-834's 120 s run and 1,413 (converged, second half 1,392) on DEC-835's 150 s re-measurement,
+ * > two independent runs. Quote the range, not either endpoint.
+ * >
+ * > **That figure is a CORRECTION of DEC-833's own 2,518 KiB/s (DEC-834 §5b).** 2,518 reproduces —
+ * > it is what a 60 s window differenced *from page load* reads — but ~946 fill bodies are still in
+ * > flight at t=0 and land inside it, so it is the page load amortised over the window, not the
+ * > steady state. Differenced from the end of the fill instead, the same 120 s run reads 1,382 KiB/s
+ * > over t=27→120 s, 1,364 over the last 60 s and 1,368 over the last 30 s — a tail stable to ~1%.
+ * > The direction of the finding is untouched (a parked page still streams forever, and PRD 7.2
+ * > still does not bound it); the number a ruling would quote is 82% smaller. The summary below now
+ * > differences the tail, and labels the whole-window figure as the fill-contaminated one it is.
+ * >
+ * > **Excluding the fill is necessary and not sufficient, so the tail scores its own convergence.**
+ * > The byte rate keeps settling well after the pool holds every layer it will hold: a 60 s baseline
+ * > reads 1,461 KiB/s from t=6, 1,460 from t=12, 1,421 from t=24 and 1,382 from t=36 — all with the
+ * > same end point. **A 60 s run cannot produce a converged figure and this script now says so
+ * > rather than printing one.** Use `--seconds 150` (the default) or longer for a number to quote.
  *
  * **Why this exists when `worlds-art-convergence.mjs` already samples the same counter.** That one
  * asks for `?probe=1`, and `harnessRoute.ts:67` redirects anything that is neither `shell` nor `0`
@@ -55,6 +72,12 @@
  * pose at all. PRD 5.3.23 cancels attract on any input and a bare pointermove is not a drag, so the
  * rig is untouched. The radii are asserted every sample as the detector: if attract fires anyway,
  * the camera recedes and the run fails loudly rather than reporting churn it did not measure.
+ *
+ * **Every arm asserts that it took (DEC-834 N3).** The first version of this script *printed*
+ * `entered=0` under `--reduced` and asserted nothing — the same shape as the dead `--motion0` arm it
+ * was written to replace, and a refactor that stopped the shell listening to the OS preference would
+ * have produced another silently passing control. Both arms now fail loudly instead: see
+ * `assertControlTook` below.
  *
  * Run: `node scripts/worlds-evict-longrun.mjs [--seconds 150] [--reduced] [--motion0]`
  * Requires a built `dist/` for the worlds dataset; it starts its own `vite preview --port 0`.
@@ -97,6 +120,72 @@ const motionOff = process.argv.includes('--motion0')
  */
 const reduced = process.argv.includes('--reduced')
 
+/**
+ * Below this many differenced samples the arm is not scored — it is REFUSED. `entered` is null on
+ * the first sample (nothing to difference against), so a run short enough to produce one or two rows
+ * would satisfy "`entered` was 0 on every sample" by having no samples, which is the vacuity this
+ * whole change exists to remove. At the 3 s cadence a 45 s run yields ~14.
+ */
+const MIN_CONTROL_SAMPLES = 4
+
+/**
+ * **The control read-back (DEC-834 N3).** `--reduced` is only a control if the run can be made to
+ * FAIL when it does not take, and the first version of this script merely printed `entered=0` —
+ * exactly the shape of the dead `--motion0` arm it replaced, where `emulateMediaFeatures` /
+ * `?motion=0` was called and nothing ever read back that the scene had frozen.
+ *
+ * Two independent reads, because either alone is satisfiable by a broken instrument:
+ *
+ *  - **`entered`** — how many cells the want set newly admitted since the last sample. A frozen
+ *    scene admits none. This is the quantity the verdict is about, so it is the one that matters.
+ *  - **`multiverseAngle`** — the table's own integrated angle, the direct read-back of the
+ *    mechanism. `planeTable.advance` scales the integration by `motion`, which PRD 5.9 pins to 0
+ *    under reduced motion, so the angle is frozen *exactly* where it stood: `x + 0` is bit-identical
+ *    and `% TAU` of an in-range value is a no-op. That exactness is why this asserts equality and
+ *    not a tolerance — a tolerance would pass a scene that had merely slowed.
+ *
+ * **Both are asserted in BOTH directions, which is the part that stops this fix from becoming its
+ * own tautology.** A `multiverseAngle` that had silently become a constant — a probe rewire, a table
+ * that stopped being built — would score the `--reduced` arm green forever and no input could red
+ * it. So the baseline arm has the matching obligation: the same two reads must MOVE. Three quiet
+ * samples in a row is a failed run in whichever arm you are in.
+ *
+ * Throws on the first offending sample, naming it, so the failure is diagnosable from the last line.
+ */
+const assertControlTook = (sample, previous, first) => {
+  const at = `t=${sample.t.toFixed(1)}s`
+  if (reduced) {
+    if (sample.entered !== 0) {
+      throw new Error(
+        `--reduced CONTROL FAILED at ${at}: the want set admitted ${sample.entered} new cells ` +
+          `(expected 0). The scene is still moving, so this arm is not a control — check that ` +
+          `prefers-reduced-motion still reaches App.tsx's useReducedMotion on this route.`,
+      )
+    }
+    if (sample.multiverseAngle !== first.multiverseAngle) {
+      throw new Error(
+        `--reduced CONTROL FAILED at ${at}: multiverseAngle moved ` +
+          `${first.multiverseAngle} -> ${sample.multiverseAngle}. PRD 5.9 pins the table's motion ` +
+          `factor to 0 under reduced motion, so the angle cannot integrate; it did.`,
+      )
+    }
+    return
+  }
+  if (sample.entered <= 0) {
+    throw new Error(
+      `BASELINE FAILED at ${at}: the want set admitted 0 new cells over ${(sample.t - previous.t).toFixed(1)}s. ` +
+        `dominaria's 262.592 s spin carries ~18 cells/s across the admission boundary, so a quiet ` +
+        `sample means the scene is frozen (throttled rAF?) and the --reduced arm's 0 would prove nothing.`,
+    )
+  }
+  if (sample.multiverseAngle === previous.multiverseAngle) {
+    throw new Error(
+      `BASELINE FAILED at ${at}: multiverseAngle held at ${sample.multiverseAngle}. This read is ` +
+        `the --reduced arm's evidence; if it cannot move here it is a constant, not a detector.`,
+    )
+  }
+}
+
 const CHROME = [
   process.env.CHROME_PATH,
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
@@ -113,6 +202,10 @@ const READ = (world) => {
   const wanting = payload.cells.filter((c) => c.frontFacing && c.onScreen && c.wantsArt)
   return {
     radii: payload.radii,
+    // The table's own integrated angle (`probeSeam.ts:169` -> `planeTable.multiverseAngle`). This is
+    // the DIRECT read-back of what `--reduced` is supposed to change, and it is read in the same
+    // round trip as the want set so the two cannot disagree about which frame they describe.
+    multiverseAngle: window.__eternitiesProbe.state().multiverseAngle,
     wanting: wanting.length,
     // The MEMBERSHIP of the want set, not just its size. The size is flat at ~942 in every arm; what
     // separates a frozen scene from a spinning one is WHICH cells are in it.
@@ -168,6 +261,13 @@ try {
   )
   await page.goto(`${base}/${query}`, { waitUntil: 'networkidle2', timeout: 60_000 })
   await page.waitForFunction(() => window.__eternitiesProbe !== undefined, { timeout: 30_000 })
+  // The seam answers before the scene is real, with a placeholder that reads as a genuine payload.
+  // `programWarmup` is the standing gate on that (`warmup-probe.mjs:92`): until it is non-null the
+  // numbers below describe a composition that has not finished coming up.
+  await page.waitForFunction(
+    () => window.__eternitiesProbe?.state().programWarmup != null,
+    { timeout: 60_000 },
+  )
   if (!(await page.evaluate((s) => window.__eternitiesProbe.focusPlane(s), WORLD))) {
     throw new Error(`focusPlane(${WORLD}) refused`)
   }
@@ -223,10 +323,15 @@ try {
     throw new Error(`camera stopped at ${current.toFixed(3)} radii, not ${TARGET_RADII}`)
   }
   const settled = current
-  // The arm is `query`'s to state, not this line's — a hardcoded "motion ON" here printed over the
-  // control arm's own label and would have read as a failed control rather than a reporting bug.
+  // **This line used to be wrong in both directions** (DEC-834 N3's second rider): it took `motionOff`
+  // as the arm, so it printed "motion OFF" for `--motion0` — the arm where the seam is inert and the
+  // scene is still spinning — and "motion ON" for `--reduced`, the arm where it is genuinely frozen.
+  // `reduced` is the flag that changes what the scene does on this route, so it is the one that names
+  // the arm; `--motion0` is reported as the inert passenger it is.
   console.log(
-    `settled at ${settled.toFixed(4)} radii, motion ${motionOff ? 'OFF' : 'ON'}, sampling ${seconds}s\n`,
+    `settled at ${settled.toFixed(4)} radii, motion ${reduced ? 'OFF (prefers-reduced-motion: reduce)' : 'ON'}` +
+      `${motionOff ? ' [--motion0 also set: INERT on this route, changes nothing]' : ''}, ` +
+      `sampling ${seconds}s\n`,
   )
 
   const started = Date.now()
@@ -235,6 +340,8 @@ try {
   let lastBeat = 0
   let x = 5
   const rows = []
+  /** Samples the control was actually scored on. See `MIN_CONTROL_SAMPLES`. */
+  let scored = 0
   for (;;) {
     const elapsed = (Date.now() - started) / 1000
     // The attract heartbeat. A bare move, never a drag: no button, and the position barely changes.
@@ -258,19 +365,50 @@ try {
       const left = prevMembers === null ? null : [...prevMembers].filter((c) => !now.has(c)).length
       prevMembers = now
       delete s.members
-      rows.push({ t: Number(elapsed.toFixed(1)), entered, left, ...s })
+      const previous = rows[rows.length - 1]
+      const row = { t: Number(elapsed.toFixed(1)), entered, left, ...s }
+      rows.push(row)
       console.log(
-        `  t=${String(rows[rows.length - 1].t).padStart(6)}s radii=${s.radii.toFixed(3)} ` +
+        `  t=${String(row.t).padStart(6)}s radii=${s.radii.toFixed(3)} ` +
           `entered=${String(entered).padStart(4)} left=${String(left).padStart(4)} ` +
           `wanting=${String(s.wanting).padStart(4)} showing=${String(s.showing).padStart(4)} ` +
           `resident=${String(s.resident).padStart(4)}/${s.layers} ` +
           `evict=${String(s.evictions).padStart(6)} req=${String(s.requested).padStart(5)} ` +
-          `resolved=${String(s.resolved).padStart(5)}`,
+          `resolved=${String(s.resolved).padStart(5)} angle=${s.multiverseAngle.toFixed(6)} ` +
+          // Per-sample, so the summary's sustained figure can be RE-DERIVED over any window from the
+          // log rather than taken on trust. The whole reason that number was wrong for a wave is
+          // that it only ever existed as one line nobody could difference a second way.
+          `mib=${(s.bytesFetched / 1048576).toFixed(1)}`,
       )
+      // The arm asserts it took, on every sample it can difference. `entered` is null on the first,
+      // which is why `scored` is counted rather than inferred from `rows.length`.
+      if (entered !== null) {
+        assertControlTook(row, previous, rows[0])
+        scored += 1
+      }
     }
     if (elapsed >= seconds) break
     await sleep(3000)
   }
+
+  // **Refuse to report before reporting anything.** "`entered` was 0 on every sample" is true of a
+  // run with no samples, so a short or stalled run must not be allowed to print a verdict at all.
+  if (scored < MIN_CONTROL_SAMPLES) {
+    throw new Error(
+      `REFUSING to score: only ${scored} differenced sample(s), need ${MIN_CONTROL_SAMPLES}. ` +
+        `The control's assertions are vacuous on a window this short.`,
+    )
+  }
+  const angleSpan = rows[rows.length - 1].multiverseAngle - rows[0].multiverseAngle
+  console.log(
+    `\n  CONTROL (${reduced ? '--reduced' : 'baseline'}): ${scored} samples asserted — ` +
+      (reduced
+        ? `want set admitted 0 new cells on every one, multiverseAngle constant at ` +
+          `${rows[0].multiverseAngle.toFixed(6)} rad. The arm took.`
+        : `want set admitted new cells on every one, multiverseAngle advanced (${rows[0].multiverseAngle.toFixed(6)} ` +
+          `-> ${rows[rows.length - 1].multiverseAngle.toFixed(6)} rad, ${angleSpan >= 0 ? '' : 'wrapped, '}` +
+          `TAU-modular). Both reads move here, so a 0 under --reduced is evidence.`),
+  )
 
   // The verdict, from the shape of the tail: the rate over the last third against the rate over the
   // first third. A fill decays; churn does not.
@@ -279,14 +417,74 @@ try {
   const early = rate(rows[0], rows[third])
   const late = rate(rows[rows.length - 1 - third], rows[rows.length - 1])
   const total = rows[rows.length - 1].evictions - rows[0].evictions
-  // The sustained wire cost of the steady state, which is what a bound on the eviction rate is
-  // really defending. Differenced, not session-cumulative.
+  // The wire cost, which is what a bound on the eviction rate is really defending. Differenced, not
+  // session-cumulative — but differencing from the FIRST row is not enough, and calling that figure
+  // "sustained" is what produced DEC-833's 2,518 KiB/s (DEC-834 §5b). ~946 fill bodies are still in
+  // flight when sampling opens and land inside the window, so a from-t0 rate is the page load
+  // amortised over the run. It is reported, and labelled as the contaminated figure it is.
   const bytes = rows[rows.length - 1].bytesFetched - rows[0].bytesFetched
   const span = rows[rows.length - 1].t - rows[0].t
   console.log(
-    `  streamed ${(bytes / 1024 / 1024).toFixed(1)} MiB over ${span.toFixed(1)}s = ` +
-      `${(bytes / span / 1024).toFixed(0)} KiB/s sustained`,
+    `  WHOLE WINDOW (includes the fill — NOT the sustained cost): ` +
+      `${(bytes / 1024 / 1024).toFixed(1)} MiB over ${span.toFixed(1)}s = ${(bytes / span / 1024).toFixed(0)} KiB/s`,
   )
+  // **The fill ends when the pool PLATEAUS, not when `resident` stops climbing.** "Stops climbing"
+  // is the obvious detector and it is wrong here: a saturated pool churns, so `resident` ticks
+  // 1023 -> 1024 -> 1023 forever and the last upward tick lands in the final seconds. Measured on a
+  // 60 s baseline it put the fill's end at t=57.1 s and left a 2-row, 3.0 s "steady state" — one
+  // sample dressed as a rate, which is the same class of error as the label it replaced.
+  //
+  // The plateau is what the fill is really about: the first sample at which the pool holds every
+  // layer it is ever going to hold. That is `max(resident)` — 1024 saturated with motion on, and 967
+  // under `--reduced`, where the pool never saturates at all and the plateau is set by demand.
+  const peakResident = Math.max(...rows.map((r) => r.resident))
+  const fillEnd = rows.findIndex((r) => r.resident === peakResident)
+  const tail = rows.slice(fillEnd)
+  // A rate needs a window. Below this the fill and the steady state are not separable in this run,
+  // and the honest thing is to report no sustained figure rather than a noisy one — mislabelling
+  // this number is the defect being fixed, so a too-short window must not produce one.
+  const MIN_TAIL_ROWS = 5
+  if (tail.length < MIN_TAIL_ROWS) {
+    console.log(
+      `  STEADY STATE: UNAVAILABLE — the pool only plateaued at t=${rows[fillEnd].t}s, leaving ` +
+        `${tail.length} row(s). Re-run with a longer --seconds; the whole-window figure above is ` +
+        `the fill and must not be quoted as sustained.`,
+    )
+  } else {
+    const over = (w) => {
+      const bytes = w[w.length - 1].bytesFetched - w[0].bytesFetched
+      const span = w[w.length - 1].t - w[0].t
+      return { kib: bytes / span / 1024, mib: bytes / 1024 / 1024, span, asked: w[w.length - 1].requested - w[0].requested }
+    }
+    const whole = over(tail)
+    // **The tail has to be shown to have CONVERGED, not just to start after the fill.** Excluding the
+    // fill is necessary and it is not sufficient: measured on a 60 s baseline, the same run reads
+    // 1,461 KiB/s from t=6, 1,460 from t=12, 1,445 from t=18, 1,421 from t=24 and 1,382 from t=36 —
+    // a monotone 5.4% decline, because the byte rate keeps settling long after the pool has every
+    // layer it will hold. Quoting the t=12 figure as "sustained" would be the same error as quoting
+    // the whole window, one order smaller. So the tail is scored against its own second half, and a
+    // run that has not settled reports that instead of a number.
+    const half = over(tail.slice(Math.floor(tail.length / 2)))
+    // A relative drift is undefined at zero, and zero is the `--reduced` arm's whole point: it
+    // streams nothing at all once the want set is satisfied, so `0/0` would report the one arm that
+    // HAS converged as unconverged. Two zeros agree exactly.
+    const drift =
+      whole.kib === 0 ? (half.kib === 0 ? 0 : 1) : Math.abs(half.kib - whole.kib) / whole.kib
+    const TAIL_CONVERGENCE = 0.02
+    console.log(
+      `  STEADY STATE (pool plateaued at ${peakResident} layers, t=${rows[fillEnd].t}s; ${tail.length} rows): ` +
+        `${whole.mib.toFixed(1)} MiB over ${whole.span.toFixed(1)}s = ${whole.kib.toFixed(0)} KiB/s, ` +
+        `${whole.asked} requests = ${(whole.asked / whole.span).toFixed(2)}/s`,
+    )
+    console.log(
+      drift <= TAIL_CONVERGENCE
+        ? `  -> CONVERGED: the tail's own second half reads ${half.kib.toFixed(0)} KiB/s ` +
+          `(${(drift * 100).toFixed(1)}% off). ${whole.kib.toFixed(0)} KiB/s is the sustained cost.`
+        : `  -> NOT CONVERGED: the tail's second half reads ${half.kib.toFixed(0)} KiB/s, ` +
+          `${(drift * 100).toFixed(1)}% off the ${whole.kib.toFixed(0)} above — the byte rate is still ` +
+          `settling. Do NOT quote either as sustained; re-run with a longer --seconds.`,
+    )
+  }
   console.log(
     `\n  early rate ${early.toFixed(2)}/s   late rate ${late.toFixed(2)}/s   ` +
       `cumulative ${total} over ${rows[rows.length - 1].t}s`,
