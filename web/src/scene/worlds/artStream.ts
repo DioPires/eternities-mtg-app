@@ -457,6 +457,45 @@ export class ArtStream {
     return this.bytesOutstanding + this.bytesReserved >= this.byteBudget
   }
 
+  /**
+   * How many admitted cells this budget can keep resident at once (§1.6, DEC-819).
+   *
+   * > **Normative — §1.6's threshold is taken against the *smaller* of the pool and this
+   * > (DEC-819, board ruling on DEC-816 R2).** The quantile fit demand to
+   * > {@link ArtPool.layers} and read no byte at all, and the two bounds are independent: a pool can
+   * > have layers free while the budget is spent. On a world whose bodies are large enough the
+   * > threshold therefore admitted a working set the session could not pay for, spent the budget on
+   * > a prefix of it, and declined the rest — reaching {@link ArtStream.swatchOnly} *by exhaustion*
+   * > rather than by policy, which is the state §1.6's quantile exists to remove. A world too large
+   * > to show art at §3.1's 0.9 now raises its threshold and shows fewer, larger cells at full
+   * > coverage.
+   *
+   * **A total, deliberately — not `(byteBudget − outstanding − reserved) / mean`.** The bound it
+   * sits beside is `pool.layers`, which is the pool's *whole* capacity and not its free-layer count:
+   * the threshold sizes a steady state in which this world's admitted set has displaced whatever
+   * the LRU was holding for the last one. Netting off live spend would make the quantile a
+   * controller reading its own output — the admitted set shrinks, the spend it caused is still
+   * outstanding, and the next frame shrinks it again — and it would make a cell's admission depend
+   * on the *order* worlds were visited in, which is the per-item-reading-order defect §3.1 made W4
+   * per-world to avoid.
+   *
+   * **{@link ART_CROP_ADMITTED_MEAN_BYTES}, not {@link ART_CROP_ESTIMATED_BYTES}.** What has to fit
+   * is settled residency, which is what the budget is tested against; the 90 KiB estimate sits
+   * ~10% under the admitted mean on purpose (it must not throttle a session early on a guess), and
+   * dividing by it would size the admitted set ~10% over what the session can actually hold — the
+   * same systematic overshoot, moved from the ledger into the policy.
+   *
+   * **Inert at the shipped default, by construction.** {@link defaultByteBudget} is
+   * `layers x mean x` {@link BYTE_BUDGET_HEADROOM}, so this reads `floor(1.5 x layers)` and
+   * `pool.layers` is always the binding one. That is the headroom constant's meaning stated from
+   * the other side, and it is why this bound can only ever *raise* the threshold on a session whose
+   * budget was hand-set below a full pool's settled cost — see {@link ArtStreamOptions.byteBudget},
+   * whose "stays swatch-only until demand or the dataset changes" is exactly what it replaces.
+   */
+  get affordableCells(): number {
+    return Math.floor(this.byteBudget / ART_CROP_ADMITTED_MEAN_BYTES)
+  }
+
   report(): ArtStreamReport {
     return {
       bytesFetched: this.bytesFetched,

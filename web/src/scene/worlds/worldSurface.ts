@@ -109,6 +109,28 @@ export interface WorldSurfaceOptions {
   readonly artTexture: DataArrayTexture | null
 }
 
+/**
+ * The capacity §1.6's quantile is taken against: the pool's layers **and** what the budget can pay
+ * to keep resident, whichever is smaller (§1.6, DEC-819).
+ *
+ * > **Normative — the threshold is budget-aware (board ruling on DEC-816 R2).** It used to be
+ * > `pool.layers` alone. The two bounds are independent — a pool can have layers free while the
+ * > budget is spent — so on a world whose bodies are large enough the quantile admitted a working
+ * > set the session could not pay for and the stream then declined its tail for budget, arriving at
+ * > swatch-only *by exhaustion* rather than by policy. See {@link ArtStream.affordableCells} for the
+ * > conversion, for why it is a total rather than a remainder, and for why it cannot bind at the
+ * > shipped default.
+ *
+ * A stream-less world is a legal swatch-only build (§1.6) with no budget to be bound by, so the
+ * pool is the whole of its bound: `null` here must not read as "affords nothing", which would raise
+ * the threshold on a world that has no byte problem. `admitted` is still a true count of what the
+ * frame *would* have asked for, which is what `wantsArt` reports.
+ */
+export function admissibleCells(pool: ArtPool, stream: ArtStream | null): number {
+  if (stream === null) return pool.layers
+  return Math.min(pool.layers, stream.affordableCells)
+}
+
 /** One tick's view state. */
 export interface WorldFrame {
   readonly camera: ProbeCamera
@@ -360,7 +382,10 @@ export class WorldSurface {
     this.onScreen = new Uint8Array(cardCount)
     this.fade = new Float32Array(cardCount)
 
-    this.thresholdReport = options.threshold.end(options.pool.layers, this.thresholdMemory)
+    this.thresholdReport = options.threshold.end(
+      admissibleCells(options.pool, options.stream),
+      this.thresholdMemory,
+    )
     this.crossoverValue = crossoverState(0)
   }
 
@@ -540,7 +565,7 @@ export class WorldSurface {
       if (front && on) threshold.offer(height)
     }
 
-    this.thresholdReport = threshold.end(pool.layers, this.thresholdMemory)
+    this.thresholdReport = threshold.end(admissibleCells(pool, stream), this.thresholdMemory)
     const effective = this.thresholdReport.effectiveThresholdPx
     const fadeStep = ART_FADE_S > 0 ? frame.deltaSeconds / ART_FADE_S : 1
 
