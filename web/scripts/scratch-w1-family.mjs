@@ -195,7 +195,11 @@ async function main() {
         halfWidthPct: ((max - min) / 2 / ((min + max) / 2)) * 100,
         maxTurnover,
         // The Set is the working value; the report carries the number it was computed for.
-        samples: samples.map(({ frontFacingSet: _drop, ...rest }) => rest),
+        samples: samples.map((s) => {
+          const rest = { ...s }
+          delete rest.frontFacingSet
+          return rest
+        }),
       })
       console.log(
         `\n${slug}: ${medians.length} samples over ${WINDOW_S}s — ` +
