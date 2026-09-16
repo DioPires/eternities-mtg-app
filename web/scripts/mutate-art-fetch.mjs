@@ -74,10 +74,56 @@ const MUTANTS = [
     to: '      this.failed += 1',
   },
   {
+    // Re-pointed at DEC-812's spelling. The row carried `this.bytesFetched >= this.byteBudget`
+    // long after DEC-780 replaced that line, so the site was not found and the matrix had been
+    // scoring a SKIP where it read as a mutant — the anchor is the whole guard, and a stale one
+    // fails open the moment the line it names is reworded.
     name: 'swatchOnly uses a strict > so a zero budget never engages',
     file: STREAM,
-    from: '    return this.bytesFetched >= this.byteBudget',
-    to: '    return this.bytesFetched > this.byteBudget',
+    from: '    return this.bytesOutstanding + this.bytesReserved >= this.byteBudget',
+    to: '    return this.bytesOutstanding + this.bytesReserved > this.byteBudget',
+  },
+  {
+    name: 'DEC-812: swatchOnly is hardcoded false (the bound never binds)',
+    file: STREAM,
+    from: '    return this.bytesOutstanding + this.bytesReserved >= this.byteBudget',
+    to: '    return false',
+  },
+  {
+    name: 'DEC-812: the retired session-cumulative predicate — THE UNFIXED TREE',
+    file: STREAM,
+    from: '    return this.bytesOutstanding + this.bytesReserved >= this.byteBudget',
+    to: '    return this.bytesFetched + this.bytesReserved >= this.byteBudget',
+  },
+  {
+    name: 'DEC-812: the reclaim on eviction is deleted',
+    file: STREAM,
+    from: '    const bytes = this.settledBytes.get(key)\n    if (bytes === undefined) return\n    this.settledBytes.delete(key)\n    this.bytesOutstanding -= bytes',
+    to: '    void key',
+  },
+  {
+    name: 'DEC-812: the reclaim credits a constant, not the evicted key\'s body',
+    file: STREAM,
+    from: '    const bytes = this.settledBytes.get(key)\n    if (bytes === undefined) return\n    this.settledBytes.delete(key)\n    this.bytesOutstanding -= bytes',
+    to: '    if (!this.settledBytes.delete(key)) return\n    this.bytesOutstanding -= ART_CROP_ESTIMATED_BYTES',
+  },
+  {
+    name: 'DEC-812: a settled body is never charged as outstanding',
+    file: STREAM,
+    from: '      this.settledBytes.set(key, result.bytes)\n      this.bytesOutstanding += result.bytes',
+    to: '      this.settledBytes.set(key, result.bytes)',
+  },
+  {
+    name: 'DEC-812: the default budget is a flat 64 MiB again, not derived from the pool',
+    file: STREAM,
+    from: '    this.byteBudget = Math.max(0, options.byteBudget ?? defaultByteBudget(this.pool.layers))',
+    to: '    this.byteBudget = Math.max(0, options.byteBudget ?? 64 * 1024 * 1024)',
+  },
+  {
+    name: 'DEC-812: the pool evicts silently, without naming the displaced key',
+    file: POOL,
+    from: '    this.evictionListener?.(displaced)',
+    to: '    void this.evictionListener',
   },
   {
     name: 'release also takes back a RESIDENT layer (evicts a landed picture)',

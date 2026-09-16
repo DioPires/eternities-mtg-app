@@ -720,8 +720,8 @@ fetches (≈ 170 MB) for one camera pose.
 Fetch discipline: `mode: 'cors'`, `credentials: 'omit'`, at most 6 concurrent (PRD 7.2's politeness
 cap — the `*.scryfall.io` origins have no rate limit, `docs/scryfall-policy.md` §4, but the cap is
 worth keeping), cache-busted by the contract's own `imageTs`, a failed key never retried in the same
-session, and a per-session byte budget that degrades to swatch-only when exceeded. Eviction is LRU
-with a 30-frame grace: a layer wanted this frame is never evicted.
+session, and a byte budget on **outstanding art spend** that degrades to swatch-only while it is
+exceeded. Eviction is LRU with a 30-frame grace: a layer wanted this frame is never evicted.
 
 > **Normative — four of those five rules are the card tier's queue, and the worlds path reuses it
 > rather than opening a second one (DEC-749).** PRD 7.2's "concurrent image requests to Scryfall: 6"
@@ -744,14 +744,19 @@ with a 30-frame grace: a layer wanted this frame is never evicted.
 > therefore reserves an estimated body size up front and releases that estimate for the real
 > `Blob.size` when the queue settles it — on *every* settlement, `dropped` and `cancelled`
 > included, or a stream goes permanently swatch-only on bytes it never spent. `swatchOnly` is the
-> sum of landed **and outstanding** bytes.
+> sum of **outstanding and in-flight** bytes (amended by DEC-812: it read "landed and outstanding"
+> while the landed total was the thing tested).
 >
 > > **What binds is a request count, and the overshoot is the estimate's error.** `byteBudget /
-> > estimate` bodies are admitted — 729 at today's 64 MiB and 90 KiB — and the session spends what
-> > those 729 weigh. Measured, one harness across both trees: **729 responses / 70.2 MiB, +9.7%**
-> > against **967 / 88.7 MiB, +38.6%**. The admitted set is a nearest-first *prefix*, so its
-> > 100,996-byte mean runs ~5% above the roster's 96,159-byte population mean; predicting the
-> > overshoot from the population mean under-states it.
+> > estimate` bodies may be outstanding at once, and each that settles hands its estimate back and
+> > leaves the real body standing in `bytesOutstanding` instead. Measured, one harness across both
+> > trees at §3.1's pose: **729 responses / 70.2 MiB, +9.7%** against **967 / 88.7 MiB, +38.6%**.
+> > The admitted set is a nearest-first *prefix*, so its 100,996-byte mean runs ~5% above the
+> > roster's 96,159-byte population mean; predicting the overshoot from the population mean
+> > under-states it. **Both rows are one pose of one world**: while the budget was session-cumulative
+> > the 729th body was also the last of the session, which is the DEC-812 defect and not a property
+> > of the estimate. The figures survive as the provenance of the 100,996-byte admitted mean that
+> > `defaultByteBudget` is sized from.
 >
 > > **Do not gate on `declinedBudget > 0`.** The unfixed stream declines too — 23,715 times in a
 > > 32 s run — but only *after* the 88.7 MiB has landed, because the running total is over budget
@@ -759,9 +764,41 @@ with a 30-frame grace: a layer wanted this frame is never evicted.
 > > them is the bytes that crossed the network. This is §3.1's W4 measure being carried by the
 > > wrong signal, arising in the instrument rather than the renderer.
 >
+> **Normative — the budget bounds what is *outstanding*, and eviction reclaims (DEC-812).** The
+> quantity tested is settled bytes standing behind **resident layers**, plus in-flight reservations;
+> when the pool's LRU evicts a layer, the stream credits that key's own body size back. This
+> paragraph used to say "a **per-session** byte budget", and the renderer implemented that literally
+> — a running total nothing ever subtracted from. **That sentence is amended here, and the reason is
+> a measurement.** Leg G's first clean 45-world acceptance tour (main `28ec706`, dataset `worlds`,
+> real Chrome + Metal) found `bytesFetched` crossing 64 MiB at the **eighth** world and then freezing
+> exactly, along with `requested` and `resolved`: `artFraction` ran 0.989–1.000 through the first
+> eight worlds and **0.000 on all thirty-seven after them**, for the life of the page. The cut was a
+> step function of *tour position* and not of demand — a 676-cell world early got full art, a
+> 302-cell world late got none — and `pool.evictions` read **0 on all 45 worlds**, which is the tell:
+> the budget refused before the pool was ever consulted, so the LRU never ran and never reclaimed.
+> Swatch-only is a live condition a session comes back out of, not a terminal one.
+>
+> > **The default is derived from the pool, not typed in.** A budget below what a full pool costs in
+> > settled bytes rebuilds the deadlock in residency spelling: the pool fills, the budget is at its
+> > limit, nothing further is asked for, so nothing is evicted and nothing reclaimed. The retired
+> > 64 MiB constant was exactly there — 1,024 layers at the measured 100,996-byte admitted mean is
+> > **98.6 MiB**. So `defaultByteBudget(poolLayers)` sits a headroom factor above a full pool, which
+> > makes the **pool and the threshold** the binding constraints and the budget a backstop behind
+> > them; §1.12's ladder moves the pool rung and the budget follows it down. §1.12's `byteBudget`
+> > knob remains, and a value set *below* a full pool is a deliberate spend cap that degrades the
+> > way the paragraph below says.
+>
+> > **Nothing may hold charge that no eviction can release.** A body that arrived and would not
+> > decode, and a body that landed after its reservation was taken away, are both charged to the
+> > session ledger and **not** to the outstanding total: neither has a resident layer behind it, so
+> > no eviction could ever credit them back. What bounds the decode-failure path instead is §1.6's
+> > own no-retry rule — a failed key is never asked for again in the session.
+>
 > **Normative — degrading is not tearing down.** Over budget the stream stops *asking*. Layers
 > already resident keep drawing their art and are not evicted; §1.4's shading path degrades to the
-> swatch only for cells that never got one. The probe reports `swatchOnly` so the gate can read it
+> swatch only for cells that never got one. **The reclaim above does not contradict this, and the
+> direction is what separates them**: the pool's LRU decides what to evict, under demand for
+> *layers*, and the budget follows it down; the budget never asks for an eviction to buy itself room. The probe reports `swatchOnly` so the gate can read it
 > before it reads W4 — a session that went swatch-only part-way has a legitimate reason for a low
 > art count, and scoring that as a threshold failure is W4 being carried by the wrong signal.
 >
@@ -1551,9 +1588,12 @@ scale — which is the thing T7 said was missing.
 > (DEC-778).** §1.6 already says the probe reports `swatchOnly` "so the gate can read it before it
 > reads W4"; until DEC-778 `ArtStreamReport` was computed and never published, so the sentence named
 > a field no reader could reach. The published object is the report verbatim — `bytesFetched`,
+> `bytesOutstanding` (DEC-812: settled bytes with a resident layer still standing behind them —
+> **this, not `bytesFetched`, is what the budget is tested against**, and a reader who takes the
+> ledger for the budget reproduces the defect DEC-812 fixed),
 > `bytesReserved` (DEC-780: bytes committed to requests that have not settled, so a reader can see
-> why `swatchOnly` can be true while `bytesFetched` is still under `byteBudget` — the difference is
-> in flight; **not** monotonic and **not** a subset of `bytesFetched`),
+> why `swatchOnly` can be true while `bytesOutstanding` is still under `byteBudget` — the difference
+> is in flight; **not** monotonic and **not** a subset of `bytesFetched`),
 > `byteBudget`, `swatchOnly`, `requested`, `resolved`, `failed`, and the three causes
 > `declinedExhausted` / `declinedBudget` / `declinedFailedBefore`, which stay three numbers because
 > W4's control has to tell them apart. Without it a budget-declined session and a threshold admitting

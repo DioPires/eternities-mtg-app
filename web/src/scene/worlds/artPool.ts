@@ -106,6 +106,8 @@ export class ArtPool {
   private residentCount = 0
   private reservedCount = 0
   private evictionCount = 0
+  /** {@link ArtPool.onEvict}'s listener, or `null` while nobody is charging for residency. */
+  private evictionListener: ((key: number) => void) | null = null
 
   constructor(layers: number) {
     this.layers = Math.max(0, Math.floor(layers))
@@ -132,6 +134,31 @@ export class ArtPool {
       reserved: this.reservedCount,
       evictions: this.evictionCount,
     }
+  }
+
+  /**
+   * Be told **which key** each later eviction displaced (§1.6, DEC-812).
+   *
+   * > **Normative — eviction has to be visible to whoever is charging for residency.** Before
+   * > DEC-812 it was not: the pool recycled a layer silently, so §1.6's byte budget — which charges
+   * > for the body behind that layer — had no way to learn the layer was gone and its charge stood
+   * > for the life of the page. Measured on leg G's 45-world tour: art stopped at the eighth world
+   * > and never came back, with `evictions` reading **0** on every world because the budget refused
+   * > before the pool was ever consulted. The count alone could not carry the fix — the reclaim
+   * > needs the *identity* of the displaced key, because what it credits back is that key's own
+   * > body size and not an average (DEC-812 mutant (b)).
+   *
+   * One listener, replaced rather than added to: a pool has exactly one charging owner — the
+   * {@link ArtStream} built over it — and a second registration is a wiring mistake rather than a
+   * second subscriber. {@link ArtPool.evictions} stays the count for readers that only want the
+   * rate.
+   *
+   * Fires **inside** {@link ArtPool.reserve}, in the synchronous turn that displaced the key, before
+   * `reserve` returns the recycled layer. That ordering is what lets the caller's very next budget
+   * test see the credit.
+   */
+  onEvict(listener: (key: number) => void): void {
+    this.evictionListener = listener
   }
 
   /** The layer holding `key`, or `null` if it is absent or still in flight. */
@@ -242,10 +269,14 @@ export class ArtPool {
       }
     }
     if (victim < 0) return null
-    this.byKey.delete(this.state[victim]!)
+    const displaced = this.state[victim]!
+    this.byKey.delete(displaced)
     this.state[victim] = LAYER_FREE
     this.residentCount -= 1
     this.evictionCount += 1
+    // Announced after the pool's own state is consistent, so a listener that calls back into the
+    // pool — `layerOf(displaced)`, say — sees the eviction as done rather than half-applied.
+    this.evictionListener?.(displaced)
     return victim
   }
 }

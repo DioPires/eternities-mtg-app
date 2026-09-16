@@ -37,7 +37,7 @@ import { attachWorlds, DEFAULT_TIER_ART_LAYERS } from '../src/scene/worlds/attac
 import { KEY_LIGHT_OFF_AXIS, keyLightDirection } from '../src/scene/worlds/keyLight'
 import { artPoolSize } from '../src/scene/worlds/artPool'
 import { PICK_LAYER } from '../src/scene/picking/idPicker'
-import { ART_CROP_ESTIMATED_BYTES, DEFAULT_BYTE_BUDGET } from '../src/scene/worlds/artStream'
+import { ART_CROP_ESTIMATED_BYTES, defaultByteBudget } from '../src/scene/worlds/artStream'
 import { BELT_POINT_SIZE_PX } from '../src/scene/worlds/beltShaders'
 import { CROSSOVER_HIGH_PX } from '../src/scene/worlds/lod'
 import { isWorldPlane, worldPlanesOf } from '../src/scene/worlds/worldSource'
@@ -765,7 +765,9 @@ describe('§1.6 the stream report reaches the probe (DEC-778)', () => {
       // has no `cardOf`, so no request ever issues and nothing is ever charged at issue time either
       // — the all-zero report stays exactly as true of the wired-but-idle state as it was.
       bytesReserved: 0,
-      byteBudget: DEFAULT_BYTE_BUDGET,
+      // Nothing resident either, which after DEC-812 is the field the budget is tested against.
+      bytesOutstanding: 0,
+      byteBudget: defaultByteBudget(probe.pool.layers),
       swatchOnly: false,
       requested: 0,
       resolved: 0,
@@ -866,7 +868,7 @@ describe('§1.6 the stream report reaches the probe (DEC-778)', () => {
     expect(second.stream?.bytesFetched).toBe(BYTES)
     expect(second.stream?.declinedFailedBefore).toBeGreaterThan(0)
     // Charged, and still far under budget: `swatchOnly` must not trip on one failed body.
-    expect(second.stream?.byteBudget).toBe(DEFAULT_BYTE_BUDGET)
+    expect(second.stream?.byteBudget).toBe(defaultByteBudget(second.pool.layers))
     expect(second.stream?.swatchOnly).toBe(false)
     rig.worlds.dispose()
   })
