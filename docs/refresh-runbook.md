@@ -315,12 +315,36 @@ many planes landed there; a criterion that is silently skipped is how a gate pri
 measuring nothing.
 
 `--negative-controls` runs §3.1's matrix, and it is the run that says whether the instrument works
-at all. Expect **five red rows and six green**. The green rows are the ones to read first: in a
+at all. The run prints its own census — `N expected-RED rows, M expected-GREEN, … — K of T scored
+this run` — and that line, not a count written down here, is what to read: a number in this file is a
+claim about a matrix that keeps growing, and it goes stale silently. At `5608b0b` it is **6
+expected-RED, 5 expected-GREEN, 2 derivation (unscored), 1 MIXED**, over 14 rows. **`--only` scores a
+subset, so check `K of T` before reading a GREEN summary as a full matrix run.** The green rows are
+the ones to read first: in a
 matrix where everything is red, a broken baseline scores identically to a perfect guard, so only the
 rows expected to stay green can falsify the instrument. A red row that has gone green means the
 control stopped engaging, not that the renderer improved — the gate asserts each seam's read-back
 before it scores the row, and prints whether the witness was the renderer's own policy or merely an
 echo of the query parameter.
+
+**`?artThreshold=fixed24` alone no longer perturbs anything, and the matrix still lists it as
+expected-RED.** Measured on `fec45c9`: the adaptive quantile at a 1,024-layer pool already sits *at*
+the 24 px floor, so forcing 24 px moves the threshold by nothing — `fixed24` reads `artFraction`
+0.9979 against `no-seams`' 0.9968, at the same 24.00 px. The budget no longer starves it either, now
+that it is capacity-derived: 155 MB against ~95 MB outstanding, `declinedBudget` 0 and `swatchOnly`
+false at exit. The seam does engage and does read back its policy; it simply has no pixel to move.
+Both of its rows therefore fail the matrix, `artFraction` by going GREEN and `evictionsPerSecond` by
+going RED where the exhaustion domain used to excuse it. **They are left unfitted on purpose** —
+retiring a control §3.1 publishes is the owner's call, and a matrix edited to agree with the build is
+not a matrix.
+
+**W4's live art falsifier is `fixed24-layers-128`**, which composes the fixed threshold with a tier-4
+pool: 24 px holds demand at dominaria's full ~946 cells while the pool holds 128, a **7.39×**
+overshoot, and `artFraction` reads **0.1342 against a bar of 0.5**. That is the condition Appendix A
+actually captured — a fixed threshold against a pool too small for it, not a fixed threshold on its
+own. It is also the row that proves the absolute floor does work: at the same frame on the previous
+bar (`0.9 × ceiling`, no floor) it read 0.1341 against 0.1216 and went **GREEN**, because a
+pool-starved frame is saturated and `artFraction` equals its ceiling exactly.
 
 **W2's and W3's controls are composed with `?art=off`, and their sibling is `?art=off` alone.** Read
 `artoff-swatch-mean` and `artoff-bands-shuffle` against the `art-off` row, never against `baseline`.
