@@ -15,7 +15,13 @@
 import { describe, expect, it } from 'vitest'
 
 import { ImageQueue } from '../src/scene/cards/imageQueue'
+import {
+  AdaptiveThreshold,
+  BASE_THRESHOLD_PX,
+  ThresholdMemory,
+} from '../src/scene/worlds/adaptiveThreshold'
 import { ArtPool } from '../src/scene/worlds/artPool'
+import { admissibleCells } from '../src/scene/worlds/worldSurface'
 import {
   ART_CROP_ADMITTED_MEAN_BYTES,
   ART_CROP_ESTIMATED_BYTES,
@@ -974,6 +980,184 @@ describe('§1.6 reset, for a dataset swap', () => {
     expect(h.pool.hasFailed(11)).toBe(false)
     // Askable again after the swap.
     expect(h.stream.request(11, ID, TS, () => 0)).not.toBeNull()
+  })
+})
+
+/**
+ * §1.6's quantile is taken against the pool **and** the budget (DEC-819, board ruling on DEC-816 R2).
+ *
+ * The defect these rows close: `end()` was handed `pool.layers` and nothing else, so on a session
+ * whose budget sits below a full pool's settled cost the threshold admitted a working set the
+ * session could not pay for, the stream spent the budget on a prefix of it and declined the tail,
+ * and the world arrived at swatch-only **by exhaustion** rather than by policy — with layers still
+ * free, which is the tell that the two bounds are independent.
+ *
+ * Every row pairs the binding case with a **non-binding control**, because a bound that always
+ * bound would score the same as a correct one on the binding row alone (DEC-739's vacuous-clamp
+ * finding, and the reason `defaultByteBudget`'s headroom is asserted from both sides below).
+ */
+describe('§1.6 the adaptive threshold is budget-aware (DEC-819)', () => {
+  /** A histogram wide enough that the quantile lands strictly inside it, not on either end. */
+  const offerDemand = (threshold: AdaptiveThreshold, cells: number): void => {
+    threshold.begin()
+    for (let i = 0; i < cells; i += 1) threshold.offer(24 + (i % 400))
+  }
+
+  /** A printing id per cell, and a body size that is distinct for each — as the DEC-812 block. */
+  const idOf = (cell: number): string => `c${cell}${ID.slice(2)}`
+  const sizeForUrl = (url: string): number => {
+    const parsed = /\/c(\d+)/.exec(url)
+    if (!parsed) throw new Error(`unroutable art url ${url}`)
+    return ART_CROP_ADMITTED_MEAN_BYTES + Number(parsed[1]) * 137
+  }
+
+  it('converts the budget to cells at the ADMITTED mean, not at the estimate', () => {
+    // The two constants differ by ~10% on purpose — the 90 KiB estimate sits under both measured
+    // means so a session is not throttled early on a guess — and what has to fit here is settled
+    // residency, which is the quantity the budget is tested against. Dividing by the estimate would
+    // size the admitted set ~10% over what the session can hold: the same systematic overshoot
+    // `budgetVerdict` names as +9.7%, moved out of the ledger and into the policy.
+    const h = harness({ layers: 1024, byteBudget: 64 * 1024 * 1024 })
+    expect(h.stream.affordableCells).toBe(Math.floor((64 * 1024 * 1024) / ART_CROP_ADMITTED_MEAN_BYTES))
+    expect(h.stream.affordableCells).toBe(664)
+    // The number the estimate would have given, spelled out so the two cannot be confused by a
+    // later reader: 664 bodies is what 64 MiB holds, 728 is what it can have in flight.
+    expect(Math.floor((64 * 1024 * 1024) / ART_CROP_ESTIMATED_BYTES)).toBe(728)
+    expect(h.stream.affordableCells).toBeLessThan(728)
+    // Responds to its input rather than returning a constant (a constant would satisfy every other
+    // row in this block, since they all read one budget each).
+    const half = harness({ layers: 1024, byteBudget: 32 * 1024 * 1024 })
+    expect(half.stream.affordableCells).toBe(332)
+  })
+
+  it('is a TOTAL, so the quantile never reads its own output back', async () => {
+    // **The row that separates this from `(byteBudget - outstanding - reserved) / mean`**, which is
+    // the obvious spelling and passes every other assertion in this block. Two consequences make it
+    // wrong, and both are invisible in a reading taken once:
+    //
+    //   1. The threshold would be a controller reading its own output. It trims the admitted set,
+    //      the spend that set caused is still outstanding, so the next frame's capacity is *lower*
+    //      and it trims again — a ratchet down to nothing while the picture it already bought is
+    //      still on screen.
+    //   2. A cell's admission would depend on the order worlds were visited in, because outstanding
+    //      spend at entry is the previous world's. §3.1 made W4 per-world and order-independent
+    //      precisely to stop a shared budget turning each reading into a function of its position.
+    //
+    // The bound it sits beside is `pool.layers`, which is the pool's WHOLE capacity and not its
+    // free-layer count, and this is the same statement in bytes: the steady state it sizes is one
+    // in which this world's set has displaced whatever the LRU was holding for the last one.
+    const h = harness({ layers: 64, byteBudget: 64 * ART_CROP_ADMITTED_MEAN_BYTES, bytes: sizeForUrl })
+    const cold = h.stream.affordableCells
+    expect(cold).toBe(64)
+
+    for (let cell = 0; cell < 40; cell += 1) h.stream.request(cell, idOf(cell), TS, () => cell)
+    await h.drain()
+    // The spend is real and landed — without this the row would pass against a session that never
+    // charged anything, which is the same reading twice rather than a before and an after.
+    const spent = h.stream.report()
+    expect(spent.bytesOutstanding).toBeGreaterThan(0)
+    expect(h.pool.resident).toBe(40)
+
+    // A remainder would read 24 here. The capacity is a property of the budget, not of the moment.
+    expect(h.stream.affordableCells).toBe(cold)
+    expect(admissibleCells(h.pool, h.stream)).toBe(admissibleCells(new ArtPool(64), null))
+  })
+
+  it('is INERT at the shipped default — the headroom constant, read from the other side', () => {
+    // The load-bearing non-binding control for the whole block. `defaultByteBudget` is
+    // `layers x mean x 1.5`, so the byte bound reads `floor(1.5 x layers)` and the pool is always
+    // the smaller of the two. A session on the shipped default therefore takes exactly the
+    // threshold it took before this change, which is what makes the fix safe to land on a tree
+    // whose acceptance numbers were taken under the old capacity.
+    for (const layers of [16, 128, 256, 1024]) {
+      const h = harness({ layers })
+      expect(h.stream.byteBudget).toBe(defaultByteBudget(layers))
+      expect(h.stream.affordableCells).toBeGreaterThanOrEqual(layers)
+      expect(admissibleCells(h.pool, h.stream)).toBe(layers)
+    }
+    // And the same statement where it is closest to binding, so "greater than or equal" above is
+    // not passing on a slack it never tests: at the headroom exactly, the pool still wins.
+    expect(Math.floor(defaultByteBudget(1024) / ART_CROP_ADMITTED_MEAN_BYTES)).toBe(
+      Math.floor(1024 * BYTE_BUDGET_HEADROOM),
+    )
+  })
+
+  it('raises the threshold instead of admitting what it cannot pay for', () => {
+    // The defect, and the fix, on one frame of demand. 900 cells want art and the pool has layers
+    // for all of them; the budget can hold 166. Before this change the quantile saw only the pool,
+    // left the threshold at the 24 px floor and admitted all 900 — 734 more bodies than the
+    // session can keep resident, which the stream then declines one at a time for budget.
+    const BUDGET = 16 * 1024 * 1024
+    const h = harness({ layers: 1024, byteBudget: BUDGET })
+    const affordable = h.stream.affordableCells
+    expect(affordable).toBe(166)
+
+    const blind = new AdaptiveThreshold()
+    offerDemand(blind, 900)
+    const blindReport = blind.end(h.pool.layers, new ThresholdMemory())
+    expect(blindReport.effectiveThresholdPx).toBe(BASE_THRESHOLD_PX)
+    expect(blindReport.admitted).toBe(900)
+    expect(blindReport.admitted).toBeGreaterThan(affordable)
+
+    const aware = new AdaptiveThreshold()
+    offerDemand(aware, 900)
+    const awareReport = aware.end(admissibleCells(h.pool, h.stream), new ThresholdMemory())
+    expect(awareReport.effectiveThresholdPx).toBeGreaterThan(BASE_THRESHOLD_PX)
+    // Fewer, larger cells at full coverage — §1.6's picture, and the same `wanting` set is still
+    // reported, so the probe says what the frame would have asked for either way.
+    expect(awareReport.wanting).toBe(900)
+    expect(awareReport.admitted).toBeLessThan(blindReport.admitted)
+    // "Nearly", not "exactly", for the same reason the pool bound overshoots: the quantile picks a
+    // bucket edge, so the admitted set can carry one bucket's own count past the bound (DEC-768 F1).
+    expect(awareReport.admitted).toBeLessThan(2 * affordable)
+  })
+
+  it('the blind threshold is what makes a low budget terminal, and the aware one is not', async () => {
+    // The behavioural half, through the real fetch path rather than through `end()` in isolation.
+    // Under the old capacity the frame asks for everything, spends the budget and goes swatch-only
+    // with the pool still holding free layers: over budget the stream stops asking, nothing is
+    // asked of the pool, so nothing is evicted and nothing reclaimed — `ArtStreamOptions.byteBudget`
+    // documents that terminal state as the accepted cost of a hand-set cap. It is what the
+    // budget-aware threshold removes, by never asking for the tail in the first place.
+    const LAYERS = 64
+    const BUDGET = 8 * ART_CROP_ADMITTED_MEAN_BYTES
+    const blind = harness({ layers: LAYERS, byteBudget: BUDGET, bytes: sizeForUrl })
+    expect(blind.stream.affordableCells).toBe(8)
+    expect(admissibleCells(blind.pool, blind.stream)).toBe(8)
+    // What the pool-only capacity would have admitted, asked for in full:
+    for (let cell = 0; cell < LAYERS; cell += 1) {
+      blind.stream.request(cell, idOf(cell), TS, () => cell)
+    }
+    await blind.drain()
+    const spent = blind.stream.report()
+    expect(spent.swatchOnly).toBe(true)
+    expect(spent.declinedBudget).toBeGreaterThan(0)
+    // The tell: swatch-only while the pool still has layers free. Exhaustion and budget are
+    // independent, and this is the state §1.6's quantile exists to remove.
+    expect(blind.pool.resident).toBeLessThan(LAYERS)
+    expect(spent.declinedExhausted).toBe(0)
+
+    // The aware capacity asks for `affordableCells` and no more: the budget does not bind, nothing
+    // is declined, and every cell the frame admitted is showing art.
+    const aware = harness({ layers: LAYERS, byteBudget: BUDGET, bytes: sizeForUrl })
+    const admissible = admissibleCells(aware.pool, aware.stream)
+    for (let cell = 0; cell < admissible; cell += 1) {
+      aware.stream.request(cell, idOf(cell), TS, () => cell)
+    }
+    await aware.drain()
+    const held = aware.stream.report()
+    expect(held.declinedBudget).toBe(0)
+    expect(held.declinedExhausted).toBe(0)
+    expect(aware.pool.resident).toBe(admissible)
+  })
+
+  it('a stream-less world is bounded by its pool alone, not by a budget it has not got', () => {
+    // §1.6 makes a build with no `ArtStream` a legal swatch-only world. `null` must not read as
+    // "affords nothing": that would raise the threshold on a world with no byte problem, and
+    // `wantsArt` — which the gate's W4 denominator is — would stop naming the set the frame would
+    // have asked for.
+    const pool = new ArtPool(256)
+    expect(admissibleCells(pool, null)).toBe(256)
   })
 })
 

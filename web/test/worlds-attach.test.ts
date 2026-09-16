@@ -37,7 +37,11 @@ import { attachWorlds, DEFAULT_TIER_ART_LAYERS } from '../src/scene/worlds/attac
 import { KEY_LIGHT_OFF_AXIS, keyLightDirection } from '../src/scene/worlds/keyLight'
 import { artPoolSize, LAYER_FREE } from '../src/scene/worlds/artPool'
 import { PICK_LAYER } from '../src/scene/picking/idPicker'
-import { ART_CROP_ESTIMATED_BYTES, defaultByteBudget } from '../src/scene/worlds/artStream'
+import {
+  ART_CROP_ADMITTED_MEAN_BYTES,
+  ART_CROP_ESTIMATED_BYTES,
+  defaultByteBudget,
+} from '../src/scene/worlds/artStream'
 import { BELT_POINT_SIZE_PX } from '../src/scene/worlds/beltShaders'
 import { CROSSOVER_HIGH_PX } from '../src/scene/worlds/lod'
 import { isWorldPlane, worldPlanesOf } from '../src/scene/worlds/worldSource'
@@ -825,14 +829,28 @@ describe('§1.6 the stream report reaches the probe (DEC-778)', () => {
   })
 
   it('counts a budget decline as `declinedBudget`, and an unspent budget as none', () => {
-    // `byteBudget: 0` is swatch-only from frame one — §1.6's documented degenerate case — so every
-    // admitted want is refused by the budget and nothing is ever requested.
-    const declined = build({ queue: pendingQueue(), cardOf: CARD_OF, byteBudget: 0 })
+    // **This row used to drive its decline with `byteBudget: 0`, and since DEC-819 that budget
+    // reaches swatch-only without a single decline.** The threshold is now taken against the
+    // smaller of the pool and what the budget can keep resident, so a budget of zero affords zero
+    // cells, the frame admits nothing, and nothing is ever *asked* for the budget to refuse — see
+    // the row below, which is that case asserted in its own terms. A budget of one body still
+    // declines, because the quantile picks a bucket EDGE: where the crossing bucket is the first
+    // non-empty one it admits that whole bucket rather than nothing at all (DEC-768 F1), and the
+    // overshoot is what the budget refuses. That residual is the shipped behaviour, so it is what
+    // this plumbing row is driven with rather than a contrivance.
+    const declined = build({
+      queue: pendingQueue(),
+      cardOf: CARD_OF,
+      byteBudget: ART_CROP_ADMITTED_MEAN_BYTES,
+    })
     declined.worlds.setData(roster())
     const spent = readAt(declined)
     expect(spent.stream?.swatchOnly).toBe(true)
     expect(spent.stream?.declinedBudget).toBeGreaterThan(0)
-    expect(spent.stream?.requested).toBe(0)
+    // A handful asked for and the rest refused — not the whole want set, which is what a threshold
+    // blind to the budget would have asked for.
+    expect(spent.stream?.requested).toBeGreaterThan(0)
+    expect(spent.stream?.requested).toBeLessThan(spent.stream!.declinedBudget)
     // The cause is the budget and not the pool: this world's pool is 224 layers and untouched.
     expect(spent.stream?.declinedExhausted).toBe(0)
     expect(spent.stream?.declinedFailedBefore).toBe(0)
@@ -846,6 +864,43 @@ describe('§1.6 the stream report reaches the probe (DEC-778)', () => {
     expect(asking.stream?.swatchOnly).toBe(false)
     expect(asking.stream?.declinedBudget).toBe(0)
     expect(asking.stream?.requested).toBeGreaterThan(0)
+    funded.worlds.dispose()
+  })
+
+  it('reaches swatch-only on a zero budget by POLICY, with nothing asked and nothing refused', () => {
+    // §1.6's documented degenerate case, and what DEC-819 changed about it. A budget of zero
+    // affords zero cells, so the threshold admits nothing and the world is swatch-only the way a
+    // zero-layer pool is: by never asking. Before the threshold read bytes, the same rig admitted
+    // every wanting cell and the stream refused them one at a time — swatch-only by *exhaustion*,
+    // which is the state §1.6's quantile exists to remove, reached here on the smallest budget
+    // there is.
+    //
+    // **`swatchOnly` is what still carries the cause, and the gate reads that one.** §3.1's W4
+    // disqualification is `budgetBoundAtEntry`, which reads `swatchOnly` off the entry report and
+    // never `declinedBudget` — DEC-812 rider 2 removed exactly that re-derivation. So a session
+    // whose budget is spent is still legible as budget-bound with this counter at zero.
+    const broke = build({ queue: pendingQueue(), cardOf: CARD_OF, byteBudget: 0 })
+    broke.worlds.setData(roster())
+    const quiet = readAt(broke)
+    expect(quiet.stream?.swatchOnly).toBe(true)
+    expect(quiet.stream?.requested).toBe(0)
+    expect(quiet.stream?.declinedBudget).toBe(0)
+    // Not exhaustion either: the pool is untouched and has every layer free. Neither counter rising
+    // is the point — there was no want to refuse.
+    expect(quiet.stream?.declinedExhausted).toBe(0)
+    expect(quiet.pool.resident).toBe(0)
+    expect(quiet.pool.layers).toBeGreaterThan(0)
+    // The threshold is the thing that moved, and it says so: no cell is above it.
+    expect(quiet.cells.some((c) => c.frontFacing && c.onScreen && c.wantsArt)).toBe(false)
+    broke.worlds.dispose()
+
+    // **The non-binding control for this row too.** The same rig at the shipped default admits
+    // cells — so "nothing wanted art" above is the budget's doing and not a pose with no demand in
+    // it, which would make every assertion here vacuous.
+    const funded = build({ queue: pendingQueue(), cardOf: CARD_OF })
+    funded.worlds.setData(roster())
+    const asking = readAt(funded)
+    expect(asking.cells.some((c) => c.frontFacing && c.onScreen && c.wantsArt)).toBe(true)
     funded.worlds.dispose()
   })
 
