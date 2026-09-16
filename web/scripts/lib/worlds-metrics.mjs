@@ -907,6 +907,44 @@ export function evictionRate(samples, windowS = W4_EVICTION_WINDOW_S) {
 }
 
 /**
+ * How close the pool came to having no free layer, over the window {@link evictionRate} scored.
+ *
+ * **This is the eviction rate's denominator, and without it a `0` is not a reading.**
+ * `artPool.claimLayer` walks the pool for a FREE layer and only looks for a victim when it finds
+ * none, so `pool.evictions` cannot move until occupancy reaches `layers`. A pool that never filled
+ * therefore reports `0` evictions *by construction* — the same structural zero the criterion already
+ * names for `streamNeverRan` and `budgetBoundAtEntry`, arriving by a third route that nothing was
+ * reporting. Dominaria's four recorded runs separate on this and on nothing else:
+ *
+ * | occupancy at read | `evictionsPerSecond` |
+ * | --- | --- |
+ * | 701 / 1024, 704 / 1024 | 0 |
+ * | 965 / 1024 | 0 |
+ * | **1020 / 1024** | **18.357** |
+ *
+ * **It is a lower bound, deliberately, and that is why it is reported and not scored.** Occupancy is
+ * `resident + reserved`; `?probe=` publishes only `resident`, so a pool sitting at `layers` with a
+ * reserved layer in flight reads below `layers` here. Scoring an `insufficient` off a bound that can
+ * read low would mark a real reading absent. Promoting it to a domain rule needs `pool.reserved` on
+ * the probe, which is R1's surface (DEC-744 B1) and the live half of ask `62f32092`.
+ *
+ * `samples` is {@link evictionRate}'s timeline with `resident` and `layers` alongside. Returns
+ * `null` for an empty timeline — a pool never read and a pool holding nothing are different facts.
+ */
+export function poolHighWater(samples) {
+  const usable = samples.filter(
+    (s) => typeof s.resident === "number" && typeof s.layers === "number",
+  );
+  if (usable.length === 0) return null;
+  const resident = Math.max(...usable.map((s) => s.resident));
+  // The capacity is a property of the GPU tier and does not move within a visit; the max is taken
+  // for the same reason the resident one is, so a timeline that somehow straddles a change reports
+  // the larger denominator rather than silently picking the first sample's.
+  const layers = Math.max(...usable.map((s) => s.layers));
+  return { resident, layers, saturated: layers > 0 && resident >= layers };
+}
+
+/**
  * The smallest pool capacity the renderer ever ships (§1.6, DEC-749).
  *
  * §1.6's clamp is `max(0, min(tierLayers, maxLayers - 32))`: tier 4 — the smallest rung — is 128,

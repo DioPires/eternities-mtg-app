@@ -34,6 +34,7 @@ import {
   evaluateW4,
   evaluateW5,
   evictionRate,
+  poolHighWater,
   foldCriteria,
   SMALLEST_SHIPPED_POOL_LAYERS,
   W5_MIN_AZIMUTHS,
@@ -1059,6 +1060,63 @@ describe("W4 — art resolves without exhausting", () => {
       { t: 5, evictions: 912 },
     ];
     expect(evictionRate(timeline)).toBeCloseTo(1, 6);
+  });
+
+  /**
+   * **`poolHighWater` is the eviction rate's denominator, and these rows are dominaria's own.**
+   *
+   * The four recorded runs of the `baseline` row read `evictionsPerSecond` 0, 0, 0, 18.357 and were
+   * reported identically apart from the number. They separate on occupancy and on nothing else, so
+   * the fixtures here are the measured occupancies rather than invented ones: a pool that never
+   * fills cannot evict, because `artPool.claimLayer` takes any free layer before it takes a victim.
+   */
+  it("reports the pool's high-water mark so a zero eviction rate has a denominator", () => {
+    const unsaturated = [
+      { t: 0, evictions: 0, resident: 512, layers: 1024 },
+      { t: 1, evictions: 0, resident: 701, layers: 1024 },
+      { t: 2, evictions: 0, resident: 698, layers: 1024 },
+    ];
+    expect(poolHighWater(unsaturated)).toEqual({
+      resident: 701,
+      layers: 1024,
+      saturated: false,
+    });
+    // The same eviction rate, the other cause. `accept3` and `baseline` both read a rate; only one
+    // of them was taken on a pool that could have produced it.
+    expect(evictionRate(unsaturated)).toBe(0);
+
+    const saturated = [
+      { t: 0, evictions: 0, resident: 1010, layers: 1024 },
+      { t: 1, evictions: 18, resident: 1024, layers: 1024 },
+      { t: 2, evictions: 37, resident: 1024, layers: 1024 },
+    ];
+    expect(poolHighWater(saturated)?.saturated).toBe(true);
+    expect(evictionRate(saturated)).toBeGreaterThan(5);
+  });
+
+  /**
+   * An empty timeline is not an empty pool — the same distinction `streamDelta` keeps by returning
+   * `null` rather than a zero-filled object. A `0/0` high-water would read as a pool that held
+   * nothing, which is a measurement, when what happened is that nothing was measured.
+   */
+  it("returns null for a timeline that carries no occupancy, never a zero-filled reading", () => {
+    expect(poolHighWater([])).toBeNull();
+    // The pre-DEC-752 timeline shape: evictions only, no occupancy. It must not report 0/0.
+    expect(poolHighWater([{ t: 0, evictions: 0 }])).toBeNull();
+  });
+
+  /**
+   * **The bound is `>=`, and this row is why it may not be `>`.** `resident` reaching `layers` is
+   * exactly the state in which `claimLayer` finds no free layer, so equality is saturation. A
+   * strict comparison would report the one pool that *is* full as having room.
+   */
+  it("counts a pool at exactly its capacity as saturated", () => {
+    const full = [{ t: 0, evictions: 4, resident: 128, layers: 128 }];
+    expect(poolHighWater(full)?.saturated).toBe(true);
+    // A zero-layer pool is a swatch-only world, which the criterion treats as a measurement — but
+    // it has no capacity to saturate, so it must not report as full.
+    const swatchOnly = [{ t: 0, evictions: 0, resident: 0, layers: 0 }];
+    expect(poolHighWater(swatchOnly)?.saturated).toBe(false);
   });
 
   /**

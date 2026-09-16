@@ -45,6 +45,25 @@ export interface EvictionSample {
   readonly t: number;
   /** The pool's cumulative eviction counter, not a per-interval delta. */
   readonly evictions: number;
+  /**
+   * Layers held at this sample. **Optional because the rate does not need it and the high-water
+   * mark does** — a timeline carrying only `evictions` is still a legal input to
+   * {@link evictionRate}, and {@link poolHighWater} reports `null` for it rather than `0`.
+   */
+  readonly resident?: number;
+  /** The pool's capacity at this sample. Optional for the same reason as {@link resident}. */
+  readonly layers?: number;
+}
+
+/**
+ * The pool's occupancy over the window {@link evictionRate} scored — the eviction rate's
+ * denominator. `resident` only, so it is a **lower bound**: `?probe=` does not publish `reserved`.
+ */
+export interface PoolHighWater {
+  readonly resident: number;
+  readonly layers: number;
+  /** `resident >= layers` with a non-zero capacity: the state in which `claimLayer` must evict. */
+  readonly saturated: boolean;
 }
 
 /**
@@ -292,6 +311,13 @@ export declare function evictionRate(
   samples: readonly EvictionSample[],
   windowS?: number,
 ): number | null;
+/**
+ * How close the pool came to having no free layer, over the same timeline. `null` when no sample
+ * carries occupancy — a pool never read and a pool holding nothing are different facts.
+ */
+export declare function poolHighWater(
+  samples: readonly EvictionSample[],
+): PoolHighWater | null;
 export declare const SMALLEST_SHIPPED_POOL_LAYERS: number;
 /**
  * Did the art stream never run? `true` when the pool has capacity and cells want art, but nothing

@@ -48,6 +48,7 @@ import {
   foldCriteria,
   homeLabelCeiling,
   isLabelVisible,
+  poolHighWater,
   rowCellsFaults,
 } from './lib/worlds-metrics.mjs'
 import {
@@ -637,11 +638,33 @@ async function visitWorld(page, world, { dir, captures, pose = SURFACE_RADII }) 
   // `pool.evictions` is cumulative, so the rate is differenced from a timeline and never read off
   // the counter: the prototype's 925 at `tether-surface` is a cumulative figure, and the same 925
   // on a settled pool is 0/s and passes.
+  //
+  // **Each sample carries the pool's occupancy, because a rate of 0 has two very different causes
+  // and the bare number cannot tell them apart.** `artPool.claimLayer` hands back any FREE layer
+  // before it ever considers a victim, so the counter can only move once the pool has no free layer
+  // left: a pool that never filled reads `0` *by construction*, exactly as a pool forbidden to admit
+  // does. Dominaria's four recorded runs separate on nothing else — 701/1024 and 704/1024 occupancy
+  // read `0`, 965/1024 read `0`, and only the run that reached 1020/1024 read 18.357/s. Without the
+  // occupancy those four lines are byte-identical in the half that matters, which is the
+  // fold-denominator defect one criterion over.
+  //
+  // `resident` is the only occupancy field `?probe=` publishes — `reserved` is on the pool's own
+  // `report()` but not on the probe's — so this is a **lower bound** on occupancy, and the high-water
+  // mark is therefore *reported* and not scored. Turning it into a domain rule needs `pool.reserved`
+  // on the probe, which is R1's surface to add (DEC-744 B1) and is the live half of pending ask
+  // `62f32092`.
   const timeline = []
   const started = Date.now()
   while ((Date.now() - started) / 1000 < W4_SAMPLE_S) {
     const now = await readProbe(page, slug)
-    if (now.ok) timeline.push({ t: (Date.now() - started) / 1000, evictions: now.probe.pool.evictions })
+    if (now.ok) {
+      timeline.push({
+        t: (Date.now() - started) / 1000,
+        evictions: now.probe.pool.evictions,
+        resident: now.probe.pool.resident,
+        layers: now.probe.pool.layers,
+      })
+    }
     await sleep(200)
   }
 
@@ -655,6 +678,10 @@ async function visitWorld(page, world, { dir, captures, pose = SURFACE_RADII }) 
     offFrame: offFrame.length,
     poolLayers: probe.pool.layers,
     effectiveThresholdPx: probe.pool.effectiveThresholdPx,
+    // The denominator of the eviction reading: how close the pool came to having no free layer over
+    // the window the rate was measured on. `null` when the timeline is empty, never 0 — a pool that
+    // was never read and a pool that held nothing are different facts.
+    poolHighWater: poolHighWater(timeline),
     // Three readings of one session-global object, and the names say which is which. R1's own note
     // on this field is that a single read is a session total and a world's own share exists only as
     // a difference of two — so the difference is taken here rather than left to a reader of the
@@ -1095,10 +1122,18 @@ async function runRow(browser, url, row, { roster, args, baselineProbe }) {
       if (!visit.ok) {
         console.log(`  ${world.slug}: SETUP FAILURE — ${visit.detail}`)
       } else {
+        // The pool's high-water mark rides the W4 verdict because it is the eviction half's
+        // denominator: `pool 1024` alone says what the pool *could* hold, and a `W4 pass` earned by
+        // a pool that never filled is indistinguishable from one earned by a pool that filled and
+        // did not churn. `hw` is `resident` only — see `poolHighWater` on why it is a lower bound.
+        const hw = visit.poolHighWater
         console.log(
           `  ${world.slug}: ${visit.cardinality.reported}/${visit.cardinality.cardCount} cells, ` +
             `pool ${visit.poolLayers}, threshold ${visit.effectiveThresholdPx.toFixed(2)}px, ` +
-            `W2 ${visit.w2.status} W3 ${visit.w3.status} W4 ${visit.w4.status}`,
+            `W2 ${visit.w2.status} W3 ${visit.w3.status} W4 ${visit.w4.status}` +
+            (hw === null
+              ? ''
+              : ` (pool hw ${hw.resident}/${hw.layers}${hw.saturated ? ' SATURATED' : ''})`),
         )
       }
 
