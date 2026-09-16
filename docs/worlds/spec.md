@@ -2414,9 +2414,15 @@ visibility, `wantsArt && !frontFacing`, is non-empty on 30 of 45 worlds at 64 la
 at 1,024 — and 64 layers is below tier 4. A number taken at a capacity the renderer never ships is
 a reading of the harness. Report `pool.layers` alongside any such count.
 
-The two green rows are the ones that matter most and the ones most often left out: in a matrix where
+The green rows are the ones that matter most and the ones most often left out: in a matrix where
 everything is red, a broken baseline scores identically to a perfect guard. **Only the rows expected
 to stay green can falsify the instrument.**
+
+> **How many of each there are is reported by the gate, not stated here (DEC-752).** This sentence
+> said "the two green rows" and §3.2 said "four" while the shipped matrix had six; the count has gone
+> stale every time a row was added, because prose is not attached to the row list. `worlds-gate.mjs`
+> now prints a `matrix census` line — counted over the whole of `MATRIX` and not over the subset a
+> `--only` run scores — and writes it to `summary.json`. Read the pair off a run.
 
 The gate runs at 1920×1080 CSS, dpr 1 — true CSS scale, never an upscaled crop (DEC-683), and the
 native resolution of the Iris Xe laptop review §9 targets, so a Windows re-capture is directly
@@ -2427,19 +2433,28 @@ comparable. It is added to `docs/refresh-runbook.md` as the per-refresh instrume
 
 The galaxy ships until **all four** of these hold:
 
-1. `worlds-gate.mjs` passes W1–W5 on the v3 production dataset, with the negative-control matrix
-   showing the expected **five red and four green** (§3.1);
+1. `worlds-gate.mjs` passes W1–W5 on the v3 production dataset, with every row of the
+   negative-control matrix landing on the colour it expects — which the gate checks itself, and
+   whose tally it prints as its `matrix census` line (§3.1);
 
-   > **The count here was stale and is corrected (DEC-752).** "Five red and two green" was written
-   > when the matrix had seven rows. §3.1 has since added two expected-GREEN rows — `?layers=128`
-   > and the one-card world — so the green count is four, not two.
+   > **This condition no longer carries the counts, because they went stale twice (DEC-752).** It
+   > read "five red and two green", written when the matrix had seven rows; that was corrected to
+   > "four green" for `?layers=128` and the one-card world, and was stale again on arrival — DEC-821
+   > had added the `?art=off` sibling rows, making six. At the time of writing the census reads
+   > **five expected-RED, six expected-GREEN, two derivation rows**, but read it off a run rather
+   > than off this sentence: a number in prose cannot testify that it still describes the matrix.
+   >
+   > Nothing is lost by dropping the pair from the condition. The gate already fails a row that lands
+   > on the wrong colour, so "shows the expected five and four" was never the thing being checked —
+   > `GATE: GREEN` is.
    >
    > **The red count stays five, and that is not the same as §3.1's table, which lists six.** The
    > sixth is `labels forced on for empty planes`, the control for `homeLabels`, and
    > `worlds-gate.mjs` does **not** run it: forcing labels on for suppressed planes is a renderer
-   > behaviour and `web/src/scene/worlds/seams.ts` ships exactly four seams — `?swatch=mean`,
-   > `?bands=shuffle`, `?artThreshold=fixed24`, `?layers=N`. None of them reaches §1.8's
-   > suppression, and leg G may not add one (DEC-744 B1 / DEC-746 D5). The 66–77 unsuppressed
+   > behaviour and `web/src/scene/worlds/seams.ts` ships exactly five seams that perturb the build —
+   > `?swatch=mean`, `?bands=shuffle`, `?art=off`, `?artThreshold=fixed24`, `?layers=N` (`?probe=` is
+   > the sixth entry in that file's table, and it reports rather than perturbs). None of them reaches
+   > §1.8's suppression, and leg G may not add one (DEC-744 B1 / DEC-746 D5). The 66–77 unsuppressed
    > reading that makes the row red was taken offline, through the shipped `layout.ts` and
    > `project.ts` against the pre-§1.8 candidate list — evidence that the measure *can* fail, but
    > not a row the gate can run against a shipped build.

@@ -1318,6 +1318,38 @@ async function main() {
     }
   }
 
+  // ---- the matrix census ------------------------------------------------------------------------
+  // §3.2's condition 1 states the matrix's expected shape as a pair of counts, and that pair has gone
+  // stale twice already: "five red and two green" was written when the matrix had seven rows, and the
+  // "four green" that replaced it predates the two `?art=off` sibling rows (DEC-821). A count kept
+  // only in prose has nothing holding it to the instrument, so the instrument reports its own and the
+  // spec cites this line instead of carrying a number.
+  //
+  // Counted over the whole of `MATRIX`, never over `selected`. A `--only` or `--negative-controls`
+  // run scores a subset, and a census that narrowed with the selection would print a smaller pair in
+  // the same shape — reading as the full matrix while standing for a fraction of it.
+  const census = { RED: 0, GREEN: 0, mixed: 0, derivation: 0 }
+  for (const row of MATRIX) {
+    if (row.derivation) {
+      census.derivation += 1
+      continue
+    }
+    // `?? []` because this runs after the tour: a row added without `expect` would otherwise throw
+    // here and take a twenty-minute run's report with it, which is a bad trade for a census line.
+    const colours = new Set((row.expect ?? []).map((e) => e.expect).filter((e) => e !== 'N/A'))
+    // A row is named by the colour it expects. `mixed` is not reachable today and is counted rather
+    // than folded into either side, because a row expecting both is a row whose redness no longer
+    // says which measure failed — and silently filing it under RED would hide that.
+    if (colours.has('RED') && colours.has('GREEN')) census.mixed += 1
+    else if (colours.has('RED')) census.RED += 1
+    else census.GREEN += 1
+  }
+  console.log(
+    `\nmatrix census: ${census.RED} expected-RED rows, ${census.GREEN} expected-GREEN, ` +
+      `${census.derivation} derivation (unscored)${census.mixed ? `, ${census.mixed} MIXED` : ''} ` +
+      `— ${selected.length} of ${MATRIX.length} scored this run`,
+  )
+
   writeFileSync(
     resolve(args.out, 'summary.json'),
     `${JSON.stringify(
@@ -1327,6 +1359,7 @@ async function main() {
         worldsWithCards: roster.worldsWithCards.length,
         ceiling: homeLabelCeiling(roster.metricsRoster),
         floors: FLOORS,
+        census: { ...census, matrixRows: MATRIX.length, scoredThisRun: selected.length },
         rowCellsFaults: faults,
         rows: results.map((r) => ({
           id: r.row.id,
