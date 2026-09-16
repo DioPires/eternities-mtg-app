@@ -331,6 +331,25 @@ the shipped layout code, so it shows the measure *can* fail without being a row 
 Read a green `homeLabels` as "the moons are still quiet", never as "the home view is legible" — the
 second is what `worldsNeverLabelled` is for, and that one does have both its rows.
 
+**Each world is toured in its own browser session, and sharing one is not an optimisation you may
+take back.** The art stream and its byte budget are *session-wide and cumulative* — `artStream.ts`
+sizes the budget as a backstop against a pathological session, and a 45-world tour is one by that
+definition: it admits about 729 bodies and then stops asking. Measured on a shared page, the budget
+was spent by the **8th** world, and each of the remaining 37 reported zero cells showing art, so W4
+scored a false RED on every one of them. A per-world criterion read out of a shared session is a
+reading of where in the tour its subject sat. Two consequences when reading the output:
+
+- **Never attribute a session-global counter to a world.** `stream` in `visits.json` is the session
+  total at that world's exit; the world's own share is `streamDelta`, differenced against the entry
+  read. `pool.evictions` is cumulative in the same way, which is why W4's eviction half is a rate
+  taken from a timeline and never off the counter.
+- **Order-independence is checked, not assumed.** Run the tour a second time with the roster
+  reversed and compare per-world numbers. If a world's W4 moves with its position in the tour, some
+  session state is crossing worlds again and every W4 number in the run is suspect. The gate's own
+  backstop is `budgetBoundAtEntry`, which reports `insufficient` rather than `fail` for a world
+  entered with the budget already spent — but a run that trips it has measured nothing, so it is a
+  guard against a silent false RED, not a way to keep touring on one page.
+
 Same two practical notes as §4.2: a real GPU and a local Chrome, and it builds the site itself
 unless you pass `--no-build`.
 

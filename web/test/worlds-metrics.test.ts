@@ -1185,6 +1185,35 @@ describe("W4 — art resolves without exhausting", () => {
       );
 
       expect(idle.streamNeverRan).toBe(false);
+      // ...and scores it out of domain rather than failing it. 0/0 is not 0, and a bare `null`
+      // value is a `fail` — which on the 45-world acceptance run reddened **nine** worlds that
+      // simply presented no front-facing cell at the sampled azimuth (belenon, ergamon, karsus,
+      // muraganda, pyrulea, regatha, segovia, shandalar, zhalfir), eight of them the same worlds
+      // W1 reports undefined for the same reason.
+      const art = idle.measures.find((m) => m.key === "artFraction");
+      expect(art?.value).toBe(null);
+      expect(art?.status).toBe("insufficient");
+      expect(art?.insufficientReason).toMatch(/none is front-facing/);
+      // The eviction half is NOT carried along: no demand says nothing about whether the pool is
+      // churning through layers a neighbour's demand bought, so that stays a real reading.
+      expect(
+        idle.measures.find((m) => m.key === "evictionsPerSecond")?.status,
+      ).toBe("pass");
+    });
+
+    it("still fails a world whose cells want art and do not get it", () => {
+      // The row that keeps the domain rule from becoming a way to lose failures: one wanting cell
+      // showing nothing is 0/1, a measurement, and it is red.
+      const starved = evaluateW4(
+        cells(1, 0),
+        settled(0),
+        { layers: 1_024, resident: 5 },
+        FRESH_SESSION,
+      );
+
+      expect(
+        starved.measures.find((m) => m.key === "artFraction")?.status,
+      ).toBe("fail");
     });
 
     it("calls the forced zero an absent eviction reading too", () => {

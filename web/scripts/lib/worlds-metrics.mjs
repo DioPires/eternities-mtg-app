@@ -894,6 +894,26 @@ export function evaluateW4(cells, evictionTimeline, pool, entryStream) {
         `tour, not the world — give each world its own session.`
       : null;
 
+  // **An empty denominator is W4's domain, the same way four samples are W2's (DEC-752).** "The
+  // fraction of cells above the effective threshold that show art" over no such cells is 0/0, not
+  // 1, and `measure()` scores a bare `null` as a *failure* — so nine worlds on the 45-world
+  // acceptance run were scored RED for presenting no front-facing cell at the sampled azimuth:
+  // belenon, ergamon, karsus, muraganda, pyrulea, regatha, segovia, shandalar, zhalfir, eight of
+  // them the same worlds W1 reports undefined for the same reason. W1's domain rule landed a
+  // commit ago on exactly this evidence; this is that rule one criterion over.
+  //
+  // `foldCriteria` in the driver already skipped null-valued measures, so the *aggregate* read
+  // "9 out of domain, dominaria failing" while each of those nine worlds carried a `fail` in its
+  // own record — the report contradicting itself in a direction where only the quiet half was
+  // right. The domain belongs here, with the criterion, where it is unit-testable.
+  const empty = noAdmission === null && wanting.length === 0;
+  const why =
+    noAdmission ??
+    (empty
+      ? `of ${cells.length} cells reported, none is front-facing, on screen and above the ` +
+        `effective threshold, so there is no set of cells for a fraction of them to show art`
+      : null);
+
   return criterion(
     "W4",
     "Art resolves without exhausting",
@@ -904,7 +924,7 @@ export function evaluateW4(cells, evictionTimeline, pool, entryStream) {
         wanting.length === 0 ? null : showing.length / wanting.length,
         FLOORS.artFraction,
         "min",
-        noAdmission === null ? {} : { insufficient: true, why: noAdmission },
+        why === null ? {} : { insufficient: true, why },
       ),
       measure(
         "evictionsPerSecond",
@@ -912,6 +932,10 @@ export function evaluateW4(cells, evictionTimeline, pool, entryStream) {
         evictionRate(evictionTimeline),
         FLOORS.evictionsPerSecond,
         "max",
+        // **The empty denominator is not carried over to this half, and the asymmetry is the
+        // point.** No demand says nothing about whether the pool churns: a world presenting no
+        // front-facing cell can still be evicting the layers a neighbour's demand bought, and that
+        // rate is a real reading of the policy. Only the two no-admission cases force this zero.
         noAdmission === null ? {} : { insufficient: true, why: noAdmission },
       ),
     ],
