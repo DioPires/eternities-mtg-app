@@ -671,8 +671,24 @@ fetches (≈ 170 MB) for one camera pose.
 > quantised and is not 24 except by coincidence. Without the read-back, a seam that silently fails
 > to parse its own query parameter runs the *unmodified* policy, W4 passes, and the matrix records
 > a passing control — the `verify-browser --dataset all` shape of failure. The same applies to
-> every control seam: `?swatch=mean`, `?bands=shuffle` and `?layers=N` each report a value the gate
-> can check moved.
+> every control seam: `?swatch=mean`, `?bands=shuffle`, `?art=off` and `?layers=N` each report a
+> value the gate can check moved.
+
+> **Normative — `?art=off` is swatch-only, and it is not `?layers=0` (board ruling `art_off_seam`
+> on DEC-752, answered 2026-09-16; built on DEC-821).** Under it every cell draws its swatch: no
+> cell asks the stream for a printing, nothing becomes resident, and `artFraction` is 0 against a
+> `wantsArt` denominator that is unchanged. **Everything else is unchanged too** — the pool is the
+> tier's, the stream is composed, and the quantile, its hysteresis and the admitted set read
+> bit-identically to the same pose with the seam absent. That is the seam's whole purpose: at
+> §3.1's 2.2-radii pose `artFraction` measures 0.61–0.76, so roughly seven cells in ten draw
+> **art**, and the two seams that perturb the **swatch** move nothing the capture can see — measured
+> on DEC-816, `?swatch=mean` leaves `lightnessIqr` at 24.89 inside a no-seam sibling spread of
+> 16.09–25.89, and `?bands=shuffle` moves `minAdjacentBandDeltaE` only 0.815 → 0.476 while the
+> shipped aggregate already scores below it at 0.4253. `?art=off&swatch=mean` and
+> `?art=off&bands=shuffle` are the composed rows that discriminate. `?layers=0` is *also*
+> swatch-only (§1.6's zero-layer pool) and is **not** a substitute: it moves `pool.layers` — the
+> quantile's own divisor — and composes no `ArtStream` at all, so its payload reports `stream` as
+> `null`, which would run W2's and W3's controls against a differently-configured renderer.
 
 > **Normative — `showingArt` means the cross-fade has landed, not that a layer was claimed
 > (DEC-752).** The probe reports a cell as showing art when its `iArt` has reached 1, not when the

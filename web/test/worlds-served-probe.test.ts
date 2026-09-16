@@ -309,6 +309,7 @@ function sourceFor(
     seams: {
       swatchMean: false,
       bandsShuffle: false,
+      artOff: false,
       artThresholdFixed24: false,
       layersRequested: null,
     },
@@ -530,6 +531,9 @@ describe('§3.1 the served worlds payload', () => {
         seams: {
           swatchMean: true,
           bandsShuffle: false,
+          // `true`, unlike the field's own default: a fixture that agreed with the value a dropped
+          // echo would publish leaves a pass-through hardcoding `artOff: false` green (DEC-821).
+          artOff: true,
           artThresholdFixed24: true,
           layersRequested: 128,
         },
@@ -539,6 +543,8 @@ describe('§3.1 the served worlds payload', () => {
     expect(probe.pool.layers).toBe(0)
     expect(probe.pool.evictions).toBe(925)
     expect(probe.seams.swatchMean).toBe(true)
+    expect(probe.seams.artOff).toBe(true)
+    expect(probe.seams.bandsShuffle).toBe(false)
     expect(probe.seams.layersRequested).toBe(128)
   })
 

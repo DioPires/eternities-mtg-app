@@ -48,6 +48,7 @@ const WORLDS = worldPlanesOf(PLANES.planes)
 const NO_SEAMS: WorldsSeams = {
   swatchMean: false,
   bandsShuffle: false,
+  artOff: false,
   artThresholdFixed24: false,
   layersRequested: null,
 }
