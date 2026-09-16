@@ -653,7 +653,15 @@ async function visitWorld(page, world, { dir, captures, pose = SURFACE_RADII }) 
   // mark is therefore *reported* and not scored. Turning it into a domain rule needs `pool.reserved`
   // on the probe, which is R1's surface to add (DEC-744 B1) and is the live half of pending ask
   // `62f32092`.
+  //
+  // **The last read of this loop is also W4's exit reading** (DEC-752, ruling `exit_domain`). The
+  // eviction half's domain is exit-side — a session that exhausted mid-visit was forbidden to admit
+  // by the time this rate was taken, so the rate is 0 by construction — and the only honest place to
+  // take "at exit" is *after* the window the rate is measured over, not at the settle before it.
+  // Bare like the entry read and for the same reason: `stream` is session-global and belongs to no
+  // world, so a threaded slug here would claim the reading is about one.
   const timeline = []
+  let exitStream = probe.stream
   const started = Date.now()
   while ((Date.now() - started) / 1000 < W4_SAMPLE_S) {
     const now = await readProbe(page, slug)
@@ -664,8 +672,15 @@ async function visitWorld(page, world, { dir, captures, pose = SURFACE_RADII }) 
         resident: now.probe.pool.resident,
         layers: now.probe.pool.layers,
       })
+      exitStream = now.probe.stream
     }
     await sleep(200)
+  }
+  if (exitStream === null) {
+    // Same rule as the entry read: `null` is a build with no stream at all and is not an all-zero
+    // report (DEC-778). Defaulting the exit spend to zero would switch the eviction half's domain
+    // off, which is the `fixed24` false GREEN restored.
+    return { slug, ok: false, detail: 'the payload reports no art stream, so W4 has no exit reading' }
   }
 
   const { samples, offFrame } = cellSamples(probe, image)
@@ -687,6 +702,7 @@ async function visitWorld(page, world, { dir, captures, pose = SURFACE_RADII }) 
     // a difference of two — so the difference is taken here rather than left to a reader of the
     // report to remember not to attribute `stream` to `slug`.
     entryStream,
+    exitStream,
     stream: probe.stream,
     streamDelta: streamDelta(entryStream, probe.stream),
     settleCells,
@@ -697,7 +713,7 @@ async function visitWorld(page, world, { dir, captures, pose = SURFACE_RADII }) 
     samples,
     w2: evaluateW2(samples),
     w3: evaluateW3(samples, probe.bandShares),
-    w4: evaluateW4(artCells(probe), timeline, probe.pool, entryStream),
+    w4: evaluateW4(artCells(probe), timeline, probe.pool, entryStream, exitStream),
     probeChecked: frame.checked,
   }
 }
@@ -901,7 +917,19 @@ const MATRIX = [
     subject: 'dominaria',
     expect: [
       { criterion: 'W4', measure: 'artFraction', expect: 'RED' },
-      { criterion: 'W4', measure: 'evictionsPerSecond', expect: 'RED' },
+      // **`N/A`, not `RED`, since the `exit_domain` ruling landed — and the change is the point of
+      // the ruling rather than a weakening of the row.** This row exhausts the byte budget *during*
+      // its visit (71.6 MB against 67.1, `swatchOnly` true at exit), and a pool forbidden to admit
+      // cannot evict, so its 0/s was never a measurement. It used to read GREEN here — a falsifier
+      // row passing the half it exists to fail. `N/A` is a distinct expectation from GREEN precisely
+      // so "not measured" can never be recorded as "measured and fine".
+      //
+      // The row's RED therefore rests on `artFraction` alone. That half survives the reachable bar
+      // because this row is *budget*-starved, not *pool*-starved: its demand fits its pool, so its
+      // ceiling is 1 and its bar is the unmodified 0.9 against ~0.37. Appendix A's pool-starved
+      // `tether-surface` capture is the other reading of "the fixed24 control" and would NOT survive
+      // it — see `reachableBar` in `lib/worlds-metrics.mjs`.
+      { criterion: 'W4', measure: 'evictionsPerSecond', expect: 'N/A' },
     ],
   },
   {
@@ -912,6 +940,12 @@ const MATRIX = [
     expect: [
       { criterion: 'W4', measure: 'artFraction', expect: 'GREEN' },
       { criterion: 'W4', measure: 'evictionsPerSecond', expect: 'GREEN' },
+      // **The overshoot the reachable bar forgives, asserted so it cannot go quiet.** Ruling
+      // `demand_measure_scored` is `reported_only`, so this measure cannot colour the row — which
+      // makes it exactly the kind of number that stops being read. Naming it here keeps it
+      // falsifiable: the policy admits ~205 cells into a 128-layer pool, 1.60× capacity, and the day
+      // it stops doing that this row goes red and someone has to look.
+      { criterion: 'W4', measure: 'demandFitsCapacity', expect: 'RED' },
     ],
   },
   {

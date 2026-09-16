@@ -514,7 +514,6 @@ describe("W2 — the mosaic reads as tiles", () => {
    * An IQR over two points is the spread of two points.
    */
   describe("the iso-shade ring carries its own sample-size domain", () => {
-
     it("reports insufficient when the ring is below the domain, however many cells were sampled", () => {
       const w2 = evaluateW2(ringOf(3, [[128, 128, 128]]));
 
@@ -615,17 +614,17 @@ describe("W2 — the mosaic reads as tiles", () => {
       expect(control.isoShadeSampled).toBeGreaterThanOrEqual(
         W2_CONTROL_SUBJECT_MIN_RING,
       );
-      expect(control.measures.find((m) => m.key === "lightnessIqr")?.status).toBe(
-        "fail",
-      );
+      expect(
+        control.measures.find((m) => m.key === "lightnessIqr")?.status,
+      ).toBe("fail");
 
       // The same wash on the largest ring any *other* v3 world offers but dominaria and ravnica —
       // eight cells, forgotten-realms — is not a control at all. This is the row that would go
       // quietly green if the subject moved.
       const tooSmall = evaluateW2(ringOf(8, [[128, 128, 128]]));
-      expect(tooSmall.measures.find((m) => m.key === "lightnessIqr")?.status).toBe(
-        "insufficient",
-      );
+      expect(
+        tooSmall.measures.find((m) => m.key === "lightnessIqr")?.status,
+      ).toBe("insufficient");
     });
   });
 });
@@ -797,13 +796,27 @@ describe("W3 — latitude reads as colour", () => {
   // from a criterion that reds on everything.
   const twoBands = (other: Rgb): CellSample[] => [
     ...Array.from({ length: 20 }, (_, i) => ({
-      x: i, y: 0, height: 20, frontFacing: true, band: 5, rgb: [120, 120, 120] as Rgb, shade: 0.9,
+      x: i,
+      y: 0,
+      height: 20,
+      frontFacing: true,
+      band: 5,
+      rgb: [120, 120, 120] as Rgb,
+      shade: 0.9,
     })),
     ...Array.from({ length: 20 }, (_, i) => ({
-      x: i, y: 40, height: 20, frontFacing: true, band: 6, rgb: other, shade: 0.9,
+      x: i,
+      y: 40,
+      height: 20,
+      frontFacing: true,
+      band: 6,
+      rgb: other,
+      shade: 0.9,
     })),
   ];
-  const twoBandShares = BAND_ORDER.map((_, i) => (i === 5 || i === 6 ? 0.5 : 0));
+  const twoBandShares = BAND_ORDER.map((_, i) =>
+    i === 5 || i === 6 ? 0.5 : 0,
+  );
 
   it("reds a band pair that has converged below the floor", () => {
     const w3 = evaluateW3(twoBands([121, 120, 120]), twoBandShares);
@@ -913,6 +926,41 @@ describe("W4 — art resolves without exhausting", () => {
     byteBudget: 64 * 1024 * 1024,
   };
 
+  /**
+   * The stream report at the **exit** of a healthy visit: the world bought some art and the renderer
+   * is still willing to fetch.
+   *
+   * **Deliberately not `FRESH_SESSION`, and the difference is load-bearing.** The two reports go into
+   * `evaluateW4` as adjacent positionals of the same shape, so passing one object for both would
+   * make a cross-wiring — entry read where exit is meant, or the reverse — invisible on every row
+   * here. `bytesOutstanding` differs so the two are distinguishable at a glance in a failure
+   * message, and the rows below that turn on the *predicate* put `swatchOnly` itself into
+   * disagreement across the two ends, which is what actually kills the swap.
+   *
+   * See `a-test-double-that-agrees-with-the-bug`: a double chosen to match its sibling cannot
+   * witness them being confused.
+   */
+  const HEALTHY_EXIT = {
+    swatchOnly: false,
+    bytesOutstanding: 12_000_000,
+    bytesReserved: 0,
+    byteBudget: 64 * 1024 * 1024,
+  };
+
+  /**
+   * The exit report of a session that exhausted **during** the visit — `?artThreshold=fixed24`'s own
+   * shape, measured: it entered clean and fetched 71.6 MB against a 67.1 MB budget.
+   *
+   * Entry is `FRESH_SESSION` on every row that uses this, so the two ends disagree and the eviction
+   * half's domain can only come from the exit one.
+   */
+  const EXHAUSTED_DURING_VISIT = {
+    swatchOnly: true,
+    bytesOutstanding: 71_600_000,
+    bytesReserved: 0,
+    byteBudget: 67_108_864,
+  };
+
   it("goes RED on its control — ?artThreshold=fixed24 — reproducing tether-surface", () => {
     const { drawn, wanted, evicted } = PROTOTYPE.tetherSurface;
     // The pool is exhausted and churning: the prototype reached this pose "with no sign of
@@ -927,16 +975,67 @@ describe("W4 — art resolves without exhausting", () => {
       churning,
       PROTOTYPE_POOL,
       FRESH_SESSION,
+      HEALTHY_EXIT,
     );
 
+    // The row is still RED — but **on the eviction half alone** since the reachable bar landed, and
+    // that is a change in what this control proves rather than a detail of how it is spelled.
     expect(w4.pass).toBe(false);
-    const fraction = w4.measures.find((m) => m.key === "artFraction");
-    expect(fraction?.pass).toBe(false);
-    // 1,024 of 2,759 is 37%, against a 90% floor.
-    expect(fraction?.value).toBeCloseTo(0.371, 3);
     expect(w4.measures.find((m) => m.key === "evictionsPerSecond")?.pass).toBe(
       false,
     );
+    // 1,024 of 2,759 is 37%, and it now PASSES: the pool is saturated, so `artFraction` equals the
+    // capacity ceiling exactly and the bar — 0.9 × that ceiling — sits below it by construction.
+    // Asserted rather than deleted, because a control that quietly stopped covering half of what it
+    // used to cover is the failure this matrix exists to prevent.
+    const fraction = w4.measures.find((m) => m.key === "artFraction");
+    expect(fraction?.value).toBeCloseTo(0.371, 3);
+    expect(fraction?.bound).toBeCloseTo(0.9 * (1_024 / 2_759), 6);
+    expect(fraction?.status).toBe("pass");
+    // What sees the starvation instead — and it cannot colour the row.
+    const demand = w4.measures.find((m) => m.key === "demandFitsCapacity");
+    expect(demand?.value).toBeCloseTo(2_759 / 1_024, 6);
+    expect(demand?.status).toBe("fail");
+    expect(demand?.scored).toBe(false);
+  });
+
+  /**
+   * **The vacuity the reachable bar introduces, stated as a test rather than left to be
+   * rediscovered** (DEC-752, rulings `split_measures` + `floor_times_ceiling`).
+   *
+   * A showing cell holds a layer, so on a pool with every layer in use `showing == layers` and
+   * `artFraction == layers / wanting == capacityCeiling` exactly. The bar is `0.9 × capacityCeiling`,
+   * so the ratio of value to bar is `1 / 0.9` **whatever the capacity and whatever the demand**. A
+   * saturated pool can never fail this half — at 37%, at 10%, at 1%.
+   *
+   * That is the ruling as the board made it, and this row exists so the next person to read a green
+   * `artFraction` on a starved frame finds the reason here instead of deriving it from a surprise.
+   * See `a-bound-check-is-vacuous-when-the-bound-never-binds`.
+   */
+  it("cannot fail artFraction on a saturated pool, at any capacity", () => {
+    // Three capacities spanning two orders of magnitude, each drawing every layer it has against a
+    // demand far beyond it. One of them is Appendix A's own `tether-surface` capture.
+    for (const [layers, wanted] of [
+      [1_024, 2_759],
+      [128, 4_000],
+      [16, 16_000],
+    ] as const) {
+      const w4 = evaluateW4(
+        cells(wanted, layers),
+        settled(0),
+        { layers, resident: layers },
+        FRESH_SESSION,
+        HEALTHY_EXIT,
+      );
+      const fraction = w4.measures.find((m) => m.key === "artFraction");
+      expect(fraction?.value).toBeCloseTo(layers / wanted, 9);
+      expect(
+        fraction?.status,
+        `${layers} layers against ${wanted} cells wanting art`,
+      ).toBe("pass");
+    }
+    // The last of those shows 0.1% of the art that was wanted.
+    expect(16 / 16_000).toBeCloseTo(0.001, 6);
   });
 
   /**
@@ -947,20 +1046,37 @@ describe("W4 — art resolves without exhausting", () => {
    * sign of settling", and an inference is not a measurement: the same 925 cumulative evictions
    * spread over a settled window is 0/s and passes. The gate must take the rate over §3.1's own
    * 2 s window rather than reading the counter, which is what `evictionRate` is for.
+   *
+   * > **And since the reachable bar landed, the art half no longer fails here either, so this frame
+   * > is W4-GREEN outright.** The sentence above — "the art half certainly is" red — was written
+   * > against the flat 0.9 floor and is now false of this fixture: the pool is saturated, so
+   * > `artFraction` equals its ceiling and clears `0.9 × ceiling`. **Appendix A's `tether-surface`
+   * > capture, once its pool settles, passes both halves of W4 while showing 37% of the art it
+   * > wanted.** That is the consequence of rulings `split_measures` + `floor_times_ceiling` at its
+   * > sharpest, and it is asserted below rather than described, so it cannot drift back into prose.
    */
-  it("reads 925 cumulative evictions as passing once the pool has settled", () => {
+  it("passes the settled tether-surface frame outright, 37% art and all", () => {
     const { drawn, wanted, evicted } = PROTOTYPE.tetherSurface;
     const w4 = evaluateW4(
       cells(wanted, drawn),
       settled(evicted),
       PROTOTYPE_POOL,
       FRESH_SESSION,
+      HEALTHY_EXIT,
     );
+    // The original claim of this row, unchanged: 925 cumulative is not a rate.
     expect(w4.measures.find((m) => m.key === "evictionsPerSecond")?.value).toBe(
       0,
     );
-    // The art half still fails, so the row is red either way — but for one reason, not two.
-    expect(w4.pass).toBe(false);
+    // The new one. Both halves green on a frame §3.1 names as its control.
+    expect(w4.measures.find((m) => m.key === "artFraction")?.status).toBe(
+      "pass",
+    );
+    expect(w4.status).toBe("pass");
+    // The only measure that still objects, and it is `reported_only` by ruling.
+    const demand = w4.measures.find((m) => m.key === "demandFitsCapacity");
+    expect(demand?.status).toBe("fail");
+    expect(demand?.scored).toBe(false);
   });
 
   it("stays GREEN on ?layers=128 — tier 4, where the quantile raises the threshold to match", () => {
@@ -972,18 +1088,26 @@ describe("W4 — art resolves without exhausting", () => {
       settled(4_100),
       { layers: 128, resident: 128 },
       FRESH_SESSION,
+      HEALTHY_EXIT,
     );
     expect(w4.pass).toBe(true);
     expect(w4.measures.find((m) => m.key === "artFraction")?.value).toBe(1);
   });
 
   /**
-   * The capacity ceiling — reported on every row, and scoring nothing (DEC-770 N1).
+   * The capacity ceiling — reported on every row, and **scoring since 2026-09-16** (DEC-770 N1,
+   * then DEC-752 rulings `split_measures` + `floor_times_ceiling`).
    *
    * A showing cell holds a layer, so `min(1, layers / wanting)` bounds `artFraction` whatever the
-   * policy does. The rows below fix both that arithmetic and the fact that it is *not* wired to the
-   * verdict, because the tempting fix — excusing a row whose ceiling sits under the floor — would
-   * retire `?artThreshold=fixed24`, which is W4's only falsifier and is starved on purpose.
+   * policy does. The rows below fix that arithmetic, and now also the bar derived from it.
+   *
+   * > **The paragraph this block used to carry said the ceiling is deliberately not wired to the
+   * > verdict, "because the tempting fix would retire `?artThreshold=fixed24`". The board wired it
+   * > anyway, and the worry was half right.** It is wrong about the *live* `fixed24` row, which is
+   * > budget-starved rather than pool-starved: its demand fits its pool, its ceiling is 1, its bar is
+   * > the unmodified 0.9, and it stays RED — that row is tested below. It is right about Appendix A's
+   * > pool-starved `tether-surface` capture, which now passes this half. Both are called "the fixed24
+   * > control" in §3.1, and the card that carried the ruling to the board described only the first.
    */
   describe("capacity ceiling", () => {
     it("reports what the pool could show, not what it did", () => {
@@ -992,6 +1116,7 @@ describe("W4 — art resolves without exhausting", () => {
         settled(0),
         PROTOTYPE_POOL,
         FRESH_SESSION,
+        HEALTHY_EXIT,
       );
       // 1,024 layers against 2,759 cells wanting art.
       expect(w4.capacityCeiling).toBeCloseTo(1_024 / 2_759, 6);
@@ -1007,6 +1132,7 @@ describe("W4 — art resolves without exhausting", () => {
         settled(0),
         { layers: 224, resident: 90 },
         FRESH_SESSION,
+        HEALTHY_EXIT,
       );
       expect(w4.capacityCeiling).toBe(1);
     });
@@ -1017,26 +1143,53 @@ describe("W4 — art resolves without exhausting", () => {
         settled(0),
         { layers: 128, resident: 0 },
         FRESH_SESSION,
+        HEALTHY_EXIT,
       );
       expect(w4.capacityCeiling).toBeNull();
     });
 
-    it("leaves the fixed24 control RED even though its ceiling is under the floor", () => {
-      // The row this guard exists for. `fixed24` starves the pool deliberately, so its ceiling is
-      // 0.37 against a 0.9 floor — exactly the shape a "the floor was unreachable" excuse would
-      // forgive, and forgiving it would make W4's only falsifier inert.
-      const { drawn, wanted } = PROTOTYPE.tetherSurface;
+    it("keeps the LIVE fixed24 control RED, because its pool is not what starves it", () => {
+      // **The half of W4's falsifier that survives the reachable bar, and the distinction the
+      // ruling turns on.** Measured on leg G: at `?artThreshold=fixed24` dominaria's demand *fits*
+      // its pool — it exhausts the byte BUDGET, 71.6 MB against 67.1 — so its ceiling is 1, its bar
+      // is the unmodified 0.9, and 37% is a real failure against a bar it could have reached.
       const w4 = evaluateW4(
-        cells(wanted, drawn),
+        cells(945, 350),
         settled(0),
-        PROTOTYPE_POOL,
+        { layers: 1_024, resident: 350 },
         FRESH_SESSION,
+        HEALTHY_EXIT,
       );
-      expect(w4.capacityCeiling).toBeLessThan(0.9);
+      expect(w4.capacityCeiling).toBe(1);
+      expect(w4.artFractionBar).toBeCloseTo(0.9, 9);
       const fraction = w4.measures.find((m) => m.key === "artFraction");
       // `fail`, and specifically not `insufficient`: the row must stay a claim about the picture.
       // An excused ceiling would land here as `insufficient`, which reports as "not measured".
       expect(fraction?.status).toBe("fail");
+      // ...and the demand half agrees the pool was never the constraint, which is what makes this
+      // row distinguishable from the pool-starved one above rather than a second copy of it.
+      expect(
+        w4.measures.find((m) => m.key === "demandFitsCapacity")?.status,
+      ).toBe("pass");
+    });
+
+    it("publishes the bar it scored against, not just the ceiling it derived it from", () => {
+      // A verdict that cannot be read without re-deriving its own bound is the shape the fold's
+      // missing denominator had. 0.9 × 1,024/2,759.
+      const w4 = evaluateW4(
+        cells(2_759, 1_024),
+        settled(0),
+        PROTOTYPE_POOL,
+        FRESH_SESSION,
+        HEALTHY_EXIT,
+      );
+      expect(w4.artFractionBar).toBeCloseTo(0.9 * (1_024 / 2_759), 9);
+      expect(w4.measures.find((m) => m.key === "artFraction")?.bound).toBe(
+        w4.artFractionBar,
+      );
+      // And the bar is strictly below the flat floor here, so the two are distinguishable — a row
+      // where they coincided would pass whichever one the code actually used.
+      expect(w4.artFractionBar).toBeLessThan(0.9);
     });
   });
 
@@ -1047,6 +1200,7 @@ describe("W4 — art resolves without exhausting", () => {
       settled(evicted),
       PROTOTYPE_POOL,
       FRESH_SESSION,
+      HEALTHY_EXIT,
     );
     expect(w4.pass).toBe(true);
   });
@@ -1167,7 +1321,13 @@ describe("W4 — art resolves without exhausting", () => {
         showingArt: false,
       })),
     ];
-    const w4 = evaluateW4(cells, settled(0), PROTOTYPE_POOL, FRESH_SESSION);
+    const w4 = evaluateW4(
+      cells,
+      settled(0),
+      PROTOTYPE_POOL,
+      FRESH_SESSION,
+      HEALTHY_EXIT,
+    );
 
     expect(w4.wanting).toBe(90);
     expect(w4.showing).toBe(90);
@@ -1187,7 +1347,13 @@ describe("W4 — art resolves without exhausting", () => {
         showingArt: false,
       })),
     ];
-    const w4 = evaluateW4(cells, settled(0), PROTOTYPE_POOL, FRESH_SESSION);
+    const w4 = evaluateW4(
+      cells,
+      settled(0),
+      PROTOTYPE_POOL,
+      FRESH_SESSION,
+      HEALTHY_EXIT,
+    );
 
     expect(w4.wanting).toBe(90);
     expect(w4.showing).toBe(90);
@@ -1215,6 +1381,7 @@ describe("W4 — art resolves without exhausting", () => {
       settled(0),
       { layers: 224, resident: 90 },
       FRESH_SESSION,
+      HEALTHY_EXIT,
     );
     expect(w4.poolLayers).toBe(224);
     expect(w4.belowShippedPool).toBe(false);
@@ -1238,6 +1405,7 @@ describe("W4 — art resolves without exhausting", () => {
       settled(0),
       { layers: 64, resident: 64 },
       FRESH_SESSION,
+      HEALTHY_EXIT,
     );
     const shipped = evaluateW4(
       visible(90),
@@ -1247,6 +1415,7 @@ describe("W4 — art resolves without exhausting", () => {
         resident: 1,
       },
       FRESH_SESSION,
+      HEALTHY_EXIT,
     );
 
     expect(harness.belowShippedPool).toBe(true);
@@ -1274,6 +1443,7 @@ describe("W4 — art resolves without exhausting", () => {
           resident: 1,
         },
         FRESH_SESSION,
+        HEALTHY_EXIT,
       ).belowShippedPool,
     ).toBe(true);
     expect(
@@ -1285,6 +1455,7 @@ describe("W4 — art resolves without exhausting", () => {
           resident: 1,
         },
         FRESH_SESSION,
+        HEALTHY_EXIT,
       ).belowShippedPool,
     ).toBe(false);
     expect(SMALLEST_SHIPPED_POOL_LAYERS).toBe(128);
@@ -1311,6 +1482,7 @@ describe("W4 — art resolves without exhausting", () => {
           resident: 0,
         },
         FRESH_SESSION,
+        HEALTHY_EXIT,
       );
 
       expect(dead.streamNeverRan).toBe(true);
@@ -1328,16 +1500,23 @@ describe("W4 — art resolves without exhausting", () => {
      * to catch, which is a worse bug than the one it fixes.
      */
     it("does not fire on a policy that genuinely exhausts", () => {
-      // The prototype's own capture: art resolved, then the pool churned. `resident` is non-zero,
-      // so the stream demonstrably ran and 37% is a true reading of the policy.
+      // Art resolved and then stopped, with the pool never the constraint: 945 cells want art into
+      // 1,024 layers and 350 get it. `resident` is non-zero, so the stream demonstrably ran, and 37%
+      // against a bar of 0.9 is a true reading of the policy failing.
+      //
+      // **The fixture moved off the prototype's 2,759-into-1,024 capture deliberately.** That one is
+      // pool-starved, and since the reachable bar landed it passes this half by construction — so it
+      // can no longer witness the difference between "the guard swallowed a real failure" and "the
+      // guard behaved". A control has to be able to go the other way.
       const exhausted = evaluateW4(
-        cells(2_759, 1_024),
+        cells(945, 350),
         settled(925),
         {
           layers: 1_024,
           resident: 1_024,
         },
         FRESH_SESSION,
+        HEALTHY_EXIT,
       );
 
       expect(exhausted.streamNeverRan).toBe(false);
@@ -1358,6 +1537,7 @@ describe("W4 — art resolves without exhausting", () => {
           resident: 0,
         },
         FRESH_SESSION,
+        HEALTHY_EXIT,
       );
 
       expect(swatchOnly.streamNeverRan).toBe(false);
@@ -1374,6 +1554,7 @@ describe("W4 — art resolves without exhausting", () => {
           resident: 0,
         },
         FRESH_SESSION,
+        HEALTHY_EXIT,
       );
 
       expect(idle.streamNeverRan).toBe(false);
@@ -1401,6 +1582,7 @@ describe("W4 — art resolves without exhausting", () => {
         settled(0),
         { layers: 1_024, resident: 5 },
         FRESH_SESSION,
+        HEALTHY_EXIT,
       );
 
       expect(
@@ -1418,6 +1600,7 @@ describe("W4 — art resolves without exhausting", () => {
         settled(0),
         { layers: 1_024, resident: 0 },
         FRESH_SESSION,
+        HEALTHY_EXIT,
       );
 
       expect(
@@ -1435,6 +1618,7 @@ describe("W4 — art resolves without exhausting", () => {
           // @ts-expect-error — the omission is the thing under test.
           { layers: 1_024 },
           FRESH_SESSION,
+          HEALTHY_EXIT,
         ),
       ).toThrow(/pool\.resident/);
     });
@@ -1474,6 +1658,7 @@ describe("W4 — art resolves without exhausting", () => {
         settled(0),
         { layers: 1_024, resident: 837 },
         SPENT,
+        HEALTHY_EXIT,
       );
 
       expect(carried.budgetBoundAtEntry).toBe(true);
@@ -1494,18 +1679,29 @@ describe("W4 — art resolves without exhausting", () => {
     it("scores a world that spends the budget itself, because that is W4 failing", () => {
       // Entry, not exit. The budget is untouched when this world is entered and its own demand
       // exhausts it — a real reading of the product, and the case the guard must not swallow.
-      // `?artThreshold=fixed24` is exactly this shape, and it is W4's only falsifier.
+      // `?artThreshold=fixed24` is exactly this shape: it exhausts the byte budget while its demand
+      // still fits the pool, so the reachable bar stays 0.9 and cannot forgive it.
       const ownSpend = evaluateW4(
-        cells(2_759, 1_024),
+        cells(945, 350),
         settled(925),
-        PROTOTYPE_POOL,
+        { layers: 1_024, resident: 1_024 },
         FRESH_SESSION,
+        EXHAUSTED_DURING_VISIT,
       );
 
       expect(ownSpend.budgetBoundAtEntry).toBe(false);
       expect(
         ownSpend.measures.find((m) => m.key === "artFraction")?.status,
       ).toBe("fail");
+      // **And the exit-side domain must NOT rescue it.** The session did exhaust during the visit,
+      // so the eviction half goes out of domain — but `artFraction` is entry-side and stays a
+      // scored failure. An exit-side rule applied to both halves would excuse dominaria's real W4
+      // failure, which is the whole reason the two halves take different sides.
+      expect(ownSpend.budgetBoundAtExit).toBe(true);
+      expect(
+        ownSpend.measures.find((m) => m.key === "evictionsPerSecond")?.status,
+      ).toBe("insufficient");
+      expect(ownSpend.status).toBe("fail");
     });
 
     it("does not fire one byte short of the budget", () => {
@@ -1523,6 +1719,7 @@ describe("W4 — art resolves without exhausting", () => {
           bytesReserved: 0,
           byteBudget: 67_108_864,
         },
+        HEALTHY_EXIT,
       );
 
       expect(nearly.budgetBoundAtEntry).toBe(false);
@@ -1564,6 +1761,7 @@ describe("W4 — art resolves without exhausting", () => {
         settled(29),
         { layers: 128, resident: 128 },
         entry,
+        HEALTHY_EXIT,
       );
 
       expect(evicting.budgetBoundAtEntry).toBe(false);
@@ -1587,6 +1785,7 @@ describe("W4 — art resolves without exhausting", () => {
           bytesReserved: 0,
           byteBudget: 67_108_864,
         },
+        HEALTHY_EXIT,
       );
 
       expect(declared.budgetBoundAtEntry).toBe(true);
@@ -1599,15 +1798,26 @@ describe("W4 — art resolves without exhausting", () => {
       // `swatchOnly` is the predicate, so its absence is the silent one: `undefined` is falsy, and a
       // guard that let it through would read every world as "allowed to fetch" and disqualify
       // nothing, which is the guard switched off.
+      //
+      // **The messages are matched on the side they name, not on the field alone.** Since the exit
+      // report arrived there are two reports of identical shape in adjacent positions, and a bare
+      // `/swatchOnly/` would be satisfied by either one's complaint — so a call that read the exit
+      // report where the entry one was meant would still pass this row. See
+      // `a-symmetry-makes-two-sources-indistinguishable`.
       expect(() =>
         evaluateW4(
           cells(967, 0),
           settled(0),
           PROTOTYPE_POOL,
           // @ts-expect-error — the omission is the thing under test.
-          { bytesOutstanding: 67_163_595, bytesReserved: 0, byteBudget: 67_108_864 },
+          {
+            bytesOutstanding: 67_163_595,
+            bytesReserved: 0,
+            byteBudget: 67_108_864,
+          },
+          HEALTHY_EXIT,
         ),
-      ).toThrow(/swatchOnly/);
+      ).toThrow(/entry stream report's swatchOnly/);
 
       // The byte counts no longer decide anything, but they are what the disqualification message
       // quotes, and a setup failure reported as `undefined outstanding` names no cause at all.
@@ -1618,13 +1828,253 @@ describe("W4 — art resolves without exhausting", () => {
           PROTOTYPE_POOL,
           // @ts-expect-error — the omission is the thing under test.
           { swatchOnly: true, byteBudget: 67_108_864 },
+          HEALTHY_EXIT,
         ),
-      ).toThrow(/bytesOutstanding/);
+      ).toThrow(/entry stream report's bytesOutstanding/);
 
       expect(() =>
         // @ts-expect-error — a missing entry report entirely.
         evaluateW4(cells(967, 0), settled(0), PROTOTYPE_POOL),
-      ).toThrow(/swatchOnly/);
+      ).toThrow(/entry stream report's swatchOnly/);
+    });
+  });
+
+  /**
+   * **A budget exhausted DURING the visit is the eviction half's own domain** (DEC-752, board ruling
+   * `exit_domain` on card `62f32092`).
+   *
+   * The defect this retires, measured on leg G: `?artThreshold=fixed24` entered its session clean,
+   * fetched 71.6 MB against a 67.1 MB budget, and its eviction half read **0/s and PASSED** — on the
+   * row whose entire purpose is to be red. `budgetBoundAtEntry` cannot see it, because at entry the
+   * budget was untouched; that guard is entry-side by design and stays.
+   *
+   * The mechanism is the one that also explains the five recorded zeroes: `artPool.claimLayer` hands
+   * back a free layer first and only evicts when it finds none, so a stream forbidden to fetch never
+   * asks and the counter cannot move. **A pool forbidden to admit cannot evict.** That 0 is an
+   * absent measurement wearing a passing verdict.
+   *
+   * The rows here are what keeps the rule from becoming a way to *lose* evictions instead.
+   */
+  describe("a budget exhausted during the visit is not an eviction reading", () => {
+    it("retires the fixed24 row's false GREEN at 0 evictions per second", () => {
+      const fixed24 = evaluateW4(
+        cells(945, 350),
+        settled(925),
+        { layers: 1_024, resident: 1_024 },
+        FRESH_SESSION,
+        EXHAUSTED_DURING_VISIT,
+      );
+
+      // Entry-side sees nothing — this is exactly the gap.
+      expect(fixed24.budgetBoundAtEntry).toBe(false);
+      expect(fixed24.budgetBoundAtExit).toBe(true);
+      const evictions = fixed24.measures.find(
+        (m) => m.key === "evictionsPerSecond",
+      );
+      // The value is still 0. What changed is that 0 no longer reads as a pass.
+      expect(evictions?.value).toBe(0);
+      expect(evictions?.status).toBe("insufficient");
+      expect(evictions?.insufficientReason).toMatch(/exhausted during this/);
+    });
+
+    it("leaves the baseline row's eviction red exactly where it was", () => {
+      // **The row that proves the domain did not swallow the finding it was raised beside.**
+      // dominaria on `baseline` reads `declinedBudget` 0 and `swatchOnly` false at exit — measured,
+      // not assumed — so it is inside the domain and its ~18.4/s is scored. A rule that disqualified
+      // it would have retired W4's live red along with `fixed24`'s false green.
+      const churning = [
+        { t: 0, evictions: 1_000 },
+        { t: 2.5, evictions: 1_046 },
+        { t: 5, evictions: 1_092 },
+      ];
+      const baseline = evaluateW4(
+        cells(945, 942),
+        churning,
+        { layers: 1_024, resident: 1_024 },
+        FRESH_SESSION,
+        HEALTHY_EXIT,
+      );
+
+      expect(baseline.budgetBoundAtExit).toBe(false);
+      const evictions = baseline.measures.find(
+        (m) => m.key === "evictionsPerSecond",
+      );
+      expect(evictions?.status).toBe("fail");
+      expect(evictions!.value!).toBeGreaterThan(5);
+      // ...and the art half is green at 99.7%, so the row's colour comes from the eviction half
+      // alone — the live shape, where the churn is invisible in the frame.
+      expect(
+        baseline.measures.find((m) => m.key === "artFraction")?.status,
+      ).toBe("pass");
+      expect(baseline.status).toBe("fail");
+    });
+
+    it("does not carry the exit domain over to artFraction", () => {
+      // **The asymmetry, asserted.** Exit-side on both halves would excuse a world whose own demand
+      // exhausted the budget — dominaria's real W4 failure — by calling it out of domain. A starved
+      // frame is a true reading of a starved frame however it got that way; a rate of change of a
+      // counter that was forbidden to move is not.
+      const w4 = evaluateW4(
+        cells(945, 100),
+        settled(0),
+        { layers: 1_024, resident: 1_024 },
+        FRESH_SESSION,
+        EXHAUSTED_DURING_VISIT,
+      );
+
+      expect(w4.measures.find((m) => m.key === "artFraction")?.status).toBe(
+        "fail",
+      );
+      expect(
+        w4.measures.find((m) => m.key === "evictionsPerSecond")?.status,
+      ).toBe("insufficient");
+    });
+
+    it("reads the exit report and not the entry one, on rows where they disagree", () => {
+      // The two reports are adjacent positionals of identical shape, so a swap is a silent defect
+      // rather than a type error. These rows put `swatchOnly` into open disagreement across the two
+      // ends, in both directions, which is the only thing that can catch it.
+      const exhaustedLate = evaluateW4(
+        cells(945, 350),
+        settled(0),
+        { layers: 1_024, resident: 1_024 },
+        FRESH_SESSION, // false
+        EXHAUSTED_DURING_VISIT, // true
+      );
+      expect(exhaustedLate.budgetBoundAtEntry).toBe(false);
+      expect(exhaustedLate.budgetBoundAtExit).toBe(true);
+
+      // The other direction: entered spent, reclaimed during the visit, fetching again by exit.
+      // `bytesOutstanding` falling back under the budget is DEC-812's reclaim, so this is a real
+      // shape rather than a contrived one.
+      const reclaimed = evaluateW4(
+        cells(945, 350),
+        settled(0),
+        { layers: 1_024, resident: 1_024 },
+        {
+          swatchOnly: true,
+          bytesOutstanding: 67_163_595,
+          bytesReserved: 0,
+          byteBudget: 67_108_864,
+        },
+        HEALTHY_EXIT,
+      );
+      expect(reclaimed.budgetBoundAtEntry).toBe(true);
+      expect(reclaimed.budgetBoundAtExit).toBe(false);
+      // Entry-side disqualifies both halves here, so the eviction half's own domain is not what
+      // produced that — but `artFraction` is entry-driven and must say so.
+      expect(
+        reclaimed.measures.find((m) => m.key === "artFraction")?.status,
+      ).toBe("insufficient");
+    });
+
+    it("refuses an exit report that omits a field rather than defaulting the guard off", () => {
+      // Same argument as the entry report's, one position over: defaulted, `swatchOnly` would be
+      // `undefined`, falsy, and every row would read "the stream was still allowed to fetch" — the
+      // `fixed24` false GREEN restored. Matched on the side the message names.
+      expect(() =>
+        evaluateW4(
+          cells(967, 0),
+          settled(0),
+          PROTOTYPE_POOL,
+          FRESH_SESSION,
+          // @ts-expect-error — the omission is the thing under test.
+          { bytesOutstanding: 0, bytesReserved: 0, byteBudget: 67_108_864 },
+        ),
+      ).toThrow(/exit stream report's swatchOnly/);
+
+      expect(() =>
+        evaluateW4(
+          cells(967, 0),
+          settled(0),
+          PROTOTYPE_POOL,
+          FRESH_SESSION,
+          // @ts-expect-error — the omission is the thing under test.
+          { swatchOnly: false, byteBudget: 67_108_864 },
+        ),
+      ).toThrow(/exit stream report's bytesOutstanding/);
+
+      expect(() =>
+        // @ts-expect-error — a missing exit report entirely: the defaulting case itself.
+        evaluateW4(cells(967, 0), settled(0), PROTOTYPE_POOL, FRESH_SESSION),
+      ).toThrow(/exit stream report's swatchOnly/);
+    });
+  });
+
+  /**
+   * **`demandFitsCapacity` — the overshoot the reachable bar forgives, reported and not scored**
+   * (DEC-752, ruling `demand_measure_scored` = `reported_only`).
+   */
+  describe("demand against capacity", () => {
+    it("greens the tier-4 row on artFraction while reporting the overshoot that would red it", () => {
+      // The row the split was raised for, at its measured numbers: the policy raised its threshold
+      // 24 → 35.06 px, cut demand 945 → 205, and still admitted 205 into a 128-layer pool. 125 of
+      // them draw art — 0.610 against a ceiling of 0.624.
+      const tier4 = evaluateW4(
+        cells(205, 125),
+        settled(0),
+        { layers: 128, resident: 128 },
+        FRESH_SESSION,
+        HEALTHY_EXIT,
+      );
+
+      const fraction = tier4.measures.find((m) => m.key === "artFraction");
+      expect(fraction?.value).toBeCloseTo(0.6098, 4);
+      expect(tier4.capacityCeiling).toBeCloseTo(0.6244, 4);
+      expect(tier4.artFractionBar).toBeCloseTo(0.562, 3);
+      // GREEN — and it was RED against the flat 0.9, which is the whole of what the ruling changed.
+      expect(fraction?.status).toBe("pass");
+      expect(fraction!.value!).toBeLessThan(0.9);
+
+      // The overshoot: 1.60× capacity. Fails its own bound, and the row is green anyway.
+      const demand = tier4.measures.find((m) => m.key === "demandFitsCapacity");
+      expect(demand?.value).toBeCloseTo(205 / 128, 6);
+      expect(demand?.status).toBe("fail");
+      expect(demand?.scored).toBe(false);
+      expect(tier4.status).toBe("pass");
+    });
+
+    it("keeps an unscored measure out of the roster fold's verdict too", () => {
+      // One predicate, three readers. A fold that counted it would turn every tier-4 tour red at the
+      // aggregate while every per-world row printed green — a report contradicting itself, which is
+      // the defect the W4 domain rule was landed to fix one criterion over.
+      const overshooting = (slug: string) => ({
+        slug,
+        criterion: evaluateW4(
+          cells(205, 125),
+          settled(0),
+          { layers: 128, resident: 128 },
+          FRESH_SESSION,
+          HEALTHY_EXIT,
+        ),
+      });
+      const folded = foldCriteria([
+        overshooting("alara"),
+        overshooting("amonkhet"),
+      ]);
+
+      expect(folded?.status).toBe("pass");
+      // ...and it is still *present* in the fold, carrying its worst-plane value, because
+      // `reported_only` means reported.
+      const demand = folded?.measures.find(
+        (m) => m.key === "demandFitsCapacity",
+      );
+      expect(demand?.value).toBeCloseTo(205 / 128, 6);
+      expect(demand?.status).toBe("fail");
+      expect(demand?.scoredPlanes).toBe(2);
+    });
+
+    it("is null on §1.6's legal zero-layer world rather than dividing by zero", () => {
+      const swatchOnly = evaluateW4(
+        cells(900, 0),
+        settled(0),
+        { layers: 0, resident: 0 },
+        FRESH_SESSION,
+        HEALTHY_EXIT,
+      );
+      expect(
+        swatchOnly.measures.find((m) => m.key === "demandFitsCapacity")?.value,
+      ).toBeNull();
     });
   });
 });

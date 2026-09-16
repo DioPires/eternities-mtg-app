@@ -554,6 +554,20 @@ export function iqr(xs) {
  *
  * `direction` is `'min'` when the floor is a lower bound and `'max'` when it is a ceiling. Spelling
  * it out beats inferring from the name: W4 carries one of each.
+ *
+ * ## `scored: false` — a measure that is reported and does not decide a colour (DEC-752)
+ *
+ * The board's `demand_measure_scored` ruling (`reported_only`, card `2e92df81`) asks for a measure
+ * that carries a value, a bound and a verdict into the report while leaving the row's colour to its
+ * siblings. That is a third thing, and it is deliberately *not* spelled as `insufficient`:
+ * `insufficient` says "this was not measured", and the whole point of a reported-only measure is
+ * that it **was** measured and is being shown.
+ *
+ * It is a property of the measure rather than a filter at the call site so that the fold
+ * ({@link foldCriteria}) and the matrix ({@link checkControlRow}) cannot disagree with the
+ * per-plane verdict about which measures count — one flag, read in all three places. A control row
+ * may still name an unscored measure explicitly in `expect`, which is how the overshoot it reports
+ * stays falsifiable even though it cannot red a row on its own.
  */
 function measure(
   key,
@@ -561,7 +575,7 @@ function measure(
   value,
   bound,
   direction,
-  { insufficient = false, why = null } = {},
+  { insufficient = false, why = null, scored = true } = {},
 ) {
   const status = insufficient
     ? "insufficient"
@@ -577,9 +591,21 @@ function measure(
     bound,
     direction,
     status,
+    scored,
     pass: status === "pass",
     insufficientReason: why,
   };
+}
+
+/**
+ * The measures that decide a verdict: everything but the reported-only ones.
+ *
+ * One spelling, used by both {@link criterion} and {@link foldCriteria}, because a per-plane row and
+ * the roster fold disagreeing about which measures count is a report that contradicts itself — the
+ * shape the W4 domain rule was landed to fix one criterion over.
+ */
+function scoredMeasures(measures) {
+  return measures.filter((m) => m.scored !== false);
 }
 
 /**
@@ -599,9 +625,10 @@ function measure(
  * unmeasured criterion has not passed. Anything deciding the *run's* verdict must read `status`.
  */
 function criterion(id, title, measures, extra = {}) {
-  const status = measures.some((m) => m.status === "fail")
+  const scored = scoredMeasures(measures);
+  const status = scored.some((m) => m.status === "fail")
     ? "fail"
-    : measures.some((m) => m.status === "insufficient")
+    : scored.some((m) => m.status === "insufficient")
       ? "insufficient"
       : "pass";
   return { id, title, measures, status, pass: status === "pass", ...extra };
@@ -1055,16 +1082,59 @@ export function streamNeverRan(wanting, pool) {
  * absence would be silent, and it is a boolean, so there is no "nearly" for it to sit next to.
  */
 export function budgetBoundAtEntry(stream) {
+  return budgetBound(stream, "entry");
+}
+
+/**
+ * The same read, taken at the **exit** of a world's visit — the eviction half's own domain
+ * (DEC-752, board ruling `exit_domain` on card `62f32092`).
+ *
+ * ## Why the eviction half needs a domain its sibling must not have
+ *
+ * `?artThreshold=fixed24` entered its session clean and exhausted the budget **during** the visit:
+ * 71.6 MB fetched against a 67.1 MB budget, `swatchOnly` true at exit. Its eviction half then read
+ * **0/s and PASSED** — on a row whose whole purpose is to be red. That zero is not a settled pool,
+ * it is an absent measurement: `artPool.claimLayer` only evicts when it cannot find a free layer,
+ * and a stream forbidden to fetch never asks for one. **A pool forbidden to admit cannot evict.**
+ *
+ * So the predicate is exit-side here and entry-side in {@link budgetBoundAtEntry}, and the asymmetry
+ * is the design rather than an oversight:
+ *
+ * | half | side | why the other side is wrong |
+ * |---|---|---|
+ * | `artFraction` | **entry** | exit-side would excuse a world whose *own* demand exhausted the budget — dominaria's real W4 failure, and `fixed24`'s — by calling the failure its own domain |
+ * | `evictionsPerSecond` | **exit** | entry-side cannot see an exhaustion that happened mid-visit, which is exactly when the counter stops being able to move |
+ *
+ * `artFraction` measures the picture: a starved frame is a true reading of a starved frame however
+ * it got that way. `evictionsPerSecond` measures a *rate of change of a counter*, and a counter that
+ * has been forbidden to move reports a number that is not about the policy at all.
+ *
+ * **This does not touch the baseline red, and that was checked rather than assumed.** On the
+ * `baseline` row dominaria reads `declinedBudget` 0 and `swatchOnly` **false** at exit, so it sits
+ * inside this domain and its ~18.4/s stands.
+ */
+export function budgetBoundAtExit(stream) {
+  return budgetBound(stream, "exit");
+}
+
+/**
+ * Both sides of the same read, with `side` naming which report went missing.
+ *
+ * Shared so the two cannot drift into different spellings of "was this stream allowed to fetch" —
+ * the DEC-812 defect is that a *copy* of the renderer's condition goes stale, and two copies go
+ * stale independently.
+ */
+function budgetBound(stream, side) {
   if (typeof stream?.swatchOnly !== "boolean") {
     throw new TypeError(
-      "W4 needs the entry stream report's swatchOnly: it is the renderer's own answer to whether " +
+      `W4 needs the ${side} stream report's swatchOnly: it is the renderer's own answer to whether ` +
         "the stream was allowed to fetch, and re-deriving it from the byte counts is the DEC-812 defect",
     );
   }
   for (const key of ["bytesOutstanding", "bytesReserved", "byteBudget"]) {
     if (typeof stream[key] !== "number") {
       throw new TypeError(
-        `W4 needs the entry stream report's ${key}: the disqualification message quotes it, and a tour's carried-over spend must be reported in the numbers that produced it`,
+        `W4 needs the ${side} stream report's ${key}: the disqualification message quotes it, and a tour's carried-over spend must be reported in the numbers that produced it`,
       );
     }
   }
@@ -1088,14 +1158,27 @@ export function cellsWantingArt(cells) {
 
 /**
  * `entryStream` is the stream report read **before** the visit began — see
- * {@link budgetBoundAtEntry}. It is a required positional for the same reason `pool` is: defaulted,
- * it would default the guard off, and the guard off is the defect.
+ * {@link budgetBoundAtEntry}. `exitStream` is the one read **after** it — see
+ * {@link budgetBoundAtExit}. Both are required positionals for the same reason `pool` is:
+ * defaulted, they would default their guards off, and the guard off is the defect.
+ *
+ * ## The two halves are scored against different things (DEC-752, board card `2e92df81`)
+ *
+ * `artFraction` is scored against a **reachable bar** rather than §3.1's flat 0.9 — ruling
+ * `split_measures`, disambiguated to `bar = FLOORS.artFraction × capacityCeiling` by ruling
+ * `floor_times_ceiling`. See {@link reachableBar}, **including the vacuity it introduces**, which
+ * is stated there in full and is not a detail.
+ *
+ * `demandFitsCapacity` is the second half of `split_measures`: the overshoot the bar now forgives,
+ * reported so it is visible. Ruling `demand_measure_scored` = `reported_only`, so it carries a
+ * verdict and no colour.
  */
-export function evaluateW4(cells, evictionTimeline, pool, entryStream) {
+export function evaluateW4(cells, evictionTimeline, pool, entryStream, exitStream) {
   const wanting = cellsWantingArt(cells);
   const showing = wanting.filter((c) => c.showingArt);
   const dead = streamNeverRan(wanting.length, pool);
   const bound = budgetBoundAtEntry(entryStream);
+  const boundAtExit = budgetBoundAtExit(exitStream);
 
   // Both mechanisms forbid an *admission*, and an eviction is the far end of an admission: a pool
   // that cannot take a layer in cannot push one out, so `evictionsPerSecond` is 0 by construction
@@ -1133,6 +1216,22 @@ export function evaluateW4(cells, evictionTimeline, pool, entryStream) {
         `effective threshold, so there is no set of cells for a fraction of them to show art`
       : null);
 
+  // The eviction half's own domain, on top of the two it shares with `artFraction`. A session that
+  // exhausted *during* the visit is forbidden to admit by the time the rate is read, and a pool that
+  // cannot admit cannot evict — see `budgetBoundAtExit` for why this is exit-side where its sibling
+  // is entry-side, and why giving `artFraction` the same rule would excuse the failure W4 exists to
+  // catch.
+  const evictionWhy =
+    noAdmission ??
+    (boundAtExit
+      ? `the session's ${exitStream.byteBudget}-byte art budget was exhausted during this world's ` +
+        `visit (${exitStream.bytesOutstanding} outstanding + ${exitStream.bytesReserved} reserved ` +
+        `at exit, the renderer reporting swatchOnly), so the pool was forbidden to admit a layer ` +
+        `and could not evict one. This rate is 0 by construction, not by policy.`
+      : null);
+
+  const ceiling = capacityCeiling(wanting.length, pool);
+
   return criterion(
     "W4",
     "Art resolves without exhausting",
@@ -1141,7 +1240,7 @@ export function evaluateW4(cells, evictionTimeline, pool, entryStream) {
         "artFraction",
         `cells above the effective threshold showing art (${showing.length}/${wanting.length})`,
         wanting.length === 0 ? null : showing.length / wanting.length,
-        FLOORS.artFraction,
+        reachableBar(ceiling),
         "min",
         why === null ? {} : { insufficient: true, why },
       ),
@@ -1154,8 +1253,30 @@ export function evaluateW4(cells, evictionTimeline, pool, entryStream) {
         // **The empty denominator is not carried over to this half, and the asymmetry is the
         // point.** No demand says nothing about whether the pool churns: a world presenting no
         // front-facing cell can still be evicting the layers a neighbour's demand bought, and that
-        // rate is a real reading of the policy. Only the two no-admission cases force this zero.
-        noAdmission === null ? {} : { insufficient: true, why: noAdmission },
+        // rate is a real reading of the policy. Only the no-admission cases force this zero.
+        evictionWhy === null ? {} : { insufficient: true, why: evictionWhy },
+      ),
+      measure(
+        "demandFitsCapacity",
+        `cells wanting art per pool layer (${wanting.length}/${pool.layers})`,
+        demandPerLayer(wanting.length, pool),
+        1,
+        "max",
+        {
+          // **Reported, not scored** — ruling `demand_measure_scored` = `reported_only`. This is the
+          // measure that sees what `reachableBar` forgives: at tier 4 the policy admitted 205 cells
+          // into a 128-layer pool, a 1.60× overshoot, and `artFraction` against its reachable bar
+          // cannot say so. Scored, it would have kept `?layers=128` red and the split would not have
+          // fixed the row it was raised for; unreported, the overshoot would be invisible in both
+          // halves at once.
+          scored: false,
+          insufficient: noAdmission !== null || wanting.length === 0,
+          why:
+            noAdmission ??
+            (wanting.length === 0
+              ? "no cell wants art, so there is no demand to fit into the pool"
+              : null),
+        },
       ),
     ],
     {
@@ -1165,9 +1286,66 @@ export function evaluateW4(cells, evictionTimeline, pool, entryStream) {
       belowShippedPool: pool.layers < SMALLEST_SHIPPED_POOL_LAYERS,
       streamNeverRan: dead,
       budgetBoundAtEntry: bound,
-      capacityCeiling: capacityCeiling(wanting.length, pool),
+      budgetBoundAtExit: boundAtExit,
+      capacityCeiling: ceiling,
+      artFractionBar: reachableBar(ceiling),
     },
   );
+}
+
+/**
+ * The bar `artFraction` is scored against: `FLOORS.artFraction × capacityCeiling`.
+ *
+ * Ruling `floor_times_ceiling` (board card `2e92df81`, 2026-09-16), disambiguating `split_measures`.
+ * Read it as "show 90% of what your pool could show" in place of "show 90% of what is wanted".
+ *
+ * `null` ceiling — nothing wants art — leaves the flat floor, because there is no capacity claim to
+ * make and the measure is out of domain there anyway.
+ *
+ * ## THE BAR CANNOT BIND ON A SATURATED POOL, AND THAT IS ARITHMETIC (DEC-752, measured)
+ *
+ * This is stated here rather than in a hand-back because anyone reading the bar needs it.
+ *
+ * A showing cell holds a layer. When the pool is the binding constraint and every layer is in use,
+ * `showing == layers`, so `artFraction == layers / wanting == capacityCeiling` **exactly**, and
+ * `value / bar == 1 / 0.9 > 1` for **any** capacity and **any** demand. A fully-utilised pool
+ * therefore passes `artFraction` at every rung — 37%, 10%, 1% — and the measure has stopped being a
+ * claim about how much art the picture shows. It has become a claim about pool *utilisation*.
+ *
+ * The consequence lands on §3.1's own named control. Appendix A's `tether-surface` capture is
+ * 1,024 drawn of 2,759 wanted into a 1,024-layer pool: ceiling 0.37115, bar 0.33403, value
+ * **0.37115** — `pass`. **The prototype capture the spec cites as W4's falsifier is GREEN on this
+ * half.** It was put to the board as "`fixed24` stays RED because its ceiling is 1", which is true
+ * of the **live** `?artThreshold=fixed24` row — that one is *budget*-starved, not *pool*-starved, so
+ * its demand fits its pool and its bar stays the unmodified 0.9 against 0.37 — and false of the
+ * prototype's pool-starved capture. Both are called "the fixed24 control" in §3.1.
+ *
+ * What still keeps the control alive, and it is worth being precise about which:
+ *
+ * 1. the **live** row's `artFraction`, whose ceiling really is 1;
+ * 2. `evictionsPerSecond`, which the same ruling's `exit_domain` half turns from a false GREEN into
+ *    `insufficient` on the live row and leaves RED on the churning prototype fixture;
+ * 3. `demandFitsCapacity`, which reports the 2.69× overshoot — and is `reported_only`, so it cannot
+ *    red anything.
+ *
+ * So no W4 row can go red for showing too little art while its pool is saturated. That is the
+ * ruling as written; it is recorded here so the next reader does not have to rediscover it from a
+ * green row. See `a-bound-check-is-vacuous-when-the-bound-never-binds`.
+ */
+function reachableBar(ceiling) {
+  if (ceiling === null) return FLOORS.artFraction;
+  return FLOORS.artFraction * ceiling;
+}
+
+/**
+ * Demand as a multiple of capacity: `wanting / layers`, the reciprocal of the uncapped ceiling.
+ *
+ * `null` on a zero-layer pool — §1.6's legal swatch-only world — where "does demand fit" has no
+ * answer rather than an infinite one, and `null` on no demand.
+ */
+function demandPerLayer(wanting, pool) {
+  if (wanting === 0 || pool.layers === 0) return null;
+  return wanting / pool.layers;
 }
 
 /**
@@ -1178,9 +1356,19 @@ export function evaluateW4(cells, evictionTimeline, pool, entryStream) {
  * reading of a frame, which is why it is reported on **every** W4 row and not only on the rows that
  * look starved — a ceiling is evidence about what the row could have said.
  *
- * > **Reported, and deliberately NOT wired to the verdict.** §3.1's floor is 0.9, and where this
- * > ceiling falls below it the floor is unreachable and the row reds a renderer that did nothing
- * > wrong. Lowering the floor to match is *not* a safe local fix, for two reasons. First,
+ * > **WIRED TO THE VERDICT SINCE 2026-09-16 — the paragraph below is the argument the board
+ * > overruled, kept because it is the record of what the ruling costs.** `artFraction` is now scored
+ * > against `FLOORS.artFraction ×` this ceiling ({@link reachableBar}, rulings `split_measures` +
+ * > `floor_times_ceiling`), and the second worry below — that this hides a policy overshooting — is
+ * > answered by `demandFitsCapacity`, which reports the overshoot and is not scored. The first worry
+ * > below turned out to be **half right in a way the card did not put to the board**: the *live*
+ * > `fixed24` row is budget-starved, keeps a ceiling of 1 and stays RED, but Appendix A's
+ * > pool-starved `tether-surface` capture goes GREEN on this half. {@link reachableBar} carries the
+ * > arithmetic.
+ * >
+ * > **(Superseded)** Reported, and deliberately NOT wired to the verdict. §3.1's floor is 0.9, and
+ * > where this ceiling falls below it the floor is unreachable and the row reds a renderer that did
+ * > nothing wrong. Lowering the floor to match is *not* a safe local fix, for two reasons. First,
  * > `?artThreshold=fixed24` produces exhaustion **on purpose** — 1,024 drawn against 2,759 wanted —
  * > and it is W4's only falsifier, so a rule that excused a starved pool would silently retire the
  * > control. Second, under the *adaptive* policy the threshold's whole job is to fit demand to
@@ -1540,9 +1728,13 @@ export function foldCriteria(perPlane) {
       scoredPlanes: real.length,
     };
   });
-  const status = measures.some((m) => m.status === "fail")
+  // Reported-only measures are folded and printed like any other — their value over the worst plane
+  // is the number the ruling asked to see — but they are held out of the roster verdict by the same
+  // predicate the per-plane rows use, so the fold cannot contradict them.
+  const scored = scoredMeasures(measures);
+  const status = scored.some((m) => m.status === "fail")
     ? "fail"
-    : measures.every((m) => m.status === "insufficient")
+    : scored.every((m) => m.status === "insufficient")
       ? "insufficient"
       : "pass";
   return {

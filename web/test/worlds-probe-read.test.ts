@@ -954,13 +954,15 @@ describe('seamEvidence', () => {
       })
       expect(rowOf(offFrame)).toMatchObject({ witness: 'echo', policyMoved: null })
 
-      const w4 = evaluateW4(artCells(offFrame), [], offFrame.pool, entry)
+      // `entry` doubles as the exit report here: this fixture's subject is the cell predicate, and
+      // the visit neither begins nor ends budget-bound, so both ends read the same stream.
+      const w4 = evaluateW4(artCells(offFrame), [], offFrame.pool, entry, entry)
       expect(w4.wanting).toBe(0)
       // And the same three cells with the flags on: both sides see the frame, so the disagreement
       // above is the predicate agreeing, not both sides being blind to every fixture.
       const onFrame = suppressed()
       expect(rowOf(onFrame)).toMatchObject({ witness: 'policy', policyMoved: true })
-      expect(evaluateW4(artCells(onFrame), [], onFrame.pool, entry).wanting).toBe(3)
+      expect(evaluateW4(artCells(onFrame), [], onFrame.pool, entry, entry).wanting).toBe(3)
     })
   })
 

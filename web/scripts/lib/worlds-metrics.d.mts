@@ -87,6 +87,15 @@ export interface Measure {
   /** Why the subject was out of domain, when `status` is `insufficient`. */
   readonly insufficientReason: string | null;
   /**
+   * `false` on a measure that is reported and does **not** decide its criterion's colour (DEC-752,
+   * board ruling `demand_measure_scored` = `reported_only`).
+   *
+   * Distinct from `insufficient`, which says the subject was not measured: an unscored measure *was*
+   * measured and is being shown. Read by the per-plane verdict, the roster fold and the control
+   * matrix through one predicate, so those three cannot disagree about which measures count.
+   */
+  readonly scored: boolean;
+  /**
    * Set only by the driver's `foldCriteria`, which folds a per-world measure into a roster verdict.
    *
    * Optional because a criterion measured on one world has no such denominator, and inventing a
@@ -168,11 +177,28 @@ export interface W4Criterion extends Criterion {
    */
   readonly budgetBoundAtEntry: boolean;
   /**
+   * `true` when the renderer reported `swatchOnly` at the **exit** of this world's visit — the
+   * eviction half's own domain (DEC-752, ruling `exit_domain`). Moves `evictionsPerSecond` alone to
+   * `insufficient`, never `artFraction`: a pool forbidden to admit cannot evict, but a starved frame
+   * is still a true reading of a starved frame. This is what retires the `fixed24` row's false GREEN
+   * at 0/s.
+   */
+  readonly budgetBoundAtExit: boolean;
+  /**
    * The highest `artFraction` this pool could show — `min(1, layers / wanting)`, or `null` where
-   * nothing wants art. Reported and **not** scored: see `capacityCeiling` in the implementation for
-   * why the 0.9 floor is not lowered to match it, and what a live reading has to settle first.
+   * nothing wants art.
+   *
+   * **Scored since 2026-09-16**, via `artFractionBar`. See `reachableBar` in the implementation,
+   * which carries the arithmetic *and* the vacuity the ruling introduces: on a saturated pool
+   * `artFraction` equals this ceiling exactly, so the bar can never bind.
    */
   readonly capacityCeiling: number | null;
+  /**
+   * The bar `artFraction` was actually scored against: `FLOORS.artFraction × capacityCeiling`
+   * (rulings `split_measures` + `floor_times_ceiling`), or the flat floor where nothing wants art.
+   * Reported so a verdict cannot be read without the bar it was taken against.
+   */
+  readonly artFractionBar: number;
 }
 
 export interface W5Criterion extends Criterion {
@@ -334,28 +360,34 @@ export declare function streamNeverRan(
  * 2): the byte spelling it would be recomputed from has been retired twice, by DEC-780 and again by
  * DEC-812. The byte counts are required because the disqualification message quotes them.
  */
-export declare function budgetBoundAtEntry(stream: {
-  readonly swatchOnly: boolean;
-  readonly bytesOutstanding: number;
-  readonly bytesReserved: number;
-  readonly byteBudget: number;
-}): boolean;
+export declare function budgetBoundAtEntry(stream: StreamReport): boolean;
+/**
+ * The same read taken at the **exit** of a visit: the eviction half's own domain (DEC-752, board
+ * ruling `exit_domain`). A session that exhausted mid-visit was forbidden to admit by the time the
+ * rate was taken, and a pool that cannot admit cannot evict, so the rate is 0 by construction rather
+ * than by policy. Exit-side where `budgetBoundAtEntry` is entry-side, deliberately — giving
+ * `artFraction` this rule would excuse the failure W4 exists to catch.
+ */
+export declare function budgetBoundAtExit(stream: StreamReport): boolean;
 /**
  * `pool` is required on purpose: a W4 count without its capacity is not a reading of the renderer.
- * `entryStream` is required for the same reason — defaulted, it would default off the guard that
- * separates a world's own exhaustion from a tour's carried-over spend.
+ * `entryStream` and `exitStream` are required for the same reason — defaulted, either would default
+ * off a guard, and each guard off is a defect that has already been observed once.
  */
 export declare function evaluateW4(
   cells: readonly ArtCell[],
   evictionTimeline: readonly EvictionSample[],
   pool: { readonly layers: number; readonly resident: number },
-  entryStream: {
-    readonly swatchOnly: boolean;
-    readonly bytesOutstanding: number;
-    readonly bytesReserved: number;
-    readonly byteBudget: number;
-  },
+  entryStream: StreamReport,
+  exitStream: StreamReport,
 ): W4Criterion;
+/** The fields W4 needs off a `?probe=` stream report, at either end of a visit. */
+export interface StreamReport {
+  readonly swatchOnly: boolean;
+  readonly bytesOutstanding: number;
+  readonly bytesReserved: number;
+  readonly byteBudget: number;
+}
 export declare const W5_MIN_AZIMUTHS: number;
 export declare const W5_AZIMUTH_UNIFORMITY_TOLERANCE: number;
 
