@@ -352,7 +352,8 @@ As shipped, `FLOORS.bandDeltaE` is 0.55 and it separates nothing: on one unchang
 arm drew 0.4253 / 0.7070 / 0.8005 across three sessions, and the composed control's worst was 0.4477 —
 the arms overlap, so the row's colour is the draw. The cause is the fold, a minimum over the in-domain
 worlds of a per-world minimum, whose expected value falls as the population grows: the same dataset
-truncated to 8 worlds reads 1.35–1.39 and over the full 43 reads 0.25–0.80. A single tour per arm
+truncated to 8 worlds reads 1.35–1.39 over 5 in-domain planes and over all 28 reads 0.25–0.80. A
+single tour per arm
 cannot see any of that. **Until the owner rules on §3.1's fold, do not read a GREEN W3 row as an
 accepted criterion** — spec §3.2, condition 1, says why.
 

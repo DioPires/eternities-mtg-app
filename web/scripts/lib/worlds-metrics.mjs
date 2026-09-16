@@ -128,7 +128,7 @@ export const FLOORS = {
    *
    * **The mechanism is the fold, not the renderer.** A minimum over the in-domain worlds of a
    * per-world minimum over band pairs falls as the population grows: truncated to the first 8 worlds
-   * the same dataset reads 1.3499/1.3926 over 5 in-domain planes, and over the full 43 it reads
+   * the same dataset reads 1.3499/1.3926 over 5 in-domain planes, and over all 28 it reads
    * 0.25–0.80. The worst plane's identity drifts with it — innistrad, ravnica, eldraine,
    * forgotten-realms, avishkar over five draws. Replacing the fold with a statistic that converges is
    * a §3.1 amendment and the owner's call; this leg measures and does not move the criterion. Until

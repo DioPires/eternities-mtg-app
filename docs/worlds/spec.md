@@ -2239,20 +2239,22 @@ events; the focused card's tilt feels physical; and, new, **the tether reads as 
 > derivation. Re-read off the gate's own summaries rather than off this document, the upper bound is
 > not a reading but a **draw from a distribution that straddles the floor**:
 >
-> | run | worlds visited | W3 in-domain | `minAdjacentBandDeltaE` | worst plane | `artFraction` |
+> | run | worlds visited | in W3's domain | `minAdjacentBandDeltaE` | worst plane | `artFraction` |
 > | --- | --- | --- | --- | --- | --- |
-> | `accept3` | 45 | 26 fail / 17 insufficient | **0.8005** | innistrad | 0.6956 |
-> | `dec826-bare` | 45 | 26 / 17 | **0.7070** | ravnica | 0.7447 |
-> | `accept4` | 45 | 26 / 17 | **0.4253** | ravnica | 0.6952 |
-> | `acceptance2` | 45 | 28 / 17 | 0.5316 | forgotten-realms | 0.0000 |
-> | `acceptance` | 45 | 28 / 17 | 0.2528 | eldraine | 0.0000 |
-> | `order-fwd` | 8 | 5 / 3 | 1.3499 | avishkar | 0.9896 |
-> | `order-rev` | 8 | 5 / 3 | 1.3926 | avishkar | 0.9896 |
+> | `accept3` | 45 | 28 | **0.8005** | innistrad | 0.6956 |
+> | `dec826-bare` | 45 | 28 | **0.7070** | ravnica | 0.7447 |
+> | `accept4` | 45 | 28 | **0.4253** | ravnica | 0.6952 |
+> | `acceptance2` | 45 | 28 | 0.5316 | forgotten-realms | 0.0000 |
+> | `acceptance` | 45 | 28 | 0.2528 | eldraine | 0.0000 |
+> | `order-fwd` | 8 | 5 | 1.3499 | avishkar | 0.9896 |
+> | `order-rev` | 8 | 5 | 1.3926 | avishkar | 0.9896 |
 >
-> Read the top three rows alone. They are the same dataset (`c9468f1125bcddff`), the same 45-world
-> roster, the same 26-world W3 domain, and the same 2.2-radii pose, and they span **0.4253 – 0.8005,
-> a factor of 1.9, with 0.55 inside it**. The floor was set from the middle one. Two further draws
-> on DEC-830's tree — 0.1632 and 1.2100/1.2259 — widen the same span without changing its verdict.
+> "In W3's domain" is 45 less the 17 planes the criterion reports `insufficientSamples` on — the
+> six one-card worlds and their kin — and it is the population the fold minimises over. Read the top
+> three rows alone. They are the same dataset (`c9468f1125bcddff`), the same 45-world roster, the
+> same 28 worlds in domain, and the same 2.2-radii pose, and they span **0.4253 – 0.8005, a factor
+> of 1.9, with 0.55 inside it**. The floor was set from the middle one. Two further draws on
+> DEC-830's tree — 0.1632 and 1.2100/1.2259 — widen the same span without changing its verdict.
 >
 > **0.4253 was not a retired figure.** The block above dismisses it as predating DEC-804's centre
 > fix, DEC-812's budget and DEC-814's belt rotation. It does not: `accept4` drew it on leg G, with
@@ -2266,8 +2268,8 @@ events; the focused card's tilt feels physical; and, new, **the tether reads as 
 > world, and each world's own reading is already the closest of its qualifying band pairs — so the
 > tour value is a **minimum of minima over a population**, and its expected value falls as the
 > population grows. The last two rows measure exactly that on the same dataset: truncated to the
-> first 8 worlds alphabetically the fold reads 1.35 and 1.39 over 5 in-domain planes; over the full
-> 43 it reads 0.25 – 0.80. The worst plane's *identity* is not stable either — innistrad, ravnica,
+> first 8 worlds alphabetically the fold reads 1.35 and 1.39 over 5 in-domain planes; over all 28 it
+> reads 0.25 – 0.80. The worst plane's *identity* is not stable either — innistrad, ravnica,
 > eldraine, forgotten-realms, avishkar across five draws — which is what a min over a fluctuating
 > population looks like from the outside.
 >
