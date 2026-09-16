@@ -592,15 +592,30 @@ async function visitWorld(page, world, { dir, captures, pose = SURFACE_RADII }) 
   // W1's per-world median is a family over the rotation of the mosaic relative to the camera, and
   // this takes one draw from it. How wide the family is turns entirely on `spin.ts`'s
   // `APPLY_PLANE_TILT`, which is `false`: with the pole at world `+Y` the rotation maps each
-  // row-ring onto itself and the median barely moves — measured over 24 azimuths through the
-  // shipped `planeOrientation`, dominaria spans 17.48–17.58 px and ravnica 28.64–28.99, ±0.3% and
-  // ±0.6% about their middles. Applying `plane.tilt` instead carries a cohort of squat polar cells
-  // through the front-facing cap and the same sweep spans 15.50–19.35 and 23.88–32.66, ±11% and
-  // ±16%. **So the day that flag turns on — DEC-750 left it open — one draw stops being the
-  // statistic and every W1 verdict here becomes a coin flip on the arrival azimuth.** The flag is a
-  // compile-time constant this script cannot read; `scratch-w1-family.mjs` measures the width
-  // through the rig, and the runbook says to re-run it before trusting W1 after any change to
-  // orientation.
+  // row-ring onto itself and the median barely moves. Applying `plane.tilt` instead carries a
+  // cohort of squat polar cells through the front-facing cap and the family opens to 11–16%.
+  // **So the day that flag turns on — DEC-750 left it open — one draw stops being the statistic
+  // and every W1 verdict here becomes a coin flip on the arrival azimuth.**
+  //
+  // > **THE GUARD IS `test/worlds-w1-single-draw.test.ts`, and it reds on a MEASUREMENT.** That
+  // > file sweeps 24 azimuths through `planeOrientation` — the product's own orientation writer —
+  // > so flipping the constant re-points the figures it measures and the width assertion fails by
+  // > itself; the tilted arm rides alongside as the negative control that proves the sweep can see
+  // > 11% when there is 11% to see. This script cannot read a compile-time constant, which is why
+  // > the guard lives in the unit suite rather than here.
+  //
+  // Re-measured at §1.3's framing distances after DEC-818 (relay `03bfa906` items 2–3), at each
+  // world's own **arrival polar** rather than at `HOME_POLAR` — 24 azimuths, shipped arm:
+  // dominaria spans 28.099–28.213 px at 2.260705 radii (±0.20%) and ravnica 29.916–30.000 at
+  // 3.080104 (±0.14%). Confirmed on the rig at the settle across a full relative turn of the
+  // mosaic: 28.076–28.234 and 29.876–29.963. At `HOME_POLAR` the same offline sweep reads
+  // 28.740–28.812 and 30.191–30.452, which is ~2% optimistic — `HOME_POLAR` is where the fly-to
+  // aims, not where it lands. The tilted arm at the same distances spans 24.98–31.30 and
+  // 25.57–34.72. **The previous figures here (17.48–17.58 / 28.64–28.99 shipped, 15.50–19.35 /
+  // 23.88–32.66 tilted) were taken at the old flat 3.2 radii and are retired — do not re-quote
+  // them.** `scratch-w1-family.mjs` measures the width through the rig and `scratch-w1-settle.mjs`
+  // reads the arrival pose off the payload; the runbook says to re-run both before trusting W1
+  // after any change to orientation or framing.
   const atSettle = await readProbe(page, slug)
   if (!atSettle.ok) return { slug, ok: false, detail: `${atSettle.reason}: ${atSettle.detail}` }
 
