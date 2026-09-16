@@ -94,6 +94,12 @@ console.log('\n' + '='.repeat(62))
 if (pairedControl < pairedShipped) {
   console.log(`A separating floor EXISTS in (${pairedControl.toFixed(4)}, ${pairedShipped.toFixed(4)}]`)
   console.log(`  width ${(pairedShipped - pairedControl).toFixed(4)}, midpoint ${((pairedShipped + pairedControl) / 2).toFixed(4)}`)
+  // Printed on the interval rather than in the header, because this is the moment someone is about
+  // to write a number into `FLOORS`. 0.55 came out of exactly this line on one tour per arm; at n=3
+  // the shipped arm spans 0.4253-0.8005 and the interval it was read from does not exist (DEC-752).
+  console.log('\n  ONE SESSION PER ARM CANNOT ESTABLISH THIS. The fold is a min of minima and it does')
+  console.log('  not reproduce — re-run both arms, read the shipped MINIMUM against the control')
+  console.log('  MAXIMUM, and check the spread with `node scripts/w3-fold.mjs` before picking.')
 } else {
   console.log('NO separating floor exists on these arms — the control aggregate is at or above the')
   console.log('shipped one, so every floor that greens the build also greens its own falsifier.')

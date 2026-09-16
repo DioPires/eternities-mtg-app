@@ -914,6 +914,14 @@ const MATRIX = [
   //
   // `expect: []` because nothing here is scored. A derivation that asserted its own answer would be
   // deriving the floor from a run that already assumed it.
+  //
+  // **One pair of tours is not enough, and the shipped 0.55 is the proof (DEC-752, from DEC-830).**
+  // Run each arm at least twice and read the shipped arm's *minimum* against the control's
+  // *maximum*. 0.55 was derived from a single acceptance tour; at n=3 on one unchanged dataset the
+  // shipped arm draws 0.4253 / 0.7070 / 0.8005 and the arms overlap the control's 0.4477, so it
+  // separates nothing. The cause is the fold — a min of minima — and `scripts/w3-fold.mjs` measures
+  // it across sessions. See `FLOORS.bandDeltaE`'s retraction note and spec §3.2, condition 1: until
+  // the owner rules on §3.1's fold, a GREEN W3 row is not evidence.
   {
     id: 'w3-floor-shipped',
     label: 'W3 floor derivation: ?art=off over the full tour (the shipped side)',
