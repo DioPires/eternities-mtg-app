@@ -318,18 +318,27 @@ const canvasCentre = (page) =>
  * Drive the camera to `radii` and return what it actually reached.
  *
  * **§3.1 requires this rather than accepting wherever `focusPlane` settles.** The settle is
- * `framing.ts`'s `frame: r * 3.2` — exactly 3.2 radii on every world, since DEC-804 made the
- * worlds-scene centre follow the rig — and 3.2 is not 2.2. A number specified "at 2.2 radii" and
- * in fact taken at the settle is a number taken at a pose the spec does not name, so the driver
- * drives, and the caller asserts before it reads.
+ * `framing.ts`'s framing distance and the surface pose is 2.2 radii, and the two are not the same
+ * number. A number specified "at 2.2 radii" and in fact taken at the settle is a number taken at a
+ * pose the spec does not name, so the driver drives, and the caller asserts before it reads.
+ *
+ * **The settle is no longer one number across the roster, and nothing here may assume it is
+ * (DEC-818).** It was `frame: r * 3.2` on every world, which is why "the settle" and "3.2 radii"
+ * were interchangeable in this file's older comments and in leg G's earlier reports. §1.3's framing
+ * law now returns `min(3.2, CELL_LIFT + cellArc · focalPx / 30)`: 2.261 on dominaria, 3.080 on
+ * ravnica, 3.2 on the other 43. The gate absorbs that because it never drives to the settle — W1
+ * *reads* whatever `focusPlane` reached and `settleRadii` records it — and a driver that took 3.2
+ * as the settle would now measure a pose the product does not stop at, on exactly the two worlds
+ * whose W1 is binding.
  *
  * **The notch is solved, not stepped, and that is forced by the arithmetic.** Zoom is
  * multiplicative (`rig.zoomBy(exp(deltaY · k))`), so a fixed ±120 notch moves `radii` by a fixed
  * *ratio* — about 21% on this build. `RADII_TOLERANCE` is ±0.02 at 2.2, a window of ±0.9%, so a
- * ladder of fixed notches from 3.2 lands inside it only if the two happen to commensurate: from
- * 3.2 the reachable poses are 2.64 and 2.18, and 2.18 clears by 0.0004. **A stepping driver is a
- * coin flip on a constant it does not read**, and the failure is the one this leg has already paid
- * for once — every threshold-dependent number taken at an unnamed pose.
+ * ladder of fixed notches lands inside it only if the two happen to commensurate: from 3.2 the
+ * reachable poses are 2.64 and 2.18, and 2.18 clears by 0.0004. **A stepping driver is a coin flip
+ * on a constant it does not read**, and the failure is the one this leg has already paid for once —
+ * every threshold-dependent number taken at an unnamed pose. Per-world settles make a stepping
+ * driver worse still: the ladder would start from a different rung on each of the two moved worlds.
  *
  * `k` is **measured, not copied from `attachRig.ts`**: one probe notch, then `deltaY =
  * ln(target/current) / k`. Copying the constant would make the drive agree with the product by
@@ -577,6 +586,20 @@ async function visitWorld(page, world, { dir, captures, pose = SURFACE_RADII }) 
   // W1 is specified "at the plane-level settle", so the settle is read on every visit whatever the
   // row's measurement pose is, and both readings are returned. The row decides which one W1 scores
   // against: `w1-far` is the control that moves it, and only that row moves it.
+  //
+  // **One reading, and that is a claim with a precondition rather than a convenience (DEC-818).**
+  // W1's per-world median is a family over the rotation of the mosaic relative to the camera, and
+  // this takes one draw from it. How wide the family is turns entirely on `spin.ts`'s
+  // `APPLY_PLANE_TILT`, which is `false`: with the pole at world `+Y` the rotation maps each
+  // row-ring onto itself and the median barely moves — measured over 24 azimuths through the
+  // shipped `planeOrientation`, dominaria spans 17.48–17.58 px and ravnica 28.64–28.99, ±0.3% and
+  // ±0.6% about their middles. Applying `plane.tilt` instead carries a cohort of squat polar cells
+  // through the front-facing cap and the same sweep spans 15.50–19.35 and 23.88–32.66, ±11% and
+  // ±16%. **So the day that flag turns on — DEC-750 left it open — one draw stops being the
+  // statistic and every W1 verdict here becomes a coin flip on the arrival azimuth.** The flag is a
+  // compile-time constant this script cannot read; `scratch-w1-family.mjs` measures the width
+  // through the rig, and the runbook says to re-run it before trusting W1 after any change to
+  // orientation.
   const atSettle = await readProbe(page, slug)
   if (!atSettle.ok) return { slug, ok: false, detail: `${atSettle.reason}: ${atSettle.detail}` }
 
