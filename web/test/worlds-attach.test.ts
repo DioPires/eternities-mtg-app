@@ -18,7 +18,6 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  Matrix4,
   PerspectiveCamera,
   Scene,
   Vector2,
@@ -368,6 +367,28 @@ describe('the frame the payload is measured on (§3.1)', () => {
     rig.worlds.dispose()
   })
 
+  /**
+   * **This row was inert until DEC-825, and it read as the tightest one in the file.**
+   *
+   * It used to assert `probeSource()!.camera` — which is `WorldSurface.localCamera`, scratch the
+   * *surface* writes inside `update` and nothing else touches. Two reads taken without a tick
+   * between them return that same object in that same state no matter what `runFrame` put in
+   * `frame.camera`, so the row scored green against an `attachWorlds` publishing the **live**
+   * camera; `mutate-attach.mjs` recorded it LIVE. Its positive control was vacuous for the same
+   * reason: it compared the world-space `rig.camera.position` against the *local-frame* camera, a
+   * fixed `|centre|` apart at every pose, so `> 1` held with the camera standing still.
+   *
+   * What actually carries the frame's camera into the payload is `worldCameraPosition`, which is
+   * `frame.camera.position` **by reference** — so that is what this asserts now, together with
+   * DEC-804's cross-frame invariant, which is the claim §3.1 depends on. See
+   * `WorldsProbe.cameraPosition`.
+   *
+   * **And there is deliberately no assertion on `source.camera` left here**, rather than a weaker
+   * one: `localCamera` is written only by `update`, so *every* spelling of it — the shipped one,
+   * `frame.camera`, a spread — is stable across two reads taken without a tick between them. A row
+   * pinning it cannot go red for any mutation of this file, which is what the old one was. The
+   * local frame is checked where it can fail, against `radii`, by the invariant below.
+   */
   it('publishes the camera the measurement was made with, not the live one', () => {
     const rig = build()
     rig.worlds.setData(roster())
@@ -375,20 +396,28 @@ describe('the frame the payload is measured on (§3.1)', () => {
     poseAt(rig.camera, world.centre, world.radius, 2.2)
     rig.tick()
 
-    const measured = new Vector3().copy(rig.worlds.probeSource()!.camera.position)
-    const measuredMatrix = new Matrix4().copy(
-      rig.worlds.probeSource()!.camera.matrixWorldInverse,
-    )
+    const measured = worldsProbeOf(rig.worlds.probeSource())!
 
     // The rig moves the camera every tick and three mutates its matrices **in place**. A payload
     // that held the live camera would report this new pose against the admission state measured at
     // the old one — and the two disagree exactly at the threshold boundary, which is the set W4
     // scores. Nothing about the resulting table looks wrong.
     poseAt(rig.camera, world.centre, world.radius, 9)
-    const after = rig.worlds.probeSource()!
-    expect(after.camera.position).toEqual(measured)
-    expect(after.camera.matrixWorldInverse).toEqual(measuredMatrix)
-    expect(rig.camera.position.distanceTo(measured)).toBeGreaterThan(1)
+    const after = worldsProbeOf(rig.worlds.probeSource())!
+
+    // Positive control, in the frame the claim is made in: the live camera really did move, by four
+    // times the world's own radius rather than by float noise.
+    expect(rig.camera.position.distanceTo(new Vector3(...measured.cameraPosition))).toBeGreaterThan(
+      world.radius * 4,
+    )
+
+    expect(after.cameraPosition).toEqual(measured.cameraPosition)
+    // DEC-804's invariant, and **not** a tautology: `radii` comes out of the local frame the
+    // surface measures in and these two come out of world space, so a payload that paired frame
+    // N's admission with frame N+1's camera fails it — here by the same factor of four.
+    const published =
+      new Vector3(...after.cameraPosition).distanceTo(new Vector3(...after.centre)) / after.radius
+    expect(published).toBeCloseTo(after.radii, 6)
     rig.worlds.dispose()
   })
 })
