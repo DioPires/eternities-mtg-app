@@ -45,6 +45,7 @@ import {
   evaluateW3,
   evaluateW4,
   evaluateW5,
+  foldCriteria,
   homeLabelCeiling,
   isLabelVisible,
   rowCellsFaults,
@@ -492,62 +493,12 @@ async function captureFrame(page, dir, name, slug = null) {
 // ---------------------------------------------------------------------------------------------
 // Folding per-plane criteria into a roster verdict
 // ---------------------------------------------------------------------------------------------
-
-/**
- * Fold one criterion measured on many planes into the criterion for the roster.
- *
- * W1 aggregates itself — its verdict is the worst plane, and `evaluateW1` takes every plane at
- * once. W2, W3 and W4 are per-plane, and §3.1 is explicit that they must stay that way: "a whole-
- * multiverse aggregate quietly averaging over them" is exactly what cannot catch a single
- * degenerate world. So the fold is a worst-case over planes and never a mean, and `insufficient`
- * is carried rather than counted as a pass — an `n/a` that is invisible is how a gate comes to
- * measure nothing while printing green.
- */
-function foldCriteria(perPlane) {
-  const measured = perPlane.filter((entry) => entry.criterion !== null)
-  if (measured.length === 0) return null
-  const first = measured[0].criterion
-  const keys = first.measures.map((m) => m.key)
-  const measures = keys.map((key) => {
-    const all = measured
-      .map((entry) => ({ slug: entry.slug, measure: entry.criterion.measures.find((m) => m.key === key) }))
-      .filter((entry) => entry.measure !== undefined)
-    const real = all.filter((entry) => entry.measure.status !== 'insufficient' && entry.measure.value !== null)
-    const template = all[0].measure
-    if (real.length === 0) {
-      return {
-        ...template,
-        value: null,
-        status: 'insufficient',
-        pass: false,
-        insufficientReason: `every plane was out of domain (${all.length} planes)`,
-        worstPlane: null,
-        insufficientPlanes: all.length,
-      }
-    }
-    // "Worst" is the direction the floor binds in: the smallest value under a `min` bound, the
-    // largest under a `max` one. A fold that took the mean would let 44 comfortable worlds carry
-    // one failing world over the line.
-    const worst = real.reduce((a, b) =>
-      template.direction === 'min' ? (b.measure.value < a.measure.value ? b : a) : b.measure.value > a.measure.value ? b : a,
-    )
-    const failed = real.filter((entry) => entry.measure.status === 'fail')
-    return {
-      ...worst.measure,
-      status: failed.length > 0 ? 'fail' : 'pass',
-      pass: failed.length === 0,
-      worstPlane: worst.slug,
-      failingPlanes: failed.map((entry) => entry.slug),
-      insufficientPlanes: all.length - real.length,
-    }
-  })
-  const status = measures.some((m) => m.status === 'fail')
-    ? 'fail'
-    : measures.every((m) => m.status === 'insufficient')
-      ? 'insufficient'
-      : 'pass'
-  return { id: first.id, title: first.title, measures, status, pass: status === 'pass' }
-}
+//
+// `foldCriteria` lives in `lib/worlds-metrics.mjs` (DEC-816). It is pure — per-plane criteria in,
+// one criterion out — and it is the half of the report that decides what a verdict *means*, so it
+// belongs where the suite can drive it. Here it could not be: this module opens a browser at import
+// time's reach, so the only way to assert the fold was to rebuild its output by hand in a test,
+// which is a double that agrees with the bug the day the fold changes.
 
 // ---------------------------------------------------------------------------------------------
 // The per-world visit — W1 at the settle, W2/W3/W4 at the surface pose

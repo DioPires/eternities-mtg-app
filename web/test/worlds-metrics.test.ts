@@ -34,6 +34,7 @@ import {
   evaluateW4,
   evaluateW5,
   evictionRate,
+  foldCriteria,
   SMALLEST_SHIPPED_POOL_LAYERS,
   W5_MIN_AZIMUTHS,
   homeLabelCeiling,
@@ -236,6 +237,41 @@ const bandByLatitude = (v: number) =>
 const BAND_SHARES: number[] = BAND_ORDER.map((c) =>
   c === "gold" ? 0.1 : 0.075,
 );
+
+/**
+ * A disc whose shades are spread far enough apart that the ±2.5% ring around the median holds
+ * exactly `ringSize` cells — the live shape, where the ring is a sliver of a well-sampled plane.
+ * Every cell is well over the 6 px floor and front-facing, so `sampled` is never the binding
+ * constraint.
+ *
+ * At module scope because two sections need the same world: W2's own ring-domain rows, and the
+ * matrix's fold, which builds a roster of worlds either side of that domain. A second copy there
+ * would be a fixture that could drift from the one the domain is actually pinned against.
+ */
+const ringOf = (ringSize: number, ringRgb: [number, number, number][]) => {
+  const spread: CellSample[] = Array.from({ length: 40 }, (_, i) => ({
+    x: 100 + i * 20,
+    y: 500,
+    height: 40,
+    frontFacing: true,
+    band: 6,
+    // 0.30 to 1.08 in steps of 0.02: the median lands on 0.70 and the ±2.5% window is
+    // ±0.0175, so no other cell in the ladder falls inside it.
+    shade: 0.3 + i * 0.02,
+    rgb: [40 + i * 4, 60, 200 - i * 4] as [number, number, number],
+  }));
+  const ring: CellSample[] = Array.from({ length: ringSize }, (_, i) => ({
+    x: 1500 + i * 20,
+    y: 700,
+    height: 40,
+    frontFacing: true,
+    band: 6,
+    shade: 0.7,
+    rgb: ringRgb[i % ringRgb.length] as [number, number, number],
+  }));
+  // Drop the ladder's own 0.70 rung so the ring is exactly `ringSize`.
+  return [...spread.filter((c) => Math.abs(c.shade - 0.7) > 1e-9), ...ring];
+};
 
 // ------------------------------------------------------------------------------------------------
 
@@ -477,36 +513,6 @@ describe("W2 — the mosaic reads as tiles", () => {
    * An IQR over two points is the spread of two points.
    */
   describe("the iso-shade ring carries its own sample-size domain", () => {
-    /**
-     * A disc whose shades are spread far enough apart that the ±2.5% ring around the median holds
-     * exactly `ringSize` cells — the live shape, where the ring is a sliver of a well-sampled
-     * plane. Every cell is well over the 6 px floor and front-facing, so `sampled` is never the
-     * binding constraint.
-     */
-    const ringOf = (ringSize: number, ringRgb: [number, number, number][]) => {
-      const spread: CellSample[] = Array.from({ length: 40 }, (_, i) => ({
-        x: 100 + i * 20,
-        y: 500,
-        height: 40,
-        frontFacing: true,
-        band: 6,
-        // 0.30 to 1.08 in steps of 0.02: the median lands on 0.70 and the ±2.5% window is
-        // ±0.0175, so no other cell in the ladder falls inside it.
-        shade: 0.3 + i * 0.02,
-        rgb: [40 + i * 4, 60, 200 - i * 4] as [number, number, number],
-      }));
-      const ring: CellSample[] = Array.from({ length: ringSize }, (_, i) => ({
-        x: 1500 + i * 20,
-        y: 700,
-        height: 40,
-        frontFacing: true,
-        band: 6,
-        shade: 0.7,
-        rgb: ringRgb[i % ringRgb.length] as [number, number, number],
-      }));
-      // Drop the ladder's own 0.70 rung so the ring is exactly `ringSize`.
-      return [...spread.filter((c) => Math.abs(c.shade - 0.7) > 1e-9), ...ring];
-    };
 
     it("reports insufficient when the ring is below the domain, however many cells were sampled", () => {
       const w2 = evaluateW2(ringOf(3, [[128, 128, 128]]));
@@ -2133,6 +2139,104 @@ describe("the negative-control matrix", () => {
     );
     expect(mistyped.ok).toBe(false);
     expect(mistyped.detail).toContain("no measure");
+  });
+
+  // The denominator of a folded verdict, at the level the matrix prints it (DEC-816). Both rows
+  // below are GREEN and identical in value and bound; only the set they were folded over differs.
+  // Before this they produced the *same* line — the shape the ring domain (R3) made load-bearing,
+  // since it leaves W2's lightness half folding off 2 of 45 worlds while the report says "GREEN".
+  //
+  // The pair is what carries it: a detail that named the denominator only when the evidence was
+  // thin would be a warning, and a reader would learn to read its absence as "fine".
+  describe("prints the set a folded verdict was taken over", () => {
+    // **Driven through the real `foldCriteria`, not a rebuilt copy of its output.** The fold and the
+    // printer have to agree on a field name, and a test that hand-wrote `scoredPlanes` would go on
+    // passing the day the fold stopped emitting it — the printer would silently fall back to saying
+    // nothing, which is the exact regression these rows exist to catch. See
+    // `a-test-double-that-agrees-with-the-bug` and `a-harness-that-copies-the-product-cannot-see-it-move`.
+    const RING = W2_MIN_RING_SAMPLES;
+
+    // Two rings that both clear the floor of 8 and are far apart in value, so "the fold took the
+    // worst" is a reading rather than a coincidence of identical worlds. A roster of clones would
+    // score the same whether the fold minimised, maximised or picked the first.
+    const WIDE: [number, number, number][] = [
+      [40, 40, 40],
+      [210, 210, 210],
+    ]; // lightnessIqr 68.08
+    const NARROW: [number, number, number][] = [
+      [110, 110, 110],
+      [140, 140, 140],
+    ]; // lightnessIqr 11.81 — GREEN, and the worse of the two
+
+    /**
+     * `scored` worlds whose ring clears the domain, plus `thin` worlds whose ring does not — so the
+     * denominator under test is produced by the same guard the gate runs, not asserted. The last
+     * scored world is the narrow one, so it is neither first nor the majority.
+     */
+    const roster = (scored: number, thin: number) => [
+      ...Array.from({ length: scored }, (_, i) => ({
+        slug: i === scored - 1 ? "narrowest" : `scored-${i + 1}`,
+        criterion: evaluateW2(ringOf(RING, i === scored - 1 ? NARROW : WIDE)),
+      })),
+      ...Array.from({ length: thin }, (_, i) => ({
+        slug: `thin-${i + 1}`,
+        criterion: evaluateW2(ringOf(RING - 1, WIDE)),
+      })),
+    ];
+
+    const row = {
+      criterion: "W2",
+      measure: "lightnessIqr",
+      expect: "GREEN",
+    } as const;
+
+    it("folds to the worst world in domain, never the best", () => {
+      // The denominator is only worth printing if the value beside it is the binding one. §3.1
+      // forbids a mean for the same reason: 44 comfortable worlds must not carry a failing one.
+      const folded = foldCriteria(roster(3, 0));
+      const measure = folded?.measures.find((m) => m.key === "lightnessIqr");
+      expect(measure?.worstPlane).toBe("narrowest");
+      expect(measure?.value).toBeCloseTo(11.81, 1);
+      // The control: the roster really does hold a better world, so `min` had something to reject.
+      expect(
+        foldCriteria([roster(3, 0)[0]!])?.measures.find(
+          (m) => m.key === "lightnessIqr",
+        )?.value,
+      ).toBeCloseTo(68.08, 1);
+    });
+
+    it("names how many worlds were in domain, and how many were not", () => {
+      const folded = foldCriteria(roster(2, 43));
+      expect(folded).not.toBeNull();
+      // The precondition: the fold really did drop the thin worlds, so the 2 below is the domain
+      // doing the work and not an arithmetic coincidence of the fixture.
+      const measure = folded?.measures.find((m) => m.key === "lightnessIqr");
+      expect(measure?.scoredPlanes).toBe(2);
+      expect(measure?.insufficientPlanes).toBe(43);
+
+      const thin = checkControlRow([folded!], row);
+      expect(thin.ok).toBe(true);
+      expect(thin.detail).toContain("worst of 2 worlds in domain");
+      expect(thin.detail).toContain("43 out of domain");
+    });
+
+    it("says it on a full-roster GREEN too, so silence never reads as reassurance", () => {
+      const full = checkControlRow([foldCriteria(roster(45, 0))!], row);
+      expect(full.ok).toBe(true);
+      expect(full.detail).toContain("worst of 45 worlds in domain");
+      expect(full.detail).not.toContain("out of domain");
+    });
+
+    it("leaves a per-world criterion alone rather than inventing a 1-of-1 fold", () => {
+      // `evaluateW5` is measured once over a sweep, not folded over planes, so it carries no
+      // `scoredPlanes` — and a denominator printed there would be a fiction the reader would trust.
+      const unfolded = checkControlRow(
+        [evaluateW5(w5Sweep(homeLabelCeiling(ROSTER_V3)), ROSTER_V3, W5_OPTS)],
+        { criterion: "W5", measure: "homeLabels", expect: "GREEN" },
+      );
+      expect(unfolded.ok).toBe(true);
+      expect(unfolded.detail).not.toContain("in domain");
+    });
   });
 });
 

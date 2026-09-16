@@ -1407,6 +1407,87 @@ export function evaluateW5(sweep, roster, options) {
 }
 
 /**
+ * Fold one criterion measured on many planes into the criterion for the roster.
+ *
+ * W1 aggregates itself — its verdict is the worst plane, and `evaluateW1` takes every plane at
+ * once. W2, W3 and W4 are per-plane, and §3.1 is explicit that they must stay that way: "a whole-
+ * multiverse aggregate quietly averaging over them" is exactly what cannot catch a single
+ * degenerate world. So the fold is a worst-case over planes and never a mean, and `insufficient`
+ * is carried rather than counted as a pass — an `n/a` that is invisible is how a gate comes to
+ * measure nothing while printing green.
+ *
+ * **It publishes its own denominator** (`scoredPlanes`), which `checkControlRow` prints. Carrying
+ * only `insufficientPlanes` was the wrong half: after the ring domain landed (DEC-816 R3) W2's
+ * lightness half folds off 2 of the 45 worlds, and a GREEN taken over two worlds must not print the
+ * same line as a GREEN taken over forty-five.
+ */
+export function foldCriteria(perPlane) {
+  const measured = perPlane.filter((entry) => entry.criterion !== null);
+  if (measured.length === 0) return null;
+  const first = measured[0].criterion;
+  const keys = first.measures.map((m) => m.key);
+  const measures = keys.map((key) => {
+    const all = measured
+      .map((entry) => ({
+        slug: entry.slug,
+        measure: entry.criterion.measures.find((m) => m.key === key),
+      }))
+      .filter((entry) => entry.measure !== undefined);
+    const real = all.filter(
+      (entry) =>
+        entry.measure.status !== "insufficient" && entry.measure.value !== null,
+    );
+    const template = all[0].measure;
+    if (real.length === 0) {
+      return {
+        ...template,
+        value: null,
+        status: "insufficient",
+        pass: false,
+        insufficientReason: `every plane was out of domain (${all.length} planes)`,
+        worstPlane: null,
+        insufficientPlanes: all.length,
+        scoredPlanes: 0,
+      };
+    }
+    // "Worst" is the direction the floor binds in: the smallest value under a `min` bound, the
+    // largest under a `max` one. A fold that took the mean would let 44 comfortable worlds carry
+    // one failing world over the line.
+    const worst = real.reduce((a, b) =>
+      template.direction === "min"
+        ? b.measure.value < a.measure.value
+          ? b
+          : a
+        : b.measure.value > a.measure.value
+          ? b
+          : a,
+    );
+    const failed = real.filter((entry) => entry.measure.status === "fail");
+    return {
+      ...worst.measure,
+      status: failed.length > 0 ? "fail" : "pass",
+      pass: failed.length === 0,
+      worstPlane: worst.slug,
+      failingPlanes: failed.map((entry) => entry.slug),
+      insufficientPlanes: all.length - real.length,
+      scoredPlanes: real.length,
+    };
+  });
+  const status = measures.some((m) => m.status === "fail")
+    ? "fail"
+    : measures.every((m) => m.status === "insufficient")
+      ? "insufficient"
+      : "pass";
+  return {
+    id: first.id,
+    title: first.title,
+    measures,
+    status,
+    pass: status === "pass",
+  };
+}
+
+/**
  * Check a run of criteria against what the negative-control matrix expects of it.
  *
  * `expect` names the measure a control is aimed at — `{ criterion: 'W2', measure:
@@ -1452,10 +1533,26 @@ export function checkControlRow(
         ? ""
         : ` (value ${subject.value}, bound ${subject.bound})`;
 
+  // **The denominator of a folded verdict, printed next to it (DEC-816).** A multi-world measure is
+  // the worst of the worlds *in domain*, and after R3's ring domain W2's lightness half is in domain
+  // on 2 of 45. Without this, `W2.lightnessIqr went GREEN as expected (value 20.2, bound 8)` reads
+  // identically whether it was folded off two worlds or forty-five — the report would be at its most
+  // reassuring exactly where the evidence had thinned. The clause is driven off `scoredPlanes`,
+  // which only `foldCriteria` sets, so a per-world criterion (the unit tests' shape) is unaffected
+  // rather than gaining a fictional "1 of 1".
+  // Suppressed on `N/A`, where `insufficientReason` already spells out "every plane was out of
+  // domain (N planes)" — two spellings of one fact read as two facts.
+  const domain =
+    went !== "N/A" && typeof subject.scoredPlanes === "number"
+      ? `, worst of ${subject.scoredPlanes} world${subject.scoredPlanes === 1 ? "" : "s"} in domain` +
+        `${subject.worstPlane === null ? "" : ` (${subject.worstPlane})`}` +
+        `${subject.insufficientPlanes ? `, ${subject.insufficientPlanes} out of domain` : ""}`
+      : "";
+
   return {
     ok,
     detail: ok
-      ? `${what} went ${expect} as expected${value}`
-      : `${what} was expected ${expect} but went ${went}${value}`,
+      ? `${what} went ${expect} as expected${value}${domain}`
+      : `${what} was expected ${expect} but went ${went}${value}${domain}`,
   };
 }

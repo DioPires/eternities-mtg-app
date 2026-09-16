@@ -2146,6 +2146,14 @@ an assertion there.
 > not RED, and the matrix would record a retired falsifier as a passing row. The gate refuses to score
 > that row without a qualifying ring (`W2_CONTROL_SUBJECT_MIN_RING`) rather than reporting it.
 
+> **Normative — a folded verdict is printed with the set it was folded over.** Every multi-world
+> measure is the worst world *in domain*, so `checkControlRow` reports `worst of N worlds in domain
+> (slug), M out of domain` beside the value. Without it this domain would have made the report most
+> reassuring exactly where its evidence had thinned: `W2.lightnessIqr went GREEN as expected (value
+> 20.2, bound 8)` reads identically whether it was folded over two worlds or forty-five. The
+> denominator prints on a full-roster GREEN too — one that appeared only when the evidence was thin
+> would be a warning, and its absence would come to be read as "fine".
+
 **Owner-judged, carried over from 9.3 unchanged:** motion perceptible within 3 s of arriving at any
 level; no aliasing shimmer on slow camera moves (recordings cast at the drawing buffer's own
 resolution — half-size is the one scale that hides it, DEC-661); art fade-ins never noticed as

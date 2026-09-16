@@ -67,6 +67,19 @@ export interface Measure {
   readonly pass: boolean;
   /** Why the subject was out of domain, when `status` is `insufficient`. */
   readonly insufficientReason: string | null;
+  /**
+   * Set only by the driver's `foldCriteria`, which folds a per-world measure into a roster verdict.
+   *
+   * Optional because a criterion measured on one world has no such denominator, and inventing a
+   * "1 of 1" for it would put a fold's vocabulary on a reading that was never folded.
+   * `checkControlRow` prints these so a verdict cannot be read without the set it was taken over —
+   * after the ring domain (DEC-816 R3) W2's lightness half folds off 2 of 45 worlds.
+   */
+  readonly scoredPlanes?: number;
+  /** How many worlds were out of domain for this measure. See `scoredPlanes`. */
+  readonly insufficientPlanes?: number;
+  /** The world carrying the folded value. See `scoredPlanes`. */
+  readonly worstPlane?: string | null;
 }
 
 export interface Criterion {
@@ -334,6 +347,20 @@ export declare function evaluateW5(
   roster: Roster,
   options: W5Options,
 ): W5Criterion;
+
+/**
+ * Fold one criterion measured on many planes into the roster's verdict: the worst plane, never a
+ * mean, with `insufficient` carried rather than counted as a pass.
+ *
+ * Returns `null` when no plane produced the criterion at all — an absent criterion is not a passing
+ * one, and the caller reports that separately.
+ */
+export declare function foldCriteria(
+  perPlane: ReadonlyArray<{
+    readonly slug: string;
+    readonly criterion: Criterion | null;
+  }>,
+): Criterion | null;
 
 export declare function checkControlRow(
   criteria: readonly Criterion[],
