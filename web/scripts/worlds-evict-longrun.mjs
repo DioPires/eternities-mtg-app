@@ -1,15 +1,37 @@
 /**
  * Does dominaria's eviction rate decay? Extend the gate's 3 s observation to 150 s and watch.
  *
- * **Result (DEC-752): it does not, and the W4 eviction red is real.** 2,523 evictions over 150 s at
- * the 2.2-radii pose, early rate 15.03/s against a late rate of 17.63/s — the rate *rose*. The
- * control arm with motion frozen reads 2,521, so **motion is not the cause.** What is: in the
- * shipped composition the art stream **never stops requesting**. `requested` climbs 1,153 -> 3,816
- * across the run, ~17.7/s, which is the eviction rate to two figures. The pool is doing correct LRU
- * on a full pool; the demand side keeps asking for cells it already holds.
+ * **Result (DEC-752): it does not — 2,523 evictions over 150 s at the 2.2-radii pose, early rate
+ * 15.03/s against a late rate of 17.63/s. The rate *rose*.** `artFraction` sits at ~99.7%
+ * throughout, so none of this is visible in the frame, which is why only W4's eviction half catches
+ * it.
  *
- * `artFraction` sits at ~99.7% throughout, so **none of this is visible in the frame** — which is
- * exactly why only W4's eviction half catches it.
+ * > **CORRECTION (DEC-833). The cause DEC-752 named is wrong, because its control was dead.**
+ * >
+ * > DEC-752 read the flat `--motion0` arm as "motion is not the cause" and concluded the stream
+ * > "never stops requesting cells the pool already holds". **`?motion=0` is inert on this route.**
+ * > `scene/motionOverride.ts`'s own header records it: the seam is laid over `?probe=1`, `/bench`
+ * > and `?selfcheck`, and "the shell deliberately does not [read it], so a query string cannot
+ * > change what a user sees". This script pins `?probe=shell` — the shell — whose `App.tsx`
+ * > resolves reduced motion from `useReducedMotion()`: the settings toggle and the OS preference,
+ * > never the query string. So both DEC-752 arms ran the **same build**, which is why they agreed to
+ * > two decimal places. That is a control that never took, not evidence about motion.
+ * >
+ * > `--reduced` is the arm that does take — it emulates the OS preference, which is the input the
+ * > shell reads. Measured on `fec45c9` at the same pose, 45 s: **`requested` flat at 1,151, want-set
+ * > turnover 0 cells/sample, `evictions` 0, `resident` 967/1,024, `showing == wanting == 967`.**
+ * > The stream stops dead the moment the want set is satisfied.
+ * >
+ * > So the baseline's ~17.7 req/s is **the world's spin carrying new cells across the admission
+ * > boundary**, one fetch each — the want set turns over at ~18 cells/s (`entered`, below) against
+ * > an eviction rate of 17.8–18.5/s, and over 60 s 1,689 of 1,946 distinct keys were asked for
+ * > exactly once, none more than three times. Eviction rate == admission rate == turnover rate, on a
+ * > saturated pool, which is the floor for a 1,024-layer cache over a 6,271-card world that rotates.
+ * > The standing unit guard on that property is `worlds-art-fetch.test.ts`'s
+ * > "§1.6 a satisfied want set stops asking (DEC-833)".
+ * >
+ * > What the baseline arm does cost, and what a bound on the eviction rate is really defending:
+ * > **147.8 MiB over 60.1 s = 2,518 KiB/s, sustained for as long as the page is open.**
  *
  * **Why this exists when `worlds-art-convergence.mjs` already samples the same counter.** That one
  * asks for `?probe=1`, and `harnessRoute.ts:67` redirects anything that is neither `shell` nor `0`
@@ -34,7 +56,7 @@
  * rig is untouched. The radii are asserted every sample as the detector: if attract fires anyway,
  * the camera recedes and the run fails loudly rather than reporting churn it did not measure.
  *
- * Run: `node scripts/worlds-evict-longrun.mjs [--seconds 150] [--motion0]`
+ * Run: `node scripts/worlds-evict-longrun.mjs [--seconds 150] [--reduced] [--motion0]`
  * Requires a built `dist/` for the worlds dataset; it starts its own `vite preview --port 0`.
  */
 
@@ -56,8 +78,24 @@ const HEARTBEAT_S = 15
 const RADII_TOLERANCE = 0.05
 
 const seconds = Number(process.argv[process.argv.indexOf('--seconds') + 1]) || 150
-/** The control arm. Same composition, motion frozen — so motion is the only thing that changed. */
+/**
+ * DEC-752's control arm. **Kept only so the dead control stays reproducible** — see the CORRECTION
+ * in the header. It sets a query string this route does not read, so it changes nothing.
+ */
 const motionOff = process.argv.includes('--motion0')
+/**
+ * The control that actually takes on this route — see the CORRECTION in the header.
+ *
+ * `?motion=0` is **inert under `?probe=shell`**. `motionOverride`'s own header says so — the seam is
+ * laid over `?probe=1`, `/bench` and `?selfcheck`, and "the shell deliberately does not [read it],
+ * so a query string cannot change what a user sees". `?probe=shell` keeps the app shell, whose
+ * `App.tsx` resolves reduced motion from `useReducedMotion()` — settings plus the OS preference, and
+ * no query string. So DEC-752's `--motion0` arm re-ran the SAME build, which is why it agreed to two
+ * decimal places; that is a dead control, not evidence that motion is not the cause.
+ *
+ * This arm emulates the OS preference instead, which is the input the shell actually reads.
+ */
+const reduced = process.argv.includes('--reduced')
 
 const CHROME = [
   process.env.CHROME_PATH,
@@ -76,12 +114,16 @@ const READ = (world) => {
   return {
     radii: payload.radii,
     wanting: wanting.length,
+    // The MEMBERSHIP of the want set, not just its size. The size is flat at ~942 in every arm; what
+    // separates a frozen scene from a spinning one is WHICH cells are in it.
+    members: wanting.map((c) => c.cell),
     showing: wanting.filter((c) => c.showingArt).length,
     layers: payload.pool.layers,
     resident: payload.pool.resident,
     evictions: payload.pool.evictions,
     requested: payload.stream?.requested ?? null,
     resolved: payload.stream?.resolved ?? null,
+    bytesFetched: payload.stream?.bytesFetched ?? null,
   }
 }
 
@@ -111,11 +153,19 @@ const browser = await puppeteer.launch({
 try {
   const page = await browser.newPage()
   await page.setViewport(VIEWPORT)
+  // The OS preference, which is the input `App.tsx`'s `useReducedMotion` actually reads.
+  // Set BEFORE `goto`, so the first composition already has it.
+  if (reduced) {
+    await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }])
+  }
   // `probe=shell` is the GATE's composition. `probe=1` would redirect to the harness scene route
   // (`harnessRoute.ts:67`) and measure a different build, which is the confound this run exists to
   // remove. Motion is on unless the control arm asked for it off.
   const query = `?probe=shell${motionOff ? '&motion=0' : ''}`
-  console.log(`composition ${query} (gate parity: probe=shell), motion ${motionOff ? 'OFF' : 'ON'}`)
+  console.log(
+    `composition ${query} (gate parity: probe=shell), ?motion=0 ${motionOff ? 'SET (INERT on this route)' : 'unset'}, ` +
+      `prefers-reduced-motion ${reduced ? 'REDUCE (the control that takes)' : 'no-preference'}`,
+  )
   await page.goto(`${base}/${query}`, { waitUntil: 'networkidle2', timeout: 60_000 })
   await page.waitForFunction(() => window.__eternitiesProbe !== undefined, { timeout: 30_000 })
   if (!(await page.evaluate((s) => window.__eternitiesProbe.focusPlane(s), WORLD))) {
@@ -180,6 +230,8 @@ try {
   )
 
   const started = Date.now()
+  /** The previous sample's want-set membership, so the turnover can be differenced. */
+  let prevMembers = null
   let lastBeat = 0
   let x = 5
   const rows = []
@@ -200,9 +252,16 @@ try {
           `pose lost at t=${elapsed.toFixed(1)}s: radii ${s.radii.toFixed(3)} (attract mode?)`,
         )
       }
-      rows.push({ t: Number(elapsed.toFixed(1)), ...s })
+      // How much of the want set turned over since the last sample — the demand the stream serves.
+      const now = new Set(s.members)
+      const entered = prevMembers === null ? null : [...now].filter((c) => !prevMembers.has(c)).length
+      const left = prevMembers === null ? null : [...prevMembers].filter((c) => !now.has(c)).length
+      prevMembers = now
+      delete s.members
+      rows.push({ t: Number(elapsed.toFixed(1)), entered, left, ...s })
       console.log(
         `  t=${String(rows[rows.length - 1].t).padStart(6)}s radii=${s.radii.toFixed(3)} ` +
+          `entered=${String(entered).padStart(4)} left=${String(left).padStart(4)} ` +
           `wanting=${String(s.wanting).padStart(4)} showing=${String(s.showing).padStart(4)} ` +
           `resident=${String(s.resident).padStart(4)}/${s.layers} ` +
           `evict=${String(s.evictions).padStart(6)} req=${String(s.requested).padStart(5)} ` +
@@ -220,6 +279,14 @@ try {
   const early = rate(rows[0], rows[third])
   const late = rate(rows[rows.length - 1 - third], rows[rows.length - 1])
   const total = rows[rows.length - 1].evictions - rows[0].evictions
+  // The sustained wire cost of the steady state, which is what a bound on the eviction rate is
+  // really defending. Differenced, not session-cumulative.
+  const bytes = rows[rows.length - 1].bytesFetched - rows[0].bytesFetched
+  const span = rows[rows.length - 1].t - rows[0].t
+  console.log(
+    `  streamed ${(bytes / 1024 / 1024).toFixed(1)} MiB over ${span.toFixed(1)}s = ` +
+      `${(bytes / span / 1024).toFixed(0)} KiB/s sustained`,
+  )
   console.log(
     `\n  early rate ${early.toFixed(2)}/s   late rate ${late.toFixed(2)}/s   ` +
       `cumulative ${total} over ${rows[rows.length - 1].t}s`,
@@ -230,6 +297,16 @@ try {
       : late > early * 0.5
         ? '  -> SUSTAINED: the rate did not decay — churn, driven by the rotating want set'
         : '  -> DECAYING but not settled within the run',
+  )
+
+  // The demand side, differenced. `requested` is the number the verdict above is really about: a
+  // stream that re-asked for what it holds would run far ahead of the want set's turnover, and one
+  // that asks once per newly admitted cell tracks it.
+  const asked = rows[rows.length - 1].requested - rows[0].requested
+  const turnover = rows.slice(1).reduce((sum, r) => sum + r.entered, 0)
+  console.log(
+    `  requested +${asked} over ${span.toFixed(1)}s = ${(asked / span).toFixed(2)}/s, ` +
+      `against a want-set turnover of ${turnover} cells = ${(turnover / span).toFixed(2)}/s`,
   )
 } finally {
   await browser.close()
