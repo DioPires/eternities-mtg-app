@@ -60,7 +60,12 @@ import { ArtPool, artPoolSize } from './artPool'
 import { ArtStream } from './artStream'
 import { AtmospherePass, type RimQuality } from './atmosphere'
 import { buildBelt, disposeBelt, setBeltPixelRatio } from './belt'
-import { PLANE_HOME, type PlaneCentreSource } from './centre'
+import {
+  NO_MULTIVERSE_ROTATION,
+  PLANE_HOME,
+  type MultiverseAngleSource,
+  type PlaneCentreSource,
+} from './centre'
 import { keyLightDirection } from './keyLight'
 import {
   RENDER_ORDER_BELT,
@@ -199,6 +204,18 @@ export interface WorldsAttachment {
    */
   setPlaneCentres: (centreOf: PlaneCentreSource | null) => void
   /**
+   * PRD 8.5.3's multiverse angle this frame, which §1.8's belt turns by (DEC-814). See `centre.ts`.
+   *
+   * **The rig's `SceneMotion`, never a second integration.** `setPlaneCentres` above rotates every
+   * *world* by this angle inside `planePosition`; the belt is the one object in §1.2 that is not at
+   * a plane position — it is 4,204 dust records laid out around the system origin — so it takes the
+   * same law as an object transform instead. One accumulator, read twice.
+   *
+   * `null` restores {@link NO_MULTIVERSE_ROTATION}, which is the pre-navigation state and the
+   * mutation control.
+   */
+  setMultiverseAngle: (angleOf: MultiverseAngleSource | null) => void
+  /**
    * §1.9's two ends, or `null` to hide the tether.
    *
    * Imperative and unwired, deliberately. §1.9 specifies the tether's *geometry* between two worlds
@@ -226,6 +243,13 @@ export interface WorldsAttachment {
   readonly atmosphere: AtmospherePass | null
   /** §1.2 step 5 (§1.9). Lives for the attachment; hidden until {@link setTether}. */
   readonly tether: TetherPass
+  /**
+   * §1.2 step 3 (§1.8). `null` until a roster with a dust plane composes.
+   *
+   * Exposed for the same reason {@link system} and {@link atmosphere} are: the belt's *pose* is
+   * frame state (DEC-814) and the only place it can be read is the object three draws.
+   */
+  readonly belt: Points | null
   /** How many instances §1.2's step 2 drew last frame — the count §1.5 warns not to derive. */
   readonly systemDrawn: number
   dispose: () => void
@@ -375,6 +399,8 @@ export function attachWorlds(options: WorldsAttachmentOptions): WorldsAttachment
   let spinAngleOf: SpinAngleSource = NO_SPIN
   /** PRD 5.7.1's `planePosition`, pushed in by the host. See {@link WorldsAttachment.setPlaneCentres}. */
   let centreOf: PlaneCentreSource = PLANE_HOME
+  /** PRD 8.5.3's angle, pushed in by the host. See {@link WorldsAttachment.setMultiverseAngle}. */
+  let multiverseAngleOf: MultiverseAngleSource = NO_MULTIVERSE_ROTATION
   let rimQuality: RimQuality = 'full'
   /** §1.9's flow pulse runs on wall time, so it is the one thing here that accumulates. */
   let elapsedSeconds = 0
@@ -508,7 +534,21 @@ export function attachWorlds(options: WorldsAttachmentOptions): WorldsAttachment
 
     // Steps 2, 8 and 5. After the sheets, because all three read the crossover state the loop above
     // just produced — and §1.2's *order* is `renderOrder`, not the order they are updated in.
-    if (belt) setBeltPixelRatio(belt, gl.getPixelRatio())
+    if (belt) {
+      setBeltPixelRatio(belt, gl.getPixelRatio())
+      // **PRD 5.3.13's rotation, on the one object that is not at a plane position (DEC-814).**
+      // Every world above has just been placed by `frame.centreOf`, which rotates `home` by this
+      // same angle inside `planePosition`; the belt is centred on the system origin, so the same
+      // law is the object's own `+Y` rotation. Dropping this line is DEC-813: the belt is clumped
+      // in azimuth (one arc per set), so it shears a full turn against the whole roster per
+      // `MULTIVERSE_PERIOD_S` while every individual frame still looks like a belt.
+      //
+      // Written, never accumulated — `multiverseAngleOf` is the plane table's integration, mirrored
+      // through the rig. `+=` here would be a second copy of the motion function, which is what
+      // `docs/camera-and-labels.md` §2 is about, and it would also synthesise advancement under PRD
+      // 5.9's freeze (the DEC-785 F2 ruling) the moment the two deltas disagreed.
+      belt.rotation.y = multiverseAngleOf()
+    }
     system?.update(frame, spinAngleOf, drawsSystem)
     atmosphere?.update(frame, isDrawn)
     tether.update(camera, viewport.y, elapsedSeconds, deltaSeconds)
@@ -615,6 +655,9 @@ export function attachWorlds(options: WorldsAttachmentOptions): WorldsAttachment
     get tether() {
       return tether
     },
+    get belt() {
+      return belt
+    },
     get systemDrawn() {
       return system?.drawnCount ?? 0
     },
@@ -693,6 +736,10 @@ export function attachWorlds(options: WorldsAttachmentOptions): WorldsAttachment
 
     setPlaneCentres: (next) => {
       centreOf = next ?? PLANE_HOME
+    },
+
+    setMultiverseAngle: (next) => {
+      multiverseAngleOf = next ?? NO_MULTIVERSE_ROTATION
     },
 
     setTether: (slugs) => {

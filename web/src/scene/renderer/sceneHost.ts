@@ -454,6 +454,15 @@ export class SceneHost {
       motion.planePosition(out, plane)
       return out
     })
+    // PRD 5.3.13/8.5.3's rotation for §1.8's belt, off the **same mirror and the same field** the
+    // line above rotates every world by (DEC-814). A getter rather than a pushed number because the
+    // `worlds` phase runs after `motionSync` in the same frame: read at subscription time this would
+    // be the constant zero, and read by a second accumulator it would be a second copy of the motion
+    // function. See `centre.ts`.
+    //
+    // A dropped write here is DEC-813 restored in full silence — the belt reverts to
+    // `NO_MULTIVERSE_ROTATION` and shears a full turn against the roster every 20 minutes.
+    this.worldsAttachment.setMultiverseAngle(() => motion.multiverseRotation)
     // The bench flies the camera itself. Attaching the rig as well would put two writers on one
     // camera and the path would stop being the path.
     if (this.driveRig) {

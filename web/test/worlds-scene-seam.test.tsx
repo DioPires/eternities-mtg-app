@@ -554,6 +554,47 @@ describe('the `?probe=` worlds seam, served from a mounted scene (§3.1, DEC-768
       WORLDS.length * 8,
     )
   })
+
+  // --- The angle §1.8's belt turns by (DEC-814) -------------------------------------------------
+
+  it('turns the belt by the pages own multiverse angle, not by nothing', () => {
+    // **A wiring row, and the fifth of the shape this file was written for.** M1 dropped the probe
+    // source, M2 dropped the world data, DEC-772 dropped `cardOf`, DEC-804 dropped
+    // `setPlaneCentres`; this one is `sceneHost.attachDrive`'s `setMultiverseAngle` call. Delete
+    // that one line and §1.8's belt silently reverts to `NO_MULTIVERSE_ROTATION` — DEC-813 in full,
+    // with `worlds-centre.test.ts` green throughout, because that file wires the law itself. There
+    // is no type error to catch it: the setter has a default, for the cold start, exactly as
+    // `cardOf` and `setPlaneCentres` did. [[a-cold-start-default-made-permanent]]
+    //
+    // Motion **on**, for the same reason as the rows above: under PRD 5.9's freeze the angle is 0
+    // and the mutant is indistinguishable from the fix.
+    const data = mount(scene, true, false)
+    const table = data.resources!.table
+    const step = frameStepper(scene)
+
+    const belt = scene.worlds.belt
+    expect(belt, 'the shipped roster carries a dust plane, so a belt composes').toBeTruthy()
+
+    const readings: number[] = []
+    for (let frame = 0; frame < 12; frame += 1) {
+      step()
+      // Against the **page's own** `PlaneTable` — the thing the star field's vertex shader reads and
+      // that `motionSync` mirrors into the rig — rather than against a second integration here. If
+      // the belt and the galaxy ever turned by different numbers, the belt would shear against the
+      // stars as well as against the worlds.
+      expect(belt!.rotation.y).toBe(table.multiverseAngle)
+      readings.push(belt!.rotation.y)
+    }
+
+    // The control: the table has to have actually turned over those twelve frames, or the equality
+    // above is two names for one unmoving zero — which is precisely the mutant's own state.
+    expect(readings[0], 'the first tick must have advanced the angle off zero').toBeGreaterThan(0)
+    for (let i = 1; i < readings.length; i += 1) {
+      expect(readings[i], `frame ${i} must advance past frame ${i - 1}`).toBeGreaterThan(
+        readings[i - 1]!,
+      )
+    }
+  })
 })
 
 // --- §1.6's art stream, on the shipped composition (DEC-772) -----------------------------------

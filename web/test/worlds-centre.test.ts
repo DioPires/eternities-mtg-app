@@ -86,7 +86,12 @@ import type { PlaneRecord, PlanesFile } from '../src/data/types'
 import { FrameLoop } from '../src/scene/renderer/frameLoop'
 import { MULTIVERSE_PERIOD_S } from '../src/scene/tuning'
 import { attachWorlds, type WorldsAttachment } from '../src/scene/worlds/attachWorlds'
-import { PLANE_HOME, type PlaneCentreSource } from '../src/scene/worlds/centre'
+import {
+  NO_MULTIVERSE_ROTATION,
+  PLANE_HOME,
+  type MultiverseAngleSource,
+  type PlaneCentreSource,
+} from '../src/scene/worlds/centre'
 import type { WorldsSeams } from '../src/scene/worlds/seams'
 import { worldRadius } from '../src/scene/worlds/surfaceLaw'
 import { worldPlanesOf } from '../src/scene/worlds/worldSource'
@@ -150,6 +155,8 @@ interface Harness {
   readonly worlds: WorldsAttachment
   readonly camera: PerspectiveCamera
   readonly motion: SceneMotion
+  /** The graph the attachment composed into. `step` refreshes its world matrices, as a frame does. */
+  readonly scene: Scene
   /**
    * Advance the scene clock by `deltaSeconds`, put the camera where a rig holding `plane`'s tether
    * at `distance` would be, and run one tick.
@@ -169,7 +176,14 @@ interface Harness {
  * `centreOf` is a parameter so the mutation control can supply {@link PLANE_HOME}, which is
  * precisely the expression `worldSource.ts` carried before this leg.
  */
-function build(options: { centreOf?: PlaneCentreSource; reducedMotion?: boolean } = {}): Harness {
+function build(
+  options: {
+    centreOf?: PlaneCentreSource
+    /** DEC-814's mutation control supplies {@link NO_MULTIVERSE_ROTATION}. */
+    multiverseAngleOf?: MultiverseAngleSource
+    reducedMotion?: boolean
+  } = {},
+): Harness {
   const scene = new Scene()
   const camera = new PerspectiveCamera(55, CSS_WIDTH / CSS_HEIGHT, 0.1, 5000)
   const loop = new FrameLoop()
@@ -204,6 +218,10 @@ function build(options: { centreOf?: PlaneCentreSource; reducedMotion?: boolean 
         return out
       }),
   )
+  // §1.8's belt takes the same rotation as an object transform, because it has no centre to be
+  // placed at (DEC-814). `multiverseRotation` is the very field `planePosition` above rotates by —
+  // the same instance, read rather than integrated a second time.
+  worlds.setMultiverseAngle(options.multiverseAngleOf ?? (() => motion.multiverseRotation))
   worlds.setData({
     planes: PLANES.planes,
     stars: STARS,
@@ -220,6 +238,7 @@ function build(options: { centreOf?: PlaneCentreSource; reducedMotion?: boolean 
     worlds,
     camera,
     motion,
+    scene,
     step: (deltaSeconds, plane, distance) => {
       elapsed += deltaSeconds
       // What `PlaneTable.advance` would have integrated by now, handed over the way `motionSync`
@@ -236,6 +255,10 @@ function build(options: { centreOf?: PlaneCentreSource; reducedMotion?: boolean 
 
       clockMs += deltaSeconds * 1000
       loop.tick(clockMs)
+      // What `WebGLRenderer.render` does before it draws anything. Object-level poses — DEC-814's
+      // belt rotation is the only one in this scene — reach the GPU through `matrixWorld`, so a row
+      // that read `rotation.y` instead would be reading the write rather than the draw.
+      scene.updateMatrixWorld(true)
     },
     dispose: () => {
       worlds.dispose()
@@ -679,6 +702,294 @@ describe('a world is where the camera thinks it is (DEC-804)', () => {
         }
       } finally {
         harness.dispose()
+      }
+    })
+  })
+
+  /**
+   * **§1.8's belt turns with the multiverse (DEC-814, ruling on DEC-813 / DEC-809 N5).**
+   *
+   * After DEC-804 the belt was the last object in the worlds scene still in the t=0 frame: `runFrame`
+   * gave it `setBeltPixelRatio` and nothing else while every world, the system pass, the atmosphere
+   * pass and the tether updated per frame. PRD 5.3.13 rotates *the entire multiverse* and grants no
+   * exemption; PRD 8.5.3 applies that rotation to every star, and the belt's points **are** star
+   * records — the dust plane's own 4,204, 14.70% of everything on v3.
+   *
+   * **Why it is not cosmetic, and why the rows below sweep.** The belt is heavily clumped in azimuth
+   * because §1.8 gives each set its own arc: a 36-bin histogram of the shipped dust plane runs min 6
+   * / max 314, chi-square 1952.4 on df 35 (DEC-813). So a fixed belt does not read as a
+   * symmetric ring that happens not to turn — it shears a **full turn** against every world per
+   * 1,200 s `MULTIVERSE_PERIOD_S`, and any single frame of it still looks exactly like a belt.
+   * [[one-frame-of-a-moving-system-is-a-sample]]
+   *
+   * The rows are deliberately of three different kinds, because the object-level spelling admits
+   * three different ways to be wrong:
+   *
+   *  - **The pose row** is exact and absolute: every sampled point's `matrixWorld` image is its
+   *    shipped t=0 buffer position put through PRD 8.5.3's rotation by the angle the *rig* holds.
+   *    A dropped write, a halved rate or a reversed sign each fail it.
+   *  - **The shear row** is relative and is the one DEC-813 actually states: the azimuth between a
+   *    belt point and a world's live centre must not open up. It needs no oracle for the rotation at
+   *    all — it compares two things in the scene against each other — so it survives any future
+   *    change of spelling on either side.
+   *  - **The buffer row** is DEC-811's scope line, asserted rather than assumed: the positions stay
+   *    at t=0 and the transform lives at the object level (`buildBelt` is out of scope).
+   */
+  describe('§1.8s belt turns with the multiverse (DEC-814, DEC-813)', () => {
+    /**
+     * 150 s a sample — 0.7854 rad, an eighth of the period — so the four samples stand at
+     * **0.7854, 1.5708, 2.3562 and 3.1416 rad**: four *distinct, nonzero* angles spread over half a
+     * turn, rather than a neighbourhood of t=0 where the rotation has not moved and every row here
+     * would be vacuous. [[one-frame-of-a-moving-system-is-a-sample]]
+     */
+    const BELT_SWEEP_SECONDS = 150
+    const BELT_SWEEP_SAMPLES = 4
+
+    /**
+     * Seven dust cards spread across the belt, by record index.
+     *
+     * Spread on purpose: §1.8 lays one arc per set, so neighbouring indices sit in the same arc at
+     * nearly the same azimuth, and seven consecutive points would test one seventh of one arc. These
+     * are 4,204/7 apart, which crosses the whole chronology — and the first and last are the
+     * endpoints, where an off-by-one in a future `buildBelt` would show.
+     */
+    const BELT_CARDS = [0, 700, 1400, 2101, 2802, 3503, 4203] as const
+
+    const Y_AXIS = new Vector3(0, 1, 0)
+
+    /** The dust plane, which is not a world — `worldPlanesOf` drops it, so `planeFor` cannot find it. */
+    function dustPlane(): PlaneRecord {
+      const dust = PLANES.planes.find((plane) => plane.kind === 'dust')
+      expect(dust, 'the shipped roster must carry a dust plane for the belt to exist').toBeDefined()
+      return dust!
+    }
+
+    /** `card`'s shipped buffer position — the t=0 frame, read straight off the geometry. */
+    function beltBufferPoint(harness: Harness, card: number, out: Vector3): Vector3 {
+      const belt = harness.worlds.belt
+      expect(belt, 'the shipped roster composes a belt').toBeTruthy()
+      const position = belt!.geometry.getAttribute('position')
+      expect(card).toBeLessThan(position.count)
+      return out.set(position.getX(card), position.getY(card), position.getZ(card))
+    }
+
+    /** Where the GPU draws `card`: its buffer position through the belt object's `matrixWorld`. */
+    function beltDrawnPoint(harness: Harness, card: number, out: Vector3): Vector3 {
+      beltBufferPoint(harness, card, out)
+      return out.applyMatrix4(harness.worlds.belt!.matrixWorld)
+    }
+
+    /** Azimuth about `+Y`, which is the axis PRD 5.3.13 turns the multiverse about. */
+    const azimuth = (v: Vector3): number => Math.atan2(v.z, v.x)
+
+    /** `a - b` folded into (-pi, pi], so a sweep across the branch cut is not read as a 2pi shear. */
+    function angleDelta(a: number, b: number): number {
+      let delta = (a - b) % (2 * Math.PI)
+      if (delta > Math.PI) delta -= 2 * Math.PI
+      if (delta <= -Math.PI) delta += 2 * Math.PI
+      return delta
+    }
+
+    /**
+     * The belt's azimuth against `slug`'s **live** centre, per sampled card, over the sweep.
+     *
+     * This is the quantity DEC-813 names and it involves no model of the rotation: both terms are
+     * read out of the running scene — one off the belt's `matrixWorld`, one off `planePosition`. A
+     * belt that co-rotates holds every one of these constant; a belt left at t=0 walks each of them
+     * by the whole accumulated angle.
+     *
+     * Returned per card rather than aggregated, because the shear is the *same* for every card and a
+     * mean would hide a belt that had been rotated about the wrong axis — where the points nearest
+     * the poles barely move and the ones on the equator move fully.
+     */
+    function shearSweep(harness: Harness, slug: string): number[][] {
+      const plane = planeFor(slug)
+      const distance = worldRadius(plane.cardCount) * 2.2
+      const live = new Vector3()
+      const point = new Vector3()
+      const perCard: number[][] = BELT_CARDS.map(() => [])
+      for (let sample = 1; sample <= BELT_SWEEP_SAMPLES; sample += 1) {
+        harness.step(BELT_SWEEP_SECONDS, plane, distance)
+        harness.motion.planePosition(live, plane)
+        for (const [index, card] of BELT_CARDS.entries()) {
+          beltDrawnPoint(harness, card, point)
+          perCard[index]!.push(angleDelta(azimuth(point), azimuth(live)))
+        }
+      }
+      return perCard
+    }
+
+    /**
+     * PRD 5.3.15's drift, in radians of azimuth, is the noise floor of the shear row.
+     *
+     * The worlds do not turn *rigidly*: `planePosition` is `rotateY(home + drift(t))`, and the drift
+     * term moves a world's azimuth by about `|drift| / |home|` on top of the rotation. The belt is
+     * rigid, so this residue is the whole reading — and it is the same for every sampled card,
+     * because a rotation about `+Y` moves every point's azimuth by exactly the angle. Measured over
+     * this sweep: **0.0142 rad** on `dominaria` (`|home|` 109.57) and **0.0170** on `azgol` (94.56).
+     *
+     * The bound is three times the worse of those, and still **47x** under the 2.345 / 2.373 rad the
+     * mutation control measures on the same two worlds — so it is a bound the defect fails rather
+     * than one it would also pass. [[a-bound-check-is-vacuous-when-the-bound-never-binds]]
+     */
+    const SHEAR_TOLERANCE = 0.05
+
+    for (const slug of SUBJECTS) {
+      it(`${slug}: the belt does not shear against the world it orbits with`, () => {
+        const harness = build()
+        try {
+          const perCard = shearSweep(harness, slug)
+          for (const [index, readings] of perCard.entries()) {
+            expect(readings.length).toBe(BELT_SWEEP_SAMPLES)
+            expect(
+              spread(readings),
+              `belt card ${BELT_CARDS[index]} shears ${spread(readings).toFixed(4)} rad against ${slug}`,
+            ).toBeLessThan(SHEAR_TOLERANCE)
+          }
+          // **The clock must have moved**, or "no shear" means "nothing happened" — the degeneracy
+          // §3.1 names and the one a frozen rate would hide. Four samples of 150 s is half a turn.
+          expect(harness.motion.multiverseRotation).toBeCloseTo(Math.PI, 6)
+        } finally {
+          harness.dispose()
+        }
+      })
+
+      it(`${slug}: MUTATION CONTROL — a belt left in the t=0 frame shears three eighths of a turn`, () => {
+        // `NO_MULTIVERSE_ROTATION` is the default, so this is **exactly** the tree before this leg:
+        // the same source expression `runFrame` would fall back to if its rotation write were
+        // deleted, and the same one the product reverts to if `sceneHost` drops the setter call.
+        const harness = build({ multiverseAngleOf: NO_MULTIVERSE_ROTATION })
+        try {
+          const perCard = shearSweep(harness, slug)
+          for (const readings of perCard) {
+            // Every sampled card, not the aggregate: the whole belt is dragged, and by the same
+            // amount, so a partial failure would show as one card in the list rather than as a
+            // smaller mean. The four samples stand at pi/4 .. pi, so the *excursion* is 3pi/4 =
+            // 2.3562 less the drift — measured **2.3450** on `dominaria` and **2.3726** on `azgol`,
+            // both 47x the tolerance the row above passes at. The bound sits between the two.
+            expect(spread(readings)).toBeGreaterThan(2)
+          }
+        } finally {
+          harness.dispose()
+        }
+      })
+    }
+
+    it('every sampled point is drawn at its t=0 position rotated by the rigs own angle', () => {
+      // The absolute row. The oracle is the rig's `multiverseRotation` — the same accumulator
+      // `planePosition` rotates every world by, and an instance of `camera/motion.ts` that knows
+      // nothing about `scene/worlds/`. A halved rate, a reversed sign or a second integration each
+      // fail this while the shear row above could still pass a *consistently* wrong rotation.
+      const harness = build()
+      try {
+        const plane = planeFor('dominaria')
+        const distance = worldRadius(plane.cardCount) * 2.2
+        const t0 = new Vector3()
+        const drawn = new Vector3()
+        const expected = new Vector3()
+        const angles: number[] = []
+
+        for (let sample = 1; sample <= BELT_SWEEP_SAMPLES; sample += 1) {
+          harness.step(BELT_SWEEP_SECONDS, plane, distance)
+          const angle = harness.motion.multiverseRotation
+          angles.push(angle)
+          for (const card of BELT_CARDS) {
+            beltBufferPoint(harness, card, t0)
+            expected.copy(t0).applyAxisAngle(Y_AXIS, angle)
+            beltDrawnPoint(harness, card, drawn)
+            expect(
+              drawn.distanceTo(expected),
+              `belt card ${card} at ${angle.toFixed(4)} rad`,
+            ).toBeLessThan(1e-4)
+            // **And the bound binds.** The belt sits at 1.12 x 130 = 145.6 units, so an eighth of a
+            // turn moves a point 111 units — six orders past the tolerance above. Without this the
+            // row would also pass on a belt that had not moved at all at the first sample, where the
+            // angle is smallest.
+            expect(t0.distanceTo(expected)).toBeGreaterThan(100)
+          }
+        }
+
+        // The sweep really was four *distinct, nonzero* angles, which is what makes the row a sweep
+        // and not four readings of one pose. [[one-frame-of-a-moving-system-is-a-sample]]
+        expect(new Set(angles).size).toBe(BELT_SWEEP_SAMPLES)
+        for (const angle of angles) expect(angle).toBeGreaterThan(0)
+      } finally {
+        harness.dispose()
+      }
+    })
+
+    it('leaves the buffer at t=0 — the transform is the objects, not the geometrys (DEC-811)', () => {
+      // DEC-814's scope line, asserted. `buildBelt` stays out of this leg (DEC-811 scoped it out),
+      // and the reason is not only ownership: rewriting 4,204 positions per frame would be 12,612
+      // float writes and a `needsUpdate` upload where a 4x4 matrix does, and it would put the belt's
+      // one shipped invariant — that its positions are the pipeline's, asserted by
+      // `test_pipeline_invariants.py` and re-checked in `worlds-belt.test.ts` — behind a per-frame
+      // mutation. A row here is what stops a later "fix" from baking the angle into the buffer.
+      const harness = build()
+      try {
+        const plane = planeFor('dominaria')
+        harness.step(0, plane, worldRadius(plane.cardCount) * 2.2)
+        const before = Float32Array.from(
+          harness.worlds.belt!.geometry.getAttribute('position').array,
+        )
+        expect(before.length).toBe(dustPlane().starCount * 3)
+
+        for (let sample = 1; sample <= BELT_SWEEP_SAMPLES; sample += 1) {
+          harness.step(BELT_SWEEP_SECONDS, plane, worldRadius(plane.cardCount) * 2.2)
+        }
+
+        const after = harness.worlds.belt!.geometry.getAttribute('position').array
+        for (let i = 0; i < before.length; i += 1) expect(after[i]).toBe(before[i]!)
+        // The control: the object DID move over those samples, so the equality above is a statement
+        // about where the rotation lives and not about a scene that never ticked.
+        expect(harness.worlds.belt!.rotation.y).toBeCloseTo(Math.PI, 6)
+      } finally {
+        harness.dispose()
+      }
+    })
+
+    it('NEGATIVE CONTROL — a frozen angle leaves the belt frozen, exactly as the worlds are', () => {
+      // PRD 5.9 and the DEC-785 F2 ruling: the belt must **not** synthesise advancement off wall
+      // time when the multiverse is stopped. The plane table freezes its angle where it stands and
+      // the worlds freeze with it; the belt reads that same frozen number, so it freezes too — and
+      // fixed and unfixed are therefore indistinguishable here, which is expected GREEN on both
+      // trees and is exactly why the rows above run with motion **on**.
+      // [[a-freeze-that-stabilises-also-hides]]
+      const fixed = build({ reducedMotion: true })
+      const unfixed = build({ reducedMotion: true, multiverseAngleOf: NO_MULTIVERSE_ROTATION })
+      try {
+        const plane = planeFor('dominaria')
+        const distance = worldRadius(plane.cardCount) * 2.2
+        const a = new Vector3()
+        const b = new Vector3()
+        const first = new Vector3()
+
+        for (let sample = 0; sample <= BELT_SWEEP_SAMPLES; sample += 1) {
+          const delta = sample === 0 ? 0 : BELT_SWEEP_SECONDS
+          fixed.step(delta, plane, distance)
+          unfixed.step(delta, plane, distance)
+          for (const card of BELT_CARDS) {
+            beltDrawnPoint(fixed, card, a)
+            beltDrawnPoint(unfixed, card, b)
+            // The two trees agree...
+            expect(a.distanceTo(b)).toBeLessThan(1e-9)
+            // ...and the belt has not moved off its t=0 buffer position at all. Not implied by the
+            // line above: two belts advancing at the same synthesised rate would also agree.
+            beltBufferPoint(fixed, card, first)
+            expect(a.distanceTo(first)).toBeLessThan(1e-9)
+          }
+        }
+        // > **This row does go red on one mutant, and it is an artefact worth naming rather than
+        // > engineering around.** A sign flip (`= -multiverseAngleOf()`) writes `-0` here, and
+        // > `Object.is(-0, 0)` is false — so `toBe` rejects it. That is not this row discriminating
+        // > the sign: the per-card assertions above stay green under it, because `-0` rotates
+        // > nothing. The sign is caught by the pose and shear rows, which measure it at four
+        // > nonzero angles. Recorded so the next reader does not mistake a signed-zero for evidence.
+        expect(fixed.worlds.belt!.rotation.y).toBe(0)
+        expect(fixed.motion.multiverseRotation).toBe(0)
+      } finally {
+        fixed.dispose()
+        unfixed.dispose()
       }
     })
   })
