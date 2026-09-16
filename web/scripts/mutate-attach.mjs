@@ -60,6 +60,12 @@ const MUTANTS = [
     },
   },
   {
+    file: ATTACH,
+    name: 'the attachment never consults the URL, so no seam engages in a browser (DEC-821)',
+    from: '  const seams = options.seams ?? readWorldsSeams()',
+    to: "  const seams = options.seams ?? readWorldsSeams('')",
+  },
+  {
     file: PROBE,
     name: 'the payload hardcodes artOff: false, so the seam has no read-back (DEC-821)',
     from: '    seams: source.seams,',

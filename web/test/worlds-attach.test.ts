@@ -154,6 +154,14 @@ let clock = 0
 
 function build(
   options: Partial<Parameters<typeof attachWorlds>[0]> & { capabilities?: typeof SPEC_MINIMUM } = {},
+  /**
+   * Omit the `seams` option entirely, so the attachment falls back to reading `location` itself.
+   *
+   * A flag rather than `seams: undefined`, which `exactOptionalPropertyTypes` rejects — and the
+   * distinction is the point of the row that uses it: what is under test is the *absence* of the
+   * option, which is how every browser composition is built.
+   */
+  { seamsFromUrl = false } = {},
 ): Rig {
   const gl = harness()
   const scene = new Scene()
@@ -164,7 +172,7 @@ function build(
     scene,
     camera,
     loop,
-    seams: NO_SEAMS,
+    ...(seamsFromUrl ? {} : { seams: NO_SEAMS }),
     capabilities: SPEC_MINIMUM,
     ...options,
   })
@@ -1076,6 +1084,30 @@ describe('§1.6 `?art=off` — the swatch-only control seam (DEC-821)', () => {
     expect(lit.stream?.requested).toBeGreaterThan(0)
     off.worlds.dispose()
     on.worlds.dispose()
+  })
+
+  it('reads the seam off the URL when the host passes none, with an absent-param control', () => {
+    // **The join, not the parser** — `worlds-art-stream.test.ts` pins `readWorldsSeams('?art=off')`
+    // and that is a claim about a string. Leg G drives a *URL*, so what has to be true is that the
+    // attachment consults `location` at all when its host hands it no seams: a composition that
+    // defaulted to an all-false record instead would run the unmodified policy under every seam on
+    // the surface, with the whole matrix scoring controls it never applied. The row is written on
+    // `?art=off` because it is this leg's, and it is the only test in the suite of that line.
+    vi.stubGlobal('location', { search: '?art=off' })
+    try {
+      const rig = build({}, { seamsFromUrl: true })
+      rig.worlds.setData(roster())
+      expect(readAt(rig).seams.artOff).toBe(true)
+      rig.worlds.dispose()
+
+      vi.stubGlobal('location', { search: '?plane=dominaria' })
+      const bare = build({}, { seamsFromUrl: true })
+      bare.worlds.setData(roster())
+      expect(readAt(bare).seams.artOff).toBe(false)
+      bare.worlds.dispose()
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('echoes the seam in `worlds().seams`, with a no-seam control that reads false', () => {
