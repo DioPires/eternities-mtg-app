@@ -65,19 +65,25 @@ export const FLOORS = {
    * W3: ΔE between the mean a\*b\* of two bands adjacent on the sphere.
    *
    * **Derived, not chosen — and the derivation is re-runnable (DEC-752, DEC-824).** The ruling
-   * `hold_pending_control` held this at 10 while `?art=off` was built; it retires here. Every figure
-   * below is measured on one tree (leg G on main `28d4676`), one build per arm, at the 2.2-radii
-   * pose. `w3-floor-shipped` / `w3-floor-control` + `scripts/w3-floor.mjs` re-take them.
+   * `hold_pending_control` held this at 10 while `?art=off` was built; it retires here. Measured at
+   * the 2.2-radii pose on leg G over main `28d4676` and again over `7483cd6`, one build per arm.
+   * `w3-floor-shipped` / `w3-floor-control` + `scripts/w3-floor.mjs` re-take them.
    *
-   * | reading | value | binds |
+   * | reading | sessions | binds |
    * |---|---|---|
-   * | acceptance tour, unmodified build, worst of 28 worlds | **0.7070** (ravnica) | floor ≤ this |
-   * | `?art=off&bands=shuffle` on dominaria — W3's control row | **0.4234** | floor > this |
-   * | `?art=off` on dominaria — the control's sibling | 1.2935 | floor ≤ this |
+   * | acceptance tour, unmodified build, worst of 28 worlds | **0.7070** (ravnica), n=1 | floor ≤ this |
+   * | `?art=off&bands=shuffle` on dominaria — W3's control row | 0.4195 – **0.4477**, n=4 | floor > the **max** |
+   * | `?art=off` on dominaria — the control's sibling | **1.2935** – 1.3327, n=4 | floor ≤ the **min** |
    *
-   * So the floor may sit in **(0.4234, 0.7070]**, and 0.55 is that interval's geometric midpoint to
-   * two figures: 30% above the control, 29% below the build. Two significant figures on purpose —
-   * a third would claim a precision the spread between two sessions does not support.
+   * So the floor may sit in **(0.4477, 0.7070]**, and 0.55 sits inside it: 23% above the control's
+   * worst-case reading, 29% below the build's. Two significant figures on purpose — a third would
+   * claim precision the session spread does not support.
+   *
+   * **The lower bound is the max of four control readings, not one of them.** A single session would
+   * have given (0.4195, 0.7070] and a floor that looked 31% clear of a control it is really 23%
+   * clear of. The same discipline is owed on the upper bound and is **not** paid: the acceptance tour
+   * is n=1, because a 45-world tour is expensive enough that it stayed that way. Treat the 29% as the
+   * less-tested half of this interval, and see `w3-floor.mjs` for how to pay it down.
    *
    * **The DEC-816 impasse is gone because its figures moved, not because it was argued away.** That
    * ruling recorded the shipped aggregate at 0.4253, *below* its own shuffled falsifier at 0.4757,

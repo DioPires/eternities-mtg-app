@@ -2209,10 +2209,13 @@ events; the focused card's tilt feels physical; and, new, **the tether reads as 
 > *below* its own shuffled control at **0.4757** — a criterion that cannot fail. On main `28d4676`
 > the shipped aggregate reads **0.7070**, so the impasse's figures have moved out from under it; the
 > old pair predates DEC-804's centre fix, DEC-812's budget and DEC-814's belt rotation and must not
-> be re-carried. The floor is now **0.55**, derived from three live readings —
-> acceptance tour worst 0.7070, the composed control 0.4234, the sibling 1.2935 — which leaves the
-> interval (0.4234, 0.7070]; 0.55 is its geometric midpoint to two figures, 30% above the control and
-> 29% below the build. `scripts/w3-floor.mjs` re-derives it; §4.3 of the runbook says when.
+> be re-carried. The floor is now **0.55**, derived from three live readings — acceptance tour worst
+> **0.7070** (n=1), the composed control **0.4195–0.4477** (n=4) and the sibling **1.2935–1.3327**
+> (n=4) — which leaves the interval **(0.4477, 0.7070]**; 0.55 sits 23% above the control's
+> worst-case reading and 29% below the build's. The lower bound is the **max** of four control
+> sessions and not one of them: a single session would have given a floor that looked 31% clear of a
+> control it is really 23% clear of. The upper bound is n=1 and is the less-tested half.
+> `scripts/w3-floor.mjs` re-derives it; §4.3 of the runbook says when.
 >
 > **Three things that floor does not claim, each measured and none of them a defect.** A tour-wide
 > `?art=off` row would go RED against it (that arm's worst world is avishkar at 0.4505; no shipped
