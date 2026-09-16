@@ -2,9 +2,11 @@
 
 **Status:** leg G's consumption contract for leg R1's seams. Written before R1 starts, deliberately.
 
-`docs/worlds/spec.md` §3.1 makes five seams normative renderer surface and assigns **all five to leg
+`docs/worlds/spec.md` §3.1 makes six seams normative renderer surface and assigns **all six to leg
 R1**, and DEC-744 B1 / DEC-746 D5 confirm that ownership: **the gate consumes these seams and does
-not build them.** The rule that follows from that — if a seam is missing when the gate is built,
+not build them.** (Five when this document was written; `?art=off` was added on DEC-821, and the
+route it took — gate finds the need, R1 builds the seam — is the rule above working rather than an
+exception to it.) The rule that follows from that — if a seam is missing when the gate is built,
 that is an R1 defect routed via the CEO — is a good rule and an expensive one to exercise. R1 is
 five engineer-days, and a seam that lands in a shape the gate cannot read costs a second round trip
 through review to find out.
@@ -349,12 +351,13 @@ that distinguishes a blind test file from a passing one. Two rows now bind the t
 scored per term rather than per conjunction: control 64/64 green, drop-both fails 2,
 drop-`frontFacing` fails 1, drop-`onScreen` fails 1 — neither row covering for the other.
 
-## 2. The control seams — five owned by R1, plus one readback seam owed by R3
+## 2. The control seams — six owned by R1, plus one readback seam owed by R3
 
 Straight from §3.1 and §1.6; restated only as what the gate asserts of each. `?probe=` is one of
 them and not a separate kind of thing: it is renderer surface the gate reads and does not build.
-**§3.1's ruling is that all five are R1's**; an earlier draft of this table put `?layers=N` on
-"R1/R3", and R3's rows (§1.10–§1.12) carry none of them.
+**§3.1's ruling is that all six are R1's**; an earlier draft of this table put `?layers=N` on
+"R1/R3", and R3's rows (§1.10–§1.12) carry none of them. The sixth, `?art=off`, arrived on DEC-821
+after the first five and under the same ownership — it is not a gate-side addition.
 
 | Seam                    | Owner | What the gate needs to be true                                                                                                                                                                                                                                                                                                                                                                                         |
 | ----------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -363,19 +366,29 @@ them and not a separate kind of thing: it is renderer surface the gate reads and
 | `?bands=shuffle`        | R1    | **One global permutation of the plane's cards across the plane's cells.** The grid, the row latitudes, the band boundaries and each cell's reported `band` are all untouched; only which card sits in a cell moves. Three other readings all leave the criterion **green** — see below.                                                                                                                                |
 | `?artThreshold=fixed24` | R1    | A constant 24 CSS px threshold: no histogram, no hysteresis, pool allowed to exhaust. `pool.effectiveThresholdPx` must read exactly 24 so the gate can prove the seam took effect rather than assuming it.                                                                                                                                                                                                             |
 | `?layers=N`             | R1    | Pins the pool size alone, reported back **after** the `max(0, min(N, MAX_ARRAY_TEXTURE_LAYERS − 32))` clamp. **It is not `?quality=N`** — that one already exists (`adaptiveQuality.ts:360`) and moves five quantities at once (`pixelRatioCap`, `bloomScale`, `bloomLevels`, `thumbnailCapacity`, `glow`). Routed through the tier, the expected-GREEN `?layers=128` row would also be measuring dpr, bloom and glow. |
+| `?art=off`              | R1    | Every cell drops to its swatch: no cell asks the stream and no cell draws art. Cut **after** admission and **before** the request, so `wantsArt`, `heightPx` and the quantile read exactly as with the seam absent — the picture moves and nothing else does. **Not a substitute for `?layers=0`, and not substitutable by it**: that one moves `pool.layers`, the quantile's own divisor, and composes no `ArtStream` at all. |
 
 **The read-backs are not equally strong, and the gate records which kind each row got.** `seams` on
 the payload is R1's adoption of this leg's finding — a seam that silently fails to parse its own
 query parameter runs the *unmodified* policy, its criterion passes, and the matrix records a
 *passing control*. But `seams` is a read of the URL: it witnesses that the parameter **parsed**, not
-that the policy **engaged**. Two of the four have a second, stronger witness in the payload:
+that the policy **engaged**. Three of the five have a second, stronger witness in the payload:
 
 | Seam                    | Witness                                     | Strength                            |
 | ----------------------- | ------------------------------------------- | ----------------------------------- |
 | `?artThreshold=fixed24` | `pool.effectiveThresholdPx === 24`          | **policy** — the renderer ran it    |
 | `?layers=N`             | `pool.layers` moved off the baseline run's  | **policy**, given a baseline run    |
+| `?art=off`              | `stream.requested === 0` against `wanting > 0`, `pool.layers` unmoved | **policy** — all three clauses, see below |
 | `?swatch=mean`          | `seams.swatchMean`                          | echo — the parameter parsed         |
 | `?bands=shuffle`        | `seams.bandsShuffle`                        | echo                                |
+
+`?art=off`'s witness is a conjunction because no single clause of it is discriminating.
+`requested === 0` on its own is the empty world; `wanting > 0` on its own is true of every unseamed
+run; and the pair without the third clause is exactly what `?layers=0` also produces — by taking the
+capacity away. Three frames carry no witness at all and the gate reports that rather than scoring
+them failed: a `null` stream (no `ArtStream` was composed, which is not an all-zero report), a frame
+where no cell wants art (the precondition arm), and an unset seam. `mutate-artoff.mjs` is the
+matrix — one mutant per clause and per guard, all killed.
 
 An echo separates "the parameter did not parse" from the other two failures, and it cannot separate
 "the policy did not engage" from "the criterion is insensitive to it". **Nothing in the shipped

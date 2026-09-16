@@ -1784,16 +1784,18 @@ scale — which is the thing T7 said was missing.
 The gate also depends on **control seams** in the shipped renderer, which is why they are normative
 in §1 rather than being a gate-side patch.
 
-> **Normative — seam ownership, and there are five of them, not four (DEC-749).** The five are
-> `?probe=`, `?swatch=mean`, `?bands=shuffle`, `?artThreshold=fixed24` (§1.6) and `?layers=N`.
-> `?probe=` is one of them: the paragraph above introduces it separately as the gate's geometry
-> source, but it is the same kind of object — normative renderer surface the gate reads and does not
-> build. **All five are owned by leg R1**, which builds them as part of §1.3–§1.6. **Leg G consumes
-> them; it does not build them, and it may not patch the build to get them.** An earlier draft said
-> "legs R1 and R3 own them" here while §4's R1 row already listed all five under R1; R1 is the
-> ruling, and R3's row (§1.10–§1.12) carries none of them. This matters beyond tidiness: a seam
-> built gate-side is a seam that is not in the shipped renderer, and §3.1's whole argument for W4's
-> control is that the control must exercise the _shipped_ policy.
+> **Normative — seam ownership, and there are six of them, not four (DEC-749, DEC-821).** The six
+> are `?probe=`, `?swatch=mean`, `?bands=shuffle`, `?artThreshold=fixed24` (§1.6), `?layers=N` and
+> `?art=off` (§1.6). `?probe=` is one of them: the paragraph above introduces it separately as the
+> gate's geometry source, but it is the same kind of object — normative renderer surface the gate
+> reads and does not build. **All six are owned by leg R1**, which builds them as part of §1.3–§1.6;
+> `?art=off` arrived later, on DEC-821, under the same ownership and for the reason §1.6 records —
+> without it the two swatch-perturbing seams do not reach the capture at all. **Leg G consumes them;
+> it does not build them, and it may not patch the build to get them.** An earlier draft said "legs
+> R1 and R3 own them" here while §4's R1 row already listed them all under R1; R1 is the ruling, and
+> R3's row (§1.10–§1.12) carries none of them. This matters beyond tidiness: a seam built gate-side
+> is a seam that is not in the shipped renderer, and §3.1's whole argument for W4's control is that
+> the control must exercise the _shipped_ policy.
 
 > **Normative — `?layers=N` pins the art pool and nothing else; it is not `?quality=N` (DEC-751).**
 > The two are easy to conflate because §1.12 makes the pool a rung of the same ladder, and one of
@@ -2153,9 +2155,10 @@ events; the focused card's tilt feels physical; and, new, **the tether reads as 
 | Criterion | Measure asserted                       | Control                                                                                                                                                                     | Must go   |
 | --------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | W1        | `minMedianCellHeightPx`                | capture at 6× radius instead of the settle (prototype measured 10.1 px there)                                                                                               | **RED**   |
-| W2        | `medianNeighbourDeltaE`                | `?swatch=mean` — every cell takes the plane's mean swatch                                                                                                                   | **RED**   |
-| W2        | `lightnessIqr`                         | `?swatch=mean` — same row, second half: iso-shade cells become one colour                                                                                                   | **RED**   |
-| W3        | `minAdjacentBandDeltaE`                | `?bands=shuffle` — cards permuted across the plane's cells, grid and reported `band` unchanged                                                                              | **RED**   |
+| W2        | `medianNeighbourDeltaE`                | `?art=off&swatch=mean` — every cell takes the plane's mean swatch, **and draws it**                                                                                         | **RED**   |
+| W2        | `lightnessIqr`                         | `?art=off&swatch=mean` — same row, second half: iso-shade cells become one colour                                                                                           | **RED**   |
+| W3        | `minAdjacentBandDeltaE`                | `?art=off&bands=shuffle` — cards permuted across the plane's cells, grid and reported `band` unchanged                                                                      | **RED**   |
+| W2, W3    | all three measures                     | `?art=off` **alone** — the sibling the two composed rows are read against, not the bare build                                                                               | **GREEN** |
 | W4        | `artFraction`                          | `?artThreshold=fixed24` — §1.6's seam: the prototype's constant threshold, no quantile                                                                                      | **RED**   |
 | W4        | `evictionsPerSecond`                   | `?artThreshold=fixed24` — same row, second half                                                                                                                             | **RED**   |
 | W5        | `homeLabels`                           | labels forced on for empty planes — suppression regressed; **66 – 77 over the sweep, _above_ the unmodified build's 33 – 42; see the note**                                 | **RED**   |
@@ -2489,7 +2492,7 @@ Five legs, ≈ **18 engineer-days**. The critical path is R1 → R2/R3 → G; le
 | Leg                           | Content                                                                                                                                                                                                                                                                                            | Days  | Starts                                               | Role                                     |
 | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ---------------------------------------------------- | ---------------------------------------- |
 | **P — pipeline and contract** | §2 in full: contract v3, `swatches.bin`, `artist`, the surface law in Python, the swatch fetch stage, invariants, report lines, a published v3 dataset                                                                                                                                             | **4** | **now — no renderer dependency at all**              | pipeline/data engineer                   |
-| **R1 — renderer core**        | §1.3–§1.6: surface law on the client, the cell sheet, the equirect bake and LOD crossover, the art pool with the three-state LRU and the adaptive threshold — **including the `?probe=`, `?swatch=mean`, `?bands=shuffle`, `?artThreshold=fixed24` and `?layers=N` seams §3.1's gate is built on** | **5** | on W4.2's merge                                      | graphics engineer (prototype author)     |
+| **R1 — renderer core**        | §1.3–§1.6: surface law on the client, the cell sheet, the equirect bake and LOD crossover, the art pool with the three-state LRU and the adaptive threshold — **including the `?probe=`, `?swatch=mean`, `?bands=shuffle`, `?artThreshold=fixed24`, `?layers=N` and `?art=off` (DEC-821) seams §3.1's gate is built on** | **5** | on W4.2's merge                                      | graphics engineer (prototype author)     |
 | **R2 — system, belt, tether** | §1.7–§1.9: undetailed worlds, dark moons, the belt, the atmosphere rim, the surface-following tether                                                                                                                                                                                               | **3** | on R1's merge                                        | graphics engineer                        |
 | **R3 — product surfaces**     | §1.10–§1.12: the flat printing ring, picking, labels, filters, GPU budget and the ladder rungs, feature parity                                                                                                                                                                                     | **3** | on R1's merge, parallel with R2                      | frontend engineer                        |
 | **G — gate and cutover**      | §3: `worlds-gate.mjs`, the negative-control matrix, runbook and PRD amendments, the archival tag                                                                                                                                                                                                   | **3** | on R1's merge (needs the probe seam), lands after R3 | the engineer who built `visual-gate.mjs` |
