@@ -129,6 +129,7 @@ const FRAMING = new Framing(PLANES)
 const NO_SEAMS: WorldsSeams = {
   swatchMean: false,
   bandsShuffle: false,
+  artOff: false,
   artThresholdFixed24: false,
   layersRequested: null,
 }
