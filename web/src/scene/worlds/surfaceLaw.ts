@@ -234,6 +234,94 @@ export function drawRadius(radius: number): number {
 }
 
 /**
+ * The silhouette framing a fly-to used to arrive at, unconditionally: `3.2 x radius` (PRD 5.7.1).
+ *
+ * Kept, as the **far** cap. It is the composition rule — a world's disc fills 63% of a 1080 px
+ * frame here — and for 43 of the 45 worlds it is still what {@link framingRadii} returns. What it
+ * cannot do on its own is what DEC-818 found: see that function's header.
+ */
+export const SILHOUETTE_FRAMING_RADII = 3.2
+
+/**
+ * §3.1's reference viewport — 1920x1080 CSS at dpr 1, the camera's own 55 deg vertical fov.
+ *
+ * > **Normative — a pixel floor has no world-space spelling without a viewport, and this names the
+ * > one it is stated at (§3.1, DEC-818).** W1's 24 px is a CSS-pixel bound measured at §3.1's
+ * > closing paragraph's viewport, so a framing distance derived from it is well defined exactly
+ * > where that bound is. Only the *height* and the *vertical* fov enter: {@link cellHeightPx} and
+ * > `cellScreenRect` both take screen `y` from `viewportHeightPx` and the projection's vertical
+ * > half-angle, and the aspect ratio moves screen `x` alone.
+ *
+ * A shorter viewport therefore frames a world at the same distance and reads fewer pixels per cell.
+ * That is a deliberate limit and not an oversight: `Framing` is the headless camera layer and has
+ * no live viewport (`sceneRenderer` owns the `PerspectiveCamera`), so making the arrival distance
+ * track the window would put a render-loop dependency in the navigation layer. It is written down
+ * rather than left implicit so the next reader can price the change.
+ */
+export const FRAMING_REFERENCE_VIEWPORT_HEIGHT_PX = 1080
+/** {@link FRAMING_REFERENCE_VIEWPORT_HEIGHT_PX}' other half — `sceneRenderer`'s `FOV`, in radians. */
+export const FRAMING_REFERENCE_FOV_RADIANS = (55 * Math.PI) / 180
+
+/**
+ * The height the cell at the sub-camera point is framed to, in CSS px at the reference viewport.
+ *
+ * > **Normative — this is NOT W1's 24 px floor, and the gap is measured (§3.1, DEC-818).** W1 scores
+ * > the **median** front-facing cell, and the median sits well below the cell nearest the eye: the
+ * > front-facing cap runs out to the limb, where a cell is foreshortened to a few px. Worse, the
+ * > ratio is not a constant — it moves with the approach azimuth, because §1.3's pole is tilted by
+ * > `planes.json`'s quaternion and a pole swinging into view brings a cohort of squat polar cells
+ * > with it. Measured through the shipped probe over the 45-world roster at `HOME_POLAR`
+ * > (`worlds-framing.test.ts` re-derives every number below), the **worst-azimuth** median at the
+ * > old flat 3.2 radii is **15.50 px on dominaria** and **23.88 px on ravnica** — two worlds under
+ * > the floor, not one. Leg G's single-azimuth tour saw 17.14 and 28.49 and reported ravnica green:
+ * > one draw from a family with an 11-14% spread.
+ *
+ * **28 px is the falsifier and it is one step away.** At 28 the law leaves dominaria at 23.95 and
+ * never pulls ravnica in at all (23.88): both still under. At 30 they read 25.55 and 25.21 — a 5%
+ * margin on the worst world — while dominaria's disc still fits the reference frame at 1,023 px of
+ * 1,080. 31 buys 9% of margin for 97% of the frame height, which is a different composition, not a
+ * safer one. This is deliberately the only tuned constant in the law: the rest — {@link CELL_LIFT},
+ * {@link CELL_INSET}, the reference viewport — are quoted from elsewhere.
+ */
+export const CELL_FRAMING_PX = 30
+
+/**
+ * §1.3's framing distance for a world, in units of its own radius (DEC-818).
+ *
+ * > **Normative — the framing distance frames the world's CELLS, not its silhouette (§3.1,
+ * > board ruling on DEC-816 R1).** A sphere at `k x radius` subtends the same angle whatever its
+ * > radius, so under the old flat `3.2 x radius` every world's disc was the same size on screen and
+ * > every world's **cells** shrank as `1/rows` — which is `~sqrt(N)`. Dominaria's 81 rows put its
+ * > median front-facing cell at 15.5-17.1 px against W1's 24 px floor while a one-card world read
+ * > 685. The floor and the criterion are right and the framing distance was measuring the wrong
+ * > thing: it is the one term in `cell px = f(cell arc, distance)` that a renderer may choose.
+ *
+ * The cell arc is row-invariant — {@link cellDrawAngles}' `lat` carries no `sin(theta)` (§2.1) — so
+ * one cell height stands for the world and this needs nothing from the data but `rowCells.length`.
+ * Below the cap the returned distance is **exactly** the distance at which a cell at the sub-camera
+ * point is {@link CELL_FRAMING_PX} tall, by inverting `cellHeightPx` at the near point: the sheet's
+ * nearest surface sits {@link CELL_LIFT} radii from the centre, which is why the lift is a term here
+ * and not a rounding.
+ *
+ * > **The cap is what keeps this from being absurd at the small end.** `rowCells.length` is 1 on the
+ * > six one-card worlds, so the unbounded form would frame them at 103 radii — a dark speck. A world
+ * > whose cells already clear the floor at silhouette framing keeps silhouette framing; the two
+ * > branches meet continuously at **46.3 rows**, so on the shipped roster exactly two worlds are
+ * > pulled in — ravnica (49 rows, 3.2 -> 3.080) and dominaria (81 rows, 3.2 -> 2.261) — and the
+ * > other 43 are framed at the same distance as before, to the bit.
+ *
+ * @param rowCells the world's **published** table (§2.4); `rowCells.length` is the row count
+ */
+export function framingRadii(rowCells: readonly number[]): number {
+  // The cell's drawn latitudinal extent, in units of world radius: the full angle (twice the
+  // half-extent `cellDrawAngles` returns) on the lifted sphere the sheet is actually drawn at.
+  const cellArc = 2 * cellDrawAngles(rowCells, 0).lat * CELL_LIFT
+  const focalPx =
+    FRAMING_REFERENCE_VIEWPORT_HEIGHT_PX / (2 * Math.tan(FRAMING_REFERENCE_FOV_RADIANS / 2))
+  return Math.min(SILHOUETTE_FRAMING_RADII, CELL_LIFT + (cellArc * focalPx) / CELL_FRAMING_PX)
+}
+
+/**
  * §1.3's thirteen latitude bands, north to south: `C G R B U W · Gold · W U B R G C`.
  *
  * > **Normative — a band index is not a colour class (§3.1, DEC-752's pin).** Seven classes are laid
