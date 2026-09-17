@@ -1837,6 +1837,248 @@ describe("W4 — art resolves without exhausting", () => {
         /must carry t, evictions and resident/,
       );
     });
+
+    it("publishes whether the pool filled and how far the counter moved, over three shapes", () => {
+      // The two facts DEC-842's domain rule reads. They are published here rather than re-derived at
+      // the call site for the reason the file already gives about `saturated`: a second spelling is
+      // a second thing to keep in step.
+      const creeping = Array.from({ length: 20 }, (_, i) => ({
+        t: i,
+        evictions: 0,
+        resident: 100 + 9 * i,
+        layers: 1_024,
+      }));
+      expect(evictionTail(creeping).saturated).toBe(false);
+      expect(evictionTail(creeping).evictionsObserved).toBe(0);
+
+      const churning = evictionTail(churningAt(18.4));
+      expect(churning.saturated).toBe(true);
+      expect(churning.evictionsObserved).toBe(Math.round(18.4 * 7));
+
+      // **`null`, not `false`, on a timeline too short to ask.** "The pool never filled" is a
+      // finding, and a run that could not be read has not made it. The domain rule tests `=== false`
+      // so this row cannot borrow the stronger one.
+      expect(evictionTail(settled(925).slice(0, 2)).saturated).toBe(null);
+      expect(evictionTail(settled(925).slice(0, 2)).evictionsObserved).toBe(null);
+    });
+  });
+
+  /**
+   * **An unsaturated pool cannot fail this bound, so it is not scored against it** (DEC-842, rider 1
+   * of the DEC-841 review of PR #77).
+   *
+   * `claimLayer` walks the pool for a free layer and only looks for a victim when it finds none, so
+   * `pool.evictions` cannot move below saturation. A session whose pool never filled therefore
+   * reports a 0 that is a fact about occupancy and not a reading of churn — and it used to score
+   * `pass`. On the 45-world tour **44 worlds have that shape**, which made the headline "17.8969/s,
+   * worst of 45 worlds" a fold over 44 readings that could not fail and one that could.
+   *
+   * Today's GREEN was not wrong: the worst-of fold takes dominaria's colour. The risk is that it goes
+   * quiet — if dominaria stops saturating after a roster change or a larger pool, the half greens on
+   * 45 structural zeros and nothing says the bound stopped binding. That is
+   * `a-bound-check-is-vacuous-when-the-bound-never-binds` arriving through the domain rather than
+   * through the constant, which is the shape DEC-834 used to kill option (b).
+   */
+  describe("a pool that never filled is out of the eviction half's domain", () => {
+    /** The reviewer's measured shape: 1,024 layers, `resident` creeping 100 → 271, counter flat. */
+    const creeping = Array.from({ length: 20 }, (_, i) => ({
+      t: i,
+      evictions: 0,
+      resident: 100 + 9 * i,
+      layers: 1_024,
+    }));
+
+    it("scores the structural zero insufficient, where the same window saturated is a rate", () => {
+      // **Both arms, because a colour on its own does not say which rule produced it.** A blanket
+      // `insufficient` on every eviction reading would satisfy the first half of this test and
+      // destroy the measure; the second half is what forbids it.
+      const unsaturated = evaluateW4(
+        cells(271, 271),
+        creeping,
+        { layers: 1_024, resident: 271 },
+        FRESH_SESSION,
+        HEALTHY_EXIT,
+      );
+      const quiet = unsaturated.measures.find(
+        (m) => m.key === "evictionsPerSecond",
+      );
+      expect(quiet?.status).toBe("insufficient");
+      // **The reason is pinned, not merely matched.** `a-total-mutant-proves-only-the-first-assertion`
+      // and M23's lesson one measure over: three domain rules can null this rate, and a row asserting
+      // only the colour passes under a mutant that swapped one for another.
+      expect(quiet?.insufficientReason).toMatch(/never had a free layer to lose/);
+      expect(quiet?.insufficientReason).toMatch(/peaked at 271 of 1024/);
+      // The value is kept rather than blanked, exactly as the capacity rule keeps a tier-4 rate: the
+      // record should show the structural zero it refused to score, not hide it.
+      expect(quiet?.value).toBe(0);
+
+      // Same length, same cadence, same counter — saturated. The bound is scored and it passes.
+      const saturated = evaluateW4(
+        cells(945, 942),
+        churningAt(17.9, { samples: 20 }),
+        PROTOTYPE_POOL,
+        FRESH_SESSION,
+        HEALTHY_EXIT,
+      );
+      const scored = saturated.measures.find(
+        (m) => m.key === "evictionsPerSecond",
+      );
+      expect(scored?.status).toBe("pass");
+      expect(scored?.value).toBeCloseTo(17.9, 1);
+      expect(scored?.insufficientReason).toBe(null);
+    });
+
+    it("scores a churning pool whose occupancy reads a layer light, because the counter is the proof", () => {
+      // **The conjunct, and it is what makes this rule safe to score at all.** `poolHighWater` is a
+      // *lower* bound: `?probe=` publishes `resident` and not `reserved`, so a full pool with a layer
+      // in flight reads `layers - 1`. On `saturated` alone this row would be marked out of domain —
+      // a real reading called absent, which is the objection `poolHighWater`'s own note raises
+      // against promoting it to a domain rule.
+      //
+      // A counter that moved is *proof* the pool reached saturation, whatever occupancy was sampled
+      // at. So the rule only converts readings where the counter provably never moved.
+      const underRead = churningAt(17.9, { samples: 20 }).map((s) => ({
+        ...s,
+        resident: 1_023,
+      }));
+      const w4 = evaluateW4(
+        cells(945, 942),
+        underRead,
+        { layers: 1_024, resident: 1_023 },
+        FRESH_SESSION,
+        HEALTHY_EXIT,
+      );
+      expect(w4.evictionTail.saturated).toBe(false);
+      expect(w4.evictionTail.evictionsObserved).toBeGreaterThan(0);
+      const ev = w4.measures.find((m) => m.key === "evictionsPerSecond");
+      expect(ev?.status).toBe("pass");
+      expect(ev?.value).toBeCloseTo(17.9, 1);
+
+      // ...and it still fails when it should. The conjunct buys a reading back into the domain; it
+      // does not buy it a verdict. `reachable-is-not-discriminating`.
+      const fast = evaluateW4(
+        cells(945, 942),
+        churningAt(24.2, { samples: 20 }).map((s) => ({ ...s, resident: 1_023 })),
+        { layers: 1_024, resident: 1_023 },
+        FRESH_SESSION,
+        HEALTHY_EXIT,
+      );
+      expect(
+        fast.measures.find((m) => m.key === "evictionsPerSecond")?.status,
+      ).toBe("fail");
+    });
+
+    it("leaves an unreadable timeline reporting that it is unreadable", () => {
+      // A timeline too short to establish anything keeps its own message instead of being handed a
+      // stronger finding. Two `n/a`s that read alike are how a domain rule swallows a run nobody
+      // meant it to.
+      //
+      // **Both conjuncts refuse `null` on their own** — `saturated === false` and
+      // `evictionsObserved === 0` are each written against the value and not against its
+      // truthiness — so only a mutant that loosens *both* can reach this row. That redundancy is
+      // deliberate and M34 is what proves it is redundancy rather than one live guard and one
+      // decoration.
+      const brief = creeping.slice(0, 3);
+      const w4 = evaluateW4(
+        cells(120, 120),
+        brief,
+        { layers: 1_024, resident: 118 },
+        FRESH_SESSION,
+        HEALTHY_EXIT,
+      );
+      const ev = w4.measures.find((m) => m.key === "evictionsPerSecond");
+      expect(ev?.status).toBe("insufficient");
+      expect(ev?.insufficientReason).toMatch(/usable sample/);
+      expect(ev?.insufficientReason).not.toMatch(/never had a free layer/);
+    });
+
+    it("thins the roster fold to the worlds that could bind, and says so", () => {
+      // **This is the number the rider was raised about.** 44 quiet worlds and one that churns: the
+      // fold's own denominator now reads 1 where it read 45, so "worst of 45 worlds" can no longer
+      // be printed over a domain in which 44 readings cannot fail.
+      const quiet = (slug: string) => ({
+        slug,
+        criterion: evaluateW4(
+          cells(271, 271),
+          creeping,
+          { layers: 1_024, resident: 271 },
+          FRESH_SESSION,
+          HEALTHY_EXIT,
+        ),
+      });
+      const roster = [
+        ...Array.from({ length: 44 }, (_, i) => quiet(`quiet-${i}`)),
+        {
+          slug: "dominaria",
+          criterion: evaluateW4(
+            cells(945, 942),
+            churningAt(17.9, { samples: 20 }),
+            PROTOTYPE_POOL,
+            FRESH_SESSION,
+            HEALTHY_EXIT,
+          ),
+        },
+      ];
+      const folded = foldCriteria(roster)!;
+      const ev = folded.measures.find((m) => m.key === "evictionsPerSecond")!;
+      expect(ev.scoredPlanes).toBe(1);
+      expect(ev.insufficientPlanes).toBe(44);
+      expect(ev.worstPlane).toBe("dominaria");
+      expect(ev.status).toBe("pass");
+    });
+
+    it("stops being quiet: the half goes N/A, not green, when nothing saturates", () => {
+      // **The failure the rule exists to prevent, run forwards.** Retire the one world that
+      // saturates — a roster change, a larger pool, a threshold that stops asking for enough — and
+      // the eviction half used to fold 45 structural zeros into a comfortable GREEN. It now folds to
+      // `insufficient`, and `checkControlRow` reads that as `N/A`, so the `no-seams` row's
+      // `expect: 'GREEN'` on this measure FAILS. The gate reds instead of going quiet, which is the
+      // whole of what this rider asked for.
+      const roster = Array.from({ length: 45 }, (_, i) => ({
+        slug: `quiet-${i}`,
+        criterion: evaluateW4(
+          cells(271, 271),
+          creeping,
+          { layers: 1_024, resident: 271 },
+          FRESH_SESSION,
+          HEALTHY_EXIT,
+        ),
+      }));
+      const folded = foldCriteria(roster)!;
+      const ev = folded.measures.find((m) => m.key === "evictionsPerSecond")!;
+      expect(ev.status).toBe("insufficient");
+      expect(ev.scoredPlanes).toBe(0);
+      expect(ev.insufficientReason).toMatch(/every plane was out of domain/);
+
+      const check = checkControlRow([folded], {
+        criterion: "W4",
+        measure: "evictionsPerSecond",
+        expect: "GREEN",
+      });
+      expect(check.ok).toBe(false);
+      expect(check.detail).toMatch(/went N\/A/);
+
+      // Before this rule the same roster folded GREEN off a worst-of over 45 zeros — asserted here
+      // rather than asserted in prose, because the whole finding is that the old shape *passed*.
+      const asScoredBefore = foldCriteria(
+        roster.map((entry) => ({
+          ...entry,
+          criterion: {
+            ...entry.criterion,
+            measures: entry.criterion.measures.map((m) =>
+              m.key === "evictionsPerSecond"
+                ? { ...m, status: "pass", pass: true, insufficientReason: null }
+                : m,
+            ),
+          },
+        })),
+      )!;
+      const before = asScoredBefore.measures.find(
+        (m) => m.key === "evictionsPerSecond",
+      )!;
+      expect(before.status).toBe("pass");
+      expect(before.scoredPlanes).toBe(45);
+    });
   });
 
   /**

@@ -196,13 +196,17 @@ export const FLOORS = {
    * `worlds-evict-longrun.mjs`'s, taken over 120–150 s on a parked page; the gate scores its own
    * tour's tail. A bound fitted to the tour it grades is not a bound.
    *
-   * ## Two things the ruling scoped, which are domain and not arithmetic
+   * ## Three things that are domain and not arithmetic
    *
    * - **The 1,024-layer pool alone** — see {@link W4_EVICTION_POOL_LAYERS}. At `?layers=128` the rate
    *   is 6.73/s, and it gets there only by destroying the picture: `artFraction` falls to ~0.617 with
    *   ~4,670 wants/s refused for exhaustion. Shrinking the pool moves this number toward any bound
    *   you like, so requiring both rungs to hold it selects **disjoint configurations** and the two
    *   halves of W4 could never be green together.
+   * - **A pool that actually filled** — see {@link evaluateW4}'s occupancy rule (DEC-842). Below
+   *   saturation the counter this bound is taken on cannot move, so an unsaturated session reports a
+   *   0 the bound could not have failed. **44 of the 45 worlds have that shape**, and scoring them
+   *   `pass` made the eviction domain read 45 where only 1 world could ever bind.
    * - **The fill-excluded tail** — see {@link evictionTail}. A cold pool's first 1,024 admissions are
    *   not churn, and a window that contains them is measuring page load.
    */
@@ -1298,6 +1302,12 @@ export function evictionTail(
     plateauT: null,
     tailSamples: 0,
     spanS: 0,
+    // `null` rather than `false`: on a timeline too short to read, "the pool never filled" has not
+    // been established, it has not been *asked*. The saturation domain rule in {@link evaluateW4}
+    // tests `=== false` for exactly this reason — an unreadable timeline must keep reporting that it
+    // is unreadable rather than borrowing a stronger finding it has no evidence for.
+    saturated: null,
+    evictionsObserved: null,
   };
   const usable = samples.filter(
     (s) =>
@@ -1328,10 +1338,23 @@ export function evictionTail(
     ? usable.slice(usable.findIndex((s) => s.resident >= s.layers))
     : usable;
   const spanS = tail.length === 0 ? 0 : tail[tail.length - 1].t - tail[0].t;
+  // How far the counter actually moved across the tail, reported beside `saturated` because the two
+  // together are what the saturation domain rule reads (DEC-842, and see {@link evaluateW4}).
+  //
+  // **It is a count and deliberately not `rate > 0`.** `rate` is `null` on an unconverged tail, and
+  // "did this counter move at all" has to be answerable there too — otherwise a pool that really was
+  // churning, but whose occupancy read one layer light because a reserved layer was in flight, would
+  // answer "no rate" to a question about the counter and be filed as a structural zero. The counter
+  // moving is *proof* the pool reached saturation; `resident` reaching `layers` is only evidence of
+  // it, and evidence that reads low (see {@link poolHighWater} on why it is a lower bound).
+  const evictionsObserved =
+    tail.length < 2 ? null : tail[tail.length - 1].evictions - tail[0].evictions;
   if (tail.length < minTailSamples || spanS < minSpanS) {
     return {
       ...empty,
       peakResident,
+      saturated,
+      evictionsObserved,
       plateauT: tail.length === 0 ? null : tail[0].t,
       tailSamples: tail.length,
       spanS,
@@ -1348,7 +1371,7 @@ export function evictionTail(
   const rate = evictionRate(tail, Infinity);
   const halfRate = evictionRate(tail.slice(Math.floor(tail.length / 2)), Infinity);
   if (rate === null || halfRate === null) {
-    return { ...empty, peakResident, plateauT: tail[0].t, tailSamples: tail.length, spanS, why: "the tail's samples share a timestamp, so neither half spans a measurable interval" };
+    return { ...empty, peakResident, saturated, evictionsObserved, plateauT: tail[0].t, tailSamples: tail.length, spanS, why: "the tail's samples share a timestamp, so neither half spans a measurable interval" };
   }
 
   // A relative drift is undefined at zero, and zero is the common case here rather than an edge: 44
@@ -1362,6 +1385,8 @@ export function evictionTail(
     drift,
     converged,
     peakResident,
+    saturated,
+    evictionsObserved,
     plateauT: tail[0].t,
     tailSamples: tail.length,
     spanS,
@@ -1576,6 +1601,12 @@ export function cellsWantingArt(cells) {
  * 3. **It is measured on a fill-excluded tail that has to converge** — {@link evictionTail}. A cold
  *    pool's first 1,024 admissions are page load.
  *
+ * ...and a fourth, added by DEC-842 after the DEC-841 review found the first three left the domain
+ * able to go quiet: **a session whose pool never filled is `insufficient`, not a passing 0.** Below
+ * saturation the counter cannot move, so 44 of the 45 worlds were contributing readings that could
+ * not fail to a fold reported as "worst of 45". The rule sits beside the capacity one below, with
+ * the argument for why `saturated` reading low cannot cost a real reading.
+ *
  * ## `artCellsShowing` — the no-starvation term, absolute because the fraction could not see it
  *
  * `artFraction` read **1.00** on a frame showing fourteen cells of art, because the adaptive
@@ -1649,7 +1680,43 @@ export function evaluateW4(cells, evictionTimeline, pool, entryStream, exitStrea
           `this session ran ${pool.layers} layers. A smaller pool churns less only by refusing the ` +
           `wants it cannot hold — at 128 layers the rate is 6.73/s and artFraction falls to ~0.617 ` +
           `— so the two halves of W4 would select disjoint configurations. Out of domain, not green.`
-        : tail.why);
+        : // **The occupancy domain (DEC-842, rider 1 of the DEC-841 review).** The capacity rule
+          // above asks whether the pool was the right *size*; this one asks whether it was ever
+          // *full*. `claimLayer` walks the pool for a free layer and only looks for a victim when it
+          // finds none, so below saturation `pool.evictions` is pinned at 0 — a session that never
+          // filled reports a rate this bound cannot fail, and reporting it as `pass` files a
+          // structural fact about occupancy under a verdict about churn.
+          //
+          // Measured, and it is the whole reason the rule exists: on the 45-world tour **44 worlds
+          // never saturate**, so "17.8969/s, worst of 45 worlds" was a fold over 44 readings that
+          // could not have moved and one that could. That headline is not wrong today — the worst-of
+          // fold takes dominaria's colour — but it goes quiet the moment dominaria stops saturating,
+          // and a half that greens on 45 structural zeros with nothing saying the bound stopped
+          // binding is `a-bound-check-is-vacuous-when-the-bound-never-binds` arriving through the
+          // domain instead of through the constant. It is the shape DEC-834 used to kill option (b).
+          //
+          // **The conjunct is load-bearing and it is what makes this safe to score.**
+          // {@link poolHighWater} is a *lower* bound on occupancy — `?probe=` publishes `resident`
+          // and not `reserved`, so a full pool with a layer in flight reads `layers - 1` — and that
+          // file's own note is that scoring an `insufficient` off a bound that can read low would
+          // mark a real reading absent. It would, on `saturated` alone. It cannot here: a counter
+          // that moved is proof the pool reached saturation whatever occupancy was sampled at, so
+          // the only readings this rule converts are ones where the counter provably never moved.
+          //
+          // Its mirror stays out of scope on purpose. A *saturated* pool with no key left to admit
+          // also evicts nothing (DEC-834 measured 128/128 flat at 0 for 150 s), and that zero is
+          // just as structural — but `saturated` is a necessary condition and never a sufficient
+          // one, so "it filled and did not churn" cannot be told from "it filled and churn stopped"
+          // without `pool.reserved` and an admission counter on the probe. Reported, not scored, and
+          // named here so the gap is a decision rather than an oversight.
+          tail.saturated === false && tail.evictionsObserved === 0
+          ? `the pool never had a free layer to lose: it peaked at ${tail.peakResident} of ` +
+            `${pool.layers} resident layers and the counter did not move once across the window. ` +
+            `claimLayer only looks for a victim when it finds no free layer, so below saturation ` +
+            `pool.evictions cannot move at all — this 0 is a reading of the pool's occupancy and ` +
+            `not of its churn, and a bound it could not have failed must not be folded in beside ` +
+            `bounds it could. Insufficient, not green.`
+          : tail.why);
 
   const ceiling = capacityCeiling(wanting.length, pool);
   // The no-starvation term's domain is the frame's **geometry**, not its want set. `wantsArt` is the

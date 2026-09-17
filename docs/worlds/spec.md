@@ -1894,7 +1894,7 @@ an assertion there.
 | **W1** | **Cells are resolvable at framing distance.** | At the plane-level settle for each of `worldsWithCards` (**29** on the 87-plane roster, **45** on v3), the median on-screen height of front-facing cells; the verdict is the **worst** world, not the pooled median. Not the Blind Eternities: it has cards but no cell sheet (§1.8), so the statistic is undefined there — `planesWithCards` would be 30 / 46 and would include it. | **≥ 24 CSS px.** Binds on the largest plane: Dominaria **28.74** at its worst azimuth, at §1.3's framing distance — a **20% margin** (`[shipped]`, the arm the build renders; `[tilted]` it is Ravnica 25.21 and 5% — §1.3 on the two arms). |
 | **W2** | **The mosaic reads as tiles, not as a wash.** This is T7's replacement. | Sample the captured frame at the centre of every front-facing cell ≥ 6 px tall, convert to CIELAB. Report the median ΔE to a cell's nearest on-screen neighbour, and the interquartile range of L\* **across the iso-shade subset** — the cells whose reported `shade` lies within ±2.5% of the median shade. | **median neighbour ΔE ≥ 6** and **iso-shade IQR(L\*) ≥ 8**. |
 | **W3** | **Latitude reads as colour.** | Group the same samples by band. For every pair of bands adjacent **in §1.3's 13-band chain** (a chain, not a cycle: the two ice caps are its two ends and are the furthest apart of any pair) where the smaller holds ≥ 5% of the plane's cards, the ΔE between their mean a\*b\*. A world's own reading is the **closest** of its qualifying pairs; **the roster's is the mean of the per-world readings over W3's domain — 28 of the 45 worlds on `c9468f1125bcddff`** (board ruling `fold_mean`) — published with every reading and with the denominator beside it. | `FLOORS.bandDeltaE`, **derived on the mean and re-derivable** — see the amendment note below; the **≥ 10 for every such pair** this table published was never met by any build and is retired. A tour whose scored domain is **not exactly 28** is **RED on its denominator**, whatever its mean reads. |
-| **W4** | **Art resolves without exhausting.** | At the surface view (2.2× radius), after a 5 s settle: the fraction of on-screen front-facing cells above the effective threshold that are showing art, **the absolute count of cells showing art**, and evictions per second **on a fill-excluded tail** whose own second half agrees with it. **Demand as a multiple of pool capacity is reported alongside them and is not scored.** | **`artFraction ≥ max(0.9 × capacityCeiling, 0.5)`**, **`artCellsShowing ≥ 32`** where the frame presents at least 128 front-facing on-screen cells, and **≤ 21 evictions/s at the 1,024-layer pool alone** — see the two amendment notes below. The published flat **≥ 90%** is the bar only where demand fits the pool, and the published **≤ 5 evictions/s over the last 2 s** was unreachable by construction and is retired. |
+| **W4** | **Art resolves without exhausting.** | At the surface view (2.2× radius), after a 5 s settle: the fraction of on-screen front-facing cells above the effective threshold that are showing art, **the absolute count of cells showing art**, and evictions per second **on a fill-excluded tail** whose own second half agrees with it. **Demand as a multiple of pool capacity is reported alongside them and is not scored.** | **`artFraction ≥ max(0.9 × capacityCeiling, 0.5)`**, **`artCellsShowing ≥ 32`** where the frame presents at least 128 front-facing on-screen cells, and **≤ 21 evictions/s at the 1,024-layer pool alone, and only where that pool actually filled** — see the amendment notes below. The published flat **≥ 90%** is the bar only where demand fits the pool, and the published **≤ 5 evictions/s over the last 2 s** was unreachable by construction and is retired. |
 | **W5** | **The home view is not a wall of labels**, and every world is still reachable from it. | Two halves, both over a **sweep of ≥ 12 azimuths** — the home view is a family of frames, not a pose (see below). **Ceiling:** the worst-case count of plane labels **at opacity > 0.05** over the sweep; a node count is not a measurement here. **Reachability:** the number of `worldsWithCards` carrying no such label at **any** sampled azimuth, with those slugs named. | **Ceiling ≤ `worldsWithCards.length`** — **29** on the 87-plane roster and **45** on v3 (measured, not predicted — §1.2), derived from the dataset under test and never a literal. The belt is *not* added: it is in `planesWithCards` but `PlaneLabels.tsx:116` filters it by slug before projection (PRD 5.3.4), so it can never carry a label and `planesWithCards` would leave the ceiling one short of ever binding. **Reachability = 0 worlds.** Below 12 azimuths both halves report `insufficient`. |
 
 > **Normative — W4's art floor is a bar derived from pool capacity, not the flat 90% this table
@@ -2001,6 +2001,52 @@ an assertion there.
 > therefore chosen by the pool rather than by the clock: it samples until the tail settles, up to a
 > cap, which costs the 44 worlds that never saturate almost nothing.
 >
+> ### Amendment — a pool that never filled is `insufficient`, not a passing 0 (DEC-842)
+>
+> Rider 1 of the DEC-841 review of PR #77, and it is the same argument as the capacity domain above
+> arriving one level out. The three rules just stated are all about *which* reading is scored; none
+> of them could see that **on 44 of the 45 worlds the reading cannot fail**. Below saturation
+> `claimLayer` never reaches its victim search, so `pool.evictions` is pinned at 0 and the rate is a
+> fact about occupancy rather than a reading of churn. Scored `pass`, it made the roster headline
+> *"17.8969/s, worst of 45 worlds"* a fold over **44 readings that could not move and one that
+> could** — measured, alara-shaped, 1,024-layer pool, `resident` creeping 100 → 283, `atEvictionPool`
+> true, `insufficientReason` null.
+>
+> That GREEN was not wrong: the worst-of fold takes dominaria's colour. **What it could not do is go
+> red when the bound stopped binding** — a roster change, a larger pool or a threshold change that
+> stops dominaria saturating would have greened the half on 45 structural zeros with nothing in the
+> summary saying so. `a-bound-check-is-vacuous-when-the-bound-never-binds`, reached through the
+> domain instead of through the constant, which is the shape DEC-834 used to kill option (b).
+>
+> **An unsaturated session is therefore out of the eviction half's domain**, exactly as a 128-layer
+> session already was. The half now folds to `N/A` rather than GREEN when nothing saturates, and the
+> `no-seams` row's `expect: 'GREEN'` on `evictionsPerSecond` fails against an `N/A` — so the gate
+> reds instead of going quiet. The eviction domain count printed beside the fold (`scoredPlanes`)
+> reads **1 of 45** where it read 45 of 45, which is the honest denominator for a worst-of over a
+> bound only dominaria can reach.
+>
+> **The rule is a conjunction, and the second half is what makes it safe to score.** `poolHighWater`
+> is a *lower* bound on occupancy — `?probe=` publishes `resident` and not `reserved`, so a full pool
+> with a layer in flight reads `layers - 1` — and on `saturated` alone this would mark a real reading
+> absent, which is that function's own stated objection to promoting it to a domain rule. So a
+> session is out of domain only when it never saturated **and** the counter provably never moved: a
+> counter that moved is proof of saturation whatever occupancy was sampled at. A churning pool
+> reading 1023/1024 is still scored, and still fails at 24.2/s.
+>
+> **Stated gap, because it is a decision and not an oversight.** The mirror case — a pool that *did*
+> fill and then had no key left to admit — also reports a structural 0, and it stays scored.
+> `saturated` is a necessary condition and never a sufficient one (DEC-834 measured 128/128 flat at 0
+> for 150 s), and "it filled and did not churn" cannot be told from "it filled and churn stopped"
+> without `pool.reserved` and an admission counter on the probe — R1's surface, DEC-744 B1.
+>
+> **The gate's patience is what decides the domain, and that is the cost of the rule.** The sampling
+> loop stops as soon as the tail converges past `MIN`, so a world that would saturate at t = 30 s is
+> filed out of domain at the break. Right on this roster — the unsaturated worlds are unsaturated
+> because their whole demand *fits*, alara asks for 283 of 1,024 — and a full-patience tour would
+> spend ~24 minutes re-confirming zeros. The symptom if a world ever lands near capacity is that it
+> flickers between `n/a — unsaturated` and a rate across runs, and the driver prints the high-water
+> mark on every world so that is visible in the log.
+>
 > ### Criterion 3's no-starvation clause becomes an absolute term
 >
 > `artFraction` is a ratio, and **a ratio is blind to its own denominator being chosen by the policy
@@ -2044,6 +2090,13 @@ an assertion there.
 > `worlds-metrics.test.ts`, with their expected-GREEN partners live in the matrix. That is a real gap
 > in `--negative-controls` and it is named here for the same reason W3's is: a control that exists
 > only as a number in a comment is not a control.
+>
+> **The gap is the two *bounds*, and since DEC-842 it is no longer the two domain rules.** Both of
+> the eviction half's domain rules are falsifiable live: `?layers=128` asserts `N/A` on the capacity
+> one, and `unsaturated-pool` asserts `N/A` on the occupancy one. Each was confirmed against its own
+> defect rather than assumed — dropping the occupancy clause turns `unsaturated-pool` from `N/A` to
+> `GREEN (value 0, bound 21)` and reds the gate, measured, while the row's two GREEN partners stay
+> green on the same frame. `confirm-the-instrument-sees-the-defect`.
 >
 > **Normative — W1's pose is the *plane-level settle*, which §1.3 now makes per-world, and it is
 > **not** W4's 2.2-radii surface view (DEC-818).** The two are one row apart in this table and were
@@ -2321,7 +2374,8 @@ events; the focused card's tilt feels physical; and, new, **the tether reads as 
 | W2        | both measures                          | `?art=off` **alone** — the sibling the composed rows are read against, not the bare build                                                                                   | **GREEN** |
 | W3        | `minAdjacentBandDeltaE`                | `?art=off` **over the full tour** (`w3-floor-shipped`) — the shipped side of the same derivation, differing in the one seam                                                  | **GREEN** |
 | W4        | `artFraction`                          | `?artThreshold=fixed24&layers=128` — §1.6's seam against a tier-4 pool: **a fixed threshold against a pool too small for it**, which is what Appendix A captured. 0.1342 against a bar of 0.5, a 7.39× overshoot. The **bare** `fixed24` row this replaces is retired — see the note | **RED**   |
-| W4        | `evictionsPerSecond`                   | **no live row.** The bound is want-set turnover at the 1,024-layer pool; exceeding it needs a faster spin or a bigger roster and no seam produces either, and every `?layers=N` row is out of the bound's domain. Falsified by unit row *"still reds the same row when turnover climbs past the new bound"* | **n/a**   |
+| W4        | `evictionsPerSecond`                   | **the bound has no live row.** Exceeding want-set turnover at the 1,024-layer pool needs a faster spin or a bigger roster and no seam produces either, and every `?layers=N` row is out of the bound's domain. Falsified by unit row *"still reds the same row when turnover climbs past the new bound"*. **Its two domain rules do have live rows** — `?layers=128` for the capacity one and `unsaturated-pool` below for the occupancy one | **n/a**   |
+| W4        | `evictionsPerSecond`                   | **`unsaturated-pool`** — kamigawa (917 cards) at the shipped pool, no seams: a world whose whole demand fits, high-water **265 of 1,024**, so `claimLayer` never reaches its victim search and the rate is a structural 0. Asserts **N/A**. The 45-world tour runs this rule on 44 worlds and cannot falsify it — the fold is a worst-of and dominaria saturates, so `baseline` passes with the rule and without it. `artFraction` and `artCellsShowing` are asserted GREEN on the same frame, because an `N/A`-only row cannot tell a working domain rule from a page that failed to render | **N/A / GREEN** |
 | W4        | `artCellsShowing`                      | **no live row.** Its witness is a want set collapsed under reduced motion, and `?motion=0` is inert on `?probe=shell`. Falsified by unit row *"reds DEC-834's collapsed want set, the frame artFraction scored 1.00"* | **n/a**   |
 | W4        | `evictionsPerSecond`, `artCellsShowing` | `?artThreshold=fixed24&layers=128` and `?layers=128` — the two rows that pin the **domain**: at 128 layers the eviction half must read `N/A` and not a comfortable green, and the absolute term must stay green on a healthy tier-4 frame | **N/A / GREEN** |
 | W5        | `homeLabels`                           | labels forced on for empty planes — suppression regressed; **66 – 77 over the sweep, _above_ the unmodified build's 33 – 42; see the note**                                 | **RED**   |

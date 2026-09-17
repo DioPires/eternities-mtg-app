@@ -451,6 +451,18 @@ export interface EvictionTail {
   readonly converged: boolean;
   /** `max(resident)` — where the fill ended. Never "resident stopped climbing": a full pool churns. */
   readonly peakResident: number | null;
+  /**
+   * Did the pool ever have no free layer over this timeline? `null` when the timeline was too short
+   * to ask. Read by `evaluateW4`'s occupancy domain rule (DEC-842): below saturation `claimLayer`
+   * never reaches its victim search, so the rate is a structural 0 rather than a reading.
+   */
+  readonly saturated: boolean | null;
+  /**
+   * How far the cumulative counter moved across the tail. A count and not `rate > 0`, because `rate`
+   * is `null` on an unconverged tail and "did the counter move at all" has to be answerable there:
+   * a counter that moved is proof of saturation even where `resident` reads a layer light.
+   */
+  readonly evictionsObserved: number | null;
   readonly plateauT: number | null;
   readonly tailSamples: number;
   readonly spanS: number;
