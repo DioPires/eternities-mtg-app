@@ -24,7 +24,7 @@ import {
   THUMBNAIL_RIM_GAIN,
   THUMBNAIL_RIM_WIDTH,
 } from '../tuning'
-import { glslFloat } from '../starfield/shaders'
+import { glslFloat } from '../glsl'
 
 /** The inverse of the sRGB transfer function, exactly — not a 2.2 power approximation. */
 const SRGB_GLSL = /* glsl */ `

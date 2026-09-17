@@ -2,7 +2,7 @@
  * The atmosphere rim's GLSL (spec §1.7, §1.12). `atmosphere.ts` is the three.js binding.
  */
 
-import { glslFloat } from '../starfield/shaders'
+import { glslFloat } from '../glsl'
 
 /** §1.7: *"an additive `BackSide` sphere at **1.055× radius**"*. */
 export const RIM_RADIUS_SCALE = 1.055

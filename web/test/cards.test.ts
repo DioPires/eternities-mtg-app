@@ -26,7 +26,7 @@ import {
   PLANET_FRAGMENT_SHADER,
   PLANET_VERTEX_SHADER,
 } from '../src/scene/cards/cardShaders'
-import { glslFloat } from '../src/scene/starfield/shaders'
+import { glslFloat } from '../src/scene/glsl'
 import type { CardRecord, PrintingTuple } from '../src/data/types'
 import {
   GPU_CEILING_BYTES,

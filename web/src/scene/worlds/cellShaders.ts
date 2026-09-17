@@ -14,7 +14,7 @@
 
 import { SHADE_AMBIENT, SHADE_GAIN } from './probePayload'
 import { CELL_INSET, CELL_LIFT } from './surfaceLaw'
-import { glslFloat } from '../starfield/shaders'
+import { glslFloat } from '../glsl'
 import { FILTER_DIM } from '../tuning'
 
 /**

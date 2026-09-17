@@ -84,13 +84,80 @@ cutover PR touches them:
 > is how `useSceneData.ts` was missed. `grep -rn "from '[^']*/<module>'"` is the reading that
 > matches what the bundler resolves. The counts above are that reading.
 
-## 4. Unambiguously galaxy-only
+## 4. What is actually galaxy-only — RE-TAKEN, and the old list was wrong five times
 
-`scene/EternitiesScene.tsx`'s galaxy branch, `scene/starScene.ts`, and under `scene/starfield/`:
-`starStream.ts`, `starFieldObjects.ts`, `nebulaTexture.ts`, `noise.ts`, `planeTable.ts` — plus the
-non-`glslFloat` half of `shaders.ts`, the non-`curlNoise` half of `motion.ts`, and the geometry half
-of `starGeometry.ts`. `scene/selfCheck.ts` and `bench/BenchRunner.tsx` import several of these and
-have to be re-pointed or retired with them.
+> **Do not use the previous version of this section. It is reproduced at the end for the record and
+> it would have broken the worlds build (DEC-752).** It read: "`scene/EternitiesScene.tsx`'s galaxy
+> branch, `scene/starScene.ts`, and under `scene/starfield/`: `starStream.ts`,
+> `starFieldObjects.ts`, `nebulaTexture.ts`, `noise.ts`, `planeTable.ts` — plus the non-`glslFloat`
+> half of `shaders.ts`, the non-`curlNoise` half of `motion.ts`, and the geometry half of
+> `starGeometry.ts`."
+>
+> Every error in it runs the same way — a module that *looks* galaxy-only because it sits under
+> `scene/starfield/` and is named for stars, while the worlds scene imports it. The directory name
+> is not the boundary.
+
+Measured at head `796f93a` by import edge (`grep -rn "from '[^']*/<module>'"`), scanning each doomed
+file for importers **outside** the doomed set, and recording whether the import is a value or a type
+— because a wrong delete of a type fails at `tsc` and a wrong delete of a value fails at runtime:
+
+| doomed module | surviving importer | symbol | kind |
+|---|---|---|---|
+| `starfield/planeTable.ts` | **`scene/useSceneData.ts`** | `PlaneTable` | **VALUE** |
+| | `scene/motionSync.ts`, `picking/scenePicker.ts`, `selfCheck.ts`, `bench/BenchRunner.tsx` | `PlaneTable` | type |
+| `starfield/starGeometry.ts` | **`scene/useSceneData.ts`** | `StarGeometry`, `resolvePositionMode` | **VALUE** |
+| | `app/filterMask.ts`, `platform/capabilities.ts`, `selfCheck.ts` | types | type |
+| `starfield/starFieldObjects.ts` | **`scene/useSceneData.ts`** | `createStarField` | **VALUE** |
+| | `platform/attachProgramWarmup.ts`, `selfCheck.ts` | `StarField` | type |
+| `starfield/nebulaTexture.ts` | **`scene/useSceneData.ts`** | `createNebulaTexture` | **VALUE** |
+| `starfield/starStream.ts` | **`scene/useSceneData.ts`** | `streamStarsIntoScene` | **VALUE** |
+| `starfield/motion.ts` | `camera/motion.ts` | `curlNoise` | VALUE |
+| | `picking/scenePicker.ts` | `PlaneKindCode`, `planeWorldPosition` | VALUE |
+| | `bench/BenchRunner.tsx` | `planeWorldPosition` | VALUE |
+| | `selfCheck.ts` | `starWorldPosition` | VALUE |
+| `starfield/noise.ts` | *(none directly)* | `valueNoise3`, reached from `curlNoise` | **transitive** |
+| `starfield/shaders.ts` | `cards/cardShaders.ts` | `DEFINE_BLOCK`, `MOTION_GLSL` | VALUE |
+| `cards/atlas.ts` | `cards/gpuMemory.ts` | `ATLAS_BYTES` | VALUE |
+| `cards/cardTier.ts` | `renderer/sceneHost.ts` | `attachCardTier` + types | VALUE |
+| | `PlanetHoverLabel.tsx`, `usePlaneDetail.ts` | label/cards types | type |
+| `starScene.ts` | `renderer/sceneHost.ts` | `attachStarScene` | VALUE |
+
+**The five the old list got wrong:**
+
+1. **`planeTable.ts` is not galaxy-only, and this is the one that would have hurt most.** The worlds
+   scene's spin comes from it — `sceneHost.ts:338` feeds `setSpinAngles` from the plane table, and
+   the probe's `multiverseAngle` (which W5's whole sweep is read against) is `PlaneTable`'s own
+   getter. `useSceneData.ts` constructs it. Deleting it stops the worlds from turning.
+2. **`noise.ts` is not galaxy-only**, transitively: `curlNoise` survives in `camera/motion.ts` and is
+   built on `valueNoise3` from `noise.ts`. An import-edge scan shows no consumer outside
+   `starfield/`, which is exactly how it reads as safe and is not.
+3. **`motion.ts` has three surviving symbols, not one.** `curlNoise` was the only one named;
+   `planeWorldPosition` and `PlaneKindCode` also survive, through `picking/scenePicker.ts` — a file
+   §3 already lists as surviving, without this edge.
+4. **`starFieldObjects.ts` has a surviving type consumer nobody listed**:
+   `platform/attachProgramWarmup.ts`.
+5. **`atlas.ts` has one too**: `cards/gpuMemory.ts` takes `ATLAS_BYTES`, and `gpuMemory.ts` is in §3's
+   own survivor list.
+
+### The structural finding: the cutover is "split `useSceneData.ts`", not "delete `starfield/`"
+
+`scene/useSceneData.ts` **value**-imports five of the doomed modules and is itself squarely on the
+worlds path — `App.tsx`, `renderer/sceneHost.ts`, `probeSeam.ts` and `benchSeam.ts` all import it.
+It is the hub every one of the errors above runs through. So the deletion is not a directory
+removal with a few edits around it: the load-bearing move is separating that file's galaxy half
+(`StarGeometry`, `PlaneTable`, `createStarField`, `createNebulaTexture`, `streamStarsIntoScene`)
+from the half the worlds scene needs, and deciding for each whether it is retained, relocated or
+deleted. `PlaneTable` is retained — the worlds scene cannot spin without it.
+
+### Resolved ahead of the cutover
+
+- **`glslFloat` — done.** It moved from `starfield/shaders.ts` to `scene/glsl.ts`, with all seven
+  consumers re-pointed (the five worlds shader modules, `cards/cardShaders.ts`, and `shaders.ts`
+  itself) plus `test/cards.test.ts`, which `tsc` caught. Suite 1,393/66 unchanged, tsc 0, eslint 0.
+  That is one entanglement out of the irreversible commit, taken reversibly and verified.
+- Still to relocate before the deletion, on the same pattern: `curlNoise` (+ its `valueNoise3`
+  dependency), `planeWorldPosition`/`PlaneKindCode`, `ATLAS_BYTES`, and whatever of `PlaneTable` and
+  `starGeometry` the split of `useSceneData.ts` decides to keep.
 
 ## 5. The two things §3.2 makes atomic with all of the above
 
