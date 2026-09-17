@@ -1152,12 +1152,22 @@ const MATRIX = [
       // other half of W4 exists to forbid. The bound is derived at 1,024 and is scored there alone.
       { criterion: 'W4', measure: 'evictionsPerSecond', expect: 'N/A' },
       // The tier-4 rung is where the absolute term is closest to binding on a *healthy* build among
-      // the live rows — ~127 cells of art against a floor of 32 — so this is the row that says the
-      // floor leaves the smallest shipped pool room to pass. **This row's RED partner is now live
-      // and it is one row down**: `layers-128-reduced` is this same pool with the OS reduced-motion
-      // preference emulated, and it reads 14 against the same floor on the same seam. The pair
-      // differs in one harness parameter, which is what makes the 127 here mean something (DEC-843;
-      // this comment used to say the witness was unreachable, which was true only of *query* seams).
+      // the live rows — **124** cells of art against a floor of 32, 3.9× above — so this is the row
+      // that says the floor leaves the smallest shipped pool room to pass. **This row's RED partner
+      // is now live and it is one row down**: `layers-128-reduced` is this same pool with the OS
+      // reduced-motion preference emulated, and it reads 14 against the same floor on the same seam.
+      // The pair differs in one harness parameter, which is what makes the 124 here mean something
+      // (DEC-843; this comment used to say the witness was unreachable, which was true only of
+      // *query* seams).
+      //
+      // **124 is this row's number and not the build's, which is why it moved** (DEC-845, rider 1 of
+      // the DEC-844 review). This comment said `~127` and that reading was taken before the
+      // `reducedMotion: false` read-back above existed. The read-back holds the page 3 s to watch
+      // `multiverseAngle` move, the frame is taken after that hold, and the adaptive threshold has
+      // gone on rising through it: 124 with the hold (two draws, DEC-845), 128 with the hold
+      // removed, 127 on the tree that had no read-back at all. The renderer is the same in all
+      // three. A harness default is a hidden parameter of every figure measured through it, so
+      // re-measure here rather than carrying a number across a harness change.
       { criterion: 'W4', measure: 'artCellsShowing', expect: 'GREEN' },
       // **The overshoot the reachable bar forgives, asserted so it cannot go quiet.** Ruling
       // `demand_measure_scored` is `reported_only`, so this measure cannot colour the row — which

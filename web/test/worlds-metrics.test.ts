@@ -2165,8 +2165,11 @@ describe("W4 — art resolves without exhausting", () => {
 
     it("stays green on the healthy frames at both ends of the ladder", () => {
       // A term that reds a correct build is a tripwire, not a control. The two live readings it has
-      // to clear: the shipped 1,024-layer baseline at ~942 cells of art, and the tier-4 rung at ~126
+      // to clear: the shipped 1,024-layer baseline at ~942 cells of art, and the tier-4 rung at 124
       // — the smallest shipped pool, where the floor is closest to binding on a healthy build.
+      // (The rung read ~126–127 until DEC-843 attached a 3 s read-back to that gate row; the frame
+      // is now taken after the hold and the adaptive threshold has kept rising through it. DEC-845
+      // re-measured on the shipping harness: 124, two draws.)
       const baseline = evaluateW4(
         frameOf(2_000, 945, 942),
         churningAt(18.4),
@@ -2175,7 +2178,7 @@ describe("W4 — art resolves without exhausting", () => {
         HEALTHY_EXIT,
       );
       const tier4 = evaluateW4(
-        frameOf(2_000, 205, 126),
+        frameOf(2_000, 205, 124),
         settled(0, 128),
         { layers: 128, resident: 128 },
         FRESH_SESSION,
@@ -2188,12 +2191,12 @@ describe("W4 — art resolves without exhausting", () => {
         );
       }
       // Named from every side so the margins are on the record rather than implied, and all four
-      // are measured readings: 14 is DEC-834's witness, 127 the live `?layers=128` row, 146 the
-      // worst in-domain world of the 45-world acceptance tour (forgotten-realms), 941 dominaria at
-      // the shipped pool.
-      expect(tier4.measures.find((m) => m.key === "artCellsShowing")!.value!).toBe(126);
+      // are measured readings: 14 is DEC-834's witness, 124 the live `?layers=128` row as the gate
+      // now measures it (DEC-845), 146 the worst in-domain world of the 45-world acceptance tour
+      // (forgotten-realms), 941 dominaria at the shipped pool.
+      expect(tier4.measures.find((m) => m.key === "artCellsShowing")!.value!).toBe(124);
       expect(32 / 14).toBeGreaterThan(2.2);
-      expect(127 / 32).toBeGreaterThan(3.9);
+      expect(124 / 32).toBeGreaterThan(3.8);
       expect(146 / 32).toBeGreaterThan(4.5);
     });
 
@@ -3630,6 +3633,37 @@ describe("the negative-control matrix", () => {
       measure: "artCellsShowing",
       expect: "GREEN",
     },
+    // **The occupancy domain's live row (DEC-842), mirrored here by DEC-845 because it was not.**
+    // That leg added `unsaturated-pool` to the gate's `MATRIX` and left this one alone, and nothing
+    // cross-checks the two — so deleting the gate row left the whole unit suite green, and the
+    // occupancy rule's *only* live falsifier was the one row no test mentioned. The 45-world tour
+    // cannot cover for it: the fold is a worst-of and dominaria saturates, so the baseline row
+    // passes with the rule and without it.
+    //
+    // Three entries because the gate row carries three expectations, and they are not
+    // interchangeable. The `N/A` is the claim — kamigawa's 917 cards high-water at 265 of 1,024, so
+    // `claimLayer` never reaches its victim search and the rate is a structural zero rather than a
+    // reading of churn. The two GREENs are what make the `N/A` a reading at all: an `N/A`-only row
+    // cannot tell a working domain rule from a page that failed to draw, and both print the same
+    // `n/a`. `negative-controls-distinguish-guard-from-rubble`.
+    {
+      row: "W4 · kamigawa at the shipped pool (evictions)",
+      criterion: "W4",
+      measure: "evictionsPerSecond",
+      expect: "N/A",
+    },
+    {
+      row: "W4 · kamigawa at the shipped pool (art fraction)",
+      criterion: "W4",
+      measure: "artFraction",
+      expect: "GREEN",
+    },
+    {
+      row: "W4 · kamigawa at the shipped pool (absolute art term)",
+      criterion: "W4",
+      measure: "artCellsShowing",
+      expect: "GREEN",
+    },
     {
       row: "W5 · labels forced on for empty planes",
       criterion: "W5",
@@ -3670,10 +3704,10 @@ describe("the negative-control matrix", () => {
     { row: "all · the unmodified build", criterion: "W2", expect: "GREEN" },
   ] as const;
 
-  it("has eight expected-RED rows, five expected-GREEN and four expected-N/A", () => {
+  it("has eight expected-RED rows, seven expected-GREEN and five expected-N/A", () => {
     expect(MATRIX.filter((r) => r.expect === "RED")).toHaveLength(8);
-    expect(MATRIX.filter((r) => r.expect === "GREEN")).toHaveLength(5);
-    expect(MATRIX.filter((r) => r.expect === "N/A")).toHaveLength(4);
+    expect(MATRIX.filter((r) => r.expect === "GREEN")).toHaveLength(7);
+    expect(MATRIX.filter((r) => r.expect === "N/A")).toHaveLength(5);
   });
 
   it("leaves W4's absolute art term a live RED row and a live GREEN partner", () => {
@@ -3686,7 +3720,11 @@ describe("the negative-control matrix", () => {
       (r) => "measure" in r && r.measure === "artCellsShowing",
     );
     expect(cells.filter((r) => r.expect === "RED")).toHaveLength(1);
-    expect(cells.filter((r) => r.expect === "GREEN")).toHaveLength(1);
+    // Two GREEN partners since DEC-845 mirrored `unsaturated-pool`, and the second one is not a
+    // duplicate of the first: `?layers=128` is the term at its tightest on a healthy build (124
+    // against 32), kamigawa is the term saying a page rendered at all so the `N/A` beside it is a
+    // reading. Counted rather than named because a rename must not silently drop one.
+    expect(cells.filter((r) => r.expect === "GREEN")).toHaveLength(2);
     expect(cells.filter((r) => r.expect === "N/A")).toHaveLength(1);
   });
 
