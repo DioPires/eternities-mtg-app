@@ -1525,9 +1525,12 @@ async function main() {
     // here and take a twenty-minute run's report with it, which is a bad trade for a census line.
     const expectations = row.expect ?? []
     const colours = new Set(expectations.map((e) => e.expect).filter((e) => e !== 'N/A'))
-    // A row is named by the colour it expects. `mixed` is not reachable today and is counted rather
-    // than folded into either side, because a row expecting both is a row whose redness no longer
-    // says which measure failed — and silently filing it under RED would hide that.
+    // A row is named by the colour it expects. `mixed` is counted rather than folded into either
+    // side, because a row expecting both is a row whose redness no longer says which measure failed
+    // — and silently filing it under RED would hide that. It is **reached**: `layers-128` expects
+    // GREEN on both W4 halves and RED on the overshoot `demandFitsCapacity` reports, which is what
+    // ruling `demand_measure_scored` left the row looking like. The comment here said "not reachable
+    // today" until DEC-836 read the census line it describes.
     //
     // A row whose every expectation is `N/A` gets its own bucket rather than falling through to
     // GREEN, which is where it used to land. `artoff-bands-shuffle` became such a row under the mean
