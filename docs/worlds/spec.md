@@ -2385,44 +2385,57 @@ events; the focused card's tilt feels physical; and, new, **the tether reads as 
 > scoring dominaria's own ~1.3 reading against a roster mean would red the `?art=off` sibling every
 > composed control row is read against, for arithmetic rather than for a defect.
 
-> **Normative — `FLOORS.bandDeltaE` is 3.1, derived on the mean over five sessions per arm
+> **Normative — `FLOORS.bandDeltaE` is 3.1, derived on the mean over seven sessions per arm
 > (DEC-836).** Both arms are full 45-world tours at the 2.2-radii pose on leg G `f821ccd`, **28
-> worlds in W3's domain in every one of the ten, 0 dropped**. The mean fold is computed offline from
-> the tours' per-world readings, so these numbers do not depend on the gate change they justify.
+> worlds in W3's domain in every one of the fourteen, 0 dropped**. The mean fold is computed offline
+> from the tours' own per-world readings, so these numbers do not depend on the gate change they
+> justify.
 >
-> | arm | five session means | spread | binds |
+> | arm | seven session means | spread | binds |
 > | --- | --- | --- | --- |
-> | `?art=off` (`w3-floor-shipped`) | 3.3102 · 3.4558 · 3.4493 · 3.3982 · 3.3696 | **1.04×** | floor ≤ the **min**, 3.3102 |
-> | `?art=off&bands=shuffle` (`w3-floor-control`) | 2.7835 · 2.8203 · 2.9467 · 2.9058 · 2.9587 | **1.06×** | floor > the **max**, 2.9587 |
+> | `?art=off` (`w3-floor-shipped`) | 3.3102 · 3.4558 · 3.4493 · 3.3982 · 3.3696 · 3.3359 · 3.3062 | **1.05×** | floor ≤ the **min**, 3.3062 |
+> | `?art=off&bands=shuffle` (`w3-floor-control`) | 2.7835 · 2.8203 · 2.9467 · 2.9058 · 2.9587 · 2.8762 · 2.8013 | **1.06×** | floor > the **max**, 2.9587 |
 >
 > **The arms do not overlap**, which is the thing the retracted floor could not claim, and the
-> interval is **(2.9587, 3.3102]**. **3.1** sits inside it — 4.8% above the control's worst reading,
-> 6.4% below the build's — at two significant figures, because a third would claim precision a
+> interval is **(2.9587, 3.3062]**. **3.1** sits inside it — 4.8% above the control's worst reading,
+> 6.2% below the build's — at two significant figures, because a third would claim precision a
 > 0.35-wide interval does not support. The bare acceptance tour clears it with room: its own five
 > sessions fold to **3.98 – 4.34**, ~20% above the `?art=off` arm the floor is derived from. The
 > floor is taken on that sibling and not on the bare build because it is the arm the control differs
 > from by exactly one seam.
 >
+> **Seven per arm rather than the five asked for, and the two extra were not a formality.** At n=5
+> the control arm's three highest draws were its three most recent (2.9467 · 2.9058 · 2.9587), and a
+> trend that would have walked through the floor is precisely what the retracted derivation was
+> killed for not looking at. Passes 6 and 7 read 2.8762 and 2.8013: the trend was not there, and the
+> shipped arm's minimum moved 3.3102 → 3.3062, so the interval is stable under the two draws that
+> could have closed it.
+>
 > **The fold ranking was re-checked at the n the floor comes from, on arms it was never chosen
-> from.** The board picked the mean off five *baseline* sessions; these are ten `?art=off` and
-> `?art=off&bands=shuffle` tours, and the ranking holds:
+> from.** The board picked the mean off five *baseline* sessions; these are fourteen `?art=off` and
+> `?art=off&bands=shuffle` tours, and the ranking holds — including the part that is a warning:
 >
 > | fold | `?art=off` spread | `+shuffle` spread |
 > | --- | --- | --- |
-> | min (retired) | 2.40× | 1.82× |
-> | p10 | 1.20× | 1.26× |
-> | p25 | 1.16× | 1.26× |
-> | median | 1.19× | 1.07× |
-> | **mean (§3.1)** | **1.04×** | **1.06×** |
+> | min (retired) | 2.40× | **4.02×** (1.82× at n=5) |
+> | p10 | 1.26× | 1.65× |
+> | p25 | 1.16× | 1.29× |
+> | median | 1.23× | 1.12× |
+> | **mean (§3.1)** | **1.05×** | **1.06×** |
+>
+> The retired fold's control-arm spread more than doubled between n=5 and n=7. That is the same
+> lesson that retired it — a fold's stability estimated at one n is not its stability — landing a
+> second time, and it is the reason the mean has to be re-checked on every refresh rather than
+> inherited.
 >
 > **Two things this floor does not claim.** First, **4.8% is thin**, and it is thin because of the
 > control rather than the build: a permutation moves most worlds down and some up, and a mean dilutes
-> it — on the last pass 10 of the 28 worlds scored *higher* shuffled. Under the retired min fold the
-> arms were further apart per world and still **overlapped** as aggregates; under the mean they sit
-> closer together and **separate**, because both are now stable. Reproducibility is what bought the
-> separation. Second, **the median would separate these arms by more** — 2.02–2.42 against 1.42–1.51,
-> a 1.34× gap where the mean's is 1.12× — at a spread of 1.19× against 1.04×. That is recorded as
-> evidence for the next refresh, not as a re-litigation of the ruling.
+> it — 6 to 10 of the 28 worlds score *higher* shuffled, depending on the pass. Under the retired min
+> fold the arms were further apart per world and still **overlapped** as aggregates; under the mean
+> they sit closer together and **separate**, because both are now stable. Reproducibility is what
+> bought the separation. Second, **the median would separate these arms by more** — 1.9713–2.4190
+> against 1.3810–1.5529, a 1.27× gap where the mean's is 1.12× — at a spread of 1.23× against 1.05×.
+> That is recorded as evidence for the next refresh, not as a re-litigation of the ruling.
 
 > **Normative — the measure keys in this table are the keys the module emits.** `checkControlRow`
 > resolves a row by `{criterion, measure}` and reports `W1 has no measure "…"` when the name is not

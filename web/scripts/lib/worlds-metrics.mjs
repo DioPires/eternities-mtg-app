@@ -69,34 +69,37 @@ export const FLOORS = {
    * (0.55) was derived against a fold the board retired, and the retraction that killed it is kept
    * below because its lesson is the reason this one is measured the way it is.
    *
-   * Both arms are full 45-world tours at the 2.2-radii pose, 28 worlds in W3's domain in every one,
-   * **0 dropped**, measured on leg G `f821ccd` (the mean fold is gate-side and offline, so these
-   * readings do not depend on it):
+   * Both arms are full 45-world tours at the 2.2-radii pose, 28 worlds in W3's domain in every one of
+   * the **fourteen**, **0 dropped**, measured on leg G `f821ccd` (the mean fold is gate-side and
+   * offline, so these readings do not depend on it). Seven passes per arm, not five: at n=5 the
+   * control's three highest draws were its three most recent, and a trend that would have swallowed
+   * the floor is exactly the kind of thing the retracted 0.55 was killed for not checking. Passes 6
+   * and 7 read 2.8762 and 2.8013 — the trend was not there.
    *
-   * | arm | five session means | binds |
+   * | arm | seven session means | binds |
    * |---|---|---|
-   * | `?art=off` — `w3-floor-shipped` | 3.3102 / 3.4558 / 3.4493 / 3.3982 / 3.3696, spread **1.04x** | floor <= the **min**, 3.3102 |
-   * | `?art=off&bands=shuffle` — `w3-floor-control` | 2.7835 / 2.8203 / 2.9467 / 2.9058 / 2.9587, spread **1.06x** | floor > the **max**, 2.9587 |
+   * | `?art=off` — `w3-floor-shipped` | 3.3102 / 3.4558 / 3.4493 / 3.3982 / 3.3696 / 3.3359 / 3.3062, spread **1.05x** | floor <= the **min**, 3.3062 |
+   * | `?art=off&bands=shuffle` — `w3-floor-control` | 2.7835 / 2.8203 / 2.9467 / 2.9058 / 2.9587 / 2.8762 / 2.8013, spread **1.06x** | floor > the **max**, 2.9587 |
    *
-   * The interval is **(2.9587, 3.3102]** and **3.1** sits inside it: 4.8% above the control's
-   * worst-case reading, 6.4% below the build's. Two significant figures on purpose — a third would
+   * The interval is **(2.9587, 3.3062]** and **3.1** sits inside it: 4.8% above the control's
+   * worst-case reading, 6.2% below the build's. Two significant figures on purpose — a third would
    * claim precision the session spread does not support, and the interval is only 0.35 wide.
    *
    * **The bounds are the arms' extremes across five sessions, not any single session's pair.** That
-   * is the discipline the retracted floor lacked: one pass per arm here would have read
-   * (2.7835, 3.3102] and a floor that looked 11% clear of a control it is really 4.8% clear of.
+   * is the discipline the retracted floor lacked: pass 1 alone would have read (2.7835, 3.3102] and
+   * a floor that looked 11% clear of a control it is really 4.8% clear of.
    *
    * ### What this floor does not claim, each measured
    *
    * 1. **4.8% is thin, and it is thin because of the control rather than the build.** A permutation
-   *    moves most worlds down and some up, and a *mean* dilutes it — on the last pass 10 of the 28
-   *    worlds scored **higher** shuffled. Under the retired min fold the arms were further apart per
-   *    world and still **overlapped** as aggregates; under the mean they sit closer and **separate**,
-   *    because both are now stable. Reproducibility is what bought the separation.
-   * 2. **The median would separate the arms by more** — 2.02–2.42 against 1.42–1.51, a 1.34x gap
-   *    where the mean's is 1.12x — at a spread of 1.19x against the mean's 1.04x. Recorded as
-   *    evidence for the next refresh, not as a re-litigation: the board ruled the mean on stability
-   *    and this leg implements the ruling.
+   *    moves most worlds down and some up, and a *mean* dilutes it — 6 to 10 of the 28 worlds score
+   *    **higher** shuffled, depending on the pass. Under the retired min fold the arms were further
+   *    apart per world and still **overlapped** as aggregates; under the mean they sit closer and
+   *    **separate**, because both are now stable. Reproducibility is what bought the separation.
+   * 2. **The median would separate these arms by more** — 1.9713–2.4190 against 1.3810–1.5529, a
+   *    1.27x gap where the mean's is 1.12x — at a spread of 1.23x against the mean's 1.05x. Recorded
+   *    as evidence for the next refresh, not as a re-litigation: the board ruled the mean on
+   *    stability and this leg implements the ruling.
    * 3. **`?bands=shuffle` is one permutation, seeded by a constant** (`shufflePermutation`,
    *    `0x9e3779b9`). It reproduces exactly, which proves the route is deterministic and not that the
    *    value is the statistic. A floor derived over several seeds would be a stronger object.
@@ -124,7 +127,9 @@ export const FLOORS = {
    * per-world minimum falls as the population grows: truncated to the first 8 worlds the same dataset
    * reads 1.3499/1.3926 over 5 in-domain planes, and over all 28 it reads 0.25–0.80. Re-scoring those
    * same per-world readings gave mean 1.09x, median 1.22x, p25 1.38x, p10 2.37x. Re-checked here on
-   * two arms it was never chosen from, at n=5: mean **1.04x** and **1.06x**, min 2.40x and 1.82x.
+   * two arms it was never chosen from, at n=7: mean **1.05x** and **1.06x**, min **2.40x** and
+   * **4.02x** — and the control arm's min was 1.82x at n=5, which is the "a ranking taken at one n is
+   * not a ranking" lesson landing a second time, on the fold that was retired for it.
    */
   bandDeltaE: 3.1,
   /** W4: fraction of cells above the effective threshold that are showing art. */
