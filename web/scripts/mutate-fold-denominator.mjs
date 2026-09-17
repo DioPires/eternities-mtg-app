@@ -18,6 +18,14 @@
  * *warning*, and a reader learns to read its absence as "fine" — so the full-roster row has to red
  * too, or the pair has quietly become one-sided.
  *
+ * **The mean fold raised the stakes on all of this (board ruling `fold_mean`, DEC-836).** A
+ * worst-case fold over a narrowed domain can only move *up*, so a missing denominator there was a
+ * report that read better than its evidence. A **mean** over a narrowed domain is a different
+ * statistic in the same units, and the narrowing flatters it — so for W3 the denominator is not
+ * merely printed, it is scored, and mutants 8 onward are aimed at that: the fold's dispatch, the
+ * bound that must bind, the two halves of the domain check, and the rule that a roster statistic is
+ * not scored on one world.
+ *
  * The restored tree is re-run at both ends, and restoration is from an in-memory snapshot rather
  * than `git checkout`, which would delete the leg's own uncommitted work.
  */
@@ -77,6 +85,76 @@ const MUTANTS = [
     file: TEST,
     from: '        criterion: evaluateW2(ringOf(RING, i === scored - 1 ? NARROW : WIDE)),',
     to: '        criterion: evaluateW2(ringOf(RING, WIDE)),',
+  },
+  // ---- the mean fold (board ruling `fold_mean`, DEC-836) ----------------------------------------
+  {
+    name: 'THE RULING REVERSED: W3 falls back to the worst-world fold the board retired',
+    file: METRICS,
+    from: '    if (template.fold === "mean") return foldMean(template, all, real, rosterDomain);\n',
+    to: '',
+  },
+  {
+    name: "the mean's bound never binds — the classic vacuous floor, at the one measure that moved",
+    file: METRICS,
+    from: '            template.direction === "min"\n              ? value >= template.bound\n              : value <= template.bound',
+    to: '            template.direction === "min"\n              ? value >= 0\n              : value <= Infinity',
+  },
+  {
+    name: 'THE ONE A MEAN NEEDS: the domain may thin silently, and a thinner domain scores higher',
+    file: METRICS,
+    from: '  } else if (real.length !== rosterDomain.expected.scored) {',
+    to: '  } else if (false) {',
+  },
+  {
+    name: 'the domain check reads the run\'s own count instead of the recorded one — self-certifying',
+    file: METRICS,
+    from: '  } else if (real.length !== rosterDomain.expected.scored) {',
+    to: '  } else if (real.length < (rosterDomain.qualifying ?? real.length)) {',
+  },
+  {
+    name: 'only a THINNED domain faults, so a domain that grew scores a different statistic in silence',
+    file: METRICS,
+    from: '  } else if (real.length !== rosterDomain.expected.scored) {',
+    to: '  } else if (real.length < rosterDomain.expected.scored) {',
+  },
+  {
+    // The defect this leg shipped for one tour and the live run caught: `byShares` counts worlds
+    // whose CARDS qualify, `scored` counts worlds that then present both bands on screen. Requiring
+    // them equal reds every correct roster tour — 30 against 28 on the shipped dataset.
+    name: 'THE ONE THE FIRST DRAFT SHIPPED: the two domain counts are required to be equal',
+    file: METRICS,
+    from: '    rosterDomain.qualifying !== rosterDomain.expected.byShares',
+    to: '    rosterDomain.qualifying !== rosterDomain.expected.scored',
+  },
+  {
+    name: 'an unrecorded dataset skips the check instead of failing it',
+    file: METRICS,
+    from: '  if (rosterDomain.expected === null) {\n    faults.push(',
+    to: '  if (false) {\n    faults.push(',
+  },
+  {
+    name: 'a one-world row is scored as a roster mean — the reading that reds the ?art=off sibling',
+    file: METRICS,
+    from: '      status: "insufficient",\n      pass: false,\n      insufficientReason:\n        `${template.key} folds to the mean',
+    to: '      status: "pass",\n      pass: true,\n      insufficientReason:\n        `${template.key} folds to the mean',
+  },
+  {
+    name: 'the report calls a mean "worst of N worlds" — the fold lying about which number it is',
+    file: METRICS,
+    from: '        ? `, mean of ${subject.scoredPlanes} of ${subject.expectedPlanes ?? "?"} worlds in domain`',
+    to: '        ? `, worst of ${subject.scoredPlanes} of ${subject.expectedPlanes ?? "?"} worlds in domain`',
+  },
+  {
+    name: "the mean's roster is a set of clones, so mean stops being distinguishable from min",
+    file: TEST,
+    from: '      plane("bright-2", tintReaching(FLOORS.bandDeltaE * 4)),',
+    to: '      plane("bright-2", tintReaching(FLOORS.bandDeltaE * 0.1)),',
+  },
+  {
+    name: 'the thinned roster drops its HIGH worlds, so "narrowing flatters a mean" stops being tested',
+    file: TEST,
+    from: '      const thinned = roster.slice(2);',
+    to: '      const thinned = roster.slice(0, 4);',
   },
 ]
 

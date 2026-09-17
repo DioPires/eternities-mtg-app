@@ -355,31 +355,45 @@ that proves nothing. `?art=off` drops every cell to its swatch so that a swatch 
 pixels. It also moves W2 on its own, and that is exactly why it is the sibling: scoring a composed
 row against the bare build would credit the seam under test with the whole of `?art=off`'s move.
 
-**Re-deriving W3's floor.** `FLOORS.bandDeltaE` has to sit between two **worst-world** readings, not
-between two dominaria ones, because §3.1 folds W3 to the worst world. The two rows that measure that
-pair are marked `derivation: true` — runnable by name, kept out of `--negative-controls` because they
-are two full tours and a gate that takes two hours is a gate that stops being run:
+**Re-deriving W3's floor.** `FLOORS.bandDeltaE` has to sit between two **roster means**, because §3.1
+folds W3 to the mean over its in-domain worlds (board ruling `fold_mean`) — not between two dominaria
+readings, and no longer between two worst worlds. The two rows that measure that pair are marked
+`derivation: true` — runnable by name, kept out of `--negative-controls` because they are two full
+tours and a gate that takes two hours is a gate that stops being run. **They are also W3's only live
+falsifier now**, so this is no longer an optional step of a refresh:
 
 ```sh
+# five times, into five directories — one pass is not a derivation
 node scripts/worlds-gate.mjs --dataset worlds --no-captures \
-  --only w3-floor-shipped,w3-floor-control --out ../w3floor-<new-hash>
-node scripts/w3-floor.mjs ../w3floor-<new-hash>
+  --only w3-floor-shipped,w3-floor-control --out ../w3floor-<new-hash>-1
+node scripts/w3-floor.mjs ../w3floor-<new-hash>-1 ../w3floor-<new-hash>-2 ...
 ```
 
-It prints the per-world pair, both aggregates, and the interval a floor may sit in — or reports that
-no separating floor exists, which is a finding rather than a number to pick. Re-run it whenever the
-swatch palette moves: the floor is a property of the shipped swatches, so a refresh can invalidate it
-without a line of rendering code changing.
+It prints each arm's per-session means, each arm's spread, the per-world table and the interval a
+floor may sit in — or reports that no separating floor exists, which is a finding rather than a
+number to pick. Re-run it whenever the swatch palette moves: the floor is a property of the shipped
+swatches, so a refresh can invalidate it without a line of rendering code changing.
 
-**Run each arm more than once, and read the shipped arm's _minimum_ against the control's _maximum_.**
-As shipped, `FLOORS.bandDeltaE` is 0.55 and it separates nothing: on one unchanged dataset the shipped
-arm drew 0.4253 / 0.7070 / 0.8005 across three sessions, and the composed control's worst was 0.4477 —
-the arms overlap, so the row's colour is the draw. The cause is the fold, a minimum over the in-domain
-worlds of a per-world minimum, whose expected value falls as the population grows: the same dataset
-truncated to 8 worlds reads 1.35–1.39 over 5 in-domain planes and over all 28 reads 0.25–0.80. A
-single tour per arm
-cannot see any of that. **Until the owner rules on §3.1's fold, do not read a GREEN W3 row as an
-accepted criterion** — spec §3.2, condition 1, says why.
+**The domain size moves with the dataset, and the gate reds until the new one is recorded.**
+`W3_DOMAIN_SIZE` in `scripts/lib/worlds-metrics.mjs` maps a dataset hash to **two** counts: the
+worlds whose cards put an adjacent band pair over the 5% share rule (`byShares`, **30** on
+`c9468f1125bcddff`) and the worlds that then present both of those bands in the sampled cells
+(`scored`, **28**). They differ, and they are meant to — `shenmeng` and `zhalfir` qualify on their
+cards and populate one band on screen. A mean over a thinned domain reads in the same units and is
+*flattered* by the thinning, so `scored` is a scored expectation rather than a report: an unrecorded
+hash reds every roster tour, and so does a tour whose scored domain is not exactly the record.
+
+Take both numbers off the first full tour on the new dataset — the gate's startup line prints the
+record, and each W3 row prints `mean of N of M worlds in domain` beside the `qualifying` count it
+derived from that run's own band shares — then record them. Do **not** set `byShares` equal to
+`scored`: that reds every correct roster tour, which is how this pair came to be recorded separately.
+
+**Run each arm at least five times, and read the shipped arm's _minimum_ against the control's
+_maximum_.** The retired 0.55 is the argument for this rule: it was derived from a single pair of
+tours under the old worst-world fold, and at n=5 that fold spanned 0.4253 – 0.8005 while its control
+reached 0.4477 — the arms overlapped, so the row's colour was the draw. A single tour per arm cannot
+see any of that, and neither can three: at n=3 the p10 fold looked like the best statistic on offer,
+and at n=5 it was the worst in the table.
 
 `scripts/w3-fold.mjs` is the instrument for that half. Point it at two or more gate run directories
 and it re-scores W3 five ways over the worlds in the domain of *all* of them:
@@ -389,9 +403,11 @@ node scripts/w3-fold.mjs --row baseline worlds-gate/accept3 worlds-gate/dec826-b
 ```
 
 It reports the spread of each fold, the per-world spread worst-first, and whether the same world
-scored the shipped fold every session — on the three runs above, two different worlds did. Use it
-before quoting any W3 aggregate: one tour cannot tell a build that moved from a fold that sampled a
-different plane.
+scored the retired min fold every session — on the three runs above, two different worlds did, and on
+five, three did. Use it before quoting any W3 aggregate: one tour cannot tell a build that moved from
+a fold that sampled a different plane. It still carries every fold, including the retired one, so a
+refresh can confirm the mean is still the convergent choice on the *new* swatches rather than
+inheriting a ranking taken on the old ones.
 
 **One measure in that matrix has no live control, and it is `homeLabels`.** §3.1's table lists a
 sixth red row — `labels forced on for empty planes` — which this gate does not run: forcing labels

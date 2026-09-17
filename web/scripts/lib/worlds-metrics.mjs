@@ -62,79 +62,76 @@ export const FLOORS = {
    */
   lightnessIqr: 8,
   /**
-   * W3: ΔE between the mean a\*b\* of two bands adjacent on the sphere.
+   * W3: the **roster mean** of the per-world closest adjacent-band ΔE(a\*b\*).
    *
-   * **Derived, not chosen — and the derivation is re-runnable (DEC-752, DEC-824).** The ruling
-   * `hold_pending_control` held this at 10 while `?art=off` was built; it retires here. Measured at
-   * the 2.2-radii pose on leg G over main `28d4676` and again over `7483cd6`, one build per arm.
-   * `w3-floor-shipped` / `w3-floor-control` + `scripts/w3-floor.mjs` re-take them.
+   * **Derived on the mean fold, five sessions per arm (DEC-836, board ruling `fold_mean`).** The
+   * fold this floor is taken over is {@link foldMean}'s, not the worst world's — the previous number
+   * (0.55) was derived against a fold the board retired, and the retraction that killed it is kept
+   * below because its lesson is the reason this one is measured the way it is.
    *
-   * | reading | sessions | binds |
+   * Both arms are full 45-world tours at the 2.2-radii pose, 28 worlds in W3's domain in every one of
+   * the **fourteen**, **0 dropped**, measured on leg G `f821ccd` (the mean fold is gate-side and
+   * offline, so these readings do not depend on it). Seven passes per arm, not five: at n=5 the
+   * control's three highest draws were its three most recent, and a trend that would have swallowed
+   * the floor is exactly the kind of thing the retracted 0.55 was killed for not checking. Passes 6
+   * and 7 read 2.8762 and 2.8013 — the trend was not there.
+   *
+   * | arm | seven session means | binds |
    * |---|---|---|
-   * | acceptance tour, unmodified build, worst of 28 worlds | **0.7070** (ravnica), n=1 | floor ≤ this |
-   * | `?art=off&bands=shuffle` on dominaria — W3's control row | 0.4195 – **0.4477**, n=4 | floor > the **max** |
-   * | `?art=off` on dominaria — the control's sibling | **1.2935** – 1.3327, n=4 | floor ≤ the **min** |
+   * | `?art=off` — `w3-floor-shipped` | 3.3102 / 3.4558 / 3.4493 / 3.3982 / 3.3696 / 3.3359 / 3.3062, spread **1.05x** | floor <= the **min**, 3.3062 |
+   * | `?art=off&bands=shuffle` — `w3-floor-control` | 2.7835 / 2.8203 / 2.9467 / 2.9058 / 2.9587 / 2.8762 / 2.8013, spread **1.06x** | floor > the **max**, 2.9587 |
    *
-   * So the floor may sit in **(0.4477, 0.7070]**, and 0.55 sits inside it: 23% above the control's
-   * worst-case reading, 29% below the build's. Two significant figures on purpose — a third would
-   * claim precision the session spread does not support.
+   * The interval is **(2.9587, 3.3062]** and **3.1** sits inside it: 4.8% above the control's
+   * worst-case reading, 6.2% below the build's. Two significant figures on purpose — a third would
+   * claim precision the session spread does not support, and the interval is only 0.35 wide.
    *
-   * **The lower bound is the max of four control readings, not one of them.** A single session would
-   * have given (0.4195, 0.7070] and a floor that looked 31% clear of a control it is really 23%
-   * clear of. The same discipline is owed on the upper bound and is **not** paid: the acceptance tour
-   * is n=1, because a 45-world tour is expensive enough that it stayed that way. Treat the 29% as the
-   * less-tested half of this interval, and see `w3-floor.mjs` for how to pay it down.
+   * **The bounds are the arms' extremes across five sessions, not any single session's pair.** That
+   * is the discipline the retracted floor lacked: pass 1 alone would have read (2.7835, 3.3102] and
+   * a floor that looked 11% clear of a control it is really 4.8% clear of.
    *
-   * **The DEC-816 impasse is gone because its figures moved, not because it was argued away.** That
-   * ruling recorded the shipped aggregate at 0.4253, *below* its own shuffled falsifier at 0.4757,
-   * which is a criterion that cannot fail. On this tree the shipped aggregate reads **0.7070**. The
-   * old pair was taken at head `21737f3`, before DEC-804's centre fix, DEC-812's budget and DEC-814's
-   * belt rotation; do not carry either number forward. What is *not* re-measured here is the **bare**
-   * `?bands=shuffle` tour, so the impasse is not disproved in its own terms — the shipped matrix's
-   * W3 control is a dominaria row, and that row is what this floor is required to red.
+   * ### What this floor does not claim, each measured
    *
-   * ### Three things this floor does not claim, each measured
-   *
-   * 1. **A tour-wide `?art=off` row would go RED against it.** That arm's worst world is avishkar at
-   *    **0.4505**, under 0.55. No shipped row asserts it — `art-off` is a dominaria row at 1.2935 —
-   *    but a tour-wide sibling added later will red, and that is the arithmetic and not a defect.
-   *    Greening both would need a floor in (0.4234, 0.4505], a 0.027-wide window that is inside the
-   *    session-to-session spread.
-   * 2. **`?bands=shuffle` is one permutation, seeded by a constant** (`shufflePermutation`,
+   * 1. **4.8% is thin, and it is thin because of the control rather than the build.** A permutation
+   *    moves most worlds down and some up, and a *mean* dilutes it — 6 to 10 of the 28 worlds score
+   *    **higher** shuffled, depending on the pass. Under the retired min fold the arms were further
+   *    apart per world and still **overlapped** as aggregates; under the mean they sit closer and
+   *    **separate**, because both are now stable. Reproducibility is what bought the separation.
+   * 2. **The median would separate these arms by more** — 1.9713–2.4190 against 1.3810–1.5529, a
+   *    1.27x gap where the mean's is 1.12x — at a spread of 1.23x against the mean's 1.05x. Recorded
+   *    as evidence for the next refresh, not as a re-litigation: the board ruled the mean on
+   *    stability and this leg implements the ruling.
+   * 3. **`?bands=shuffle` is one permutation, seeded by a constant** (`shufflePermutation`,
    *    `0x9e3779b9`). It reproduces exactly, which proves the route is deterministic and not that the
-   *    value is the statistic. Measured consequence: on **8 of 28 worlds the shuffled frame scores
-   *    *higher* than the unshuffled one** (amonkhet, avishkar, edge, fiora, ikoria, kaldheim, rabiah,
-   *    ravnica). The control's direction is a property of the draw, per world — it does not correlate
-   *    with cell count, band count or the smallest qualifying band share. The aggregate still reds
-   *    because some world always draws badly, but a floor derived over several seeds would be a
-   *    stronger object than this one.
-   * 3. **It is a property of the shipped swatches, so a refresh can invalidate it** without a line of
-   *    rendering code changing. The runbook's §4.3 says to re-derive on every refresh that rebuilds
-   *    the v3 dataset, and one world — ravnica — is the whole of the upper bound.
+   *    value is the statistic. A floor derived over several seeds would be a stronger object.
+   * 4. **It is a property of the shipped swatches, so a refresh can invalidate it** without a line of
+   *    rendering code changing — and so can a change to W3's domain, which is why
+   *    {@link W3_DOMAIN_SIZE} is scored rather than reported. The runbook's §4.3 says when to
+   *    re-derive, and that five passes per arm is the minimum.
    *
-   * ### Retracted: this number separates nothing (DEC-752, routed from DEC-830)
+   * The unmodified build clears this comfortably: the bare acceptance tour's mean reads **3.98–4.34**
+   * over its own five sessions, ~20% above the `?art=off` arm the floor is derived from. The floor is
+   * derived on that sibling rather than on the bare build because it is the arm the control differs
+   * from by exactly one seam.
    *
-   * Everything above stands as the record of how 0.55 was picked. It is **not** a floor a verdict may
-   * rest on. The upper bound it was derived from — the acceptance tour's 0.7070 — is flagged above as
-   * n=1, and at n=3 on one unchanged dataset, one roster, one 26-world W3 domain and one pose the
-   * same fold draws **0.4253 (`accept4`) / 0.7070 (`dec826-bare`) / 0.8005 (`accept3`)**. 0.55 is
-   * inside that span, so the row's colour is settled by the draw. Worse for the derivation, the
-   * shipped arm's lowest (0.4253) is *below* the composed control's highest (0.4477): the two arms
-   * **overlap**, which is `w3-floor.mjs`'s "no separating floor exists" outcome.
+   * ### The retracted floor, kept because its lesson is why this one is measured over sessions
    *
-   * The DEC-816 impasse is therefore not gone. `accept4` re-drew 0.4253 on leg G with DEC-804,
-   * DEC-812 and DEC-814 all in the tree, and DEC-830 re-drew it again — the figure did not move out
-   * from under the impasse, it recurs.
+   * 0.55 was derived on the **worst-world** fold from one acceptance tour (0.7070, ravnica) against a
+   * four-session dominaria control (0.4195–0.4477). At n=5 that fold drew
+   * **0.4253 / 0.4358 / 0.5375 / 0.7070 / 0.8005** on one unchanged dataset, one roster, one domain
+   * and one pose — a **1.88x** spread with 0.55 inside it, scoring **three different worlds**
+   * (innistrad, ravnica, avishkar). The shipped arm's lowest sat *below* the control's highest: the
+   * arms **overlapped**, which is `w3-floor.mjs`'s "no separating floor exists" outcome, and the
+   * DEC-816 impasse reproducing rather than retiring.
    *
-   * **The mechanism is the fold, not the renderer.** A minimum over the in-domain worlds of a
-   * per-world minimum over band pairs falls as the population grows: truncated to the first 8 worlds
-   * the same dataset reads 1.3499/1.3926 over 5 in-domain planes, and over all 28 it reads
-   * 0.25–0.80. The worst plane's identity drifts with it — innistrad, ravnica, eldraine,
-   * forgotten-realms, avishkar over five draws. Replacing the fold with a statistic that converges is
-   * a §3.1 amendment and the owner's call; this leg measures and does not move the criterion. Until
-   * it is settled, **a GREEN W3 row is not evidence** (spec §3.2, condition 1).
+   * **The mechanism was the fold, not the renderer.** A minimum over the in-domain worlds of a
+   * per-world minimum falls as the population grows: truncated to the first 8 worlds the same dataset
+   * reads 1.3499/1.3926 over 5 in-domain planes, and over all 28 it reads 0.25–0.80. Re-scoring those
+   * same per-world readings gave mean 1.09x, median 1.22x, p25 1.38x, p10 2.37x. Re-checked here on
+   * two arms it was never chosen from, at n=7: mean **1.05x** and **1.06x**, min **2.40x** and
+   * **4.02x** — and the control arm's min was 1.82x at n=5, which is the "a ranking taken at one n is
+   * not a ranking" lesson landing a second time, on the fold that was retired for it.
    */
-  bandDeltaE: 0.55,
+  bandDeltaE: 3.1,
   /** W4: fraction of cells above the effective threshold that are showing art. */
   artFraction: 0.9,
   /**
@@ -412,6 +409,64 @@ export const W2_CONTROL_SUBJECT_MIN_RING = W2_MIN_RING_SAMPLES;
 export const W3_MIN_BAND_SHARE = 0.05;
 
 /**
+ * How many worlds a dataset puts in W3's domain — **the denominator its mean fold is taken over.**
+ *
+ * Board ruling `fold_mean` makes W3 a roster statistic, and a mean is the one fold that a narrowed
+ * domain moves in the flattering direction: drop the worst worlds and it rises. So the denominator
+ * has to be an expectation the run is scored against, not a count the run reports about itself.
+ *
+ * **It is a dataset property and it is not derivable from `planes.json`.** A world is in W3's domain
+ * when some adjacent band pair holds ≥ {@link W3_MIN_BAND_SHARE} on both sides, and band shares come
+ * from the plane's per-hue card counts, which live in the shards rather than the roster file. So
+ * this is recorded per dataset hash and carries its provenance with it:
+ *
+ * **Two numbers, because the domain has two gates and they do not agree** — which is a measured fact
+ * and was very nearly a shipped defect. `byShares` counts the worlds whose *cards* give some adjacent
+ * band pair ≥ {@link W3_MIN_BAND_SHARE} on both sides; `scored` counts the worlds that then present
+ * **both of those bands in the sampled cells** at the pose. On `c9468f1125bcddff` those are **30 and
+ * 28**: `shenmeng` (30 cells) and `zhalfir` (4 cells) qualify on their card distribution and populate
+ * a single band on screen, so W3 has no pair to compare and reports `insufficient`. A first draft of
+ * this record asserted the two counts were equal; the first full tour that ran it went RED on every
+ * roster row, including the acceptance row. `byShares` is an **upper bound** on `scored`, never a
+ * substitute for it.
+ *
+ * - **`c9468f1125bcddff` — `scored` 28 of 45, `byShares` 30 of 45.** 28 in domain on five full-roster
+ *   baseline sessions (`accept3`, `dec826-bare`, `accept4`, `rebase-w3b`, `rebase-w3c`) and on all
+ *   fourteen arms of the DEC-836 floor derivation — **0 dropped, the same 28 slugs every time.**
+ *
+ * A constant cannot testify to its own provenance, so neither of these is left alone with itself.
+ * `scored` catches a tour that visited too few worlds, or a world that lost a band at the pose —
+ * which the run's own data cannot, because eight worlds toured would report eight of everything.
+ * `byShares` is a **pure function of the dataset** ({@link w3QualifiesByShares} reads band shares and
+ * nothing else), so it is deterministic per refresh and catches the dataset moving under the record
+ * even where the scored count happens to land on 28 again. Neither is redundant.
+ *
+ * An unrecorded dataset is **not** a skipped check: `foldMean` fails, because a floor derived on one
+ * roster says nothing about a mean taken over another.
+ */
+export const W3_DOMAIN_SIZE = Object.freeze({
+  c9468f1125bcddff: Object.freeze({ scored: 28, byShares: 30 }),
+});
+
+/**
+ * Whether a plane's band shares alone put it in W3's domain, before a single pixel is sampled.
+ *
+ * The domain has two conditions — the pair must qualify by share, and both its bands must actually
+ * turn up in the samples — and only the first is a property of the dataset. Separating them is what
+ * lets the gate tell "this world has no comparable band pair" (a dataset fact, stable) from "this
+ * world's band was not sampled at this pose" (a run fact, and a thinning of the mean's domain).
+ *
+ * `bandShares` is the thirteen-entry table the probe publishes, indexed like {@link BAND_ORDER}.
+ */
+export function w3QualifiesByShares(bandShares) {
+  return BAND_ADJACENCY.some(
+    ([i, j]) =>
+      Math.min(bandShares?.[i] ?? 0, bandShares?.[j] ?? 0) >=
+      W3_MIN_BAND_SHARE,
+  );
+}
+
+/**
  * A label counts toward W5 only above this opacity — **the DOM node count is not the measurement.**
  *
  * §3.1 words W5 as "count rendered plane labels in the DOM", and read literally that is
@@ -597,7 +652,7 @@ function measure(
   value,
   bound,
   direction,
-  { insufficient = false, why = null, scored = true } = {},
+  { insufficient = false, why = null, scored = true, fold = "worst" } = {},
 ) {
   const status = insufficient
     ? "insufficient"
@@ -614,6 +669,11 @@ function measure(
     direction,
     status,
     scored,
+    // How {@link foldCriteria} aggregates this measure across planes. `'worst'` everywhere but W3,
+    // whose board-ruled mean lives in {@link foldMean}. It is a property of the measure rather than
+    // a branch in the fold so that the one place that decides W3 is the one place that says so, and
+    // a second mean-folded measure needs no second branch.
+    fold,
     pass: status === "pass",
     insufficientReason: why,
   };
@@ -915,6 +975,10 @@ export function evaluateW3(samples, bandShares) {
         FLOORS.bandDeltaE,
         "min",
         {
+          // **The roster fold is the mean, by board ruling `fold_mean`** — see {@link foldMean}.
+          // This plane's own reading is unchanged by that ruling: still the closest of its
+          // qualifying adjacent pairs. What changed is one level up.
+          fold: "mean",
           // Zero qualifying pairs is the criterion having nothing to say, not the criterion failing.
           // A one-card world populates a single band, so no adjacent pair exists to compare — and
           // "≥ 10 for every such pair" over an empty set is vacuous, which is neither red nor green.
@@ -1697,21 +1761,156 @@ export function evaluateW5(sweep, roster, options) {
 }
 
 /**
+ * The mean fold — W3's, and W3's alone (board ruling `fold_mean`, card `7d3653f6`).
+ *
+ * ## Why W3 folds differently from every other criterion
+ *
+ * A worst-case fold is the right one wherever the per-plane reading is stable, because "every world
+ * clears the floor" is the claim §3.1 wants. W3's is not stable: a world's reading is already a
+ * **minimum over its band pairs**, so the roster fold was a minimum of minima, and a min of minima
+ * over a population that moves samples its own low tail. Measured over five identical full-roster
+ * sessions on one unchanged dataset (DEC-832): the fold spanned 0.4253–0.8005, a **1.88×** spread,
+ * and it scored **three different worlds** — so the criterion had no fixed subject and its colour
+ * was settled by the draw. Re-scoring the same per-world readings: mean **1.09×**, median 1.22×,
+ * p25 1.38×, p10 2.37× (worse than the min it would replace).
+ *
+ * ## What a mean costs, stated rather than glossed
+ *
+ * It buys reproducibility with exactly the property the worst-case fold had: **one degenerate world
+ * can no longer red the roster on its own.** That is a real loss and the board took it knowingly.
+ * Two things are owed in return, and both are here:
+ *
+ * 1. **The domain cannot be allowed to thin silently.** A mean over a subset is a different
+ *    statistic that reads in the same units — narrow the domain to the comfortable worlds and the
+ *    number goes *up*. So the fold takes the roster's expected denominator and **fails** when it
+ *    scores fewer worlds than that, rather than folding what it has. (A worst-case fold needed no
+ *    such rule: narrowing it can only raise it, and `scoredPlanes` is printed beside it.)
+ * 2. **The per-world readings are published** (`readings`), lowest first, so a roster mean can
+ *    always be taken apart by the next reader instead of being taken on trust.
+ *
+ * ## The verdict lives here, not on the plane
+ *
+ * A per-plane W3 measure still carries its own `status` against `FLOORS.bandDeltaE`, and on a floor
+ * derived from a **mean** roughly half the domain sits below it by construction. That per-plane
+ * verdict is not the criterion and this fold does not read it: `status` here comes from the mean
+ * against the bound, never from counting failing planes. A world below the roster floor is a world
+ * below the roster mean, not a failing world — see spec §3.1.
+ *
+ * `rosterDomain` is `{ expected, qualifying, label }` or `null` for a row that toured one subject.
+ * `null` reports `insufficient`: a roster statistic measured on one world is not a small version of
+ * itself, it is a different number, and scoring it against the roster's floor would red the
+ * `?art=off` sibling every composed control row is read against.
+ */
+function foldMean(template, all, real, rosterDomain) {
+  const readings = real
+    .map((entry) => ({ slug: entry.slug, value: entry.measure.value }))
+    .sort((a, b) => a.value - b.value);
+  const value =
+    readings.reduce((total, r) => total + r.value, 0) / readings.length;
+  const shared = {
+    ...template,
+    value,
+    foldKind: "mean",
+    readings,
+    worstPlane: readings[0].slug,
+    scoredPlanes: real.length,
+    insufficientPlanes: all.length - real.length,
+    expectedPlanes: rosterDomain?.expected?.scored ?? null,
+    expectedQualifyingPlanes: rosterDomain?.expected?.byShares ?? null,
+  };
+
+  if (rosterDomain === null) {
+    return {
+      ...shared,
+      status: "insufficient",
+      pass: false,
+      insufficientReason:
+        `${template.key} folds to the mean over the roster's domain; this row scored ` +
+        `${real.length} world${real.length === 1 ? "" : "s"} and is not a roster tour`,
+    };
+  }
+
+  // Both halves of the denominator, checked separately, because they fail for different reasons and
+  // a message naming the wrong one costs a tour. `expected.scored` is the dataset's recorded domain
+  // size — it catches a tour that visited fewer worlds (a crash, `--tour-limit`, a truncated order)
+  // or a world that lost a band at the pose, neither of which the run's own data can see: eight
+  // worlds toured would report eight of everything. `expected.byShares` is a pure function of the
+  // dataset, so it catches the dataset moving under the record even when the scored count lands on
+  // the same number again.
+  //
+  // **A mismatch in either direction is a fault, and `scored` above the record is not good news.**
+  // The floor was derived over a domain of a stated size; a mean over a larger one is a different
+  // statistic in the same units, exactly as a mean over a smaller one is.
+  const faults = [];
+  if (rosterDomain.expected === null) {
+    faults.push(
+      `no W3 domain size is recorded for ${rosterDomain.label} — a roster mean may not be scored ` +
+        `against a floor derived on a roster nobody wrote down`,
+    );
+  } else if (real.length !== rosterDomain.expected.scored) {
+    faults.push(
+      `scored ${real.length} of the ${rosterDomain.expected.scored} worlds ${rosterDomain.label} ` +
+        `puts in domain — a mean over a domain that is not the one the floor was derived on is a ` +
+        `different statistic in the same units`,
+    );
+  }
+  if (
+    rosterDomain.qualifying !== null &&
+    rosterDomain.expected !== null &&
+    rosterDomain.qualifying !== rosterDomain.expected.byShares
+  ) {
+    faults.push(
+      `${rosterDomain.qualifying} worlds qualify by band share against the ` +
+        `${rosterDomain.expected.byShares} recorded for ${rosterDomain.label} — the dataset has ` +
+        `moved under the record; re-derive the floor before trusting this number`,
+    );
+  }
+
+  const status =
+    faults.length > 0
+      ? "fail"
+      : (
+            template.direction === "min"
+              ? value >= template.bound
+              : value <= template.bound
+          )
+        ? "pass"
+        : "fail";
+  return {
+    ...shared,
+    status,
+    pass: status === "pass",
+    qualifyingPlanes: rosterDomain.qualifying,
+    domainFaults: faults,
+  };
+}
+
+/**
  * Fold one criterion measured on many planes into the criterion for the roster.
  *
  * W1 aggregates itself — its verdict is the worst plane, and `evaluateW1` takes every plane at
- * once. W2, W3 and W4 are per-plane, and §3.1 is explicit that they must stay that way: "a whole-
+ * once. W2 and W4 are per-plane, and §3.1 is explicit that they must stay that way: "a whole-
  * multiverse aggregate quietly averaging over them" is exactly what cannot catch a single
- * degenerate world. So the fold is a worst-case over planes and never a mean, and `insufficient`
+ * degenerate world. So their fold is a worst-case over planes and never a mean, and `insufficient`
  * is carried rather than counted as a pass — an `n/a` that is invisible is how a gate comes to
  * measure nothing while printing green.
+ *
+ * **W3 is the exception, by board ruling `fold_mean` (card `7d3653f6`, 2026-09-17).** Its measure
+ * carries `fold: 'mean'` and is folded by {@link foldMean}; everything above is why that is a
+ * deliberate exception and not a relaxation of the rule. See {@link foldMean} for the argument the
+ * board ruled on and for what a mean costs.
+ *
+ * `rosterDomain` is the roster tour's own denominator, or `null` when the row toured a subject
+ * rather than the roster. It is only read by mean-folded measures, because only they have a
+ * denominator that can be silently thinned: a worst-case fold over a narrowed domain can only move
+ * *up*, and `checkControlRow` already prints `scoredPlanes` beside it.
  *
  * **It publishes its own denominator** (`scoredPlanes`), which `checkControlRow` prints. Carrying
  * only `insufficientPlanes` was the wrong half: after the ring domain landed (DEC-816 R3) W2's
  * lightness half folds off 2 of the 45 worlds, and a GREEN taken over two worlds must not print the
  * same line as a GREEN taken over forty-five.
  */
-export function foldCriteria(perPlane) {
+export function foldCriteria(perPlane, { rosterDomain = null } = {}) {
   const measured = perPlane.filter((entry) => entry.criterion !== null);
   if (measured.length === 0) return null;
   const first = measured[0].criterion;
@@ -1740,6 +1939,7 @@ export function foldCriteria(perPlane) {
         scoredPlanes: 0,
       };
     }
+    if (template.fold === "mean") return foldMean(template, all, real, rosterDomain);
     // "Worst" is the direction the floor binds in: the smallest value under a `min` bound, the
     // largest under a `max` one. A fold that took the mean would let 44 comfortable worlds carry
     // one failing world over the line.
@@ -1836,11 +2036,22 @@ export function checkControlRow(
   // rather than gaining a fictional "1 of 1".
   // Suppressed on `N/A`, where `insufficientReason` already spells out "every plane was out of
   // domain (N planes)" — two spellings of one fact read as two facts.
+  //
+  // A mean-folded measure says so and prints its **expected** denominator beside its actual one.
+  // "worst of 28 worlds" and "mean of 28 worlds" are different claims about the same number, and a
+  // mean that is one world short is the failure mode the expectation exists to catch — so the line
+  // carries both counts even when they agree, and names the world holding the low end rather than
+  // calling it "worst", which under a mean it is not.
   const domain =
     went !== "N/A" && typeof subject.scoredPlanes === "number"
-      ? `, worst of ${subject.scoredPlanes} world${subject.scoredPlanes === 1 ? "" : "s"} in domain` +
-        `${subject.worstPlane === null ? "" : ` (${subject.worstPlane})`}` +
-        `${subject.insufficientPlanes ? `, ${subject.insufficientPlanes} out of domain` : ""}`
+      ? subject.foldKind === "mean"
+        ? `, mean of ${subject.scoredPlanes} of ${subject.expectedPlanes ?? "?"} worlds in domain` +
+          `${subject.worstPlane === null ? "" : `, lowest ${subject.worstPlane}`}` +
+          `${subject.insufficientPlanes ? `, ${subject.insufficientPlanes} out of domain` : ""}` +
+          `${subject.domainFaults?.length ? ` — ${subject.domainFaults.join("; ")}` : ""}`
+        : `, worst of ${subject.scoredPlanes} world${subject.scoredPlanes === 1 ? "" : "s"} in domain` +
+          `${subject.worstPlane === null ? "" : ` (${subject.worstPlane})`}` +
+          `${subject.insufficientPlanes ? `, ${subject.insufficientPlanes} out of domain` : ""}`
       : "";
 
   return {

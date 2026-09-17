@@ -25,6 +25,8 @@ import {
   W2_MIN_RING_SAMPLES,
   W2_CONTROL_SUBJECT_MIN_RING,
   W3_MIN_BAND_SHARE,
+  W3_DOMAIN_SIZE,
+  w3QualifiesByShares,
   checkControlRow,
   deltaE76,
   deltaEab,
@@ -791,9 +793,15 @@ describe("W3 — latitude reads as colour", () => {
   });
 
   // The floor comparison itself, which the collapse row above deliberately no longer carries. Two
-  // adjacent bands of one flat colour each, chosen to straddle `FLOORS.bandDeltaE`: one pair 27%
-  // under it, one 157% over. Both rows matter — the RED one alone cannot tell a working comparison
-  // from a criterion that reds on everything.
+  // adjacent bands of one flat colour each, chosen to straddle `FLOORS.bandDeltaE`. Both rows
+  // matter — the RED one alone cannot tell a working comparison from a criterion that reds on
+  // everything.
+  //
+  // **The colours were re-picked when the floor moved to the mean fold (DEC-836), which is the third
+  // row below doing its job.** It failed loudly on the new floor rather than letting both rows drift
+  // to the same side, which is what "a two-sided test that had quietly become one-sided" looks like
+  // from the inside. The exact ΔE values stay pinned, because they are also the only place the
+  // a\*b\* distance itself is asserted against hand-computable input.
   const twoBands = (other: Rgb): CellSample[] => [
     ...Array.from({ length: 20 }, (_, i) => ({
       x: i,
@@ -819,24 +827,25 @@ describe("W3 — latitude reads as colour", () => {
   );
 
   it("reds a band pair that has converged below the floor", () => {
-    const w3 = evaluateW3(twoBands([121, 120, 120]), twoBandShares);
-    expect(w3.measures[0]?.value).toBeCloseTo(0.4016, 3);
+    const w3 = evaluateW3(twoBands([123, 120, 117]), twoBandShares);
+    expect(w3.measures[0]?.value).toBeCloseTo(2.1221, 3);
     expect(w3.pass).toBe(false);
   });
 
   it("greens the same pair once it separates — the floor is a threshold, not a veto", () => {
-    const w3 = evaluateW3(twoBands([122, 120, 118]), twoBandShares);
-    expect(w3.measures[0]?.value).toBeCloseTo(1.412, 3);
+    const w3 = evaluateW3(twoBands([126, 120, 114]), twoBandShares);
+    expect(w3.measures[0]?.value).toBeCloseTo(4.2683, 3);
     expect(w3.pass).toBe(true);
   });
 
   it("keeps those two fixtures straddling the floor", () => {
     // The precondition the pair above rests on. `FLOORS.bandDeltaE` is re-derived from the shipped
-    // swatches whenever they move (DEC-752), and a floor that drifted outside this bracket would
-    // send both rows the same way — leaving a two-sided test that had quietly become one-sided.
-    // This fails loudly and says to re-pick the colours instead.
-    expect(FLOORS.bandDeltaE).toBeGreaterThan(0.4016);
-    expect(FLOORS.bandDeltaE).toBeLessThan(1.412);
+    // swatches whenever they move (DEC-752, DEC-836), and a floor that drifted outside this bracket
+    // would send both rows the same way — leaving a two-sided test that had quietly become
+    // one-sided. This fails loudly and says to re-pick the colours instead, which is exactly what it
+    // did when the mean fold moved the floor from 0.55.
+    expect(FLOORS.bandDeltaE).toBeGreaterThan(2.1221);
+    expect(FLOORS.bandDeltaE).toBeLessThan(4.2683);
   });
 
   it("skips a pair whose smaller band is under the 5% share", () => {
@@ -885,6 +894,300 @@ describe("W3 — latitude reads as colour", () => {
     shares[6] = 0.5;
     const w3 = evaluateW3(grey, shares);
     expect(w3.pass).toBe(false);
+  });
+
+  /**
+   * **W3's roster fold — the mean, and the denominator that has to come with it.**
+   *
+   * Board ruling `fold_mean` (card `7d3653f6`, 2026-09-17) replaced the worst-world fold, which over
+   * five identical sessions spanned 1.88× and scored three different worlds. Every row here is about
+   * the two things a mean needs that a worst-case fold did not: its verdict must come from the mean
+   * itself, and its domain must not be allowed to thin — narrowing a mean *raises* it.
+   *
+   * The rosters are built by running the real `evaluateW3` over real samples, and the expected means
+   * are computed from the readings it produced. Hand-written expectations would agree with a fold
+   * that had stopped reading its input.
+   */
+  describe("the roster fold is the mean (board ruling `fold_mean`)", () => {
+    /**
+     * A tint at distance `k` from the grey band — a knob on the pair's ΔE, not a magic colour.
+     *
+     * `k` is continuous, and deliberately: the readings have to be placeable on either side of
+     * `FLOORS.bandDeltaE` wherever the next derivation puts it, and at integer steps the smallest
+     * tint available already reads 0.70. These are model samples feeding `srgbToLab`, which is
+     * defined on the reals; nothing here is claiming a framebuffer holds fractional channels.
+     */
+    const tint = (k: number): Rgb => [120 + k, 120, 120 - k];
+    const plane = (slug: string, k: number) => ({
+      slug,
+      criterion: evaluateW3(twoBands(tint(k)), twoBandShares),
+    });
+    const readingOf = (entry: { criterion: Criterion }) => entry.criterion.measures[0]!.value!;
+    /**
+     * A roster domain as the driver hands it over. `byShares` defaults **above** `scored`, because
+     * that is the shipped shape and not a corner case: on the production dataset 30 worlds qualify
+     * on their card distribution and 28 present both bands in the sampled cells. A fixture that let
+     * the two default to the same number is how the first draft of this guard came to require they
+     * be equal — and red every roster tour on the first one that ran it.
+     */
+    const domain = (
+      scored: number | null,
+      qualifying: number | null = scored === null ? null : scored + 2,
+      byShares: number | null = qualifying,
+    ) => ({
+      expected: scored === null ? null : { scored, byShares: byShares ?? scored },
+      qualifying,
+      label: "the test roster",
+    });
+    const w3MeasureOf = (folded: ReturnType<typeof foldCriteria>) =>
+      folded?.measures.find((m) => m.key === "minAdjacentBandDeltaE");
+
+    /**
+     * The tint whose pair first reaches `target` ΔE — so the fixture is placed relative to
+     * `FLOORS.bandDeltaE` and follows it when the swatches are refreshed and the floor re-derived.
+     * A roster pinned to fixed colours is how the two straddling rows above went one-sided when the
+     * floor moved from 10 to 0.55, which is a test still passing while measuring nothing.
+     */
+    const tintReaching = (target: number) => {
+      for (let k = 0.02; k <= 200; k += 0.02) {
+        if (evaluateW3(twoBands(tint(k)), twoBandShares).measures[0]!.value! >= target) return k;
+      }
+      throw new Error(`no tint in range reaches ΔE ${target} — re-pick the fixture`);
+    };
+
+    // Six worlds spread across the floor, so no row below can be satisfied by a roster of clones: a
+    // fold that minimised, maximised or took the first would all read differently here. Two sit
+    // under the floor and four over it, which is the shape a mean is defined on and a worst-world
+    // fold would have called RED.
+    const roster = [
+      plane("dim-1", tintReaching(FLOORS.bandDeltaE * 0.1)),
+      plane("dim-2", tintReaching(FLOORS.bandDeltaE * 0.4)),
+      plane("mid-1", tintReaching(FLOORS.bandDeltaE * 1.5)),
+      plane("mid-2", tintReaching(FLOORS.bandDeltaE * 2)),
+      plane("bright-1", tintReaching(FLOORS.bandDeltaE * 3)),
+      plane("bright-2", tintReaching(FLOORS.bandDeltaE * 4)),
+    ];
+    const readings = roster.map(readingOf);
+    const arithmeticMean = readings.reduce((a, b) => a + b, 0) / readings.length;
+
+    it("takes the mean of the per-world readings, and not the worst of them", () => {
+      const measure = w3MeasureOf(foldCriteria(roster, { rosterDomain: domain(6) }));
+      expect(measure?.value).toBeCloseTo(arithmeticMean, 10);
+      expect(measure?.foldKind).toBe("mean");
+      // The control that makes the row a reading rather than a coincidence: the roster really does
+      // hold a lower world and a higher one, so mean, min and max are three different numbers.
+      expect(Math.min(...readings)).toBeLessThan(arithmeticMean);
+      expect(Math.max(...readings)).toBeGreaterThan(arithmeticMean);
+      expect(measure?.value).not.toBeCloseTo(Math.min(...readings), 4);
+    });
+
+    it("scores the mean itself, never the count of worlds under the floor", () => {
+      // The substantive consequence of the ruling, and the one a careless fold would get wrong by
+      // keeping `status = fail if any plane failed`: on a floor derived from a *mean*, worlds below
+      // it are ordinary. This roster has some — asserted, so the row cannot pass vacuously.
+      const under = roster.filter((entry) => readingOf(entry) < FLOORS.bandDeltaE);
+      expect(under.length).toBeGreaterThan(0);
+      expect(under.some((entry) => entry.criterion.measures[0]?.status === "fail")).toBe(true);
+
+      const measure = w3MeasureOf(foldCriteria(roster, { rosterDomain: domain(6) }));
+      expect(measure?.value).toBeGreaterThan(FLOORS.bandDeltaE);
+      expect(measure?.status).toBe("pass");
+    });
+
+    it("reds a roster whose mean falls under the floor — the bound has to bind", () => {
+      // The other side of the row above, and it is not decoration: with only passing rosters in this
+      // file, replacing the comparison with `value >= 0` survives every one of them. A floor that is
+      // never approached from below is quoted rather than tested. This is the unit shape of the
+      // `w3-floor-control` tour, which is W3's only live falsifier.
+      const dim = [
+        plane("dim-a", tintReaching(FLOORS.bandDeltaE * 0.2)),
+        plane("dim-b", tintReaching(FLOORS.bandDeltaE * 0.4)),
+        plane("dim-c", tintReaching(FLOORS.bandDeltaE * 0.6)),
+      ];
+      const measure = w3MeasureOf(foldCriteria(dim, { rosterDomain: domain(3) }));
+      expect(measure?.value).toBeLessThan(FLOORS.bandDeltaE);
+      expect(measure?.status).toBe("fail");
+      // RED on the value, not on the denominator — the two failures must stay distinguishable.
+      expect(measure?.domainFaults).toEqual([]);
+    });
+
+    it("fails when it scored fewer worlds than the roster puts in domain", () => {
+      // **And the thinned roster's mean is HIGHER than the full one's**, which is the whole reason
+      // this check exists: dropping the low worlds improves a mean, so a fold that folded whatever
+      // arrived would report its best number on its worst evidence.
+      const thinned = roster.slice(2);
+      const thinnedMean = thinned.map(readingOf).reduce((a, b) => a + b, 0) / thinned.length;
+      expect(thinnedMean).toBeGreaterThan(arithmeticMean);
+
+      const measure = w3MeasureOf(
+        foldCriteria(thinned, { rosterDomain: domain(roster.length, thinned.length) }),
+      );
+      expect(measure?.value).toBeCloseTo(thinnedMean, 10);
+      expect(measure?.status).toBe("fail");
+      expect(measure?.domainFaults?.join(" ")).toContain("scored 4 of the 6 worlds");
+      // Not `insufficient`: the measurement happened, it is simply not comparable to the floor.
+      expect(measure?.status).not.toBe("insufficient");
+    });
+
+    it("still fails a short tour when the run cannot cross-check its own domain", () => {
+      // The recorded size is the half that catches a tour which *visited* too few worlds, and it has
+      // to bind on its own: a run whose payloads carry no band shares (an older `visits.json`, a
+      // probe without them) reports `qualifying: null`, and a check that leaned on the run's own
+      // count would go quiet exactly there — four worlds toured, four qualifying, four scored, green.
+      const measure = w3MeasureOf(
+        foldCriteria(roster.slice(2), { rosterDomain: domain(roster.length, null) }),
+      );
+      expect(measure?.status).toBe("fail");
+      expect(measure?.domainFaults?.join(" ")).toContain("scored 4 of the 6 worlds");
+      expect(measure?.qualifyingPlanes).toBeNull();
+    });
+
+    it("passes when more worlds qualify by share than the pose can score", () => {
+      // **The shipped shape, and the row that keeps the two counts from being conflated again.** A
+      // world whose cards qualify can still populate one band in the sampled cells — `shenmeng` and
+      // `zhalfir` do — so `byShares` is an upper bound on `scored`, never a second spelling of it.
+      // A guard that required them equal reds every correct roster tour.
+      const measure = w3MeasureOf(
+        foldCriteria(roster, { rosterDomain: domain(roster.length) }),
+      );
+      expect(measure?.qualifyingPlanes).toBe(roster.length + 2);
+      expect(measure?.expectedPlanes).toBe(roster.length);
+      expect(measure?.domainFaults).toEqual([]);
+      expect(measure?.status).toBe("pass");
+    });
+
+    it("fails when the run's own band shares disagree with what the dataset recorded", () => {
+      // The other half of the denominator, failing for a different reason: every world the tour
+      // visited was scored, and the *dataset* put a different number in W3's reach. `byShares` is a
+      // pure function of the band shares, so it is deterministic per refresh — which is what lets it
+      // catch a refresh that lands on the same scored count by coincidence.
+      const measure = w3MeasureOf(
+        foldCriteria(roster, {
+          rosterDomain: domain(roster.length, roster.length + 3, roster.length + 2),
+        }),
+      );
+      expect(measure?.status).toBe("fail");
+      expect(measure?.domainFaults?.join(" ")).toContain("qualify by band share");
+      expect(measure?.qualifyingPlanes).toBe(roster.length + 3);
+    });
+
+    it("fails a domain that GREW, not only one that thinned", () => {
+      // A mean over 29 worlds is not a better-evidenced mean over 28, it is a different statistic —
+      // and the floor was derived over the stated one. Asserted because "thinning" is the obvious
+      // half and a `<` comparison would look perfectly reasonable in review.
+      const measure = w3MeasureOf(
+        foldCriteria(roster, { rosterDomain: domain(roster.length - 1, roster.length + 1) }),
+      );
+      expect(measure?.status).toBe("fail");
+      expect(measure?.domainFaults?.join(" ")).toContain("scored 6 of the 5 worlds");
+    });
+
+    it("fails on a dataset with no recorded domain size rather than folding what it has", () => {
+      const measure = w3MeasureOf(foldCriteria(roster, { rosterDomain: domain(null, null) }));
+      expect(measure?.status).toBe("fail");
+      expect(measure?.domainFaults?.join(" ")).toContain("no W3 domain size is recorded");
+    });
+
+    it("reports insufficient on a row that toured one subject, not a one-world mean", () => {
+      // A roster statistic measured on one world is a different number, not a small version of the
+      // same one. Scored against the roster's floor it would red `?art=off` on dominaria — the
+      // sibling every composed control row is read against — for arithmetic rather than a defect.
+      const measure = w3MeasureOf(foldCriteria([roster[0]!], { rosterDomain: null }));
+      expect(measure?.status).toBe("insufficient");
+      expect(measure?.insufficientReason).toContain("is not a roster tour");
+      // The reading is still carried: `insufficient` here is about the fold, not about the world.
+      expect(measure?.value).toBeCloseTo(readings[0]!, 10);
+    });
+
+    it("publishes every reading it averaged, lowest first", () => {
+      const measure = w3MeasureOf(foldCriteria(roster, { rosterDomain: domain(6) }));
+      expect(measure?.readings?.map((r) => r.slug)).toEqual([
+        "dim-1",
+        "dim-2",
+        "mid-1",
+        "mid-2",
+        "bright-1",
+        "bright-2",
+      ]);
+      expect(measure?.readings?.map((r) => r.value)).toEqual(readings);
+    });
+
+    it("prints that it is a mean, with both denominators", () => {
+      const folded = foldCriteria(roster, { rosterDomain: domain(6) })!;
+      const detail = checkControlRow([folded], {
+        criterion: "W3",
+        measure: "minAdjacentBandDeltaE",
+        expect: "GREEN",
+      }).detail;
+      // "worst of 6 worlds" and "mean of 6 of 6 worlds" are different claims about one number, and
+      // the expected denominator beside the actual one is what makes a short tour visible.
+      expect(detail).toContain("mean of 6 of 6 worlds in domain");
+      expect(detail).not.toContain("worst of");
+    });
+
+    it("leaves every other criterion on the worst-world fold", () => {
+      // The ruling is about W3 alone. A `fold` flag that had drifted onto W2 would average away the
+      // single degenerate world §3.1 exists to catch, and nothing else in this file would notice.
+      expect(evaluateW3(twoBands(tint(6)), twoBandShares).measures[0]?.fold).toBe("mean");
+      const w2 = evaluateW2(
+        ringOf(W2_MIN_RING_SAMPLES, [
+          [110, 110, 110],
+          [140, 140, 140],
+        ]),
+      );
+      expect(w2.measures.length).toBeGreaterThan(0);
+      for (const measure of w2.measures) expect(measure.fold).toBe("worst");
+    });
+  });
+
+  /**
+   * The domain's dataset half, separated from its pose half — see `w3QualifiesByShares`.
+   *
+   * Swept across the 5% boundary rather than asserted at a point: a predicate pinned at one share
+   * would pass with the comparison inverted, or with the threshold anywhere below the sample.
+   */
+  describe("which worlds a dataset puts in W3's domain", () => {
+    const shares = (a: number, b: number) => {
+      const table = BAND_ORDER.map(() => 0);
+      table[5] = a;
+      table[6] = b;
+      return table;
+    };
+
+    it("qualifies a pair exactly at the share floor and refuses one just below", () => {
+      const step = 1e-9;
+      expect(w3QualifiesByShares(shares(W3_MIN_BAND_SHARE, 0.9))).toBe(true);
+      expect(w3QualifiesByShares(shares(W3_MIN_BAND_SHARE - step, 0.9))).toBe(false);
+      // The smaller side is what binds — swapping the two must not change the answer.
+      expect(w3QualifiesByShares(shares(0.9, W3_MIN_BAND_SHARE - step))).toBe(false);
+    });
+
+    it("refuses a plane whose only qualifying bands are not adjacent", () => {
+      // The two ice caps, at opposite poles. A predicate built from the class list rather than
+      // §1.3's band chain would call them a pair and put a one-band world in W3's domain.
+      const caps = BAND_ORDER.map(() => 0);
+      caps[0] = 0.5;
+      caps[BAND_ORDER.length - 1] = 0.5;
+      expect(w3QualifiesByShares(caps)).toBe(false);
+    });
+
+    it("refuses a plane with no shares at all rather than throwing", () => {
+      expect(w3QualifiesByShares(BAND_ORDER.map(() => 0))).toBe(false);
+      expect(w3QualifiesByShares(undefined)).toBe(false);
+    });
+
+    it("records both domain counts for the production dataset, and they differ", () => {
+      // The numbers themselves are evidence, not a claim this file can check — they are measured on
+      // the live roster. What is checkable here is that the dataset the gate ships against has them
+      // at all (an unrecorded dataset reds every roster fold, and discovering that after a
+      // fifteen-minute tour is the wrong time) and that they are **not** the same number, which is
+      // the mistake the first draft shipped: 30 worlds qualify on their cards, 28 present both bands
+      // in the sampled cells.
+      const recorded = W3_DOMAIN_SIZE["c9468f1125bcddff"]!;
+      expect(recorded.scored).toBe(28);
+      expect(recorded.byShares).toBe(30);
+      expect(recorded.byShares).toBeGreaterThan(recorded.scored);
+    });
   });
 });
 
