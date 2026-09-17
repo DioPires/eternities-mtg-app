@@ -50,6 +50,9 @@ import {
   foldCriteria,
   homeLabelCeiling,
   isLabelVisible,
+  // The same fold `evaluateW1` applies, imported rather than restated: the sweep picks the worst
+  // phase by the criterion's own statistic, and a local copy could drift from it silently.
+  median,
   poolHighWater,
   rowCellsFaults,
   w3QualifiesByShares,
@@ -90,6 +93,26 @@ const RADII_TOLERANCE = 0.02
 
 /** §3.1: W4 is read "after a 5 s settle". */
 const W4_SETTLE_S = 5
+
+/**
+ * How many phases a `spinSweep` row samples across one of its world's spin periods.
+ *
+ * The window is `spinPeriodS` — the world's own, read off `planes.json`, never a constant — so this
+ * is the comb's density and not its length. 24 over 172-247 s puts a sample every 7-10 s.
+ */
+const SPIN_SWEEP_SAMPLES = 24
+
+/**
+ * The least the cell's projected centre must travel across a `spinSweep` before the sweep is
+ * believed, in CSS px.
+ *
+ * **This is the whole difference between a family and a frozen frame, and on a one-cell world there
+ * is nothing else to check.** A world with many cells has a front-facing *set* whose turnover
+ * witnesses the rotation; a world with one cell has no set, so "the cell never faced the camera"
+ * and "the scene never moved" produce byte-identical readings. Segovia's cell swept 680 px over a
+ * 260 s hold, so 50 is two orders inside the live reading and still refuses a still frame.
+ */
+const SPIN_SWEEP_MIN_TRAVEL_PX = 50
 
 /**
  * W4's eviction window — **sampled until the pool plateaus and the tail settles, not for a fixed 3 s**
@@ -624,7 +647,134 @@ async function captureFrame(page, dir, name, slug = null) {
  * W2 and W3 are sampled on W4's frame, because that is the frame whose pixels are captured and
  * because pairing `shade` with a colour requires both to come from one moment.
  */
-async function visitWorld(page, world, { dir, captures, pose = SURFACE_RADII }) {
+/**
+ * Sample one world across a full turn of its own spin and return the **worst presenting** phase.
+ *
+ * > **Normative — a criterion defined on a cell that turns is a family, not a frame (DEC-752, F3).**
+ *
+ * The `one-card-world` row is what forced this and it is the third instance of one shape on this
+ * leg. W5 read a label count off one azimuth of a rotating disc; W1's per-world median read one
+ * draw of a spin family; and at n = 1 the world has a single cell whose normal is equatorial — all
+ * six one-card worlds store the same `(-1, 0, 0)` — so with `FACING_CUTOFF` at 0.12 it turns in and
+ * out of the facing cut once per `spinPeriodS`. Measured live on segovia over 260 s against a
+ * 175.8 s period: **front-facing on 18 of 64 samples, 28.1%**. A single-frame row scoring W1 there
+ * is a coin flip that lands red about seven times in ten, which is exactly how it behaved.
+ *
+ * Three decisions, each of which the obvious implementation gets wrong:
+ *
+ * 1. **The worst presenting phase, never the best, and never the first.** A loop that stopped the
+ *    moment the cell presented would select on the statistic it then scores — the cell is tallest
+ *    face-on, so stopping at a favourable phase greens a floor by choosing its own sample. The
+ *    whole window is swept and the lowest median is what W1 reads.
+ * 2. **Zero presenting phases is a hard failure with its own reason, not `N/A`.** If a one-card
+ *    world's only cell never faces the camera across a full turn, its card is unreachable and that
+ *    is a renderer defect — the hypothesis this sweep was built to rule out. Reporting it as "not
+ *    measured" would file the defect under the same word as the domain rules, which is the
+ *    distinction §3.1 spends a paragraph on.
+ * 3. **The sweep is wait-driven and the claim is an envelope, not an evenly-spaced comb.** There is
+ *    no per-world spin angle on the payload, so a comb would be derived from this script's own
+ *    clock. What *is* read back is the cell's projected centre, and it is read back for the reason
+ *    in {@link SPIN_SWEEP_MIN_TRAVEL_PX}: on a one-cell world it is the only witness that the
+ *    mosaic turned at all.
+ */
+async function sweepSpinPhase(page, slug, { dir, captures, periodS }) {
+  const samples = []
+  const started = Date.now()
+  const stepMs = Math.max(1000, Math.round((periodS * 1000) / SPIN_SWEEP_SAMPLES))
+  for (let i = 0; i < SPIN_SWEEP_SAMPLES; i += 1) {
+    // PRD 5.3.22 arms a 45 s idle timer that flies the camera and fades the labels, and this sweep
+    // runs for minutes. Without the heartbeat every sample after the first 45 s is taken at no pose
+    // at all. `pointermove` is what PRD 5.3.23 cancels on and, unlike `pointerdown`, is not the
+    // start of a drag.
+    await heartbeat(page)
+    const frame = await captureFrame(page, captures ? dir : null, `world-${slug}-phase${i}`, slug)
+    if (!frame.ok) return { ok: false, reason: frame.reason, detail: frame.detail }
+    const cells = frame.probe.cells
+    const front = cells.filter((c) => c.frontFacing)
+    samples.push({
+      t: +((Date.now() - started) / 1000).toFixed(2),
+      frame,
+      presented: front.length,
+      // **The leading edge of a presenting run is not a scorable frame, and this is the same rule
+      // as `W4_SETTLE_S` rather than a new one.** A cell that has just turned into the facing set
+      // is mid cross-fade — `ART_SHOWN_AT` is the fade *landing*, so `showingArt` is false for a
+      // beat after admission, by §1.6's design. Measured on segovia: of 18 presenting phases
+      // exactly one had `wantsArt` without `showingArt`, and it was the first sample of the run
+      // (t = 73.9 s); every later phase showed art. Scoring that frame would red the row for the
+      // renderer doing what it is specified to do. `settled` is therefore "the previous sample was
+      // presenting too", and the sweep's first sample can never be settled — there is no
+      // predecessor, and the cell may have turned in during the hold that preceded the sweep.
+      settled: front.length > 0 && samples.at(-1)?.presented > 0,
+      // The phase read-back. One cell has one centre; many cells have a first one, and either way
+      // this moves iff the mosaic turned relative to the camera.
+      x: cells[0]?.x ?? null,
+      medianHeightPx: median(front.map((c) => c.height)),
+    })
+    if (i < SPIN_SWEEP_SAMPLES - 1) await sleep(stepMs)
+  }
+
+  const xs = samples.map((s) => s.x).filter((x) => typeof x === 'number')
+  const travel = xs.length < 2 ? 0 : Math.max(...xs) - Math.min(...xs)
+  if (travel < SPIN_SWEEP_MIN_TRAVEL_PX) {
+    return {
+      ok: false,
+      reason: 'spin-sweep-frozen',
+      detail:
+        `the cell's projected centre moved ${travel.toFixed(1)} px over ${periodS.toFixed(1)} s, ` +
+        `below ${SPIN_SWEEP_MIN_TRAVEL_PX} — the sweep sampled one phase ${SPIN_SWEEP_SAMPLES} times, ` +
+        'so a verdict here would be a reading of the harness rather than of the world',
+    }
+  }
+
+  const presenting = samples.filter((s) => s.presented > 0 && s.medianHeightPx !== null)
+  if (presenting.length === 0) {
+    return {
+      ok: false,
+      reason: 'never-presented',
+      detail:
+        `no front-facing cell at any of ${samples.length} phases across a full ${periodS.toFixed(1)} s ` +
+        'spin, on a scene the travel check proves was turning — the world never shows its cards',
+    }
+  }
+
+  const scorable = presenting.filter((s) => s.settled)
+  if (scorable.length === 0) {
+    // Reachability held and there is still nothing to score: the comb is too coarse for this
+    // world's facing window, so every presenting phase is a leading edge. A **harness** defect, and
+    // it is reported as one rather than scored — passing on the unsettled frames would score the
+    // cross-fade, and failing on them would blame the renderer for the comb.
+    return {
+      ok: false,
+      reason: 'no-settled-phase',
+      detail:
+        `the cell presented at ${presenting.length} of ${samples.length} phases but never at two ` +
+        `consecutive ones, so every presenting frame is mid cross-fade — raise SPIN_SWEEP_SAMPLES ` +
+        `above ${SPIN_SWEEP_SAMPLES} for a ${periodS.toFixed(1)} s period`,
+    }
+  }
+
+  const worst = scorable.reduce((a, b) => (b.medianHeightPx < a.medianHeightPx ? b : a))
+  return {
+    ok: true,
+    frame: worst.frame,
+    sweep: {
+      periodS,
+      samples: samples.length,
+      // Reachability and scorability are reported apart on purpose: the gap between them is the
+      // cross-fade's width in samples, and a run where it grows is worth seeing.
+      presented: presenting.length,
+      scorable: scorable.length,
+      travelPx: travel,
+      atWorstPhaseS: worst.t,
+      medianHeightPx: {
+        worst: worst.medianHeightPx,
+        best: Math.max(...scorable.map((s) => s.medianHeightPx)),
+      },
+    },
+  }
+}
+
+async function visitWorld(page, world, { dir, captures, pose = SURFACE_RADII, spinSweep = false }) {
   const slug = world.slug
 
   // ---- the entry reading -----------------------------------------------------------------------
@@ -706,7 +856,7 @@ async function visitWorld(page, world, { dir, captures, pose = SURFACE_RADII }) 
     }
   }
   const settleRadii = atSettle.probe.radii
-  const settleCells = atSettle.probe.cells.map((c) => ({ height: c.height, frontFacing: c.frontFacing }))
+  let settleCells = atSettle.probe.cells.map((c) => ({ height: c.height, frontFacing: c.frontFacing }))
 
   // ---- the measurement pose --------------------------------------------------------------------
   // `pose` is the row's, not a constant. Two reasons it may not be hard-coded to the surface view:
@@ -726,7 +876,32 @@ async function visitWorld(page, world, { dir, captures, pose = SURFACE_RADII }) 
   }
   await hold(page, W4_SETTLE_S)
 
-  const frame = await captureFrame(page, captures ? dir : null, `world-${slug}`, slug)
+  // A row that sweeps takes its frame from the worst presenting phase of a full spin; every other
+  // row takes the one frame in front of it. See `sweepSpinPhase` for why the n = 1 row cannot be
+  // scored off an instant, and why "worst" rather than "first" is load-bearing.
+  let sweep = null
+  let frame
+  if (spinSweep) {
+    const swept = await sweepSpinPhase(page, slug, {
+      dir,
+      captures,
+      // The world's own period, off `planes.json`. A constant would sweep 172 s of a 247 s turn on
+      // `muraganda` and call the unvisited arc absent.
+      periodS: world.spinPeriodS,
+    })
+    if (!swept.ok) return { slug, ok: false, detail: `${swept.reason}: ${swept.detail}` }
+    frame = swept.frame
+    sweep = swept.sweep
+    // **W1 reads `settleCells`, so a swept row has to move them too, and forgetting this made the
+    // fix look like it had only half worked.** `evaluateW1` scores the settle unless a row sets
+    // `w1At: 'pose'`; the first cut of the sweep replaced the *pose* frame alone, so W4 began
+    // scoring a chosen phase while W1 went on reading the one instant the settle happened to land
+    // on — and still reported `N/A`. A swept row's pose **is** `settle`, so the swept frame is a
+    // settle frame at a chosen phase and this is the same reading, not a substitution.
+    settleCells = frame.probe.cells.map((c) => ({ height: c.height, frontFacing: c.frontFacing }))
+  } else {
+    frame = await captureFrame(page, captures ? dir : null, `world-${slug}`, slug)
+  }
   if (!frame.ok) return { slug, ok: false, detail: `${frame.reason}: ${frame.detail}` }
   const { probe, image } = frame
   // The settle-time reasoning applies again at the measurement pose, for the same reason and with
@@ -837,6 +1012,11 @@ async function visitWorld(page, world, { dir, captures, pose = SURFACE_RADII }) 
     streamDelta: streamDelta(entryStream, probe.stream),
     settleCells,
     poseCells: probe.cells.map((c) => ({ height: c.height, frontFacing: c.frontFacing })),
+    // `null` on every row that does not sweep — never an empty object, so a reader can tell a row
+    // that took one frame from a sweep that found one phase. Carries the travel check's reading and
+    // both ends of the family, so the margin a GREEN verdict actually had is on the record rather
+    // than being the one number the row happened to score.
+    spinSweep: sweep,
     // The samples W2 and W3 are computed from, kept so a verdict can be re-derived — and a floor or
     // a tolerance re-swept — without another GPU run. They are the expensive half of this gate:
     // every one is a pixel read out of a capture taken at an asserted pose.
@@ -1330,6 +1510,22 @@ const MATRIX = [
     // radius is small enough that the rig's near clamp bottoms out at ~3.9 radii, so 2.2 is
     // unreachable there and a row that insisted on it would report a setup failure for ever.
     pose: 'settle',
+    // **The row sweeps the world's own spin, and scoring it off one frame was a coin flip
+    // (DEC-752, F3).** A one-card world has exactly one cell, its normal is equatorial — all six
+    // store `(-1, 0, 0)` — and `FACING_CUTOFF` is 0.12, so the cell turns in and out of the facing
+    // cut once per `spinPeriodS`. Held live on segovia for 260 s against its 175.8 s period, the
+    // cell was front-facing on **18 of 64 samples (28.1%)**, with the scene's motion witnessed by
+    // the cell's own 680 px of travel. So the two GREEN expectations below were being drawn, not
+    // measured: the row failed here and in `controls1` and would have passed about three runs in
+    // ten. `sweepSpinPhase` scores the **worst** presenting phase, which is the half that stops the
+    // sweep from greening a floor by choosing its own sample.
+    //
+    // **The alternative was to expect `N/A` here, and it is wrong.** An all-`N/A` row would go
+    // green if the world stopped rendering entirely, which is the opposite of what a row called
+    // "the n = 1 extreme" is for. A cell that never presents across a full turn is now a named
+    // setup failure (`never-presented`), so the renderer defect this sweep was built to rule out
+    // still reds the row rather than being filed under the same word as the domain rules.
+    spinSweep: true,
     expect: [
       { criterion: 'W1', measure: 'minMedianCellHeightPx', expect: 'GREEN' },
       { criterion: 'W4', measure: 'artFraction', expect: 'GREEN' },
@@ -1511,6 +1707,7 @@ async function runRow(browser, url, row, { roster, args, baselineProbe }) {
         dir,
         captures: args.captures,
         pose: row.pose ?? SURFACE_RADII,
+        spinSweep: row.spinSweep === true,
       })
       visits.push(visit)
       if (!visit.ok) {

@@ -41,8 +41,17 @@ Recorded 2026-09-14. The choices were posed and answered independently, per the 
 
 ## What this does not decide
 
-- **Hardware validation is still owed.** The prototype was judged on the Mac; the Iris Xe / 780M
+- **Hardware validation is still owed — but it no longer gates the cutover (board ruling `waive`,
+  2026-09-17; DEC-752 ask `6d9da980`).** The prototype was judged on the Mac; the Iris Xe / 780M
   cost class (A far / B near) stays an estimate until the owner runs the W0.1 kit and returns the
   field reports. Wave 4 phase 4 re-measures against whatever Wave 0 baseline exists by then.
+
+  > **What the waiver did and did not do.** §3.2 condition 3 reads "the W0.1 Windows field reports
+  > confirm concept B's cost class on the Iris Xe and the 780M — **or** the owner explicitly waives
+  > the hardware gate". The owner took the second branch, so condition 3 is met and the galaxy may
+  > retire without the field reports. The *measurement* is unchanged in status: A-far/B-near is
+  > still an estimate from a Mac, and nothing in the worlds build has been validated on either
+  > part. A waiver is a decision to ship without the evidence, not evidence — do not cite this
+  > line as though the cost class had been confirmed.
 - **Cutover timing.** The galaxy ships until the worlds implementation passes its own acceptance
   gate; dataset refreshes in the interim still run `visual-gate.mjs` per `docs/refresh-runbook.md`.

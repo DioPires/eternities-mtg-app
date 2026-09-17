@@ -2720,6 +2720,42 @@ events; the focused card's tilt feels physical; and, new, **the tether reads as 
 > control, because the alternative readings (silently pass, silently skip) are both reachable and
 > both wrong.
 >
+> **Normative — this row sweeps the world's own spin, and a single frame cannot score it (DEC-752,
+> F3).** "Defined at n = 1" is true of the criteria and was false of the *frame*. A one-card world
+> has exactly one cell and its normal is equatorial — all six store `(-1, 0, 0)` in `stars.bin` —
+> so with `FACING_CUTOFF` at 0.12 it turns in and out of the facing cut once per `spinPeriodS`.
+> Held live through the shipped probe, the cell is front-facing on **18 of 64 phases (28.1%) on
+> `segovia`** over 260 s against its 175.8 s period, and **19 of 63 (30.2%) on `muraganda`** over
+> its 246.6 s one. A row reading one instant therefore drew its verdict about seven times in ten
+> red, which is how it behaved: it failed the `controls1` matrix and the cutover matrix alike, and
+> would have passed on another draw. The width of the family, not the renderer, was the finding.
+>
+> The repair is the one W5 took two criteria over, and for the same reason: what is invariant under
+> a rotation is **reachability**, never the instantaneous value. `sweepSpinPhase` samples a full
+> period and scores the **worst presenting phase** — never the first, and never the best, because a
+> loop that stopped when the cell appeared would select on the statistic it then scores and green a
+> floor by choosing its own sample. Three rules make that a measurement rather than a search:
+>
+> 1. **A phase is scorable only if the previous phase was presenting too.** The leading edge of a
+>    presenting run is mid cross-fade — `ART_SHOWN_AT` is the fade's *landing* — so `showingArt` is
+>    false there by §1.6's design. Exactly one of segovia's 18 presenting phases read `wantsArt`
+>    without `showingArt`, and it was the first sample of the run. Scoring it would red the row for
+>    the renderer doing what it is specified to do; this is `W4_SETTLE_S`'s rule, not a new one.
+> 2. **No presenting phase at all is a named failure (`never-presented`), not `N/A`.** A one-card
+>    world whose only cell never faces the camera across a full turn has an unreachable card, and
+>    that is the renderer defect this sweep was built to rule out. Filing it under the same word as
+>    the domain rules would hide it.
+> 3. **The sweep is refused unless the mosaic demonstrably turned.** A one-cell world has no
+>    front-facing *set* whose turnover witnesses the rotation, so "never front-facing" and "the
+>    scene never moved" are the same reading. The cell's own projected centre is the witness — it
+>    travelled 680 px on segovia — and below `SPIN_SWEEP_MIN_TRAVEL_PX` the row reports a harness
+>    fault rather than a verdict.
+>
+> The margin this buys is not marginal: at the worst *presenting* phase the cell measures **684.95
+> px** against W1's 24 px floor, and the height varies by under 1 px across the whole family. The
+> row was never close to failing W1 on the merits — it was failing on whether the frame contained
+> the cell at all.
+>
 > **This row does not assert that its world carries a label**, and that is deliberate. DEC-751
 > measured the six one-card worlds across azimuth: `muraganda` is labelled at 10 of 24, `shandalar`
 > at 11 of 24, `segovia` at 17 of 24, because `PlaneLabels.tsx:67` sets `priority: plane.cardCount`

@@ -8,6 +8,14 @@
  * which DEC-750 left open and off. This file measures both arms and turns the assumption into a
  * build error the day the flag moves (DEC-752, relay `03bfa906` item 4).
  *
+ * > **One row is now an exception, and it is the one where the family is not narrow (DEC-752, F3).**
+ * > The `one-card-world` row sweeps its world's own spin period and scores the worst *presenting*
+ * > phase, because at n = 1 the world has a single equatorial cell that is front-facing for only
+ * > ~28-30% of a turn — so there the question is not how wide the median's family is but whether
+ * > the frame contains the cell at all. That sweep does not weaken this file's precondition; it is
+ * > the same finding at the degenerate end of the roster, handled where a narrow-family argument
+ * > cannot reach. Every other row still takes one draw, and this file is what makes that sound.
+ *
  * > **The load-bearing assertion is a MEASUREMENT, not a pin on the boolean.** {@link sweepShipped}
  * > poses through {@link planeOrientation} — the product's single writer of `surface.orientation` —
  * > so flipping `APPLY_PLANE_TILT` changes what "shipped" *means* here and the width assertion reds
