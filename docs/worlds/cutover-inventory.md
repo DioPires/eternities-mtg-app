@@ -47,6 +47,15 @@ A directory-level delete takes the ring, and the ring is one of §3.2 condition 
 `cardShaders.ts` has importers on both sides (`focusedCard.ts` and `thumbnailTier.ts`), so it stays
 and loses whatever only the thumbnail tier used.
 
+**`planets.ts` is the trap in that table, and its own header is what sets it.** The header says
+"PRD 5.6.7-9: a card's printings, as planets orbiting it" — the presentation §6 **amends away** in
+this very PR ("printings as 72 orbiting spheres" → "a flat ring (§1.10)"), so read cold it looks
+like galaxy-era code to delete. It is not: §1.10's ring **reuses its arithmetic**.
+`focusedCard.ts:78` imports `planetLayout` and `planetPosition`, and `:834` says so in as many
+words — "PRD 5.6.7's orbiting printing, as §1.10's flat quad". The ring-per-24 layout, the 72 cap
+and the overflow count are all still that module's. **Cut by header text and the flat ring loses its
+layout.**
+
 ## 3. Shared files the delete **edits** rather than removes
 
 Each of these imports something on the "goes" list while also being on the worlds path, so the
