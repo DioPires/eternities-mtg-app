@@ -262,8 +262,27 @@ const MUTANTS = [
     // red. A constant's presence is not its value.
     name: 'M25 VACUITY CONTROL: the absolute floor is 8, just under the witness it exists to red',
     file: METRICS,
-    from: '  artCellsAbsolute: 64,',
+    from: '  artCellsAbsolute: 32,',
     to: '  artCellsAbsolute: 8,',
+  },
+  {
+    // **The defect the first 45-world acceptance tour found in this leg's own floor.** Set equal to
+    // the domain cut-off, the domain admits a frame at the instant it reaches the bound, so the
+    // worst in-domain reading is pinned just above the bound on every build — the tour read 65
+    // against 64, a 1.5% margin on a correct renderer. It reds nothing today and reds the roster
+    // tomorrow, which is the worst of both directions.
+    name: 'M30 the floor is raised to the domain cut-off, so no in-domain frame has margin',
+    file: METRICS,
+    from: '  artCellsAbsolute: 32,',
+    to: '  artCellsAbsolute: 128,',
+  },
+  {
+    // The other way to collapse the same gap: pull the domain down onto the floor. Same defect,
+    // and it also drags 20-odd small worlds into a domain where an absolute cell count says nothing.
+    name: 'M31 the domain opens at the floor instead of four times above it',
+    file: METRICS,
+    from: 'export const W4_STARVATION_DOMAIN_CELLS = SMALLEST_SHIPPED_POOL_LAYERS;',
+    to: 'export const W4_STARVATION_DOMAIN_CELLS = FLOORS.artCellsAbsolute;',
   },
   {
     // **The most plausible edit a later reader makes, and it switches the term off exactly where it
@@ -272,16 +291,16 @@ const MUTANTS = [
     // `insufficient` on the collapse it exists to catch. Same defect, one level up.
     name: 'M26 THE TIDY-UP: the absolute term takes its domain from the want set, not the geometry',
     file: METRICS,
-    from: '            noAdmission !== null || presented.length < FLOORS.artCellsAbsolute,',
-    to: '            noAdmission !== null || wanting.length < FLOORS.artCellsAbsolute,',
+    from: '            presented.length < W4_STARVATION_DOMAIN_CELLS,',
+    to: '            wanting.length < W4_STARVATION_DOMAIN_CELLS,',
   },
   {
     // `reported_only` applied to the wrong measure. The term would still print its red and colour
     // nothing, which is the shape `demandFitsCapacity` legitimately has and this one must not.
     name: 'M27 the absolute term is reported and not scored, so its RED cannot colour a row',
     file: METRICS,
-    from: '        {\n          insufficient:\n            noAdmission !== null || presented.length < FLOORS.artCellsAbsolute,',
-    to: '        {\n          scored: false,\n          insufficient:\n            noAdmission !== null || presented.length < FLOORS.artCellsAbsolute,',
+    from: '        {\n          insufficient:\n            noAdmission !== null ||',
+    to: '        {\n          scored: false,\n          insufficient:\n            noAdmission !== null ||',
   },
 ]
 

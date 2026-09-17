@@ -1878,9 +1878,47 @@ describe("W4 — art resolves without exhausting", () => {
       expect(fraction?.status).toBe("pass");
       // The absolute term is what sees it.
       expect(absolute?.value).toBe(14);
-      expect(absolute?.bound).toBe(64);
+      expect(absolute?.bound).toBe(32);
       expect(absolute?.status).toBe("fail");
       expect(starved.status).toBe("fail");
+    });
+
+    it("keeps the domain four times clear of the floor, so an entering frame has room", () => {
+      // **The defect the first acceptance tour found, and it was structural rather than unlucky.**
+      // With the floor and the domain cut-off both at 64, the domain admits a frame at the instant
+      // it reaches the bound — so the worst in-domain reading is pinned just above the bound however
+      // healthy the build is. The roster offers nowhere to put a cut-off that avoids this: its
+      // `presented` counts run 0, 1, 7, 15, 18, 26, 33, 61, 65, 66, 68, 69, 75, 77, 95 ... unbroken.
+      // Measured with both at 64, the 45-world tour read 65 against 64 — a 1.5% margin on a correct
+      // build, one cell of jitter from a red acceptance tour.
+      //
+      // The row is the worst frame that can *enter* the domain: presented exactly at the threshold,
+      // at dominaria's pool-limited 0.68 art ratio — the lowest of any in-domain world, and lower
+      // than a frame this size would really show, since nothing is pool-limited at 128 cells.
+      const worstEntrant = evaluateW4(
+        frameOf(128, 128, 87),
+        settled(0),
+        { layers: 1_024, resident: 1_024 },
+        FRESH_SESSION,
+        HEALTHY_EXIT,
+      );
+      const entering = worstEntrant.measures.find(
+        (m) => m.key === "artCellsShowing",
+      );
+      expect(entering?.status).toBe("pass");
+      // Not "it passes" — "it passes with room". At floor 64 this reads 1.36x, and a row that only
+      // checked the colour would have gone green on the defect the tour found.
+      expect(entering!.value! / entering!.bound).toBeGreaterThanOrEqual(2);
+      // One cell below the domain, the same frame is not scored at all.
+      expect(
+        evaluateW4(
+          frameOf(127, 127, 86),
+          settled(0),
+          { layers: 1_024, resident: 1_024 },
+          FRESH_SESSION,
+          HEALTHY_EXIT,
+        ).measures.find((m) => m.key === "artCellsShowing")?.status,
+      ).toBe("insufficient");
     });
 
     it("stays green on the healthy frames at both ends of the ladder", () => {
@@ -1907,11 +1945,14 @@ describe("W4 — art resolves without exhausting", () => {
           "pass",
         );
       }
-      // Named from both sides so the margin is on the record rather than implied: 4.6× above the
-      // witness that must red, ~2× below the tier-4 rung that must stay green.
+      // Named from every side so the margins are on the record rather than implied, and all four
+      // are measured readings: 14 is DEC-834's witness, 127 the live `?layers=128` row, 146 the
+      // worst in-domain world of the 45-world acceptance tour (forgotten-realms), 941 dominaria at
+      // the shipped pool.
       expect(tier4.measures.find((m) => m.key === "artCellsShowing")!.value!).toBe(126);
-      expect(126 / 64).toBeGreaterThan(1.9);
-      expect(64 / 14).toBeGreaterThan(4.5);
+      expect(32 / 14).toBeGreaterThan(2.2);
+      expect(127 / 32).toBeGreaterThan(3.9);
+      expect(146 / 32).toBeGreaterThan(4.5);
     });
 
     it("is out of domain on a frame too small to offer the floor, not red on it", () => {
@@ -2102,7 +2143,10 @@ describe("W4 — art resolves without exhausting", () => {
     // The exclusion must actually be doing work, or this row is vacuous like the ones above it.
     expect(w4.wanting).toBeLessThan(cells.length);
     expect(w4.measures.find((m) => m.key === "artFraction")?.value).toBe(1);
-    expect(w4.pass).toBe(true);
+    // The art half, not the criterion: 90 presented cells sit below `artCellsShowing`'s domain, so
+    // W4's own status here is `insufficient`, and asserting it would turn this into a test of that
+    // domain instead of the denominator exclusion the row is about.
+    expect(w4.measures.find((m) => m.key === "artFraction")?.status).toBe("pass");
   });
 
   it("excludes off-screen cells from the denominator, the half no live control row can reach", () => {
@@ -2127,7 +2171,10 @@ describe("W4 — art resolves without exhausting", () => {
     expect(w4.showing).toBe(90);
     expect(w4.wanting).toBeLessThan(cells.length);
     expect(w4.measures.find((m) => m.key === "artFraction")?.value).toBe(1);
-    expect(w4.pass).toBe(true);
+    // The art half, not the criterion: 90 presented cells sit below `artCellsShowing`'s domain, so
+    // W4's own status here is `insufficient`, and asserting it would turn this into a test of that
+    // domain instead of the denominator exclusion the row is about.
+    expect(w4.measures.find((m) => m.key === "artFraction")?.status).toBe("pass");
   });
 
   /**

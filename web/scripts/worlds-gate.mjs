@@ -908,9 +908,12 @@ const MATRIX = [
       // `evictionsPerSecond` notes in `lib/worlds-metrics.mjs` and the unit rows that pin the bound's
       // ability to bind, which no live seam can produce.
       { criterion: 'W4', measure: 'evictionsPerSecond', expect: 'GREEN' },
-      // The absolute no-starvation term (ruling `bd5c9aad`, N2). Baseline shows ~942 cells of art
-      // against a floor of 64, so this row is nowhere near it — which is the point of asserting it
-      // here: the term must be *green on a healthy build* or it is not a control, it is a tripwire.
+      // The absolute no-starvation term (ruling `bd5c9aad`, N2). **This row is the one that caught
+      // the floor's first value.** With floor and domain cut-off both at 64 the tour read 65 against
+      // 64 — a 1.5% margin on a correct renderer, because a domain opening *at* the floor pins its
+      // own worst reading just above it. At 32 against a 128-cell domain the worst in-domain world
+      // (forgotten-realms, 146) clears by 4.6x. A term must be green on a healthy build with room,
+      // or it is not a control but a tripwire.
       { criterion: 'W4', measure: 'artCellsShowing', expect: 'GREEN' },
     ],
   },
@@ -1061,10 +1064,10 @@ const MATRIX = [
       // as a green eviction half would let the gate certify, as good behaviour, the one thing the
       // other half of W4 exists to forbid. The bound is derived at 1,024 and is scored there alone.
       { criterion: 'W4', measure: 'evictionsPerSecond', expect: 'N/A' },
-      // The tier-4 rung is where the absolute term is closest to binding on a *healthy* build —
-      // ~126 cells of art against a floor of 64 — so this is the row that says the floor leaves the
-      // smallest shipped pool room to pass. The witness it must red (14 cells, want set collapsed
-      // under reduced motion) is unreachable from a query seam; it is pinned in the unit rows.
+      // The tier-4 rung is where the absolute term is closest to binding on a *healthy* build among
+      // the live rows — ~127 cells of art against a floor of 32 — so this is the row that says the
+      // floor leaves the smallest shipped pool room to pass. The witness it must red (14 cells, want
+      // set collapsed under reduced motion) is unreachable from a query seam; it is in the unit rows.
       { criterion: 'W4', measure: 'artCellsShowing', expect: 'GREEN' },
       // **The overshoot the reachable bar forgives, asserted so it cannot go quiet.** Ruling
       // `demand_measure_scored` is `reported_only`, so this measure cannot colour the row — which
@@ -1150,10 +1153,10 @@ const MATRIX = [
       // control, because both alternative readings — silently pass, silently skip — are wrong.
       { criterion: 'W2', measure: 'medianNeighbourDeltaE', expect: 'N/A' },
       { criterion: 'W3', measure: 'minAdjacentBandDeltaE', expect: 'N/A' },
-      // **The absolute no-starvation term's domain, asserted at the extreme that defines it.** A
-      // floor of "64 cells must be showing art" is the one shape of bound a one-card world can never
-      // clear, so the term is scored only where the frame is *geometrically* able to offer 64
-      // front-facing on-screen cells. Segovia offers one. Asserting the `N/A` here is what stops the
+      // **The absolute no-starvation term's domain, asserted at the extreme that defines it.** An
+      // absolute count of cells showing art is the one shape of bound a one-card world can never
+      // clear, so the term is scored only where the frame is *geometrically* able to present 128
+      // front-facing on-screen cells. Segovia presents one. Asserting the `N/A` here is what stops the
       // domain from later being written off `wanting` — the want set is the adaptive threshold's
       // output, and a term whose domain the policy chooses is the collapse this term exists to
       // catch, one level up. `artFraction` above still scores this world, as it is defined at n = 1.

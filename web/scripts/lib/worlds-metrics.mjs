@@ -219,25 +219,34 @@ export const FLOORS = {
    * `artFraction`'s denominator is chosen by the very policy W4 is grading. See
    * `a-ratio-is-blind-to-its-own-denominator`.
    *
-   * ## Why 64, and why it is a constant rather than a function of the pool
+   * ## Why 32, and why it is a constant rather than a function of the pool
    *
-   * 64 is `SMALLEST_SHIPPED_POOL_LAYERS / 2`, fixed here at write time: *a frame with enough cells to
-   * fill the smallest pool the renderer ships must be drawing art in at least half that many.* It is
-   * deliberately **not** re-derived per run from `pool.layers` or from `wanting`, because both are
-   * outputs of the policy under test — a bound computed from the measured quantity passes at every
-   * input, which is the vacuity `absolute_floor` was raised to close one measure over
+   * 32 is `SMALLEST_SHIPPED_POOL_LAYERS / 4`, fixed here at write time: *a frame with enough cells to
+   * fill the smallest pool the renderer ships must be drawing art in at least a quarter of that
+   * many.* It is deliberately **not** re-derived per run from `pool.layers` or from `wanting`,
+   * because both are outputs of the policy under test — a bound computed from the measured quantity
+   * passes at every input, which is the vacuity `absolute_floor` was raised to close one measure over
    * (`a-bound-derived-from-the-measured-quantity-cannot-bind`).
    *
-   * It sits between the two readings it has to separate, with room on both sides: **4.6× above** the
-   * 14-cell witness that must red, and **~2× below** the healthy tier-4 rung (≈126 of 205 cells
-   * showing art at 128 layers with motion on, DEC-834) that must stay green. The shipped 1,024-layer
-   * baseline reads ~942 and is nowhere near it.
+   * **The floor and {@link W4_STARVATION_DOMAIN_CELLS} are different numbers, and the first draft's
+   * defect was that they were the same one.** Set equal, the domain admits a frame at the instant it
+   * reaches the floor, so the worst in-domain reading is *always* pinned just above the bound however
+   * healthy the build is — and the roster has no gap to hide in, its `presented` counts running
+   * 0, 1, 7, 15, 18, 26, 33, 61, **65**, 66, 68, … in an unbroken line. Measured: the first full
+   * acceptance tour with floor and domain both at 64 read **65 against 64 — a 1.5% margin** on a
+   * correct build, one cell of jitter from a red acceptance tour.
    *
-   * The domain is the frame's **geometry** — how many cells are front-facing and on screen — and
-   * geometry is not something the art policy gets a vote on. A one-card world offers one cell and is
-   * out of domain; it is scored by W1 and by `artFraction`, both of which are defined at n = 1.
+   * With the domain at 128 and the floor at 32 the term sits between the readings it separates with
+   * room on every side, all four measured rather than argued:
+   *
+   * | reading | value | vs 32 |
+   * |---|---|---|
+   * | the witness that must RED (want set collapsed to 14) | 14 | **2.3× below** |
+   * | healthy tier-4 rung, `?layers=128` | 127 | 4.0× above |
+   * | worst in-domain world of the 45-world tour (forgotten-realms) | 146 | **4.6× above** |
+   * | shipped 1,024-layer baseline, dominaria | 941 | 29× above |
    */
-  artCellsAbsolute: 64,
+  artCellsAbsolute: 32,
 };
 
 /**
@@ -1194,6 +1203,31 @@ export function poolHighWater(samples) {
 export const SMALLEST_SHIPPED_POOL_LAYERS = 128;
 
 /**
+ * How many front-facing on-screen cells a frame must present before the absolute no-starvation term
+ * ({@link FLOORS}`.artCellsAbsolute`) is scored on it.
+ *
+ * **The domain is the frame's geometry, and that is the whole reason the term works.** `wantsArt` is
+ * the adaptive threshold's output and `showingArt` is the pool's; a domain written from either would
+ * let the policy under test decide whether it is graded — which is exactly the collapse the term
+ * exists to catch, re-introduced one level up. Where the camera is, and how many cells that puts in
+ * front of it, is not something the art policy gets a vote on.
+ *
+ * **It is four times the floor, deliberately, and the first draft had the two equal.** A domain that
+ * opens at the floor admits a frame at the instant it reaches the bound, so the worst in-domain
+ * reading is pinned just above the bound on every build, healthy or not. The roster offers no gap to
+ * put the cut-off in — `presented` runs 0, 1, 7, 15, 18, 26, 33, 61, 65, 66, 68, 69, 75, 77, 95, …
+ * unbroken — so the separation has to be built in rather than found. Measured with both at 64, the
+ * acceptance tour read **65 against 64**.
+ *
+ * 128 is `SMALLEST_SHIPPED_POOL_LAYERS`: a frame presenting at least as many cells as the smallest
+ * pool the renderer ships can hold. On the 45-world roster that is **13 worlds**, from
+ * forgotten-realms at 147 up to dominaria at 1,383 — which is also the right coverage, because
+ * threshold starvation is a large-world phenomenon and a nine-cell world has nothing to starve.
+ * The other 32 are `insufficient`, and `artFraction` scores them, being defined at n = 1.
+ */
+export const W4_STARVATION_DOMAIN_CELLS = SMALLEST_SHIPPED_POOL_LAYERS;
+
+/**
  * W4's eviction rate, measured on the **fill-excluded tail** and scored for its own convergence.
  *
  * Board ruling on DEC-833 card `bd5c9aad`, option (a). A cold pool's first `layers` admissions are
@@ -1664,14 +1698,16 @@ export function evaluateW4(cells, evictionTimeline, pool, entryStream, exitStrea
         "min",
         {
           insufficient:
-            noAdmission !== null || presented.length < FLOORS.artCellsAbsolute,
+            noAdmission !== null ||
+            presented.length < W4_STARVATION_DOMAIN_CELLS,
           why:
             noAdmission ??
-            (presented.length < FLOORS.artCellsAbsolute
-              ? `only ${presented.length} cells are front-facing and on screen, fewer than the ` +
-                `${FLOORS.artCellsAbsolute} this term requires to be showing art, so the frame ` +
-                `cannot clear it however the policy behaves. A one-card world is the extreme of ` +
-                `this and is scored by W1 and artFraction, which are defined at n = 1.`
+            (presented.length < W4_STARVATION_DOMAIN_CELLS
+              ? `only ${presented.length} cells are front-facing and on screen, below the ` +
+                `${W4_STARVATION_DOMAIN_CELLS} this term needs before an absolute count of cells ` +
+                `showing art means anything — a frame with little on it has little to starve. A ` +
+                `one-card world is the extreme of this and is scored by W1 and artFraction, which ` +
+                `are defined at n = 1.`
               : null),
         },
       ),

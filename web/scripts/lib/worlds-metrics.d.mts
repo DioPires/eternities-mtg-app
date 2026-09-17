@@ -329,9 +329,10 @@ export declare const FLOORS: {
    */
   readonly evictionsPerSecond: number;
   /**
-   * The absolute count of cells showing art a frame must reach where it has that many front-facing
-   * on-screen cells to offer — the no-starvation term a ratio could not carry (DEC-834's 14-cell
-   * want set read `artFraction` 1.00).
+   * The absolute count of cells showing art a frame in `W4_STARVATION_DOMAIN_CELLS`'s domain must
+   * reach — the no-starvation term a ratio could not carry (DEC-834's 14-cell want set read
+   * `artFraction` 1.00). **A quarter of the domain threshold, never equal to it:** set equal, the
+   * worst in-domain reading is pinned just above the bound on every build.
    */
   readonly artCellsAbsolute: number;
 };
@@ -429,6 +430,12 @@ export declare function poolHighWater(
   samples: readonly EvictionSample[],
 ): PoolHighWater | null;
 export declare const SMALLEST_SHIPPED_POOL_LAYERS: number;
+/**
+ * Front-facing on-screen cells a frame must present before `artCellsShowing` is scored on it — the
+ * term's domain, taken from the frame's **geometry** and never from `wanting`, which the policy
+ * under test chooses. 13 of the 45 worlds on the shipped roster.
+ */
+export declare const W4_STARVATION_DOMAIN_CELLS: number;
 
 /**
  * W4's eviction rate on the fill-excluded tail, with the tail's own convergence scored.

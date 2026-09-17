@@ -1894,7 +1894,7 @@ an assertion there.
 | **W1** | **Cells are resolvable at framing distance.** | At the plane-level settle for each of `worldsWithCards` (**29** on the 87-plane roster, **45** on v3), the median on-screen height of front-facing cells; the verdict is the **worst** world, not the pooled median. Not the Blind Eternities: it has cards but no cell sheet (§1.8), so the statistic is undefined there — `planesWithCards` would be 30 / 46 and would include it. | **≥ 24 CSS px.** Binds on the largest plane: Dominaria **28.74** at its worst azimuth, at §1.3's framing distance — a **20% margin** (`[shipped]`, the arm the build renders; `[tilted]` it is Ravnica 25.21 and 5% — §1.3 on the two arms). |
 | **W2** | **The mosaic reads as tiles, not as a wash.** This is T7's replacement. | Sample the captured frame at the centre of every front-facing cell ≥ 6 px tall, convert to CIELAB. Report the median ΔE to a cell's nearest on-screen neighbour, and the interquartile range of L\* **across the iso-shade subset** — the cells whose reported `shade` lies within ±2.5% of the median shade. | **median neighbour ΔE ≥ 6** and **iso-shade IQR(L\*) ≥ 8**. |
 | **W3** | **Latitude reads as colour.** | Group the same samples by band. For every pair of bands adjacent **in §1.3's 13-band chain** (a chain, not a cycle: the two ice caps are its two ends and are the furthest apart of any pair) where the smaller holds ≥ 5% of the plane's cards, the ΔE between their mean a\*b\*. A world's own reading is the **closest** of its qualifying pairs; **the roster's is the mean of the per-world readings over W3's domain — 28 of the 45 worlds on `c9468f1125bcddff`** (board ruling `fold_mean`) — published with every reading and with the denominator beside it. | `FLOORS.bandDeltaE`, **derived on the mean and re-derivable** — see the amendment note below; the **≥ 10 for every such pair** this table published was never met by any build and is retired. A tour whose scored domain is **not exactly 28** is **RED on its denominator**, whatever its mean reads. |
-| **W4** | **Art resolves without exhausting.** | At the surface view (2.2× radius), after a 5 s settle: the fraction of on-screen front-facing cells above the effective threshold that are showing art, **the absolute count of cells showing art**, and evictions per second **on a fill-excluded tail** whose own second half agrees with it. **Demand as a multiple of pool capacity is reported alongside them and is not scored.** | **`artFraction ≥ max(0.9 × capacityCeiling, 0.5)`**, **`artCellsShowing ≥ 64`** where the frame offers 64 front-facing on-screen cells, and **≤ 21 evictions/s at the 1,024-layer pool alone** — see the two amendment notes below. The published flat **≥ 90%** is the bar only where demand fits the pool, and the published **≤ 5 evictions/s over the last 2 s** was unreachable by construction and is retired. |
+| **W4** | **Art resolves without exhausting.** | At the surface view (2.2× radius), after a 5 s settle: the fraction of on-screen front-facing cells above the effective threshold that are showing art, **the absolute count of cells showing art**, and evictions per second **on a fill-excluded tail** whose own second half agrees with it. **Demand as a multiple of pool capacity is reported alongside them and is not scored.** | **`artFraction ≥ max(0.9 × capacityCeiling, 0.5)`**, **`artCellsShowing ≥ 32`** where the frame presents at least 128 front-facing on-screen cells, and **≤ 21 evictions/s at the 1,024-layer pool alone** — see the two amendment notes below. The published flat **≥ 90%** is the bar only where demand fits the pool, and the published **≤ 5 evictions/s over the last 2 s** was unreachable by construction and is retired. |
 | **W5** | **The home view is not a wall of labels**, and every world is still reachable from it. | Two halves, both over a **sweep of ≥ 12 azimuths** — the home view is a family of frames, not a pose (see below). **Ceiling:** the worst-case count of plane labels **at opacity > 0.05** over the sweep; a node count is not a measurement here. **Reachability:** the number of `worldsWithCards` carrying no such label at **any** sampled azimuth, with those slugs named. | **Ceiling ≤ `worldsWithCards.length`** — **29** on the 87-plane roster and **45** on v3 (measured, not predicted — §1.2), derived from the dataset under test and never a literal. The belt is *not* added: it is in `planesWithCards` but `PlaneLabels.tsx:116` filters it by slug before projection (PRD 5.3.4), so it can never carry a label and `planesWithCards` would leave the ceiling one short of ever binding. **Reachability = 0 worlds.** Below 12 azimuths both halves report `insufficient`. |
 
 > **Normative — W4's art floor is a bar derived from pool capacity, not the flat 90% this table
@@ -2008,17 +2008,31 @@ an assertion there.
 > to **14 cells**; all 14 showed art, so `artFraction` read **1.00** — better than the healthy
 > baseline's 0.9968 — on a frame showing fourteen cells of art out of some two thousand on screen.
 >
-> The repair is **`artCellsShowing ≥ 64`**: the numerator, scored on its own against a fixed number.
-> 64 is `SMALLEST_SHIPPED_POOL_LAYERS / 2`, fixed at write time and deliberately *not* re-derived per
-> run from `pool.layers` or `wanting`, both of which are outputs of the policy being graded. It sits
-> **4.6× above** the 14-cell witness that must red and **~2× below** the healthy tier-4 rung (≈126 of
-> 205 cells showing art) that must stay green; the 1,024-layer baseline reads ~942.
+> The repair is **`artCellsShowing ≥ 32`**: the numerator, scored on its own against a fixed number.
+> 32 is `SMALLEST_SHIPPED_POOL_LAYERS / 4`, fixed at write time and deliberately *not* re-derived per
+> run from `pool.layers` or `wanting`, both of which are outputs of the policy being graded.
 >
-> **Its domain is the frame's geometry, not its want set** — the term is scored only where 64 cells
-> are front-facing and on screen. A domain written off `wanting` would have gone `insufficient` on
-> the starved frame, because `wanting` is 14 there: the collapse the term exists to catch would have
-> switched the term off. A one-card world is out of domain and is scored by W1 and `artFraction`,
-> both of which are defined at n = 1.
+> **Its domain is the frame's geometry, not its want set** — the term is scored only where **128**
+> cells are front-facing and on screen, 13 of the 45 worlds. A domain written off `wanting` would
+> have gone `insufficient` on the starved frame, because `wanting` is 14 there: the collapse the term
+> exists to catch would have switched the term off. The worlds below the cut-off are scored by W1 and
+> `artFraction`, both of which are defined at n = 1 — and threshold starvation is a large-world
+> phenomenon, so this is the coverage the term wants rather than a concession.
+>
+> **The floor and the domain cut-off are different numbers, and the first draft of this leg had them
+> equal at 64.** Set equal, the domain admits a frame at the instant it reaches the floor, so the
+> worst in-domain reading is pinned just above the bound **however healthy the build is** — and the
+> roster offers no gap to hide the cut-off in, its `presented` counts running
+> 0, 1, 7, 15, 18, 26, 33, 61, 65, 66, 68, 69, 75, 77, 95 … unbroken. Measured: the first full
+> acceptance tour read **65 against 64**, a 1.5% margin on a correct renderer. With the cut-off at
+> 128 and the floor at 32 the term sits clear on every side, all four figures measured:
+>
+> | reading | value | vs 32 |
+> |---|---|---|
+> | the witness that must RED (want set collapsed to 14) | 14 | **2.3× below** |
+> | healthy tier-4 rung, `?layers=128` | 127 | 4.0× above |
+> | worst in-domain world of the 45-world tour (forgotten-realms) | 146 | **4.6× above** |
+> | shipped 1,024-layer baseline, dominaria | 941 | 29× above |
 >
 > ### What this costs the matrix, stated rather than left to be discovered
 >
@@ -2312,7 +2326,7 @@ events; the focused card's tilt feels physical; and, new, **the tether reads as 
 | W4        | `evictionsPerSecond`, `artCellsShowing` | `?artThreshold=fixed24&layers=128` and `?layers=128` — the two rows that pin the **domain**: at 128 layers the eviction half must read `N/A` and not a comfortable green, and the absolute term must stay green on a healthy tier-4 frame | **N/A / GREEN** |
 | W5        | `homeLabels`                           | labels forced on for empty planes — suppression regressed; **66 – 77 over the sweep, _above_ the unmodified build's 33 – 42; see the note**                                 | **RED**   |
 | W5        | `worldsNeverLabelled`                  | **viewport 800×600** — collision pressure raised by the harness, not by a renderer seam; `thunder-junction` is labelled at **none** of 360 azimuths                         | **RED**   |
-| W1, W4    | `minMedianCellHeightPx`, `artFraction` | a **one-card world** (`?plane=segovia`) at its own settle — the n = 1 extreme, never rendered in any tracked dataset before v3. **Does not assert its label**; see the note. Its `artCellsShowing` asserts **N/A**: a frame offering one cell cannot clear a floor of 64, and that is domain, not failure | **GREEN** |
+| W1, W4    | `minMedianCellHeightPx`, `artFraction` | a **one-card world** (`?plane=segovia`) at its own settle — the n = 1 extreme, never rendered in any tracked dataset before v3. **Does not assert its label**; see the note. Its `artCellsShowing` asserts **N/A**: a frame presenting one cell is far below the 128 that term needs before an absolute count means anything, and that is domain, not failure | **GREEN** |
 | W4        | `artFraction`, `artCellsShowing`       | `?layers=128` — tier 4's pool, unmodified policy. **`evictionsPerSecond` is N/A here, not GREEN** (ruling `bd5c9aad`): 6.73/s is inside 21 only because the pool refuses ~4,670 wants/s, and recording that as a pass would certify the starvation the art half forbids | **GREEN** |
 | W5        | `worldsNeverLabelled`                  | **viewport 1920×1080** — the non-binding partner to the row above, differing in that one parameter                                                                          | **GREEN** |
 | all       | all                                    | the unmodified build on the v3 production dataset                                                                                                                           | **GREEN** |
