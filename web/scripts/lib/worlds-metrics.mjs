@@ -223,6 +223,11 @@ export const FLOORS = {
    * `artFraction`'s denominator is chosen by the very policy W4 is grading. See
    * `a-ratio-is-blind-to-its-own-denominator`.
    *
+   * **That witness is a live gate row since DEC-843**, not only a fixture: `layers-128-reduced`
+   * emulates the OS `prefers-reduced-motion` preference before `goto` — the input the app shell
+   * actually reads, where `?motion=0` is inert — and reads **14 against 32 RED while `artFraction`
+   * reads 1.00 GREEN on the same frame**. The two halves disagreeing there is the term's whole case.
+   *
    * ## Why 32, and why it is a constant rather than a function of the pool
    *
    * 32 is `SMALLEST_SHIPPED_POOL_LAYERS / 4`, fixed here at write time: *a frame with enough cells to
@@ -624,8 +629,44 @@ export const W4_EVICTION_MIN_TAIL_SAMPLES = 5;
  * The long-run instrument uses 2% on a byte rate differenced over 150 s. This is looser on purpose:
  * it scores an integer counter over a tail measured in tens of seconds, where one sample of
  * quantisation is already worth more than 2%. 10% is well inside the margin the bound itself carries
- * (18.1 → 21 is 15%) and well outside the drift a fill leaves behind — the 60 s baseline DEC-835
- * measured declined 5.4% *monotonically* across its tail and would be caught by this.
+ * (18.1 → 21 is 15%).
+ *
+ * ## What 10% on THIS statistic actually refuses, measured (DEC-843)
+ *
+ * **It is not a 10% bound on the trend, and the sentence that used to stand here said it was.** That
+ * sentence claimed the 5.4% monotone decline DEC-835 measured "would be caught by this". It would
+ * not. `drift` compares the tail's **own second half** against the **whole tail**, and on a tail
+ * declining linearly from `r0` to `r0(1-d)` those two means are `r0(1-¾d)` and `r0(1-½d)`, so
+ * `drift ≈ d/4` — the statistic reads about **a quarter** of the end-to-end decline it is bounding.
+ * `a-subwindow-drift-understates-the-trend-it-bounds`.
+ *
+ * Swept through this function on a saturated 1,024-layer timeline at the gate's cadence:
+ *
+ * | end-to-end decline | `drift` | `converged` |
+ * |---|---|---|
+ * | 5.4% (DEC-835's figure) | **1.41%** | **true** |
+ * | 10% | 2.50% | true |
+ * | 20% | 5.69% | true |
+ * | 30% | 8.80% | true |
+ * | 35% | 10.57% | false |
+ *
+ * The verdict flips at an end-to-end decline of **≈33%**, so **10% here is roughly a 33% tolerance
+ * on the trend**. That is still the right number for what this rule is for — refusing a *fill* read
+ * as a steady state, which is a factor-of-several error, not a few percent — but it must not be
+ * quoted as catching a few-percent settle. It does not.
+ *
+ * **DEC-835's 5.4% was caught by the long-run instrument's 2%, not by this.** Same statistic, same
+ * shape, different tolerance *and* a different decline profile: its published tail reads 1,461 KiB/s
+ * over t=6→60 against 1,395 over its own second half, a drift of **4.5%**, which 2% refuses and 10%
+ * would have accepted. Recomputed from the figures in `worlds-evict-longrun.mjs`'s header.
+ *
+ * **Known selection, recorded because it is one (DEC-843).** `worlds-gate.mjs`'s sampling loop
+ * breaks on `elapsed >= W4_EVICTION_MIN_S && evictionTail(timeline).converged` — it **stops on the
+ * statistic it then scores**, so the reading is taken at the first moment the tail looks settled and
+ * a loop that ran longer could read differently. It does not bite on dominaria today: the shipped
+ * row converges at drift 0.9% and scores 17.9 against a bound of 21, so the break is not near either
+ * boundary. It would bite on a world that hovered at the tolerance, and the symptom would be a rate
+ * that moves with `W4_EVICTION_MAX_S` rather than with the build.
  */
 export const W4_EVICTION_TAIL_CONVERGENCE = 0.1;
 
@@ -1282,8 +1323,12 @@ export const W4_STARVATION_DOMAIN_CELLS = SMALLEST_SHIPPED_POOL_LAYERS;
  * never a zero:** a pool that was never read and a pool that churned nothing are different findings,
  * and the criterion reports them differently.
  *
- * `samples` is {@link evictionRate}'s timeline: `[{ t, evictions, resident }]`, `t` in seconds,
- * `evictions` cumulative, ascending.
+ * `samples` is {@link evictionRate}'s timeline: `[{ t, evictions, resident, layers }]`, `t` in
+ * seconds, `evictions` cumulative, ascending. **`layers` is required on every sample, not optional**
+ * — the plateau is the climb to *saturation*, which is `resident` against that sample's own capacity,
+ * and a sample missing either field is `unreadable` rather than a settled zero. M29 in
+ * `mutate-w4-split.mjs` exists to defend exactly that, so the two spellings have to agree (this
+ * docblock said `[{ t, evictions, resident }]` until DEC-843).
  */
 export function evictionTail(
   samples,

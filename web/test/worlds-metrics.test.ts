@@ -3602,14 +3602,27 @@ describe("the negative-control matrix", () => {
       measure: "evictionsPerSecond",
       expect: "N/A",
     },
-    // The absolute no-starvation term (ruling `bd5c9aad`, N2). Same shape as the row above: its
-    // witness is a want set collapsed under reduced motion, which `?motion=0` cannot produce on the
-    // shell, so the RED lives in the unit rows and the matrix carries its GREEN partners.
+    // The absolute no-starvation term's domain, asserted at the extreme that defines it: a frame
+    // presenting one cell is far below the 128 the term needs before an absolute count means
+    // anything, and that is domain rather than failure.
     {
       row: "W4 · one-card world (absolute art term)",
       criterion: "W4",
       measure: "artCellsShowing",
       expect: "N/A",
+    },
+    // **The absolute term's live RED (DEC-843), and this row is why the count above moved.** It used
+    // to say the term's witness — a want set collapsed under reduced motion — was unreachable
+    // because `?motion=0` is inert on the shell. True of that seam, and the matrix is not restricted
+    // to query seams: `layers-128-reduced` emulates the OS preference before `goto`, exactly as
+    // `worlds-evict-longrun.mjs` does, and reads 14 cells against the floor of 32 on a frame
+    // presenting 1,388. Its read-back is asserted in both directions against the unseamed
+    // `?layers=128` sibling — `a-control-that-agrees-is-not-a-control-that-took`.
+    {
+      row: "W4 · prefers-reduced-motion at ?layers=128",
+      criterion: "W4",
+      measure: "artCellsShowing",
+      expect: "RED",
     },
     {
       row: "W4 · the unmodified build (absolute art term)",
@@ -3657,10 +3670,24 @@ describe("the negative-control matrix", () => {
     { row: "all · the unmodified build", criterion: "W2", expect: "GREEN" },
   ] as const;
 
-  it("has seven expected-RED rows, five expected-GREEN and four expected-N/A", () => {
-    expect(MATRIX.filter((r) => r.expect === "RED")).toHaveLength(7);
+  it("has eight expected-RED rows, five expected-GREEN and four expected-N/A", () => {
+    expect(MATRIX.filter((r) => r.expect === "RED")).toHaveLength(8);
     expect(MATRIX.filter((r) => r.expect === "GREEN")).toHaveLength(5);
     expect(MATRIX.filter((r) => r.expect === "N/A")).toHaveLength(4);
+  });
+
+  it("leaves W4's absolute art term a live RED row and a live GREEN partner", () => {
+    // DEC-843 closed a gap this file had recorded as permanent. A count alone would not have said
+    // which row moved, and an eighth RED could be any criterion's; this pins that the eighth is the
+    // one measure that had no live falsifier, and that it still has its healthy partner — a RED row
+    // on its own scores an always-red instrument exactly as well as a working one.
+    // `negative-controls-distinguish-guard-from-rubble`.
+    const cells = MATRIX.filter(
+      (r) => "measure" in r && r.measure === "artCellsShowing",
+    );
+    expect(cells.filter((r) => r.expect === "RED")).toHaveLength(1);
+    expect(cells.filter((r) => r.expect === "GREEN")).toHaveLength(1);
+    expect(cells.filter((r) => r.expect === "N/A")).toHaveLength(1);
   });
 
   it("gives every W5 half both a RED row and a GREEN partner", () => {

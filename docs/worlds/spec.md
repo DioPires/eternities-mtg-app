@@ -2001,6 +2001,25 @@ an assertion there.
 > therefore chosen by the pool rather than by the clock: it samples until the tail settles, up to a
 > cap, which costs the 44 worlds that never saturate almost nothing.
 >
+> **What the 10% tolerance refuses, corrected and measured (DEC-843, rider 3 of the DEC-841
+> review).** `W4_EVICTION_TAIL_CONVERGENCE`'s own docblock used to claim that the 5.4% monotone
+> decline quoted above "would be caught by this". It would not, and the correction matters because
+> the number is quoted as a settle bound. `drift` compares the tail's own second half against the
+> **whole** tail, and on a linear decline those two means differ by about **a quarter** of the
+> end-to-end trend — so a 10% tolerance on that statistic is roughly a **33%** tolerance on the
+> trend. Swept: 5.4% end-to-end reads drift 1.41% and converges, 20% reads 5.69% and converges, 30%
+> reads 8.80% and converges, 35% reads 10.57% and is refused. **DEC-835's 5.4% was caught by the
+> long-run instrument's 2%, not by this** — recomputed from its published tail, 1,461 KiB/s over
+> t = 6→60 against 1,395 over its own second half, a drift of 4.5%. The rule is still the right one
+> for what it guards (a fill read as a steady state is a factor-of-several error) and it must not be
+> quoted as catching a few-percent settle.
+>
+> **A known selection, recorded rather than removed.** The gate's sampling loop breaks on
+> `elapsed >= MIN && evictionTail(timeline).converged` — it stops on the statistic it then scores, so
+> the rate is read at the first moment the tail looks settled. It does not bite on dominaria today,
+> where drift is 0.9% and the value is 17.9 against 21, near neither boundary; the alternative is
+> burning the 45 s cap on every world, ~24 minutes a tour, to re-confirm settled zeros.
+>
 > ### Amendment — a pool that never filled is `insufficient`, not a passing 0 (DEC-842)
 >
 > Rider 1 of the DEC-841 review of PR #77, and it is the same argument as the capacity domain above
@@ -2082,14 +2101,37 @@ an assertion there.
 >
 > ### What this costs the matrix, stated rather than left to be discovered
 >
-> **The eviction half has no live expected-RED row, and the absolute term has no live expected-RED
-> row.** Exceeding 21/s needs a faster spin or a bigger roster and no query seam produces either;
-> collapsing the want set needs reduced motion, and **`?motion=0` is inert exactly on `?probe=shell`**
-> (it is read on `?probe=1`, `/bench` and `?selfcheck`, never by the app shell — which is what cost
-> DEC-752 its first conclusion). Both falsifiers are therefore **unit rows** in
-> `worlds-metrics.test.ts`, with their expected-GREEN partners live in the matrix. That is a real gap
-> in `--negative-controls` and it is named here for the same reason W3's is: a control that exists
-> only as a number in a comment is not a control.
+> **The eviction half has no live expected-RED row.** Exceeding 21/s needs a faster spin or a bigger
+> roster; `spinPeriodS` is dataset data (`src/data/types.ts:325`), so a live row there means a
+> fixture corpus, and a corpus change can retire a sibling control. That falsifier is therefore a
+> **unit row** in `worlds-metrics.test.ts` — *"still reds the same row when turnover climbs past the
+> new bound"* — with its expected-GREEN partner live in the matrix. It is a real gap in
+> `--negative-controls` and it is named here for the same reason W3's is: a control that exists only
+> as a number in a comment is not a control.
+>
+> **The absolute term's gap was closed by `layers-128-reduced` (DEC-843), and the argument that said
+> it could not be is worth keeping.** This section used to say the term's witness needed reduced
+> motion and that **`?motion=0` is inert exactly on `?probe=shell`** (it is read on `?probe=1`,
+> `/bench` and `?selfcheck`, never by the app shell — which is what cost DEC-752 its first
+> conclusion), and concluded from that to *no live row*. The premise is still true; the conclusion
+> never followed. **The matrix is not restricted to query seams** — `w5-narrow` moves a viewport and
+> `one-card-world` moves a pose, neither of which reaches the URL — and the mechanism was already in
+> this tree on this route: `worlds-evict-longrun.mjs` emulates the **OS preference** before `goto`,
+> which is the input `App.tsx`'s `useReducedMotion()` actually reads. `?motion=0` was the wrong seam,
+> not the only one. See the row below for what it measures.
+>
+> **Measured, and the reviewer's prediction was recorded before the row existed** (DEC-841 verdict
+> comment `b64059df`): `artCellsShowing` **14 against 32, RED**, in domain because dominaria presents
+> ~1,383 ≥ 128; `evictionsPerSecond` **N/A**, out of the capacity domain at 128 layers; `artFraction`
+> **GREEN at 1.00**. The live row read **14 / N/A / 1.00** on a frame presenting **1,388** — all
+> three as predicted, and the presented count 0.4% off. **The two halves of W4 disagreeing on that
+> one frame is the whole of this section's argument, now on the gate instead of in a comment.**
+>
+> **Both halves of its read-back were confirmed against their own defect.** Drop the
+> `emulateMediaFeatures` call and the row reads **123** cells, well above the floor, and the guard
+> reds it as `reduced-motion-did-not-take` rather than letting it report as a W4 regression; give
+> *every* page the preference and the unseamed `?layers=128` sibling reds as
+> `scene-frozen-without-the-seam`. `confirm-the-instrument-sees-the-defect`.
 >
 > **The gap is the two *bounds*, and since DEC-842 it is no longer the two domain rules.** Both of
 > the eviction half's domain rules are falsifiable live: `?layers=128` asserts `N/A` on the capacity
@@ -2374,10 +2416,13 @@ events; the focused card's tilt feels physical; and, new, **the tether reads as 
 | W2        | both measures                          | `?art=off` **alone** — the sibling the composed rows are read against, not the bare build                                                                                   | **GREEN** |
 | W3        | `minAdjacentBandDeltaE`                | `?art=off` **over the full tour** (`w3-floor-shipped`) — the shipped side of the same derivation, differing in the one seam                                                  | **GREEN** |
 | W4        | `artFraction`                          | `?artThreshold=fixed24&layers=128` — §1.6's seam against a tier-4 pool: **a fixed threshold against a pool too small for it**, which is what Appendix A captured. 0.1342 against a bar of 0.5, a 7.39× overshoot. The **bare** `fixed24` row this replaces is retired — see the note | **RED**   |
-| W4        | `evictionsPerSecond`                   | **the bound has no live row.** Exceeding want-set turnover at the 1,024-layer pool needs a faster spin or a bigger roster and no seam produces either, and every `?layers=N` row is out of the bound's domain. Falsified by unit row *"still reds the same row when turnover climbs past the new bound"*. **Its two domain rules do have live rows** — `?layers=128` for the capacity one and `unsaturated-pool` below for the occupancy one | **n/a**   |
-| W4        | `evictionsPerSecond`                   | **`unsaturated-pool`** — kamigawa (917 cards) at the shipped pool, no seams: a world whose whole demand fits, high-water **265 of 1,024**, so `claimLayer` never reaches its victim search and the rate is a structural 0. Asserts **N/A**. The 45-world tour runs this rule on 44 worlds and cannot falsify it — the fold is a worst-of and dominaria saturates, so `baseline` passes with the rule and without it. `artFraction` and `artCellsShowing` are asserted GREEN on the same frame, because an `N/A`-only row cannot tell a working domain rule from a page that failed to render | **N/A / GREEN** |
-| W4        | `artCellsShowing`                      | **no live row.** Its witness is a want set collapsed under reduced motion, and `?motion=0` is inert on `?probe=shell`. Falsified by unit row *"reds DEC-834's collapsed want set, the frame artFraction scored 1.00"* | **n/a**   |
-| W4        | `evictionsPerSecond`, `artCellsShowing` | `?artThreshold=fixed24&layers=128` and `?layers=128` — the two rows that pin the **domain**: at 128 layers the eviction half must read `N/A` and not a comfortable green, and the absolute term must stay green on a healthy tier-4 frame | **N/A / GREEN** |
+| W4        | `evictionsPerSecond`                   | **the bound has no live row.** Exceeding want-set turnover at the 1,024-layer pool needs a faster spin or a bigger roster; `spinPeriodS` is dataset data, so a live row means a fixture corpus. Falsified by unit row *"still reds the same row when turnover climbs past the new bound"*. **Its two domain rules do have live rows** — `?layers=128` for the capacity one and `unsaturated-pool` below for the occupancy one | **n/a**   |
+| W4        | `evictionsPerSecond`                   | **`unsaturated-pool`** — kamigawa (917 cards) at the shipped pool, no seams: a world whose whole demand fits, high-water **265 of 1,024**, so `claimLayer` never reaches its victim search and the rate is a structural 0. The 45-world tour runs this rule on 44 worlds and cannot falsify it — the fold is a worst-of and dominaria saturates, so `baseline` passes with the rule and without it | **N/A**   |
+| W4        | `artFraction`, `artCellsShowing`       | **`unsaturated-pool`**, same row, the half that says it rendered: an `N/A`-only row cannot tell a working domain rule from a page that failed to draw, and both report the same `n/a`. The art half going green on that frame is what makes the `N/A` above a reading | **GREEN** |
+| W4        | `artCellsShowing`                      | **`layers-128-reduced`** (DEC-843) — `prefers-reduced-motion: reduce` emulated as the **OS preference** before `goto`, at `?layers=128`. The adaptive threshold collapses the want set to **14** cells against a floor of 32, on a frame presenting **1,388** ≥ 128. Not a query seam: `?motion=0` is inert on `?probe=shell`, so the row moves a harness parameter as `w5-narrow` moves a viewport. Its read-back is asserted **in both directions** — `multiverseAngle` frozen bit-identically here, and moving on the unseamed `?layers=128` sibling | **RED**   |
+| W4        | `artFraction`                          | **`layers-128-reduced`**, same row, and the disagreement is the point: all 14 wanted cells show art, so the ratio reads **1.00** — above the healthy baseline's 0.9968 — on the frame the absolute term reds. This is `a-ratio-is-blind-to-its-own-denominator` as a live control instead of a note | **GREEN** |
+| W4        | `evictionsPerSecond`                   | `?artThreshold=fixed24&layers=128`, `?layers=128` and `layers-128-reduced` — the rows that pin the **capacity domain**: at 128 layers the eviction half must read `N/A` and not a comfortable green. A want set that stops asking is a pool that stops churning, so the frozen row asserts it too | **N/A**   |
+| W4        | `artCellsShowing`                      | `?layers=128` — the absolute term must stay **green on a healthy tier-4 frame** (127 cells against 32), which is the partner that keeps the row above from scoring an always-red instrument | **GREEN** |
 | W5        | `homeLabels`                           | labels forced on for empty planes — suppression regressed; **66 – 77 over the sweep, _above_ the unmodified build's 33 – 42; see the note**                                 | **RED**   |
 | W5        | `worldsNeverLabelled`                  | **viewport 800×600** — collision pressure raised by the harness, not by a renderer seam; `thunder-junction` is labelled at **none** of 360 azimuths                         | **RED**   |
 | W1, W4    | `minMedianCellHeightPx`, `artFraction` | a **one-card world** (`?plane=segovia`) at its own settle — the n = 1 extreme, never rendered in any tracked dataset before v3. **Does not assert its label**; see the note. Its `artCellsShowing` asserts **N/A**: a frame presenting one cell is far below the 128 that term needs before an absolute count means anything, and that is domain, not failure | **GREEN** |

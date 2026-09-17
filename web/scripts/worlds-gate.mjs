@@ -337,6 +337,69 @@ const readAzimuth = (page) =>
     return typeof state?.multiverseAngle === 'number' ? state.multiverseAngle : null
   })
 
+/** How long the motion read-back watches the angle for. */
+const MOTION_READBACK_S = 3
+
+/**
+ * Read back whether the page's motion preference **took**, in both directions (DEC-843).
+ *
+ * A row that emulates `prefers-reduced-motion: reduce` and merely trusts the call is the dead
+ * `--motion0` arm again: DEC-752 set a query string this route does not read, the arm agreed with
+ * its baseline to two decimal places, and the agreement was reported as evidence that motion was not
+ * the cause. `a-control-that-agrees-is-not-a-control-that-took`. So the preference is asserted from
+ * the page, not from the harness that set it.
+ *
+ * **Both directions, because either alone is satisfiable by a broken instrument.** A reader that
+ * always returns the same number passes the frozen assertion on every row; a scene that never turns
+ * passes it too, and would then read as a control while being a stalled page. So the row that asks
+ * for reduced motion must come back **bit-identical** — `starScene.ts:332` passes `reducedMotion ?
+ * 0 : 1` into the table's motion factor, so the angle cannot integrate at all, and a tolerance here
+ * would be inventing room the mechanism does not have — and its unseamed sibling must come back
+ * **moved**. `worlds-evict-longrun.mjs`'s `assertControlTook` is the same pair of assertions on the
+ * same read; this is that guard carried onto the gate's rows.
+ *
+ * Returns a `setupFailure`-shaped `{ ok: false, reason, detail }` rather than throwing: a control
+ * whose control did not take is a row that was not run, and the run says so and reds, which is not
+ * the same finding as the criterion failing.
+ */
+async function motionReadBack(page, { reducedMotion }) {
+  const first = await readAzimuth(page)
+  if (first === null) {
+    return {
+      ok: false,
+      reason: 'no-azimuth-seam',
+      detail:
+        'the probe does not publish `multiverseAngle`, so whether the motion preference took cannot ' +
+        'be read back. See readAzimuth — the gate may not substitute its own clock here either.',
+    }
+  }
+  await hold(page, MOTION_READBACK_S)
+  const second = await readAzimuth(page)
+  const moved = second !== first
+  if (reducedMotion && moved) {
+    return {
+      ok: false,
+      reason: 'reduced-motion-did-not-take',
+      detail:
+        `multiverseAngle moved ${first} → ${second} over ${MOTION_READBACK_S}s under an emulated ` +
+        '`prefers-reduced-motion: reduce`. PRD 5.9 pins the table\'s motion factor to 0 there, so the ' +
+        'angle cannot integrate; it did. The preference is not reaching App.tsx\'s useReducedMotion ' +
+        'on this route, so this row is not a control.',
+    }
+  }
+  if (!reducedMotion && !moved) {
+    return {
+      ok: false,
+      reason: 'scene-frozen-without-the-seam',
+      detail:
+        `multiverseAngle held at ${first} over ${MOTION_READBACK_S}s with no motion seam set. This ` +
+        'read is the reduced-motion row\'s evidence; if it cannot move here it is a constant, not a ' +
+        'detector, and the frozen reading over there would prove nothing.',
+    }
+  }
+  return { ok: true, first, second, moved }
+}
+
 async function waitForProbe(page, describe, predicate, timeout = 90_000) {
   const deadline = Date.now() + timeout
   for (;;) {
@@ -732,6 +795,14 @@ async function visitWorld(page, world, { dir, captures, pose = SURFACE_RADII }) 
     if (elapsed >= W4_EVICTION_MAX_S) break
     // The floor is a floor on the *observation*, not on the tail: a pool that plateaued during the
     // settle would otherwise be scored off three samples taken in the first second.
+    //
+    // **This break stops on the statistic it then scores, and that is a known selection (DEC-843).**
+    // The loop ends at the first moment `converged` is true, so the reading is taken where the tail
+    // happened to look settled rather than at a fixed horizon; a longer loop could read differently.
+    // It does not bite on dominaria today — drift 0.9% at 17.9 against a bound of 21, near neither
+    // boundary — and it is recorded rather than removed because the alternative (always burning
+    // `W4_EVICTION_MAX_S`) costs the 45-world tour ~24 minutes of re-confirming settled zeros. See
+    // `W4_EVICTION_TAIL_CONVERGENCE` for what that tolerance does and does not refuse.
     if (elapsed >= W4_EVICTION_MIN_S && evictionTail(timeline).converged) break
     await sleep(W4_EVICTION_SAMPLE_MS)
   }
@@ -1064,6 +1135,12 @@ const MATRIX = [
     id: 'layers-128',
     label: '?layers=128 — a tier-4-sized pool, unmodified policy',
     seams: { layersRequested: 128 },
+    // **The unseamed half of `layers-128-reduced`'s read-back (DEC-843).** Declaring `false` is not
+    // the same as saying nothing: it makes this row assert that `multiverseAngle` *moves* on a page
+    // with no motion preference set. Without it the frozen reading over there is satisfiable by a
+    // stalled page or a constant reader, and DEC-752's dead `--motion0` arm is exactly what that
+    // looks like from the outside. The two rows differ in one harness parameter and nothing else.
+    reducedMotion: false,
     subject: 'dominaria',
     expect: [
       { criterion: 'W4', measure: 'artFraction', expect: 'GREEN' },
@@ -1076,8 +1153,11 @@ const MATRIX = [
       { criterion: 'W4', measure: 'evictionsPerSecond', expect: 'N/A' },
       // The tier-4 rung is where the absolute term is closest to binding on a *healthy* build among
       // the live rows — ~127 cells of art against a floor of 32 — so this is the row that says the
-      // floor leaves the smallest shipped pool room to pass. The witness it must red (14 cells, want
-      // set collapsed under reduced motion) is unreachable from a query seam; it is in the unit rows.
+      // floor leaves the smallest shipped pool room to pass. **This row's RED partner is now live
+      // and it is one row down**: `layers-128-reduced` is this same pool with the OS reduced-motion
+      // preference emulated, and it reads 14 against the same floor on the same seam. The pair
+      // differs in one harness parameter, which is what makes the 127 here mean something (DEC-843;
+      // this comment used to say the witness was unreachable, which was true only of *query* seams).
       { criterion: 'W4', measure: 'artCellsShowing', expect: 'GREEN' },
       // **The overshoot the reachable bar forgives, asserted so it cannot go quiet.** Ruling
       // `demand_measure_scored` is `reported_only`, so this measure cannot colour the row — which
@@ -1118,6 +1198,58 @@ const MATRIX = [
       { criterion: 'W4', measure: 'evictionsPerSecond', expect: 'N/A' },
       { criterion: 'W4', measure: 'artFraction', expect: 'GREEN' },
       { criterion: 'W4', measure: 'artCellsShowing', expect: 'GREEN' },
+    ],
+  },
+  {
+    // **The absolute no-starvation term's live falsifier (DEC-843, rider 2 of the DEC-841 review).**
+    // Until this row landed §3.1 said the term had *no live row* because "`?motion=0` is inert on
+    // `?probe=shell`". The premise is true and the conclusion did not follow: the matrix is not
+    // restricted to query seams — `w5-narrow` moves a viewport and `one-card-world` moves a pose,
+    // neither of which reaches the URL — and the mechanism was already in this tree, on this route,
+    // in `worlds-evict-longrun.mjs`. Emulating the **OS preference** is what the shell actually
+    // reads; see `openPage` and `motionReadBack`.
+    //
+    // **The two halves of W4 disagree on this one frame, and that disagreement is the point.** The
+    // term exists because `artFraction` is a ratio and a ratio is blind to its own denominator being
+    // chosen by the policy it grades. Here the want set is collapsed, so every cell the policy still
+    // wants is served: `artFraction` reads its ceiling and is GREEN, while the absolute count of
+    // cells actually showing art sits far below the floor. A row where both halves agreed would not
+    // separate them. `a-ratio-is-blind-to-its-own-denominator`.
+    //
+    // **128 layers, not the shipped 1,024, and that is the domain rule doing its job.** The eviction
+    // half is scored at 1,024 alone, so this row asserts `evictionsPerSecond: N/A` — the collapse
+    // this row induces is a *want-set* fact and must not be allowed to colour the churn half.
+    //
+    // **Prediction recorded by the reviewer before the row existed** (DEC-841 verdict comment
+    // `b64059df`, Finding 2): `artCellsShowing` **14 against 32, RED**, in domain because dominaria
+    // presents ~1,383 ≥ 128; `evictionsPerSecond` **N/A**; `artFraction` **GREEN at 1.00**. Measured
+    // on this tree at `?layers=128` with the preference emulated: **14 / N/A / 1.00 on a frame
+    // presenting 1,388** — all three as predicted, and nothing was tuned to make them agree.
+    //
+    // **Both halves of the read-back were confirmed against their own defect, not assumed.** Drop
+    // the `emulateMediaFeatures` call and this row reads 123 cells — comfortably above the floor —
+    // and the guard reds it as `reduced-motion-did-not-take` instead of letting it report as a W4
+    // regression. Give *every* page the preference and `layers-128` reds as
+    // `scene-frozen-without-the-seam`. `confirm-the-instrument-sees-the-defect`.
+    id: 'layers-128-reduced',
+    label:
+      'prefers-reduced-motion: reduce at a tier-4 pool — the want set collapses while artFraction reads its ceiling',
+    seams: { layersRequested: 128 },
+    reducedMotion: true,
+    subject: 'dominaria',
+    expect: [
+      { criterion: 'W4', measure: 'artCellsShowing', expect: 'RED' },
+      // **GREEN, and this is the expectation that carries the row's argument.** A reader who expects
+      // a starved frame to red W4 outright will read this as a mistake; it is the finding. The ratio
+      // is satisfied *because* the denominator collapsed with the numerator, which is precisely the
+      // blindness DEC-837's absolute term was added to cover. Asserting it GREEN means the day the
+      // ratio starts catching this on its own, this row reds and someone has to look at why.
+      { criterion: 'W4', measure: 'artFraction', expect: 'GREEN' },
+      // Out of the bound's capacity domain at 128 layers, exactly as `layers-128` above. Asserted so
+      // a frozen scene cannot quietly be recorded as good eviction behaviour: a want set that stops
+      // asking is a pool that stops churning, and a green rate here would be the comfortable wrong
+      // answer this whole half of W4 exists to refuse.
+      { criterion: 'W4', measure: 'evictionsPerSecond', expect: 'N/A' },
     ],
   },
   {
@@ -1264,11 +1396,20 @@ function parseArgs(argv) {
   return args
 }
 
-async function openPage(browser, url, { seams = {}, viewport = VIEWPORT }) {
+async function openPage(browser, url, { seams = {}, viewport = VIEWPORT, reducedMotion = false }) {
   const page = await browser.newPage()
   await page.setViewport(viewport)
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message.slice(0, 200)))
+  // **A harness-level seam, and the only one that reaches the shell's motion (DEC-843).** `?motion=0`
+  // is inert under `?probe=shell`: `motionOverride`'s seam is laid over `?probe=1`, `/bench` and
+  // `?selfcheck`, and the shell deliberately does not read it, so a query string cannot freeze what
+  // a user sees. `App.tsx` resolves reduced motion from `useReducedMotion()` — settings plus the OS
+  // preference — which is what this emulates. Set BEFORE `goto`, so the first composition already
+  // has it; `worlds-evict-longrun.mjs:252` sets it at the same point for the same reason.
+  if (reducedMotion) {
+    await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }])
+  }
   await page.goto(`${url}/?probe=shell${seamQuery(seams)}`, { waitUntil: 'load', timeout: 120_000 })
   await page.waitForFunction(() => window.__eternitiesProbe !== undefined, { timeout: 120_000 })
   await page.waitForFunction(
@@ -1332,9 +1473,30 @@ async function runRow(browser, url, row, { roster, args, baselineProbe }) {
   // 8th world and the remaining 37 all read `artFraction` 0. Per-world sessions make the reading
   // order-independent, which is a property the reversed-order control in the runbook checks rather
   // than assumes. `budgetBoundAtEntry` is the backstop for anyone who tours a shared page anyway.
+  const motionReadBacks = []
   for (const world of subjects) {
-    const opened = await openPage(browser, url, { seams: row.seams, viewport })
+    const opened = await openPage(browser, url, {
+      seams: row.seams,
+      viewport,
+      reducedMotion: row.reducedMotion === true,
+    })
     try {
+      // **Only where the row declares a motion preference, and that is a cost decision.** The
+      // read-back is a 3 s hold per session; charging it to the 45-world tour would buy two minutes
+      // of confirming the shipped default. `reducedMotion` is declared on both arms — `true` on the
+      // row under test and `false` on its unseamed sibling — so the pair reads the seam in both
+      // directions and the rows that say nothing about motion pay nothing.
+      if (row.reducedMotion !== undefined) {
+        const took = await motionReadBack(opened.page, { reducedMotion: row.reducedMotion })
+        motionReadBacks.push({ slug: world.slug, ...took })
+        console.log(
+          `  ${world.slug}: prefers-reduced-motion ${row.reducedMotion ? 'REDUCE' : 'no-preference'} — ` +
+            (took.ok
+              ? `multiverseAngle ${took.moved ? `${took.first} → ${took.second} (moved)` : `${took.first} FROZEN`} ` +
+                `over ${MOTION_READBACK_S}s`
+              : `CONTROL FAILED (${took.reason})`),
+        )
+      }
       const visit = await visitWorld(opened.page, world, {
         dir,
         captures: args.captures,
@@ -1406,6 +1568,26 @@ async function runRow(browser, url, row, { roster, args, baselineProbe }) {
     } finally {
       errors.push(...opened.errors)
       await opened.page.close()
+    }
+  }
+
+  // **Before any criterion of this row is read**, exactly as the seam evidence is. A reduced-motion
+  // row whose preference did not take has measured the unmodified build and would file the result
+  // under the seam — which, on a row whose whole job is to be RED, means a green criterion reading
+  // as a control that worked. `a-seam-that-answers-is-not-a-path-that-runs`.
+  const motionFailed = motionReadBacks.filter((m) => !m.ok)
+  if (motionFailed.length > 0) {
+    return {
+      row,
+      setupFailure: {
+        reason: motionFailed[0].reason,
+        detail: `${motionFailed.map((m) => m.slug).join(', ')}: ${motionFailed[0].detail}`,
+      },
+      criteria: [],
+      checks: [],
+      motionReadBacks,
+      visits,
+      errors,
     }
   }
 
@@ -1511,9 +1693,18 @@ async function runRow(browser, url, row, { roster, args, baselineProbe }) {
 
   writeFileSync(
     resolve(dir, 'visits.json'),
-    `${JSON.stringify({ visits, evidence, evidencePerWorld, criteria }, null, 2)}\n`,
+    `${JSON.stringify({ visits, evidence, evidencePerWorld, motionReadBacks, criteria }, null, 2)}\n`,
   )
-  return { row, criteria, checks: scoreRow(row, criteria), evidence, visits, errors, probe: probeNow }
+  return {
+    row,
+    criteria,
+    checks: scoreRow(row, criteria),
+    evidence,
+    visits,
+    motionReadBacks,
+    errors,
+    probe: probeNow,
+  }
 }
 
 /** Score a row's expectations. `checkControlRow` owns the comparison; this only names the row. */
@@ -1709,6 +1900,9 @@ async function main() {
           setupFailure: r.setupFailure ?? null,
           checks: r.checks,
           evidence: r.evidence ?? [],
+          // The reduced-motion rows' read-back, beside the seam evidence and for the same reason:
+          // a row's colour is only a reading if the thing that was supposed to have changed did.
+          motionReadBacks: r.motionReadBacks ?? [],
           criteria: r.criteria,
         })),
       },
