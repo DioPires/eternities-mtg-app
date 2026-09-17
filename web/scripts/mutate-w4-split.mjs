@@ -163,6 +163,145 @@ const MUTANTS = [
     from: '  const EXHAUSTED_DURING_VISIT = {\n    swatchOnly: true,',
     to: '  const EXHAUSTED_DURING_VISIT = {\n    swatchOnly: false,',
   },
+
+  // ---- DEC-837: the eviction re-bound and the absolute no-starvation term --------------------
+  // Board ruling on DEC-833 card `bd5c9aad`, option (a). The bound went UP, from 5/s to 21/s, and
+  // that direction is the dangerous one here for the reason the file's header gives about
+  // `floor_times_ceiling`: **a bound raised to green a live reading can as easily be raised past
+  // the point where anything reds it**, and nothing in a green suite would say so. M18 and M25 are
+  // the vacuity controls for that, and they are the two whose output is worth reading.
+  {
+    name: 'M17 the bound is back to 5/s — the unreachable number the ruling retired',
+    file: METRICS,
+    from: '  evictionsPerSecond: 21,',
+    to: '  evictionsPerSecond: 5,',
+  },
+  {
+    // The vacuity control for the re-bound. The floor is still present, still `max`-scored, still
+    // reported beside every verdict — and no configuration on record can reach it. A suite that
+    // stayed green here would be testing the bound's *presence* and never its value, which is the
+    // M16 lesson one measure over: `a-bound-check-is-vacuous-when-the-bound-never-binds`.
+    name: 'M18 VACUITY CONTROL: the bound is 1,000/s, so no turnover can ever red it',
+    file: METRICS,
+    from: '  evictionsPerSecond: 21,',
+    to: '  evictionsPerSecond: 1_000,',
+  },
+  {
+    // The scope half of the ruling, dropped. Without it a 128-layer pool's 6.73/s scores GREEN —
+    // and it is 6.73 only because the pool refuses ~4,670 wants/s for exhaustion, so the gate would
+    // be certifying the starvation the art half exists to forbid.
+    name: 'M19 the capacity domain is dropped, so a starved tier-4 pool scores a comfortable GREEN',
+    file: METRICS,
+    from: '        pool.layers !== W4_EVICTION_POOL_LAYERS',
+    to: '        false',
+  },
+  {
+    // **The DEC-835 defect as a mutant.** "Resident stops climbing" is the obvious fill detector and
+    // it is wrong on the only configuration that matters: a saturated pool churns 1023 -> 1024
+    // forever, so the last upward tick lands in the final seconds and the "steady state" is two
+    // samples. On a 60 s baseline this rule put the fill's end at t = 57.1 s.
+    name: 'M20 the fill ends where resident last stopped climbing, not at saturation',
+    file: METRICS,
+    from: '  const tail = saturated\n    ? usable.slice(usable.findIndex((s) => s.resident >= s.layers))\n    : usable;',
+    to: '  const tail = saturated\n    ? usable.slice(\n        usable.reduce((at, s, i) => (i > 0 && s.resident > usable[i - 1].resident ? i : at), 0),\n      )\n    : usable;',
+  },
+  {
+    // Excluding the fill is necessary and not sufficient, and this is the mutant that says so: a
+    // tail that is still decaying gets published as a steady state.
+    name: 'M21 the tail is never scored for convergence, so a decaying window is a rate',
+    file: METRICS,
+    from: '  const converged = drift <= convergence;',
+    to: '  const converged = true;',
+  },
+  {
+    // The fill exclusion removed outright — the window is the whole observation again, which is the
+    // instrument DEC-752 recorded as unable to tell a fill from churn by construction.
+    name: 'M22 no fill exclusion at all: the tail is the whole timeline',
+    file: METRICS,
+    from: '  const tail = saturated\n    ? usable.slice(usable.findIndex((s) => s.resident >= s.layers))\n    : usable;',
+    to: '  const tail = usable;',
+  },
+  {
+    // **The rule this one replaced, and it is the defect the first live tour found.** Below
+    // saturation nothing is ever evicted, so `resident` only climbs and `max(resident)` is the LAST
+    // sample: alara was scored off a 2.0 s two-sample tail, one jitter from falling out of W4's
+    // domain, and 44 of the 45 worlds have that shape.
+    name: 'M28 the fill ends at max(resident) regardless of saturation — alara\'s two-sample tail',
+    file: METRICS,
+    from: '  const tail = saturated\n    ? usable.slice(usable.findIndex((s) => s.resident >= s.layers))\n    : usable;',
+    to: '  const tail = usable.slice(usable.findIndex((s) => s.resident === peakResident));',
+  },
+  {
+    // The capacity half of the readability check. Without it an unsaturated verdict is reached from
+    // `undefined`, and a churning pool's whole window — fill included — gets published as a rate.
+    name: 'M29 capacity is not required on a sample, so saturation is decided from undefined',
+    file: METRICS,
+    from: '      typeof s.resident === "number" &&\n      typeof s.layers === "number",',
+    to: '      typeof s.resident === "number",',
+  },
+  {
+    // A missing occupancy read as a settled zero. The comfortable wrong answer: a `0` sails through
+    // the bound on every timeline that forgot to report `resident`, which is `streamNeverRan`'s
+    // lesson — a structural zero wearing a passing verdict — arriving by a fourth route.
+    name: 'M23 a timeline with no occupancy is scored as a settled zero rather than unreadable',
+    file: METRICS,
+    from: '      typeof s.resident === "number" &&\n      typeof s.layers === "number",',
+    to: '      typeof s.layers === "number",',
+  },
+  {
+    // The no-starvation term deleted. The frame `artFraction` scored 1.00 at fourteen cells of art
+    // goes green again on every half.
+    name: 'M24 THE DEFECT THE RULING FIXES: no absolute term, so a collapsed want set is invisible',
+    file: METRICS,
+    from: '        showing.length,\n        FLOORS.artCellsAbsolute,\n        "min",',
+    to: '        showing.length,\n        0,\n        "min",',
+  },
+  {
+    // The vacuity control for the floor's *value*, as distinct from its presence: 8 leaves the term
+    // in place, leaves every structural row green, and sits below the 14-cell witness it exists to
+    // red. A constant's presence is not its value.
+    name: 'M25 VACUITY CONTROL: the absolute floor is 8, just under the witness it exists to red',
+    file: METRICS,
+    from: '  artCellsAbsolute: 32,',
+    to: '  artCellsAbsolute: 8,',
+  },
+  {
+    // **The defect the first 45-world acceptance tour found in this leg's own floor.** Set equal to
+    // the domain cut-off, the domain admits a frame at the instant it reaches the bound, so the
+    // worst in-domain reading is pinned just above the bound on every build — the tour read 65
+    // against 64, a 1.5% margin on a correct renderer. It reds nothing today and reds the roster
+    // tomorrow, which is the worst of both directions.
+    name: 'M30 the floor is raised to the domain cut-off, so no in-domain frame has margin',
+    file: METRICS,
+    from: '  artCellsAbsolute: 32,',
+    to: '  artCellsAbsolute: 128,',
+  },
+  {
+    // The other way to collapse the same gap: pull the domain down onto the floor. Same defect,
+    // and it also drags 20-odd small worlds into a domain where an absolute cell count says nothing.
+    name: 'M31 the domain opens at the floor instead of four times above it',
+    file: METRICS,
+    from: 'export const W4_STARVATION_DOMAIN_CELLS = SMALLEST_SHIPPED_POOL_LAYERS;',
+    to: 'export const W4_STARVATION_DOMAIN_CELLS = FLOORS.artCellsAbsolute;',
+  },
+  {
+    // **The most plausible edit a later reader makes, and it switches the term off exactly where it
+    // is needed.** Writing the domain off `wanting` reads as tidier — the two art measures would
+    // share one denominator — and on the starved frame `wanting` is 14, so the term goes
+    // `insufficient` on the collapse it exists to catch. Same defect, one level up.
+    name: 'M26 THE TIDY-UP: the absolute term takes its domain from the want set, not the geometry',
+    file: METRICS,
+    from: '            presented.length < W4_STARVATION_DOMAIN_CELLS,',
+    to: '            wanting.length < W4_STARVATION_DOMAIN_CELLS,',
+  },
+  {
+    // `reported_only` applied to the wrong measure. The term would still print its red and colour
+    // nothing, which is the shape `demandFitsCapacity` legitimately has and this one must not.
+    name: 'M27 the absolute term is reported and not scored, so its RED cannot colour a row',
+    file: METRICS,
+    from: '        {\n          insufficient:\n            noAdmission !== null ||',
+    to: '        {\n          scored: false,\n          insufficient:\n            noAdmission !== null ||',
+  },
 ]
 
 function run() {

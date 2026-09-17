@@ -449,12 +449,22 @@ of failure, where two fixtures printed "all datasets verified".
 
 ## 3. Two things the gate does that the seam list does not imply
 
-**Evictions are differenced, not read.** `pool.evictions` is a cumulative counter; W4's floor is
-"≤ 5 evictions per second over the last 2 s". The gate samples the counter across the settle and
-takes the rate over §3.1's window. This is not pedantry: Appendix A's 925 at `tether-surface` is
-cumulative, and the same 925 on a settled pool is 0/s and passes. W4's eviction half is red at that
-pose only if a rate says so — the art half, 1,024 of 2,759, is red from the drawn/wanted column
-directly and carries the row on its own.
+**Evictions are differenced, not read — and the window is chosen by the pool, not by the clock.**
+`pool.evictions` is a cumulative counter; W4's bound is **≤ 21 evictions/s on a fill-excluded tail,
+at the shipped 1,024-layer pool alone** (board ruling on DEC-833 card `bd5c9aad`, option (a); it was
+"≤ 5/s over the last 2 s", which was unreachable by construction — see §3.1's amendment). This is
+not pedantry: Appendix A's 925 at `tether-surface` is cumulative, and the same 925 on a settled pool
+is 0/s and passes. W4's eviction half is red at that pose only if a rate says so — the art half,
+1,024 of 2,759, is red from the drawn/wanted column directly and carries the row on its own.
+
+The gate therefore samples `{ t, evictions, resident, layers }` until the tail's own second half
+agrees with the whole tail, then stops. The fill it excludes is the **climb to saturation**: below
+`resident >= layers` the counter cannot move at all, so an unsaturated pool has no fill in *this*
+counter and its whole window is the tail. **Both `resident` and `layers` are required on every
+sample**, and a timeline missing either is scored as unreadable rather than as a settled zero — the
+comfortable wrong answer here is a `0` that sails through the bound. Three outcomes now carry
+`insufficient` rather than a number: a pool that saturated too late to leave a tail, a tail that
+never settled, and a session at any capacity but 1,024.
 
 **Criteria report per half, and the matrix scores per half.** W2 and W4 are conjunctions, and a
 conjunction hides which half did the work. Under `?swatch=mean` the neighbour-ΔE half collapses to
