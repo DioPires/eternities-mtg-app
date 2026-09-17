@@ -159,6 +159,37 @@ deleted. `PlaneTable` is retained — the worlds scene cannot spin without it.
   dependency), `planeWorldPosition`/`PlaneKindCode`, `ATLAS_BYTES`, and whatever of `PlaneTable` and
   `starGeometry` the split of `useSceneData.ts` decides to keep.
 
+### The split of `useSceneData.ts`, resolved field by field
+
+`SceneResources` has four fields and the cutover has a different answer for each. Traced at head
+`2ed5a6a`; this is the map the deletion follows, so it does not have to be rediscovered mid-commit.
+
+| field | verdict | why |
+|---|---|---|
+| `table: PlaneTable` | **RETAIN** | the worlds scene's spin comes from it (`sceneHost.ts:338` → `setSpinAngles`), and the probe's `multiverseAngle` — the parameter W5's whole sweep is read against — is `PlaneTable`'s own getter |
+| `positionMode: PositionMode` | **RETAIN** | it is part of the shipped probe surface: `ProbeState` publishes it, and `probeSeam`, `benchSeam`, `capabilities`, `selfCheck` and `BenchRunner` all read it |
+| `geometry: StarGeometry` | **DELETE** | no surviving consumer once the galaxy goes — see below |
+| `field: StarField` | **DELETE** | the star point cloud itself |
+
+**`StarGeometry`'s three apparent survivors all resolve to the galaxy**, which is what makes the
+delete safe, and it is worth writing down because the import edges suggest otherwise:
+
+- `app/filterMask.ts` — `bindFilterMask`/`useFilterMask` take a `StarGeometry`, **but the worlds
+  path has its own separate binding in the same file** (§1.11, DEC-751), which pushes the mask
+  straight at the worlds attachment and never touches the star buffer. The file's own header says
+  why they are two: the star geometry is built once with `planes.json` while the worlds attachment
+  outlives every roster it composes. So the cutover deletes the galaxy binding and keeps the worlds
+  one; both subscribe to the same `filterEvaluation`, so filters keep working.
+- `scene/probeSeam.ts` — reads `resources.field.points.material`'s `uMotion`, i.e. the star shader.
+  Galaxy-only.
+- `scene/benchSeam.ts` — `focusCard` uses `geometry.planeRowOf` with `focusStar`. Galaxy-only.
+
+**Where the retained pieces go.** `PositionMode`, `resolvePositionMode` and
+`POSITION_MODE_STORAGE_KEY` move out of `starfield/starGeometry.ts` into `scene/platform/`, beside
+`capabilities.ts` — which already owns `bootPositionMode` and is where the rest of the capability
+surface lives. `PlaneTable` is retained as a module; it is not galaxy furniture, it is the plane
+motion table the worlds scene runs on, and only its name and address suggest otherwise.
+
 ## 5. The two things §3.2 makes atomic with all of the above
 
 1. **`datasets.json`'s `active` moves to the v3 directory in the same commit that deletes the galaxy
