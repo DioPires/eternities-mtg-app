@@ -923,8 +923,19 @@ describe("W3 — latitude reads as colour", () => {
       criterion: evaluateW3(twoBands(tint(k)), twoBandShares),
     });
     const readingOf = (entry: { criterion: Criterion }) => entry.criterion.measures[0]!.value!;
-    const domain = (expected: number | null, qualifying: number | null = expected) => ({
-      expected,
+    /**
+     * A roster domain as the driver hands it over. `byShares` defaults **above** `scored`, because
+     * that is the shipped shape and not a corner case: on the production dataset 30 worlds qualify
+     * on their card distribution and 28 present both bands in the sampled cells. A fixture that let
+     * the two default to the same number is how the first draft of this guard came to require they
+     * be equal — and red every roster tour on the first one that ran it.
+     */
+    const domain = (
+      scored: number | null,
+      qualifying: number | null = scored === null ? null : scored + 2,
+      byShares: number | null = qualifying,
+    ) => ({
+      expected: scored === null ? null : { scored, byShares: byShares ?? scored },
       qualifying,
       label: "the test roster",
     });
@@ -1028,19 +1039,47 @@ describe("W3 — latitude reads as colour", () => {
       );
       expect(measure?.status).toBe("fail");
       expect(measure?.domainFaults?.join(" ")).toContain("scored 4 of the 6 worlds");
+      expect(measure?.qualifyingPlanes).toBeNull();
     });
 
-    it("fails when the run's own band shares disagree with the recorded domain size", () => {
-      // The other half of the denominator, and it fails for a different reason: every world the tour
-      // visited was scored, and the dataset still put a different number in domain. That is the
-      // recorded constant going stale under a refresh, which no count of the run's own readings can
-      // see — the tour would report six qualifying and six scored either way.
+    it("passes when more worlds qualify by share than the pose can score", () => {
+      // **The shipped shape, and the row that keeps the two counts from being conflated again.** A
+      // world whose cards qualify can still populate one band in the sampled cells — `shenmeng` and
+      // `zhalfir` do — so `byShares` is an upper bound on `scored`, never a second spelling of it.
+      // A guard that required them equal reds every correct roster tour.
       const measure = w3MeasureOf(
-        foldCriteria(roster, { rosterDomain: domain(roster.length, roster.length + 1) }),
+        foldCriteria(roster, { rosterDomain: domain(roster.length) }),
+      );
+      expect(measure?.qualifyingPlanes).toBe(roster.length + 2);
+      expect(measure?.expectedPlanes).toBe(roster.length);
+      expect(measure?.domainFaults).toEqual([]);
+      expect(measure?.status).toBe("pass");
+    });
+
+    it("fails when the run's own band shares disagree with what the dataset recorded", () => {
+      // The other half of the denominator, failing for a different reason: every world the tour
+      // visited was scored, and the *dataset* put a different number in W3's reach. `byShares` is a
+      // pure function of the band shares, so it is deterministic per refresh — which is what lets it
+      // catch a refresh that lands on the same scored count by coincidence.
+      const measure = w3MeasureOf(
+        foldCriteria(roster, {
+          rosterDomain: domain(roster.length, roster.length + 3, roster.length + 2),
+        }),
       );
       expect(measure?.status).toBe("fail");
       expect(measure?.domainFaults?.join(" ")).toContain("qualify by band share");
-      expect(measure?.qualifyingPlanes).toBe(roster.length + 1);
+      expect(measure?.qualifyingPlanes).toBe(roster.length + 3);
+    });
+
+    it("fails a domain that GREW, not only one that thinned", () => {
+      // A mean over 29 worlds is not a better-evidenced mean over 28, it is a different statistic —
+      // and the floor was derived over the stated one. Asserted because "thinning" is the obvious
+      // half and a `<` comparison would look perfectly reasonable in review.
+      const measure = w3MeasureOf(
+        foldCriteria(roster, { rosterDomain: domain(roster.length - 1, roster.length + 1) }),
+      );
+      expect(measure?.status).toBe("fail");
+      expect(measure?.domainFaults?.join(" ")).toContain("scored 6 of the 5 worlds");
     });
 
     it("fails on a dataset with no recorded domain size rather than folding what it has", () => {
@@ -1137,12 +1176,17 @@ describe("W3 — latitude reads as colour", () => {
       expect(w3QualifiesByShares(undefined)).toBe(false);
     });
 
-    it("records a domain size for the production dataset", () => {
-      // The number itself is evidence, not a claim this file can check — it is measured on the live
-      // roster, and the gate re-derives it from every tour's own band shares. What is checkable here
-      // is that the dataset the gate ships against has one at all: an unrecorded dataset reds every
-      // roster fold, and discovering that after a fifteen-minute tour is the wrong time.
-      expect(W3_DOMAIN_SIZE["c9468f1125bcddff"]).toBe(28);
+    it("records both domain counts for the production dataset, and they differ", () => {
+      // The numbers themselves are evidence, not a claim this file can check — they are measured on
+      // the live roster. What is checkable here is that the dataset the gate ships against has them
+      // at all (an unrecorded dataset reds every roster fold, and discovering that after a
+      // fifteen-minute tour is the wrong time) and that they are **not** the same number, which is
+      // the mistake the first draft shipped: 30 worlds qualify on their cards, 28 present both bands
+      // in the sampled cells.
+      const recorded = W3_DOMAIN_SIZE["c9468f1125bcddff"]!;
+      expect(recorded.scored).toBe(28);
+      expect(recorded.byShares).toBe(30);
+      expect(recorded.byShares).toBeGreaterThan(recorded.scored);
     });
   });
 });

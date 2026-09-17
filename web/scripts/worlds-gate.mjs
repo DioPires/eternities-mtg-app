@@ -1395,7 +1395,9 @@ async function main() {
   console.log(
     W3_DOMAIN_SIZE[roster.hash] === undefined
       ? `W3 domain: NO SIZE RECORDED for ${roster.hash} — every roster tour will red on its fold`
-      : `W3 domain, recorded: ${W3_DOMAIN_SIZE[roster.hash]} worlds (the mean fold's denominator)`,
+      : `W3 domain, recorded: ${W3_DOMAIN_SIZE[roster.hash].scored} worlds scored ` +
+        `(the mean fold's denominator), ${W3_DOMAIN_SIZE[roster.hash].byShares} qualifying by band ` +
+        `share — the gap is worlds whose cards qualify and whose sampled cells populate one band`,
   )
 
   // §1.3's table, asserted off `planes.json` before a browser is started. It is a dataset property

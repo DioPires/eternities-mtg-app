@@ -375,12 +375,18 @@ number to pick. Re-run it whenever the swatch palette moves: the floor is a prop
 swatches, so a refresh can invalidate it without a line of rendering code changing.
 
 **The domain size moves with the dataset, and the gate reds until the new one is recorded.**
-`W3_DOMAIN_SIZE` in `scripts/lib/worlds-metrics.mjs` maps a dataset hash to the number of worlds in
-W3's domain (28 on `c9468f1125bcddff`). A mean over a thinned domain reads in the same units and is
-*flattered* by the thinning, so that denominator is scored rather than reported: an unrecorded hash
-reds every roster tour, and so does a tour scoring fewer worlds than the record. Take the new number
-off the first full tour's own line — `mean of N of M worlds in domain` — and off the `qualifying`
-count the gate derives from that run's band shares, then record it.
+`W3_DOMAIN_SIZE` in `scripts/lib/worlds-metrics.mjs` maps a dataset hash to **two** counts: the
+worlds whose cards put an adjacent band pair over the 5% share rule (`byShares`, **30** on
+`c9468f1125bcddff`) and the worlds that then present both of those bands in the sampled cells
+(`scored`, **28**). They differ, and they are meant to — `shenmeng` and `zhalfir` qualify on their
+cards and populate one band on screen. A mean over a thinned domain reads in the same units and is
+*flattered* by the thinning, so `scored` is a scored expectation rather than a report: an unrecorded
+hash reds every roster tour, and so does a tour whose scored domain is not exactly the record.
+
+Take both numbers off the first full tour on the new dataset — the gate's startup line prints the
+record, and each W3 row prints `mean of N of M worlds in domain` beside the `qualifying` count it
+derived from that run's own band shares — then record them. Do **not** set `byShares` equal to
+`scored`: that reds every correct roster tour, which is how this pair came to be recorded separately.
 
 **Run each arm at least five times, and read the shipped arm's _minimum_ against the control's
 _maximum_.** The retired 0.55 is the argument for this rule: it was derived from a single pair of

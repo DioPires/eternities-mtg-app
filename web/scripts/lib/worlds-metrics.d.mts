@@ -129,8 +129,10 @@ export interface Measure {
     readonly slug: string;
     readonly value: number;
   }>;
-  /** The roster's recorded W3 domain size, `null` on a dataset with none recorded. */
+  /** The roster's recorded W3 scored-domain size, `null` on a dataset with none recorded. */
   readonly expectedPlanes?: number | null;
+  /** The roster's recorded count of worlds W3's band-share rule puts in reach. See `expectedPlanes`. */
+  readonly expectedQualifyingPlanes?: number | null;
   /** How many toured worlds qualify for W3 by band share alone, off the run's own probes. */
   readonly qualifyingPlanes?: number | null;
   /**
@@ -339,8 +341,16 @@ export declare const W2_MIN_SAMPLES: number;
 export declare const W2_MIN_RING_SAMPLES: number;
 export declare const W2_CONTROL_SUBJECT_MIN_RING: number;
 export declare const W3_MIN_BAND_SHARE: number;
-/** Worlds in W3's domain, per dataset hash — the denominator its mean fold is taken over. */
-export declare const W3_DOMAIN_SIZE: Readonly<Record<string, number>>;
+/**
+ * W3's domain per dataset hash — the denominator its mean fold is taken over.
+ *
+ * `byShares` is what the dataset's card distribution puts in reach; `scored` is what then presents
+ * both bands in the sampled cells. **`byShares >= scored`, and on the shipped roster they are 30 and
+ * 28** — they are not two spellings of one number.
+ */
+export declare const W3_DOMAIN_SIZE: Readonly<
+  Record<string, Readonly<{ scored: number; byShares: number }>>
+>;
 /** Whether a plane's thirteen band shares alone put it in W3's domain, before any sampling. */
 export declare function w3QualifiesByShares(
   bandShares: readonly number[] | undefined,
@@ -456,7 +466,7 @@ export declare function evaluateW5(
  * `visits.json`); that half of the check is then skipped and the recorded `expected` still binds.
  */
 export interface RosterDomain {
-  readonly expected: number | null;
+  readonly expected: Readonly<{ scored: number; byShares: number }> | null;
   readonly qualifying: number | null;
   /** What the expectation is a property of, named for the failure message: `dataset <hash>`. */
   readonly label: string;

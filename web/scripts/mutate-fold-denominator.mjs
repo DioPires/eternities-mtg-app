@@ -102,14 +102,29 @@ const MUTANTS = [
   {
     name: 'THE ONE A MEAN NEEDS: the domain may thin silently, and a thinner domain scores higher',
     file: METRICS,
-    from: '  } else if (real.length < rosterDomain.expected) {',
+    from: '  } else if (real.length !== rosterDomain.expected.scored) {',
     to: '  } else if (false) {',
   },
   {
     name: 'the domain check reads the run\'s own count instead of the recorded one — self-certifying',
     file: METRICS,
-    from: '  } else if (real.length < rosterDomain.expected) {',
+    from: '  } else if (real.length !== rosterDomain.expected.scored) {',
     to: '  } else if (real.length < (rosterDomain.qualifying ?? real.length)) {',
+  },
+  {
+    name: 'only a THINNED domain faults, so a domain that grew scores a different statistic in silence',
+    file: METRICS,
+    from: '  } else if (real.length !== rosterDomain.expected.scored) {',
+    to: '  } else if (real.length < rosterDomain.expected.scored) {',
+  },
+  {
+    // The defect this leg shipped for one tour and the live run caught: `byShares` counts worlds
+    // whose CARDS qualify, `scored` counts worlds that then present both bands on screen. Requiring
+    // them equal reds every correct roster tour — 30 against 28 on the shipped dataset.
+    name: 'THE ONE THE FIRST DRAFT SHIPPED: the two domain counts are required to be equal',
+    file: METRICS,
+    from: '    rosterDomain.qualifying !== rosterDomain.expected.byShares',
+    to: '    rosterDomain.qualifying !== rosterDomain.expected.scored',
   },
   {
     name: 'an unrecorded dataset skips the check instead of failing it',

@@ -1893,7 +1893,7 @@ an assertion there.
 |---|---|---|---|
 | **W1** | **Cells are resolvable at framing distance.** | At the plane-level settle for each of `worldsWithCards` (**29** on the 87-plane roster, **45** on v3), the median on-screen height of front-facing cells; the verdict is the **worst** world, not the pooled median. Not the Blind Eternities: it has cards but no cell sheet (§1.8), so the statistic is undefined there — `planesWithCards` would be 30 / 46 and would include it. | **≥ 24 CSS px.** Binds on the largest plane: Dominaria **28.74** at its worst azimuth, at §1.3's framing distance — a **20% margin** (`[shipped]`, the arm the build renders; `[tilted]` it is Ravnica 25.21 and 5% — §1.3 on the two arms). |
 | **W2** | **The mosaic reads as tiles, not as a wash.** This is T7's replacement. | Sample the captured frame at the centre of every front-facing cell ≥ 6 px tall, convert to CIELAB. Report the median ΔE to a cell's nearest on-screen neighbour, and the interquartile range of L\* **across the iso-shade subset** — the cells whose reported `shade` lies within ±2.5% of the median shade. | **median neighbour ΔE ≥ 6** and **iso-shade IQR(L\*) ≥ 8**. |
-| **W3** | **Latitude reads as colour.** | Group the same samples by band. For every pair of bands adjacent **in §1.3's 13-band chain** (a chain, not a cycle: the two ice caps are its two ends and are the furthest apart of any pair) where the smaller holds ≥ 5% of the plane's cards, the ΔE between their mean a\*b\*. A world's own reading is the **closest** of its qualifying pairs; **the roster's is the mean of the per-world readings over W3's domain — 28 of the 45 worlds on `c9468f1125bcddff`** (board ruling `fold_mean`) — published with every reading and with the denominator beside it. | `FLOORS.bandDeltaE`, **derived on the mean and re-derivable** — see the amendment note below; the **≥ 10 for every such pair** this table published was never met by any build and is retired. A tour that scores **fewer than 28** worlds is **RED on its denominator**, whatever its mean reads. |
+| **W3** | **Latitude reads as colour.** | Group the same samples by band. For every pair of bands adjacent **in §1.3's 13-band chain** (a chain, not a cycle: the two ice caps are its two ends and are the furthest apart of any pair) where the smaller holds ≥ 5% of the plane's cards, the ΔE between their mean a\*b\*. A world's own reading is the **closest** of its qualifying pairs; **the roster's is the mean of the per-world readings over W3's domain — 28 of the 45 worlds on `c9468f1125bcddff`** (board ruling `fold_mean`) — published with every reading and with the denominator beside it. | `FLOORS.bandDeltaE`, **derived on the mean and re-derivable** — see the amendment note below; the **≥ 10 for every such pair** this table published was never met by any build and is retired. A tour whose scored domain is **not exactly 28** is **RED on its denominator**, whatever its mean reads. |
 | **W4** | **Art resolves without exhausting.** | At the surface view (2.2× radius), after a 5 s settle: the fraction of on-screen front-facing cells above the effective threshold that are showing art, and evictions per second over the last 2 s. **Demand as a multiple of pool capacity is reported alongside them and is not scored.** | **`artFraction ≥ max(0.9 × capacityCeiling, 0.5)`** and **≤ 5 evictions/s** — see the amendment note below; the published flat **≥ 90%** is the bar only where demand fits the pool. |
 | **W5** | **The home view is not a wall of labels**, and every world is still reachable from it. | Two halves, both over a **sweep of ≥ 12 azimuths** — the home view is a family of frames, not a pose (see below). **Ceiling:** the worst-case count of plane labels **at opacity > 0.05** over the sweep; a node count is not a measurement here. **Reachability:** the number of `worldsWithCards` carrying no such label at **any** sampled azimuth, with those slugs named. | **Ceiling ≤ `worldsWithCards.length`** — **29** on the 87-plane roster and **45** on v3 (measured, not predicted — §1.2), derived from the dataset under test and never a literal. The belt is *not* added: it is in `planesWithCards` but `PlaneLabels.tsx:116` filters it by slug before projection (PRD 5.3.4), so it can never carry a label and `planesWithCards` would leave the ceiling one short of ever binding. **Reachability = 0 worlds.** Below 12 azimuths both halves report `insufficient`. |
 
@@ -2357,18 +2357,27 @@ events; the focused card's tilt feels physical; and, new, **the tether reads as 
 >
 > **1. The domain is scored, not reported.** A mean over a thinned domain is a different statistic in
 > the same units, and thinning *flatters* it — drop the low worlds and the number goes up. So the
-> gate carries the roster's expected denominator (**28 worlds on dataset `c9468f1125bcddff`**) and a
-> tour that scores fewer is **RED on its denominator**, with the shortfall named, whatever its mean
-> reads. This is a real failure mode and not a hypothetical: the two truncated runs in the table above
-> (`order-fwd` / `order-rev`, 5 in-domain worlds) printed a W3 line in exactly the same shape as a
-> full tour's. The expected size is a **dataset property** and is not derivable from `planes.json` —
-> band shares come from per-hue card counts in the shards — so it is recorded per dataset hash in
-> `FLOORS`' neighbour `W3_DOMAIN_SIZE`, and it is **not left alone with itself**: every roster tour
-> also counts the worlds that qualify by band share from its own probe payloads, and the fold fails
-> when the two disagree. The recorded number catches a tour that visited too few worlds — which the
-> run's own data cannot, since eight worlds toured report eight qualifying and eight scored — and the
-> per-run count catches the dataset moving under the recorded number. An unrecorded dataset is a
-> **RED**, never a skipped check.
+> gate carries the roster's expected denominator and a tour whose scored domain is not exactly that
+> is **RED on its denominator**, with the shortfall named, whatever its mean reads. This is a real
+> failure mode and not a hypothetical: the two truncated runs in the table above (`order-fwd` /
+> `order-rev`, 5 in-domain worlds) printed a W3 line in exactly the same shape as a full tour's.
+>
+> **The record is two numbers, because W3's domain has two gates and they do not agree.**
+> `W3_DOMAIN_SIZE` (beside `FLOORS`) carries, per dataset hash, the count of worlds whose **cards**
+> put an adjacent band pair over the 5% share rule, and the count that then **present both of those
+> bands in the sampled cells**. On `c9468f1125bcddff` those are **30 and 28**: `shenmeng` (30 cells)
+> and `zhalfir` (4 cells) qualify on their card distribution and populate a single band on screen, so
+> W3 has no pair to compare on them. The first draft of this amendment asserted the two counts were
+> equal, and the first full tour that ran it went **RED on every roster row, including the acceptance
+> row** — the by-share count is an **upper bound** on the scored one, never a second spelling of it.
+>
+> Neither number is redundant and neither is left alone with itself. The domain size is a **dataset
+> property** not derivable from `planes.json` — band shares come from per-hue card counts in the
+> shards — so both are recorded; the **scored** count catches a tour that visited too few worlds or a
+> world that lost a band at the pose, which the run's own data cannot (eight worlds toured report
+> eight of everything), and the **by-share** count is a pure function of the dataset, so it catches a
+> refresh moving under the record even where the scored count lands on 28 again. An unrecorded
+> dataset is a **RED**, never a skipped check.
 >
 > **2. The per-world readings are published.** `summary.json` carries every reading the mean was
 > taken over, lowest first, beside `scoredPlanes` and the expected denominator, and the report prints

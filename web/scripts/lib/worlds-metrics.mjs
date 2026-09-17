@@ -420,21 +420,33 @@ export const W3_MIN_BAND_SHARE = 0.05;
  * from the plane's per-hue card counts, which live in the shards rather than the roster file. So
  * this is recorded per dataset hash and carries its provenance with it:
  *
- * - **`c9468f1125bcddff` — 28 of 45 worlds.** Measured on five full-roster sessions (`accept3`,
- *   `dec826-bare`, `accept4`, `rebase-w3b`, `rebase-w3c`) and on both arms of the DEC-836 floor
- *   derivation: 28 in domain in every one, **0 dropped**, the same 28 slugs each time.
+ * **Two numbers, because the domain has two gates and they do not agree** — which is a measured fact
+ * and was very nearly a shipped defect. `byShares` counts the worlds whose *cards* give some adjacent
+ * band pair ≥ {@link W3_MIN_BAND_SHARE} on both sides; `scored` counts the worlds that then present
+ * **both of those bands in the sampled cells** at the pose. On `c9468f1125bcddff` those are **30 and
+ * 28**: `shenmeng` (30 cells) and `zhalfir` (4 cells) qualify on their card distribution and populate
+ * a single band on screen, so W3 has no pair to compare and reports `insufficient`. A first draft of
+ * this record asserted the two counts were equal; the first full tour that ran it went RED on every
+ * roster row, including the acceptance row. `byShares` is an **upper bound** on `scored`, never a
+ * substitute for it.
  *
- * A constant cannot testify to its own provenance, so the gate does not leave it alone with itself:
- * every roster tour also counts the worlds that qualify **by band share** off its own probe payloads
- * ({@link w3QualifiesByShares}) and {@link foldMean} fails when the two disagree. The number below
- * catches a tour that visited too few worlds — which the run's own data cannot, because eight worlds
- * toured would report eight qualifying and eight scored — and the per-run count catches the dataset
- * moving under the number. Neither is redundant.
+ * - **`c9468f1125bcddff` — `scored` 28 of 45, `byShares` 30 of 45.** 28 in domain on five full-roster
+ *   baseline sessions (`accept3`, `dec826-bare`, `accept4`, `rebase-w3b`, `rebase-w3c`) and on all
+ *   fourteen arms of the DEC-836 floor derivation — **0 dropped, the same 28 slugs every time.**
+ *
+ * A constant cannot testify to its own provenance, so neither of these is left alone with itself.
+ * `scored` catches a tour that visited too few worlds, or a world that lost a band at the pose —
+ * which the run's own data cannot, because eight worlds toured would report eight of everything.
+ * `byShares` is a **pure function of the dataset** ({@link w3QualifiesByShares} reads band shares and
+ * nothing else), so it is deterministic per refresh and catches the dataset moving under the record
+ * even where the scored count happens to land on 28 again. Neither is redundant.
  *
  * An unrecorded dataset is **not** a skipped check: `foldMean` fails, because a floor derived on one
  * roster says nothing about a mean taken over another.
  */
-export const W3_DOMAIN_SIZE = Object.freeze({ c9468f1125bcddff: 28 });
+export const W3_DOMAIN_SIZE = Object.freeze({
+  c9468f1125bcddff: Object.freeze({ scored: 28, byShares: 30 }),
+});
 
 /**
  * Whether a plane's band shares alone put it in W3's domain, before a single pixel is sampled.
@@ -1803,7 +1815,8 @@ function foldMean(template, all, real, rosterDomain) {
     worstPlane: readings[0].slug,
     scoredPlanes: real.length,
     insufficientPlanes: all.length - real.length,
-    expectedPlanes: rosterDomain?.expected ?? null,
+    expectedPlanes: rosterDomain?.expected?.scored ?? null,
+    expectedQualifyingPlanes: rosterDomain?.expected?.byShares ?? null,
   };
 
   if (rosterDomain === null) {
@@ -1818,31 +1831,38 @@ function foldMean(template, all, real, rosterDomain) {
   }
 
   // Both halves of the denominator, checked separately, because they fail for different reasons and
-  // a message naming the wrong one costs a tour. `expected` is the dataset's recorded domain size —
-  // it catches a tour that visited fewer worlds (a crash, `--tour-limit`, a truncated order), which
-  // the run's own data cannot: eight worlds toured would report eight qualifying and eight scored.
-  // `qualifying` is derived from the run's own band shares — it catches the dataset moving under the
-  // recorded number, which is the way a written-down constant goes quietly wrong.
+  // a message naming the wrong one costs a tour. `expected.scored` is the dataset's recorded domain
+  // size — it catches a tour that visited fewer worlds (a crash, `--tour-limit`, a truncated order)
+  // or a world that lost a band at the pose, neither of which the run's own data can see: eight
+  // worlds toured would report eight of everything. `expected.byShares` is a pure function of the
+  // dataset, so it catches the dataset moving under the record even when the scored count lands on
+  // the same number again.
+  //
+  // **A mismatch in either direction is a fault, and `scored` above the record is not good news.**
+  // The floor was derived over a domain of a stated size; a mean over a larger one is a different
+  // statistic in the same units, exactly as a mean over a smaller one is.
   const faults = [];
   if (rosterDomain.expected === null) {
     faults.push(
       `no W3 domain size is recorded for ${rosterDomain.label} — a roster mean may not be scored ` +
         `against a floor derived on a roster nobody wrote down`,
     );
-  } else if (real.length < rosterDomain.expected) {
+  } else if (real.length !== rosterDomain.expected.scored) {
     faults.push(
-      `scored ${real.length} of the ${rosterDomain.expected} worlds ${rosterDomain.label} puts in ` +
-        `domain — a mean over a thinned domain is a different statistic in the same units`,
+      `scored ${real.length} of the ${rosterDomain.expected.scored} worlds ${rosterDomain.label} ` +
+        `puts in domain — a mean over a domain that is not the one the floor was derived on is a ` +
+        `different statistic in the same units`,
     );
   }
   if (
     rosterDomain.qualifying !== null &&
     rosterDomain.expected !== null &&
-    rosterDomain.qualifying !== rosterDomain.expected
+    rosterDomain.qualifying !== rosterDomain.expected.byShares
   ) {
     faults.push(
-      `${rosterDomain.qualifying} worlds qualify by band share against the ${rosterDomain.expected} ` +
-        `recorded for ${rosterDomain.label} — re-derive the floor before trusting this number`,
+      `${rosterDomain.qualifying} worlds qualify by band share against the ` +
+        `${rosterDomain.expected.byShares} recorded for ${rosterDomain.label} — the dataset has ` +
+        `moved under the record; re-derive the floor before trusting this number`,
     );
   }
 
