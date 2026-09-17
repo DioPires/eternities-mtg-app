@@ -65,8 +65,24 @@ cutover PR touches them:
 - `scene/probeSeam.ts`, `scene/benchSeam.ts`, `scene/SceneReadout.tsx` — `cards/gpuMemory`, `cards/pickCard`
 - `scene/picking/scenePicker.ts` — `cards/focusedCard`, `starfield/planeTable`
 - `scene/platform/capabilities.ts`, `app/filterMask.ts` — `starfield/starGeometry` (types, §1)
+- **`scene/useSceneData.ts` — `starfield/starGeometry`, and this one is a VALUE import.** Added on a
+  re-take of this table by import edge rather than by symbol name (DEC-752). It was missed because
+  the first pass looked for `PositionMode`/`StarGeometry` as bare names and this file is the only
+  consumer that also pulls the **class and a function**:
+  `import { StarGeometry, resolvePositionMode, type PositionMode }`. Every other surviving consumer
+  — `capabilities.ts`, `filterMask.ts`, `selfCheck.ts` — is `import type`, so a wrong delete there
+  fails at `tsc`. **Here it would fail at runtime**, and `useSceneData.ts` is squarely on the worlds
+  path: `App.tsx`, `scene/renderer/sceneHost.ts`, `scene/probeSeam.ts` and `scene/benchSeam.ts` all
+  import it. This is the one row in this table where the good case — a build error — does not apply.
 - `scene/usePlaneDetail.ts`, `scene/PlanetHoverLabel.tsx` — `cards/cardTier`
 - `camera/motion.ts` — `starfield/motion` (§1)
+
+> **Re-taken by import edge, not by symbol name (DEC-752, at head `9ff1d81`).** The first pass
+> grepped for the surviving symbols. That over-counts — `grep imageQueue` returns `worldSurface.ts`
+> and `artPool.ts`, which only *mention* it, where the real edges are `artStream.ts` and
+> `attachWorlds.ts` — and, worse, it under-counts a file that imports under a different name, which
+> is how `useSceneData.ts` was missed. `grep -rn "from '[^']*/<module>'"` is the reading that
+> matches what the bundler resolves. The counts above are that reading.
 
 ## 4. Unambiguously galaxy-only
 
