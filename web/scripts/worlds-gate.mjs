@@ -107,6 +107,16 @@ const W4_SETTLE_S = 5
  * `evictionTail` reports a settled tail past `MIN`, and only the world that actually churns pays for
  * the long observation.
  *
+ * **Since DEC-842 those 44 worlds report `insufficient` rather than a passing 0, and the early break
+ * is what decides it — so the cost of the patience is worth stating rather than leaving implicit.**
+ * A world that would have saturated at t = 30 s is stopped at `MIN` and filed out of domain. That is
+ * the right trade on this roster, where the unsaturated worlds are unsaturated because their whole
+ * demand *fits* — alara asks for 283 of 1,024 and no amount of waiting changes it — so the extra
+ * ~24 minutes a full-patience tour would cost buys no reading. It stops being the right trade if a
+ * world ever lands near the capacity, and the symptom would be a world flickering between `n/a —
+ * unsaturated` and a rate across runs. The per-world line prints the high-water mark on every world
+ * so that is visible in the log rather than only in a verdict.
+ *
  * `MAX` is a ceiling on that patience, not a target. A world that has not settled by then reports
  * `insufficient` with the drift that disqualified it — see `evictionTail`. That is the honest
  * outcome: DEC-835 measured a 60 s baseline whose tail was still declining 5.4% monotonically, and a
@@ -1078,6 +1088,39 @@ const MATRIX = [
     ],
   },
   {
+    // **The occupancy domain's live row (DEC-842).** The row above pins the domain rule about the
+    // pool's *size*; this one pins the rule about whether it ever filled. Below saturation
+    // `claimLayer` never reaches its victim search, so `pool.evictions` is pinned at 0 and the rate
+    // is a fact about occupancy rather than a reading of churn.
+    //
+    // **The 45-world tour exercises this rule on 44 worlds and cannot falsify it**, which is the
+    // whole reason this row exists. The fold is a worst-of and dominaria saturates, so the baseline
+    // row's `evictionsPerSecond: GREEN` passes with the rule and passes without it — the difference
+    // shows up only in the denominator it prints (1 of 45 against 45 of 45), and no expectation
+    // reads a denominator. Asserting the `N/A` on a world that cannot saturate is what makes the
+    // rule falsifiable live, exactly as `one-card-world` does for `artCellsShowing`'s domain.
+    //
+    // **kamigawa, and the subject is chosen for margin rather than for tightness.** 917 cards, a
+    // high-water mark of 265 of 1,024 — 26% of capacity — so it is nowhere near the boundary it is
+    // asserted to sit below, and it still presents 202 front-facing on-screen cells, which puts it
+    // inside `artCellsShowing`'s 128-cell domain. The tightest subject available (ravnica, 606) would
+    // be the flakiest, and a control that flickers is not a control.
+    //
+    // **The two GREEN expectations are not decoration**: an `N/A`-only row cannot tell a working
+    // domain rule from a page that failed to render, and both would print the same `n/a`. The art
+    // half going green on the same frame is what says the reading was taken on a live world.
+    // `negative-controls-distinguish-guard-from-rubble`.
+    id: 'unsaturated-pool',
+    label: 'kamigawa at the shipped pool — a world whose demand fits, so the eviction bound cannot bind',
+    seams: {},
+    subject: 'kamigawa',
+    expect: [
+      { criterion: 'W4', measure: 'evictionsPerSecond', expect: 'N/A' },
+      { criterion: 'W4', measure: 'artFraction', expect: 'GREEN' },
+      { criterion: 'W4', measure: 'artCellsShowing', expect: 'GREEN' },
+    ],
+  },
+  {
     id: 'no-seams',
     label: 'dominaria at the 2.2-radii pose with no seams — the sibling every control row is read from',
     seams: {},
@@ -1328,8 +1371,18 @@ async function runRow(browser, url, row, { roster, args, baselineProbe }) {
               ? ''
               : ` (pool hw ${hw.resident}/${hw.layers}${hw.saturated ? ' SATURATED' : ''})`) +
             ` [art ${visit.w4.showing}/${visit.w4.presented} presented; ev ` +
+            // Three domain rules can null this rate and the line has to say which — an `n/a` that
+            // does not name its cause is how "the bound stopped binding" reads identically to "this
+            // world is quiet". The occupancy clause is read off `tail.saturated`, the same boolean
+            // the criterion's rule tests, rather than re-derived here: a second spelling is a second
+            // thing to keep in step. Ordered as the criterion orders them, so the printed reason is
+            // the reason that actually fired.
             (ev.status === 'insufficient'
-              ? `n/a — ${visit.w4.atEvictionPool ? 'tail' : `pool ${visit.poolLayers}`}`
+              ? !visit.w4.atEvictionPool
+                ? `n/a — pool ${visit.poolLayers}`
+                : tail.saturated === false && tail.evictionsObserved === 0
+                  ? `n/a — unsaturated ${tail.peakResident}/${visit.poolLayers}`
+                  : 'n/a — tail'
               : `${tail.rate.toFixed(2)}/s over ${tail.spanS.toFixed(1)}s tail from ` +
                 `t=${tail.plateauT.toFixed(1)}s @${tail.peakResident}, drift ` +
                 `${(tail.drift * 100).toFixed(1)}%`) +

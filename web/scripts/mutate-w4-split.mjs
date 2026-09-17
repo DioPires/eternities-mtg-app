@@ -302,6 +302,48 @@ const MUTANTS = [
     from: '        {\n          insufficient:\n            noAdmission !== null ||',
     to: '        {\n          scored: false,\n          insufficient:\n            noAdmission !== null ||',
   },
+
+  // ---- DEC-842: the occupancy domain, rider 1 of the DEC-841 review -------------------------
+  // The eviction bound went up and got a capacity domain (DEC-837), and neither change could see
+  // that **44 of the 45 worlds report a 0 the bound cannot fail**, because their pool never fills
+  // and `claimLayer` never reaches its victim search. M32 is the vacuity control for that and it is
+  // the one worth reading the output of; M33 and M34 defend the conjunct that makes the rule safe
+  // to score at all, which is the half a reader is most likely to tidy away.
+  {
+    // **The vacuity control for the domain rather than for the constant.** Under the mutant an
+    // unsaturated 1,024-layer session scores its structural zero `pass` again, the roster fold reads
+    // "worst of 45 worlds" over 44 readings that cannot fail, and a suite that stayed green here
+    // would be testing the rule's presence and never its effect. The same shape DEC-834 used to kill
+    // option (b): `a-bound-check-is-vacuous-when-the-bound-never-binds`, through the domain.
+    name: 'M32 VACUITY CONTROL: the occupancy domain is dropped, so a pool that never filled scores a passing 0',
+    file: METRICS,
+    from: '          tail.saturated === false && tail.evictionsObserved === 0',
+    to: '          false',
+  },
+  {
+    // The conjunct that keeps the rule from costing a real reading. `poolHighWater` is a LOWER bound
+    // — the probe publishes `resident` and not `reserved` — so a full pool with a layer in flight
+    // reads 1023/1024. On `saturated` alone, a world churning at 17.9/s is filed out of domain and
+    // the one reading that can move the verdict disappears. That is `poolHighWater`'s own stated
+    // objection to promoting it to a domain rule, and this is the mutant that says the objection was
+    // answered rather than ignored.
+    name: 'M33 the counter conjunct is dropped, so an under-read churning pool falls out of domain',
+    file: METRICS,
+    from: '          tail.saturated === false && tail.evictionsObserved === 0',
+    to: '          tail.saturated === false',
+  },
+  {
+    // The plausible tidy-up: two `===` comparisons collapsed to truthiness. It reads identically on
+    // every live row and changes the answer on exactly one — the timeline too short to have been
+    // asked, where both fields are `null`. `!null` is `true` twice, so an unreadable run is handed
+    // "the pool never had a free layer to lose", a finding nothing measured. Each conjunct blocks
+    // this on its own, which is why the mutant has to loosen both: see
+    // `a-conjunction-hides-which-half-its-control-tests`.
+    name: 'M34 the domain rule reads truthiness, so an unreadable timeline is reported as unsaturated',
+    file: METRICS,
+    from: '          tail.saturated === false && tail.evictionsObserved === 0',
+    to: '          !tail.saturated && !tail.evictionsObserved',
+  },
 ]
 
 function run() {

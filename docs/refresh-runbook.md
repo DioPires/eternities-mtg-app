@@ -348,6 +348,17 @@ own. It is also the row that proves the absolute floor does work: at the same fr
 bar (`0.9 × ceiling`, no floor) it read 0.1341 against 0.1216 and went **GREEN**, because a
 pool-starved frame is saturated and `artFraction` equals its ceiling exactly.
 
+**W4's eviction half has two live rows and both assert `N/A`, because what they falsify is its
+domain and not its bound** (DEC-842). `layers-128` covers the capacity rule; `unsaturated-pool`
+(kamigawa, high-water 265 of 1,024) covers the occupancy one — below saturation `claimLayer` never
+reaches its victim search, so the rate is a structural 0 the bound cannot fail. **The 45-world
+`baseline` tour cannot stand in for either**: its fold is a worst-of and dominaria saturates, so it
+passes with the occupancy rule and without it, and the only thing that changes is the denominator it
+prints (`worst of 1 world in domain, 44 out of domain` where it read `worst of 45`). Read that
+denominator on every refresh. **If it ever climbs back toward 45 without dominaria's rate moving, the
+rule has stopped firing** — and a green eviction half taken over 45 readings that cannot fail is what
+this row exists to prevent.
+
 **W2's and W3's controls are composed with `?art=off`, and their sibling is `?art=off` alone.** Read
 `artoff-swatch-mean` and `artoff-bands-shuffle` against the `art-off` row, never against `baseline`.
 Both colour seams perturb the *swatch*, and at the 2.2-radii pose essentially every sampled cell
