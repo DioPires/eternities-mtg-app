@@ -3,11 +3,17 @@
  * W3's **fold**, re-scored across sessions — the companion to `w3-floor.mjs`.
  *
  * `w3-floor.mjs` asks where a floor may sit given two arms. This asks the question underneath it:
- * does the arm reproduce at all? §3.1 folds W3 to the worst world, so the tour value is a minimum
- * over the in-domain worlds of a per-world minimum over band pairs — a min of minima, which is the
- * least stable statistic available over a population that moves. Re-folding the *same* per-world
- * readings four ways is what separates "the renderer moved" from "the fold sampled a different
- * world".
+ * does the arm reproduce at all? Re-folding the *same* per-world readings five ways is what
+ * separates "the renderer moved" from "the fold sampled a different world".
+ *
+ * **§3.1's fold is now the mean (board ruling `fold_mean`, card `7d3653f6`), and this script is how
+ * that was decided — so it keeps every fold, including the retired one.** The shipped fold was the
+ * worst world, which made the tour value a minimum over the in-domain worlds of a per-world minimum
+ * over band pairs: a min of minima, the least stable statistic available over a population that
+ * moves. Over five identical sessions it spanned 1.88× and scored three different worlds; the mean
+ * spanned 1.09×. Run this at the n a floor is derived from — at n=3 the p10 looked like the best
+ * quantile on offer and at n=5 it was the worst fold in the table, worse than the min it would have
+ * replaced. A ranking taken at one n is not a ranking.
  *
  * Usage — two or more gate run directories, each holding `<row>/visits.json`:
  *
@@ -20,8 +26,8 @@
  * that has nothing to do with the build. The script prints how many worlds it dropped for that
  * reason, because a silently narrowed domain reads as agreement.
  *
- * It proposes nothing. Which fold §3.1 should use is the owner's call (spec §3.1, the retraction
- * block under W3's floor); this only reports how each one behaves on the sessions handed to it.
+ * It proposes nothing. Which fold §3.1 uses was the owner's call and is settled; this reports how
+ * each one behaves on the sessions handed to it, which is what a later refresh has to re-check.
  */
 
 import { readFileSync, existsSync, readdirSync } from 'node:fs'
@@ -90,11 +96,11 @@ const quantile = (values, p) => {
 const mean = (values) => values.reduce((a, b) => a + b, 0) / values.length
 
 const FOLDS = [
-  { name: 'min (shipped)', of: (v) => quantile(v, 0) },
+  { name: 'min (retired)', of: (v) => quantile(v, 0) },
   { name: 'p10', of: (v) => quantile(v, 0.1) },
   { name: 'p25', of: (v) => quantile(v, 0.25) },
   { name: 'median', of: (v) => quantile(v, 0.5) },
-  { name: 'mean', of: (v) => mean(v) },
+  { name: 'mean (§3.1)', of: (v) => mean(v) },
 ]
 
 console.log(`W3 fold stability — ${runs.length} sessions, key ${KEY}\n`)
@@ -140,7 +146,7 @@ for (const v of volatility) {
 const shippedFold = runs.map((r) => Math.min(...everywhere.map((s) => r.readings.get(s))))
 const worstOf = (r) =>
   everywhere.reduce((a, b) => (r.readings.get(b) < r.readings.get(a) ? b : a))
-console.log('\nthe world the shipped fold scored, per session:')
+console.log('\nthe world the RETIRED min fold scored, per session — its subject, and why it went:')
 for (const [i, r] of runs.entries()) {
   console.log(`  ${r.dir.padEnd(width)} ${shippedFold[i].toFixed(4)}  ${worstOf(r)}`)
 }

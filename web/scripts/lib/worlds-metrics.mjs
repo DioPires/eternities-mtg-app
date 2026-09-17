@@ -412,6 +412,52 @@ export const W2_CONTROL_SUBJECT_MIN_RING = W2_MIN_RING_SAMPLES;
 export const W3_MIN_BAND_SHARE = 0.05;
 
 /**
+ * How many worlds a dataset puts in W3's domain — **the denominator its mean fold is taken over.**
+ *
+ * Board ruling `fold_mean` makes W3 a roster statistic, and a mean is the one fold that a narrowed
+ * domain moves in the flattering direction: drop the worst worlds and it rises. So the denominator
+ * has to be an expectation the run is scored against, not a count the run reports about itself.
+ *
+ * **It is a dataset property and it is not derivable from `planes.json`.** A world is in W3's domain
+ * when some adjacent band pair holds ≥ {@link W3_MIN_BAND_SHARE} on both sides, and band shares come
+ * from the plane's per-hue card counts, which live in the shards rather than the roster file. So
+ * this is recorded per dataset hash and carries its provenance with it:
+ *
+ * - **`c9468f1125bcddff` — 28 of 45 worlds.** Measured on five full-roster sessions (`accept3`,
+ *   `dec826-bare`, `accept4`, `rebase-w3b`, `rebase-w3c`) and on both arms of the DEC-836 floor
+ *   derivation: 28 in domain in every one, **0 dropped**, the same 28 slugs each time.
+ *
+ * A constant cannot testify to its own provenance, so the gate does not leave it alone with itself:
+ * every roster tour also counts the worlds that qualify **by band share** off its own probe payloads
+ * ({@link w3QualifiesByShares}) and {@link foldMean} fails when the two disagree. The number below
+ * catches a tour that visited too few worlds — which the run's own data cannot, because eight worlds
+ * toured would report eight qualifying and eight scored — and the per-run count catches the dataset
+ * moving under the number. Neither is redundant.
+ *
+ * An unrecorded dataset is **not** a skipped check: `foldMean` fails, because a floor derived on one
+ * roster says nothing about a mean taken over another.
+ */
+export const W3_DOMAIN_SIZE = Object.freeze({ c9468f1125bcddff: 28 });
+
+/**
+ * Whether a plane's band shares alone put it in W3's domain, before a single pixel is sampled.
+ *
+ * The domain has two conditions — the pair must qualify by share, and both its bands must actually
+ * turn up in the samples — and only the first is a property of the dataset. Separating them is what
+ * lets the gate tell "this world has no comparable band pair" (a dataset fact, stable) from "this
+ * world's band was not sampled at this pose" (a run fact, and a thinning of the mean's domain).
+ *
+ * `bandShares` is the thirteen-entry table the probe publishes, indexed like {@link BAND_ORDER}.
+ */
+export function w3QualifiesByShares(bandShares) {
+  return BAND_ADJACENCY.some(
+    ([i, j]) =>
+      Math.min(bandShares?.[i] ?? 0, bandShares?.[j] ?? 0) >=
+      W3_MIN_BAND_SHARE,
+  );
+}
+
+/**
  * A label counts toward W5 only above this opacity — **the DOM node count is not the measurement.**
  *
  * §3.1 words W5 as "count rendered plane labels in the DOM", and read literally that is
@@ -597,7 +643,7 @@ function measure(
   value,
   bound,
   direction,
-  { insufficient = false, why = null, scored = true } = {},
+  { insufficient = false, why = null, scored = true, fold = "worst" } = {},
 ) {
   const status = insufficient
     ? "insufficient"
@@ -614,6 +660,11 @@ function measure(
     direction,
     status,
     scored,
+    // How {@link foldCriteria} aggregates this measure across planes. `'worst'` everywhere but W3,
+    // whose board-ruled mean lives in {@link foldMean}. It is a property of the measure rather than
+    // a branch in the fold so that the one place that decides W3 is the one place that says so, and
+    // a second mean-folded measure needs no second branch.
+    fold,
     pass: status === "pass",
     insufficientReason: why,
   };
@@ -915,6 +966,10 @@ export function evaluateW3(samples, bandShares) {
         FLOORS.bandDeltaE,
         "min",
         {
+          // **The roster fold is the mean, by board ruling `fold_mean`** — see {@link foldMean}.
+          // This plane's own reading is unchanged by that ruling: still the closest of its
+          // qualifying adjacent pairs. What changed is one level up.
+          fold: "mean",
           // Zero qualifying pairs is the criterion having nothing to say, not the criterion failing.
           // A one-card world populates a single band, so no adjacent pair exists to compare — and
           // "≥ 10 for every such pair" over an empty set is vacuous, which is neither red nor green.
@@ -1697,21 +1752,148 @@ export function evaluateW5(sweep, roster, options) {
 }
 
 /**
+ * The mean fold — W3's, and W3's alone (board ruling `fold_mean`, card `7d3653f6`).
+ *
+ * ## Why W3 folds differently from every other criterion
+ *
+ * A worst-case fold is the right one wherever the per-plane reading is stable, because "every world
+ * clears the floor" is the claim §3.1 wants. W3's is not stable: a world's reading is already a
+ * **minimum over its band pairs**, so the roster fold was a minimum of minima, and a min of minima
+ * over a population that moves samples its own low tail. Measured over five identical full-roster
+ * sessions on one unchanged dataset (DEC-832): the fold spanned 0.4253–0.8005, a **1.88×** spread,
+ * and it scored **three different worlds** — so the criterion had no fixed subject and its colour
+ * was settled by the draw. Re-scoring the same per-world readings: mean **1.09×**, median 1.22×,
+ * p25 1.38×, p10 2.37× (worse than the min it would replace).
+ *
+ * ## What a mean costs, stated rather than glossed
+ *
+ * It buys reproducibility with exactly the property the worst-case fold had: **one degenerate world
+ * can no longer red the roster on its own.** That is a real loss and the board took it knowingly.
+ * Two things are owed in return, and both are here:
+ *
+ * 1. **The domain cannot be allowed to thin silently.** A mean over a subset is a different
+ *    statistic that reads in the same units — narrow the domain to the comfortable worlds and the
+ *    number goes *up*. So the fold takes the roster's expected denominator and **fails** when it
+ *    scores fewer worlds than that, rather than folding what it has. (A worst-case fold needed no
+ *    such rule: narrowing it can only raise it, and `scoredPlanes` is printed beside it.)
+ * 2. **The per-world readings are published** (`readings`), lowest first, so a roster mean can
+ *    always be taken apart by the next reader instead of being taken on trust.
+ *
+ * ## The verdict lives here, not on the plane
+ *
+ * A per-plane W3 measure still carries its own `status` against `FLOORS.bandDeltaE`, and on a floor
+ * derived from a **mean** roughly half the domain sits below it by construction. That per-plane
+ * verdict is not the criterion and this fold does not read it: `status` here comes from the mean
+ * against the bound, never from counting failing planes. A world below the roster floor is a world
+ * below the roster mean, not a failing world — see spec §3.1.
+ *
+ * `rosterDomain` is `{ expected, qualifying, label }` or `null` for a row that toured one subject.
+ * `null` reports `insufficient`: a roster statistic measured on one world is not a small version of
+ * itself, it is a different number, and scoring it against the roster's floor would red the
+ * `?art=off` sibling every composed control row is read against.
+ */
+function foldMean(template, all, real, rosterDomain) {
+  const readings = real
+    .map((entry) => ({ slug: entry.slug, value: entry.measure.value }))
+    .sort((a, b) => a.value - b.value);
+  const value =
+    readings.reduce((total, r) => total + r.value, 0) / readings.length;
+  const shared = {
+    ...template,
+    value,
+    foldKind: "mean",
+    readings,
+    worstPlane: readings[0].slug,
+    scoredPlanes: real.length,
+    insufficientPlanes: all.length - real.length,
+    expectedPlanes: rosterDomain?.expected ?? null,
+  };
+
+  if (rosterDomain === null) {
+    return {
+      ...shared,
+      status: "insufficient",
+      pass: false,
+      insufficientReason:
+        `${template.key} folds to the mean over the roster's domain; this row scored ` +
+        `${real.length} world${real.length === 1 ? "" : "s"} and is not a roster tour`,
+    };
+  }
+
+  // Both halves of the denominator, checked separately, because they fail for different reasons and
+  // a message naming the wrong one costs a tour. `expected` is the dataset's recorded domain size —
+  // it catches a tour that visited fewer worlds (a crash, `--tour-limit`, a truncated order), which
+  // the run's own data cannot: eight worlds toured would report eight qualifying and eight scored.
+  // `qualifying` is derived from the run's own band shares — it catches the dataset moving under the
+  // recorded number, which is the way a written-down constant goes quietly wrong.
+  const faults = [];
+  if (rosterDomain.expected === null) {
+    faults.push(
+      `no W3 domain size is recorded for ${rosterDomain.label} — a roster mean may not be scored ` +
+        `against a floor derived on a roster nobody wrote down`,
+    );
+  } else if (real.length < rosterDomain.expected) {
+    faults.push(
+      `scored ${real.length} of the ${rosterDomain.expected} worlds ${rosterDomain.label} puts in ` +
+        `domain — a mean over a thinned domain is a different statistic in the same units`,
+    );
+  }
+  if (
+    rosterDomain.qualifying !== null &&
+    rosterDomain.expected !== null &&
+    rosterDomain.qualifying !== rosterDomain.expected
+  ) {
+    faults.push(
+      `${rosterDomain.qualifying} worlds qualify by band share against the ${rosterDomain.expected} ` +
+        `recorded for ${rosterDomain.label} — re-derive the floor before trusting this number`,
+    );
+  }
+
+  const status =
+    faults.length > 0
+      ? "fail"
+      : (
+            template.direction === "min"
+              ? value >= template.bound
+              : value <= template.bound
+          )
+        ? "pass"
+        : "fail";
+  return {
+    ...shared,
+    status,
+    pass: status === "pass",
+    qualifyingPlanes: rosterDomain.qualifying,
+    domainFaults: faults,
+  };
+}
+
+/**
  * Fold one criterion measured on many planes into the criterion for the roster.
  *
  * W1 aggregates itself — its verdict is the worst plane, and `evaluateW1` takes every plane at
- * once. W2, W3 and W4 are per-plane, and §3.1 is explicit that they must stay that way: "a whole-
+ * once. W2 and W4 are per-plane, and §3.1 is explicit that they must stay that way: "a whole-
  * multiverse aggregate quietly averaging over them" is exactly what cannot catch a single
- * degenerate world. So the fold is a worst-case over planes and never a mean, and `insufficient`
+ * degenerate world. So their fold is a worst-case over planes and never a mean, and `insufficient`
  * is carried rather than counted as a pass — an `n/a` that is invisible is how a gate comes to
  * measure nothing while printing green.
+ *
+ * **W3 is the exception, by board ruling `fold_mean` (card `7d3653f6`, 2026-09-17).** Its measure
+ * carries `fold: 'mean'` and is folded by {@link foldMean}; everything above is why that is a
+ * deliberate exception and not a relaxation of the rule. See {@link foldMean} for the argument the
+ * board ruled on and for what a mean costs.
+ *
+ * `rosterDomain` is the roster tour's own denominator, or `null` when the row toured a subject
+ * rather than the roster. It is only read by mean-folded measures, because only they have a
+ * denominator that can be silently thinned: a worst-case fold over a narrowed domain can only move
+ * *up*, and `checkControlRow` already prints `scoredPlanes` beside it.
  *
  * **It publishes its own denominator** (`scoredPlanes`), which `checkControlRow` prints. Carrying
  * only `insufficientPlanes` was the wrong half: after the ring domain landed (DEC-816 R3) W2's
  * lightness half folds off 2 of the 45 worlds, and a GREEN taken over two worlds must not print the
  * same line as a GREEN taken over forty-five.
  */
-export function foldCriteria(perPlane) {
+export function foldCriteria(perPlane, { rosterDomain = null } = {}) {
   const measured = perPlane.filter((entry) => entry.criterion !== null);
   if (measured.length === 0) return null;
   const first = measured[0].criterion;
@@ -1740,6 +1922,7 @@ export function foldCriteria(perPlane) {
         scoredPlanes: 0,
       };
     }
+    if (template.fold === "mean") return foldMean(template, all, real, rosterDomain);
     // "Worst" is the direction the floor binds in: the smallest value under a `min` bound, the
     // largest under a `max` one. A fold that took the mean would let 44 comfortable worlds carry
     // one failing world over the line.
@@ -1836,11 +2019,22 @@ export function checkControlRow(
   // rather than gaining a fictional "1 of 1".
   // Suppressed on `N/A`, where `insufficientReason` already spells out "every plane was out of
   // domain (N planes)" — two spellings of one fact read as two facts.
+  //
+  // A mean-folded measure says so and prints its **expected** denominator beside its actual one.
+  // "worst of 28 worlds" and "mean of 28 worlds" are different claims about the same number, and a
+  // mean that is one world short is the failure mode the expectation exists to catch — so the line
+  // carries both counts even when they agree, and names the world holding the low end rather than
+  // calling it "worst", which under a mean it is not.
   const domain =
     went !== "N/A" && typeof subject.scoredPlanes === "number"
-      ? `, worst of ${subject.scoredPlanes} world${subject.scoredPlanes === 1 ? "" : "s"} in domain` +
-        `${subject.worstPlane === null ? "" : ` (${subject.worstPlane})`}` +
-        `${subject.insufficientPlanes ? `, ${subject.insufficientPlanes} out of domain` : ""}`
+      ? subject.foldKind === "mean"
+        ? `, mean of ${subject.scoredPlanes} of ${subject.expectedPlanes ?? "?"} worlds in domain` +
+          `${subject.worstPlane === null ? "" : `, lowest ${subject.worstPlane}`}` +
+          `${subject.insufficientPlanes ? `, ${subject.insufficientPlanes} out of domain` : ""}` +
+          `${subject.domainFaults?.length ? ` — ${subject.domainFaults.join("; ")}` : ""}`
+        : `, worst of ${subject.scoredPlanes} world${subject.scoredPlanes === 1 ? "" : "s"} in domain` +
+          `${subject.worstPlane === null ? "" : ` (${subject.worstPlane})`}` +
+          `${subject.insufficientPlanes ? `, ${subject.insufficientPlanes} out of domain` : ""}`
       : "";
 
   return {

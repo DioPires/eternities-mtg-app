@@ -37,6 +37,7 @@ import { decodePng } from './lib/png-sample.mjs'
 import {
   FLOORS,
   W2_CONTROL_SUBJECT_MIN_RING,
+  W3_DOMAIN_SIZE,
   W5_MIN_AZIMUTHS,
   azimuthSpacingFault,
   checkControlRow,
@@ -50,6 +51,7 @@ import {
   isLabelVisible,
   poolHighWater,
   rowCellsFaults,
+  w3QualifiesByShares,
 } from './lib/worlds-metrics.mjs'
 import {
   artCells,
@@ -711,6 +713,12 @@ async function visitWorld(page, world, { dir, captures, pose = SURFACE_RADII }) 
     // a tolerance re-swept — without another GPU run. They are the expensive half of this gate:
     // every one is a pixel read out of a capture taken at an asserted pose.
     samples,
+    // W3's domain membership, in the form that does not depend on the pose: the thirteen band
+    // shares this plane's cards give it. The mean fold's denominator check re-derives "should have
+    // been in domain" from these, so a world whose band simply went unsampled at the pose is a
+    // thinned domain and not a smaller roster. Carried into `visits.json` so the check can be redone
+    // offline against a run that has already been paid for.
+    bandShares: probe.bandShares,
     w2: evaluateW2(samples),
     w3: evaluateW3(samples, probe.bandShares),
     w4: evaluateW4(artCells(probe), timeline, probe.pool, entryStream, exitStream),
@@ -886,7 +894,15 @@ const MATRIX = [
     expect: [
       { criterion: 'W2', measure: 'medianNeighbourDeltaE', expect: 'GREEN' },
       { criterion: 'W2', measure: 'lightnessIqr', expect: 'GREEN' },
-      { criterion: 'W3', measure: 'minAdjacentBandDeltaE', expect: 'GREEN' },
+      // **`N/A`, and this is where board ruling `fold_mean` is felt.** W3's verdict is now a mean
+      // over the roster's twenty-eight in-domain worlds, and a single world's reading is not a
+      // small version of that — dominaria reads ~1.3 under `?art=off` against a floor derived from
+      // a roster mean of ~3.4, so scoring this row against the roster floor would red the sibling
+      // every composed control row is read against, for arithmetic rather than for a defect.
+      // W3's live falsifier is the `w3-floor-control` tour below, which is the same fold on the
+      // same domain. Asserted as `N/A` rather than dropped, because "a roster statistic may not be
+      // scored on one world" is a property worth a control of its own.
+      { criterion: 'W3', measure: 'minAdjacentBandDeltaE', expect: 'N/A' },
     ],
   },
   {
@@ -908,7 +924,20 @@ const MATRIX = [
     label: '?art=off&bands=shuffle — cards permuted across the plane’s cells, grid and band unchanged',
     seams: { artOff: true, bandsShuffle: true },
     subject: 'dominaria',
-    expect: [{ criterion: 'W3', measure: 'minAdjacentBandDeltaE', expect: 'RED' }],
+    // **This row stopped being W3's falsifier when the fold became the mean (ruling `fold_mean`).**
+    // A one-world row cannot falsify a roster mean: dominaria's shuffled reading is ~0.42 and its
+    // unshuffled one ~1.3, both far below a floor derived over twenty-eight worlds, so *every*
+    // colour it could report would be red — including the sibling's. A control that must be red
+    // whatever the build does is not a control.
+    //
+    // W3's falsifier moved to `w3-floor-control`, the full `?art=off&bands=shuffle` tour, which is
+    // the fold the floor was derived on and the only thing the floor can be read against. The cost
+    // is honest and is stated in §3.1: W3's live falsifier is a full tour, so `--negative-controls`
+    // no longer carries one and the derivation pair has to be run to exercise it.
+    //
+    // The row is kept, because the seam still has to engage here and because pinning the `N/A`
+    // stops a later edit from quietly scoring a roster statistic on one world again.
+    expect: [{ criterion: 'W3', measure: 'minAdjacentBandDeltaE', expect: 'N/A' }],
   },
   {
     // **W4's art half has no other live falsifier, and this row is why it needs one.** The `fixed24`
@@ -992,36 +1021,44 @@ const MATRIX = [
     expect: [
       { criterion: 'W2', measure: 'medianNeighbourDeltaE', expect: 'GREEN' },
       { criterion: 'W2', measure: 'lightnessIqr', expect: 'GREEN' },
-      { criterion: 'W3', measure: 'minAdjacentBandDeltaE', expect: 'GREEN' },
+      // `N/A` for the same reason as the two rows above: one world is not the mean fold's domain.
+      { criterion: 'W3', measure: 'minAdjacentBandDeltaE', expect: 'N/A' },
       { criterion: 'W4', measure: 'artFraction', expect: 'GREEN' },
     ],
   },
   // ---- W3's floor, derivable rather than asserted ----------------------------------------------
-  // `FLOORS.bandDeltaE` has to sit between two **worst-world** readings, because §3.1 folds W3 to
-  // the worst world and not to dominaria. These two rows are how that pair is measured: same tour,
-  // same pose, differing in the one seam under test. `derivation: true` keeps them out of
+  // `FLOORS.bandDeltaE` has to sit between two **roster means**, because §3.1 folds W3 to the mean
+  // over its in-domain worlds and not to dominaria. These two rows are how that pair is measured:
+  // same tour, same pose, differing in the one seam under test. `derivation: true` keeps them out of
   // `--negative-controls` — they are two full tours — while leaving them runnable:
   //
   //   node scripts/worlds-gate.mjs --only w3-floor-shipped,w3-floor-control --no-captures \
   //     --out worlds-gate/w3floor && node scripts/w3-floor.mjs worlds-gate/w3floor
   //
-  // `expect: []` because nothing here is scored. A derivation that asserted its own answer would be
-  // deriving the floor from a run that already assumed it.
+  // **These two rows are also W3's only live falsifier now (board ruling `fold_mean`, DEC-836).**
+  // The fold is a mean over the roster's in-domain worlds, so the only thing that can be read
+  // against its floor is another tour of the same domain — the one-world `artoff-bands-shuffle` row
+  // above cannot, and says so. That makes the pair scored as well as derivational, and the cost is
+  // real: exercising W3's falsifier is two full tours, so `--negative-controls` does not carry one.
   //
-  // **One pair of tours is not enough, and the shipped 0.55 is the proof (DEC-752, from DEC-830).**
-  // Run each arm at least twice and read the shipped arm's *minimum* against the control's
-  // *maximum*. 0.55 was derived from a single acceptance tour; at n=3 on one unchanged dataset the
-  // shipped arm draws 0.4253 / 0.7070 / 0.8005 and the arms overlap the control's 0.4477, so it
-  // separates nothing. The cause is the fold — a min of minima — and `scripts/w3-fold.mjs` measures
-  // it across sessions. See `FLOORS.bandDeltaE`'s retraction note and spec §3.2, condition 1: until
-  // the owner rules on §3.1's fold, a GREEN W3 row is not evidence.
+  // **On the derivation pass that *sets* the floor these two expectations are satisfied by
+  // construction, and they are not evidence there.** Their value is on every later run: a build that
+  // stops separating from its own shuffled control reds the pair, which is exactly the DEC-816
+  // impasse (a criterion whose falsifier scores *above* it) turned into a check instead of a note.
+  //
+  // **One pair of tours is not enough to pick a floor, and the retired 0.55 is the proof (DEC-752,
+  // from DEC-830).** Run each arm at least five times and read the shipped arm's *minimum* against
+  // the control's *maximum*: 0.55 came from a single acceptance tour under the old min fold, and at
+  // n=5 that fold spanned 0.4253–0.8005 while its control reached 0.4477, so it separated nothing.
+  // `scripts/w3-floor.mjs` takes several runs per arm and does that arithmetic; `scripts/w3-fold.mjs`
+  // re-scores the same readings five ways to check the fold still converges at the n you used.
   {
     id: 'w3-floor-shipped',
     label: 'W3 floor derivation: ?art=off over the full tour (the shipped side)',
     seams: { artOff: true },
     tour: 'all',
     derivation: true,
-    expect: [],
+    expect: [{ criterion: 'W3', measure: 'minAdjacentBandDeltaE', expect: 'GREEN' }],
   },
   {
     id: 'w3-floor-control',
@@ -1029,7 +1066,7 @@ const MATRIX = [
     seams: { artOff: true, bandsShuffle: true },
     tour: 'all',
     derivation: true,
-    expect: [],
+    expect: [{ criterion: 'W3', measure: 'minAdjacentBandDeltaE', expect: 'RED' }],
   },
   {
     id: 'one-card-world',
@@ -1193,10 +1230,17 @@ async function runRow(browser, url, row, { roster, args, baselineProbe }) {
         // a pool that never filled is indistinguishable from one earned by a pool that filled and
         // did not churn. `hw` is `resident` only — see `poolHighWater` on why it is a lower bound.
         const hw = visit.poolHighWater
+        // **W3 prints its reading, not a verdict, and that is the mean fold showing through.** Its
+        // floor is derived on the roster mean, so on any correct tour roughly half the domain sits
+        // below it — printing `W3 fail` on those worlds would be a report contradicting its own
+        // GREEN. The number is what a reader of this line can actually use; the verdict is one line
+        // in the matrix, taken once, over the whole domain.
+        const w3 = visit.w3.measures[0]
         console.log(
           `  ${world.slug}: ${visit.cardinality.reported}/${visit.cardinality.cardCount} cells, ` +
             `pool ${visit.poolLayers}, threshold ${visit.effectiveThresholdPx.toFixed(2)}px, ` +
-            `W2 ${visit.w2.status} W3 ${visit.w3.status} W4 ${visit.w4.status}` +
+            `W2 ${visit.w2.status} W3 ${w3.value === null ? 'n/a' : w3.value.toFixed(4)} ` +
+            `W4 ${visit.w4.status}` +
             (hw === null
               ? ''
               : ` (pool hw ${hw.resident}/${hw.layers}${hw.saturated ? ' SATURATED' : ''})`),
@@ -1291,12 +1335,34 @@ async function runRow(browser, url, row, { roster, args, baselineProbe }) {
     }
   }
 
+  // **W3's fold is the mean (board ruling `fold_mean`), so it is the one criterion whose denominator
+  // has to be an expectation rather than a count of itself.** A worst-case fold over a narrowed
+  // domain can only move up and prints `scoredPlanes` beside itself; a *mean* over a narrowed domain
+  // reads in the same units and is flattered by the narrowing. `rosterDomain` is `null` for a row
+  // that toured one subject, which makes the fold report `insufficient` rather than score a
+  // one-world "mean" against a floor derived over twenty-eight.
+  const rosterDomain =
+    row.tour === 'all'
+      ? {
+          expected: W3_DOMAIN_SIZE[roster.hash] ?? null,
+          // Derived from this run's own probes, never from the readings the fold is about to take:
+          // a world drops out of W3's domain either because its band shares do not qualify (a
+          // dataset fact) or because a qualifying band went unsampled at the pose (a run fact), and
+          // only the second is a thinning. `null` when a visit carried no shares at all, so an
+          // older payload disables this half instead of asserting 0.
+          qualifying: good.every((v) => Array.isArray(v.bandShares))
+            ? good.filter((v) => w3QualifiesByShares(v.bandShares)).length
+            : null,
+          label: `dataset ${roster.hash}`,
+        }
+      : null
+
   const criteria = [
     evaluateW1(
       good.map((v) => ({ slug: v.slug, cells: row.w1At === 'pose' ? v.poseCells : v.settleCells })),
     ),
     foldCriteria(good.map((v) => ({ slug: v.slug, criterion: v.w2 }))),
-    foldCriteria(good.map((v) => ({ slug: v.slug, criterion: v.w3 }))),
+    foldCriteria(good.map((v) => ({ slug: v.slug, criterion: v.w3 })), { rosterDomain }),
     foldCriteria(good.map((v) => ({ slug: v.slug, criterion: v.w4 }))),
   ].filter((c) => c !== null)
 
@@ -1323,6 +1389,14 @@ async function main() {
       `${roster.worldsWithCards.length} worlds with cards, ${roster.planesWithCards.length} planes with cards`,
   )
   console.log(`W5 ceiling, derived: ${homeLabelCeiling(roster.metricsRoster)} labels`)
+  // Said before the browser starts, because "this dataset has no recorded W3 domain" is a fault that
+  // reds every roster tour in the run and there is no reason to spend the tour first. It is not a
+  // substitute for the check inside the fold — that one scores it — this is the early warning.
+  console.log(
+    W3_DOMAIN_SIZE[roster.hash] === undefined
+      ? `W3 domain: NO SIZE RECORDED for ${roster.hash} — every roster tour will red on its fold`
+      : `W3 domain, recorded: ${W3_DOMAIN_SIZE[roster.hash]} worlds (the mean fold's denominator)`,
+  )
 
   // §1.3's table, asserted off `planes.json` before a browser is started. It is a dataset property
   // and nothing about the run can change it, so a fault here should not cost a 45-world tour first.
@@ -1437,25 +1511,37 @@ async function main() {
   // Counted over the whole of `MATRIX`, never over `selected`. A `--only` or `--negative-controls`
   // run scores a subset, and a census that narrowed with the selection would print a smaller pair in
   // the same shape — reading as the full matrix while standing for a fraction of it.
-  const census = { RED: 0, GREEN: 0, mixed: 0, derivation: 0 }
+  //
+  // **`derivation` is a cost bucket, not an "unscored" one, since ruling `fold_mean` (DEC-836).**
+  // The two W3 floor tours now carry expectations like any other row; what still separates them is
+  // that they are full tours and so stay out of `--negative-controls`. They are counted in their
+  // colour *and* reported as derivation, because a census that hid them would say W3 has no
+  // expected-RED row anywhere — which, for a fifteen-minute-matrix reader, is exactly the wrong
+  // conclusion to draw.
+  const census = { RED: 0, GREEN: 0, na: 0, mixed: 0, derivation: 0 }
   for (const row of MATRIX) {
-    if (row.derivation) {
-      census.derivation += 1
-      continue
-    }
+    if (row.derivation) census.derivation += 1
     // `?? []` because this runs after the tour: a row added without `expect` would otherwise throw
     // here and take a twenty-minute run's report with it, which is a bad trade for a census line.
-    const colours = new Set((row.expect ?? []).map((e) => e.expect).filter((e) => e !== 'N/A'))
+    const expectations = row.expect ?? []
+    const colours = new Set(expectations.map((e) => e.expect).filter((e) => e !== 'N/A'))
     // A row is named by the colour it expects. `mixed` is not reachable today and is counted rather
     // than folded into either side, because a row expecting both is a row whose redness no longer
     // says which measure failed — and silently filing it under RED would hide that.
+    //
+    // A row whose every expectation is `N/A` gets its own bucket rather than falling through to
+    // GREEN, which is where it used to land. `artoff-bands-shuffle` became such a row under the mean
+    // fold, and counting an all-`N/A` row as expected-GREEN would have quietly kept the green count
+    // intact while W3 lost its one-world control — the census line exists to make that visible.
     if (colours.has('RED') && colours.has('GREEN')) census.mixed += 1
     else if (colours.has('RED')) census.RED += 1
+    else if (colours.size === 0 && expectations.length > 0) census.na += 1
     else census.GREEN += 1
   }
   console.log(
     `\nmatrix census: ${census.RED} expected-RED rows, ${census.GREEN} expected-GREEN, ` +
-      `${census.derivation} derivation (unscored)${census.mixed ? `, ${census.mixed} MIXED` : ''} ` +
+      `${census.na} N/A-only, ${census.derivation} of them derivation tours ` +
+      `(excluded from --negative-controls)${census.mixed ? `, ${census.mixed} MIXED` : ''} ` +
       `— ${selected.length} of ${MATRIX.length} scored this run`,
   )
 

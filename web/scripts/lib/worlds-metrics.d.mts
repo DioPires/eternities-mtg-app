@@ -96,6 +96,11 @@ export interface Measure {
    */
   readonly scored: boolean;
   /**
+   * How `foldCriteria` aggregates this measure across planes — `'worst'` everywhere but W3, whose
+   * roster fold is the **mean** (board ruling `fold_mean`, card `7d3653f6`).
+   */
+  readonly fold: "worst" | "mean";
+  /**
    * Set only by the driver's `foldCriteria`, which folds a per-world measure into a roster verdict.
    *
    * Optional because a criterion measured on one world has no such denominator, and inventing a
@@ -106,8 +111,34 @@ export interface Measure {
   readonly scoredPlanes?: number;
   /** How many worlds were out of domain for this measure. See `scoredPlanes`. */
   readonly insufficientPlanes?: number;
-  /** The world carrying the folded value. See `scoredPlanes`. */
+  /**
+   * The world carrying the folded value under a `'worst'` fold; under `'mean'`, the world holding
+   * the low end of the readings — reported for context, and not the subject of the verdict.
+   */
   readonly worstPlane?: string | null;
+  /** Which fold produced the value. Set by `foldCriteria` only. */
+  readonly foldKind?: "mean";
+  /**
+   * Every per-world reading the mean was taken over, lowest first — set by the mean fold alone.
+   *
+   * Published so a roster mean can be taken apart rather than taken on trust: §3.1 requires the
+   * readings and the denominator beside the fold, because a mean is the one fold a narrowed domain
+   * flatters.
+   */
+  readonly readings?: ReadonlyArray<{
+    readonly slug: string;
+    readonly value: number;
+  }>;
+  /** The roster's recorded W3 domain size, `null` on a dataset with none recorded. */
+  readonly expectedPlanes?: number | null;
+  /** How many toured worlds qualify for W3 by band share alone, off the run's own probes. */
+  readonly qualifyingPlanes?: number | null;
+  /**
+   * Why a mean fold failed on its denominator rather than on its value — empty when it did not.
+   * A domain fault is a `fail`, never an `insufficient`: the measurement happened and is not
+   * comparable to the floor.
+   */
+  readonly domainFaults?: readonly string[];
 }
 
 export interface Criterion {
@@ -308,6 +339,12 @@ export declare const W2_MIN_SAMPLES: number;
 export declare const W2_MIN_RING_SAMPLES: number;
 export declare const W2_CONTROL_SUBJECT_MIN_RING: number;
 export declare const W3_MIN_BAND_SHARE: number;
+/** Worlds in W3's domain, per dataset hash — the denominator its mean fold is taken over. */
+export declare const W3_DOMAIN_SIZE: Readonly<Record<string, number>>;
+/** Whether a plane's thirteen band shares alone put it in W3's domain, before any sampling. */
+export declare function w3QualifiesByShares(
+  bandShares: readonly number[] | undefined,
+): boolean;
 export declare const LABEL_VISIBLE_MIN_OPACITY: number;
 export declare function isLabelVisible(label: RenderedLabel): boolean;
 export declare const W4_EVICTION_WINDOW_S: number;
@@ -413,8 +450,26 @@ export declare function evaluateW5(
 ): W5Criterion;
 
 /**
- * Fold one criterion measured on many planes into the roster's verdict: the worst plane, never a
- * mean, with `insufficient` carried rather than counted as a pass.
+ * The roster tour's own denominator, handed to the mean fold — see {@link foldCriteria}.
+ *
+ * `qualifying` is `null` when the run cannot say (a payload without band shares, or an older
+ * `visits.json`); that half of the check is then skipped and the recorded `expected` still binds.
+ */
+export interface RosterDomain {
+  readonly expected: number | null;
+  readonly qualifying: number | null;
+  /** What the expectation is a property of, named for the failure message: `dataset <hash>`. */
+  readonly label: string;
+}
+
+/**
+ * Fold one criterion measured on many planes into the roster's verdict: the worst plane, with
+ * `insufficient` carried rather than counted as a pass — **except W3, whose fold is the mean**
+ * (board ruling `fold_mean`, card `7d3653f6`).
+ *
+ * `rosterDomain` is read by mean-folded measures only. Pass it on a roster tour and omit it on a row
+ * that toured one subject: a mean over one world is not a small roster mean, and the fold reports
+ * `insufficient` rather than scoring it against the roster's floor.
  *
  * Returns `null` when no plane produced the criterion at all — an absent criterion is not a passing
  * one, and the caller reports that separately.
@@ -424,6 +479,7 @@ export declare function foldCriteria(
     readonly slug: string;
     readonly criterion: Criterion | null;
   }>,
+  options?: { readonly rosterDomain?: RosterDomain | null },
 ): Criterion | null;
 
 export declare function checkControlRow(
