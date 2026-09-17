@@ -327,16 +327,18 @@ control stopped engaging, not that the renderer improved — the gate asserts ea
 before it scores the row, and prints whether the witness was the renderer's own policy or merely an
 echo of the query parameter.
 
-**`?artThreshold=fixed24` alone no longer perturbs anything, and the matrix still lists it as
-expected-RED.** Measured on `fec45c9`: the adaptive quantile at a 1,024-layer pool already sits *at*
-the 24 px floor, so forcing 24 px moves the threshold by nothing — `fixed24` reads `artFraction`
-0.9979 against `no-seams`' 0.9968, at the same 24.00 px. The budget no longer starves it either, now
-that it is capacity-derived: 155 MB against ~95 MB outstanding, `declinedBudget` 0 and `swatchOnly`
-false at exit. The seam does engage and does read back its policy; it simply has no pixel to move.
-Both of its rows therefore fail the matrix, `artFraction` by going GREEN and `evictionsPerSecond` by
-going RED where the exhaustion domain used to excuse it. **They are left unfitted on purpose** —
-retiring a control §3.1 publishes is the owner's call, and a matrix edited to agree with the build is
-not a matrix.
+**`?artThreshold=fixed24` alone no longer perturbs anything, and its rows are now RETIRED** (DEC-752
+ask `f9e273fb`, board answer `replace_row`, 2026-09-17). Measured on `fec45c9`: the adaptive quantile
+at a 1,024-layer pool already sits *at* the 24 px floor, so forcing 24 px moves the threshold by
+nothing — `fixed24` read `artFraction` 0.9979 against `no-seams`' 0.9968, at the same 24.00 px. The
+budget no longer starves it either, now that it is capacity-derived: 155 MB against ~95 MB
+outstanding, `declinedBudget` 0 and `swatchOnly` false at exit. The seam does engage and does read
+back its policy; it simply has no pixel to move.
+
+**They were left unfitted until the owner ruled, and then retired rather than re-fitted.** That
+order is the point: a matrix edited to agree with the build is not a matrix, and retiring a control
+§3.1 publishes is the owner's call. The seam itself stays in the renderer — the replacement row
+composes it.
 
 **W4's live art falsifier is `fixed24-layers-128`**, which composes the fixed threshold with a tier-4
 pool: 24 px holds demand at dominaria's full ~946 cells while the pool holds 128, a **7.39×**

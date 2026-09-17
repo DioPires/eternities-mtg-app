@@ -1894,7 +1894,7 @@ an assertion there.
 | **W1** | **Cells are resolvable at framing distance.** | At the plane-level settle for each of `worldsWithCards` (**29** on the 87-plane roster, **45** on v3), the median on-screen height of front-facing cells; the verdict is the **worst** world, not the pooled median. Not the Blind Eternities: it has cards but no cell sheet (§1.8), so the statistic is undefined there — `planesWithCards` would be 30 / 46 and would include it. | **≥ 24 CSS px.** Binds on the largest plane: Dominaria **28.74** at its worst azimuth, at §1.3's framing distance — a **20% margin** (`[shipped]`, the arm the build renders; `[tilted]` it is Ravnica 25.21 and 5% — §1.3 on the two arms). |
 | **W2** | **The mosaic reads as tiles, not as a wash.** This is T7's replacement. | Sample the captured frame at the centre of every front-facing cell ≥ 6 px tall, convert to CIELAB. Report the median ΔE to a cell's nearest on-screen neighbour, and the interquartile range of L\* **across the iso-shade subset** — the cells whose reported `shade` lies within ±2.5% of the median shade. | **median neighbour ΔE ≥ 6** and **iso-shade IQR(L\*) ≥ 8**. |
 | **W3** | **Latitude reads as colour.** | Group the same samples by band. For every pair of bands adjacent **in §1.3's 13-band chain** (a chain, not a cycle: the two ice caps are its two ends and are the furthest apart of any pair) where the smaller holds ≥ 5% of the plane's cards, the ΔE between their mean a\*b\*. A world's own reading is the **closest** of its qualifying pairs; **the roster's is the mean of the per-world readings over W3's domain — 28 of the 45 worlds on `c9468f1125bcddff`** (board ruling `fold_mean`) — published with every reading and with the denominator beside it. | `FLOORS.bandDeltaE`, **derived on the mean and re-derivable** — see the amendment note below; the **≥ 10 for every such pair** this table published was never met by any build and is retired. A tour whose scored domain is **not exactly 28** is **RED on its denominator**, whatever its mean reads. |
-| **W4** | **Art resolves without exhausting.** | At the surface view (2.2× radius), after a 5 s settle: the fraction of on-screen front-facing cells above the effective threshold that are showing art, and evictions per second over the last 2 s. **Demand as a multiple of pool capacity is reported alongside them and is not scored.** | **`artFraction ≥ max(0.9 × capacityCeiling, 0.5)`** and **≤ 5 evictions/s** — see the amendment note below; the published flat **≥ 90%** is the bar only where demand fits the pool. |
+| **W4** | **Art resolves without exhausting.** | At the surface view (2.2× radius), after a 5 s settle: the fraction of on-screen front-facing cells above the effective threshold that are showing art, **the absolute count of cells showing art**, and evictions per second **on a fill-excluded tail** whose own second half agrees with it. **Demand as a multiple of pool capacity is reported alongside them and is not scored.** | **`artFraction ≥ max(0.9 × capacityCeiling, 0.5)`**, **`artCellsShowing ≥ 64`** where the frame offers 64 front-facing on-screen cells, and **≤ 21 evictions/s at the 1,024-layer pool alone** — see the two amendment notes below. The published flat **≥ 90%** is the bar only where demand fits the pool, and the published **≤ 5 evictions/s over the last 2 s** was unreachable by construction and is retired. |
 | **W5** | **The home view is not a wall of labels**, and every world is still reachable from it. | Two halves, both over a **sweep of ≥ 12 azimuths** — the home view is a family of frames, not a pose (see below). **Ceiling:** the worst-case count of plane labels **at opacity > 0.05** over the sweep; a node count is not a measurement here. **Reachability:** the number of `worldsWithCards` carrying no such label at **any** sampled azimuth, with those slugs named. | **Ceiling ≤ `worldsWithCards.length`** — **29** on the 87-plane roster and **45** on v3 (measured, not predicted — §1.2), derived from the dataset under test and never a literal. The belt is *not* added: it is in `planesWithCards` but `PlaneLabels.tsx:116` filters it by slug before projection (PRD 5.3.4), so it can never carry a label and `planesWithCards` would leave the ceiling one short of ever binding. **Reachability = 0 worlds.** Below 12 azimuths both halves report `insufficient`. |
 
 > **Normative — W4's art floor is a bar derived from pool capacity, not the flat 90% this table
@@ -1926,6 +1926,95 @@ an assertion there.
 > ceiling is 1, its bar is the unmodified 0.9, and it stayed RED through all three rulings. Appendix
 > A's capture is **pool**-starved. A control named once and measured twice is how the green went
 > unnoticed for half a day.
+>
+> **Superseded on the live half, 2026-09-17: the bare `?artThreshold=fixed24` row is retired** (ask
+> `f9e273fb`, board answer `replace_row`). It is no longer budget-starved and no longer starved at
+> all — see the matrix note below. **W4's art falsifier is now `?artThreshold=fixed24&layers=128`**,
+> the composition that restores what Appendix A actually captured.
+
+> **Normative — W4's eviction half is re-bound to 21/s, scoped to the shipped pool, and measured on
+> a fill-excluded tail (board ruling on DEC-833 card `bd5c9aad`, option (a), 2026-09-17).** The
+> published **≤ 5 evictions/s over the last 2 s** was not a bound the renderer could meet, and the
+> reason is structural rather than a matter of tuning. **There is no stream defect.** DEC-833 filed
+> one and DEC-834 falsified the filing; what follows is the corrected record.
+>
+> ### `evictions == requested` is an identity, so this criterion bounds want-set turnover
+>
+> `pool.evictions` is incremented in exactly one place — `artPool.ts`'s `claimLayer` — whose only
+> caller is `reserve`, and only on the `byKey.get(key) === undefined` path, which is the same path
+> that reaches `requested += 1` in `artStream.ts`. **Every eviction carries exactly one request, by
+> construction.** Measured equal *to the unit* over three nested windows of a 120 s dominaria
+> baseline — 1,647/1,647, 1,064/1,064, 533/533 — and 405/405 at a 128-layer pool.
+>
+> So the number is not a measure of waste. For an LRU smaller than its working set, eviction rate ==
+> admission rate == the rate at which the want set turns over, and dominaria's want set turns over
+> because **the world spins**: 6,271 cards into 1,024 layers at `spinPeriodS` 262.592, so 4,750 cells
+> — 75.8% of the roster — cross the admission boundary every revolution. Of 1,946 distinct keys asked
+> over 60 s, 1,689 were asked exactly once and none more than three times: **no path re-asks for a
+> resident cell.** Meeting 5/s would have needed a **3.6× slower spin**, a **72% roster cut**, or
+> **~4,750 pool layers** against a GPU-bound 1,024 — three product changes, none of them a defect.
+>
+> ### The bound, its margin, and where it is scored
+>
+> Steady-state turnover measured **18.1–18.5/s** over six long runs plus DEC-834's two extra arms.
+> **18.1 × 1.15 ≈ 21.** The margin is deliberately small: the identity above means a stream that
+> began re-asking shows up here at once and much larger, and a spin speedup or a roster that grows
+> moves the number by far more than 15%. **It is not derived from the run it scores** — the readings
+> are `worlds-evict-longrun.mjs`'s, over 120–150 s on a parked page, and the gate scores its own
+> tour's tail.
+>
+> **Scored at the 1,024-layer pool alone; every other capacity is `insufficient`, not green.** At
+> `?layers=128` the rate is **6.73/s** — a third of the bound — and it gets there by refusing
+> ~4,670 wants/s for exhaustion and dropping `artFraction` to **~0.617**. Shrinking the pool moves
+> this number toward any bound you like by destroying the picture the other half of W4 measures, so
+> **the two halves select disjoint configurations** and requiring both rungs to hold one bound asks
+> for a configuration that does not exist. The 128-layer rung is therefore **not** required to hold
+> this bound, and the gate records that as a domain rule rather than as a footnote.
+>
+> ### The fill is excluded at the plateau, and the tail has to converge
+>
+> A cold pool's first 1,024 admissions are page load. **The fill ends at the plateau — the first
+> sample holding `max(resident)` — and never where `resident` stops climbing:** a saturated pool
+> churns 1023 → 1024 → 1023 forever, so the last upward tick lands in the final seconds, and on a
+> 60 s baseline that rule put the fill's end at **t = 57.1 s**, leaving a two-row "steady state"
+> (DEC-835).
+>
+> **Excluding the fill is necessary and not sufficient.** The same run read 1,461 KiB/s differenced
+> from t = 6, 1,445 from t = 18 and 1,382 from t = 36 — a monotone decline *after* the pool held
+> every layer it would hold. So the tail is scored against **its own second half**, and a tail that
+> has not settled publishes no rate. **A 60 s run does not converge.** The gate's W4 window is
+> therefore chosen by the pool rather than by the clock: it samples until the tail settles, up to a
+> cap, which costs the 44 worlds that never saturate almost nothing.
+>
+> ### Criterion 3's no-starvation clause becomes an absolute term
+>
+> `artFraction` is a ratio, and **a ratio is blind to its own denominator being chosen by the policy
+> under test.** At `?layers=128` under reduced motion the adaptive threshold collapsed the want set
+> to **14 cells**; all 14 showed art, so `artFraction` read **1.00** — better than the healthy
+> baseline's 0.9968 — on a frame showing fourteen cells of art out of some two thousand on screen.
+>
+> The repair is **`artCellsShowing ≥ 64`**: the numerator, scored on its own against a fixed number.
+> 64 is `SMALLEST_SHIPPED_POOL_LAYERS / 2`, fixed at write time and deliberately *not* re-derived per
+> run from `pool.layers` or `wanting`, both of which are outputs of the policy being graded. It sits
+> **4.6× above** the 14-cell witness that must red and **~2× below** the healthy tier-4 rung (≈126 of
+> 205 cells showing art) that must stay green; the 1,024-layer baseline reads ~942.
+>
+> **Its domain is the frame's geometry, not its want set** — the term is scored only where 64 cells
+> are front-facing and on screen. A domain written off `wanting` would have gone `insufficient` on
+> the starved frame, because `wanting` is 14 there: the collapse the term exists to catch would have
+> switched the term off. A one-card world is out of domain and is scored by W1 and `artFraction`,
+> both of which are defined at n = 1.
+>
+> ### What this costs the matrix, stated rather than left to be discovered
+>
+> **The eviction half has no live expected-RED row, and the absolute term has no live expected-RED
+> row.** Exceeding 21/s needs a faster spin or a bigger roster and no query seam produces either;
+> collapsing the want set needs reduced motion, and **`?motion=0` is inert exactly on `?probe=shell`**
+> (it is read on `?probe=1`, `/bench` and `?selfcheck`, never by the app shell — which is what cost
+> DEC-752 its first conclusion). Both falsifiers are therefore **unit rows** in
+> `worlds-metrics.test.ts`, with their expected-GREEN partners live in the matrix. That is a real gap
+> in `--negative-controls` and it is named here for the same reason W3's is: a control that exists
+> only as a number in a comment is not a control.
 >
 > **Normative — W1's pose is the *plane-level settle*, which §1.3 now makes per-world, and it is
 > **not** W4's 2.2-radii surface view (DEC-818).** The two are one row apart in this table and were
@@ -2202,12 +2291,14 @@ events; the focused card's tilt feels physical; and, new, **the tether reads as 
 | W3        | `minAdjacentBandDeltaE`                | `?art=off&bands=shuffle` **over the full tour** (`w3-floor-control`) — cards permuted across each plane's cells, grid and reported `band` unchanged. A roster mean can only be falsified by a roster; the one-world row that used to sit here now asserts **N/A** — see the fold amendment | **RED**   |
 | W2        | both measures                          | `?art=off` **alone** — the sibling the composed rows are read against, not the bare build                                                                                   | **GREEN** |
 | W3        | `minAdjacentBandDeltaE`                | `?art=off` **over the full tour** (`w3-floor-shipped`) — the shipped side of the same derivation, differing in the one seam                                                  | **GREEN** |
-| W4        | `artFraction`                          | `?artThreshold=fixed24` — §1.6's seam: the prototype's constant threshold, no quantile                                                                                      | **RED**   |
-| W4        | `evictionsPerSecond`                   | `?artThreshold=fixed24` — same row, second half                                                                                                                             | **RED**   |
+| W4        | `artFraction`                          | `?artThreshold=fixed24&layers=128` — §1.6's seam against a tier-4 pool: **a fixed threshold against a pool too small for it**, which is what Appendix A captured. 0.1342 against a bar of 0.5, a 7.39× overshoot. The **bare** `fixed24` row this replaces is retired — see the note | **RED**   |
+| W4        | `evictionsPerSecond`                   | **no live row.** The bound is want-set turnover at the 1,024-layer pool; exceeding it needs a faster spin or a bigger roster and no seam produces either, and every `?layers=N` row is out of the bound's domain. Falsified by unit row *"still reds the same row when turnover climbs past the new bound"* | **n/a**   |
+| W4        | `artCellsShowing`                      | **no live row.** Its witness is a want set collapsed under reduced motion, and `?motion=0` is inert on `?probe=shell`. Falsified by unit row *"reds DEC-834's collapsed want set, the frame artFraction scored 1.00"* | **n/a**   |
+| W4        | `evictionsPerSecond`, `artCellsShowing` | `?artThreshold=fixed24&layers=128` and `?layers=128` — the two rows that pin the **domain**: at 128 layers the eviction half must read `N/A` and not a comfortable green, and the absolute term must stay green on a healthy tier-4 frame | **N/A / GREEN** |
 | W5        | `homeLabels`                           | labels forced on for empty planes — suppression regressed; **66 – 77 over the sweep, _above_ the unmodified build's 33 – 42; see the note**                                 | **RED**   |
 | W5        | `worldsNeverLabelled`                  | **viewport 800×600** — collision pressure raised by the harness, not by a renderer seam; `thunder-junction` is labelled at **none** of 360 azimuths                         | **RED**   |
-| W1, W4    | `minMedianCellHeightPx`, `artFraction` | a **one-card world** (`?plane=segovia`) at its own settle — the n = 1 extreme, never rendered in any tracked dataset before v3. **Does not assert its label**; see the note | **GREEN** |
-| W4        | both                                   | `?layers=128` — tier 4's pool, unmodified policy                                                                                                                            | **GREEN** |
+| W1, W4    | `minMedianCellHeightPx`, `artFraction` | a **one-card world** (`?plane=segovia`) at its own settle — the n = 1 extreme, never rendered in any tracked dataset before v3. **Does not assert its label**; see the note. Its `artCellsShowing` asserts **N/A**: a frame offering one cell cannot clear a floor of 64, and that is domain, not failure | **GREEN** |
+| W4        | `artFraction`, `artCellsShowing`       | `?layers=128` — tier 4's pool, unmodified policy. **`evictionsPerSecond` is N/A here, not GREEN** (ruling `bd5c9aad`): 6.73/s is inside 21 only because the pool refuses ~4,670 wants/s, and recording that as a pass would certify the starvation the art half forbids | **GREEN** |
 | W5        | `worldsNeverLabelled`                  | **viewport 1920×1080** — the non-binding partner to the row above, differing in that one parameter                                                                          | **GREEN** |
 | all       | all                                    | the unmodified build on the v3 production dataset                                                                                                                           | **GREEN** |
 
@@ -2562,6 +2653,29 @@ ladder exists to protect: a row that went red there would be condemning the exac
 So `?layers=128` stays in the matrix — as an **expected-GREEN** row asserting that a tier-4-sized
 pool still passes W4.
 
+> **Normative — this paragraph was right about the mechanism and wrong about the numbers, and board
+> ruling `bd5c9aad` turned the mechanism into a domain rule (DEC-834, measured).** Measured in the
+> shipped composition, `?layers=128` does **not** read ≈100% and ≈0/s. It reads **6.73 evictions/s**
+> and `artFraction` **~0.617**, with ~4,670 wants/s refused for exhaustion. The threshold does rise
+> and demand does fall, exactly as above — but not far enough to stop the churn, and far enough to
+> cost the picture a third of its art.
+>
+> The conclusion the paragraph draws survives and is now enforced rather than argued: **starving the
+> resource a policy adapts to makes the eviction number look good and the picture worse.** So the
+> eviction half is scored at the 1,024-layer pool alone and this row asserts **N/A** on it, while
+> keeping its expected-GREEN on `artFraction` and on the absolute `artCellsShowing` term. See the
+> eviction amendment in §3.1.
+>
+> **The composed row `?artThreshold=fixed24&layers=128` is the one that restores what this appendix
+> captured.** Appendix A's `tether-surface` was never "a fixed threshold"; it was **a fixed threshold
+> against a pool too small for it**. Composing the two seams keeps dominaria's full ~945-cell want
+> set against 128 layers — a 7.39× overshoot against `tether-surface`'s 2.69× — and `artFraction`
+> reads **0.1342 against a bar of 0.5**. The **bare** `?artThreshold=fixed24` row is retired (ask
+> `f9e273fb`, answer `replace_row`): on the shipped tree the adaptive quantile at a 1,024-layer pool
+> already sits *at* the 24 px floor, so forcing 24 px moves nothing, and the byte budget is
+> capacity-derived at 155 MB against ~95 MB outstanding, so nothing starves. The seam engages, reads
+> its policy back, and moves no pixel.
+
 > **Normative — name that row by its capacity, never by its tier (DEC-752, measured on main
 > `f049dca`).** §1.12's rung is not implemented: `setArtLayers` (`attachWorlds.ts:135`, implemented
 > at `:356`) has **zero callers** in `web/src`, `web/test` or `web/e2e`, and `tierArtLayers` is
@@ -2903,8 +3017,10 @@ moons, and the belt's population moves with the curation refresh (DEC-745).
 The `drawn / wanted` column is the case for §1.6's adaptive threshold, and `tether-surface`'s 925
 evictions — the one row above 900, the next being `rabiah-near` at 515 — are the case for criterion
 W4. Note that this column is a **cumulative** counter, not a rate: W4's second half is specified as
-evictions per second over a 2 s window (§3.1), which is a measurement the gate takes and not one
-this table can be read off.
+evictions per second **on a fill-excluded tail** (§3.1, board ruling `bd5c9aad`), which is a
+measurement the gate takes and not one this table can be read off. The 925 is in fact a *worked
+example* of why: it is every eviction since the camera started moving, so most of it is the pool
+filling, and the same 925 on a settled pool is 0/s.
 
 Frames: branch `dec694-worlds-prototype` at `8c5fa25`, tag `worlds-prototype-dec694`, under
 `review/dec694-worlds/`. They are not copied onto `main`: review §6.6 already counts 31 MB of review

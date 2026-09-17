@@ -1768,7 +1768,14 @@ describe("W4 — art resolves without exhausting", () => {
       const tail = evictionTail(blind);
       expect(tail.rate).toBe(null);
       expect(tail.converged).toBe(false);
-      expect(tail.why).toMatch(/resident/);
+      // **The reason has to be pinned, not merely the null.** Dropping the occupancy check makes
+      // `max(resident)` NaN, nothing matches it, the tail collapses to one sample and the function
+      // still returns `rate: null` — so a row asserting only the null passes under the mutant, and
+      // a row matching the loose word `resident` passes too, because the short-tail message says
+      // "resident layers". The mutant survived both before this line. `null` is the answer; *which*
+      // question it answers is the finding.
+      expect(tail.why).toMatch(/must carry t, evictions and resident/);
+      expect(tail.peakResident).toBe(null);
     });
   });
 
