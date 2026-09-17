@@ -156,8 +156,88 @@ export const FLOORS = {
    * of the shipped rung above. Do not read the 0.5 as calibrated more finely than that.
    */
   artFractionAbsolute: 0.5,
-  /** W4: evictions per second, averaged over the last 2 s. A ceiling, not a floor. */
-  evictionsPerSecond: 5,
+  /**
+   * W4: evictions per second on the **fill-excluded tail**, at the shipped 1,024-layer pool alone.
+   * A ceiling, not a floor.
+   *
+   * **Ruling on DEC-833 card `bd5c9aad`, option (a), accepted 2026-09-17.** The published 5/s was
+   * not a bound the shipped renderer could ever meet, and the reason is structural rather than a
+   * matter of tuning.
+   *
+   * ## `evictions == requested` is an identity, so this bounds want-set turnover
+   *
+   * `pool.evictions` is incremented in exactly one place — `artPool.ts`'s `claimLayer` — whose only
+   * caller is `reserve`, and only on the `byKey.get(key) === undefined` path, which is the same path
+   * that reaches `requested += 1` in `artStream.ts`. **Every eviction therefore carries exactly one
+   * request, by construction.** Measured equal *to the unit* over three nested windows of a 120 s
+   * dominaria baseline — 1,647/1,647, 1,064/1,064, 533/533 — and 405/405 at a 128-layer pool
+   * (DEC-834).
+   *
+   * What follows is that this number is not a measure of waste. For an LRU smaller than its working
+   * set, eviction rate == admission rate == the rate at which the want set turns over, and on
+   * dominaria the want set turns over because **the world spins**: 6,271 cards into 1,024 layers,
+   * `spinPeriodS` 262.592, so 4,750 cells — 75.8% of the roster — cross the admission boundary every
+   * revolution. Of 1,946 distinct keys asked over 60 s, 1,689 were asked exactly once and none more
+   * than three times: no path re-asks for a resident cell (DEC-833's `?probe=shell` measurement,
+   * confirmed by DEC-834).
+   *
+   * **So 5/s was unreachable from the request loop.** Meeting it needed a 3.6× slower spin, a 72%
+   * roster cut, or a pool of ~4,750 layers against a GPU-bound 1,024 — three product changes, none of
+   * them a defect in the stream.
+   *
+   * ## Where 21 comes from, and what still trips it
+   *
+   * Steady-state turnover measured **18.1–18.5/s** over six long runs plus DEC-834's two extra arms.
+   * 18.1 × 1.15 ≈ 21. The 1.15 margin is deliberate and it is small: a real regression — a spin
+   * speedup, a roster that grows, a stream that starts re-asking — moves this number by much more
+   * than 15%, and the identity above means a re-asking stream shows up here at once.
+   *
+   * **It is not derived from the run it scores.** The 18.1–18.5 readings are
+   * `worlds-evict-longrun.mjs`'s, taken over 120–150 s on a parked page; the gate scores its own
+   * tour's tail. A bound fitted to the tour it grades is not a bound.
+   *
+   * ## Two things the ruling scoped, which are domain and not arithmetic
+   *
+   * - **The 1,024-layer pool alone** — see {@link W4_EVICTION_POOL_LAYERS}. At `?layers=128` the rate
+   *   is 6.73/s, and it gets there only by destroying the picture: `artFraction` falls to ~0.617 with
+   *   ~4,670 wants/s refused for exhaustion. Shrinking the pool moves this number toward any bound
+   *   you like, so requiring both rungs to hold it selects **disjoint configurations** and the two
+   *   halves of W4 could never be green together.
+   * - **The fill-excluded tail** — see {@link evictionTail}. A cold pool's first 1,024 admissions are
+   *   not churn, and a window that contains them is measuring page load.
+   */
+  evictionsPerSecond: 21,
+  /**
+   * W4: the **absolute** number of cells showing art a frame must reach, where the frame has that
+   * many front-facing on-screen cells to offer at all.
+   *
+   * **This is the no-starvation term ruling `bd5c9aad` (N2) put in place of a fraction, and the
+   * witness is why.** At `?layers=128` under reduced motion the adaptive threshold rose until the
+   * want set held **14 cells**; all 14 showed art, so `showing == wanting` and `artFraction` read
+   * **1.00** — *better* than the healthy baseline's 0.9968 — on a frame showing fourteen cells of art
+   * out of some two thousand on screen. A ratio cannot see its own denominator collapse, and
+   * `artFraction`'s denominator is chosen by the very policy W4 is grading. See
+   * `a-ratio-is-blind-to-its-own-denominator`.
+   *
+   * ## Why 64, and why it is a constant rather than a function of the pool
+   *
+   * 64 is `SMALLEST_SHIPPED_POOL_LAYERS / 2`, fixed here at write time: *a frame with enough cells to
+   * fill the smallest pool the renderer ships must be drawing art in at least half that many.* It is
+   * deliberately **not** re-derived per run from `pool.layers` or from `wanting`, because both are
+   * outputs of the policy under test — a bound computed from the measured quantity passes at every
+   * input, which is the vacuity `absolute_floor` was raised to close one measure over
+   * (`a-bound-derived-from-the-measured-quantity-cannot-bind`).
+   *
+   * It sits between the two readings it has to separate, with room on both sides: **4.6× above** the
+   * 14-cell witness that must red, and **~2× below** the healthy tier-4 rung (≈126 of 205 cells
+   * showing art at 128 layers with motion on, DEC-834) that must stay green. The shipped 1,024-layer
+   * baseline reads ~942 and is nowhere near it.
+   *
+   * The domain is the frame's **geometry** — how many cells are front-facing and on screen — and
+   * geometry is not something the art policy gets a vote on. A one-card world offers one cell and is
+   * out of domain; it is scored by W1 and by `artFraction`, both of which are defined at n = 1.
+   */
+  artCellsAbsolute: 64,
 };
 
 /**
@@ -493,8 +573,48 @@ export function isLabelVisible(label) {
   return Number(label.opacity) > LABEL_VISIBLE_MIN_OPACITY;
 }
 
-/** W4's eviction rate is averaged over this window, in seconds (§3.1). */
+/**
+ * The shortest span, in seconds, W4's eviction rate may be differenced over.
+ *
+ * §3.1 published this as "evictions per second over the last 2 s" — the *whole* window, taken at the
+ * pose. Ruling `bd5c9aad` (option (a)) moved the measurement to a fill-excluded tail
+ * ({@link evictionTail}), so 2 s is no longer the window: it is the floor below which a tail is too
+ * short for a rate to mean anything, and a run that cannot clear it reports `insufficient` rather
+ * than a number. One sample dressed as a rate is the error DEC-835 found in the long-run's own
+ * fill detector, and it must not be reintroduced here.
+ */
 export const W4_EVICTION_WINDOW_S = 2;
+
+/**
+ * The pool capacity W4's eviction half is scored at — **the shipped one, and only it**.
+ *
+ * Board ruling on DEC-833 card `bd5c9aad`, option (a): the bound is "turnover-derived at the shipped
+ * pool", and the scope is half of the ruling rather than a footnote to it. At `?layers=128` the rate
+ * is 6.73/s against the 21/s written here, so a naive reading says tier 4 passes comfortably — but it
+ * gets there by refusing ~4,670 wants/s for exhaustion and dropping `artFraction` to ~0.617
+ * (DEC-834). **The two halves of W4 select disjoint configurations:** every pool small enough to make
+ * the eviction number look good is too small to show the art the other half requires. Scoring both
+ * rungs against one bound asks for a configuration that does not exist.
+ *
+ * Any other capacity is `insufficient`, not green. A rate measured at a capacity the bound was not
+ * derived at is a real reading of a different question, and recording it as a pass is how a bound
+ * stops binding (`narrowing-a-domain-silently-thins-an-unchanged-verdict` in its mirror form).
+ */
+export const W4_EVICTION_POOL_LAYERS = 1024;
+
+/** A tail shorter than this many samples cannot be split into halves and scored for convergence. */
+export const W4_EVICTION_MIN_TAIL_SAMPLES = 5;
+
+/**
+ * How far the tail's own second half may sit from the whole tail before the tail is called settled.
+ *
+ * The long-run instrument uses 2% on a byte rate differenced over 150 s. This is looser on purpose:
+ * it scores an integer counter over a tail measured in tens of seconds, where one sample of
+ * quantisation is already worth more than 2%. 10% is well inside the margin the bound itself carries
+ * (18.1 → 21 is 15%) and well outside the drift a fill leaves behind — the 60 s baseline DEC-835
+ * measured declined 5.4% *monotonically* across its tail and would be caught by this.
+ */
+export const W4_EVICTION_TAIL_CONVERGENCE = 0.1;
 
 /**
  * The 13 bands north to south, from §1.3's `C G R B U W · Gold · W U B R G C`.
@@ -1074,6 +1194,126 @@ export function poolHighWater(samples) {
 export const SMALLEST_SHIPPED_POOL_LAYERS = 128;
 
 /**
+ * W4's eviction rate, measured on the **fill-excluded tail** and scored for its own convergence.
+ *
+ * Board ruling on DEC-833 card `bd5c9aad`, option (a). A cold pool's first `layers` admissions are
+ * page load, not churn, and a window containing them reports the two added together. The shape of
+ * the repair is lifted from `worlds-evict-longrun.mjs`, which DEC-835 had to fix for the same reason.
+ *
+ * ## The fill ends at the PLATEAU, never at "resident stops climbing"
+ *
+ * "Stops climbing" is the obvious detector and it is wrong on exactly the configuration that matters:
+ * **a saturated pool churns**, so `resident` ticks 1023 → 1024 → 1023 forever and the last upward tick
+ * lands in the final seconds. Measured on a 60 s baseline it put the fill's end at **t = 57.1 s**,
+ * leaving a two-row "steady state" — one sample dressed as a rate.
+ *
+ * The plateau is the first sample at which the pool holds every layer it is ever going to hold, i.e.
+ * the first occurrence of `max(resident)`. That is 1,024 where the pool saturates and the world's own
+ * demand where it does not — which is the right answer in both cases, and it is why this is written
+ * against `resident` rather than against `layers`.
+ *
+ * ## Excluding the fill is necessary and it is not sufficient
+ *
+ * The same 60 s run read 1,461 KiB/s differenced from t = 6, 1,445 from t = 18 and 1,382 from t = 36:
+ * a monotone decline *after* the pool had every layer it would hold. Quoting the earliest of those as
+ * "sustained" is the same error as quoting the whole window, one order smaller. So the tail is scored
+ * against **its own second half**, and a tail that has not settled reports that instead of a number.
+ *
+ * Returns `{ rate, halfRate, drift, converged, peakResident, plateauT, tailSamples, spanS, why }`.
+ * `rate` is `null` — with `why` saying which condition failed — when the timeline is too short, when
+ * the plateau leaves too few samples behind it, when the tail spans less than
+ * {@link W4_EVICTION_WINDOW_S}, or when it has not converged. **A `null` here is a domain fact and
+ * never a zero:** a pool that was never read and a pool that churned nothing are different findings,
+ * and the criterion reports them differently.
+ *
+ * `samples` is {@link evictionRate}'s timeline: `[{ t, evictions, resident }]`, `t` in seconds,
+ * `evictions` cumulative, ascending.
+ */
+export function evictionTail(
+  samples,
+  {
+    minTailSamples = W4_EVICTION_MIN_TAIL_SAMPLES,
+    minSpanS = W4_EVICTION_WINDOW_S,
+    convergence = W4_EVICTION_TAIL_CONVERGENCE,
+  } = {},
+) {
+  const empty = {
+    rate: null,
+    halfRate: null,
+    drift: null,
+    converged: false,
+    peakResident: null,
+    plateauT: null,
+    tailSamples: 0,
+    spanS: 0,
+  };
+  const usable = samples.filter(
+    (s) =>
+      typeof s.t === "number" &&
+      typeof s.evictions === "number" &&
+      typeof s.resident === "number",
+  );
+  if (usable.length < minTailSamples) {
+    return {
+      ...empty,
+      why:
+        `the eviction timeline holds ${usable.length} usable sample(s) and a fill-excluded tail ` +
+        `needs at least ${minTailSamples}: each sample must carry t, evictions and resident, ` +
+        `because the fill is detected from occupancy and not from the counter`,
+    };
+  }
+
+  const peakResident = Math.max(...usable.map((s) => s.resident));
+  const tail = usable.slice(usable.findIndex((s) => s.resident === peakResident));
+  const spanS = tail.length === 0 ? 0 : tail[tail.length - 1].t - tail[0].t;
+  if (tail.length < minTailSamples || spanS < minSpanS) {
+    return {
+      ...empty,
+      peakResident,
+      plateauT: tail.length === 0 ? null : tail[0].t,
+      tailSamples: tail.length,
+      spanS,
+      why:
+        `the pool only plateaued at ${peakResident} resident layers at t=${tail[0]?.t?.toFixed(1)}s, ` +
+        `leaving ${tail.length} sample(s) over ${spanS.toFixed(1)}s — below the ${minTailSamples} ` +
+        `samples and ${minSpanS}s a rate needs. The window contains the fill and must not be scored`,
+    };
+  }
+
+  // The whole tail, and the tail's own second half. `Infinity` asks `evictionRate` for the rate over
+  // everything it is handed rather than over a trailing sub-window — the sub-window is what this
+  // function has just finished choosing.
+  const rate = evictionRate(tail, Infinity);
+  const halfRate = evictionRate(tail.slice(Math.floor(tail.length / 2)), Infinity);
+  if (rate === null || halfRate === null) {
+    return { ...empty, peakResident, plateauT: tail[0].t, tailSamples: tail.length, spanS, why: "the tail's samples share a timestamp, so neither half spans a measurable interval" };
+  }
+
+  // A relative drift is undefined at zero, and zero is the common case here rather than an edge: 44
+  // of the 45 worlds never saturate the pool, so they churn nothing and both halves read 0. `0/0`
+  // would report the arms that have most obviously converged as unconverged. Two zeros agree exactly.
+  const drift = rate === 0 ? (halfRate === 0 ? 0 : 1) : Math.abs(halfRate - rate) / rate;
+  const converged = drift <= convergence;
+  return {
+    rate: converged ? rate : null,
+    halfRate,
+    drift,
+    converged,
+    peakResident,
+    plateauT: tail[0].t,
+    tailSamples: tail.length,
+    spanS,
+    why: converged
+      ? null
+      : `the tail has not settled: over ${spanS.toFixed(1)}s after the pool plateaued at ` +
+        `${peakResident} layers it reads ${rate.toFixed(2)}/s, and its own second half reads ` +
+        `${halfRate.toFixed(2)}/s — ${(drift * 100).toFixed(1)}% off, against a tolerance of ` +
+        `${(convergence * 100).toFixed(0)}%. Excluding the fill is necessary and not sufficient; ` +
+        `neither figure is a steady state and neither may be scored`,
+  };
+}
+
+/**
  * **W4 — art resolves without exhausting.** At the surface view, 2.2× radius, after a 5 s settle.
  *
  * `cells` is `{ frontFacing, onScreen, wantsArt, showingArt }` — `wantsArt` meaning above the
@@ -1259,6 +1499,29 @@ export function cellsWantingArt(cells) {
  * `demandFitsCapacity` is the second half of `split_measures`: the overshoot the bar now forgives,
  * reported so it is visible. Ruling `demand_measure_scored` = `reported_only`, so it carries a
  * verdict and no colour.
+ *
+ * ## The eviction half, re-bound (board ruling on DEC-833 card `bd5c9aad`, option (a), 2026-09-17)
+ *
+ * Three changes, and none of them is a loosening even though the number went up:
+ *
+ * 1. **The bound is 21/s, not 5/s** — {@link FLOORS}`.evictionsPerSecond` carries the derivation.
+ *    `evictions == requested` is a structural identity, so this criterion bounds **want-set
+ *    turnover**, and turnover on a spinning 6,271-card world into a 1,024-layer pool is 18.1–18.5/s
+ *    at the floor. 5/s was not reachable from the request loop at all.
+ * 2. **It is scored at the shipped 1,024-layer pool alone** — {@link W4_EVICTION_POOL_LAYERS}.
+ *    Everywhere else the measure is `insufficient`, because a smaller pool buys a smaller rate by
+ *    refusing wants, and the two halves of W4 would then have no configuration that satisfies both.
+ * 3. **It is measured on a fill-excluded tail that has to converge** — {@link evictionTail}. A cold
+ *    pool's first 1,024 admissions are page load.
+ *
+ * ## `artCellsShowing` — the no-starvation term, absolute because the fraction could not see it
+ *
+ * `artFraction` read **1.00** on a frame showing fourteen cells of art, because the adaptive
+ * threshold had collapsed its denominator to fourteen (DEC-834, `?layers=128` under reduced motion).
+ * The ratio was not wrong; it was answering a question about a want set the policy had chosen. The
+ * absolute term scores the numerator against a fixed floor, in a domain written from the frame's
+ * geometry so the policy cannot narrow its way out of being graded. See
+ * {@link FLOORS}`.artCellsAbsolute` for the floor and the two readings it separates.
  */
 export function evaluateW4(cells, evictionTimeline, pool, entryStream, exitStream) {
   const wanting = cellsWantingArt(cells);
@@ -1308,6 +1571,7 @@ export function evaluateW4(cells, evictionTimeline, pool, entryStream, exitStrea
   // cannot admit cannot evict — see `budgetBoundAtExit` for why this is exit-side where its sibling
   // is entry-side, and why giving `artFraction` the same rule would excuse the failure W4 exists to
   // catch.
+  const tail = evictionTail(evictionTimeline);
   const evictionWhy =
     noAdmission ??
     (boundAtExit
@@ -1315,9 +1579,23 @@ export function evaluateW4(cells, evictionTimeline, pool, entryStream, exitStrea
         `visit (${exitStream.bytesOutstanding} outstanding + ${exitStream.bytesReserved} reserved ` +
         `at exit, the renderer reporting swatchOnly), so the pool was forbidden to admit a layer ` +
         `and could not evict one. This rate is 0 by construction, not by policy.`
-      : null);
+      : // **The capacity domain, board ruling `bd5c9aad` option (a)** — see
+        // {@link W4_EVICTION_POOL_LAYERS}. Checked before the tail, because a rate taken at the
+        // wrong capacity is out of domain however beautifully it converged.
+        pool.layers !== W4_EVICTION_POOL_LAYERS
+        ? `the bound is turnover-derived at the shipped ${W4_EVICTION_POOL_LAYERS}-layer pool and ` +
+          `this session ran ${pool.layers} layers. A smaller pool churns less only by refusing the ` +
+          `wants it cannot hold — at 128 layers the rate is 6.73/s and artFraction falls to ~0.617 ` +
+          `— so the two halves of W4 would select disjoint configurations. Out of domain, not green.`
+        : tail.why);
 
   const ceiling = capacityCeiling(wanting.length, pool);
+  // The no-starvation term's domain is the frame's **geometry**, not its want set. `wantsArt` is the
+  // adaptive threshold's output and `showingArt` is the pool's, so a domain written from either would
+  // be the policy under test choosing whether to be graded — which is precisely the collapse this
+  // term exists to catch, re-introduced one level up. Front-facing and on-screen are facts about
+  // where the camera is.
+  const presented = cells.filter((c) => c.frontFacing && c.onScreen);
 
   return criterion(
     "W4",
@@ -1333,8 +1611,12 @@ export function evaluateW4(cells, evictionTimeline, pool, entryStream, exitStrea
       ),
       measure(
         "evictionsPerSecond",
-        `evictions/s over the last ${W4_EVICTION_WINDOW_S} s`,
-        evictionRate(evictionTimeline),
+        tail.rate === null
+          ? "evictions/s on the fill-excluded tail"
+          : `evictions/s over the ${tail.spanS.toFixed(1)} s tail after the pool plateaued at ` +
+            `${tail.peakResident} resident layers (${tail.tailSamples} samples, second half ` +
+            `${tail.halfRate.toFixed(2)}/s)`,
+        tail.rate,
         FLOORS.evictionsPerSecond,
         "max",
         // **The empty denominator is not carried over to this half, and the asymmetry is the
@@ -1342,6 +1624,28 @@ export function evaluateW4(cells, evictionTimeline, pool, entryStream, exitStrea
         // front-facing cell can still be evicting the layers a neighbour's demand bought, and that
         // rate is a real reading of the policy. Only the no-admission cases force this zero.
         evictionWhy === null ? {} : { insufficient: true, why: evictionWhy },
+      ),
+      measure(
+        "artCellsShowing",
+        `cells showing art, absolutely (${showing.length} of ${presented.length} front-facing on screen)`,
+        // Deliberately the same numerator `artFraction` divides. The finding this term answers is
+        // that the *denominator* moved: 14 of 14 and 942 of 945 are the same ratio and are not the
+        // same picture, so the repair is to score the numerator on its own against a fixed number.
+        showing.length,
+        FLOORS.artCellsAbsolute,
+        "min",
+        {
+          insufficient:
+            noAdmission !== null || presented.length < FLOORS.artCellsAbsolute,
+          why:
+            noAdmission ??
+            (presented.length < FLOORS.artCellsAbsolute
+              ? `only ${presented.length} cells are front-facing and on screen, fewer than the ` +
+                `${FLOORS.artCellsAbsolute} this term requires to be showing art, so the frame ` +
+                `cannot clear it however the policy behaves. A one-card world is the extreme of ` +
+                `this and is scored by W1 and artFraction, which are defined at n = 1.`
+              : null),
+        },
       ),
       measure(
         "demandFitsCapacity",
@@ -1369,8 +1673,18 @@ export function evaluateW4(cells, evictionTimeline, pool, entryStream, exitStrea
     {
       wanting: wanting.length,
       showing: showing.length,
+      presented: presented.length,
       poolLayers: pool.layers,
       belowShippedPool: pool.layers < SMALLEST_SHIPPED_POOL_LAYERS,
+      // The capacity the eviction bound is derived at, and whether this session is at it. Reported
+      // beside the verdict so an `insufficient` eviction half can be read off the record without
+      // re-deriving why — the domain rule's whole risk is that it goes quiet.
+      evictionPoolLayers: W4_EVICTION_POOL_LAYERS,
+      atEvictionPool: pool.layers === W4_EVICTION_POOL_LAYERS,
+      // The tail's own shape: where the fill ended, how much was left, and how far the second half
+      // sat from the whole. `rate` is `null` on an unconverged tail and the diagnostics are not, so
+      // a run that failed to settle can still be inspected rather than merely disqualified.
+      evictionTail: tail,
       streamNeverRan: dead,
       budgetBoundAtEntry: bound,
       budgetBoundAtExit: boundAtExit,

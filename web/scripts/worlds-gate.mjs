@@ -46,6 +46,7 @@ import {
   evaluateW3,
   evaluateW4,
   evaluateW5,
+  evictionTail,
   foldCriteria,
   homeLabelCeiling,
   isLabelVisible,
@@ -87,9 +88,33 @@ const SURFACE_RADII = 2.2
 /** How close to a named pose the driver must get before it will read a threshold-dependent number. */
 const RADII_TOLERANCE = 0.02
 
-/** §3.1: W4 is read "after a 5 s settle", and its eviction half is a rate over the last 2 s. */
+/** §3.1: W4 is read "after a 5 s settle". */
 const W4_SETTLE_S = 5
-const W4_SAMPLE_S = 3
+
+/**
+ * W4's eviction window — **sampled until the pool plateaus and the tail settles, not for a fixed 3 s**
+ * (board ruling on DEC-833 card `bd5c9aad`, option (a)).
+ *
+ * The old window was 3 s, and it could not have answered the question it was asked. Dominaria's fill
+ * is ~1,024 admissions; at the rate the counter moves, the fill alone outlasts a 3 s observation, so
+ * "a bounded fill transient" and "sustained churn" produced the same reading by construction — the
+ * open question DEC-752 recorded and could not close with this instrument.
+ *
+ * **Why adaptive rather than simply longer.** 44 of the 45 worlds never saturate the pool: their
+ * demand fits, `resident` plateaus at it within the settle, and both halves of their tail read 0/s.
+ * They are converged the moment there are enough samples to say so, and a flat 45 s window would
+ * spend half an hour of tour time re-confirming zeros. So the loop stops as soon as
+ * `evictionTail` reports a settled tail past `MIN`, and only the world that actually churns pays for
+ * the long observation.
+ *
+ * `MAX` is a ceiling on that patience, not a target. A world that has not settled by then reports
+ * `insufficient` with the drift that disqualified it — see `evictionTail`. That is the honest
+ * outcome: DEC-835 measured a 60 s baseline whose tail was still declining 5.4% monotonically, and a
+ * gate that scored it anyway would be publishing the fill under a different name.
+ */
+const W4_EVICTION_MIN_S = 12
+const W4_EVICTION_MAX_S = 45
+const W4_EVICTION_SAMPLE_MS = 250
 
 const sleep = (ms) => new Promise((ok) => setTimeout(ok, ms))
 
@@ -662,10 +687,15 @@ async function visitWorld(page, world, { dir, captures, pose = SURFACE_RADII }) 
   // take "at exit" is *after* the window the rate is measured over, not at the settle before it.
   // Bare like the entry read and for the same reason: `stream` is session-global and belongs to no
   // world, so a threaded slug here would claim the reading is about one.
+  //
+  // **The window is chosen by the pool, not by the clock (DEC-837, ruling `bd5c9aad` option (a)).**
+  // Sampling runs until `evictionTail` says the pool has plateaued and the tail has settled against
+  // its own second half, then stops. See `W4_EVICTION_MIN_S` for why a fixed window could not have
+  // separated a fill from churn, and why the adaptive form costs the tour almost nothing.
   const timeline = []
   let exitStream = probe.stream
   const started = Date.now()
-  while ((Date.now() - started) / 1000 < W4_SAMPLE_S) {
+  for (;;) {
     const now = await readProbe(page, slug)
     if (now.ok) {
       timeline.push({
@@ -676,7 +706,12 @@ async function visitWorld(page, world, { dir, captures, pose = SURFACE_RADII }) 
       })
       exitStream = now.probe.stream
     }
-    await sleep(200)
+    const elapsed = (Date.now() - started) / 1000
+    if (elapsed >= W4_EVICTION_MAX_S) break
+    // The floor is a floor on the *observation*, not on the tail: a pool that plateaued during the
+    // settle would otherwise be scored off three samples taken in the first second.
+    if (elapsed >= W4_EVICTION_MIN_S && evictionTail(timeline).converged) break
+    await sleep(W4_EVICTION_SAMPLE_MS)
   }
   if (exitStream === null) {
     // Same rule as the entry read: `null` is a build with no stream at all and is not an all-zero
@@ -854,7 +889,17 @@ const MATRIX = [
       { criterion: 'W2', measure: 'lightnessIqr', expect: 'GREEN' },
       { criterion: 'W3', measure: 'minAdjacentBandDeltaE', expect: 'GREEN' },
       { criterion: 'W4', measure: 'artFraction', expect: 'GREEN' },
+      // **GREEN against 21/s, and the number it has to clear is 18.1–18.5** (board ruling
+      // `bd5c9aad`, option (a)). This is the only row in the matrix that scores the eviction half at
+      // all: every other W4 row runs a 128-layer pool, where the bound is out of domain by the same
+      // ruling. That concentration is deliberate and it is also the row's risk — see the
+      // `evictionsPerSecond` notes in `lib/worlds-metrics.mjs` and the unit rows that pin the bound's
+      // ability to bind, which no live seam can produce.
       { criterion: 'W4', measure: 'evictionsPerSecond', expect: 'GREEN' },
+      // The absolute no-starvation term (ruling `bd5c9aad`, N2). Baseline shows ~942 cells of art
+      // against a floor of 64, so this row is nowhere near it — which is the point of asserting it
+      // here: the term must be *green on a healthy build* or it is not a control, it is a tripwire.
+      { criterion: 'W4', measure: 'artCellsShowing', expect: 'GREEN' },
     ],
   },
   {
@@ -959,6 +1004,14 @@ const MATRIX = [
     // capacity, and this row would have been GREEN at ~13% art. It is the live counterpart of the
     // `tether-surface` fixture in `worlds-metrics.test.ts` — same defect, same arithmetic, measured
     // in the shipped composition rather than read off the prototype's capture.
+    // **This row is now §3.1's named W4 falsifier, and the bare `?artThreshold=fixed24` row that
+    // used to be is gone** (DEC-752 ask `f9e273fb`, board answer `replace_row`, 2026-09-17). The
+    // bare seam was retired rather than re-fitted: it engages, it reads its policy back
+    // (`effectiveThresholdPx = 24`), and it moves no pixel, because the adaptive quantile at a
+    // 1,024-layer pool already sits at the 24 px floor and the capacity-derived byte budget — 155 MB
+    // against ~95 MB outstanding — no longer starves it. Both of the things that made it a control
+    // stopped being true, on the shipped tree, for reasons that are improvements. Re-fitting its
+    // expectations to whatever it happens to read now would have kept a row and lost a control.
     id: 'fixed24-layers-128',
     label: '?artThreshold=fixed24&layers=128 — a prototype threshold against a tier-4 pool',
     seams: { artThresholdFixed24: true, layersRequested: 128 },
@@ -966,31 +1019,20 @@ const MATRIX = [
     expect: [
       { criterion: 'W4', measure: 'artFraction', expect: 'RED' },
       { criterion: 'W4', measure: 'demandFitsCapacity', expect: 'RED' },
-    ],
-  },
-  {
-    id: 'fixed24',
-    label: '?artThreshold=fixed24 — the prototype’s constant threshold, no quantile',
-    seams: { artThresholdFixed24: true },
-    subject: 'dominaria',
-    expect: [
-      { criterion: 'W4', measure: 'artFraction', expect: 'RED' },
-      // **`N/A`, not `RED`, since the `exit_domain` ruling landed — and the change is the point of
-      // the ruling rather than a weakening of the row.** This row exhausts the byte budget *during*
-      // its visit (71.6 MB against 67.1, `swatchOnly` true at exit), and a pool forbidden to admit
-      // cannot evict, so its 0/s was never a measurement. It used to read GREEN here — a falsifier
-      // row passing the half it exists to fail. `N/A` is a distinct expectation from GREEN precisely
-      // so "not measured" can never be recorded as "measured and fine".
-      //
-      // The row's RED therefore rests on `artFraction` alone. That half survives the reachable bar
-      // because this row is *budget*-starved, not *pool*-starved: its demand fits its pool, so its
-      // ceiling is 1 and its bar is the unmodified 0.9 against ~0.37 — it never goes near the
-      // absolute floor. Appendix A's pool-starved `tether-surface` capture is the other reading of
-      // "the fixed24 control", and it is the one that did NOT survive `floor_times_ceiling`: it
-      // passed both halves at 37% art until ruling `absolute_floor` (card `74114193`) floored the
-      // bar at 0.5. Two rows, one name in §3.1, and only one of them was ever in danger — see
-      // `reachableBar` in `lib/worlds-metrics.mjs`.
+      // **`N/A`, and it is `N/A` for a new reason since ruling `bd5c9aad`.** It used to be the exit
+      // domain — a budget-exhausted pool cannot evict — and it is now the capacity domain: this row
+      // runs 128 layers and the bound is derived at 1,024. Asserted rather than dropped, because the
+      // row's job after the re-bound is to stay RED *against 21/s*, and "RED somewhere" is not the
+      // same claim as "RED here". Its redness is `artFraction`'s (0.1342 against a bar of 0.5, a
+      // 7.39× pool overshoot) and never the eviction half's, which is what this line pins: raising
+      // the bound from 5 to 21 cannot have greened this row, because the bound was never what
+      // coloured it.
       { criterion: 'W4', measure: 'evictionsPerSecond', expect: 'N/A' },
+      // Pool-starved, not threshold-starved: the 24 px seam keeps dominaria's full ~945-cell want
+      // set and the pool shows ~128 of them, which is above the absolute floor. The starvation term
+      // aims at a *collapsed want set* and this row does not have one — asserted so the two failure
+      // modes cannot be confused for each other on the one row that exhibits the other.
+      { criterion: 'W4', measure: 'artCellsShowing', expect: 'GREEN' },
     ],
   },
   {
@@ -1000,7 +1042,18 @@ const MATRIX = [
     subject: 'dominaria',
     expect: [
       { criterion: 'W4', measure: 'artFraction', expect: 'GREEN' },
-      { criterion: 'W4', measure: 'evictionsPerSecond', expect: 'GREEN' },
+      // **`N/A`, not GREEN, and the demotion is the ruling's second half showing through
+      // (`bd5c9aad`, option (a)).** This rung reads 6.73/s, comfortably inside 21 — and that number
+      // is worthless as a pass. A 128-layer pool churns less *because it refuses the wants it cannot
+      // hold*: ~4,670 wants/s declined for exhaustion, `artFraction` down to ~0.617. Recording that
+      // as a green eviction half would let the gate certify, as good behaviour, the one thing the
+      // other half of W4 exists to forbid. The bound is derived at 1,024 and is scored there alone.
+      { criterion: 'W4', measure: 'evictionsPerSecond', expect: 'N/A' },
+      // The tier-4 rung is where the absolute term is closest to binding on a *healthy* build —
+      // ~126 cells of art against a floor of 64 — so this is the row that says the floor leaves the
+      // smallest shipped pool room to pass. The witness it must red (14 cells, want set collapsed
+      // under reduced motion) is unreachable from a query seam; it is pinned in the unit rows.
+      { criterion: 'W4', measure: 'artCellsShowing', expect: 'GREEN' },
       // **The overshoot the reachable bar forgives, asserted so it cannot go quiet.** Ruling
       // `demand_measure_scored` is `reported_only`, so this measure cannot colour the row — which
       // makes it exactly the kind of number that stops being read. Naming it here keeps it
@@ -1085,6 +1138,14 @@ const MATRIX = [
       // control, because both alternative readings — silently pass, silently skip — are wrong.
       { criterion: 'W2', measure: 'medianNeighbourDeltaE', expect: 'N/A' },
       { criterion: 'W3', measure: 'minAdjacentBandDeltaE', expect: 'N/A' },
+      // **The absolute no-starvation term's domain, asserted at the extreme that defines it.** A
+      // floor of "64 cells must be showing art" is the one shape of bound a one-card world can never
+      // clear, so the term is scored only where the frame is *geometrically* able to offer 64
+      // front-facing on-screen cells. Segovia offers one. Asserting the `N/A` here is what stops the
+      // domain from later being written off `wanting` — the want set is the adaptive threshold's
+      // output, and a term whose domain the policy chooses is the collapse this term exists to
+      // catch, one level up. `artFraction` above still scores this world, as it is defined at n = 1.
+      { criterion: 'W4', measure: 'artCellsShowing', expect: 'N/A' },
     ],
   },
   {
@@ -1236,6 +1297,13 @@ async function runRow(browser, url, row, { roster, args, baselineProbe }) {
         // GREEN. The number is what a reader of this line can actually use; the verdict is one line
         // in the matrix, taken once, over the whole domain.
         const w3 = visit.w3.measures[0]
+        // **The eviction tail rides the line for the same reason the high-water mark does.** Its
+        // rate is now `null` on three different domain outcomes — wrong pool capacity, too short a
+        // tail, a tail that never settled — and `W4 insufficient` alone cannot say which. A domain
+        // rule that can quietly swallow the one world that churns is the risk this change carries,
+        // so the driver prints what the rule saw on every world, green ones included.
+        const tail = visit.w4.evictionTail
+        const ev = visit.w4.measures.find((m) => m.key === 'evictionsPerSecond')
         console.log(
           `  ${world.slug}: ${visit.cardinality.reported}/${visit.cardinality.cardCount} cells, ` +
             `pool ${visit.poolLayers}, threshold ${visit.effectiveThresholdPx.toFixed(2)}px, ` +
@@ -1243,7 +1311,14 @@ async function runRow(browser, url, row, { roster, args, baselineProbe }) {
             `W4 ${visit.w4.status}` +
             (hw === null
               ? ''
-              : ` (pool hw ${hw.resident}/${hw.layers}${hw.saturated ? ' SATURATED' : ''})`),
+              : ` (pool hw ${hw.resident}/${hw.layers}${hw.saturated ? ' SATURATED' : ''})`) +
+            ` [art ${visit.w4.showing}/${visit.w4.presented} presented; ev ` +
+            (ev.status === 'insufficient'
+              ? `n/a — ${visit.w4.atEvictionPool ? 'tail' : `pool ${visit.poolLayers}`}`
+              : `${tail.rate.toFixed(2)}/s over ${tail.spanS.toFixed(1)}s tail from ` +
+                `t=${tail.plateauT.toFixed(1)}s @${tail.peakResident}, drift ` +
+                `${(tail.drift * 100).toFixed(1)}%`) +
+            `]`,
         )
       }
 

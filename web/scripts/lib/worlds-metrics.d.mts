@@ -197,6 +197,22 @@ export interface W4Criterion extends Criterion {
   /** `true` below tier 4's 128: a reading of the harness, not of any browser. */
   readonly belowShippedPool: boolean;
   /**
+   * Front-facing, on-screen cells — the frame's geometry, before the art policy has had a vote.
+   * `artCellsShowing`'s domain is written from this and never from `wanting`, which the adaptive
+   * threshold chooses.
+   */
+  readonly presented: number;
+  /** The capacity the eviction bound is derived at: `W4_EVICTION_POOL_LAYERS`. */
+  readonly evictionPoolLayers: number;
+  /** Whether this session ran at it. `false` moves `evictionsPerSecond` to `insufficient`. */
+  readonly atEvictionPool: boolean;
+  /**
+   * Where the fill ended, how much tail was left, and how far the tail's own second half sat from
+   * the whole. Reported even when `rate` is `null`, so a run that failed to settle can be inspected
+   * rather than merely disqualified.
+   */
+  readonly evictionTail: EvictionTail;
+  /**
    * `true` when the pool has layers and demand, but nothing was ever resident — the art stream
    * never ran. Moves `artFraction` to `insufficient`, because a setup failure scored as `fail` is
    * indistinguishable from a policy that exhausts, and it makes both W4 matrix rows inert.
@@ -307,7 +323,17 @@ export declare const FLOORS: {
    * saturated pool this is equivalent to "demand may exceed capacity by at most `1 / this`".
    */
   readonly artFractionAbsolute: number;
+  /**
+   * Evictions/s on the fill-excluded tail, at the 1,024-layer pool alone (ruling `bd5c9aad`,
+   * option (a)). `evictions == requested` is an identity, so this bounds want-set turnover.
+   */
   readonly evictionsPerSecond: number;
+  /**
+   * The absolute count of cells showing art a frame must reach where it has that many front-facing
+   * on-screen cells to offer — the no-starvation term a ratio could not carry (DEC-834's 14-cell
+   * want set read `artFraction` 1.00).
+   */
+  readonly artCellsAbsolute: number;
 };
 
 export declare function homeLabelCeiling(roster: Roster): number;
@@ -357,7 +383,12 @@ export declare function w3QualifiesByShares(
 ): boolean;
 export declare const LABEL_VISIBLE_MIN_OPACITY: number;
 export declare function isLabelVisible(label: RenderedLabel): boolean;
+/** The shortest span a fill-excluded eviction tail may be differenced over, in seconds. */
 export declare const W4_EVICTION_WINDOW_S: number;
+/** The pool capacity W4's eviction half is scored at — the shipped 1,024, and only it. */
+export declare const W4_EVICTION_POOL_LAYERS: number;
+export declare const W4_EVICTION_MIN_TAIL_SAMPLES: number;
+export declare const W4_EVICTION_TAIL_CONVERGENCE: number;
 export declare const BAND_ORDER: readonly string[];
 export declare const BAND_ADJACENCY: ReadonlyArray<readonly [number, number]>;
 
@@ -398,6 +429,34 @@ export declare function poolHighWater(
   samples: readonly EvictionSample[],
 ): PoolHighWater | null;
 export declare const SMALLEST_SHIPPED_POOL_LAYERS: number;
+
+/**
+ * W4's eviction rate on the fill-excluded tail, with the tail's own convergence scored.
+ *
+ * `rate` is `null` — and `why` says which condition failed — when the timeline is too short, when
+ * the plateau leaves too few samples behind it, or when the tail has not settled. Never a 0 standing
+ * in for an absent reading.
+ */
+export interface EvictionTail {
+  readonly rate: number | null;
+  readonly halfRate: number | null;
+  readonly drift: number | null;
+  readonly converged: boolean;
+  /** `max(resident)` — where the fill ended. Never "resident stopped climbing": a full pool churns. */
+  readonly peakResident: number | null;
+  readonly plateauT: number | null;
+  readonly tailSamples: number;
+  readonly spanS: number;
+  readonly why: string | null;
+}
+export declare function evictionTail(
+  samples: readonly EvictionSample[],
+  options?: {
+    readonly minTailSamples?: number;
+    readonly minSpanS?: number;
+    readonly convergence?: number;
+  },
+): EvictionTail;
 /**
  * Did the art stream never run? `true` when the pool has capacity and cells want art, but nothing
  * is resident — so no layer was ever handed out. A zero-layer pool is excluded: §1.6 makes that a

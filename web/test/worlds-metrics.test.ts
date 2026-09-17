@@ -36,6 +36,7 @@ import {
   evaluateW4,
   evaluateW5,
   evictionRate,
+  evictionTail,
   poolHighWater,
   foldCriteria,
   SMALLEST_SHIPPED_POOL_LAYERS,
@@ -1200,12 +1201,39 @@ describe("W4 — art resolves without exhausting", () => {
       showingArt: i < drawn,
     }));
 
-  /** A settled pool: the counter has stopped moving. */
-  const settled = (at: number) => [
-    { t: 0, evictions: at },
-    { t: 2.5, evictions: at },
-    { t: 5, evictions: at },
-  ];
+  /**
+   * A settled pool: plateaued at `resident`, and the counter has stopped moving.
+   *
+   * **Six samples carrying occupancy, where this used to be three carrying none** — board ruling
+   * `bd5c9aad` (option (a)) moved the rate onto a fill-excluded tail, and the fill is detected from
+   * `resident`. A timeline without it is not a thin reading, it is an unreadable one: `evictionTail`
+   * cannot tell a pool that plateaued from one still filling, and it reports that rather than
+   * guessing. Six because the tail is scored against its own second half and a rate needs both.
+   */
+  const settled = (at: number, resident = 1_024) =>
+    Array.from({ length: 6 }, (_, i) => ({
+      t: i,
+      evictions: at,
+      resident,
+      layers: resident,
+    }));
+
+  /**
+   * A pool that has already plateaued at `resident` and is churning steadily at `perSecond`.
+   *
+   * Steady on purpose: this is the *tail*, after the fill. A timeline whose rate is still decaying
+   * is a different fixture and belongs to the convergence rows, not to the rows that score a bound.
+   */
+  const churningAt = (
+    perSecond: number,
+    { resident = 1_024, from = 1_000, samples = 8 } = {},
+  ) =>
+    Array.from({ length: samples }, (_, i) => ({
+      t: i,
+      evictions: from + Math.round(perSecond * i),
+      resident,
+      layers: resident,
+    }));
 
   /** The prototype's own pool — Appendix A's `tether-surface` drew 1,024 layers. */
   const PROTOTYPE_POOL = { layers: 1_024, resident: 1_024 };
@@ -1434,13 +1462,23 @@ describe("W4 — art resolves without exhausting", () => {
     // would be condemning the low-end device the ladder exists to protect.
     const w4 = evaluateW4(
       cells(128, 128),
-      settled(4_100),
+      settled(4_100, 128),
       { layers: 128, resident: 128 },
       FRESH_SESSION,
       HEALTHY_EXIT,
     );
-    expect(w4.pass).toBe(true);
+    expect(w4.measures.find((m) => m.key === "artFraction")?.status).toBe(
+      "pass",
+    );
     expect(w4.measures.find((m) => m.key === "artFraction")?.value).toBe(1);
+    // **The claim is on the art half, not on the criterion, since ruling `bd5c9aad`.** The eviction
+    // half is out of domain at any capacity but 1,024, so this row's criterion status is now
+    // `insufficient` — and asserting `w4.pass` here would quietly turn this row into a test of the
+    // capacity domain instead of the one it was written for.
+    expect(
+      w4.measures.find((m) => m.key === "evictionsPerSecond")?.status,
+    ).toBe("insufficient");
+    expect(w4.atEvictionPool).toBe(false);
   });
 
   /**
@@ -1560,7 +1598,7 @@ describe("W4 — art resolves without exhausting", () => {
       // ...and a frame whose demand fits outright keeps the unmodified flat floor.
       const roomy = evaluateW4(
         cells(90, 90),
-        settled(0),
+        settled(0, 90),
         { layers: 224, resident: 90 },
         FRESH_SESSION,
         HEALTHY_EXIT,
@@ -1581,8 +1619,11 @@ describe("W4 — art resolves without exhausting", () => {
     expect(w4.pass).toBe(true);
   });
 
-  it("averages the eviction rate over the trailing 2 s, not the whole run", () => {
-    // A burst while the camera flew, then quiet. The criterion is about the settled pose.
+  it("differences the rate over a trailing window, not over the whole run", () => {
+    // A burst while the camera flew, then quiet. `evictionRate` is the primitive: hand it a window
+    // and it differences the counter across it. Since ruling `bd5c9aad` the criterion no longer
+    // calls it with a fixed 2 s — `evictionTail` chooses the window and then asks for all of it —
+    // but the primitive's own behaviour is what the tail is built out of, so it keeps its row.
     const timeline = [
       { t: 0, evictions: 0 },
       { t: 1, evictions: 900 },
@@ -1590,6 +1631,290 @@ describe("W4 — art resolves without exhausting", () => {
       { t: 5, evictions: 912 },
     ];
     expect(evictionRate(timeline)).toBeCloseTo(1, 6);
+    // The whole window, which is what the tail asks for once it has picked one. 912 over 5 s.
+    expect(evictionRate(timeline, Infinity)).toBeCloseTo(912 / 5, 6);
+  });
+
+  /**
+   * **The fill-excluded tail** — board ruling on DEC-833 card `bd5c9aad`, option (a).
+   *
+   * A cold pool's first `layers` admissions are page load, not churn, and the old 3 s window could
+   * not have told the two apart: dominaria's fill alone outlasts it. These rows are the two halves
+   * of the repair, and each one is a trap that was walked into first.
+   */
+  describe("the eviction rate is taken on a fill-excluded tail", () => {
+    /** A cold pool filling to `layers`, then churning steadily. `t` in seconds, 1 Hz. */
+    const fillThenChurn = (
+      { fillS = 10, tailS = 10, layers = 1_024, perSecond = 18.4 } = {},
+    ) => [
+      ...Array.from({ length: fillS }, (_, i) => ({
+        t: i,
+        // The fill admits far faster than the steady state — that is what makes it a fill.
+        evictions: 0,
+        resident: Math.round((layers * (i + 1)) / fillS) - 1,
+        layers,
+      })),
+      ...Array.from({ length: tailS }, (_, i) => ({
+        t: fillS + i,
+        evictions: Math.round(perSecond * i),
+        // **Saturated, and churning: 1024 → 1023 → 1024.** This is the trap.
+        resident: i % 2 === 0 ? layers : layers - 1,
+        layers,
+      })),
+    ];
+
+    it("ends the fill at the plateau, never where resident last stopped climbing", () => {
+      // **"Resident stops climbing" is the obvious detector and it is wrong on the one configuration
+      // that matters.** A saturated pool churns, so `resident` ticks 1023 → 1024 forever and the
+      // last upward tick lands in the final seconds: measured on a 60 s baseline that rule put the
+      // fill's end at t = 57.1 s and left a two-row "steady state" — one sample dressed as a rate,
+      // the same class of error as the label it replaced (DEC-835).
+      //
+      // The plateau is the FIRST sample holding `max(resident)`, and on this fixture that is t = 9,
+      // where the naive rule would answer t = 18.
+      const tail = evictionTail(fillThenChurn());
+      expect(tail.peakResident).toBe(1_024);
+      // t = 10: the fill's last sample holds 1023, and the first 1024 is the tail's own opening
+      // sample. The naive "stopped climbing" rule answers t = 18 on this fixture, eight samples
+      // later, because the churn ticks back up to 1024 there.
+      expect(tail.plateauT).toBe(10);
+      const lastClimb = 18;
+      expect(tail.plateauT!).toBeLessThan(lastClimb);
+      expect(tail.tailSamples).toBeGreaterThan(5);
+      expect(tail.converged).toBe(true);
+      expect(tail.rate!).toBeCloseTo(18.4, 1);
+    });
+
+    it("keeps the fill out of the number, which is the whole point of the window", () => {
+      // The contaminated figure and the honest one, on the same timeline. Differenced from t = 0 the
+      // run reads the churn amortised over a window that is half page load; differenced from the
+      // plateau it reads the churn.
+      const rows = fillThenChurn();
+      const whole = evictionRate(rows, Infinity)!;
+      const tail = evictionTail(rows).rate!;
+      expect(tail).toBeGreaterThan(whole);
+      expect(whole).toBeCloseTo(166 / 19, 1);
+    });
+
+    it("refuses a tail that has not settled against its own second half", () => {
+      // **Excluding the fill is necessary and it is not sufficient.** DEC-835 measured a 60 s
+      // baseline reading 1,461 KiB/s from t = 6, 1,445 from t = 18 and 1,382 from t = 36 — a
+      // monotone decline *after* the pool held every layer it would hold. Quoting the earliest as
+      // "sustained" is the same error as quoting the whole window, one order smaller.
+      //
+      // Here: a tail whose rate halves across itself. It is past the plateau and it is still not a
+      // steady state, so no number is published.
+      const decaying = Array.from({ length: 12 }, (_, i) => ({
+        t: i,
+        // 40/s for the first half, 10/s for the second.
+        evictions: i <= 5 ? 40 * i : 200 + 10 * (i - 5),
+        resident: 1_024,
+        layers: 1_024,
+      }));
+      const tail = evictionTail(decaying);
+      expect(tail.converged).toBe(false);
+      expect(tail.rate).toBe(null);
+      expect(tail.halfRate).not.toBe(null);
+      expect(tail.why).toMatch(/not settled/);
+
+      // ...and the criterion reports that rather than a verdict. A gate that scored the first half
+      // of this tail would be publishing the fill under a different name.
+      const w4 = evaluateW4(
+        cells(945, 942),
+        decaying,
+        { layers: 1_024, resident: 1_024 },
+        FRESH_SESSION,
+        HEALTHY_EXIT,
+      );
+      const evictions = w4.measures.find((m) => m.key === "evictionsPerSecond");
+      expect(evictions?.status).toBe("insufficient");
+      expect(evictions?.value).toBe(null);
+    });
+
+    it("calls two zeros converged, because 0/0 is not a drift", () => {
+      // A relative drift is undefined at zero, and zero is the common case rather than an edge: 44
+      // of the 45 worlds never saturate the pool, so they churn nothing and both halves read 0.
+      // `0/0` would report the arms that have most obviously converged as unconverged, and every
+      // quiet world would fall out of W4's domain at once.
+      const tail = evictionTail(settled(925));
+      expect(tail.converged).toBe(true);
+      expect(tail.rate).toBe(0);
+      expect(tail.drift).toBe(0);
+    });
+
+    it("publishes no rate from a timeline too short to have a tail", () => {
+      // A rate needs a window, and below this the fill and the steady state are not separable in
+      // this run. Reporting no sustained figure is the honest outcome; mislabelling one is the
+      // defect being fixed, so a too-short window must not produce a number.
+      const brief = [
+        { t: 0, evictions: 0, resident: 900, layers: 1_024 },
+        { t: 0.2, evictions: 4, resident: 1_024, layers: 1_024 },
+        { t: 0.4, evictions: 8, resident: 1_024, layers: 1_024 },
+      ];
+      const tail = evictionTail(brief);
+      expect(tail.rate).toBe(null);
+      expect(tail.why).toMatch(/at least 5/);
+    });
+
+    it("reads a timeline with no occupancy as unreadable, not as a settled zero", () => {
+      // The fill is detected from `resident`, so a timeline without it cannot be scored at all —
+      // and the wrong answer here is the comfortable one. A `0` would sail through the bound on
+      // every row that forgot to report occupancy, which is `streamNeverRan`'s lesson (a structural
+      // zero wearing a passing verdict) arriving by a fourth route.
+      const blind = Array.from({ length: 8 }, (_, i) => ({
+        t: i,
+        evictions: 30 * i,
+      }));
+      const tail = evictionTail(blind);
+      expect(tail.rate).toBe(null);
+      expect(tail.converged).toBe(false);
+      expect(tail.why).toMatch(/resident/);
+    });
+  });
+
+  /**
+   * **`artCellsShowing` — the absolute no-starvation term** (board ruling `bd5c9aad`, N2).
+   *
+   * `artFraction` read **1.00** on a frame showing fourteen cells of art, because the adaptive
+   * threshold had collapsed its denominator to fourteen: at `?layers=128` under reduced motion the
+   * want set fell to 14 cells, all 14 resolved, and the ratio came out *better* than the healthy
+   * baseline's 0.9968 (DEC-834). The ratio was not wrong. It was answering a question about a want
+   * set the policy under test had chosen. See `a-ratio-is-blind-to-its-own-denominator`.
+   */
+  describe("the absolute no-starvation term", () => {
+    /** `wanted` cells asking for art, `drawn` of them showing it, inside a frame of `onScreen`. */
+    const frameOf = (onScreen: number, wanted: number, drawn: number) => [
+      ...cells(wanted, drawn),
+      ...Array.from({ length: onScreen - wanted }, () => ({
+        frontFacing: true,
+        onScreen: true,
+        wantsArt: false,
+        showingArt: false,
+      })),
+    ];
+
+    it("reds DEC-834's collapsed want set, the frame artFraction scored 1.00", () => {
+      // The witness, at its measured numbers: 14 cells wanted art out of ~2,000 on screen, all 14
+      // got it. This is the row the term exists for and it must be red on it.
+      const starved = evaluateW4(
+        frameOf(2_000, 14, 14),
+        settled(0, 128),
+        { layers: 128, resident: 128 },
+        FRESH_SESSION,
+        HEALTHY_EXIT,
+      );
+
+      const fraction = starved.measures.find((m) => m.key === "artFraction");
+      const absolute = starved.measures.find((m) => m.key === "artCellsShowing");
+      // The fraction still reads a perfect score, and that is not a bug in the fraction.
+      expect(fraction?.value).toBe(1);
+      expect(fraction?.status).toBe("pass");
+      // The absolute term is what sees it.
+      expect(absolute?.value).toBe(14);
+      expect(absolute?.bound).toBe(64);
+      expect(absolute?.status).toBe("fail");
+      expect(starved.status).toBe("fail");
+    });
+
+    it("stays green on the healthy frames at both ends of the ladder", () => {
+      // A term that reds a correct build is a tripwire, not a control. The two live readings it has
+      // to clear: the shipped 1,024-layer baseline at ~942 cells of art, and the tier-4 rung at ~126
+      // — the smallest shipped pool, where the floor is closest to binding on a healthy build.
+      const baseline = evaluateW4(
+        frameOf(2_000, 945, 942),
+        churningAt(18.4),
+        { layers: 1_024, resident: 1_024 },
+        FRESH_SESSION,
+        HEALTHY_EXIT,
+      );
+      const tier4 = evaluateW4(
+        frameOf(2_000, 205, 126),
+        settled(0, 128),
+        { layers: 128, resident: 128 },
+        FRESH_SESSION,
+        HEALTHY_EXIT,
+      );
+
+      for (const w4 of [baseline, tier4]) {
+        expect(w4.measures.find((m) => m.key === "artCellsShowing")?.status).toBe(
+          "pass",
+        );
+      }
+      // Named from both sides so the margin is on the record rather than implied: 4.6× above the
+      // witness that must red, ~2× below the tier-4 rung that must stay green.
+      expect(tier4.measures.find((m) => m.key === "artCellsShowing")!.value!).toBe(126);
+      expect(126 / 64).toBeGreaterThan(1.9);
+      expect(64 / 14).toBeGreaterThan(4.5);
+    });
+
+    it("is out of domain on a frame too small to offer the floor, not red on it", () => {
+      // The one-card world. A floor of "64 cells must be showing art" is the one shape of bound
+      // segovia can never clear, and scoring it there would red a correct renderer for ever —
+      // `a-bound-check-is-vacuous-when-the-bound-never-binds` in its mirror image.
+      const oneCard = evaluateW4(
+        frameOf(1, 1, 1),
+        settled(0),
+        { layers: 1_024, resident: 1 },
+        FRESH_SESSION,
+        HEALTHY_EXIT,
+      );
+      const absolute = oneCard.measures.find((m) => m.key === "artCellsShowing");
+      expect(absolute?.status).toBe("insufficient");
+      expect(absolute?.insufficientReason).toMatch(/front-facing and on screen/);
+      // ...and `artFraction`, which is defined at n = 1, still scores the world.
+      expect(oneCard.measures.find((m) => m.key === "artFraction")?.status).toBe(
+        "pass",
+      );
+    });
+
+    it("takes its domain from the frame's geometry, never from the want set", () => {
+      // **The whole of why this term works, as a single comparison.** Both frames show 14 cells of
+      // art. They differ in how many cells are *on screen* — a fact about where the camera is, which
+      // the art policy gets no vote on. A domain written off `wanting` instead would have gone
+      // `insufficient` on the starved frame, because `wanting` is 14 there: the collapse this term
+      // exists to catch would have switched the term off. Same defect, one level up.
+      const starved = evaluateW4(
+        frameOf(2_000, 14, 14),
+        settled(0),
+        { layers: 1_024, resident: 1_024 },
+        FRESH_SESSION,
+        HEALTHY_EXIT,
+      );
+      const genuinelySmall = evaluateW4(
+        frameOf(14, 14, 14),
+        settled(0),
+        { layers: 1_024, resident: 14 },
+        FRESH_SESSION,
+        HEALTHY_EXIT,
+      );
+
+      expect(starved.showing).toBe(genuinelySmall.showing);
+      expect(starved.presented).toBe(2_000);
+      expect(genuinelySmall.presented).toBe(14);
+      expect(
+        starved.measures.find((m) => m.key === "artCellsShowing")?.status,
+      ).toBe("fail");
+      expect(
+        genuinelySmall.measures.find((m) => m.key === "artCellsShowing")?.status,
+      ).toBe("insufficient");
+    });
+
+    it("does not fire where the art stream never ran — that is a setup failure and says so", () => {
+      // The no-admission cases already own their zeroes. Letting the absolute term red them too
+      // would give one setup failure two red measures and make both W4 rows inert at once, which is
+      // the defect `streamNeverRan` was landed to fix.
+      const dead = evaluateW4(
+        frameOf(2_000, 945, 0),
+        settled(0),
+        { layers: 1_024, resident: 0 },
+        FRESH_SESSION,
+        HEALTHY_EXIT,
+      );
+      const absolute = dead.measures.find((m) => m.key === "artCellsShowing");
+      expect(dead.streamNeverRan).toBe(true);
+      expect(absolute?.status).toBe("insufficient");
+      expect(absolute?.insufficientReason).toMatch(/art stream never ran/);
+    });
   });
 
   /**
@@ -1778,14 +2103,14 @@ describe("W4 — art resolves without exhausting", () => {
     // Tier 4's 128 is the smallest rung; 64 is below every configuration a browser can be in.
     const harness = evaluateW4(
       visible(90),
-      settled(0),
+      settled(0, 64),
       { layers: 64, resident: 64 },
       FRESH_SESSION,
       HEALTHY_EXIT,
     );
     const shipped = evaluateW4(
       visible(90),
-      settled(0),
+      settled(0, 1),
       {
         layers: SMALLEST_SHIPPED_POOL_LAYERS,
         resident: 1,
@@ -1800,12 +2125,17 @@ describe("W4 — art resolves without exhausting", () => {
     );
     // The flag is provenance, not a verdict. At 64 layers the policy still works and `artFraction`
     // is still a true measurement of it — scoring it `insufficient` would call a real measurement
-    // absent, which is the opposite error. Both rows must agree on the status.
-    expect(harness.status).toBe(shipped.status);
-    expect(harness.status).toBe("pass");
-    expect(harness.measures.find((m) => m.key === "artFraction")?.value).toBe(
-      shipped.measures.find((m) => m.key === "artFraction")?.value,
-    );
+    // absent, which is the opposite error. Both rows must agree.
+    //
+    // **Asserted on `artFraction` rather than on the criterion, and that is not a weakening.** Since
+    // ruling `bd5c9aad` both of these rows are out of the eviction half's domain — 64 and 128 are
+    // both not 1,024 — so both criteria read `insufficient` and comparing *those* would pass however
+    // the capacity flag behaved. The claim this row makes is about the half the flag could affect.
+    const art = (w: { measures: readonly { key: string; status: string; value: number | null }[] }) =>
+      w.measures.find((m) => m.key === "artFraction")!;
+    expect(art(harness).status).toBe(art(shipped).status);
+    expect(art(harness).status).toBe("pass");
+    expect(art(harness).value).toBe(art(shipped).value);
   });
 
   it("puts the boundary at tier 4 itself, not one layer either side of it", () => {
@@ -2253,36 +2583,100 @@ describe("W4 — art resolves without exhausting", () => {
       expect(evictions?.insufficientReason).toMatch(/exhausted during this/);
     });
 
-    it("leaves the baseline row's eviction red exactly where it was", () => {
-      // **The row that proves the domain did not swallow the finding it was raised beside.**
+    it("leaves the baseline row's eviction reading inside the domain — and it is GREEN at 18.4/s now", () => {
+      // **The row that proves the domain did not swallow the reading it was raised beside.**
       // dominaria on `baseline` reads `declinedBudget` 0 and `swatchOnly` false at exit — measured,
-      // not assumed — so it is inside the domain and its ~18.4/s is scored. A rule that disqualified
-      // it would have retired W4's live red along with `fixed24`'s false green.
-      const churning = [
-        { t: 0, evictions: 1_000 },
-        { t: 2.5, evictions: 1_046 },
-        { t: 5, evictions: 1_092 },
-      ];
+      // not assumed — so it is inside the domain and its ~18.4/s is scored.
+      //
+      // **What changed on 2026-09-17 is the verdict, not the reading** (board ruling on DEC-833 card
+      // `bd5c9aad`, option (a)). This row used to assert `fail` against a bound of 5. That bound was
+      // unreachable from the request loop: `evictions == requested` is a structural identity — one
+      // writer, one caller, on the path that increments `requested` — so the criterion bounds
+      // want-set turnover, and turnover on 6,271 cards spinning through a 1,024-layer pool is
+      // 18.1–18.5/s at the floor. Meeting 5/s needed a 3.6× slower spin, a 72% roster cut or ~4,750
+      // layers. The bound is now 21/s and this reading passes it, by ruling and not by drift.
       const baseline = evaluateW4(
         cells(945, 942),
-        churning,
+        churningAt(18.4),
         { layers: 1_024, resident: 1_024 },
         FRESH_SESSION,
         HEALTHY_EXIT,
       );
 
       expect(baseline.budgetBoundAtExit).toBe(false);
+      expect(baseline.atEvictionPool).toBe(true);
       const evictions = baseline.measures.find(
         (m) => m.key === "evictionsPerSecond",
       );
-      expect(evictions?.status).toBe("fail");
-      expect(evictions!.value!).toBeGreaterThan(5);
-      // ...and the art half is green at 99.7%, so the row's colour comes from the eviction half
-      // alone — the live shape, where the churn is invisible in the frame.
+      expect(evictions?.status).toBe("pass");
+      expect(evictions!.value!).toBeCloseTo(18.4, 1);
+      expect(evictions?.bound).toBe(21);
+      // The margin is small and it is supposed to be: 18.1 × 1.15. Pinned from both sides so a
+      // later edit cannot widen it without saying so.
+      expect(evictions!.value!).toBeGreaterThan(21 / 1.2);
       expect(
         baseline.measures.find((m) => m.key === "artFraction")?.status,
       ).toBe("pass");
-      expect(baseline.status).toBe("fail");
+      expect(baseline.status).toBe("pass");
+    });
+
+    it("still reds the same row when turnover climbs past the new bound", () => {
+      // **The bound has to be able to bind, and raising it is exactly when that stops being
+      // obvious.** `a-bound-check-is-vacuous-when-the-bound-never-binds`: the previous bound was
+      // unreachable in the failing direction, and a re-bound chosen to green the live reading could
+      // as easily be unreachable in the other. So the limit is injected rather than argued.
+      //
+      // 24.2/s is what a 30% spin speedup would produce on the same roster — the shape of regression
+      // the 1.15 margin exists to catch, since the identity means a stream that began re-asking for
+      // resident cells would show up here at once and much larger.
+      const faster = evaluateW4(
+        cells(945, 942),
+        churningAt(24.2),
+        { layers: 1_024, resident: 1_024 },
+        FRESH_SESSION,
+        HEALTHY_EXIT,
+      );
+
+      const evictions = faster.measures.find(
+        (m) => m.key === "evictionsPerSecond",
+      );
+      expect(evictions?.status).toBe("fail");
+      expect(evictions!.value!).toBeGreaterThan(21);
+      // The art half is untouched at 99.7%, so the row's colour comes from the eviction half alone —
+      // the live shape, where the churn is invisible in the frame.
+      expect(faster.measures.find((m) => m.key === "artFraction")?.status).toBe(
+        "pass",
+      );
+      expect(faster.status).toBe("fail");
+    });
+
+    it("scores the bound at the shipped 1,024-layer pool and nowhere else", () => {
+      // Ruling `bd5c9aad` option (a) scopes the bound as well as setting it, and the scope is the
+      // half that is easy to drop. At 128 layers the measured rate is 6.73/s — a third of the bound,
+      // and worthless as a pass, because the pool gets there by refusing ~4,670 wants/s for
+      // exhaustion and dropping `artFraction` to ~0.617. A green here would let the gate certify the
+      // very starvation the other half of W4 forbids.
+      const tier4 = evaluateW4(
+        cells(205, 126),
+        churningAt(6.73, { resident: 128 }),
+        { layers: 128, resident: 128 },
+        FRESH_SESSION,
+        HEALTHY_EXIT,
+      );
+
+      const evictions = tier4.measures.find(
+        (m) => m.key === "evictionsPerSecond",
+      );
+      expect(evictions?.status).toBe("insufficient");
+      // **The number is still reported, and only the verdict is withheld** — the same shape as the
+      // exit-domain row above, and for the same reason. 6.73/s is a true reading of a 128-layer
+      // pool; what it is not is a reading of the bound's subject. Deleting it would lose the
+      // evidence that the small pool churns *less*, which is the whole argument for the scope.
+      expect(evictions!.value!).toBeCloseTo(6.73, 1);
+      expect(evictions?.insufficientReason).toMatch(/1024-layer pool/);
+      expect(evictions?.insufficientReason).toMatch(/128 layers/);
+      expect(tier4.atEvictionPool).toBe(false);
+      expect(tier4.evictionPoolLayers).toBe(1_024);
     });
 
     it("does not carry the exit domain over to artFraction", () => {
@@ -2407,7 +2801,16 @@ describe("W4 — art resolves without exhausting", () => {
       expect(demand?.value).toBeCloseTo(205 / 128, 6);
       expect(demand?.status).toBe("fail");
       expect(demand?.scored).toBe(false);
-      expect(tier4.status).toBe("pass");
+      // **The scored halves, one by one, rather than the criterion's own status.** Since ruling
+      // `bd5c9aad` the eviction half is out of domain at 128 layers, so the criterion here reads
+      // `insufficient` — and `expect(tier4.status).toBe("pass")` would have started passing or
+      // failing for a reason that has nothing to do with the unscored measure this row is about.
+      expect(
+        tier4.measures.find((m) => m.key === "artCellsShowing")?.status,
+      ).toBe("pass");
+      expect(
+        tier4.measures.find((m) => m.key === "evictionsPerSecond")?.status,
+      ).toBe("insufficient");
     });
 
     it("keeps an unscored measure out of the roster fold's verdict too", () => {
@@ -2819,17 +3222,44 @@ describe("the negative-control matrix", () => {
       measure: "minAdjacentBandDeltaE",
       expect: "RED",
     },
+    // **W4's art control is `?artThreshold=fixed24&layers=128`, and the bare `fixed24` rows that
+    // used to sit here are retired** (DEC-752 ask `f9e273fb`, board answer `replace_row`). The bare
+    // seam engages, reads its policy back at 24 px, and moves no pixel: the adaptive quantile at a
+    // 1,024-layer pool already sits at the 24 px floor and the capacity-derived budget no longer
+    // starves it. Both things that made it a control stopped being true, for reasons that are
+    // improvements, so it was retired rather than re-fitted to whatever it now reads.
     {
-      row: "W4 · ?artThreshold=fixed24",
+      row: "W4 · ?artThreshold=fixed24&layers=128",
       criterion: "W4",
       measure: "artFraction",
       expect: "RED",
     },
+    // **The eviction half has no live RED row, and that is a stated cost of ruling `bd5c9aad`, not
+    // an oversight.** The bound is want-set turnover at the shipped 1,024-layer pool; exceeding it
+    // needs a faster spin or a bigger roster, and no query seam produces either. Every `?layers=N`
+    // row is out of the bound's domain by the same ruling. So the half's falsifier is a unit row —
+    // `still reds the same row when turnover climbs past the new bound` — and its live row is the
+    // expected-GREEN baseline below. Recorded here so the gap is visible rather than inferred.
     {
-      row: "W4 · ?artThreshold=fixed24 (evictions)",
+      row: "W4 · ?artThreshold=fixed24&layers=128 (evictions)",
       criterion: "W4",
       measure: "evictionsPerSecond",
-      expect: "RED",
+      expect: "N/A",
+    },
+    // The absolute no-starvation term (ruling `bd5c9aad`, N2). Same shape as the row above: its
+    // witness is a want set collapsed under reduced motion, which `?motion=0` cannot produce on the
+    // shell, so the RED lives in the unit rows and the matrix carries its GREEN partners.
+    {
+      row: "W4 · one-card world (absolute art term)",
+      criterion: "W4",
+      measure: "artCellsShowing",
+      expect: "N/A",
+    },
+    {
+      row: "W4 · the unmodified build (absolute art term)",
+      criterion: "W4",
+      measure: "artCellsShowing",
+      expect: "GREEN",
     },
     {
       row: "W5 · labels forced on for empty planes",
@@ -2871,10 +3301,10 @@ describe("the negative-control matrix", () => {
     { row: "all · the unmodified build", criterion: "W2", expect: "GREEN" },
   ] as const;
 
-  it("has eight expected-RED rows, four expected-GREEN and two expected-N/A", () => {
-    expect(MATRIX.filter((r) => r.expect === "RED")).toHaveLength(8);
-    expect(MATRIX.filter((r) => r.expect === "GREEN")).toHaveLength(4);
-    expect(MATRIX.filter((r) => r.expect === "N/A")).toHaveLength(2);
+  it("has seven expected-RED rows, five expected-GREEN and four expected-N/A", () => {
+    expect(MATRIX.filter((r) => r.expect === "RED")).toHaveLength(7);
+    expect(MATRIX.filter((r) => r.expect === "GREEN")).toHaveLength(5);
+    expect(MATRIX.filter((r) => r.expect === "N/A")).toHaveLength(4);
   });
 
   it("gives every W5 half both a RED row and a GREEN partner", () => {
@@ -2905,6 +3335,7 @@ describe("the negative-control matrix", () => {
       "minAdjacentBandDeltaE",
       "artFraction",
       "evictionsPerSecond",
+      "artCellsShowing",
       "homeLabels",
       "worldsNeverLabelled",
     ]);
