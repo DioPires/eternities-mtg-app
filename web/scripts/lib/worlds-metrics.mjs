@@ -62,79 +62,71 @@ export const FLOORS = {
    */
   lightnessIqr: 8,
   /**
-   * W3: ΔE between the mean a\*b\* of two bands adjacent on the sphere.
+   * W3: the **roster mean** of the per-world closest adjacent-band ΔE(a\*b\*).
    *
-   * **Derived, not chosen — and the derivation is re-runnable (DEC-752, DEC-824).** The ruling
-   * `hold_pending_control` held this at 10 while `?art=off` was built; it retires here. Measured at
-   * the 2.2-radii pose on leg G over main `28d4676` and again over `7483cd6`, one build per arm.
-   * `w3-floor-shipped` / `w3-floor-control` + `scripts/w3-floor.mjs` re-take them.
+   * **Derived on the mean fold, five sessions per arm (DEC-836, board ruling `fold_mean`).** The
+   * fold this floor is taken over is {@link foldMean}'s, not the worst world's — the previous number
+   * (0.55) was derived against a fold the board retired, and the retraction that killed it is kept
+   * below because its lesson is the reason this one is measured the way it is.
    *
-   * | reading | sessions | binds |
+   * Both arms are full 45-world tours at the 2.2-radii pose, 28 worlds in W3's domain in every one,
+   * **0 dropped**, measured on leg G `f821ccd` (the mean fold is gate-side and offline, so these
+   * readings do not depend on it):
+   *
+   * | arm | five session means | binds |
    * |---|---|---|
-   * | acceptance tour, unmodified build, worst of 28 worlds | **0.7070** (ravnica), n=1 | floor ≤ this |
-   * | `?art=off&bands=shuffle` on dominaria — W3's control row | 0.4195 – **0.4477**, n=4 | floor > the **max** |
-   * | `?art=off` on dominaria — the control's sibling | **1.2935** – 1.3327, n=4 | floor ≤ the **min** |
+   * | `?art=off` — `w3-floor-shipped` | 3.3102 / 3.4558 / 3.4493 / 3.3982 / 3.3696, spread **1.04x** | floor <= the **min**, 3.3102 |
+   * | `?art=off&bands=shuffle` — `w3-floor-control` | 2.7835 / 2.8203 / 2.9467 / 2.9058 / 2.9587, spread **1.06x** | floor > the **max**, 2.9587 |
    *
-   * So the floor may sit in **(0.4477, 0.7070]**, and 0.55 sits inside it: 23% above the control's
-   * worst-case reading, 29% below the build's. Two significant figures on purpose — a third would
-   * claim precision the session spread does not support.
+   * The interval is **(2.9587, 3.3102]** and **3.1** sits inside it: 4.8% above the control's
+   * worst-case reading, 6.4% below the build's. Two significant figures on purpose — a third would
+   * claim precision the session spread does not support, and the interval is only 0.35 wide.
    *
-   * **The lower bound is the max of four control readings, not one of them.** A single session would
-   * have given (0.4195, 0.7070] and a floor that looked 31% clear of a control it is really 23%
-   * clear of. The same discipline is owed on the upper bound and is **not** paid: the acceptance tour
-   * is n=1, because a 45-world tour is expensive enough that it stayed that way. Treat the 29% as the
-   * less-tested half of this interval, and see `w3-floor.mjs` for how to pay it down.
+   * **The bounds are the arms' extremes across five sessions, not any single session's pair.** That
+   * is the discipline the retracted floor lacked: one pass per arm here would have read
+   * (2.7835, 3.3102] and a floor that looked 11% clear of a control it is really 4.8% clear of.
    *
-   * **The DEC-816 impasse is gone because its figures moved, not because it was argued away.** That
-   * ruling recorded the shipped aggregate at 0.4253, *below* its own shuffled falsifier at 0.4757,
-   * which is a criterion that cannot fail. On this tree the shipped aggregate reads **0.7070**. The
-   * old pair was taken at head `21737f3`, before DEC-804's centre fix, DEC-812's budget and DEC-814's
-   * belt rotation; do not carry either number forward. What is *not* re-measured here is the **bare**
-   * `?bands=shuffle` tour, so the impasse is not disproved in its own terms — the shipped matrix's
-   * W3 control is a dominaria row, and that row is what this floor is required to red.
+   * ### What this floor does not claim, each measured
    *
-   * ### Three things this floor does not claim, each measured
-   *
-   * 1. **A tour-wide `?art=off` row would go RED against it.** That arm's worst world is avishkar at
-   *    **0.4505**, under 0.55. No shipped row asserts it — `art-off` is a dominaria row at 1.2935 —
-   *    but a tour-wide sibling added later will red, and that is the arithmetic and not a defect.
-   *    Greening both would need a floor in (0.4234, 0.4505], a 0.027-wide window that is inside the
-   *    session-to-session spread.
-   * 2. **`?bands=shuffle` is one permutation, seeded by a constant** (`shufflePermutation`,
+   * 1. **4.8% is thin, and it is thin because of the control rather than the build.** A permutation
+   *    moves most worlds down and some up, and a *mean* dilutes it — on the last pass 10 of the 28
+   *    worlds scored **higher** shuffled. Under the retired min fold the arms were further apart per
+   *    world and still **overlapped** as aggregates; under the mean they sit closer and **separate**,
+   *    because both are now stable. Reproducibility is what bought the separation.
+   * 2. **The median would separate the arms by more** — 2.02–2.42 against 1.42–1.51, a 1.34x gap
+   *    where the mean's is 1.12x — at a spread of 1.19x against the mean's 1.04x. Recorded as
+   *    evidence for the next refresh, not as a re-litigation: the board ruled the mean on stability
+   *    and this leg implements the ruling.
+   * 3. **`?bands=shuffle` is one permutation, seeded by a constant** (`shufflePermutation`,
    *    `0x9e3779b9`). It reproduces exactly, which proves the route is deterministic and not that the
-   *    value is the statistic. Measured consequence: on **8 of 28 worlds the shuffled frame scores
-   *    *higher* than the unshuffled one** (amonkhet, avishkar, edge, fiora, ikoria, kaldheim, rabiah,
-   *    ravnica). The control's direction is a property of the draw, per world — it does not correlate
-   *    with cell count, band count or the smallest qualifying band share. The aggregate still reds
-   *    because some world always draws badly, but a floor derived over several seeds would be a
-   *    stronger object than this one.
-   * 3. **It is a property of the shipped swatches, so a refresh can invalidate it** without a line of
-   *    rendering code changing. The runbook's §4.3 says to re-derive on every refresh that rebuilds
-   *    the v3 dataset, and one world — ravnica — is the whole of the upper bound.
+   *    value is the statistic. A floor derived over several seeds would be a stronger object.
+   * 4. **It is a property of the shipped swatches, so a refresh can invalidate it** without a line of
+   *    rendering code changing — and so can a change to W3's domain, which is why
+   *    {@link W3_DOMAIN_SIZE} is scored rather than reported. The runbook's §4.3 says when to
+   *    re-derive, and that five passes per arm is the minimum.
    *
-   * ### Retracted: this number separates nothing (DEC-752, routed from DEC-830)
+   * The unmodified build clears this comfortably: the bare acceptance tour's mean reads **3.98–4.34**
+   * over its own five sessions, ~20% above the `?art=off` arm the floor is derived from. The floor is
+   * derived on that sibling rather than on the bare build because it is the arm the control differs
+   * from by exactly one seam.
    *
-   * Everything above stands as the record of how 0.55 was picked. It is **not** a floor a verdict may
-   * rest on. The upper bound it was derived from — the acceptance tour's 0.7070 — is flagged above as
-   * n=1, and at n=3 on one unchanged dataset, one roster, one 26-world W3 domain and one pose the
-   * same fold draws **0.4253 (`accept4`) / 0.7070 (`dec826-bare`) / 0.8005 (`accept3`)**. 0.55 is
-   * inside that span, so the row's colour is settled by the draw. Worse for the derivation, the
-   * shipped arm's lowest (0.4253) is *below* the composed control's highest (0.4477): the two arms
-   * **overlap**, which is `w3-floor.mjs`'s "no separating floor exists" outcome.
+   * ### The retracted floor, kept because its lesson is why this one is measured over sessions
    *
-   * The DEC-816 impasse is therefore not gone. `accept4` re-drew 0.4253 on leg G with DEC-804,
-   * DEC-812 and DEC-814 all in the tree, and DEC-830 re-drew it again — the figure did not move out
-   * from under the impasse, it recurs.
+   * 0.55 was derived on the **worst-world** fold from one acceptance tour (0.7070, ravnica) against a
+   * four-session dominaria control (0.4195–0.4477). At n=5 that fold drew
+   * **0.4253 / 0.4358 / 0.5375 / 0.7070 / 0.8005** on one unchanged dataset, one roster, one domain
+   * and one pose — a **1.88x** spread with 0.55 inside it, scoring **three different worlds**
+   * (innistrad, ravnica, avishkar). The shipped arm's lowest sat *below* the control's highest: the
+   * arms **overlapped**, which is `w3-floor.mjs`'s "no separating floor exists" outcome, and the
+   * DEC-816 impasse reproducing rather than retiring.
    *
-   * **The mechanism is the fold, not the renderer.** A minimum over the in-domain worlds of a
-   * per-world minimum over band pairs falls as the population grows: truncated to the first 8 worlds
-   * the same dataset reads 1.3499/1.3926 over 5 in-domain planes, and over all 28 it reads
-   * 0.25–0.80. The worst plane's identity drifts with it — innistrad, ravnica, eldraine,
-   * forgotten-realms, avishkar over five draws. Replacing the fold with a statistic that converges is
-   * a §3.1 amendment and the owner's call; this leg measures and does not move the criterion. Until
-   * it is settled, **a GREEN W3 row is not evidence** (spec §3.2, condition 1).
+   * **The mechanism was the fold, not the renderer.** A minimum over the in-domain worlds of a
+   * per-world minimum falls as the population grows: truncated to the first 8 worlds the same dataset
+   * reads 1.3499/1.3926 over 5 in-domain planes, and over all 28 it reads 0.25–0.80. Re-scoring those
+   * same per-world readings gave mean 1.09x, median 1.22x, p25 1.38x, p10 2.37x. Re-checked here on
+   * two arms it was never chosen from, at n=5: mean **1.04x** and **1.06x**, min 2.40x and 1.82x.
    */
-  bandDeltaE: 0.55,
+  bandDeltaE: 3.1,
   /** W4: fraction of cells above the effective threshold that are showing art. */
   artFraction: 0.9,
   /**

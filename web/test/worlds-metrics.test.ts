@@ -793,9 +793,15 @@ describe("W3 — latitude reads as colour", () => {
   });
 
   // The floor comparison itself, which the collapse row above deliberately no longer carries. Two
-  // adjacent bands of one flat colour each, chosen to straddle `FLOORS.bandDeltaE`: one pair 27%
-  // under it, one 157% over. Both rows matter — the RED one alone cannot tell a working comparison
-  // from a criterion that reds on everything.
+  // adjacent bands of one flat colour each, chosen to straddle `FLOORS.bandDeltaE`. Both rows
+  // matter — the RED one alone cannot tell a working comparison from a criterion that reds on
+  // everything.
+  //
+  // **The colours were re-picked when the floor moved to the mean fold (DEC-836), which is the third
+  // row below doing its job.** It failed loudly on the new floor rather than letting both rows drift
+  // to the same side, which is what "a two-sided test that had quietly become one-sided" looks like
+  // from the inside. The exact ΔE values stay pinned, because they are also the only place the
+  // a\*b\* distance itself is asserted against hand-computable input.
   const twoBands = (other: Rgb): CellSample[] => [
     ...Array.from({ length: 20 }, (_, i) => ({
       x: i,
@@ -821,24 +827,25 @@ describe("W3 — latitude reads as colour", () => {
   );
 
   it("reds a band pair that has converged below the floor", () => {
-    const w3 = evaluateW3(twoBands([121, 120, 120]), twoBandShares);
-    expect(w3.measures[0]?.value).toBeCloseTo(0.4016, 3);
+    const w3 = evaluateW3(twoBands([123, 120, 117]), twoBandShares);
+    expect(w3.measures[0]?.value).toBeCloseTo(2.1221, 3);
     expect(w3.pass).toBe(false);
   });
 
   it("greens the same pair once it separates — the floor is a threshold, not a veto", () => {
-    const w3 = evaluateW3(twoBands([122, 120, 118]), twoBandShares);
-    expect(w3.measures[0]?.value).toBeCloseTo(1.412, 3);
+    const w3 = evaluateW3(twoBands([126, 120, 114]), twoBandShares);
+    expect(w3.measures[0]?.value).toBeCloseTo(4.2683, 3);
     expect(w3.pass).toBe(true);
   });
 
   it("keeps those two fixtures straddling the floor", () => {
     // The precondition the pair above rests on. `FLOORS.bandDeltaE` is re-derived from the shipped
-    // swatches whenever they move (DEC-752), and a floor that drifted outside this bracket would
-    // send both rows the same way — leaving a two-sided test that had quietly become one-sided.
-    // This fails loudly and says to re-pick the colours instead.
-    expect(FLOORS.bandDeltaE).toBeGreaterThan(0.4016);
-    expect(FLOORS.bandDeltaE).toBeLessThan(1.412);
+    // swatches whenever they move (DEC-752, DEC-836), and a floor that drifted outside this bracket
+    // would send both rows the same way — leaving a two-sided test that had quietly become
+    // one-sided. This fails loudly and says to re-pick the colours instead, which is exactly what it
+    // did when the mean fold moved the floor from 0.55.
+    expect(FLOORS.bandDeltaE).toBeGreaterThan(2.1221);
+    expect(FLOORS.bandDeltaE).toBeLessThan(4.2683);
   });
 
   it("skips a pair whose smaller band is under the 5% share", () => {
