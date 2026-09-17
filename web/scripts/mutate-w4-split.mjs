@@ -200,10 +200,10 @@ const MUTANTS = [
     // it is wrong on the only configuration that matters: a saturated pool churns 1023 -> 1024
     // forever, so the last upward tick lands in the final seconds and the "steady state" is two
     // samples. On a 60 s baseline this rule put the fill's end at t = 57.1 s.
-    name: 'M20 the fill ends where resident last stopped climbing, not at the plateau',
+    name: 'M20 the fill ends where resident last stopped climbing, not at saturation',
     file: METRICS,
-    from: '  const tail = usable.slice(usable.findIndex((s) => s.resident === peakResident));',
-    to: '  const tail = usable.slice(\n    usable.reduce((at, s, i) => (i > 0 && s.resident > usable[i - 1].resident ? i : at), 0),\n  );',
+    from: '  const tail = saturated\n    ? usable.slice(usable.findIndex((s) => s.resident >= s.layers))\n    : usable;',
+    to: '  const tail = saturated\n    ? usable.slice(\n        usable.reduce((at, s, i) => (i > 0 && s.resident > usable[i - 1].resident ? i : at), 0),\n      )\n    : usable;',
   },
   {
     // Excluding the fill is necessary and not sufficient, and this is the mutant that says so: a
@@ -218,8 +218,26 @@ const MUTANTS = [
     // instrument DEC-752 recorded as unable to tell a fill from churn by construction.
     name: 'M22 no fill exclusion at all: the tail is the whole timeline',
     file: METRICS,
-    from: '  const tail = usable.slice(usable.findIndex((s) => s.resident === peakResident));',
+    from: '  const tail = saturated\n    ? usable.slice(usable.findIndex((s) => s.resident >= s.layers))\n    : usable;',
     to: '  const tail = usable;',
+  },
+  {
+    // **The rule this one replaced, and it is the defect the first live tour found.** Below
+    // saturation nothing is ever evicted, so `resident` only climbs and `max(resident)` is the LAST
+    // sample: alara was scored off a 2.0 s two-sample tail, one jitter from falling out of W4's
+    // domain, and 44 of the 45 worlds have that shape.
+    name: 'M28 the fill ends at max(resident) regardless of saturation — alara\'s two-sample tail',
+    file: METRICS,
+    from: '  const tail = saturated\n    ? usable.slice(usable.findIndex((s) => s.resident >= s.layers))\n    : usable;',
+    to: '  const tail = usable.slice(usable.findIndex((s) => s.resident === peakResident));',
+  },
+  {
+    // The capacity half of the readability check. Without it an unsaturated verdict is reached from
+    // `undefined`, and a churning pool's whole window — fill included — gets published as a rate.
+    name: 'M29 capacity is not required on a sample, so saturation is decided from undefined',
+    file: METRICS,
+    from: '      typeof s.resident === "number" &&\n      typeof s.layers === "number",',
+    to: '      typeof s.resident === "number",',
   },
   {
     // A missing occupancy read as a settled zero. The comfortable wrong answer: a `0` sails through
@@ -227,8 +245,8 @@ const MUTANTS = [
     // lesson — a structural zero wearing a passing verdict — arriving by a fourth route.
     name: 'M23 a timeline with no occupancy is scored as a settled zero rather than unreadable',
     file: METRICS,
-    from: '      typeof s.resident === "number",',
-    to: '      true,',
+    from: '      typeof s.resident === "number" &&\n      typeof s.layers === "number",',
+    to: '      typeof s.layers === "number",',
   },
   {
     // The no-starvation term deleted. The frame `artFraction` scored 1.00 at fourteen cells of art

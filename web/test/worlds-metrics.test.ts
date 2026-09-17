@@ -1685,6 +1685,52 @@ describe("W4 — art resolves without exhausting", () => {
       expect(tail.rate!).toBeCloseTo(18.4, 1);
     });
 
+    it("scores the whole window on a pool that never saturates, where the counter is pinned at 0", () => {
+      // **The defect the first live tour found, and it is the mirror of the one above.** Below
+      // saturation `claimLayer` always finds a free layer, so nothing is evicted and nothing leaves
+      // the pool: `resident` only ever climbs. `max(resident)` is then *the last sample*, and the
+      // tail collapses to whatever run of equal values the window happened to end on.
+      //
+      // alara, measured: the pool crept to 285 of 1,024 over a 45 s window and was scored off a
+      // **2.0 s, two-sample tail** — one sample dressed as a rate, one jitter away from dropping the
+      // world out of W4's domain. 44 of the 45 worlds have this shape.
+      //
+      // The rule is written from what the counter can do instead: there is no fill *in this counter*
+      // below saturation, because the counter cannot move there at all.
+      const creeping = Array.from({ length: 20 }, (_, i) => ({
+        t: i,
+        evictions: 0,
+        // Monotone, and still climbing at the last sample — never reaching 1,024.
+        resident: 100 + 9 * i,
+        layers: 1_024,
+      }));
+      const tail = evictionTail(creeping);
+      expect(tail.rate).toBe(0);
+      expect(tail.converged).toBe(true);
+      expect(tail.tailSamples).toBe(20);
+      expect(tail.plateauT).toBe(0);
+
+      // The naive rule, spelled out so the comparison is a reading and not a claim: it would have
+      // opened the tail at the last sample.
+      const peak = Math.max(...creeping.map((s) => s.resident));
+      expect(creeping.findIndex((s) => s.resident === peak)).toBe(19);
+    });
+
+    it("needs capacity on every sample, not just occupancy", () => {
+      // The saturation test is `resident >= layers`, so a timeline reporting occupancy without
+      // capacity cannot be scored either — and the comfortable wrong answer is to treat it as
+      // unsaturated and publish the whole window. On a pool that was in fact churning, that is the
+      // fill republished as a steady state.
+      const noCapacity = Array.from({ length: 8 }, (_, i) => ({
+        t: i,
+        evictions: 18 * i,
+        resident: 1_024,
+      }));
+      const tail = evictionTail(noCapacity);
+      expect(tail.rate).toBe(null);
+      expect(tail.why).toMatch(/resident and layers/);
+    });
+
     it("keeps the fill out of the number, which is the whole point of the window", () => {
       // The contaminated figure and the honest one, on the same timeline. Differenced from t = 0 the
       // run reads the churn amortised over a window that is half page load; differenced from the
@@ -1776,6 +1822,20 @@ describe("W4 — art resolves without exhausting", () => {
       // question it answers is the finding.
       expect(tail.why).toMatch(/must carry t, evictions and resident/);
       expect(tail.peakResident).toBe(null);
+
+      // **Both fields, separately.** A timeline carrying capacity but no occupancy is the fixture
+      // that was missing: with only the `layers` check left standing, every row above still went
+      // unreadable for the *other* reason and the dropped occupancy check survived its own mutant.
+      // Two conditions in one predicate need two witnesses.
+      const capacityOnly = Array.from({ length: 8 }, (_, i) => ({
+        t: i,
+        evictions: 18 * i,
+        layers: 1_024,
+      }));
+      expect(evictionTail(capacityOnly).rate).toBe(null);
+      expect(evictionTail(capacityOnly).why).toMatch(
+        /must carry t, evictions and resident/,
+      );
     });
   });
 

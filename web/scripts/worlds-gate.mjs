@@ -111,6 +111,18 @@ const W4_SETTLE_S = 5
  * `insufficient` with the drift that disqualified it — see `evictionTail`. That is the honest
  * outcome: DEC-835 measured a 60 s baseline whose tail was still declining 5.4% monotonically, and a
  * gate that scored it anyway would be publishing the fill under a different name.
+ *
+ * **Measured on dominaria at this pose, and it is worth knowing which way it came out:** the pool is
+ * already at 1,024/1,024 on the *first* sample, so the plateau lands at `t = 0.0` and the tail is
+ * the whole window — 17.84/s over 12.2 s, its own second half 0.9% off. The camera approach and the
+ * 5 s settle absorb the fill before sampling opens, so at *this* pose the exclusion has nothing to
+ * exclude.
+ *
+ * That is not an argument for dropping it. It is the load-bearing rule the moment any of three
+ * things changes — a shorter settle, a world whose pool fills more slowly, or a capture path that
+ * opens sampling earlier — and none of those is visible from a green reading taken today. The rule
+ * is exercised where it can be exercised: the unit rows in `worlds-metrics.test.ts` and the long-run
+ * instrument, where the fill is inside the window by construction.
  */
 const W4_EVICTION_MIN_S = 12
 const W4_EVICTION_MAX_S = 45

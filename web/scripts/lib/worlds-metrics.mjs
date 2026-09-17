@@ -1200,17 +1200,35 @@ export const SMALLEST_SHIPPED_POOL_LAYERS = 128;
  * page load, not churn, and a window containing them reports the two added together. The shape of
  * the repair is lifted from `worlds-evict-longrun.mjs`, which DEC-835 had to fix for the same reason.
  *
- * ## The fill ends at the PLATEAU, never at "resident stops climbing"
+ * ## The fill is the climb to SATURATION, and below saturation there is nothing to exclude
  *
- * "Stops climbing" is the obvious detector and it is wrong on exactly the configuration that matters:
- * **a saturated pool churns**, so `resident` ticks 1023 → 1024 → 1023 forever and the last upward tick
- * lands in the final seconds. Measured on a 60 s baseline it put the fill's end at **t = 57.1 s**,
- * leaving a two-row "steady state" — one sample dressed as a rate.
+ * Two wrong detectors were written before this one, in opposite directions, and both are worth
+ * keeping because each is the obvious rule for one half of the roster.
  *
- * The plateau is the first sample at which the pool holds every layer it is ever going to hold, i.e.
- * the first occurrence of `max(resident)`. That is 1,024 where the pool saturates and the world's own
- * demand where it does not — which is the right answer in both cases, and it is why this is written
- * against `resident` rather than against `layers`.
+ * **"Resident stops climbing" is wrong on a pool that saturates.** A saturated pool churns, so
+ * `resident` ticks 1023 → 1024 → 1023 forever and the last upward tick lands in the final seconds.
+ * On a 60 s baseline that put the fill's end at **t = 57.1 s**, leaving a two-row "steady state" —
+ * one sample dressed as a rate (DEC-835).
+ *
+ * **"The first sample holding `max(resident)`" is wrong on a pool that does not.** Below saturation
+ * `claimLayer` always finds a free layer, so nothing is ever evicted and nothing ever leaves the
+ * pool: `resident` is monotonically non-decreasing, `max(resident)` is simply *the last sample*, and
+ * the tail collapses to whatever run of equal values the window happened to end on. Measured on the
+ * first live tour that ran it: **alara plateaued at t = 42.5 s of a 45 s window and was scored off a
+ * 2.0 s, two-sample tail** — the identical defect as the rule it replaced, arriving from the other
+ * side, and one sample of jitter from dropping the world out of W4's domain entirely.
+ *
+ * The rule that is right on both is written from what the counter can physically do. **`claimLayer`
+ * walks the pool for a FREE layer and only looks for a victim when it finds none, so below
+ * saturation `pool.evictions` cannot move at all.** There is therefore no fill transient *in this
+ * counter* to exclude on an unsaturated pool — the zero is structural for the whole window, and the
+ * whole window is the tail. The fill this function excludes is specifically the **climb to
+ * saturation**: the one interval during which eviction goes from impossible to possible.
+ *
+ * > **This is deliberately not the same rule as `worlds-evict-longrun.mjs`'s, and the difference is
+ * > the subject.** That script differences *bytes*, which keep flowing on an unsaturated pool, so
+ * > its fill really does end at the demand plateau and `max(resident)` is right there. This one
+ * > differences a counter that is pinned to zero until the pool is full. Two instruments, two fills.
  *
  * ## Excluding the fill is necessary and it is not sufficient
  *
@@ -1251,20 +1269,30 @@ export function evictionTail(
     (s) =>
       typeof s.t === "number" &&
       typeof s.evictions === "number" &&
-      typeof s.resident === "number",
+      typeof s.resident === "number" &&
+      typeof s.layers === "number",
   );
   if (usable.length < minTailSamples) {
     return {
       ...empty,
       why:
         `the eviction timeline holds ${usable.length} usable sample(s) and a fill-excluded tail ` +
-        `needs at least ${minTailSamples}: each sample must carry t, evictions and resident, ` +
-        `because the fill is detected from occupancy and not from the counter`,
+        `needs at least ${minTailSamples}: each sample must carry t, evictions and resident and ` +
+        `layers, because the fill is the climb to saturation and is read off occupancy against ` +
+        `capacity, never off the counter`,
     };
   }
 
-  const peakResident = Math.max(...usable.map((s) => s.resident));
-  const tail = usable.slice(usable.findIndex((s) => s.resident === peakResident));
+  // `poolHighWater` already answers "did this pool ever have no free layer", and it is the same
+  // question the fill rule turns on — so it is read here rather than re-derived. A second spelling
+  // of `saturated` in this file is a second thing to keep in step.
+  const { resident: peakResident, saturated } = poolHighWater(usable);
+  // Saturated: the fill is the climb, so the tail opens at the first sample with no free layer.
+  // Unsaturated: `claimLayer` never reached its victim search, the counter is pinned at 0 for the
+  // whole window, and there is no fill *in this counter* to exclude.
+  const tail = saturated
+    ? usable.slice(usable.findIndex((s) => s.resident >= s.layers))
+    : usable;
   const spanS = tail.length === 0 ? 0 : tail[tail.length - 1].t - tail[0].t;
   if (tail.length < minTailSamples || spanS < minSpanS) {
     return {
@@ -1274,9 +1302,9 @@ export function evictionTail(
       tailSamples: tail.length,
       spanS,
       why:
-        `the pool only plateaued at ${peakResident} resident layers at t=${tail[0]?.t?.toFixed(1)}s, ` +
+        `the pool only saturated at ${peakResident} resident layers at t=${tail[0]?.t?.toFixed(1)}s, ` +
         `leaving ${tail.length} sample(s) over ${spanS.toFixed(1)}s — below the ${minTailSamples} ` +
-        `samples and ${minSpanS}s a rate needs. The window contains the fill and must not be scored`,
+        `samples and ${minSpanS}s a rate needs. The window is mostly the fill and must not be scored`,
     };
   }
 

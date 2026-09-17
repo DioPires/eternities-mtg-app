@@ -1971,13 +1971,28 @@ an assertion there.
 > for a configuration that does not exist. The 128-layer rung is therefore **not** required to hold
 > this bound, and the gate records that as a domain rule rather than as a footnote.
 >
-> ### The fill is excluded at the plateau, and the tail has to converge
+> ### The fill is the climb to saturation, and the tail has to converge
 >
-> A cold pool's first 1,024 admissions are page load. **The fill ends at the plateau — the first
-> sample holding `max(resident)` — and never where `resident` stops climbing:** a saturated pool
-> churns 1023 → 1024 → 1023 forever, so the last upward tick lands in the final seconds, and on a
-> 60 s baseline that rule put the fill's end at **t = 57.1 s**, leaving a two-row "steady state"
-> (DEC-835).
+> A cold pool's first 1,024 admissions are page load. **Two obvious detectors are wrong, in opposite
+> directions, and each is the natural rule for one half of the roster:**
+>
+> - **"`resident` stops climbing"** is wrong on a pool that saturates. A saturated pool churns
+>   1023 → 1024 → 1023 forever, so the last upward tick lands in the final seconds: on a 60 s
+>   baseline it put the fill's end at **t = 57.1 s**, leaving a two-row "steady state" (DEC-835).
+> - **"the first sample holding `max(resident)`"** is wrong on a pool that does not. Below saturation
+>   `claimLayer` always finds a free layer, so nothing is ever evicted and nothing ever leaves:
+>   `resident` only climbs, `max(resident)` is *the last sample*, and the tail collapses to whatever
+>   run of equal values the window ended on. Measured on the first live tour to run it, **alara
+>   plateaued at t = 42.5 s of a 45 s window and was scored off a 2.0 s two-sample tail** — the same
+>   defect from the other side, and 44 of the 45 worlds have that shape.
+>
+> **The rule is therefore written from what the counter can physically do.** `pool.evictions` cannot
+> move below saturation at all, so there is no fill transient *in that counter* to exclude on an
+> unsaturated pool and the whole window is the tail. The fill excluded is specifically the **climb to
+> saturation** — the one interval in which eviction goes from impossible to possible. This is
+> deliberately not the rule `worlds-evict-longrun.mjs` uses: that instrument differences *bytes*,
+> which keep flowing below saturation, so its fill really does end at the demand plateau. Two
+> instruments, two fills.
 >
 > **Excluding the fill is necessary and not sufficient.** The same run read 1,461 KiB/s differenced
 > from t = 6, 1,445 from t = 18 and 1,382 from t = 36 — a monotone decline *after* the pool held

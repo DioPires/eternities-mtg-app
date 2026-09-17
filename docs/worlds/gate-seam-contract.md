@@ -457,12 +457,14 @@ not pedantry: Appendix A's 925 at `tether-surface` is cumulative, and the same 9
 is 0/s and passes. W4's eviction half is red at that pose only if a rate says so — the art half,
 1,024 of 2,759, is red from the drawn/wanted column directly and carries the row on its own.
 
-The gate therefore samples `{ t, evictions, resident }` until the pool **plateaus at `max(resident)`**
-and the tail's own second half agrees with the whole tail, then stops. **`resident` is required on
-every sample**, and a timeline without it is scored as unreadable rather than as a settled zero: the
-fill cannot be detected from the counter, and the comfortable wrong answer here is a `0` that sails
-through the bound. Three outcomes now carry `insufficient` rather than a number — a pool that never
-plateaued, a tail that never settled, and a session at any capacity but 1,024.
+The gate therefore samples `{ t, evictions, resident, layers }` until the tail's own second half
+agrees with the whole tail, then stops. The fill it excludes is the **climb to saturation**: below
+`resident >= layers` the counter cannot move at all, so an unsaturated pool has no fill in *this*
+counter and its whole window is the tail. **Both `resident` and `layers` are required on every
+sample**, and a timeline missing either is scored as unreadable rather than as a settled zero — the
+comfortable wrong answer here is a `0` that sails through the bound. Three outcomes now carry
+`insufficient` rather than a number: a pool that saturated too late to leave a tail, a tail that
+never settled, and a session at any capacity but 1,024.
 
 **Criteria report per half, and the matrix scores per half.** W2 and W4 are conjunctions, and a
 conjunction hides which half did the work. Under `?swatch=mean` the neighbour-ΔE half collapses to
