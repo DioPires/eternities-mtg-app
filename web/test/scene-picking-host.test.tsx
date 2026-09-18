@@ -204,6 +204,47 @@ describe('the input layer runs with no galaxy scene attached (DEC-852)', () => {
     expect(hovers).toEqual([])
   })
 
+  it('reports a hover once while the answer stays the same (PRD 5.4.12 dedupe)', async () => {
+    const { canvas, loop, hovers, calls, answers } = rig()
+    answers(3)
+    await movePointer(canvas, loop, 16)
+    await movePointer(canvas, loop, 32)
+    await movePointer(canvas, loop, 48)
+
+    expect(calls.pick, 'every move still costs a pick — the dedupe is on the answer').toBe(3)
+    expect(hovers, 'three picks, one change under the pointer').toHaveLength(1)
+  })
+
+  it('reports the change when the pointer crosses onto a different star', async () => {
+    // The other arm of the case above: without it, a `samePick` that answered `true` for
+    // *everything* would pass the dedupe assertion by reporting nothing at all after the first.
+    const { canvas, loop, hovers, answers } = rig()
+    answers(3)
+    await movePointer(canvas, loop, 16)
+    answers(5)
+    await movePointer(canvas, loop, 32)
+
+    expect(hovers).toEqual([
+      { kind: 'star', index: 3, planeIndex: 0 },
+      { kind: 'star', index: 5, planeIndex: 2 },
+    ])
+  })
+
+  it('writes the star highlight only while one is registered (DEC-852 hand-over)', async () => {
+    const { canvas, loop, picking, answers } = rig()
+    const highlights: number[] = []
+    picking.setStarHighlight((index) => highlights.push(index))
+    answers(3)
+    await movePointer(canvas, loop, 16)
+    expect(highlights, 'the galaxy registered, so the galaxy is told').toEqual([3])
+
+    // The cutover's shape: the field is gone, so nothing is registered, and the pick keeps working.
+    picking.setStarHighlight(null)
+    answers(5)
+    await movePointer(canvas, loop, 32)
+    expect(highlights, 'nothing left to highlight').toEqual([3])
+  })
+
   it('reports a click as a select, and marks the dust when the focus is a dust star', async () => {
     const { canvas, loop, picking, selects, dust, calls, answers } = rig()
     answers(3)

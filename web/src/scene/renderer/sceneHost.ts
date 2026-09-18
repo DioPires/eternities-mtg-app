@@ -51,6 +51,7 @@ import type { ProgramWarmupResult } from '../platform/programWarmup'
 import { attachPostChain, type PostChainAttachment } from '../post/attachPostChain'
 import { QUALITY_TIERS, type QualityTier } from '../quality/adaptiveQuality'
 import { attachScenePicking, type ScenePickingHandle } from '../input/attachScenePicking'
+import type { IdPicker } from '../picking/idPicker'
 import { attachStarScene, type StarSceneHandle } from '../starScene'
 import { BLOOM_INTENSITY } from '../tuning'
 import type { SceneResources } from '../useSceneData'
@@ -65,6 +66,16 @@ import { SceneRenderer, type SceneRendererOptions } from './sceneRenderer'
 export interface SceneHostOptions extends SceneRendererOptions {
   /** The boot-time program warm-up's result, for the `?probe=1` seam and the bench (DEC-739). */
   readonly onWarmup?: (result: ProgramWarmupResult) => void
+  /**
+   * Injected by the tests, for the same reason and on the same terms as `createRenderer` above it:
+   * a pick is a render pass, so the whole of the input layer's routing — hover to §1.10's label,
+   * click to the selection card focus runs on — was reachable only from e2e (DEC-852).
+   *
+   * That is not a hypothetical gap. It is how `starScene.ts` came to own every pointer listener in
+   * the app while worlds spec §3.2 listed it for deletion, with nothing in the unit suite able to
+   * notice. `test/scene-host-picking.test.tsx` is what this seam is for.
+   */
+  readonly createPicker?: () => IdPicker
 }
 
 /**
@@ -233,6 +244,7 @@ export class SceneHost {
       scene,
       camera,
       loop,
+      picker: options.createPicker?.(),
       onHover: (pick) => {
         // PRD 5.6.9's planet hover reaches the card tier here rather than through React: a hover
         // changes several times a second while the pointer moves, and routing it through a render
