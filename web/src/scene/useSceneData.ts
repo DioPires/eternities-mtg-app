@@ -37,7 +37,8 @@ import { bootPositionMode } from './platform/capabilities'
 import { createNebulaTexture } from './starfield/nebulaTexture'
 import { PlaneTable } from './starfield/planeTable'
 import { createStarField, type StarField } from './starfield/starFieldObjects'
-import { StarGeometry, resolvePositionMode, type PositionMode } from './starfield/starGeometry'
+import { resolvePositionMode, type PositionMode } from './platform/positionMode'
+import { StarGeometry } from './starfield/starGeometry'
 import { streamStarsIntoScene } from './starfield/starStream'
 
 export interface SceneResources {

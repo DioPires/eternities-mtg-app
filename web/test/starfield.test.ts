@@ -52,11 +52,8 @@ import {
 } from '../src/scene/starfield/motion'
 import { PlaneTable } from '../src/scene/starfield/planeTable'
 import { STAR_VERTEX_SHADER } from '../src/scene/starfield/shaders'
-import {
-  StarGeometry,
-  resolvePositionMode,
-  type PositionMode,
-} from '../src/scene/starfield/starGeometry'
+import { StarGeometry } from '../src/scene/starfield/starGeometry'
+import { resolvePositionMode, type PositionMode } from '../src/scene/platform/positionMode'
 import { SHEAR_RADIAL_PHASE, TWINKLE_AMPLITUDE } from '../src/scene/tuning'
 
 function plane(overrides: Partial<PlaneRecord> = {}): PlaneRecord {

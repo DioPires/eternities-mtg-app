@@ -151,6 +151,11 @@ deleted. `PlaneTable` is retained — the worlds scene cannot spin without it.
 
 ### Resolved ahead of the cutover
 
+- **`PositionMode`, `resolvePositionMode`, `POSITION_MODE_STORAGE_KEY` — done.** Moved from
+  `starfield/starGeometry.ts` to **`scene/platform/positionMode.ts`**, beside `capabilities.ts`,
+  which owns the `bootPositionMode` probe they resolve against. `capabilities.ts`'s side of the pair
+  is deliberately `import type`, so the two modules reference each other with **no runtime cycle**.
+  Four consumers re-pointed; tsc 0, eslint 0, suite 1,393/66 unchanged.
 - **`glslFloat` — done.** It moved from `starfield/shaders.ts` to `scene/glsl.ts`, with all seven
   consumers re-pointed (the five worlds shader modules, `cards/cardShaders.ts`, and `shaders.ts`
   itself) plus `test/cards.test.ts`, which `tsc` caught. Suite 1,393/66 unchanged, tsc 0, eslint 0.
@@ -158,6 +163,39 @@ deleted. `PlaneTable` is retained — the worlds scene cannot spin without it.
 - Still to relocate before the deletion, on the same pattern: `curlNoise` (+ its `valueNoise3`
   dependency), `planeWorldPosition`/`PlaneKindCode`, `ATLAS_BYTES`, and whatever of `PlaneTable` and
   `starGeometry` the split of `useSceneData.ts` decides to keep.
+
+### The sixth error, and the only one that would have shipped BROKEN rather than red
+
+The five above are build failures: delete the module and `tsc` or the app stops. This one is
+different, and it is the reason §3.2's one-line deletion list cannot be followed literally.
+
+**`scene/cards/cardTier.ts` is the only writer of the hover label's state.** `labelState` is owned by
+`SceneHost` (`sceneHost.ts:144`, typed `PlanetLabelState`), rendered **unconditionally** by
+`EternitiesScene.tsx:555` — the shipped scene that hosts worlds, not a galaxy branch — and populated
+**only** at `cardTier.ts:202-210`. The drive chain is `sceneHost:222` → `cardTierHandle
+.setHoveredPlanet` → `focusedCard.setHoveredPlanet`, and `focusedCard.ts` **survives** (§1.10's
+printing ring). So the card tier is the middle link of a chain whose two ends both outlive it.
+
+Delete `cardTier.ts` as "the card-sheet tier" and the type re-points cleanly, the build stays green,
+the app still renders `<PlanetHoverLabel>` — and it is **permanently `visible: false`**. A shipped
+surface stops working with nothing to report it:
+
+- **W1–W5 cannot see it.** The gate measures cell height, colour, art and labels-at-home. Nothing in
+  §3.1 reads the hover label.
+- **§3.2 condition 4's parity evidence did not cover it either.** That run checked the plane index,
+  search, card focus, deep links, filters, attract, reduced motion and a11y. The hover label was not
+  among them, so "8 of 9 surfaces evidenced" would not have caught this.
+
+That is the **same failure shape §3.2.1 already names for the `active` move** — split it and the
+galaxy renders on, wrong, with no instrument watching — one feature over, and unlisted.
+
+**So the cutover is a migration, not a deletion.** Before `cardTier.ts` can go, the hover-label drive
+has to be re-hosted: `sceneHost` calling `focusedCard.setHoveredPlanet` directly and owning the
+projection at `cardTier.ts:202-205`, or the equivalent on the worlds attachment. `usePlaneDetail.ts`
+and `PlanetHoverLabel.tsx` are both on the worlds path and both take their types from `cardTier`.
+
+**Whatever replaces it needs a test, because the defect is invisible.** A label that never becomes
+visible is indistinguishable from a label nobody hovered.
 
 ### The split of `useSceneData.ts`, resolved field by field
 
