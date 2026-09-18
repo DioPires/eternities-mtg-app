@@ -244,7 +244,9 @@ export class SceneHost {
       scene,
       camera,
       loop,
-      picker: options.createPicker?.(),
+      // Spread rather than assigned: under `exactOptionalPropertyTypes` an explicit `undefined`
+      // is not the same as an absent key, and absent is what selects the product's own picker.
+      ...(options.createPicker ? { picker: options.createPicker() } : {}),
       onHover: (pick) => {
         // PRD 5.6.9's planet hover reaches the card tier here rather than through React: a hover
         // changes several times a second while the pointer moves, and routing it through a render

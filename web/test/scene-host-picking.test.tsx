@@ -220,7 +220,8 @@ describe('SceneHost routes the pick with no galaxy in the picture (DEC-852)', ()
     answers(2)
     await movePointer(16)
 
-    expect(hovered).toEqual([{ kind: 'star', index: 2, planeIndex: expect.any(Number) }])
+    // Row 0: the appended records are zeroed, so every star sits on the first plane.
+    expect(hovered).toEqual([{ kind: 'star', index: 2, planeIndex: 0 }])
   })
 
   it("routes a hovered planet into the printing ring's label (PRD 5.6.9)", async () => {
@@ -251,7 +252,7 @@ describe('SceneHost routes the pick with no galaxy in the picture (DEC-852)', ()
     canvas.dispatchEvent(new MouseEvent('pointerup', { clientX: 640, clientY: 360 }))
     await flush()
 
-    expect(selected).toEqual([{ kind: 'star', index: 2, planeIndex: expect.any(Number) }])
+    expect(selected).toEqual([{ kind: 'star', index: 2, planeIndex: 0 }])
     expect(host.starScene.focusedIndex, 'PRD 8.5.7 reads its subject from the input layer').toBe(2)
   })
 
