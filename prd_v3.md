@@ -412,6 +412,9 @@ Panels are a right-side drawer, collapsible, that opens automatically on plane o
 1. Target: an Apple Silicon MacBook, 1920×1080 viewport, Safari and Chrome current versions, on a home broadband connection. All budgets below are measured there.
 2. Supported: current Chrome, Safari, and Firefox on macOS, Windows, and Linux, viewport ≥ 1280×720, WebGL2 required. Without WebGL2 the page shows a plain explanation, not a broken canvas.
 3. Scales up to 4K displays; the pixel ratio cap (8.5.11) bounds cost.
+4. An HTTP cache that can hold a parked world's art working set: dominaria's parked pose
+   occupies 302.3 MiB on disk (DEC-848). Chrome's default quota on the target machine clears
+   this; below it the page re-fetches evicted keys instead of converging.
 
 ### 7.2 Performance budgets
 
@@ -427,6 +430,15 @@ Panels are a right-side drawer, collapsible, that opens automatically on plane o
 | GPU memory for thumbnails (atlas without mipmaps), planets, and card images | ≤ 96 MB | 160 MB |
 | Concurrent image requests to Scryfall | 6 | 8 |
 | `search.json` plus `sets.bin`, loaded after the first frame | ≤ 700 KB | 1.5 MB |
+| Art transferred by a page held at one world, to convergence, where the HTTP cache holds the working set (7.1) | ≤ 320 MB | 500 MB |
+| Sustained art transfer after convergence | 0 | 0 |
+| Art stream on an idle page (no input for 45 s, 5.3.22) | quiesces | quiesces |
+
+The last three rows are measured parked at one world for 660 s (DEC-838, DEC-848). The convergence row's precondition carries weight: where the HTTP cache cannot hold the working set there is no convergence to bound, only a rate — a page parked at one world on such a device transfers at up to the decode rate, ~1,490 KiB/s (~5.1 GiB/hour), flat and indefinitely. The row does not score that case, so this sentence records it.
+
+`ArtStreamReport.bytesFetched` is decode volume (`Blob.size`), not transfer. Do not read it as bandwidth. The stream re-asks for evicted keys as the world spins; where the cache holds the working set those are served from the HTTP cache and cost no transfer, because image URIs are stable per printing.
+
+The convergence row's measurement is 287.0 MiB (301.0 MB) for dominaria's parked pose — 3,489 of its 6,271 cards. No measurement varied the world or the pose, and both move the working set.
 
 The ceilings are what the owner has agreed to concede for a gorgeous initial view; the targets are what to aim for. Budgets are checked in CI where automatable (section 9).
 
