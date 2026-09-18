@@ -635,7 +635,14 @@ export class SceneHost {
       // spend of this rung and `attachWorlds.setArtLayers` carries it.
       setThumbnailCapacity: () => {},
       setArtPoolLayers: (layers) => this.worldsAttachment.setArtLayers(layers),
-      setGlowQuality: (glow) => this.starSceneHandle.setGlowQuality(glow),
+      // §1.12 row 4: *"cheap rim, **on the same knob**"*. The rim's knob was built (R2) and its
+      // docblock left the line here to R3, which never landed it — so on every worlds page tier 4
+      // cheapened the galaxy's glow and left the rim at full cost (DEC-752). One knob, fanned out
+      // here, keeps `applyQualityTier` the ladder's single application point (DEC-747).
+      setGlowQuality: (glow) => {
+        this.starSceneHandle.setGlowQuality(glow)
+        this.worldsAttachment.setRimQuality(glow)
+      },
     })
 
     this.stats.qualityTier = tier.label

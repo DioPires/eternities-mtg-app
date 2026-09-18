@@ -232,6 +232,14 @@ export interface WorldsAttachment {
    * `QualityTier` and the line to `applyQualityTier`; R2 owes the knob and the two programs.
    */
   setRimQuality: (quality: RimQuality) => void
+  /**
+   * The rim knob's current setting, readable before any roster composes (DEC-752).
+   *
+   * The pass is built only when a roster composes, so the live program cannot be read on a page
+   * with nothing composed yet — but the knob is set from the first tier announcement, and that is
+   * the wiring a test has to be able to see. A rung that never reaches this reads `'full'` forever.
+   */
+  readonly rimQuality: RimQuality
   /** The composed worlds, in roster order. For the tests and for R2's system pass. */
   readonly surfaces: readonly WorldSurface[]
   /** §1.5's far LOD: one baked 256x128 layer per world with cards. R2's step-2 pass samples it. */
@@ -757,6 +765,9 @@ export function attachWorlds(options: WorldsAttachmentOptions): WorldsAttachment
     setRimQuality: (quality) => {
       rimQuality = quality
       atmosphere?.setRimQuality(quality)
+    },
+    get rimQuality() {
+      return rimQuality
     },
 
     dispose: () => {

@@ -301,4 +301,20 @@ describe('SceneHost routes the pick with no galaxy in the picture (DEC-852)', ()
     host.renderer.loop.tick(3016)
     expect(data.resources.table.multiverseAngle, 'PRD 5.9 freezes the multiverse').toBe(held)
   })
+
+  it("drives the worlds rim from the glow rung, on the same knob (§1.12 row 4)", () => {
+    // The default host: no pin, so the starting tier keeps the full glow — and the full rim. This is
+    // the arm that makes the pinned one evidence: `'full'` is also the knob's initial value.
+    expect(host.worlds.rimQuality, 'no pin: full rim').toBe('full')
+
+    const url = window.location.href
+    window.history.replaceState(null, '', '?quality=4')
+    const pinned = new SceneHost({ createRenderer: fakeRenderer, createPicker: () => pickerDouble().picker })
+    try {
+      expect(pinned.worlds.rimQuality, 'tier 4 cheapens the rim with the glow').toBe('cheap')
+    } finally {
+      pinned.dispose()
+      window.history.replaceState(null, '', url)
+    }
+  })
 })
