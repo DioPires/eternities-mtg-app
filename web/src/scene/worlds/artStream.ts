@@ -235,7 +235,12 @@ export const ART_CROP_ESTIMATED_BYTES = 90 * 1024
 /** What the probe reports about the stream (§3.1). */
 export interface ArtStreamReport {
   /**
-   * Bytes this session has pulled off the network — successes and decode failures alike. Monotonic.
+   * Bytes of image body this session has taken in — successes and decode failures alike. Monotonic.
+   *
+   * > **Decode volume (`Blob.size`), not wire transfer (DEC-848).** A body served from the HTTP
+   * > cache is charged here in full and crossed no wire: over a 660 s run parked at one world this
+   * > field read 1,024.7 MiB against 287.0 MiB actually transferred. Do not read it, or any rate
+   * > differenced from it, as bandwidth.
    *
    * > **This is the session ledger, and after DEC-812 it is no longer what the budget is tested
    * > against.** It is expected to climb past `byteBudget` on any long session and that is not a
@@ -648,7 +653,7 @@ export class ArtStream {
         // a `reset()` between the request and its landing — a dataset swap. Drop the bitmap rather
         // than uploading it into whatever now owns the layer.
         //
-        // Charged in `bytesFetched` — the body crossed the wire — and deliberately **not** in
+        // Charged in `bytesFetched` — the body arrived and decoded — and deliberately **not** in
         // `bytesOutstanding`: no layer stands behind it, so there is no eviction that could ever
         // credit it back, and counting it would be a permanent charge for a picture nobody has
         // (DEC-812's whole shape, at one key's scale).
