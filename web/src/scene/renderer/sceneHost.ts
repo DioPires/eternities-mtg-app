@@ -228,10 +228,13 @@ export class SceneHost {
     /**
      * The pointer input layer (DEC-852), attached **before** the star field and disposed after it.
      *
-     * Order is load-bearing twice over. It subscribes to `input` and `pick` and the field
-     * subscribes to `pick` for PRD 8.5.7's mirror, so attaching it first keeps the mirror running
-     * after the frame's pick has been issued — the order the two had when they were one callback.
-     * And the field hands it the star highlight during construction, so it has to exist by then.
+     * The order is a **construction dependency**: `attachStarScene` hands this handle the field's
+     * star highlight while it builds, so the handle has to exist by then — and the type enforces
+     * it, because `attachStarScene` takes it as an argument. That is the whole of the reason.
+     * The `pick` phase's subscription order between the two is *not* load-bearing (DEC-853): that
+     * phase only issues `runPick(false)`, `focused` is written only under `if (select)`, which is
+     * reached only from `pointerup`, and `runPick` is `async` — so PRD 8.5.7's mirror in
+     * `starScene.ts` cannot observe the frame's own pick in either order.
      *
      * This is the half of the old `starScene.ts` that worlds spec §3.2 must *not* delete: every
      * pointer listener in the app is here, and so is the only emitter of the hover the printing
