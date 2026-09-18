@@ -254,7 +254,7 @@ describe('SceneHost routes the pick with no galaxy in the picture (DEC-852)', ()
     await flush()
 
     expect(selected).toEqual([{ kind: 'star', index: 2, planeIndex: 0 }])
-    expect(host.starScene.focusedIndex, 'PRD 8.5.7 reads its subject from the input layer').toBe(2)
+    expect(host.sceneFrame.focusedIndex, 'PRD 8.5.7 reads its subject from the input layer').toBe(2)
   })
 
   it('leaves the star highlight unwritten when no field was handed over', async () => {
@@ -271,5 +271,34 @@ describe('SceneHost routes the pick with no galaxy in the picture (DEC-852)', ()
       data.highlights,
       'the star scene registered the highlight, so it is written — see the DEC-852 hand-over',
     ).toEqual([2])
+  })
+
+  /*
+   * **The frame's shared machinery outlives the galaxy (DEC-752).** After DEC-852, `starScene.ts`
+   * still owned the plane table's clock and the quality monitor, and §3.2 names that module for
+   * deletion. Both moved to `sceneFrame.ts`. These rows are what fails if they stop being attached:
+   * a multiverse that never turns and a ladder that never announces a tier both render, error
+   * nowhere, and score W1–W5 exactly as before — W5's sweep would read one azimuth twelve times.
+   */
+  it('announces the starting quality tier through the frame, not the star field', () => {
+    expect(host.stats.qualityTier, 'applyTier ran on construction').not.toBe('')
+  })
+
+  it('turns the multiverse with no star field drawn, and holds it under reduced motion', () => {
+    host.setResources(data.resources)
+    host.renderer.loop.tick(16)
+    const before = data.resources.table.multiverseAngle
+    host.renderer.loop.tick(1016)
+    const after = data.resources.table.multiverseAngle
+    expect(after, 'the plane table clock advanced').not.toBe(before)
+
+    // The negative control, and the half that matters: an angle that never moves reads the same
+    // whether the clock is frozen by PRD 5.9 or was never attached. Reduced motion must be what
+    // holds it here, so the moving arm above is evidence the clock exists.
+    host.setReducedMotion(true)
+    host.renderer.loop.tick(2016)
+    const held = data.resources.table.multiverseAngle
+    host.renderer.loop.tick(3016)
+    expect(data.resources.table.multiverseAngle, 'PRD 5.9 freezes the multiverse').toBe(held)
   })
 })

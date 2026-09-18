@@ -94,7 +94,7 @@ export function useProbeSeam(deps: ProbeSeamDeps): void {
       const chain = scene.postChain
       // One size, where `Effects.BloomProbe` had to report two — see `ProbeState.bloomSource`.
       const source = chain?.bloomSourceSize
-      const band = scene.starScene.qualityThresholds
+      const band = scene.sceneFrame.qualityThresholds
       const tier = scene.qualityTier
       return {
         tier: tier.label,

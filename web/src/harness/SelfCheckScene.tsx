@@ -87,7 +87,7 @@ export function SelfCheckScene(): ReactElement {
       return
     }
     const timer = window.setInterval(() => {
-      if (host.starScene.focusedStarPosition(focusPosition)) {
+      if (host.sceneFrame.focusedStarPosition(focusPosition)) {
         setFocusText(
           `${focusPosition.x.toFixed(2)}, ${focusPosition.y.toFixed(2)}, ${focusPosition.z.toFixed(2)}`,
         )

@@ -52,6 +52,7 @@ import { attachPostChain, type PostChainAttachment } from '../post/attachPostCha
 import { QUALITY_TIERS, type QualityTier } from '../quality/adaptiveQuality'
 import { attachScenePicking, type ScenePickingHandle } from '../input/attachScenePicking'
 import type { IdPicker } from '../picking/idPicker'
+import { attachSceneFrame, type SceneFrameHandle } from '../sceneFrame'
 import { attachStarScene, type StarSceneHandle } from '../starScene'
 import { BLOOM_INTENSITY } from '../tuning'
 import type { SceneResources } from '../useSceneData'
@@ -174,6 +175,7 @@ export class SceneHost {
   private readonly options: SceneHostOptions
   private readonly post: PostChainAttachment
   private readonly pickingHandle: ScenePickingHandle
+  private readonly sceneFrameHandle: SceneFrameHandle
   private readonly starSceneHandle: StarSceneHandle
   private readonly worldsAttachment: WorldsAttachment
   private focusedCardHandle: FocusedCardHandle | null = null
@@ -257,13 +259,22 @@ export class SceneHost {
       onSelect: (pick) => this.selected.emit(pick),
     })
 
+    // The frame's shared machinery — the plane table's clock, the quality monitor, PRD 8.5.7's
+    // mirror and the sky — ahead of the star field, which is the galaxy's alone (DEC-752). Attached
+    // after the picker so its `pick` subscriber runs after the frame's pick has been issued.
+    this.sceneFrameHandle = attachSceneFrame({
+      gl,
+      scene,
+      loop,
+      picking: this.pickingHandle,
+      onQualityChange: (tier) => this.applyTier(tier),
+    })
     this.starSceneHandle = attachStarScene({
       gl,
       scene,
       camera,
       loop,
       picking: this.pickingHandle,
-      onQualityChange: (tier) => this.applyTier(tier),
     })
     // The `worlds` phase (spec §1.2). Attached unconditionally and empty until `setWorldData`: a
     // phase whose subscriber arrives with the data is a phase that can end up with none at all,
@@ -293,8 +304,8 @@ export class SceneHost {
 
     // **After the assignments above, never inside them.** `applyTier` pushes the tier at the star
     // field, so a starting announcement that fired from inside `attachStarScene` would reach a
-    // `starSceneHandle` that does not exist yet. See `StarSceneHandle.announceStartingTier`.
-    this.starSceneHandle.announceStartingTier()
+    // handle that does not exist yet. See `SceneFrameHandle.announceStartingTier`.
+    this.sceneFrameHandle.announceStartingTier()
 
     // The stats the tick reports outwards, gathered last. `frameMs` and `cpuMs` are the loop's own
     // and are written by `SceneRenderer`'s `onTickEnd` hook, which by construction runs after every
@@ -321,6 +332,11 @@ export class SceneHost {
   /** The live post chain, for the `?probe=1` seam (PRD 9.1.4's forced-degradation check). */
   get postChain(): PostChainAttachment['chain'] {
     return this.post.chain
+  }
+
+  /** The frame's shared machinery: clock, quality monitor, focused-star mirror (DEC-752). */
+  get sceneFrame(): SceneFrameHandle {
+    return this.sceneFrameHandle
   }
 
   get starScene(): StarSceneHandle {
@@ -370,6 +386,7 @@ export class SceneHost {
     // resolves against the buffer and the plane table, both of which outlive §3.2's deletion of the
     // field's objects (DEC-852).
     this.pickingHandle.setSources(resources)
+    this.sceneFrameHandle.setResources(resources)
     this.starSceneHandle.setResources(resources)
     // §1.3's spin, from the **plane table's** clock (DEC-750). `PlaneTable.advance` integrates it in
     // the `planeTable` phase and `motionSync` mirrors it into the camera rig, and the `worlds` phase
@@ -534,6 +551,7 @@ export class SceneHost {
     // PRD 5.9 reaches the pick too: §1.11's plane radius grows with motion, so a frozen table has a
     // different pick target from a turning one.
     this.pickingHandle.setReducedMotion(reduced)
+    this.sceneFrameHandle.setReducedMotion(reduced)
     this.starSceneHandle.setReducedMotion(reduced)
     this.focusedCardHandle?.setReducedMotion(reduced)
     this.navigation?.api.setReducedMotion(reduced)
@@ -681,6 +699,7 @@ export class SceneHost {
     this.focusedCardHandle = null
     this.worldsAttachment.dispose()
     this.starSceneHandle.dispose()
+    this.sceneFrameHandle.dispose()
     this.pickingHandle.dispose()
     this.post.dispose()
     this.renderer.dispose()

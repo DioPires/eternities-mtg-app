@@ -374,7 +374,7 @@ export function SceneView({
         return
       }
       pendingStar.current = -1
-      const known = scene3d.starScene.starPosition(index, anchorScratch)
+      const known = scene3d.sceneFrame.starPosition(index, anchorScratch)
       built.api.flyToCard(
         {
           planeSlug: plane.slug,
