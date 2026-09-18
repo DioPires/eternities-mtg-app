@@ -269,6 +269,43 @@ and the hover label are re-hosted onto the worlds attachment before the galaxy g
 with tests, since a ring that never appears and a ring nobody focused are the same reading — or the
 owner accepts that they stop shipping at the cutover.
 
+## 7. `starScene.ts` is the scene's INPUT layer, and the star buffer is the ring's data layer
+
+Measured by deleting the remaining galaxy modules in a working tree and reading what `tsc` and the
+call sites said, at head `4052e41`. Two more survivors, and between them they change what "delete
+the galaxy scene" can mean.
+
+**`starScene.ts` owns the `IdPicker` — the whole app's pointer picking.** `starScene.ts:141`
+constructs it; `:266` and `:273` are the only emitters of `onHover` and `onSelect`. `SceneHost` wires
+`onHover` straight into `focusedCardHandle.setHoveredPlanet` (the printing ring's hover label) and
+`onSelect` into the selection the card focus runs on. So the module named "the galaxy scene" is
+where **worlds plane picking, card focus and the ring's hover input** all come from. Deleting it
+removes the app's input layer, not a renderer.
+
+**`starfield/starStream.ts` is the only thing that fills the star buffer.** `geometry.append(...)` at
+`starStream.ts:87` is the sole writer, and the printing ring reads that buffer every tick through
+`geometry.localPosition`, `planeRowOf` and `hueClassOf`. Delete the loader and the ring has no
+position and no hue.
+
+### What that leaves
+
+Of the eight modules the earlier sections treated as galaxy-only, only **three** are:
+`starScene.ts`'s *rendering* half, `starfield/starFieldObjects.ts` (the star point cloud) and
+`starfield/nebulaTexture.ts` (its lookup). Everything else under `starfield/` — `starGeometry.ts`,
+`planeTable.ts`, `starStream.ts`, `motion.ts`, `noise.ts`, `shaders.ts` — is the **data and motion
+layer the worlds build runs on**, and `starScene.ts` additionally holds the input layer.
+
+> **The cutover is a re-architecture, not a deletion, and this is the finding that settles it.**
+> §3.2's sentence — "the galaxy scene, the spiral laws, the star shaders, the thumbnail atlas and
+> the card-sheet tier are deleted" — reads as one commit's worth of removal. It is not. The galaxy's
+> *visuals* can go in an afternoon; what cannot is that picking, hover routing and the star data
+> layer have to be **re-hosted somewhere that outlives the galaxy** first. That is design work with
+> its own tests, not a deletion, and it is the same shape as the card tier one level up — except
+> that the card tier cost one module and this costs the scene's input.
+
+The board's `split_cardtier` ruling is the precedent for how this goes: split the module, keep the
+half the worlds build needs, delete the half that was only ever the galaxy's.
+
 ## 5. The two things §3.2 makes atomic with all of the above
 
 1. **`datasets.json`'s `active` moves to the v3 directory in the same commit that deletes the galaxy
