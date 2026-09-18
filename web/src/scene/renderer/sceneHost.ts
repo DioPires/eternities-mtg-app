@@ -50,6 +50,8 @@ import { attachProgramWarmup } from '../platform/attachProgramWarmup'
 import type { ProgramWarmupResult } from '../platform/programWarmup'
 import { attachPostChain, type PostChainAttachment } from '../post/attachPostChain'
 import { QUALITY_TIERS, type QualityTier } from '../quality/adaptiveQuality'
+import { attachScenePicking, type ScenePickingHandle } from '../input/attachScenePicking'
+import type { IdPicker } from '../picking/idPicker'
 import { attachStarScene, type StarSceneHandle } from '../starScene'
 import { BLOOM_INTENSITY } from '../tuning'
 import type { SceneResources } from '../useSceneData'
@@ -64,6 +66,16 @@ import { SceneRenderer, type SceneRendererOptions } from './sceneRenderer'
 export interface SceneHostOptions extends SceneRendererOptions {
   /** The boot-time program warm-up's result, for the `?probe=1` seam and the bench (DEC-739). */
   readonly onWarmup?: (result: ProgramWarmupResult) => void
+  /**
+   * Injected by the tests, for the same reason and on the same terms as `createRenderer` above it:
+   * a pick is a render pass, so the whole of the input layer's routing — hover to §1.10's label,
+   * click to the selection card focus runs on — was reachable only from e2e (DEC-852).
+   *
+   * That is not a hypothetical gap. It is how `starScene.ts` came to own every pointer listener in
+   * the app while worlds spec §3.2 listed it for deletion, with nothing in the unit suite able to
+   * notice. `test/scene-host-picking.test.tsx` is what this seam is for.
+   */
+  readonly createPicker?: () => IdPicker
 }
 
 /**
@@ -161,6 +173,7 @@ export class SceneHost {
 
   private readonly options: SceneHostOptions
   private readonly post: PostChainAttachment
+  private readonly pickingHandle: ScenePickingHandle
   private readonly starSceneHandle: StarSceneHandle
   private readonly worldsAttachment: WorldsAttachment
   private focusedCardHandle: FocusedCardHandle | null = null
@@ -214,11 +227,26 @@ export class SceneHost {
     // Phase order is the list, not the subscription order, so this is presentation only.
     this.post = attachPostChain(gl, scene, camera, loop)
 
-    this.starSceneHandle = attachStarScene({
+    /**
+     * The pointer input layer (DEC-852), attached **before** the star field and disposed after it.
+     *
+     * Order is load-bearing twice over. It subscribes to `input` and `pick` and the field
+     * subscribes to `pick` for PRD 8.5.7's mirror, so attaching it first keeps the mirror running
+     * after the frame's pick has been issued — the order the two had when they were one callback.
+     * And the field hands it the star highlight during construction, so it has to exist by then.
+     *
+     * This is the half of the old `starScene.ts` that worlds spec §3.2 must *not* delete: every
+     * pointer listener in the app is here, and so is the only emitter of the hover the printing
+     * ring's label reads and the selection card focus runs on.
+     */
+    this.pickingHandle = attachScenePicking({
       gl,
       scene,
       camera,
       loop,
+      // Spread rather than assigned: under `exactOptionalPropertyTypes` an explicit `undefined`
+      // is not the same as an absent key, and absent is what selects the product's own picker.
+      ...(options.createPicker ? { picker: options.createPicker() } : {}),
       onHover: (pick) => {
         // PRD 5.6.9's planet hover reaches the card tier here rather than through React: a hover
         // changes several times a second while the pointer moves, and routing it through a render
@@ -227,6 +255,14 @@ export class SceneHost {
         this.hovered.emit(pick)
       },
       onSelect: (pick) => this.selected.emit(pick),
+    })
+
+    this.starSceneHandle = attachStarScene({
+      gl,
+      scene,
+      camera,
+      loop,
+      picking: this.pickingHandle,
       onQualityChange: (tier) => this.applyTier(tier),
     })
     // The `worlds` phase (spec §1.2). Attached unconditionally and empty until `setWorldData`: a
@@ -330,6 +366,10 @@ export class SceneHost {
   setResources(resources: SceneResources | null): void {
     if (resources === this.resources) return
     this.resources = resources
+    // The star **data** layer, straight to the input layer rather than through the field: a pick
+    // resolves against the buffer and the plane table, both of which outlive §3.2's deletion of the
+    // field's objects (DEC-852).
+    this.pickingHandle.setSources(resources)
     this.starSceneHandle.setResources(resources)
     // §1.3's spin, from the **plane table's** clock (DEC-750). `PlaneTable.advance` integrates it in
     // the `planeTable` phase and `motionSync` mirrors it into the camera rig, and the `worlds` phase
@@ -491,6 +531,9 @@ export class SceneHost {
     // Recorded before it is forwarded, because the card tier may not exist yet. See
     // {@link reducedMotion} and {@link buildFocusedCard}.
     this.reducedMotion = reduced
+    // PRD 5.9 reaches the pick too: §1.11's plane radius grows with motion, so a frozen table has a
+    // different pick target from a turning one.
+    this.pickingHandle.setReducedMotion(reduced)
     this.starSceneHandle.setReducedMotion(reduced)
     this.focusedCardHandle?.setReducedMotion(reduced)
     this.navigation?.api.setReducedMotion(reduced)
@@ -638,6 +681,7 @@ export class SceneHost {
     this.focusedCardHandle = null
     this.worldsAttachment.dispose()
     this.starSceneHandle.dispose()
+    this.pickingHandle.dispose()
     this.post.dispose()
     this.renderer.dispose()
   }

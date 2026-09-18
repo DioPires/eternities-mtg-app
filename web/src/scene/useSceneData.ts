@@ -35,10 +35,11 @@ import {
 import { sceneErrors } from './errors'
 import { bootPositionMode } from './platform/capabilities'
 import { createNebulaTexture } from './starfield/nebulaTexture'
-import { PlaneTable } from './starfield/planeTable'
+import type { PlaneTable } from './starfield/planeTable'
 import { createStarField, type StarField } from './starfield/starFieldObjects'
-import { resolvePositionMode, type PositionMode } from './platform/positionMode'
-import { StarGeometry } from './starfield/starGeometry'
+import type { PositionMode } from './platform/positionMode'
+import { createStarData } from './starfield/starData'
+import type { StarGeometry } from './starfield/starGeometry'
 import { streamStarsIntoScene } from './starfield/starStream'
 
 export interface SceneResources {
@@ -212,16 +213,19 @@ export function useSceneData(): SceneDataState {
       lines.push(`planes.json: ${planes.planes.length} rows, R = ${planes.multiverseRadius}`)
 
       // PRD 8.7.2: the roster is enough to draw the plane glows, so build the scene now and let
-      // the stars arrive into it. Zero-card planes are complete at this point (PRD 5.3.6).
-      const positionMode = resolvePositionMode()
-      const table = new PlaneTable(planes.planes, planes.multiverseRadius)
-      const geometry = new StarGeometry(manifest.counts.stars, positionMode)
+      // the stars arrive into it.
+      //
+      // **Two steps, not one, and the order is the cutover's (DEC-852).** The star *data* — the
+      // plane table and the buffer — is what the worlds build runs on and what §1.10's ring reads;
+      // the field and the nebula lookup are the galaxy's two objects, layered on top. Worlds spec
+      // §3.2 deletes the second step, and because it is a step rather than four interleaved
+      // statements that deletion is the two lines below plus their imports.
+      const data = createStarData(planes, manifest.counts.stars)
+      const { table, geometry, positionMode } = data
       const field = createStarField(table, geometry, noise)
-      table.revealEmptyPlanes()
       disposers.current.push(() => {
         field.dispose()
-        geometry.dispose()
-        table.dispose()
+        data.dispose()
       })
       lines.push(`star buffer: ${manifest.counts.stars} records, ${positionMode} positions`)
       patch({ planes, resources: { table, geometry, field, positionMode }, expected: manifest.counts.stars })

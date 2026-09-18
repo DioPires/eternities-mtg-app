@@ -121,6 +121,7 @@ file for importers **outside** the doomed set, and recording whether the import 
 | `cards/cardTier.ts` | `renderer/sceneHost.ts` | `attachCardTier` + types | VALUE |
 | | `PlanetHoverLabel.tsx`, `usePlaneDetail.ts` | label/cards types | type |
 | `starScene.ts` | `renderer/sceneHost.ts` | `attachStarScene` | VALUE |
+| `input/attachScenePicking.ts` | `renderer/sceneHost.ts` | `attachScenePicking` | **SURVIVES** |
 
 **The five the old list got wrong:**
 
@@ -305,6 +306,36 @@ layer the worlds build runs on**, and `starScene.ts` additionally holds the inpu
 
 The board's `split_cardtier` ruling is the precedent for how this goes: split the module, keep the
 half the worlds build needs, delete the half that was only ever the galaxy's.
+
+### RESOLVED for the input layer — DEC-852, branch `dec852-input-star-layers` off `b5f18bc`
+
+The first half of §7 is **done**, and this section's line references above are the pre-split tree.
+The input layer now lives in `scene/input/attachScenePicking.ts`: the `IdPicker`, the four canvas
+pointer listeners, the per-tick device-pixel conversion, the `input` and `pick` phases, and the only
+emitters of `onHover` and `onSelect`. `starScene.ts` holds galaxy rendering and nothing else —
+no picker, no listener, no routing — and reads the input layer for one thing, PRD 8.5.7's focused
+star index.
+
+The one galaxy-shaped part of picking is the star field's hover highlight. It is **handed over**
+(`ScenePickingHandle.setStarHighlight`, called from `attachStarScene`'s `setResources`) rather than
+reached for, so the cutover stops registering it by deleting `starScene.ts` and touches no line of
+the input layer. `SceneHost` attaches picking **before** the field — the `pick` phase's order
+between the two is load-bearing — and feeds it the star *data* layer (`{ geometry, table }`)
+directly, never through `SceneResources.field`.
+
+So §3.2's delete of `starScene.ts` no longer takes the app's pointer with it. What remains of §7 is
+the **star data layer** half: `useSceneData` still builds `StarGeometry`/`PlaneTable`/
+`streamStarsIntoScene` in the same function that calls `createStarField` and `createNebulaTexture`.
+Those are four adjacent statements, not an entanglement — the type already separates them, and the
+cutover can split that function in its own commit. It is not a precondition in the way the picker
+was, because nothing outside the galaxy *routes* through it.
+
+Evidenced, not asserted: `test/scene-picking-host.test.tsx` drives the input layer with no galaxy in
+the scene at all, and `test/scene-host-picking.test.tsx` drives the two routes through a real
+`SceneHost` — hover to §1.10's label, click to the selection — behind the `createPicker` seam, so
+the assertions are about the shipped wiring and not a copy of it. Both label rows carry a negative
+control, because a label that is never written reads identically to one correctly withheld. An
+11-mutant matrix over the two files and their `sceneHost` call sites is 11/11 caught.
 
 ## 5. The two things §3.2 makes atomic with all of the above
 
