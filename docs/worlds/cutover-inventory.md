@@ -248,6 +248,12 @@ That last call is why `StarGeometry`'s delete is not safe: the ring's hue comes 
 buffer. And the hover label of §5 hangs off the same block — `if (card.visible && focusedStar >= 0)`
 — so it is not an independent finding, it is the same one a level down.
 
+**And the tier is attached on a worlds build, so this is live rather than latent.**
+`sceneHost.buildCardTier()` is called at line **341, immediately after `worldsAttachment
+.setSpinAngles`**, and again at 400 — **with no galaxy/worlds condition on either**. So on the
+shipped worlds build the card tier is constructed, the `FocusedCard` with it, and both surfaces
+work today. The deletion would take working features, not dead code.
+
 **What this means for the cutover, stated plainly.** §3.2's list reads as though `cards/` splits
 cleanly into "the thumbnail atlas and the card-sheet tier" (goes) and §1.10's ring (stays). It does
 not. The ring's own module survives; **its host does not**, and no worlds-side host exists. Deleting
