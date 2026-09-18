@@ -1,37 +1,35 @@
 /**
  * The star field's share of the tick (PRD 5.3, 5.4, 8.5).
  *
- * Everything that happens each frame happens here, from preallocated state: drain the pointer,
- * advance the plane table, turn the background, push the uniforms, pick under the pointer, mirror
- * the focused star, feed the frame-time monitor. What changed in review §3.6 phase 3 is *where the
- * order comes from*. This was one `useFrame` callback whose six steps ran in source order inside
- * it, and whose position relative to the camera rig, the card tier and the post chain was the
- * position of a JSX element among its siblings. The six steps are now subscriptions to named
- * phases of {@link TICK_PHASES}, and the order between them and everything else is that list.
+ * Everything the *galaxy* does each frame happens here, from preallocated state: advance the plane
+ * table, turn the background, push the uniforms, mirror the focused star, feed the frame-time
+ * monitor. What changed in review §3.6 phase 3 is *where the order comes from*. This was one
+ * `useFrame` callback whose steps ran in source order inside it, and whose position relative to the
+ * camera rig, the card tier and the post chain was the position of a JSX element among its
+ * siblings. The steps are now subscriptions to named phases of {@link TICK_PHASES}, and the order
+ * between them and everything else is that list.
  *
  * What this file deliberately does *not* do is move the camera. PRD 5.7 and the navigation contract
  * are the rig's; the scene exposes what a camera rig needs — a pick result and the focused star's
  * live world position — and stops there.
  *
- * **One real change of behaviour, and it is a fix.** The pointer listeners used to call
- * `getBoundingClientRect()` on every `pointermove` to convert to device pixels — a forced
- * synchronous layout per pointer event, on a path whose header promises none, at whatever rate the
- * mouse reports. The listeners now store the raw client coordinates and the `input` phase converts
- * them once per tick, which is at most one layout read per frame and is what gives that phase
- * something to do. The pick still sees the newest sample; it was already throttled to the frame.
+ * **The pointer is no longer here, and that is DEC-852.** This module used to own the `IdPicker`,
+ * the four canvas listeners and the whole of PRD 8.5.6's pick — so the app's input layer, §1.10's
+ * hover label and the selection card focus runs on all came out of the module worlds spec §3.2
+ * names for deletion. They now live in `scene/input/attachScenePicking.ts`, which outlives the
+ * galaxy; what is left here is the one galaxy-shaped part of picking, the star field's hover
+ * highlight, handed over through `setStarHighlight` in {@link StarSceneHandle.setResources}.
+ *
+ * The one thing this file still reads off that attachment is its focused star index, because
+ * PRD 8.5.7's CPU motion mirror is computed from the star buffer and the plane table and belongs
+ * with them.
  */
 
-import { Color, Vector2, Vector3, type PerspectiveCamera, type Scene, type WebGLRenderer } from 'three'
+import { Color, Vector3, type PerspectiveCamera, type Scene, type WebGLRenderer } from 'three'
 
 import { advanceBackground, createBackground } from './background'
-import { IdPicker, isPerspective } from './picking/idPicker'
-import {
-  PlanePicker,
-  pickedStarIndex,
-  resolvePick,
-  samePick,
-  type PickResult,
-} from './picking/scenePicker'
+import type { ScenePickingHandle } from './input/attachScenePicking'
+import { isPerspective } from './picking/idPicker'
 import { detectPlatformCapabilities } from './platform/capabilities'
 import {
   QualityMonitor,
@@ -103,28 +101,14 @@ export interface StarSceneOptions {
   readonly scene: Scene
   readonly camera: PerspectiveCamera
   readonly loop: FrameLoop
-  /** PRD 5.4.12 hover and PRD 5.7.2 click. `null` means the pointer is over empty space. */
-  readonly onHover?: (pick: PickResult) => void
-  readonly onSelect?: (pick: PickResult) => void
+  /**
+   * The input layer (DEC-852). Read for its focused star index, and given the field's hover
+   * highlight while a field exists — never the other way round, so that a build with no galaxy
+   * attached still picks, still focuses cards and still writes §1.10's hover label.
+   */
+  readonly picking: ScenePickingHandle
   /** PRD 8.5.11: fires when the frame-time monitor changes tier, and once for the starting tier. */
   readonly onQualityChange?: (tier: QualityTier, index: number) => void
-}
-
-/** Pointer moves are cheap; a pick is a render pass. One pick per frame at most (PRD 8.5.6). */
-interface PointerState {
-  /** Device pixels, resolved by the `input` phase. */
-  x: number
-  y: number
-  /** Raw client coordinates as the listener saw them, pending conversion. See the header. */
-  clientX: number
-  clientY: number
-  /** A sample arrived since the last `input` phase. */
-  fresh: boolean
-  /** A converted sample the `pick` phase has not consumed yet. */
-  moved: boolean
-  inside: boolean
-  downX: number
-  downY: number
 }
 
 export function attachStarScene({
@@ -132,14 +116,10 @@ export function attachStarScene({
   scene,
   camera,
   loop,
-  onHover,
-  onSelect,
+  picking,
   onQualityChange,
 }: StarSceneOptions): StarSceneHandle {
-  const canvas = gl.domElement
   const background = createBackground()
-  const idPicker = new IdPicker()
-  const planePicker = new PlanePicker()
   /**
    * The tier monitor, floored by what the post chain can actually render (DEC-703, review §3.7).
    *
@@ -161,24 +141,7 @@ export function attachStarScene({
   const selfCheckWanted = selfCheckRequested()
 
   // Per-tick scratch. Allocated once, reused for the life of the scene (PRD 7.3.2).
-  const ndc = new Vector2()
-  /** Scratch for the renderer's CSS size, which §1.11's pick floor is expressed in. */
-  const cssSize = new Vector2()
   const mirror = new Vector3()
-  const pointer: PointerState = {
-    x: 0,
-    y: 0,
-    clientX: 0,
-    clientY: 0,
-    fresh: false,
-    moved: false,
-    inside: false,
-    downX: 0,
-    downY: 0,
-  }
-  /** The last pick reported to `onHover`, whatever its kind. See {@link samePick}. */
-  let hovered: PickResult = null
-  let focused = -1
 
   let resources: SceneResources | null = null
   let reducedMotion = false
@@ -213,120 +176,7 @@ export function attachStarScene({
     return true
   }
 
-  /**
-   * PRD 8.5.6: the id buffer first, the plane spheres second, "with the id buffer taking
-   * precedence when it hits".
-   */
-  async function runPick(select: boolean): Promise<void> {
-    if (!resources || !isPerspective(camera)) return
-    // Bound before the awaits below, so the closures the resolver takes cannot see a `resources`
-    // that a load swapped underneath them.
-    const geometry = resources.geometry
-    const table = resources.table
-    const field = resources.field
-    let result: PickResult = null
-
-    if (pointer.inside) {
-      // A click queues for its turn; a hover takes whatever is going. Hover has a next frame to
-      // retry on and a click does not, and answering a click from the plane raycast because a
-      // hover read happened to be in flight is exactly the precedence rule inverted.
-      const starIndex = select
-        ? await idPicker.pickQueued(gl, scene, camera, pointer.x, pointer.y)
-        : await idPicker.pick(gl, scene, camera, pointer.x, pointer.y)
-
-      const resolved = resolvePick(
-        starIndex,
-        geometry.drawCount,
-        (index) => geometry.planeRowOf(index),
-        () => {
-          ndc.set(
-            (pointer.x / gl.domElement.width) * 2 - 1,
-            -((pointer.y / gl.domElement.height) * 2 - 1),
-          )
-          // CSS pixels, never the drawing buffer's: §1.11's floor is a CSS-pixel target, and on a
-          // 2x display `getDrawingBufferSize` would halve it while the picture stayed identical.
-          gl.getSize(cssSize)
-          return planePicker.pick(ndc, camera, table, reducedMotion ? 0 : 1, cssSize.y)
-        },
-      )
-      // The id buffer was not consulted. Leave hover and focus exactly as they were and let the
-      // next frame ask again; reporting anything here would be reporting a guess.
-      if (resolved === undefined) return
-      result = resolved
-    }
-
-    const hoverIndex = pickedStarIndex(result)
-    // On the *pick*, not on its star index: a planet and a plane both have index -1 as far as the
-    // star field is concerned, and collapsing them onto one another is what silenced PRD 5.6.9's
-    // planet hover entirely. `setHovered` still takes the star index, because the highlight it
-    // drives belongs to the star field and a planet is not one of its stars.
-    if (!samePick(result, hovered)) {
-      hovered = result
-      field.setHovered(hoverIndex)
-      onHover?.(result)
-    }
-    if (select) {
-      focused = hoverIndex
-      // PRD 5.3.4: the dust brightens while it is the focus, and the dust is exactly the stars of
-      // the Blind Eternities row.
-      table.setDustFocused(result?.kind === 'star' && geometry.planeRowOf(result.index) === 0)
-      onSelect?.(result)
-    }
-  }
-
-  // Pointer state lives on the canvas, not in React: a pointer move must not cost a render
-  // (PRD 7.3.3), and the pick that follows is throttled to the tick anyway.
-  const onMove = (event: PointerEvent): void => {
-    pointer.clientX = event.clientX
-    pointer.clientY = event.clientY
-    pointer.fresh = true
-    pointer.inside = true
-  }
-  const onLeave = (): void => {
-    pointer.inside = false
-    pointer.moved = true
-  }
-  const onDown = (event: PointerEvent): void => {
-    pointer.downX = event.clientX
-    pointer.downY = event.clientY
-  }
-  const onUp = (event: PointerEvent): void => {
-    // A drag is a camera gesture, not a click. The rig owns the camera; this only decides whether
-    // the gesture was a selection.
-    const dragged =
-      Math.abs(event.clientX - pointer.downX) > 4 || Math.abs(event.clientY - pointer.downY) > 4
-    if (dragged) return
-    // A click has no next frame to retry on, so it converts its own coordinates rather than waiting
-    // for the `input` phase — the one place the per-event layout read is still worth paying for.
-    pointer.clientX = event.clientX
-    pointer.clientY = event.clientY
-    pointer.inside = true
-    toDevicePixels()
-    void runPick(true)
-  }
-
-  function toDevicePixels(): void {
-    const rect = canvas.getBoundingClientRect()
-    if (rect.width === 0 || rect.height === 0) return
-    const ratio = canvas.width / rect.width
-    pointer.x = (pointer.clientX - rect.left) * ratio
-    pointer.y = (pointer.clientY - rect.top) * ratio
-  }
-
-  canvas.addEventListener('pointermove', onMove)
-  canvas.addEventListener('pointerleave', onLeave)
-  canvas.addEventListener('pointerdown', onDown)
-  canvas.addEventListener('pointerup', onUp)
-
   const unsubscribes = [
-    // `input`: the phase the scope names first. One layout read per tick, not one per pointer event.
-    loop.subscribe('input', () => {
-      if (!pointer.fresh) return
-      pointer.fresh = false
-      toDevicePixels()
-      pointer.moved = true
-    }),
-
     loop.subscribe('planeTable', ({ delta }) => {
       if (resources) {
         resources.table.advance(delta, reducedMotion ? 0 : 1)
@@ -350,14 +200,14 @@ export function attachStarScene({
       )
     }),
 
+    // The pointer's own share of this phase moved to `input/attachScenePicking.ts` (DEC-852),
+    // which subscribes first — `SceneHost` attaches it before the field — so the mirror below still
+    // runs after the frame's pick has been issued, exactly as it did when both were one callback.
     loop.subscribe('pick', () => {
       if (!resources) return
-      if (pointer.moved && !idPicker.pending) {
-        pointer.moved = false
-        void runPick(false)
-      }
       // PRD 8.5.7: the one star position the CPU computes, refreshed while it is focused so the
       // camera rig always has a current target.
+      const focused = picking.focusedIndex
       if (focused >= 0) readStarPosition(focused, mirror)
     }),
 
@@ -407,7 +257,10 @@ export function attachStarScene({
           gl,
           scene,
           camera,
-          idPicker,
+          // The scene's own picker, not a second one: the self-check compares the id buffer this
+          // frame's picks read against the CPU's projection, so a fresh `IdPicker` with its own
+          // render target would be measuring a different object (DEC-852).
+          picking.picker,
           ready.table,
           ready.geometry,
           ready.field,
@@ -422,10 +275,10 @@ export function attachStarScene({
   }
 
   return {
-    focusedStarPosition: (out) => readStarPosition(focused, out),
+    focusedStarPosition: (out) => readStarPosition(picking.focusedIndex, out),
     starPosition: (index, out) => readStarPosition(index, out),
     get focusedIndex() {
-      return focused
+      return picking.focusedIndex
     },
     get qualityThresholds() {
       const band = quality.thresholdsMs
@@ -450,6 +303,11 @@ export function attachStarScene({
         )
       }
       resources = next
+      // The one galaxy-shaped half of picking, handed to the input layer rather than reached for
+      // from it (DEC-852). Bound to *this* field, so a load that swaps the resources swaps the
+      // object the highlight lands on; `runPick` snapshots it before its awaits for the same
+      // reason it snapshots the geometry.
+      picking.setStarHighlight(next ? (starIndex) => next.field.setHovered(starIndex) : null)
       if (next) {
         scene.add(
           next.field.glow,
@@ -494,13 +352,11 @@ export function attachStarScene({
       if (selfCheckTimer !== 0) window.clearTimeout(selfCheckTimer)
       for (const undo of unsubscribes) undo()
       unsubscribeQuality()
-      canvas.removeEventListener('pointermove', onMove)
-      canvas.removeEventListener('pointerleave', onLeave)
-      canvas.removeEventListener('pointerdown', onDown)
-      canvas.removeEventListener('pointerup', onUp)
+      // The field is going; the input layer must stop highlighting it. It is not disposed here —
+      // it outlives the galaxy, and `SceneHost` owns its lifetime.
+      picking.setStarHighlight(null)
       scene.remove(background.group)
       background.dispose()
-      idPicker.dispose()
     },
   }
 }
