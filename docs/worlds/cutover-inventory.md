@@ -206,7 +206,7 @@ visible is indistinguishable from a label nobody hovered.
 |---|---|---|
 | `table: PlaneTable` | **RETAIN** | the worlds scene's spin comes from it (`sceneHost.ts:338` → `setSpinAngles`), and the probe's `multiverseAngle` — the parameter W5's whole sweep is read against — is `PlaneTable`'s own getter |
 | `positionMode: PositionMode` | **RETAIN** | it is part of the shipped probe surface: `ProbeState` publishes it, and `probeSeam`, `benchSeam`, `capabilities`, `selfCheck` and `BenchRunner` all read it |
-| `geometry: StarGeometry` | **DELETE** | no surviving consumer once the galaxy goes — see below |
+| `geometry: StarGeometry` | **RETRACTED — see §6** | I published "no surviving consumer"; `cardTier.ts` uses `geometry.hueClassOf` to show the printing ring, and the ring is a worlds surface |
 | `field: StarField` | **DELETE** | the star point cloud itself |
 
 **`StarGeometry`'s three apparent survivors all resolve to the galaxy**, which is what makes the
@@ -227,6 +227,41 @@ delete safe, and it is worth writing down because the import edges suggest other
 `capabilities.ts` — which already owns `bootPositionMode` and is where the rest of the capability
 surface lives. `PlaneTable` is retained as a module; it is not galaxy furniture, it is the plane
 motion table the worlds scene runs on, and only its name and address suggest otherwise.
+
+## 6. The printing ring is hosted inside the card tier — and that retracts a verdict above
+
+**Correction to §4's own table, published here rather than quietly edited.** I wrote that
+`StarGeometry` has no surviving consumer and could be deleted, having traced its three apparent
+survivors (`filterMask`, `probeSeam`, `benchSeam`) to the galaxy. That trace was right and the
+conclusion was wrong, because it missed a fourth consumer inside the doomed set itself.
+
+**`scene/cards/cardTier.ts:97` is the only place a `FocusedCard` is ever constructed**, anywhere in
+the app. §1.10's flat printing ring *is* `FocusedCard`. So the ring — **an explicit §3.2 condition-4
+parity surface** — exists only because the module §3.2 names for deletion creates, shows and ticks
+it:
+
+- `EternitiesScene.tsx:356` (the shipped worlds scene) → `sceneHost.setFocusedStar`
+- → `cardTier.setFocusedStar` → `applyFocus()`
+- → `card.show(record, focusedStar, resources.geometry.hueClassOf(focusedStar))`
+
+That last call is why `StarGeometry`'s delete is not safe: the ring's hue comes out of the star
+buffer. And the hover label of §5 hangs off the same block — `if (card.visible && focusedStar >= 0)`
+— so it is not an independent finding, it is the same one a level down.
+
+**What this means for the cutover, stated plainly.** §3.2's list reads as though `cards/` splits
+cleanly into "the thumbnail atlas and the card-sheet tier" (goes) and §1.10's ring (stays). It does
+not. The ring's own module survives; **its host does not**, and no worlds-side host exists. Deleting
+the card tier deletes the printing ring and the hover label with it.
+
+So **condition 4's printing-ring item is not merely "unverified by a headless instrument"** — which
+is how this leg has been recording it. Structurally, the ring is galaxy-hosted, in both builds, and
+has never been re-hosted onto the worlds path. The v2 control reading identically is consistent with
+exactly that.
+
+**This is a product decision, not a deletion detail**, and it is not leg G's to take: either the ring
+and the hover label are re-hosted onto the worlds attachment before the galaxy goes — a feature leg,
+with tests, since a ring that never appears and a ring nobody focused are the same reading — or the
+owner accepts that they stop shipping at the cutover.
 
 ## 5. The two things §3.2 makes atomic with all of the above
 
