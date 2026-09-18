@@ -265,7 +265,11 @@ describe('shader names (DEC-700)', () => {
 
   it('covers every material the scene builds, one name per program', () => {
     // A count, not a list: adding a material and leaving it out of `SHADER_NAMES` should be a
-    // deliberate act. There are 26 sites and 25 names, and the gap is the point of this test.
+    // deliberate act. There are 23 sites and 22 names, and the gap is the point of this test.
+    //
+    // **Was 26 and 25 until the cutover (DEC-752).** Three names went with the thumbnail tier and
+    // the atlas: `ThumbnailTier`, `ThumbnailTierPick` and `AtlasBlit`. The gap of one is unchanged,
+    // because none of the three was part of it.
     //
     // Two *sites* share `SHADER_NAME_STAR_FIELD`: the drawn star field and the bloom source's copy
     // of it differ only in the values bound to five uniforms, which are not in the program cache
@@ -314,6 +318,6 @@ describe('shader names (DEC-700)', () => {
     // sheet compiled with `ID_PASS`. Unlike the bloom copy above it genuinely is a second program —
     // `defines` *is* a program cache key input — so it earns its own name under the rule rather
     // than against it, and the gap stays where it was.
-    expect(SHADER_NAMES).toHaveLength(25)
+    expect(SHADER_NAMES).toHaveLength(22)
   })
 })

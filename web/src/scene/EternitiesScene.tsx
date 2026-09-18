@@ -343,10 +343,6 @@ export function SceneView({
   const { cards, cardsRef, cardVersion, detail } = usePlaneDetail(data.planes !== null, focusedPlane)
 
   useEffect(() => {
-    scene3d.setPlane(focusedPlane)
-  }, [scene3d, focusedPlane])
-
-  useEffect(() => {
     scene3d.setCards(cards)
     // `cardVersion` moves when a shard lands and fills the same `cards` object, so it is a real
     // dependency even though `cards` is identical across it.
@@ -416,7 +412,7 @@ export function SceneView({
         // Resolved from the *clicked* planet, not from whichever one the hover label last named:
         // reaching for the hover state made the click depend on a hover having been reported first,
         // which before the dedupe fix in the star field it very often had not been.
-        const slot = scene3d.cardTier?.card
+        const slot = scene3d.focusedCard?.card
         if (slot) {
           const printing = slot.printingOfPlanet(pick.index)
           if (printing !== null) slot.setActivePrinting(printing)
@@ -459,7 +455,7 @@ export function SceneView({
         built.api.flyToBlindEternities(undefined, { reason: 'user' })
       } else if (event.key === 'f' || event.key === 'F') {
         // PRD 5.6.5's flip control; the shell's HUD calls the same handle.
-        scene3d.cardTier?.card.toggleFlip()
+        scene3d.focusedCard?.card.toggleFlip()
       }
     }
     window.addEventListener('keydown', onKeyDown)

@@ -18,7 +18,7 @@ import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'rea
 import { dataRoot, type CardRecord, type PlaneRecord, type PlaneShardFile } from '../data'
 import { createPlaneDetailLoader } from '../plane-detail/client'
 
-import type { PlaneCards } from './cards/cardTier'
+import type { PlaneCards } from './cards/focusedCardHost'
 
 /** What the readout panel reports about the load, and nothing else reads. */
 export interface PlaneDetailStatus {

@@ -107,7 +107,9 @@ export function useProbeSeam(deps: ProbeSeamDeps): void {
           source && source.width > 0 ? { width: source.width, height: source.height } : null,
         bloomLevels: chain.bloomLevels,
         bloomFloatTargets: chain.floatTargets,
-        thumbnailCapacity: scene.cardTier?.stats.capacity ?? 0,
+        // 0 since the thumbnail tier retired (DEC-752). The field stays: `ProbeState` publishes
+        // it and e2e reads the contract.
+        thumbnailCapacity: 0,
         starsDrawn: geometry.drawCount,
         motion: typeof motionUniform?.value === 'number' ? motionUniform.value : -1,
         refreshMs: band.refreshMs,
@@ -142,8 +144,9 @@ export function useProbeSeam(deps: ProbeSeamDeps): void {
     const state = (): ProbeState => {
       const built = deps.sceneRef.current
       const snap = built?.api.snapshot()
-      const handle = scene.cardTier
-      const memoryNow = gpuMemoryReport(handle?.gpuBytes.atlas ?? 0, handle?.gpuBytes.card ?? 0)
+      const handle = scene.focusedCard
+      // The atlas term is a real 0 — it retired with the thumbnail tier (DEC-752).
+      const memoryNow = gpuMemoryReport(0, handle?.gpuBytes.card ?? 0)
       const focused = deps.focusedStarRef.current
       const record = focused >= 0 ? deps.cardsRef.current.get(focused) : undefined
       const cardState = handle?.card
@@ -168,14 +171,10 @@ export function useProbeSeam(deps: ProbeSeamDeps): void {
         // not, which is what makes the direct read honest rather than lucky.
         multiverseAngle: resources.table.multiverseAngle,
         cardsLoaded: deps.cardsRef.current.size,
-        thumbnails: {
-          drawn: handle?.stats.drawn ?? 0,
-          cells: handle?.stats.cells ?? 0,
-          capacity: handle?.stats.capacity ?? 0,
-          requested: handle?.stats.requested ?? 0,
-          loaded: handle?.stats.loaded ?? 0,
-          failed: handle?.stats.failed ?? 0,
-        },
+        // All zero since the thumbnail tier retired at the cutover (DEC-752). The BLOCK stays
+        // because `ProbeState` publishes it and e2e reads the contract; reporting real zeros is
+        // honest where dropping the keys would be a probe-surface change no criterion asked for.
+        thumbnails: { drawn: 0, cells: 0, capacity: 0, requested: 0, loaded: 0, failed: 0 },
         images: handle?.imageStats ?? {
           inFlight: 0,
           waiting: 0,
@@ -244,18 +243,20 @@ export function useProbeSeam(deps: ProbeSeamDeps): void {
         return best
       },
       flip: () => {
-        const handle = scene.cardTier?.card
+        const handle = scene.focusedCard?.card
         if (!handle?.canFlip) return false
         handle.toggleFlip()
         return true
       },
       activatePrinting: (index) => {
-        const handle = scene.cardTier?.card
+        const handle = scene.focusedCard?.card
         if (!handle?.visible) return false
         handle.setActivePrinting(index)
         return handle.activePrinting === index
       },
-      thumbnailStars: () => [...(scene.cardTier?.drawnStars ?? [])],
+      // Empty since the thumbnail tier retired (DEC-752); the seam stays for the same reason
+      // `thumbnailCapacity` does.
+      thumbnailStars: () => [],
       // `undefined`, never an empty payload: leg G scores a missing seam as a setup failure and an
       // empty one as a world that drew no cells. See `worldsProbeOf`.
       //
@@ -263,7 +264,7 @@ export function useProbeSeam(deps: ProbeSeamDeps): void {
       // path and it must reach the attachment as a genuine absence, not as a string (DEC-785 F1).
       worlds: (slug) => worldsProbeOf(deps.worldsSource?.(slug)),
       planetScreen: (index) => {
-        const handle = scene.cardTier?.card
+        const handle = scene.focusedCard?.card
         const camera = scene.renderer.camera
         if (!handle?.visible) return null
         if (!handle.planetWorldPosition(index, screen)) return null

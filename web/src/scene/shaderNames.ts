@@ -69,12 +69,6 @@ export const SHADER_NAME_PLANE_GLOW = 'PlaneGlow'
  */
 export const SHADER_NAME_PLANE_GLOW_CHEAP = 'PlaneGlowCheap'
 
-/** Instanced card thumbnails sampling the atlas — `cards/thumbnailTier.ts`. */
-export const SHADER_NAME_THUMBNAIL_TIER = 'ThumbnailTier'
-
-/** The thumbnail quads drawn to the id buffer under `ID_PASS` — its own program. */
-export const SHADER_NAME_THUMBNAIL_TIER_PICK = 'ThumbnailTierPick'
-
 /** The focused card's two faces — `cards/focusedCard.ts`; one program, two materials. */
 export const SHADER_NAME_CARD_FACE = 'FocusedCardFace'
 
@@ -106,9 +100,6 @@ export const SHADER_NAME_CARD_PLANET_PICK = 'FocusedCardPlanetPick'
  * `test/shader-names.test.ts`; DEC-700's owner rules.
  */
 export const SHADER_NAME_CARD_PRINTING_TICKS = 'FocusedCardPrintingTicks'
-
-/** The atlas' blit quad — a built-in `MeshBasicMaterial`, `cards/atlas.ts`. */
-export const SHADER_NAME_ATLAS_BLIT = 'AtlasBlit'
 
 /** The three background star shells — a built-in `PointsMaterial`, `background.ts`. */
 export const SHADER_NAME_BACKGROUND_LAYER = 'BackgroundLayer'
@@ -197,14 +188,11 @@ export const SHADER_NAMES = [
   SHADER_NAME_STAR_FIELD_PICK,
   SHADER_NAME_PLANE_GLOW,
   SHADER_NAME_PLANE_GLOW_CHEAP,
-  SHADER_NAME_THUMBNAIL_TIER,
-  SHADER_NAME_THUMBNAIL_TIER_PICK,
   SHADER_NAME_CARD_FACE,
   SHADER_NAME_CARD_EDGE,
   SHADER_NAME_CARD_PLANET,
   SHADER_NAME_CARD_PLANET_PICK,
   SHADER_NAME_CARD_PRINTING_TICKS,
-  SHADER_NAME_ATLAS_BLIT,
   SHADER_NAME_BACKGROUND_LAYER,
   SHADER_NAME_POST_PREFILTER,
   SHADER_NAME_POST_DOWNSAMPLE,

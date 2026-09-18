@@ -69,9 +69,17 @@ describe('§1.12 the worlds budget', () => {
   })
 
   it('costs less than the atlas-era worst case it replaces', () => {
-    // §1.12's actual argument. The galaxy's worst case is dominated by a fixed 64 MiB atlas that
+    // §1.12's actual argument. The galaxy's worst case was dominated by a fixed 64 MiB atlas that
     // concept B retires; if this ever inverts, the case for retiring it goes with it.
-    expect(v3().totalBytes).toBeLessThan(worstCaseReport().totalBytes)
+    //
+    // **The atlas-era figure is a literal now, and it has to be (DEC-752).** This read
+    // `worstCaseReport()` live, which was right while the atlas existed and became a tautology the
+    // moment the cutover deleted it: `worstCaseReport()`'s atlas term is a real 0 today, so a live
+    // read compares the worlds budget against the worlds budget's own era and the claim quietly
+    // stops being about the galaxy at all. The 64 MiB is `ATLAS_BYTES` as it stood at the cutover —
+    // a 4096x4096 RGBA8 texture with no mipmap chain, PRD 8.5.8's "the atlas's 64 MB".
+    const atlasEraTotalBytes = 64 * 1024 * 1024 + worstCaseReport().cardBytes
+    expect(v3().totalBytes).toBeLessThan(atlasEraTotalBytes)
   })
 
   it('still fits with a double-faced card in focus, which is the figure to assert against', () => {

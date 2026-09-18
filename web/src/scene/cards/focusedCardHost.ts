@@ -1,34 +1,34 @@
 /**
- * The card tier's share of the tick: the thumbnail layer, the focused card and its planets
- * (PRD 5.5, 5.6).
+ * The focused card's share of the tick: §1.10's flat printing ring, its pointer tilt, and the
+ * hovered planet's label (PRD 5.6).
  *
- * The sibling of `scene/starScene`, and it follows the same rule: one subscription, preallocated
- * state, no allocation in the frame path (PRD 7.3.2). What it adds to the scene graph is three
- * objects — the thumbnail mesh and its pick twin, and the card group with its planets — and what it
- * adds to the tick is one selector pass every 200 ms, one instance rebuild, and the card's springs.
+ * > **This is the half of the old `cardTier.ts` that outlives the galaxy (DEC-752, board ruling
+ * > `split_cardtier`).** §3.2 lists "the thumbnail atlas and the card-sheet tier" among the things
+ * > the cutover deletes, and that module was named for the tier — but it also happened to be the
+ * > only place in the app that ever constructed a `FocusedCard`, and `FocusedCard` *is* the printing
+ * > ring, a §3.2 condition-4 parity surface. It was likewise the only writer of the hover label's
+ * > `labelState`. Deleting it wholesale would have left a green build, a still-rendering
+ * > `<PlanetHoverLabel>` and no ring, with nothing to report it: W1–W5 read neither surface. So the
+ * > module was split rather than deleted, and this is the surviving side.
  *
  * It computes exactly one star position on the CPU per tick: the focused card's, through the same
  * `starWorldPosition` the vertex shader runs. That is PRD 8.5.7's single permitted mirror, and it is
  * why the card sits on its star rather than near it while the plane turns underneath.
  *
- * **The `cards` phase runs after `rig`** ({@link TICK_PHASES}), which is a promotion of what used to
- * be luck: this reads `camera.getWorldPosition` and projects the hovered planet's label, so it needs
- * the camera matrices the rig has just finalised. Under R3F both were priority-0 `useFrame`
- * subscribers and the order between them was their JSX order in `EternitiesScene`.
+ * **The `cards` phase runs after `rig`** ({@link TICK_PHASES}): this reads `camera.getWorldPosition`
+ * and projects the hovered planet's label, so it needs the camera matrices the rig has just
+ * finalised.
  */
 
 import { Vector3, type PerspectiveCamera, type Scene, type WebGLRenderer } from 'three'
 
-import type { CardRecord, PlaneRecord } from '../../data/types'
-import type { SceneNavigation } from '../../navigation/scene'
+import type { CardRecord } from '../../data/types'
 import type { FrameLoop } from '../renderer/frameLoop'
 import { starWorldPosition } from '../starfield/motion'
 import type { SceneResources } from '../useSceneData'
 
 import { FocusedCard } from './focusedCard'
 import { ImageQueue, type ImageQueueStats } from './imageQueue'
-import { ThumbnailTier, type ThumbnailTierStats } from './thumbnailTier'
-import type { SelectorView } from './thumbnailSelector'
 
 /** The focused plane's cards, keyed by global star index. Filled by the plane-detail loader. */
 export interface PlaneCards {
@@ -49,57 +49,44 @@ export interface PlanetLabelState {
   printing: number
 }
 
-export interface CardTierHandle {
+export interface FocusedCardHandle {
   readonly card: FocusedCard
-  readonly stats: ThumbnailTierStats
   /** PRD 7.2's six-request budget, as it is actually being spent. */
   readonly imageStats: ImageQueueStats
-  /** Star indices the tier is drawing a thumbnail for right now. */
-  readonly drawnStars: readonly number[]
-  /** Live GPU bytes for the atlas and everything the focused card has uploaded (PRD 7.2). */
-  readonly gpuBytes: { atlas: number; card: number }
-  /** The plane the camera is at, or `null` at multiverse level. */
-  setPlane: (plane: PlaneRecord | null) => void
+  /** Live GPU bytes for everything the focused card has uploaded (PRD 7.2). */
+  readonly gpuBytes: { card: number }
   /** The focused plane's cards. Arrives with the plane's shards (PRD 8.7.6). */
   setCards: (cards: PlaneCards) => void
   /** PRD 5.6.1: focusing a card shows it; releasing focus hides it. `-1` is no focus. */
   setFocusedStar: (star: number) => void
   setReducedMotion: (reduced: boolean) => void
-  /** PRD 8.5.11's third rung. Applied through `setCapacity`: the ladder steps the tier, not restarts it. */
-  setThumbnailCapacity: (capacity: number) => void
   /** The planet under the pointer, or -1 (PRD 5.6.9). */
   setHoveredPlanet: (planet: number) => void
   dispose: () => void
 }
 
-export interface CardTierOptions {
+export interface FocusedCardOptions {
   readonly gl: WebGLRenderer
   readonly scene: Scene
   readonly camera: PerspectiveCamera
   readonly loop: FrameLoop
   readonly resources: SceneResources
-  readonly nav: SceneNavigation
   readonly labelState: PlanetLabelState
 }
 
-export function attachCardTier({
+export function attachFocusedCard({
   gl,
   scene,
   camera,
   loop,
   resources,
-  nav,
   labelState,
-}: CardTierOptions): CardTierHandle {
+}: FocusedCardOptions): FocusedCardHandle {
   const canvas = gl.domElement
   const queue = new ImageQueue()
-  const tier = new ThumbnailTier(resources.geometry, resources.table, queue, 0)
   const card = new FocusedCard(queue)
 
-  let plane: PlaneRecord | null = null
   let cards: PlaneCards = { get: () => null }
-  /** PRD 7.3.2: built once per card set rather than per tick. */
-  let cardIndex = { firstPrintingOf: (star: number) => cards.get(star)?.p[0] ?? null }
   let focusedStar = -1
   let reducedMotion = false
   let hoveredPlanet = -1
@@ -107,12 +94,7 @@ export function attachCardTier({
 
   const cardPosition = new Vector3()
   const cameraPosition = new Vector3()
-  const forward = new Vector3()
   const projected = new Vector3()
-  // Mutable behind a `SelectorView` view of it: the selector only reads, and rebuilding this
-  // object every tick is the allocation PRD 7.3.2 rules out.
-  const view = { position: cameraPosition, forward, sizeScale: 1, pixelRatio: 1 }
-  const selectorView: SelectorView = view
   const pointer = { x: 0, y: 0, inside: false }
   /**
    * The canvas's CSS size, kept by a `ResizeObserver` rather than measured in the frame callback
@@ -120,9 +102,7 @@ export function attachCardTier({
    *
    * PRD 5.6.9's hover label needs it to turn a projected NDC position into a pixel offset, and it
    * was calling `getBoundingClientRect()` from inside `useFrame` to get it — a forced synchronous
-   * layout, on the frame path, on every frame the pointer was over a planet. The canvas is the only
-   * element whose box matters and it changes only when it is resized, so observing it is both
-   * cheaper and exact.
+   * layout, on the frame path, on every frame the pointer was over a planet.
    */
   const canvasBox = { width: 0, height: 0 }
 
@@ -149,7 +129,7 @@ export function attachCardTier({
   canvas.addEventListener('pointermove', onMove)
   canvas.addEventListener('pointerleave', onLeave)
 
-  scene.add(tier.mesh, tier.pickMesh, card.root)
+  scene.add(card.root)
 
   /** PRD 5.6.1. Re-run when focus moves *and* when the record lands, which can be later. */
   function applyFocus(): void {
@@ -166,18 +146,12 @@ export function attachCardTier({
     const motionScale = reducedMotion ? 0 : 1
 
     camera.getWorldPosition(cameraPosition)
-    camera.getWorldDirection(forward)
-    view.sizeScale = gl.domElement.height / (2 * Math.tan((camera.fov * Math.PI) / 360))
-    view.pixelRatio = gl.getPixelRatio()
-    // §1.10's ticks are sized in CSS pixels and `gl_PointSize` is in device pixels. One read of
-    // the ratio, two consumers.
-    card.setPixelRatio(view.pixelRatio)
+    // §1.10's ticks are sized in CSS pixels and `gl_PointSize` is in device pixels.
+    card.setPixelRatio(gl.getPixelRatio())
 
     // Every tick, focused or not: a decoded image that arrives as focus is released still has to
     // reach the GPU and let its bitmap go.
     card.flushUploads(gl)
-
-    tier.update(delta, gl, nav.rig.motion, plane, selectorView, cardIndex, motionScale, focusedStar)
 
     if (card.visible && focusedStar >= 0) {
       const { table, geometry } = resources
@@ -213,26 +187,16 @@ export function attachCardTier({
 
   return {
     card,
-    get stats() {
-      return tier.stats
-    },
     get imageStats() {
       return queue.stats
     },
-    get drawnStars() {
-      return tier.drawnStars
-    },
     get gpuBytes() {
-      return { atlas: tier.atlas.gpuBytes, card: card.gpuBytes }
+      return { card: card.gpuBytes }
     },
 
-    setPlane: (next) => {
-      plane = next
-    },
     setCards: (next) => {
       if (next === cards) return
       cards = next
-      cardIndex = { firstPrintingOf: (star: number) => cards.get(star)?.p[0] ?? null }
       // The record for the focused star may have just arrived with this set.
       applyFocus()
     },
@@ -243,9 +207,6 @@ export function attachCardTier({
     },
     setReducedMotion: (reduced) => {
       reducedMotion = reduced
-    },
-    setThumbnailCapacity: (capacity) => {
-      tier.setCapacity(capacity)
     },
     setHoveredPlanet: (planet) => {
       if (planet === hoveredPlanet) return
@@ -260,8 +221,7 @@ export function attachCardTier({
       observer.disconnect()
       canvas.removeEventListener('pointermove', onMove)
       canvas.removeEventListener('pointerleave', onLeave)
-      scene.remove(tier.mesh, tier.pickMesh, card.root)
-      tier.dispose()
+      scene.remove(card.root)
       card.dispose()
       queue.dispose()
     },

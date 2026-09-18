@@ -11,9 +11,8 @@
 
 import { describe, expect, it } from 'vitest'
 import { Vector3 } from 'three'
-import type { BufferGeometry, Mesh, Points, Texture, Vector4, WebGLRenderer } from 'three'
+import type { Mesh, Points } from 'three'
 
-import { ATLAS_BYTES, ATLAS_CELLS, ATLAS_COLUMNS, ThumbnailAtlas } from '../src/scene/cards/atlas'
 import {
   FocusedCard,
   stepSpring,
@@ -47,9 +46,6 @@ import {
 import { PICK_BUSY, PICK_LAYER, PICK_MISS } from '../src/scene/picking/idPicker'
 import { cardEdgeGeometry, cardFaceGeometry } from '../src/scene/cards/roundedRect'
 import {
-  ATLAS_CELL_HEIGHT,
-  ATLAS_CELL_WIDTH,
-  ATLAS_SIZE,
   CARD_HEIGHT,
   CARD_TILT_MAX_RAD,
   CARD_WIDTH,
@@ -64,115 +60,13 @@ import {
   PLANET_SMALL_WIDTH,
   PLANET_TICK_RADIUS,
   THUMBNAIL_FADE_FULL_PX,
-  THUMBNAIL_GRACE_S,
 } from '../src/scene/tuning'
-
-describe('PRD 8.5.8 atlas geometry', () => {
-  it('is 4096² of 128 × 178 cells, base level only', () => {
-    expect(ATLAS_SIZE).toBe(4096)
-    expect(ATLAS_CELL_WIDTH).toBe(128)
-    expect(ATLAS_CELL_HEIGHT).toBe(178)
-    expect(ATLAS_COLUMNS).toBe(32)
-    // 4096 / 178 is 23 whole rows; the remainder is unusable, not silently overlapped.
-    expect(ATLAS_CELLS).toBe(32 * 23)
-    // PRD 8.5.8 calls it "the atlas's 64 MB". One RGBA byte quadruple per texel, no chain.
-    expect(ATLAS_BYTES).toBe(64 * 1024 * 1024)
-  })
-
-  it('holds the default capacity of 512 with room to spare', () => {
-    expect(ATLAS_CELLS).toBeGreaterThanOrEqual(512)
-  })
-})
 
 /**
  * The LRU, with no GPU in sight. `ThumbnailAtlas` allocates a `WebGLRenderTarget` in its
  * constructor, which is a plain object until a renderer touches it, so the eviction rule can be
  * exercised directly — and it is the rule, not the blit, that decides what the user sees.
  */
-describe('PRD 5.5.4 thumbnail LRU', () => {
-  const atlas = (capacity: number): ThumbnailAtlas => new ThumbnailAtlas(capacity)
-
-  it('hands out a distinct cell per star until it is full', () => {
-    const a = atlas(4)
-    const slots = [10, 11, 12, 13].map((star) => a.claim(star, 0))
-    expect(new Set(slots).size).toBe(4)
-    expect(slots.every((slot) => slot >= 0)).toBe(true)
-    expect(a.used).toBe(4)
-  })
-
-  it('refuses rather than evicting a cell whose fetch is still in flight', () => {
-    const a = atlas(2)
-    a.claim(1, 0)
-    a.claim(2, 0)
-    // Neither has been uploaded, so neither is evictable at any age: the bitmap coming back would
-    // land in a cell somebody else now owns.
-    expect(a.claim(3, THUMBNAIL_GRACE_S * 10)).toBe(-1)
-  })
-
-  it('keeps a cell that was visible within the grace period', () => {
-    const a = atlas(1)
-    const slot = a.claim(1, 0)
-    a.upload = (() => true)
-    markLoaded(a, slot)
-    expect(a.claim(2, THUMBNAIL_GRACE_S - 0.1)).toBe(-1)
-  })
-
-  it('evicts the least recently visible loaded cell past the grace period, and says which', () => {
-    const a = atlas(2)
-    markLoaded(a, a.claim(1, 0))
-    markLoaded(a, a.claim(2, 1))
-    a.touch(2, 5)
-
-    const evicted: number[] = []
-    const slot = a.claim(3, 5 + THUMBNAIL_GRACE_S)
-    a.claim(3, 5 + THUMBNAIL_GRACE_S, evicted)
-    expect(slot).toBeGreaterThanOrEqual(0)
-    // Star 1 was last seen at 0; star 2 at 5. The older one goes.
-    expect(a.slotOf(1)).toBe(-1)
-    expect(a.slotOf(2)).toBeGreaterThanOrEqual(0)
-  })
-
-  it('reports the evicted key so the star can stop pretending it has a thumbnail', () => {
-    const a = atlas(1)
-    markLoaded(a, a.claim(7, 0))
-    const evicted: number[] = []
-    a.claim(8, THUMBNAIL_GRACE_S + 1, evicted)
-    expect(evicted).toEqual([7])
-  })
-
-  it('PRD 8.5.11: shrinking the capacity evicts everything above it', () => {
-    const a = atlas(4)
-    for (const star of [1, 2, 3, 4]) markLoaded(a, a.claim(star, 0))
-    const evicted: number[] = []
-    a.setCapacity(2, evicted)
-    expect(a.capacity).toBe(2)
-    expect(evicted.length).toBe(2)
-    expect(a.used).toBe(2)
-    // Growing again is not retroactive; it just makes room.
-    a.setCapacity(4)
-    expect(a.capacity).toBe(4)
-  })
-
-  it('maps a cell to a rectangle inside the atlas that does not overlap its neighbour', () => {
-    const a = atlas(ATLAS_CELLS)
-    const first = { u: 0, v: 0, du: 0, dv: 0 }
-    const second = { u: 0, v: 0, du: 0, dv: 0 }
-    a.cellUv(0, first)
-    a.cellUv(1, second)
-    expect(first.u).toBe(0)
-    expect(first.v).toBe(0)
-    expect(first.du).toBeCloseTo(ATLAS_CELL_WIDTH / ATLAS_SIZE, 12)
-    expect(second.u).toBeCloseTo(first.u + first.du, 12)
-    expect(second.v).toBe(first.v)
-
-    // The last cell still fits.
-    const last = { u: 0, v: 0, du: 0, dv: 0 }
-    a.cellUv(ATLAS_CELLS - 1, last)
-    expect(last.u + last.du).toBeLessThanOrEqual(1)
-    expect(last.v + last.dv).toBeLessThanOrEqual(1)
-  })
-})
-
 /**
  * The atlas blit's frame handling, which shipped inverted.
  *
@@ -186,277 +80,6 @@ describe('PRD 5.5.4 thumbnail LRU', () => {
  * The fake renderer below is three's own arithmetic, and the assertions are in GL pixels: what the
  * driver is actually handed.
  */
-describe('PRD 8.5.8 atlas blit frame', () => {
-  /** Just enough `WebGLRenderer` for `upload`, applying three's CSS-pixel → GL-pixel rule. */
-  function fakeRenderer(pixelRatio: number, cssWidth: number, cssHeight: number) {
-    const viewport = { x: 0, y: 0, width: cssWidth, height: cssHeight }
-    const scissor = { ...viewport }
-    let target: unknown = null
-    let scissorTest = false
-    const glRects: Array<{ target: unknown; x: number; y: number; width: number; height: number }> =
-      []
-    const toGl = (r: typeof viewport) => ({
-      x: Math.round(r.x * pixelRatio),
-      y: Math.round(r.y * pixelRatio),
-      width: Math.round(r.width * pixelRatio),
-      height: Math.round(r.height * pixelRatio),
-    })
-    const renderer = {
-      getPixelRatio: () => pixelRatio,
-      // In drawing-buffer pixels, as the real canvas is. Present so that reaching for it — which is
-      // what the bug did — produces a wrong *measurement* here rather than a missing property.
-      domElement: { width: cssWidth * pixelRatio, height: cssHeight * pixelRatio },
-      getRenderTarget: () => target,
-      setRenderTarget: (next: unknown) => {
-        target = next
-      },
-      getScissorTest: () => scissorTest,
-      setScissorTest: (next: boolean) => {
-        scissorTest = next
-      },
-      getViewport: (out: { set: (x: number, y: number, z: number, w: number) => void }) => {
-        out.set(viewport.x, viewport.y, viewport.width, viewport.height)
-        return out
-      },
-      getScissor: (out: { set: (x: number, y: number, z: number, w: number) => void }) => {
-        out.set(scissor.x, scissor.y, scissor.width, scissor.height)
-        return out
-      },
-      setViewport: (x: number | Vector4, y?: number, w?: number, h?: number) => {
-        if (typeof x === 'number') {
-          viewport.x = x
-          viewport.y = y!
-          viewport.width = w!
-          viewport.height = h!
-        } else {
-          viewport.x = x.x
-          viewport.y = x.y
-          viewport.width = x.z
-          viewport.height = x.w
-        }
-      },
-      setScissor: (x: number | Vector4, y?: number, w?: number, h?: number) => {
-        if (typeof x === 'number') {
-          scissor.x = x
-          scissor.y = y!
-          scissor.width = w!
-          scissor.height = h!
-        } else {
-          scissor.x = x.x
-          scissor.y = x.y
-          scissor.width = x.z
-          scissor.height = x.w
-        }
-      },
-      render: () => {
-        glRects.push({ target, ...toGl(viewport) })
-      },
-    }
-    return {
-      renderer: renderer as unknown as WebGLRenderer,
-      glRects,
-      glViewport: () => toGl(viewport),
-      glScissor: () => toGl(scissor),
-      renderTarget: () => target,
-      scissorTest: () => scissorTest,
-    }
-  }
-
-  const bitmap = (): ImageBitmap =>
-    ({ width: 128, height: 178, close: () => {} })
-
-  it('blits into the cell rectangle `cellUv` maps, at a fractional pixel ratio', () => {
-    const atlas = new ThumbnailAtlas(ATLAS_CELLS)
-    // 1.5 is the default quality tier's `pixelRatioCap`, which is where this was found.
-    const fake = fakeRenderer(1.5, 1920, 1080)
-
-    // Slot 0 and its right-hand neighbour, which the 1.5× rect used to run into.
-    atlas.claim(0, 0)
-    atlas.claim(1, 0)
-    expect(atlas.upload(fake.renderer, 0, bitmap())).toBe(true)
-    expect(atlas.upload(fake.renderer, 1, bitmap())).toBe(true)
-
-    expect(fake.glRects).toHaveLength(2)
-    expect(fake.glRects[0]).toMatchObject({
-      x: 0,
-      y: 0,
-      width: ATLAS_CELL_WIDTH,
-      height: ATLAS_CELL_HEIGHT,
-    })
-    expect(fake.glRects[1]).toMatchObject({
-      x: ATLAS_CELL_WIDTH,
-      y: 0,
-      width: ATLAS_CELL_WIDTH,
-      height: ATLAS_CELL_HEIGHT,
-    })
-    // The cells abut and do not overlap, in GL pixels.
-    expect(fake.glRects[0]!.x + fake.glRects[0]!.width).toBe(fake.glRects[1]!.x)
-    // Both were drawn into the atlas, not into the default framebuffer.
-    expect(fake.glRects[0]!.target).toBe(atlas.target)
-    atlas.dispose()
-  })
-
-  it('writes the image the right way up: the top row goes to the top of the cell', () => {
-    // `UNPACK_FLIP_Y_WEBGL` is inert for an `ImageBitmap`, so texel row 0 is the image's *top* row
-    // and `t = 0` samples it. A render target's texels run bottom-up and the ortho blit camera puts
-    // the quad's `+y` at the top of the viewport, so the quad's top vertex must carry `t = 0`.
-    // `PlaneGeometry`'s default is the opposite, and with it every thumbnail drew upside down.
-    const atlas = new ThumbnailAtlas(4)
-    const mesh = (atlas as unknown as { blitMesh: { geometry: BufferGeometry } }).blitMesh
-    const position = mesh.geometry.getAttribute('position')
-    const uv = mesh.geometry.getAttribute('uv')
-    let checked = 0
-    for (let i = 0; i < position.count; i += 1) {
-      // Quad top → image top → t = 0. Quad bottom → image bottom → t = 1.
-      expect(uv.getY(i)).toBeCloseTo(position.getY(i) > 0 ? 0 : 1, 9)
-      // `u` is untouched: a horizontal flip would mirror every thumbnail.
-      expect(uv.getX(i)).toBeCloseTo(position.getX(i) > 0 ? 1 : 0, 9)
-      checked += 1
-    }
-    expect(checked).toBe(4)
-    atlas.dispose()
-  })
-
-  it('gives the caller back the exact frame it had, and its render target', () => {
-    const atlas = new ThumbnailAtlas(ATLAS_CELLS)
-    const fake = fakeRenderer(1.5, 1920, 1080)
-    atlas.claim(7, 0)
-    atlas.upload(fake.renderer, 7, bitmap())
-
-    // 1920 × 1080 CSS at 1.5 is a 2880 × 1620 drawing buffer. The viewport left behind has to be
-    // that, and not the 4320 × 2430 that passing drawing-buffer pixels to the restore produced.
-    expect(fake.glViewport()).toEqual({ x: 0, y: 0, width: 2880, height: 1620 })
-    expect(fake.glScissor()).toEqual({ x: 0, y: 0, width: 2880, height: 1620 })
-    expect(fake.renderTarget()).toBeNull()
-    expect(fake.scissorTest()).toBe(false)
-    atlas.dispose()
-  })
-
-  it('leaves a caller who was already rendering somewhere else exactly as it found them', () => {
-    const atlas = new ThumbnailAtlas(ATLAS_CELLS)
-    const fake = fakeRenderer(2, 800, 600)
-    // Something mid-pass: a half-frame viewport, a scissor, the test on, another target bound.
-    const otherTarget = {}
-    fake.renderer.setViewport(10, 20, 400, 300)
-    fake.renderer.setScissor(11, 21, 401, 301)
-    fake.renderer.setScissorTest(true)
-    fake.renderer.setRenderTarget(otherTarget as never)
-
-    atlas.claim(40, 0)
-    atlas.upload(fake.renderer, 40, bitmap())
-
-    expect(fake.glViewport()).toEqual({ x: 20, y: 40, width: 800, height: 600 })
-    expect(fake.glScissor()).toEqual({ x: 22, y: 42, width: 802, height: 602 })
-    expect(fake.scissorTest()).toBe(true)
-    expect(fake.renderTarget()).toBe(otherTarget)
-    atlas.dispose()
-  })
-
-  /**
-   * DEC-697. A `Texture` per upload is a `glCreateTexture` + `texStorage2D` + `glDeleteTexture`
-   * per thumbnail — a 91 KB allocate/free cycle each. A 110 s card-level session measured ~721 of
-   * them: the fill, bounded by the tier's `thumbnailCapacity` of 512 rather than by `ATLAS_CELLS`,
-   * plus every cell arriving after it. Fetch-bound and finite, not a steady rate: the burst landed
-   * in the first seconds after `focusCard` and was at 0/s by second 35. One staging
-   * texture makes every upload after the first a bare `texSubImage2D`, because three keys its GL
-   * texture on the parameters and not on the image.
-   */
-  const stagingOf = (atlas: ThumbnailAtlas): Texture | null =>
-    (atlas as unknown as { blitTexture: Texture | null }).blitTexture
-
-  it('stages every upload through one texture rather than allocating one per thumbnail', () => {
-    const atlas = new ThumbnailAtlas(ATLAS_CELLS)
-    const fake = fakeRenderer(1, 1920, 1080)
-    const closed: boolean[] = []
-    const tracked = (): ImageBitmap => {
-      const index = closed.push(false) - 1
-      return {
-        width: ATLAS_CELL_WIDTH,
-        height: ATLAS_CELL_HEIGHT,
-        close: () => {
-          closed[index] = true
-        },
-      }
-    }
-
-    atlas.claim(0, 0)
-    atlas.upload(fake.renderer, 0, tracked())
-    const staging = stagingOf(atlas)
-    expect(staging).not.toBeNull()
-
-    const versionAfterFirst = staging!.source.version
-    for (let key = 1; key < 5; key += 1) {
-      atlas.claim(key, 0)
-      expect(atlas.upload(fake.renderer, key, tracked())).toBe(true)
-      // Same `Texture`, so three's cache key never moves and its GL storage is never reallocated.
-      expect(stagingOf(atlas)).toBe(staging)
-    }
-    // Each upload still bumps the source version, or three would skip the re-upload entirely and
-    // every cell after the first would hold the first thumbnail.
-    expect(staging!.source.version).toBe(versionAfterFirst + 4)
-    // The material keeps pointing at it: nulling `map` between uploads flipped `USE_MAP` on and
-    // off and re-ran the program cache lookup every time.
-    expect(
-      (atlas as unknown as { blitMaterial: { map: Texture | null } }).blitMaterial.map,
-    ).toBe(staging)
-    // Still nothing outside the atlas holding a decoded image.
-    expect(closed).toEqual([true, true, true, true, true])
-
-    atlas.dispose()
-  })
-
-  it('reallocates the staging texture when a bitmap is not the cell size', () => {
-    // `texSubImage2D` writes the image's own dimensions at offset 0 into storage sized by the
-    // *first* bitmap. A smaller one would leave the previous thumbnail's pixels showing around it
-    // and a larger one is a GL error, so a mismatch has to reallocate rather than reuse.
-    const atlas = new ThumbnailAtlas(ATLAS_CELLS)
-    const fake = fakeRenderer(1, 1920, 1080)
-    const sized = (width: number, height: number): ImageBitmap => ({
-      width,
-      height,
-      close: () => {},
-    })
-
-    atlas.claim(0, 0)
-    atlas.upload(fake.renderer, 0, sized(ATLAS_CELL_WIDTH, ATLAS_CELL_HEIGHT))
-    const first = stagingOf(atlas)
-
-    atlas.claim(1, 0)
-    atlas.upload(fake.renderer, 1, sized(ATLAS_CELL_WIDTH, ATLAS_CELL_HEIGHT - 1))
-    expect(stagingOf(atlas)).not.toBe(first)
-
-    // And back to the cell size: the new one is kept and reused from there.
-    const second = stagingOf(atlas)
-    atlas.claim(2, 0)
-    atlas.upload(fake.renderer, 2, sized(ATLAS_CELL_WIDTH, ATLAS_CELL_HEIGHT - 1))
-    expect(stagingOf(atlas)).toBe(second)
-
-    atlas.dispose()
-  })
-
-  it('disposes the staging texture with the atlas', () => {
-    const atlas = new ThumbnailAtlas(ATLAS_CELLS)
-    const fake = fakeRenderer(1, 1920, 1080)
-    atlas.claim(0, 0)
-    atlas.upload(fake.renderer, 0, bitmap())
-    const staging = stagingOf(atlas)!
-    let disposed = false
-    staging.addEventListener('dispose', () => {
-      disposed = true
-    })
-    atlas.dispose()
-    expect(disposed).toBe(true)
-    expect(stagingOf(atlas)).toBeNull()
-  })
-})
-
-/** `upload` needs a renderer; the flag it sets is what the LRU reads, so set it directly. */
-function markLoaded(atlas: ThumbnailAtlas, slot: number): void {
-  const cells = (atlas as unknown as { cells: Array<{ loaded: boolean }> }).cells
-  const cell = cells[slot]
-  if (cell) cell.loaded = true
-}
-
 describe('PRD 7.2 image concurrency', () => {
   function queue(options: {
     concurrency?: number
@@ -724,7 +347,8 @@ describe('PRD 7.2 GPU memory', () => {
   it('the worst case — a 72-printing card — is inside the 96 MB target', () => {
     const report = worstCaseReport()
     expect(WORST_CASE.planets).toBe(72)
-    expect(report.totalBytes).toBe(ATLAS_BYTES + worstCaseCardBytes())
+    // The atlas term is 0 since the cutover retired it (DEC-752).
+    expect(report.totalBytes).toBe(worstCaseCardBytes())
     expect(report.withinTarget).toBe(true)
     expect(report.withinCeiling).toBe(true)
     // Stated rather than merely asserted, so a regression reads as a number and not as a boolean.

@@ -13,7 +13,7 @@
 
 import { useEffect, useRef, type ReactElement } from 'react'
 
-import type { PlanetLabelState } from './cards/cardTier'
+import type { PlanetLabelState } from './cards/focusedCardHost'
 import type { FrameLoop } from './renderer/frameLoop'
 
 export function PlanetHoverLabel({

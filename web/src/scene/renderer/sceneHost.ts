@@ -37,9 +37,13 @@
 import type { CameraRig } from '../../camera/rig'
 import { attachCameraRig } from '../../camera/attachRig'
 import { printingImageKey } from '../../data/images'
-import type { PlaneRecord } from '../../data/types'
 import type { SceneNavigation } from '../../navigation/scene'
-import { attachCardTier, type CardTierHandle, type PlaneCards, type PlanetLabelState } from '../cards/cardTier'
+import {
+  attachFocusedCard,
+  type FocusedCardHandle,
+  type PlaneCards,
+  type PlanetLabelState,
+} from '../cards/focusedCardHost'
 import { attachMotionSync } from '../motionSync'
 import type { PickResult } from '../picking/scenePicker'
 import { attachProgramWarmup } from '../platform/attachProgramWarmup'
@@ -159,7 +163,7 @@ export class SceneHost {
   private readonly post: PostChainAttachment
   private readonly starSceneHandle: StarSceneHandle
   private readonly worldsAttachment: WorldsAttachment
-  private cardTierHandle: CardTierHandle | null = null
+  private focusedCardHandle: FocusedCardHandle | null = null
   private readonly teardown: Array<() => void> = []
 
   private navigation: SceneNavigation | null = null
@@ -178,11 +182,11 @@ export class SceneHost {
   private worldCards: PlaneCards = { get: () => null }
   /** The last `drive` the caller asked for. See {@link attachDrive}. */
   private driveRig = true
-  /** {@link attachDrive}'s one-shot guard, the same shape as `cardTierHandle` is for the tier. */
+  /** {@link attachDrive}'s one-shot guard, the same shape as `focusedCardHandle` is for the tier. */
   private driveAttached = false
   private starsComplete = false
   /**
-   * PRD 5.9's setting, held so {@link buildCardTier} can replay it (DEC-751).
+   * PRD 5.9's setting, held so {@link buildFocusedCard} can replay it (DEC-751).
    *
    * The same reason {@link tier}'s thumbnail capacity is held and replayed: the card tier is built
    * late, and every `setX` that arrives before it exists hits a `?.` and is gone.
@@ -219,7 +223,7 @@ export class SceneHost {
         // PRD 5.6.9's planet hover reaches the card tier here rather than through React: a hover
         // changes several times a second while the pointer moves, and routing it through a render
         // is the per-frame re-render review finding R1 is about.
-        this.cardTierHandle?.setHoveredPlanet(pick?.kind === 'planet' ? pick.index : -1)
+        this.focusedCardHandle?.setHoveredPlanet(pick?.kind === 'planet' ? pick.index : -1)
         this.hovered.emit(pick)
       },
       onSelect: (pick) => this.selected.emit(pick),
@@ -265,17 +269,14 @@ export class SceneHost {
         const bloom = this.post.chain.bloomSourceSize
         this.stats.bloomWidth = bloom?.width ?? 0
         this.stats.bloomHeight = bloom?.height ?? 0
-        const cards = this.cardTierHandle
+        const cards = this.focusedCardHandle
         if (cards) {
-          const thumbnails = cards.stats
-          this.stats.thumbnails = thumbnails.drawn
-          this.stats.thumbnailCells = thumbnails.cells
-          this.stats.thumbnailCapacity = thumbnails.capacity
-          this.stats.thumbnailsFailed = thumbnails.failed
+          // The four thumbnail counters and `atlasBytes` keep their zero defaults: the tier and its
+          // atlas retired at the cutover (DEC-752). The FIELDS stay because `ProbeState` and
+          // `SceneReadout` read them, and a real 0 is honest where dropping the keys would be a
+          // probe-surface change no criterion asked for.
           this.stats.imagesInFlight = cards.imageStats.inFlight
-          const bytes = cards.gpuBytes
-          this.stats.atlasBytes = bytes.atlas
-          this.stats.cardBytes = bytes.card
+          this.stats.cardBytes = cards.gpuBytes.card
         }
       }),
     )
@@ -290,8 +291,8 @@ export class SceneHost {
     return this.starSceneHandle
   }
 
-  get cardTier(): CardTierHandle | null {
-    return this.cardTierHandle
+  get focusedCard(): FocusedCardHandle | null {
+    return this.focusedCardHandle
   }
 
   get statsSnapshot(): FrameStatsSnapshot {
@@ -338,7 +339,7 @@ export class SceneHost {
     this.worldsAttachment.setSpinAngles(
       resources ? (index) => resources.table.planes[index]?.spinAngle ?? 0 : null,
     )
-    this.buildCardTier()
+    this.buildFocusedCard()
     this.attachDrive()
     this.maybeWarm()
   }
@@ -397,7 +398,7 @@ export class SceneHost {
     this.driveRig = options.drive !== false
     if (navigation !== this.navigation) {
       this.navigation = navigation
-      this.buildCardTier()
+      this.buildFocusedCard()
     }
     this.attachDrive()
   }
@@ -419,7 +420,7 @@ export class SceneHost {
    * `test/scene-host-drive.test.tsx` now drives both arrival orders.
    *
    * The guard is `driveAttached` rather than `navigation && resources`, matching
-   * {@link buildCardTier} two methods down: both are one-shot gates over the same pair of inputs,
+   * {@link buildFocusedCard} two methods down: both are one-shot gates over the same pair of inputs,
    * and the pair completes in whichever setter is called second. A consequence worth stating: the
    * `drive` mode is fixed at the moment the pair completes. Nothing re-attaches the rig if a caller
    * later flips `drive`, and no caller does — since item 4 the bench lives in its own Vite entry,
@@ -488,10 +489,10 @@ export class SceneHost {
   /** PRD 5.9, from the settings store laid over the OS preference. */
   setReducedMotion(reduced: boolean): void {
     // Recorded before it is forwarded, because the card tier may not exist yet. See
-    // {@link reducedMotion} and {@link buildCardTier}.
+    // {@link reducedMotion} and {@link buildFocusedCard}.
     this.reducedMotion = reduced
     this.starSceneHandle.setReducedMotion(reduced)
-    this.cardTierHandle?.setReducedMotion(reduced)
+    this.focusedCardHandle?.setReducedMotion(reduced)
     this.navigation?.api.setReducedMotion(reduced)
   }
 
@@ -511,11 +512,7 @@ export class SceneHost {
 
   /** PRD 5.6.1: the star the card level is focused on, or -1. */
   setFocusedStar(star: number): void {
-    this.cardTierHandle?.setFocusedStar(star)
-  }
-
-  setPlane(plane: PlaneRecord | null): void {
-    this.cardTierHandle?.setPlane(plane)
+    this.focusedCardHandle?.setFocusedStar(star)
   }
 
   setCards(cards: PlaneCards): void {
@@ -524,7 +521,7 @@ export class SceneHost {
     // the *thumbnail* tier's construction would be a second ordering hazard of the kind DEC-761's
     // F1 already cost a frozen camera.
     this.worldCards = cards
-    this.cardTierHandle?.setCards(cards)
+    this.focusedCardHandle?.setCards(cards)
   }
 
   /**
@@ -572,8 +569,10 @@ export class SceneHost {
       setBloomScale: (scale) => this.post.setBloomScale(scale),
       setBloomLevels: (levels) => this.post.setBloomLevels(levels),
       setStarBloomScale: (scale) => this.starSceneHandle.setBloomScale(scale),
-      // The tier may be announced before the card tier exists; `buildCardTier` re-applies it.
-      setThumbnailCapacity: (capacity) => this.cardTierHandle?.setThumbnailCapacity(capacity),
+      // The tier may be announced before the card tier exists; `buildFocusedCard` re-applies it.
+      // The thumbnail tier retired at the cutover (DEC-752); §1.12's art pool is the worlds
+      // spend of this rung and `attachWorlds.setArtLayers` carries it.
+      setThumbnailCapacity: () => {},
       setArtPoolLayers: (layers) => this.worldsAttachment.setArtLayers(layers),
       setGlowQuality: (glow) => this.starSceneHandle.setGlowQuality(glow),
     })
@@ -587,25 +586,21 @@ export class SceneHost {
     })
   }
 
-  private buildCardTier(): void {
-    if (this.cardTierHandle || !this.resources || !this.navigation) return
-    this.cardTierHandle = attachCardTier({
+  private buildFocusedCard(): void {
+    if (this.focusedCardHandle || !this.resources || !this.navigation) return
+    this.focusedCardHandle = attachFocusedCard({
       gl: this.renderer.renderer,
       scene: this.renderer.scene,
       camera: this.renderer.camera,
       loop: this.renderer.loop,
       resources: this.resources,
-      nav: this.navigation,
       labelState: this.labelState,
     })
-    // The tier is built after the starting tier was announced, so the rung it missed is applied
-    // here rather than waiting for the ladder to move.
-    this.cardTierHandle.setThumbnailCapacity(this.tier.thumbnailCapacity)
     /*
      * And PRD 5.9's setting, for exactly the same reason (DEC-751).
      *
      * `setReducedMotion` runs from a mount effect, long before `planes.json` lands and this tier
-     * is built, so its `this.cardTierHandle?.` was a no-op for every user whose preference was
+     * is built, so its `this.focusedCardHandle?.` was a no-op for every user whose preference was
      * already set when the page loaded — which is every user who has the preference at all. The
      * tier then kept its own `reducedMotion = false` default for the rest of the session, and the
      * card went on tilting and the ring went on orbiting.
@@ -615,7 +610,7 @@ export class SceneHost {
      * why a browser check could confirm the setting "works" and the shipped path still be wrong —
      * measured both ways in DEC-751, frozen = false before load and true after.
      */
-    this.cardTierHandle.setReducedMotion(this.reducedMotion)
+    this.focusedCardHandle.setReducedMotion(this.reducedMotion)
   }
 
   private maybeWarm(): void {
@@ -628,7 +623,7 @@ export class SceneHost {
         camera: this.renderer.camera,
         field: this.resources.field,
         chain: this.post.chain,
-        extraSpecs: () => this.cardTierHandle?.card.warmupSpecs ?? [],
+        extraSpecs: () => this.focusedCardHandle?.card.warmupSpecs ?? [],
         onComplete: (result) => {
           this.warmupResult = result
           this.options.onWarmup?.(result)
@@ -639,8 +634,8 @@ export class SceneHost {
 
   dispose(): void {
     for (const undo of this.teardown.splice(0)) undo()
-    this.cardTierHandle?.dispose()
-    this.cardTierHandle = null
+    this.focusedCardHandle?.dispose()
+    this.focusedCardHandle = null
     this.worldsAttachment.dispose()
     this.starSceneHandle.dispose()
     this.post.dispose()
