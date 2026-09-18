@@ -241,39 +241,18 @@ It renders through SwiftShader and says nothing about how the refresh **looks**;
 > the gate loads real images on the production dataset and the card checkpoints are where a broken
 > id shows up.
 
-### 4.2 The visual gate — every refresh, without exception
+### 4.2 The visual gate — retired at the worlds cutover
 
-```sh
-cd web
-node scripts/visual-gate.mjs --dataset production --out ../visual-gate-<new-hash>
-```
+`visual-gate.mjs` captured PRD 9.3's seven checkpoints for the **galaxy** and was the instrument
+DEC-661, DEC-683 and DEC-684 were accepted on. The galaxy retired at the worlds cutover (worlds spec
+§3.2, DEC-752), and PRD 9.3 was amended in the same commit to hold the worlds build to worlds spec
+§3.1 instead. The script, `lib/status-panel.mjs`, `alloc-probe.mjs` and `dec697-diag.mjs` are
+archived under the **`galaxy-cutover`** tag — the last commit on which the galaxy scene and the
+visual gate both existed — and are no longer in the tree.
 
-**Run this on every refresh.** PRD 9.3 words its cadence as "per milestone-sized change", which
-does not obviously include a data refresh — and it must, for a reason specific to refreshes: PRD
-4.9.3 lets plane positions move between datasets, and the arm geometry every 9.3 criterion is
-judged on is *computed from the data*. A refresh can therefore break "spiral arms are legible for
-every plane with ≥ 2,000 cards" or "no label overlaps another at the home view" without a single
-line of rendering code changing, and nothing in 4.1 would notice. This is review amendment A1's
-note, written down here so the cadence has a home.
-
-`visual-gate.mjs` is the acceptance instrument for PRD 9.3 — DEC-661, DEC-683 and DEC-684 were all
-accepted on its output — so it is maintained tooling, not one-off review tooling, and it survived
-the DEC-708 archival for exactly that reason. It captures the seven checkpoints against the
-**shipped composition** (`?probe=shell`: the scene inside the HUD, which is what 9.3 judges), plus
-the shimmer recordings and the cross-fade pass, and writes `capture.json` beside them.
-
-It is a capture tool, not a check: it fails only if it cannot reach a checkpoint, never because of
-what a checkpoint looks like. **The owner judges the frames** against 9.3's seven criteria, and PRD
-9.4 makes that acceptance part of done. So:
-
-- attach the output directory to the refresh pull request (§5), and
-- if the arms on any plane over 2,000 cards read worse than the previous refresh, say so in the PR
-  rather than leaving it for the owner to spot. The previous refresh's captures are the comparison;
-  keep them until the new ones are accepted.
-
-Two practical notes. It needs a **real GPU** and a local Chrome — a software rasteriser cannot
-answer a question about bloom or shimmer — so it runs on the refresher's machine, not in CI. And it
-builds the site itself unless you pass `--no-build`, so it will pick up the dataset you just made.
+**Every refresh now runs §4.3.** Its reason for running on every refresh is the one this section
+used to give: the criteria are computed from the data, so a refresh can move them without a line of
+rendering code changing.
 
 ### 4.3 The worlds gate — every refresh that touches the v3 dataset
 
@@ -294,18 +273,19 @@ criteria are computed from the data. §1.3's cell sheet is laid out from `rowCel
 colour comes from `swatches.bin`, so a refresh can move W1's worst plane or collapse a W3 band pair
 without a line of rendering code changing.
 
-**Which dataset — and the one rule that matters.** Pass `--dataset worlds`, which is the role that
-points at the v3 directory. **Never repoint `datasets.json`'s `active` to test the worlds path.**
-`active` is contract v2, `READABLE_CONTRACT_VERSIONS` is `{2, 3}` for the dual-scene period, and v3
-*drops* the shear triple that `camera/motion.ts:229-234` and `scene/starfield/planeTable.ts:149-152`
-still read — through `?? 0`. So repointing it early does not throw and does not warn: the spiral
-shear flattens to zero and the galaxy keeps rendering, wrong, with no instrument watching. `active`
-moves exactly once, in the cutover PR, in the same commit that deletes the galaxy scene.
+**Which dataset.** `--dataset worlds` or `--dataset production`; since the cutover `active` names
+the same v3 directory, so a default build measures it too.
 
-The two v3 *fixtures* are not a substitute either. Both declare contract v3 and carry `rowCells`,
-but neither carries `swatches.bin`, so no `WorldSurfaceSource` can be constructed against them and
-the failure surfaces inside the loader — where it reads as a renderer defect rather than as a
-missing fixture artefact. Fixture-backed assertions are limited to what `planes.json` alone answers.
+> **History, kept because the rule it records was load-bearing.** Until the cutover this paragraph
+> said *never repoint `active` to test the worlds path*: `active` was contract v2,
+> `READABLE_CONTRACT_VERSIONS` was `{2, 3}`, and v3 drops the shear triple whose readers go through
+> `?? 0`, so an early repoint flattened the galaxy's shear without a warning. `active` moved exactly
+> once, in the commit that deleted the galaxy scene (DEC-752), and the same commit closed the
+> readable set to `{3}` — so a v2 dataset is now refused at load instead of silently misdrawn.
+
+The two v3 *fixtures* carry `swatches.bin` since DEC-796, so a fixture build composes worlds and the
+CI smoke build exercises the worlds path. They remain fixtures: the gate's criteria are specified on
+the production roster, and only the `worlds`/`production` role answers them.
 
 **Reading the output.** Every row prints the measure it aimed at, not just its criterion: W2 and W4
 are conjunctions and a conjunction hides which half did the work. Three verdicts, and the third is
@@ -317,8 +297,9 @@ measuring nothing.
 `--negative-controls` runs §3.1's matrix, and it is the run that says whether the instrument works
 at all. The run prints its own census — `N expected-RED rows, M expected-GREEN, … — K of T scored
 this run` — and that line, not a count written down here, is what to read: a number in this file is a
-claim about a matrix that keeps growing, and it goes stale silently. At `5608b0b` it is **6
-expected-RED, 5 expected-GREEN, 2 derivation (unscored), 1 MIXED**, over 14 rows. **`--only` scores a
+claim about a matrix that keeps growing, and it goes stale silently. At the cutover's
+confirmation run (`9ff1d81`) it read **4 expected-RED, 7 expected-GREEN, 1 N/A-only, 2 derivation
+(unscored), 3 MIXED — 13 of 15 scored**, and every one of 39 expectations landed on its colour. **`--only` scores a
 subset, so check `K of T` before reading a GREEN summary as a full matrix run.** The green rows are
 the ones to read first: in a
 matrix where everything is red, a broken baseline scores identically to a perfect guard, so only the

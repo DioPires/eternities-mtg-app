@@ -14,7 +14,7 @@
  * them the bench.
  *
  * **Why redirect rather than move the URLs.** `/bench` is PRD 9.1.2's route and what a person
- * types; `?probe=1`, `?selfcheck=1` and `?hold=<segment>` are what `scripts/bench.mjs`,
+ * types; `?probe=1` and `?hold=<segment>` are what `scripts/bench.mjs`,
  * `scripts/warmup-probe.mjs`, `scripts/visual-gate.mjs` and the `e2e/` suite drive, and what the
  * committed bench baseline was recorded through. Repointing all of them would have made this
  * leg's own before/after bench numbers incomparable — the one measurement the leg has to produce.
@@ -48,12 +48,6 @@ export function benchRouteWanted(pathname: string, search: string): boolean {
   return params.get('hold') !== null
 }
 
-/** Whether `?selfcheck=` asks for the GPU self-check. Mirrors `scene/selfCheck.url.ts`. */
-function selfCheckWanted(search: string): boolean {
-  const value = new URLSearchParams(search).get('selfcheck')
-  return value !== null && value !== '0'
-}
-
 /**
  * Whether `?probe=` asks for the scene on its own.
  *
@@ -78,7 +72,7 @@ function probeSceneWanted(search: string): boolean {
  */
 export function harnessHref(pathname: string, search: string): string | null {
   const wantsBench = benchRouteWanted(pathname, search)
-  if (!wantsBench && !selfCheckWanted(search) && !probeSceneWanted(search)) return null
+  if (!wantsBench && !probeSceneWanted(search)) return null
 
   const params = new URLSearchParams(search)
   // `/bench` said it with the path. Nothing but the query survives a redirect, so say it again.

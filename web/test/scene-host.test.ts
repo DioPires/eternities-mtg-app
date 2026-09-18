@@ -36,7 +36,6 @@ function record(): { calls: string[]; targets: QualityRungTargets } {
       setPixelRatioCap: (v) => calls.push(`pixelRatioCap=${v}`),
       setBloomScale: (v) => calls.push(`bloomScale=${v}`),
       setBloomLevels: (v) => calls.push(`bloomLevels=${v}`),
-      setStarBloomScale: (v) => calls.push(`starBloomScale=${v}`),
       setThumbnailCapacity: (v) => calls.push(`thumbnailCapacity=${v}`),
       setArtPoolLayers: (v) => calls.push(`artPoolLayers=${v}`),
       setGlowQuality: (v) => calls.push(`glowQuality=${v}`),
@@ -60,24 +59,10 @@ describe('applyQualityTier (PRD 8.5.11: one announcement, every rung)', () => {
       'pixelRatioCap',
       'bloomScale',
       'bloomLevels',
-      'starBloomScale',
       'thumbnailCapacity',
       'artPoolLayers',
       'glowQuality',
     ])
-  })
-
-  it('sends the post chain and the star field the same bloom scale', () => {
-    // Two consumers of one number, and they must agree within the frame: the field's sprite sizes
-    // are in device pixels and the bloom source is a smaller target than the drawing buffer, so the
-    // second draw needs the same numbers scaled. Two authorities for this is how the field ends up
-    // drawing tier 0's sprite sizes into tier 2's target.
-    for (let index = 0; index < QUALITY_TIERS.length; index += 1) {
-      const calls = appliedFor(index)
-      const post = calls.find((call) => call.startsWith('bloomScale='))
-      const stars = calls.find((call) => call.startsWith('starBloomScale='))
-      expect(stars).toBe(post?.replace('bloomScale=', 'starBloomScale='))
-    }
   })
 
   it('moves exactly one knob between adjacent tiers', () => {

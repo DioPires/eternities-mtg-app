@@ -22,8 +22,8 @@
  * the two, all named on {@link SceneViewProps} — who loads the data, who starts PRD 6.8.2's intro,
  * and who owns the keyboard.
  *
- * The GPU self-check is not here: it holds the field still and reads pixels back, which it cannot
- * do in a scene where the rig is flying the camera. `App` routes `?selfcheck` to `harness/`.
+ * The GPU self-check that used to live beside this retired with the star field at the cutover
+ * (DEC-752); it is archived under the `galaxy-cutover` tag.
  */
 
 import {

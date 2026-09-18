@@ -15,54 +15,14 @@
  * `platform-dom.test.tsx`, because `.test.ts` runs in `node` by design (see `vitest.config.ts`).
  */
 
-import { ShaderMaterial, Texture } from 'three'
 import { describe, expect, it } from 'vitest'
 
-import type { PlaneRecord } from '../src/data/types'
 import { float16ToNumber } from '../src/data/decode'
 import { resolvePixelRatio } from '../src/scene/platform/backingStore'
 import { capabilitiesForBench } from '../src/scene/platform/capabilities'
 import { HALF_FLOAT_PROBE_INTERNALS } from '../src/scene/platform/halfFloatProbe'
 import { dedupeSpecs, type ProgramWarmupSpec } from '../src/scene/platform/programWarmup'
 import { QUALITY_TIERS } from '../src/scene/quality/adaptiveQuality'
-import { PlaneTable } from '../src/scene/starfield/planeTable'
-import { createStarField } from '../src/scene/starfield/starFieldObjects'
-import { StarGeometry } from '../src/scene/starfield/starGeometry'
-import { PICK_MIN_PX, STAR_MAX_PX, STAR_MIN_PX } from '../src/scene/tuning'
-
-/** The minimum a `PlaneTable` will accept; only its texture is read here. */
-function plane(): PlaneRecord {
-  return {
-    index: 0,
-    slug: 'test',
-    displayName: 'Test',
-    notes: '',
-    kind: 'spiral',
-    cardCount: 10,
-    starOffset: 0,
-    starCount: 10,
-    shardCount: 1,
-    home: [10, 2, -5],
-    radius: 4,
-    tilt: [0, 0, 0, 1],
-    spinPeriodS: 120,
-    spinDirection: 1,
-    driftAmplitude: 0.5,
-    driftPeriodS: 60,
-    driftPhase: 0.3,
-    shearAmplitude: 0.15,
-    shearPeriodS: 50,
-    shearPhase: 0.7,
-    armPitch: 0.8,
-    discThickness: 0.05,
-    bar: false,
-    palette: [1, 0, 0, 0, 0, 0, 0],
-    nebulaTint: [0.5, 0.6, 0.7],
-    firstYear: 2000,
-    lastYear: 2020,
-    sets: [],
-  }
-}
 
 describe('the half-float probe (review §3.7: "float16 is a manual switch")', () => {
   /**
@@ -152,68 +112,6 @@ describe('the pixel-ratio cap (PRD 7.1.3, review §3.5)', () => {
     // `e2e/quality.spec.ts` asserts against a live renderer. Here it is the arithmetic alone.
     const resolved = QUALITY_TIERS.map((tier) => resolvePixelRatio(tier.pixelRatioCap, 2))
     expect(resolved).toEqual([1.5, 1, 1, 1, 1])
-  })
-})
-
-describe('the ALIASED_POINT_SIZE_RANGE clamp (review §3.5, §3.7)', () => {
-  /*
-   * Why this is a unit test and not an e2e assertion.
-   *
-   * `e2e/quality.spec.ts` asserts `starMaxPixels <= pointSizeMax` off the live renderer, and that
-   * assertion is **vacuous on every machine the team owns**: the app's own ceiling is
-   * `STAR_MAX_PX` x dpr = 44 device pixels at dpr 2, and ANGLE reports 511 on this Mac and 1024 on
-   * D3D11, so the clamp never binds and `<=` holds whether or not the clamp is there at all.
-   * Deleting the `Math.min` in `starFieldObjects.update` was confirmed to leave all five e2e tests
-   * green (DEC-739 mutant B).
-   *
-   * The clamp exists for the one platform in scope where it *does* bind — Firefox on Apple's native
-   * GL reports 64, against the 88 the app asks for at dpr 4 — which is hardware no test runner has.
-   * So the driver's limit is injected here instead, and the binding case is asserted directly.
-   * Without this test the load-bearing half of review §3.5's "clamp `uMaxPixels` and the pick floor
-   * to it" has no check that can fail.
-   */
-  const noise = new Texture()
-
-  function sizesAt(maxPointSizePx: number, pixelRatio: number): Record<string, number> {
-    const table = new PlaneTable([plane()], 130)
-    const field = createStarField(table, new StarGeometry(4), noise)
-    field.update(1, 1080, Math.PI / 4, pixelRatio, 0.5, maxPointSizePx)
-    const uniforms = (field.points.material as ShaderMaterial).uniforms
-    const sizes = {
-      max: uniforms['uMaxPixels']!.value as number,
-      min: uniforms['uMinPixels']!.value as number,
-      // The pick program substitutes `uPickMinPixels` under the shared name `uMinPixels`
-      // (`idMaterial`'s uniform block), so the pick floor is read off the pick material.
-      pick: (field.pickPoints.material as ShaderMaterial).uniforms['uMinPixels']!.value as number,
-    }
-    field.dispose()
-    return sizes
-  }
-
-  it('asks for the full sprite size when the driver can rasterise it', () => {
-    // The non-binding case, which is every machine in scope but one. This row is the control: it
-    // must stay green, or the two below would pass on a build that clamped everything to nothing.
-    const sizes = sizesAt(511, 2)
-    expect(sizes.max).toBe(STAR_MAX_PX * 2)
-    expect(sizes.min).toBe(STAR_MIN_PX * 2)
-    expect(sizes.pick).toBe(PICK_MIN_PX * 2)
-  })
-
-  it('never asks for a sprite larger than the driver will rasterise', () => {
-    // Firefox on Apple's native GL, at the dpr where §3.7 measured the conflict: 22 x 4 = 88 asked
-    // against a limit of 64. Unclamped, every mythic above 64 px draws at the same size silently.
-    const sizes = sizesAt(64, 4)
-    expect(STAR_MAX_PX * 4).toBeGreaterThan(64)
-    expect(sizes.max).toBe(64)
-  })
-
-  it('clamps the pick floor and the size floor too, not just the ceiling', () => {
-    // A floor above the driver's ceiling is a floor the driver ignores, so the pick pass would
-    // believe its click targets were 7 CSS pixels wide while the driver drew them at 4.
-    const sizes = sizesAt(4, 2)
-    expect(sizes.max).toBe(4)
-    expect(sizes.pick).toBe(4)
-    expect(sizes.min).toBe(Math.min(STAR_MIN_PX * 2, 4))
   })
 })
 

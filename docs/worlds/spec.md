@@ -3050,6 +3050,18 @@ diagnostics under **`review-tooling-2026-09-dec714`**.
 Tag the commit, do not keep the code: the scripts stay retrievable, and a dead 1,195-line script in
 the tree is read as maintained tooling by the next person.
 
+> **Landed (DEC-752).** `galaxy-cutover` tags `107fdf8` — leg G at main `c91666c`, the last commit
+> with the galaxy scene and `visual-gate.mjs` both in the tree — and the cutover commit deletes both.
+> What it had to *move* first, because the module graph named for the galaxy was also hosting the
+> worlds build, is recorded in `docs/worlds/cutover-inventory.md`: the printing ring's host
+> (`split_cardtier`, `cards/focusedCardHost.ts`), the input layer and the star data layer (DEC-852),
+> and the plane table's clock, the quality monitor, the focused-star mirror and the sky
+> (`scene/sceneFrame.ts`). Deleted with the field and not moved, because their subject went with
+> it: the GPU self-check (`?selfcheck=1`) and the star field's sprite clamp. `?probe=`'s
+> `quality.glowShader` now reads the worlds rim (§1.12 row 4, wired in the same leg — the rim's knob
+> had never been connected to the ladder), `quality.motion` reads the frame's clock, and
+> `platform.starMaxPixels` stays at a structural `-1`.
+
 ---
 
 ## 4. Sequencing and staffing

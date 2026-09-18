@@ -258,10 +258,10 @@ describe('SceneHost routes the pick with no galaxy in the picture (DEC-852)', ()
   })
 
   it('leaves the star highlight unwritten when no field was handed over', async () => {
-    // The field here is a recorder, and the host was given one because `SceneResources.field` is
-    // still non-optional. What the cutover removes is `setResources` ever running with a real
-    // field — so the check that matters is that the *highlight* is a hand-over from the star scene
-    // and not something the input layer reaches for on its own.
+    // The recorder below would catch a write. Since the cutover (DEC-752) nothing hands the input
+    // layer a highlight — the star scene that did is deleted — so a pick must still be reported and
+    // the highlight must stay unwritten. A highlight the input layer reached for on its own would
+    // show up here as a write with no hand-over, which is the DEC-852 property this row guards.
     host.setResources(data.resources)
     answers(2)
     await movePointer(16)
@@ -269,8 +269,8 @@ describe('SceneHost routes the pick with no galaxy in the picture (DEC-852)', ()
     expect(hovered).toHaveLength(1)
     expect(
       data.highlights,
-      'the star scene registered the highlight, so it is written — see the DEC-852 hand-over',
-    ).toEqual([2])
+      'no star field, so no hand-over, so no write — see the DEC-852 hand-over',
+    ).toEqual([])
   })
 
   /*

@@ -143,8 +143,14 @@ describe('where a harness URL goes', () => {
     expect(harnessHref('/', '?bench=1')).toBe('/harness.html?bench=1')
     expect(harnessHref('/', '?hold=sheet')).toBe('/harness.html?hold=sheet')
     expect(harnessHref('/bench', '?hold=card')).toBe('/harness.html?hold=card')
-    expect(harnessHref('/', '?selfcheck=1')).toBe('/harness.html?selfcheck=1')
     expect(harnessHref('/', '?probe=1')).toBe('/harness.html?probe=1')
+  })
+
+  it('keeps ?selfcheck on the product shell, now that the GPU self-check has retired', () => {
+    // The self-check compared the star field's id buffer against the CPU mirror, and went with the
+    // star field at the cutover (DEC-752); it is archived under the \`galaxy-cutover\` tag. A
+    // redirect to a harness route that no longer exists would be a blank page.
+    expect(harnessHref('/', '?selfcheck=1')).toBeNull()
   })
 
   it('carries the parameters the harness routes are steered by', () => {

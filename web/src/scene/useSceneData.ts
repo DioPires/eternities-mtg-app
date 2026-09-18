@@ -14,7 +14,7 @@
  * decision to keep going. A missing `search.json` costs the set facet, not the multiverse.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import type { SetsSidecar, Stars, Swatches } from '../data/decode'
 import {
@@ -34,9 +34,7 @@ import {
 } from '../data/types'
 import { sceneErrors } from './errors'
 import { bootPositionMode } from './platform/capabilities'
-import { createNebulaTexture } from './starfield/nebulaTexture'
 import type { PlaneTable } from './starfield/planeTable'
-import { createStarField, type StarField } from './starfield/starFieldObjects'
 import type { PositionMode } from './platform/positionMode'
 import { createStarData } from './starfield/starData'
 import type { StarGeometry } from './starfield/starGeometry'
@@ -45,7 +43,6 @@ import { streamStarsIntoScene } from './starfield/starStream'
 export interface SceneResources {
   readonly table: PlaneTable
   readonly geometry: StarGeometry
-  readonly field: StarField
   readonly positionMode: PositionMode
 }
 
@@ -108,8 +105,6 @@ const INITIAL: SceneDataState = {
 
 export function useSceneData(): SceneDataState {
   const [state, setState] = useState<SceneDataState>(INITIAL)
-  // The nebula lookup is deterministic and shared; building it twice would be pure waste.
-  const noise = useMemo(() => createNebulaTexture(), [])
   const disposers = useRef<Array<() => void>>([])
 
   useEffect(() => {
@@ -215,20 +210,16 @@ export function useSceneData(): SceneDataState {
       // PRD 8.7.2: the roster is enough to draw the plane glows, so build the scene now and let
       // the stars arrive into it.
       //
-      // **Two steps, not one, and the order is the cutover's (DEC-852).** The star *data* — the
-      // plane table and the buffer — is what the worlds build runs on and what §1.10's ring reads;
-      // the field and the nebula lookup are the galaxy's two objects, layered on top. Worlds spec
-      // §3.2 deletes the second step, and because it is a step rather than four interleaved
-      // statements that deletion is the two lines below plus their imports.
+      // **One step since the cutover (DEC-752).** DEC-852 had split this in two — the star *data*
+      // the worlds build runs on, and the galaxy's field and nebula layered on top — precisely so
+      // that §3.2's deletion would be the second step and its two imports. It was.
       const data = createStarData(planes, manifest.counts.stars)
       const { table, geometry, positionMode } = data
-      const field = createStarField(table, geometry, noise)
       disposers.current.push(() => {
-        field.dispose()
         data.dispose()
       })
       lines.push(`star buffer: ${manifest.counts.stars} records, ${positionMode} positions`)
-      patch({ planes, resources: { table, geometry, field, positionMode }, expected: manifest.counts.stars })
+      patch({ planes, resources: { table, geometry, positionMode }, expected: manifest.counts.stars })
 
       /*
        * `swatches.bin`, beside `stars.bin` rather than in the background pair (§2.2, `load.ts`).
@@ -322,14 +313,7 @@ export function useSceneData(): SceneDataState {
       controller.abort()
       for (const dispose of cleanup.splice(0)) dispose()
     }
-  }, [noise])
-
-  useEffect(
-    () => () => {
-      noise.dispose()
-    },
-    [noise],
-  )
+  }, [])
 
   return state
 }

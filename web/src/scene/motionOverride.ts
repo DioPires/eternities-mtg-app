@@ -8,7 +8,7 @@
  * *Resolving* reduced motion is not here. It happens once, in `app/hooks.ts`'s `useReducedMotion`,
  * over the settings toggle and the OS preference (PRD 5.9, 6.10.1). This module used to export a
  * second hook of that name over `matchMedia` alone, which is the duplication review §6.2 named;
- * what is left is the seam the three instrument routes — `?probe=1`, `/bench` and `?selfcheck` —
+ * what is left is the seam the instrument routes — `?probe=1` and `/bench` —
  * lay over the one resolution. The shell deliberately does not, so a query string cannot change
  * what a user sees.
  */

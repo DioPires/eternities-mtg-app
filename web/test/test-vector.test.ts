@@ -6,7 +6,7 @@
  * URI, one of these two suites fails. That is the whole point of the vector.
  */
 
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
@@ -657,15 +657,17 @@ describe('loud failures', () => {
   it.each([
     ['stars.bin', decodeStars],
     ['sets.bin', decodeSets],
-  ] as const)('still reads a v2 header in %s, for the dual-scene period', (name, decode) => {
-    // The negative control for the test above, and the assertion worlds spec §2's "zero deploy
-    // risk" argument actually rests on: `datasets.json` keeps `active` on the last v2 dataset
-    // while the v3 one is published beside it, so a build that refused v2 would break what is
-    // deployed on the first v3 commit. Not applicable to `swatches.bin`, which v2 never had.
+  ] as const)('rejects a v2 header in %s, now that the galaxy has retired', (name, decode) => {
+    // Was "still reads a v2 header, for the dual-scene period": `datasets.json` kept `active` on the
+    // last v2 dataset while v3 was published beside it. That period closed at the cutover (worlds
+    // spec §3.2, DEC-752), in the commit that moved `active`, and the refusal is now the guard —
+    // v3 dropped the spiral fields and their readers go through `?? 0`, so a v2 file this build
+    // accepted would render with the shear flattened rather than fail.
     const buffer = new Uint8Array(bytes(name))
     buffer[VERSION_BYTE] = 2
-    expect(READABLE_CONTRACT_VERSIONS.has(2)).toBe(true)
-    expect(() => decode(buffer.buffer)).not.toThrow()
+    expect(READABLE_CONTRACT_VERSIONS.has(2)).toBe(false)
+    expect(() => decode(buffer.buffer)).toThrow(ContractError)
+    expect(() => decode(bytes(name)), 'the v3 bytes still decode').not.toThrow()
   })
 
   // `load.assertContractVersion` gates all four JSON artefacts and had no test on any path.
@@ -691,81 +693,10 @@ describe('loud failures', () => {
     await expect(load(servingVersion(UNREADABLE_VERSION))).rejects.toThrow(
       `${name} is contract v${UNREADABLE_VERSION}, this build reads`,
     )
-    // The same artefact at either readable version loads, so the gate is the version and nothing
-    // else — and the v2 row is what the deployed galaxy build is doing right now.
+    // The same artefact at the readable version loads, so the gate is the version and nothing
+    // else. v2 is refused since the cutover (DEC-752) — see the header rows above.
     await expect(load(servingVersion(CONTRACT_VERSION))).resolves.toBeDefined()
-    await expect(load(servingVersion(2))).resolves.toBeDefined()
+    await expect(load(servingVersion(2))).rejects.toThrow(`${name} is contract v2, this build reads`)
   })
 })
 
-/**
- * The v2 **shape**, read from the dataset that is actually deployed (DEC-757 note 2).
- *
- * Everything above rewrites a version byte or a `contractVersion` field on **v3-shaped** bytes, so
- * it pins the *gate* and not the *tolerance*. The tolerance is what worlds spec §2's "zero deploy
- * risk" argument rests on: `datasets.json` keeps `active` on the last v2 dataset, so this build has
- * to read a file with `rowCells` absent, five-element printing tuples, the spiral fields present
- * and no `swatches.bin` at all — none of which a version-swapped v3 artefact has.
- *
- * The test vector moved to v3 and both fixture datasets were regenerated as v3, so the committed v2
- * dataset is the only v2 artefact left in the repo, and until now nothing loaded it. It is read
- * here through the same loaders the app uses, off disk: no network, no rebuild.
- */
-describe('the committed v2 dataset, through the loaders', () => {
-  const V2_ROOT = 'https://eternities.test/data/v2/'
-  const registry = JSON.parse(
-    readFileSync(resolve(__dirname, '../datasets.json'), 'utf8'),
-  ) as Partial<Record<string, string>>
-  // `active` is the deployed dataset and is the *reason* this block exists — if it ever stops
-  // naming a v2 one, these assertions should fail loudly rather than quietly test nothing.
-  const v2Dataset = registry.active ?? ''
-  const v2Dir = resolve(__dirname, '../public/data', v2Dataset)
-
-  const fetchV2 = (input: RequestInfo | URL): Promise<Response> => {
-    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
-    const buffer = readFileSync(join(v2Dir, url.slice(V2_ROOT.length)))
-    return Promise.resolve(
-      new Response(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)),
-    )
-  }
-  const serveV2 = { root: V2_ROOT, fetchImpl: fetchV2 } as RetryOptions
-
-  it('loads manifest.json and planes.json at contract v2, with no rowCells anywhere', async () => {
-    const manifest = await loadManifest(serveV2)
-    expect(manifest.contractVersion).toBe(2)
-    expect(manifest.dataHash).toBe(v2Dataset)
-
-    const planes = await loadPlanes(serveV2)
-    expect(planes.contractVersion).toBe(2)
-    expect(planes.planes.length).toBeGreaterThan(0)
-    // The v3-only field is absent on every plane, including the ones that would have a grid. A
-    // consumer must therefore check for the *field*, not for the version — which is exactly what
-    // the comment on `READABLE_CONTRACT_VERSIONS` instructs, and this is the artefact that makes
-    // that instruction testable.
-    expect(planes.planes.every((plane) => plane.rowCells === undefined)).toBe(true)
-    // ...while the spiral fields v3 traded away are still present.
-    expect(planes.planes.some((plane) => plane.armPitch !== undefined)).toBe(true)
-  })
-
-  it('decodes a v2 stars.bin and sets.bin, and has no swatches.bin to decode', async () => {
-    const stars = decodeStars(await (await fetchV2(`${V2_ROOT}stars.bin`)).arrayBuffer())
-    const sets = decodeSets(await (await fetchV2(`${V2_ROOT}sets.bin`)).arrayBuffer())
-    expect(stars.count).toBeGreaterThan(0)
-    // The two sidecars agree on how many stars there are, which is the only cross-file invariant
-    // v2 has and the one a shape regression would break first.
-    expect(sets.starCount).toBe(stars.count)
-    // v2 never had one. This is the shape assertion the version-swap tests above cannot make,
-    // because they start from a v3 directory in which the file always exists.
-    expect(existsSync(join(v2Dir, 'swatches.bin'))).toBe(false)
-  })
-
-  it('reads a v2 plane shard whose printing tuples have five elements', async () => {
-    const shard = await loadPlaneShard('dominaria', 0, serveV2)
-    expect(shard.contractVersion).toBe(2)
-    const printings = shard.cards.flatMap((card) => card.p)
-    expect(printings.length).toBeGreaterThan(0)
-    // No sixth element anywhere: `artist` is v3's (§2.3), and `PrintingTuple`'s five-element arm
-    // exists precisely so that this file is not a type error.
-    expect(printings.every((printing) => printing.length === 5)).toBe(true)
-  })
-})

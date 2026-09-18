@@ -20,17 +20,16 @@ export const CONTRACT_VERSION = 3
 /**
  * Every contract version this build can decode.
  *
- * **Both, and this is load-bearing, not laxity.** Worlds spec §2 publishes a v3 dataset beside the
- * v2 one and deliberately does *not* move `datasets.json`'s `active`, so that the galaxy build
- * keeps fetching the dataset it already fetches and the v3 publish carries zero deploy risk. That
- * argument is only true if a build that speaks v3 still *reads* v2 — a single-version check would
- * make the very first v3 commit reject the dataset the deployed app is pointed at.
+ * **v3 only, since the galaxy retired (worlds spec §3.2, DEC-752).** During the coexistence period
+ * this was `{2, 3}`: the v3 dataset was published beside the v2 one without moving `active`, and a
+ * v3-speaking build had to keep reading the v2 dataset the deployed app was pointed at. The pair was
+ * recorded as closing at the cutover, and it closed in the same commit that moved `active`.
  *
- * The pair is not permanent: it closes when the galaxy retires (§3.2). Until then, a consumer that
- * needs a v3-only field must check for the field, not the version — `rowCells` is the one that
- * matters, and `planes.json` omits it on exactly the planes that have no grid.
+ * **Closing it is a guard, not tidying.** v3 dropped the spiral fields, and their three live readers
+ * go through `?? 0` — so a v2 dataset read by this build would not fail, it would render with the
+ * shear silently flattened. Refusing the version is what turns that into an error message (§3.2.1).
  */
-export const READABLE_CONTRACT_VERSIONS: ReadonlySet<number> = new Set([2, 3])
+export const READABLE_CONTRACT_VERSIONS: ReadonlySet<number> = new Set([3])
 
 export const BINARY_HEADER_BYTES = 16
 export const STAR_RECORD_BYTES = 12

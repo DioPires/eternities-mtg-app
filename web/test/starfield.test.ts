@@ -51,7 +51,6 @@ import {
   starWorldPosition,
 } from '../src/scene/starfield/motion'
 import { PlaneTable } from '../src/scene/starfield/planeTable'
-import { STAR_VERTEX_SHADER } from '../src/scene/starfield/shaders'
 import { StarGeometry } from '../src/scene/starfield/starGeometry'
 import { resolvePositionMode, type PositionMode } from '../src/scene/platform/positionMode'
 import { SHEAR_RADIAL_PHASE, TWINKLE_AMPLITUDE } from '../src/scene/tuning'
@@ -1069,9 +1068,10 @@ describe('packed colour byte (contract §5, amendment A3)', () => {
     expect(HueClass.Green | (1 << (HueClass.Green + COLOUR_IDENTITY_SHIFT))).toBe(132)
   })
 
-  it('keeps the mask the shader hard-codes in step with the contract', () => {
+  it('keeps the hue-class mask in step with the contract', () => {
+    // The star vertex shader that hard-coded `& 7` retired with the star field (DEC-752); the
+    // constants it had to agree with are still the contract every decoder reads.
     expect(HUE_CLASS_MASK).toBe(0b111)
     expect(COLOUR_IDENTITY_SHIFT).toBe(3)
-    expect(STAR_VERTEX_SHADER).toContain('int(aClass.y + 0.5) & 7')
   })
 })

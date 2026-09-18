@@ -38,36 +38,12 @@
  *
  * Two materials sharing source *and* defines still share one program, which carries whichever name
  * linked first. The uniqueness check does not catch such a pair, so name both the same thing
- * deliberately — `SHADER_NAME_CARD_FACE`, used by both card faces, and `SHADER_NAME_STAR_FIELD`,
- * used by both the drawn star field and the bloom source's copy of it (DEC-703). The bloom copy
- * differs only in the *values* bound to five uniforms, and uniform values are not in the cache key,
- * so giving it a name of its own would put a second row in the roster for a program that never
- * exists — and the row that did appear would be whichever of the two linked first.
+ * deliberately — `SHADER_NAME_CARD_FACE`, used by both card faces. (The star field and the bloom
+ * source's copy of it were the other such pair, DEC-703; both retired with the field at the
+ * cutover, DEC-752.) Giving the second material a name of its own would put a second row in the
+ * roster for a program that never exists — and the row that did appear would be whichever of the
+ * two linked first.
  */
-
-/**
- * The star field's additive glow points — `starfield/starFieldObjects.ts`.
- *
- * Also carried by the bloom source's copy of the field, which shares this program. See the note on
- * shared programs in this file's header.
- */
-export const SHADER_NAME_STAR_FIELD = 'StarField'
-
-/** The same star geometry drawn to the id buffer under `ID_PASS` — its own program. */
-export const SHADER_NAME_STAR_FIELD_PICK = 'StarFieldPick'
-
-/** The per-plane nebula/glow quads — `starfield/starFieldObjects.ts`. */
-export const SHADER_NAME_PLANE_GLOW = 'PlaneGlow'
-
-/**
- * The same quads under the quality ladder's bottom rung — one noise tap, no dither (DEC-739).
- *
- * Its **own** name, unlike the bloom source's copy of the star field: this is a different fragment
- * source, so `getProgramCacheKey` gives it a different program, and a shared name would put one row
- * in the kit's roster for two programs — with the compile cost of whichever linked first. The
- * distinction this file's header draws is source identity, and these two do not share source.
- */
-export const SHADER_NAME_PLANE_GLOW_CHEAP = 'PlaneGlowCheap'
 
 /** The focused card's two faces — `cards/focusedCard.ts`; one program, two materials. */
 export const SHADER_NAME_CARD_FACE = 'FocusedCardFace'
@@ -184,10 +160,6 @@ export const SHADER_NAME_WORLD_TETHER_PAD = 'WorldTetherPad'
  * whatever was written.
  */
 export const SHADER_NAMES = [
-  SHADER_NAME_STAR_FIELD,
-  SHADER_NAME_STAR_FIELD_PICK,
-  SHADER_NAME_PLANE_GLOW,
-  SHADER_NAME_PLANE_GLOW_CHEAP,
   SHADER_NAME_CARD_FACE,
   SHADER_NAME_CARD_EDGE,
   SHADER_NAME_CARD_PLANET,

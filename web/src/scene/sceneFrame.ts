@@ -31,7 +31,6 @@ import {
   type QualityTier,
 } from './quality/adaptiveQuality'
 import type { FrameLoop } from './renderer/frameLoop'
-import { selfCheckRequested } from './selfCheck.url'
 import { starWorldPosition } from './starfield/motion'
 import { SKY_COLOUR } from './tuning'
 import type { SceneResources } from './useSceneData'
@@ -57,6 +56,11 @@ export interface SceneFrameHandle {
     readonly degradeMs: number
     readonly restoreMs: number
   }
+  /**
+   * The motion factor the clock is actually advancing with: 1, or 0 under PRD 5.9. Read off the
+   * live value rather than recomputed, so `?probe=` reports what the frame did (DEC-752).
+   */
+  readonly motionScale: number
   /** `planes.json` and `stars.bin` have landed; the clock and the mirror have a table to read. */
   setResources: (resources: SceneResources | null) => void
   /** PRD 5.9. `true` stops the multiverse rotation and every plane's spin. */
@@ -101,13 +105,6 @@ export function attachSceneFrame({
   const quality = new QualityMonitor(
     qualityOptionsFor(pinnedQualityTier(), capabilities.minTierIndex),
   )
-  /**
-   * `?selfcheck=1`, read **once** (DEC-692 R7). A flag the page was *opened* with is not a value
-   * that may change under it, and parsing `location.search` every tick is an allocation per frame.
-   * The self-check holds the tier still while it runs; the check itself went with the star field.
-   */
-  const selfCheckWanted = selfCheckRequested()
-
   // Per-tick scratch. Allocated once, reused for the life of the scene (PRD 7.3.2).
   const mirror = new Vector3()
 
@@ -158,7 +155,7 @@ export function attachSceneFrame({
     }),
 
     loop.subscribe('quality', ({ delta }) => {
-      if (!selfCheckWanted) quality.sample(delta * 1000)
+      quality.sample(delta * 1000)
     }),
   ]
 
@@ -183,6 +180,9 @@ export function attachSceneFrame({
       }
     },
 
+    get motionScale() {
+      return reducedMotion ? 0 : 1
+    },
     setResources: (next) => {
       resources = next
     },

@@ -60,11 +60,12 @@ const datasets: readonly Dataset[] = readdirSync(DATA)
 describe('publishesSwatches', () => {
   // Guards every row below: with no datasets checked out, `it.each` over an empty array is a
   // green suite that asserted nothing at all.
-  it('has the four committed datasets to read', () => {
+  it('has the three committed datasets to read', () => {
+    // Four until the cutover: the v2 `production` dataset was the galaxy's `active`, and its
+    // directory was removed in the commit that moved `active` to v3 (worlds spec §3.2, DEC-752).
     expect(datasets.map((dataset) => dataset.manifest.dataset).sort()).toEqual([
       'fixture-scale',
       'fixture-small',
-      'production',
       'production',
     ])
   })
@@ -189,8 +190,11 @@ describe('publishesSwatches', () => {
  *
  * - **no file** — a real manifest struck of its swatch entry, its own `planes.json` untouched. This
  *   is the shape DEC-788 found in the wild, and it is what the fixtures were before DEC-796.
- * - **nothing to read it** — the v2 `production` dataset's real `planes.json`, which carries
- *   `rowCells` on none of its 88 planes, against a manifest that does publish a swatch column.
+ * - **nothing to read it** — the dataset's own real `planes.json` with every `rowCells` struck,
+ *   against its own manifest, which does publish a swatch column. This arm used the v2
+ *   `production` dataset's roster until the cutover removed it (DEC-752); striking the key from
+ *   the v3 roster is the same shape as the "no file" arm, and it strikes exactly the field
+ *   `isWorldPlane` reads, which the v2 roster only lacked incidentally.
  *
  * Both halves are struck from committed artefacts rather than from a literal written here, for the
  * reason the file's header gives: this is a claim about datasets the emitter produces.
@@ -199,7 +203,13 @@ describe('shouldLoadSwatches', () => {
   const composable = datasets.filter(
     (dataset) => publishesSwatches(dataset.manifest) && dataset.planes.some(isWorldPlane),
   )
-  const galaxy = datasets.find((dataset) => dataset.manifest.contractVersion === 2)
+  /** A real roster with the one field `isWorldPlane` reads taken away, and nothing else. */
+  const withoutGrids = (planes: readonly PlaneRecord[]): PlaneRecord[] =>
+    planes.map((plane) => {
+      const struck = { ...plane }
+      delete struck.rowCells
+      return struck
+    })
 
   // Guards both rows below against an empty `it.each` and an absent `galaxy`, the same way the
   // first row of the suite guards the per-dataset ones.
@@ -209,13 +219,11 @@ describe('shouldLoadSwatches', () => {
       'fixture-small',
       'production',
     ])
-    expect(galaxy?.manifest.dataset, 'no v2 dataset is checked out to take the geometry away').toBe(
-      'production',
-    )
-    expect(
-      galaxy?.planes.some(isWorldPlane),
-      'the v2 dataset grew §2.4 geometry — it can no longer stand in for "nothing reads swatches"',
-    ).toBe(false)
+    // The strike has to actually strike: a roster that still composed a world after losing its
+    // grids would make the third arm below pass for the wrong reason.
+    for (const dataset of composable) {
+      expect(withoutGrids(dataset.planes).some(isWorldPlane), dataset.hash).toBe(false)
+    }
   })
 
   it.each(composable)(
@@ -240,7 +248,7 @@ describe('shouldLoadSwatches', () => {
       ).toBe(false)
 
       expect(
-        shouldLoadSwatches(manifest, galaxy!.planes),
+        shouldLoadSwatches(manifest, withoutGrids(planes)),
         `${hash}'s manifest against a roster with no rowCells and the gate still fetches — the ` +
           '"would anything read it" half is gone and the transfer is spent on nothing',
       ).toBe(false)

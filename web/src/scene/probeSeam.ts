@@ -10,7 +10,7 @@
  */
 
 import { useEffect, type MutableRefObject, type RefObject } from 'react'
-import { Vector2, Vector3, type ShaderMaterial } from 'three'
+import { Vector2, Vector3 } from 'three'
 
 import type { CardRecord } from '../data'
 
@@ -84,8 +84,6 @@ export function useProbeSeam(deps: ProbeSeamDeps): void {
   useEffect(() => {
     if (!enabled || !planes || !resources) return
     const geometry = resources.geometry
-    // The uniform the star shader actually samples, not the `motion` argument passed to `update`.
-    const motionUniform = (resources.field.points.material as ShaderMaterial).uniforms['uMotion']
 
     // Read back off the live objects, never off QUALITY_TIERS. See `ProbeState.quality`.
     const qualityState = (): ProbeState['quality'] => {
@@ -111,13 +109,17 @@ export function useProbeSeam(deps: ProbeSeamDeps): void {
         // it and e2e reads the contract.
         thumbnailCapacity: 0,
         starsDrawn: geometry.drawCount,
-        motion: typeof motionUniform?.value === 'number' ? motionUniform.value : -1,
+        // The factor the plane table's clock advances with, off the live frame. Was the star
+        // shader's `uMotion` until the cutover deleted the field (DEC-752).
+        motion: scene.sceneFrame.motionScale,
         refreshMs: band.refreshMs,
         degradeMs: band.degradeMs,
         restoreMs: band.restoreMs,
         // Off the live mesh, so this reports the program that is drawn rather than the one the
-        // tier asked for. See `ProbeState.quality.glowShader`.
-        glowShader: (resources.field.glow.material as ShaderMaterial).name,
+        // tier asked for. The worlds rim since the cutover (§1.12 row 4, DEC-752): the galaxy's
+        // plane glow was this rung's other consumer and went with the star field. Empty until a
+        // roster composes, which is before any tier could be read off it.
+        glowShader: scene.worlds.rimProgram ?? '',
       }
     }
 
@@ -126,7 +128,6 @@ export function useProbeSeam(deps: ProbeSeamDeps): void {
       // `detectPlatformCapabilities` caches per renderer, so this is a map lookup — the probe seam
       // is polled by the browser checks and must not re-run a half-float probe each time.
       const capabilities = detectPlatformCapabilities(scene.renderer.renderer)
-      const maxPixels = (resources.field.points.material as ShaderMaterial).uniforms['uMaxPixels']
       return {
         webgl2: capabilities?.webgl2 ?? false,
         maxTextureSize: capabilities?.maxTextureSize ?? 0,
@@ -137,7 +138,9 @@ export function useProbeSeam(deps: ProbeSeamDeps): void {
         positionMode: resources.positionMode,
         halfFloatProbeOk: capabilities?.halfFloatProbe.ok ?? false,
         halfFloatProbeMs: capabilities?.halfFloatProbe.durationMs ?? 0,
-        starMaxPixels: typeof maxPixels?.value === 'number' ? maxPixels.value : -1,
+        // -1, structurally: the star points whose sprite this clamped retired at the cutover
+        // (DEC-752). The key stays because `ProbeState` publishes it.
+        starMaxPixels: -1,
       }
     }
 

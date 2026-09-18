@@ -53,7 +53,6 @@ import { QUALITY_TIERS, type QualityTier } from '../quality/adaptiveQuality'
 import { attachScenePicking, type ScenePickingHandle } from '../input/attachScenePicking'
 import type { IdPicker } from '../picking/idPicker'
 import { attachSceneFrame, type SceneFrameHandle } from '../sceneFrame'
-import { attachStarScene, type StarSceneHandle } from '../starScene'
 import { BLOOM_INTENSITY } from '../tuning'
 import type { SceneResources } from '../useSceneData'
 import { attachWorlds, type WorldsAttachment, type WorldsData } from '../worlds/attachWorlds'
@@ -95,7 +94,6 @@ export interface QualityRungTargets {
   setBloomScale: (scale: number) => void
   setBloomLevels: (levels: number) => void
   /** Rung 2's third consumer: the field sizes its bloom-source sprites by the same fraction. */
-  setStarBloomScale: (scale: number) => void
   /**
    * Rung 3, both halves — one knob, the resident card-image budget (`QUALITY_KNOBS`, DEC-753).
    *
@@ -121,7 +119,6 @@ export function applyQualityTier(tier: QualityTier, targets: QualityRungTargets)
   targets.setPixelRatioCap(tier.pixelRatioCap)
   targets.setBloomScale(tier.bloomScale)
   targets.setBloomLevels(tier.bloomLevels)
-  targets.setStarBloomScale(tier.bloomScale)
   targets.setThumbnailCapacity(tier.thumbnailCapacity)
   targets.setArtPoolLayers(tier.artPoolLayers)
   targets.setGlowQuality(tier.glow)
@@ -176,7 +173,6 @@ export class SceneHost {
   private readonly post: PostChainAttachment
   private readonly pickingHandle: ScenePickingHandle
   private readonly sceneFrameHandle: SceneFrameHandle
-  private readonly starSceneHandle: StarSceneHandle
   private readonly worldsAttachment: WorldsAttachment
   private focusedCardHandle: FocusedCardHandle | null = null
   private readonly teardown: Array<() => void> = []
@@ -269,13 +265,6 @@ export class SceneHost {
       picking: this.pickingHandle,
       onQualityChange: (tier) => this.applyTier(tier),
     })
-    this.starSceneHandle = attachStarScene({
-      gl,
-      scene,
-      camera,
-      loop,
-      picking: this.pickingHandle,
-    })
     // The `worlds` phase (spec §1.2). Attached unconditionally and empty until `setWorldData`: a
     // phase whose subscriber arrives with the data is a phase that can end up with none at all,
     // which is DEC-761's F1 in miniature. Nothing is allocated here beyond the art pool, and on a
@@ -312,7 +301,8 @@ export class SceneHost {
     // phase — including this one.
     this.teardown.push(
       loop.subscribe('quality', () => {
-        this.stats.drawn = this.starSceneHandle.drawnStars
+        // The star field's drawable count retired with it (DEC-752); the stars.bin records that
+        // still load are the worlds' data layer, and the field stays at its structural 0.
         const bloom = this.post.chain.bloomSourceSize
         this.stats.bloomWidth = bloom?.width ?? 0
         this.stats.bloomHeight = bloom?.height ?? 0
@@ -337,10 +327,6 @@ export class SceneHost {
   /** The frame's shared machinery: clock, quality monitor, focused-star mirror (DEC-752). */
   get sceneFrame(): SceneFrameHandle {
     return this.sceneFrameHandle
-  }
-
-  get starScene(): StarSceneHandle {
-    return this.starSceneHandle
   }
 
   get focusedCard(): FocusedCardHandle | null {
@@ -387,7 +373,6 @@ export class SceneHost {
     // field's objects (DEC-852).
     this.pickingHandle.setSources(resources)
     this.sceneFrameHandle.setResources(resources)
-    this.starSceneHandle.setResources(resources)
     // §1.3's spin, from the **plane table's** clock (DEC-750). `PlaneTable.advance` integrates it in
     // the `planeTable` phase and `motionSync` mirrors it into the camera rig, and the `worlds` phase
     // runs after both — so a world's orientation and the position PRD 8.5.7's CPU mirror flies the
@@ -436,7 +421,6 @@ export class SceneHost {
   setStarsComplete(complete: boolean): void {
     if (complete === this.starsComplete) return
     this.starsComplete = complete
-    this.starSceneHandle.setStarsComplete(complete)
     this.maybeWarm()
   }
 
@@ -552,7 +536,6 @@ export class SceneHost {
     // different pick target from a turning one.
     this.pickingHandle.setReducedMotion(reduced)
     this.sceneFrameHandle.setReducedMotion(reduced)
-    this.starSceneHandle.setReducedMotion(reduced)
     this.focusedCardHandle?.setReducedMotion(reduced)
     this.navigation?.api.setReducedMotion(reduced)
   }
@@ -629,7 +612,6 @@ export class SceneHost {
       setPixelRatioCap: (cap) => this.renderer.setPixelRatioCap(cap),
       setBloomScale: (scale) => this.post.setBloomScale(scale),
       setBloomLevels: (levels) => this.post.setBloomLevels(levels),
-      setStarBloomScale: (scale) => this.starSceneHandle.setBloomScale(scale),
       // The tier may be announced before the card tier exists; `buildFocusedCard` re-applies it.
       // The thumbnail tier retired at the cutover (DEC-752); §1.12's art pool is the worlds
       // spend of this rung and `attachWorlds.setArtLayers` carries it.
@@ -639,10 +621,7 @@ export class SceneHost {
       // docblock left the line here to R3, which never landed it — so on every worlds page tier 4
       // cheapened the galaxy's glow and left the rim at full cost (DEC-752). One knob, fanned out
       // here, keeps `applyQualityTier` the ladder's single application point (DEC-747).
-      setGlowQuality: (glow) => {
-        this.starSceneHandle.setGlowQuality(glow)
-        this.worldsAttachment.setRimQuality(glow)
-      },
+      setGlowQuality: (glow) => this.worldsAttachment.setRimQuality(glow),
     })
 
     this.stats.qualityTier = tier.label
@@ -689,7 +668,6 @@ export class SceneHost {
         gl: this.renderer.renderer,
         scene: this.renderer.scene,
         camera: this.renderer.camera,
-        field: this.resources.field,
         chain: this.post.chain,
         extraSpecs: () => this.focusedCardHandle?.card.warmupSpecs ?? [],
         onComplete: (result) => {
@@ -705,7 +683,6 @@ export class SceneHost {
     this.focusedCardHandle?.dispose()
     this.focusedCardHandle = null
     this.worldsAttachment.dispose()
-    this.starSceneHandle.dispose()
     this.sceneFrameHandle.dispose()
     this.pickingHandle.dispose()
     this.post.dispose()
