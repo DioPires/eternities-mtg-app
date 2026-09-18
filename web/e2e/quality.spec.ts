@@ -262,10 +262,19 @@ test('every rung of the quality ladder lands, and only its own rung (PRD 8.5.11,
   expect(cardImagery.drawingBuffer).toEqual(bloom.drawingBuffer)
   expect(cardImagery.bloomSource).toEqual(bloom.bloomSource)
   expect(cardImagery.bloomLevels).toBe(bloom.bloomLevels)
-  expect(cardImagery.thumbnailCapacity).toBeLessThan(bloom.thumbnailCapacity)
-  // ...and nothing below rung 3 touches it.
-  expect(bloom.thumbnailCapacity).toBe(full.thumbnailCapacity)
-  expect(pixelRatio.thumbnailCapacity).toBe(full.thumbnailCapacity)
+  // **The atlas half of this rung retired at the cutover (DEC-752).** It read
+  // `cardImagery.thumbnailCapacity < bloom.thumbnailCapacity`, which is unfalsifiable now that the
+  // thumbnail tier is gone and the field is a structural 0 at every rung. The rung's *surviving*
+  // field is the worlds art pool, and it has its own test below — so the knob is still asserted to
+  // move; it is asserted in the one place it still moves.
+  //
+  // Pinned rather than deleted: 0 at every rung is what the retirement looks like from here, and a
+  // capacity that came back to life without this spec noticing is exactly the regression the
+  // original assertion existed to catch.
+  expect(full.thumbnailCapacity).toBe(0)
+  expect(bloom.thumbnailCapacity).toBe(0)
+  expect(pixelRatio.thumbnailCapacity).toBe(0)
+  expect(cardImagery.thumbnailCapacity).toBe(0)
 
   // Rung 4 — the cheap glow program (DEC-739, review §3.5's "new tier 4 cheap glow variant, one
   // tap, no dither").
