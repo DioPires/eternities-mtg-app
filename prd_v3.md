@@ -412,6 +412,9 @@ Panels are a right-side drawer, collapsible, that opens automatically on plane o
 1. Target: an Apple Silicon MacBook, 1920×1080 viewport, Safari and Chrome current versions, on a home broadband connection. All budgets below are measured there.
 2. Supported: current Chrome, Safari, and Firefox on macOS, Windows, and Linux, viewport ≥ 1280×720, WebGL2 required. Without WebGL2 the page shows a plain explanation, not a broken canvas.
 3. Scales up to 4K displays; the pixel ratio cap (8.5.11) bounds cost.
+4. An HTTP cache that can hold a parked world's art working set: dominaria's parked pose
+   occupies 302.3 MiB on disk (DEC-848). Chrome's default quota on the target machine clears
+   this; below it the page re-fetches evicted keys instead of converging.
 
 ### 7.2 Performance budgets
 
