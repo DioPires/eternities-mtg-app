@@ -25,8 +25,7 @@ import { PLANET_ID_BASE } from '../src/scene/cards/focusedCard'
 import { PICK_MISS, type IdPicker } from '../src/scene/picking/idPicker'
 import type { PickResult } from '../src/scene/picking/scenePicker'
 import { SceneHost } from '../src/scene/renderer/sceneHost'
-import { PlaneTable } from '../src/scene/starfield/planeTable'
-import { StarGeometry } from '../src/scene/starfield/starGeometry'
+import { createStarData } from '../src/scene/starfield/starData'
 import type { SceneResources } from '../src/scene/useSceneData'
 import { createSceneNavigation, type SceneNavigation } from '../src/navigation/scene'
 
@@ -103,8 +102,10 @@ function fakeRenderer(canvas: HTMLCanvasElement): WebGLRenderer {
  * of it participates in a pick**. The ids come from the picker double; the routing is the subject.
  */
 function dataOnlyResources(planes: ReturnType<typeof loadFixturePlanes>) {
-  const table = new PlaneTable(planes.planes, planes.multiverseRadius)
-  const geometry = new StarGeometry(STAR_COUNT, 'float32')
+  // The product's own data-layer constructor (DEC-852), not a hand-built pair: it is what
+  // `useSceneData` calls, and it reaches no galaxy module — which is the claim this file rests on.
+  const data = createStarData(planes, STAR_COUNT)
+  const { table, geometry } = data
   // A fresh `StarGeometry` draws nothing, and `resolvePick` reads `drawCount` to tell a star id
   // from an out-of-range one — so without a stream a star pick would silently fall through to the
   // plane raycast and this file would be asserting about the wrong branch. Zeroed records: every
@@ -124,9 +125,9 @@ function dataOnlyResources(planes: ReturnType<typeof loadFixturePlanes>) {
       update: () => {},
       dispose: () => {},
     },
-    positionMode: 'float32',
+    positionMode: data.positionMode,
   } as unknown as SceneResources
-  return { resources, highlights, dispose: () => { geometry.dispose(); table.dispose() } }
+  return { resources, highlights, dispose: () => data.dispose() }
 }
 
 function pickerDouble() {
