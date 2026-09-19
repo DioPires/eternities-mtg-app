@@ -531,6 +531,28 @@ export declare function azimuthSpacingFault(
   tolerance?: number,
 ): string | null;
 
+/** How far the scene turned going from `from` to `to`, folded onto [0, 2π). */
+export declare function forwardAzimuthTravel(from: number, to: number): number;
+
+/** Sample `k` of a `count`-azimuth comb is due at `travel` = k·2π/count from `first`. */
+export declare function azimuthSweepTargets(
+  first: number,
+  count: number,
+): { readonly travel: number; readonly azimuth: number }[];
+
+export type AzimuthCombResult =
+  | { readonly ok: true; readonly azimuths: number[] }
+  | { readonly ok: false; readonly reason: "no-azimuth-seam" | "stalled"; readonly detail: string };
+
+/** Steer a sweep closed-loop on the read-back angle; see the implementation for the contract. */
+export declare function steerAzimuthComb(options: {
+  readonly count: number;
+  readonly readAzimuth: () => Promise<number | null>;
+  readonly poll: () => Promise<void>;
+  readonly onSample: (k: number, azimuth: number) => Promise<void> | void;
+  readonly maxPollsPerStep: number;
+}): Promise<AzimuthCombResult>;
+
 export declare function evaluateW5(
   sweep: readonly W5AzimuthSample[],
   roster: Roster,

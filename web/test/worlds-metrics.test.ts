@@ -41,6 +41,11 @@ import {
   foldCriteria,
   SMALLEST_SHIPPED_POOL_LAYERS,
   W5_MIN_AZIMUTHS,
+  W5_AZIMUTH_UNIFORMITY_TOLERANCE,
+  azimuthSpacingFault,
+  azimuthSweepTargets,
+  forwardAzimuthTravel,
+  steerAzimuthComb,
   homeLabelCeiling,
   iqr,
   isLabelVisible,
@@ -3518,6 +3523,162 @@ describe("W5 — the home view is not a wall of labels, and every world is reach
     const s = perfect(16);
     expect(evaluateW5(s, ROSTER_V3, opts(12)).pass).toBe(true);
     expect(evaluateW5(s, ROSTER_V3, opts(24)).status).toBe("insufficient");
+  });
+});
+
+describe("the W5 sweep is steered on the read-back angle (DEC-859)", () => {
+  const TAU = Math.PI * 2;
+  const IDEAL = TAU / W5_MIN_AZIMUTHS;
+  /** The shipped rate: `MULTIVERSE_PERIOD_S` is 1,200 s. */
+  const SHIPPED_RAD_PER_S = TAU / 1200;
+  const POLL_S = 0.1;
+  const FRAME_S = 1 / 60;
+
+  /**
+   * A turning scene as the gate sees it: the angle integrates once per frame, so a read returns
+   * the last tick's value, and `poll` is the only thing that moves time. `stallAt` makes one poll
+   * take that many seconds instead — a step error the loop cannot see coming.
+   */
+  function turningScene(
+    start: number,
+    radPerS: number,
+    stallAt?: { poll: number; seconds: number },
+  ) {
+    let t = 0;
+    let polls = 0;
+    return {
+      readAzimuth: () =>
+        Promise.resolve(
+          (((start + radPerS * Math.floor(t / FRAME_S) * FRAME_S) % TAU) + TAU) % TAU,
+        ),
+      poll: () => {
+        polls += 1;
+        t += stallAt?.poll === polls ? stallAt.seconds : POLL_S;
+        return Promise.resolve();
+      },
+      polls: () => polls,
+    };
+  }
+
+  async function steer(scene: ReturnType<typeof turningScene>, count = W5_MIN_AZIMUTHS) {
+    const sampled: number[] = [];
+    const result = await steerAzimuthComb({
+      count,
+      readAzimuth: scene.readAzimuth,
+      poll: scene.poll,
+      onSample: (k, azimuth) => {
+        expect(k).toBe(sampled.length);
+        sampled.push(azimuth);
+      },
+      maxPollsPerStep: 3000,
+    });
+    return { result, sampled };
+  }
+
+  it("measures travel forward across the wrap at 2π", () => {
+    expect(forwardAzimuthTravel(6.2, 0.1)).toBeCloseTo(0.1 + TAU - 6.2, 12);
+    expect(forwardAzimuthTravel(1, 1)).toBe(0);
+    expect(forwardAzimuthTravel(0.2, 0.5)).toBeCloseTo(0.3, 12);
+    // The rotation only runs forward, so a reading behind the last is nearly a whole turn ahead of
+    // it, never a small negative step. The steering loop polls far inside a half-turn.
+    expect(forwardAzimuthTravel(0.5, 0.2)).toBeCloseTo(TAU - 0.3, 12);
+  });
+
+  it("targets unfolded travel, and folds the reported azimuth, for a first reading near 2π", () => {
+    const targets = azimuthSweepTargets(6.2, W5_MIN_AZIMUTHS);
+    expect(targets.map((t) => t.travel)).toEqual(
+      Array.from({ length: W5_MIN_AZIMUTHS }, (_, k) => (k * TAU) / W5_MIN_AZIMUTHS),
+    );
+    expect(targets[0]!.azimuth).toBeCloseTo(6.2, 12);
+    // The second target is past 2π: folded it reads 0.44, *below* the first. A loop comparing
+    // folded angles would take it at once; the loop compares `travel`.
+    expect(targets[1]!.azimuth).toBeCloseTo(6.2 + IDEAL - TAU, 12);
+    for (const t of targets) {
+      expect(t.azimuth).toBeGreaterThanOrEqual(0);
+      expect(t.azimuth).toBeLessThan(TAU);
+    }
+  });
+
+  it("closes the comb evenly when the first reading is near 2π and the sweep wraps", async () => {
+    const scene = turningScene(6.2, SHIPPED_RAD_PER_S);
+    const { result, sampled } = await steer(scene);
+    expect(result.ok).toBe(true);
+    expect(sampled).toHaveLength(W5_MIN_AZIMUTHS);
+    expect(azimuthSpacingFault(sampled)).toBeNull();
+    // Each sample lands within one poll (plus a frame) past its target, and so does each gap.
+    const slop = SHIPPED_RAD_PER_S * (POLL_S + FRAME_S);
+    const targets = azimuthSweepTargets(sampled[0]!, W5_MIN_AZIMUTHS);
+    sampled.forEach((a, k) => {
+      const past = forwardAzimuthTravel(targets[k]!.azimuth, a);
+      expect(past).toBeLessThanOrEqual(slop + 1e-12);
+    });
+  });
+
+  it("does not depend on the rate it would have been paced by", async () => {
+    // The open-loop sweep read 0.005253 rad/s on a scene turning at 0.005236 (DEC-859). A closed
+    // loop never uses a rate to place a sample, so any true rate closes the comb.
+    for (const factor of [0.9, 1 / 1.00325, 1, 1.00325, 1.1]) {
+      const { result, sampled } = await steer(turningScene(0.048, SHIPPED_RAD_PER_S * factor));
+      expect(result.ok).toBe(true);
+      expect(azimuthSpacingFault(sampled)).toBeNull();
+    }
+  });
+
+  it("the precondition still refuses the open-loop comb the reviewer drew: one 3.6% gap", () => {
+    // What `sweepHomeView` did before DEC-859: pace every step off a rate over-read by 0.33%. The
+    // eleven short gaps sit inside tolerance; the error lands on the wrap gap, eleven times over.
+    const overRead = 1.00325;
+    const openLoop = Array.from(
+      { length: W5_MIN_AZIMUTHS },
+      (_, k) => (0.0484 + (k * IDEAL) / overRead) % TAU,
+    );
+    const wrap = forwardAzimuthTravel(openLoop[W5_MIN_AZIMUTHS - 1]!, openLoop[0]!);
+    expect(wrap).toBeCloseTo(0.5422, 3);
+    expect((wrap - IDEAL) / IDEAL).toBeGreaterThan(3 * W5_AZIMUTH_UNIFORMITY_TOLERANCE);
+    expect(azimuthSpacingFault(openLoop)).toMatch(/gap 0\.542\d rad against an ideal of 0\.5236/);
+  });
+
+  it("the precondition still refuses a steered sweep whose one step landed late", async () => {
+    // The negative control on the live path: steering waits for the target, never for the spacing
+    // to pass, so a step that overshoots — here one poll stalls 3.6 s, 3.6% of a step — comes back
+    // as it landed and `azimuthSpacingFault` refuses it. A loop that could never trip the check
+    // would have made the check a tautology.
+    const scene = turningScene(0.048, SHIPPED_RAD_PER_S, { poll: 3000, seconds: 3.6 });
+    const { result, sampled } = await steer(scene);
+    expect(result.ok).toBe(true);
+    expect(scene.polls()).toBeGreaterThan(3000);
+    expect(azimuthSpacingFault(sampled)).not.toBeNull();
+    // ...and the same scene without the stall passes, so the refusal is the stall's.
+    const { sampled: clean } = await steer(turningScene(0.048, SHIPPED_RAD_PER_S));
+    expect(azimuthSpacingFault(clean)).toBeNull();
+  });
+
+  it("reports a scene that stops turning mid-sweep as stalled, not as a sweep", async () => {
+    let reads = 0;
+    const sampled: number[] = [];
+    const result = await steerAzimuthComb({
+      count: W5_MIN_AZIMUTHS,
+      // Turns for the first sample, then freezes.
+      readAzimuth: () => Promise.resolve(reads++ < 3 ? reads * 0.1 : 0.3),
+      poll: async () => {},
+      onSample: (_, a) => {
+        sampled.push(a);
+      },
+      maxPollsPerStep: 50,
+    });
+    expect(result).toMatchObject({ ok: false, reason: "stalled" });
+    expect(sampled).toHaveLength(1);
+  });
+
+  it("reports a missing angle seam rather than sampling without one", async () => {
+    const result = await steerAzimuthComb({
+      count: W5_MIN_AZIMUTHS,
+      readAzimuth: () => Promise.resolve(null),
+      poll: async () => {},
+      onSample: () => {},
+      maxPollsPerStep: 50,
+    });
+    expect(result).toMatchObject({ ok: false, reason: "no-azimuth-seam" });
   });
 });
 

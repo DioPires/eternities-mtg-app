@@ -2070,6 +2070,108 @@ export function azimuthSpacingFault(
 }
 
 /**
+ * How far the scene has turned going from `from` to `to`, in [0, 2π).
+ *
+ * The rotation only runs forward, so the difference is folded rather than taken signed: a reading
+ * of 0.01 after one of 6.27 is 0.023 rad of travel across the wrap, not 6.26 rad backwards. Only
+ * valid between reads less than a half-turn apart, which at the shipped period is ten minutes — see
+ * `steerAzimuthComb`, which reads far more often than that.
+ */
+export function forwardAzimuthTravel(from, to) {
+  const turn = Math.PI * 2;
+  return (((to - from) % turn) + turn) % turn;
+}
+
+/**
+ * The comb a sweep of `count` azimuths steers to, anchored at the first reading.
+ *
+ * Sample `k` is due once the scene has travelled `k · 2π / count` from `first`. `travel` is the
+ * unfolded distance the steering loop compares its running total against, and `azimuth` the same
+ * target folded onto [0, 2π) for reporting — never for comparison, because a folded target sits
+ * *below* the reading once the comb crosses 2π, and `reading >= target` would then pass at once.
+ */
+export function azimuthSweepTargets(first, count) {
+  const turn = Math.PI * 2;
+  return Array.from({ length: count }, (_, k) => {
+    const travel = (k * turn) / count;
+    return { travel, azimuth: (((first + travel) % turn) + turn) % turn };
+  });
+}
+
+/**
+ * **Drive a sweep closed-loop: wait for each target azimuth to be read back, then sample.**
+ *
+ * The open-loop sweep this replaces (DEC-859) measured the rate once over a 5 s probe and then
+ * slept `period / count` eleven times. The angle advances once per 16.7 ms frame, so a 5 s probe
+ * spans 300 ticks or 301 — measured, 6 of 22 probes read 301 — and a 301-tick read is +0.33%.
+ * Dividing by the measured window instead of the nominal 5 s leaves +0.16%, so no rate is exact
+ * enough: whatever error it has lands eleven times on the last gap, because no step read back
+ * where it landed. +0.33% closed the comb 3.6% short, three times the spacing tolerance, on every
+ * reviewer draw at 1920×1080. Steering on the read-back angle
+ * bounds every sample's error by one poll's worth of travel, and does not compound it.
+ *
+ * `readAzimuth` returns the scene's own angle (never one computed from a clock — see the gate's
+ * `readAzimuth`), `poll` waits one polling interval, `onSample(k, azimuth)` takes sample `k` at the
+ * angle that satisfied its target. The loop waits for the **target**, never for the spacing to
+ * pass: `azimuthSpacingFault` still judges the azimuths that came back, and a sweep that polls too
+ * coarsely or lands late still refuses there.
+ *
+ * Returns `{ ok: true, azimuths }`, or `{ ok: false, reason, detail }` when the angle stops
+ * arriving (`maxPollsPerStep` polls without reaching a target) or stops being published.
+ */
+export async function steerAzimuthComb({
+  count,
+  readAzimuth,
+  poll,
+  onSample,
+  maxPollsPerStep,
+}) {
+  const anchor = await readAzimuth();
+  if (typeof anchor !== "number") {
+    return {
+      ok: false,
+      reason: "no-azimuth-seam",
+      detail: "multiverseAngle was not published at the sweep's first sample",
+    };
+  }
+  const targets = azimuthSweepTargets(anchor, count);
+  const azimuths = [];
+  let previous = anchor;
+  let travelled = 0;
+  for (let k = 0; k < count; k += 1) {
+    let polls = 0;
+    while (travelled < targets[k].travel) {
+      if (polls >= maxPollsPerStep) {
+        return {
+          ok: false,
+          reason: "stalled",
+          detail:
+            `multiverseAngle travelled ${travelled.toFixed(4)} rad of the ` +
+            `${targets[k].travel.toFixed(4)} sample ${k + 1}/${count} needs in ${polls} polls, and ` +
+            "stopped arriving. A scene that stops turning mid-sweep would sample one azimuth for " +
+            "every sample after it.",
+        };
+      }
+      await poll();
+      polls += 1;
+      const now = await readAzimuth();
+      if (typeof now !== "number") {
+        return {
+          ok: false,
+          reason: "no-azimuth-seam",
+          detail: `multiverseAngle stopped being published at sample ${k + 1}/${count}`,
+        };
+      }
+      travelled += forwardAzimuthTravel(previous, now);
+      previous = now;
+    }
+    azimuths.push(previous);
+    await onSample(k, previous);
+  }
+  return { ok: true, azimuths };
+}
+
+/**
  * **W5 — the home view is not a wall of labels, and every world is reachable from it.**
  *
  * Both halves are measured over a **sweep of azimuths**, not at one frame. `motion.ts:247` rotates

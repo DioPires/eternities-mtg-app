@@ -1673,13 +1673,13 @@ scale — which is the thing T7 said was missing.
 > **Normative — `ProbeState.multiverseAngle` is the renderer's azimuth, and a frozen one is a real
 > reading (DEC-785 F2).** An azimuth sweep needs the angle the frame was *drawn* at, and the gate may
 > not derive it from its own clock. Two reasons, and neither is fastidiousness: under reduced motion
-> `starScene` advances the plane table with `motion` 0, so a wall-clock sweep would report evenly
+> `sceneFrame.ts` advances the plane table with `motion` 0, so a wall-clock sweep would report evenly
 > spaced azimuths of a scene frozen at exactly **one** — this section's own named degeneracy, reached
 > through the harness instead of through a short sweep, and still reading as the stronger claim; and
 > even with motion live, an angle computed from elapsed time makes an even-spacing check a test of
 > the gate's arithmetic against itself, passing by construction on a sweep the renderer never took.
 >
-> > The field is `PlaneTable.multiverseAngle` — the same integrated angle `starScene` mirrors into
+> > The field is `PlaneTable.multiverseAngle` — the same integrated angle `sceneFrame.ts` mirrors into
 > > the background, never a second clock — published **always and unsmoothed**. Under reduced motion
 > > it therefore does not advance, and that is the specified behaviour rather than a gap: the gate
 > > reports a non-advancing angle as a named **setup failure**, which it can only do if the seam
@@ -2931,17 +2931,24 @@ The galaxy ships until **all four** of these hold:
    > **This condition no longer carries the counts, because they went stale twice (DEC-752).** It
    > read "five red and two green", written when the matrix had seven rows; that was corrected to
    > "four green" for `?layers=128` and the one-card world, and was stale again on arrival — DEC-821
-   > had added the `?art=off` sibling rows, making six. At the time of writing the census reads
-   > **five expected-RED, six expected-GREEN, two derivation rows**, but read it off a run rather
-   > than off this sentence: a number in prose cannot testify that it still describes the matrix.
+   > had added the `?art=off` sibling rows, making six. It then went stale a third time, as "five
+   > expected-RED, six expected-GREEN, two derivation rows", once the mean fold and the `MIXED` and
+   > `N/A-only` buckets landed. What the gate printed on `de677cc` (DEC-856's matrix draw), quoted
+   > rather than counted:
+   >
+   > ```
+   > matrix census: 4 expected-RED rows, 7 expected-GREEN, 1 N/A-only, 2 of them derivation tours (excluded from --negative-controls), 3 MIXED — 13 of 15 scored this run
+   > ```
+   >
+   > Read it off a run rather than off this block: a number in prose cannot testify that it still
+   > describes the matrix.
    >
    > Nothing is lost by dropping the pair from the condition. The gate already fails a row that lands
    > on the wrong colour, so "shows the expected five and four" was never the thing being checked —
    > `GATE: GREEN` is.
    >
-   > **The red count stays five, and that is not the same as §3.1's table, which lists six.** The
-   > sixth is `labels forced on for empty planes`, the control for `homeLabels`, and
-   > `worlds-gate.mjs` does **not** run it: forcing labels on for suppressed planes is a renderer
+   > **§3.1's table lists one control the matrix does not carry.** It is `labels forced on for
+   > empty planes`, the control for `homeLabels`, and `worlds-gate.mjs` does **not** run it: forcing labels on for suppressed planes is a renderer
    > behaviour and `web/src/scene/worlds/seams.ts` ships exactly five seams that perturb the build —
    > `?swatch=mean`, `?bands=shuffle`, `?art=off`, `?artThreshold=fixed24`, `?layers=N` (`?probe=` is
    > the sixth entry in that file's table, and it reports rather than perturbs). None of them reaches
@@ -2953,7 +2960,7 @@ The galaxy ships until **all four** of these hold:
    > So `homeLabels` ships **measured and scored, with no live falsifier**. It is a suppression
    > regression check whose control is historical, which is weaker than every other row here and is
    > recorded as such rather than counted as though the gate exercised it. Routed to the CEO for a
-   > ruling on whether §1.8 is owed a seam; it does not block the other eleven expectations.
+   > ruling on whether §1.8 is owed a seam; it does not block the matrix's other expectations.
    >
    > **A GREEN W3 row does not clear this condition, and today it cannot (DEC-752, routed from
    > DEC-830).** `minAdjacentBandDeltaE` folds to a minimum of minima over the in-domain worlds, and
@@ -2983,8 +2990,9 @@ The galaxy ships until **all four** of these hold:
 4. the worlds build reaches feature parity on the shipped surfaces: search, filters, deep links,
    plane index, card focus, printing ring, attract mode, reduced motion, a11y.
 
-Until then the two coexist at zero cost, on two dataset directories (§2). Dataset refreshes in the
-interim keep running `visual-gate.mjs` per `docs/refresh-runbook.md`.
+Until then the two coexisted at zero cost, on two dataset directories (§2), and dataset refreshes
+ran `visual-gate.mjs`. Since the cutover (DEC-752) that script is archived under `galaxy-cutover`
+and every refresh runs `worlds-gate.mjs` per `docs/refresh-runbook.md` §4.3.
 
 At cutover, in one PR: `datasets.json`'s `active` moves to the v3 directory; the galaxy scene, the
 spiral laws, the star shaders, the thumbnail atlas and the card-sheet tier are deleted; PRD §5 and §9

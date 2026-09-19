@@ -16,10 +16,10 @@ and live — `https://eternities-mtg-app.vercel.app`, deployed automatically on 
 
 A refresh is a **data** change. It does not touch rendering, so it does not need `pnpm bench`
 (PRD 9.1.2's rule is "before merging any change that touches rendering"). It does need the report
-review and the automated browser checks (§4.1), both of which are cheap — **and it needs the PRD
-9.3 visual gate (§4.2), which is not cheap and is not optional.** A refresh moves plane positions
-(PRD 4.9.3), so it can change what the multiverse looks like without touching a line of rendering
-code; that is the one thing only the gate can catch.
+review and the automated browser checks (§4.1), both of which are cheap — **and it needs the
+worlds gate (§4.3), which is not cheap and is not optional.** A refresh rebuilds every world's cell
+sheet and swatches, so it can change what the multiverse looks like without touching a line of
+rendering code; that is the one thing only the gate can catch.
 
 ---
 
@@ -231,15 +231,17 @@ one that blocks.
 `pnpm test:e2e` drives the built site under the production CSP: PRD 8.9.2's five route kinds, the
 quality ladder, and Phase 5's accessibility checklist with the CSP/HSTS self-check. It is the check
 that the new data actually *loads* — a report can be perfect over artefacts a browser cannot decode.
-It renders through SwiftShader and says nothing about how the refresh **looks**; that is 4.2.
+It renders through SwiftShader and says nothing about how the refresh **looks**; that is 4.3.
 
 > **Changed since the 2026-09-05 rehearsal.** The rehearsal ran
 > `node scripts/verify-browser.mjs --dataset production`, which passed with 0 failed Scryfall image
 > requests — the part only a real-id dataset can tell you. DEC-708 archived that script under the
 > `review-tooling-2026-09` tag and moved its a11y and CSP assertions into `e2e/a11y.spec.ts`.
-> Its Scryfall-image count did not move with them, so watch the network panel during 4.2 instead:
-> the gate loads real images on the production dataset and the card checkpoints are where a broken
-> id shows up.
+> Its Scryfall-image count did not move with them. The rehearsal's stand-in was watching the
+> network panel during the galaxy's visual gate, which retired at the cutover (§4.2), so **nothing
+> in this runbook counts failed Scryfall image requests today**. Until something does, open the
+> built site on the production dataset in a local Chrome and watch the network panel while focusing
+> a few cards: that is where a broken id shows up.
 
 ### 4.2 The visual gate — retired at the worlds cutover
 
@@ -431,11 +433,11 @@ reading of where in the tour its subject sat. Two consequences when reading the 
   entered with the budget already spent — but a run that trips it has measured nothing, so it is a
   guard against a silent false RED, not a way to keep touring on one page.
 
-Same two practical notes as §4.2: a real GPU and a local Chrome, and it builds the site itself
-unless you pass `--no-build`.
+It needs a real GPU and a local Chrome, and it builds the site itself unless you pass
+`--no-build`.
 
-**At the cutover this section replaces §4.2**, which retires with the galaxy along with PRD 9.3's
-criterion 2 and review T7.
+This section replaced §4.2 at the cutover (DEC-752), which retired it with the galaxy along with
+PRD 9.3's criterion 2 and review T7.
 
 ---
 
@@ -453,9 +455,10 @@ gh pr create --title "Data refresh — Scryfall bulk 2026-09-05T09:05:28.871+00:
 Put the report diff summary and the classifier output in the body. A reviewer should not have to
 re-derive what you already ran.
 
-**Attach §4.2's captures.** PRD 9.4 makes the owner's acceptance of the visual review part of done,
-and the owner cannot accept frames that are sitting in a directory on your laptop. Say in the body
-which dataset they were taken on and how the arms compare to the previous refresh.
+**Attach §4.3's evidence.** PRD 9.4 makes the owner's acceptance of the visual review part of done,
+and the owner cannot accept frames that are sitting in a directory on your laptop. Paste the run's
+`GATE:` and `matrix census` lines into the body, attach the frames it wrote, and say which dataset
+they were taken on and how W1–W3 compare to the previous refresh.
 
 ---
 
@@ -530,6 +533,6 @@ un-publish. That is a true statement about git; it has never been run against a 
   deployment instead. See `docs/cross-browser.md`.
 - **Do not skip step 4 because the report was clean.** They check different things: one reads the
   pipeline's own account of the run, the other decodes the artefacts in a browser.
-- **Do not skip 4.2 because 4.1 was green.** A refresh moves plane positions (PRD 4.9.3), and the
-  arm geometry PRD 9.3 is judged on comes out of the data. Green automated checks over a multiverse
-  whose arms stopped reading is the exact failure 4.2 exists to catch.
+- **Do not skip 4.3 because 4.1 was green.** A refresh rebuilds the cell sheets and swatches, and
+  W1–W3 are computed from them. Green automated checks over worlds whose band pairs collapsed is the
+  exact failure 4.3 exists to catch.

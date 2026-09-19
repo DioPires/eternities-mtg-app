@@ -48,6 +48,7 @@ import {
   evaluateW5,
   evictionTail,
   foldCriteria,
+  forwardAzimuthTravel,
   homeLabelCeiling,
   isLabelVisible,
   // The same fold `evaluateW1` applies, imported rather than restated: the sweep picks the worst
@@ -55,6 +56,7 @@ import {
   median,
   poolHighWater,
   rowCellsFaults,
+  steerAzimuthComb,
   w3QualifiesByShares,
 } from './lib/worlds-metrics.mjs'
 import {
@@ -309,12 +311,15 @@ const settleFrames = (page, frames) =>
     frames,
   )
 
+/** How often a long wait re-sends the heartbeat: well inside PRD 5.3.22's 45 s idle timer. */
+const HEARTBEAT_MS = 5000
+
 /** Sleep, holding attract off. Any wait longer than a few seconds must go through this. */
 async function hold(page, seconds) {
   const deadline = Date.now() + seconds * 1000
   while (Date.now() < deadline) {
     await heartbeat(page)
-    await sleep(Math.min(5000, Math.max(0, deadline - Date.now())))
+    await sleep(Math.min(HEARTBEAT_MS, Math.max(0, deadline - Date.now())))
   }
 }
 
@@ -348,7 +353,7 @@ const readLabels = (page) =>
  * is to reject a badly spaced sweep — would then be checking the gate's arithmetic against itself.
  *
  * The failure is not hypothetical and it is silent in the dangerous direction:
- * `starScene.ts:332` passes `reducedMotion ? 0 : 1`, so under reduced motion the angle **never
+ * `sceneFrame.ts:140` passes `reducedMotion ? 0 : 1`, so under reduced motion the angle **never
  * advances**. A wall-clock sweep would report twelve evenly-spaced azimuths taken of a scene frozen
  * at exactly one, and reachability would collapse into the single-frame coverage count it exists to
  * replace while still reading as the stronger claim — §3.1's named degeneracy, reached by the
@@ -375,7 +380,7 @@ const MOTION_READBACK_S = 3
  * **Both directions, because either alone is satisfiable by a broken instrument.** A reader that
  * always returns the same number passes the frozen assertion on every row; a scene that never turns
  * passes it too, and would then read as a control while being a stalled page. So the row that asks
- * for reduced motion must come back **bit-identical** — `starScene.ts:332` passes `reducedMotion ?
+ * for reduced motion must come back **bit-identical** — `sceneFrame.ts:140` passes `reducedMotion ?
  * 0 : 1` into the table's motion factor, so the angle cannot integrate at all, and a tolerance here
  * would be inventing room the mechanism does not have — and its unseamed sibling must come back
  * **moved**. `worlds-evict-longrun.mjs`'s `assertControlTook` is the same pair of assertions on the
@@ -1056,6 +1061,16 @@ function streamDelta(before, after) {
 // ---------------------------------------------------------------------------------------------
 
 /**
+ * How often the W5 sweep reads the angle back while it waits for the next target (DEC-859).
+ *
+ * This bounds how far past its target a sample can land: at the shipped 1,200 s period one poll is
+ * 0.0005 rad of travel, 0.1% of a 12-sample gap and a tenth of `W5_AZIMUTH_UNIFORMITY_TOLERANCE`.
+ * A gap errs by the *difference* of two samples' overshoots, never their sum, so it does not grow
+ * over the sweep.
+ */
+const W5_POLL_MS = 100
+
+/**
  * Sample the home view at `minAzimuths` azimuths, evenly spaced around the turn.
  *
  * The home view is a family of frames and not a pose: `motion.ts:247` rotates every plane by
@@ -1064,14 +1079,19 @@ function streamDelta(before, after) {
  * rather than computed from the wait — see `readAzimuth` for why that distinction is load-bearing
  * rather than fastidious.
  *
- * A full turn is `MULTIVERSE_PERIOD_S`, so an evenly-spaced comb of N samples is N waits of
- * `period / N`. The gate does not assume the period either: it measures the rate from the first two
- * samples and paces the rest off that, so a retuned period changes how long this takes and nothing
- * about what it means. `azimuthSpacingFault` then checks the azimuths that were actually reached,
- * which is a check with content precisely because the values came back from the page.
+ * **The sweep is steered closed-loop on that read-back (DEC-859).** It used to measure the rate
+ * over one 5 s probe and then sleep `period / N` eleven times, so any error in that one rate landed
+ * eleven times on the wrap gap: a 0.33% over-read closed the comb 3.6% short and refused every
+ * reviewer draw at 1920×1080. `steerAzimuthComb` instead waits, per sample, until the angle reads
+ * back at or past its target, so a sample is off by at most one poll and the error does not
+ * compound. The rate is still measured — to prove the scene turns, and to bound how long a target
+ * may take to arrive — and is divided by the elapsed time *measured* around the two reads, not the
+ * nominal wait. `azimuthSpacingFault` then checks the azimuths that were actually reached, which is
+ * a check with content precisely because the values came back from the page.
  */
 async function sweepHomeView(page, { minAzimuths }) {
   const first = await readAzimuth(page)
+  const firstAt = performance.now()
   if (first === null) {
     return {
       ok: false,
@@ -1089,48 +1109,89 @@ async function sweepHomeView(page, { minAzimuths }) {
   const probeWaitS = 5
   await hold(page, probeWaitS)
   const second = await readAzimuth(page)
-  const TAU = Math.PI * 2
-  const advanced = ((second - first) % TAU + TAU) % TAU
+  const probeElapsedS = (performance.now() - firstAt) / 1000
+  const advanced = forwardAzimuthTravel(first, second)
   if (advanced < 1e-4) {
     return {
       ok: false,
       reason: 'frozen',
       detail:
-        `multiverseAngle did not advance over ${probeWaitS}s (${first.toFixed(6)} → ${second.toFixed(6)}). ` +
-        'The scene is not turning — `starScene.ts:332` passes 0 under reduced motion — so a sweep ' +
-        'here would sample one azimuth twelve times.',
+        `multiverseAngle did not advance over ${probeElapsedS.toFixed(3)}s (${first.toFixed(6)} → ` +
+        `${second.toFixed(6)}). The scene is not turning — \`sceneFrame.ts:140\` advances the ` +
+        'table with motion 0 under reduced motion — so a sweep here would sample one azimuth twelve ' +
+        'times.',
     }
   }
-  const radPerS = advanced / probeWaitS
-  const stepS = TAU / minAzimuths / radPerS
+  const radPerS = advanced / probeElapsedS
+  const stepS = (Math.PI * 2) / minAzimuths / radPerS
   console.log(
-    `  sweeping ${minAzimuths} azimuths: ${radPerS.toFixed(6)} rad/s measured, ` +
-      `${stepS.toFixed(1)}s per step, ~${((stepS * minAzimuths) / 60).toFixed(1)} min`,
+    `  sweeping ${minAzimuths} azimuths closed-loop: ${radPerS.toFixed(6)} rad/s measured over ` +
+      `${probeElapsedS.toFixed(3)}s (nominal ${probeWaitS}s), ~${stepS.toFixed(1)}s per step, ` +
+      `~${((stepS * minAzimuths) / 60).toFixed(1)} min`,
   )
+
+  // The attract heartbeat keeps `hold`'s cadence rather than riding every poll: it is a
+  // `pointermove`, and ten a second would be a different input stream from the one every other
+  // row is measured under.
+  let beatAt = -Infinity
+  const poll = async () => {
+    if (Date.now() - beatAt >= HEARTBEAT_MS) {
+      await heartbeat(page)
+      beatAt = Date.now()
+    }
+    await sleep(W5_POLL_MS)
+  }
 
   const sweep = []
   const unresolved = []
-  for (let i = 0; i < minAzimuths; i += 1) {
-    if (i > 0) await hold(page, stepS)
-    const azimuth = await readAzimuth(page)
-    const labels = await readLabels(page)
-    const visible = labels.filter((label) => isLabelVisible(label))
-    // A visible label with no `data-plane-slug` is R3's readback seam missing on that node. It is
-    // counted in `labelCount` — it is on screen — and reported, never guessed at from its text.
-    const withSlug = visible.filter((label) => typeof label.slug === 'string' && label.slug.length > 0)
-    if (withSlug.length !== visible.length) unresolved.push(visible.length - withSlug.length)
-    sweep.push({
-      azimuth,
-      labelCount: visible.length,
-      labelledWorlds: [...new Set(withSlug.map((label) => label.slug))],
-    })
-    console.log(
-      `    azimuth ${i + 1}/${minAzimuths} @ ${azimuth.toFixed(4)} rad — ${visible.length} visible, ` +
-        `${sweep[i].labelledWorlds.length} worlds`,
-    )
-  }
+  const steered = await steerAzimuthComb({
+    count: minAzimuths,
+    readAzimuth: () => readAzimuth(page),
+    poll,
+    // Three nominal steps: long enough that a slow frame never trips it, short enough that a scene
+    // which stops turning mid-sweep is a setup failure within minutes rather than a hung run.
+    maxPollsPerStep: Math.ceil((3 * stepS * 1000) / W5_POLL_MS),
+    onSample: async (i, azimuth) => {
+      const labels = await readLabels(page)
+      const visible = labels.filter((label) => isLabelVisible(label))
+      // A visible label with no `data-plane-slug` is R3's readback seam missing on that node. It
+      // is counted in `labelCount` — it is on screen — and reported, never guessed at from its text.
+      const withSlug = visible.filter(
+        (label) => typeof label.slug === 'string' && label.slug.length > 0,
+      )
+      if (withSlug.length !== visible.length) unresolved.push(visible.length - withSlug.length)
+      sweep.push({
+        azimuth,
+        labelCount: visible.length,
+        labelledWorlds: [...new Set(withSlug.map((label) => label.slug))],
+      })
+      console.log(
+        `    azimuth ${i + 1}/${minAzimuths} @ ${azimuth.toFixed(4)} rad — ${visible.length} visible, ` +
+          `${sweep[i].labelledWorlds.length} worlds`,
+      )
+    },
+  })
+  if (!steered.ok) return steered
+
+  // Every gap in the order the samples were taken, the last one wrapping back to the first — the
+  // numbers `azimuthSpacingFault` judges, printed so a refusal names which gap it was.
+  const gaps = sweep.map((s, i) =>
+    forwardAzimuthTravel(s.azimuth, sweep[(i + 1) % sweep.length].azimuth),
+  )
+  console.log(
+    `    gaps (ideal ${((Math.PI * 2) / minAzimuths).toFixed(4)}): ` +
+      gaps.map((g) => g.toFixed(4)).join(' '),
+  )
   const spacing = azimuthSpacingFault(sweep.map((s) => s.azimuth))
-  return { ok: true, sweep, spacing, unresolvedLabels: unresolved.reduce((a, b) => a + b, 0) }
+  return {
+    ok: true,
+    sweep,
+    spacing,
+    gaps,
+    radPerS,
+    probeElapsedS,
+    unresolvedLabels: unresolved.reduce((a, b) => a + b, 0),
+  }
 }
 
 // ---------------------------------------------------------------------------------------------
