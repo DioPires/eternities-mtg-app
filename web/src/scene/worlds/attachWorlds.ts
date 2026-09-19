@@ -46,6 +46,7 @@ import {
   type PerspectiveCamera,
   type Points,
   type Scene,
+  type ShaderMaterial,
   type WebGLRenderer,
 } from 'three'
 
@@ -232,6 +233,21 @@ export interface WorldsAttachment {
    * `QualityTier` and the line to `applyQualityTier`; R2 owes the knob and the two programs.
    */
   setRimQuality: (quality: RimQuality) => void
+  /**
+   * The rim knob's current setting, readable before any roster composes (DEC-752).
+   *
+   * The pass is built only when a roster composes, so the live program cannot be read on a page
+   * with nothing composed yet — but the knob is set from the first tier announcement, and that is
+   * the wiring a test has to be able to see. A rung that never reaches this reads `'full'` forever.
+   */
+  readonly rimQuality: RimQuality
+  /**
+   * The program the rim is drawn with right now, off the live mesh — `null` until a roster composes.
+   * What `?probe=`'s `quality.glowShader` reports since the cutover retired the galaxy's glow: tier
+   * 4's surviving consumer is this rim (§1.12 row 4), and a name read off the mesh is what was drawn
+   * rather than what the tier asked for (DEC-752).
+   */
+  readonly rimProgram: string | null
   /** The composed worlds, in roster order. For the tests and for R2's system pass. */
   readonly surfaces: readonly WorldSurface[]
   /** §1.5's far LOD: one baked 256x128 layer per world with cards. R2's step-2 pass samples it. */
@@ -757,6 +773,12 @@ export function attachWorlds(options: WorldsAttachmentOptions): WorldsAttachment
     setRimQuality: (quality) => {
       rimQuality = quality
       atmosphere?.setRimQuality(quality)
+    },
+    get rimQuality() {
+      return rimQuality
+    },
+    get rimProgram() {
+      return atmosphere ? (atmosphere.mesh.material as ShaderMaterial).name : null
     },
 
     dispose: () => {

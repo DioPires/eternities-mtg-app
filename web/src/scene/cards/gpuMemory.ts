@@ -17,7 +17,6 @@
  * 32 MB for everything else at target and 96 MB at ceiling. The worst case uses 19 MB of that.
  */
 
-import { ATLAS_BYTES } from './atlas'
 import {
   CARD_IMAGE_HEIGHT,
   CARD_IMAGE_WIDTH,
@@ -72,16 +71,23 @@ export function gpuMemoryReport(atlasBytes: number, cardBytes: number): GpuMemor
 }
 
 /**
- * The case PRD 7.2 is measured against: a full atlas plus a card with 72 printings, both faces
- * loaded and every planet textured.
+ * The case PRD 7.2 is measured against: a card with 72 printings, both faces loaded and every
+ * planet textured.
+ *
+ * > **The atlas term is 0 because the atlas no longer exists (DEC-752).** PRD 7.2 was written
+ * > against a 64 MB thumbnail atlas that dominated the budget; the cutover deleted it with the rest
+ * > of the thumbnail tier. The **field** is kept rather than removed because `ProbeState` publishes
+ * > `atlasBytes` and the gate and e2e read that contract — reporting a real 0 is honest, where
+ * > dropping the key would be a probe-surface change no criterion asked for.
  */
 export function worstCaseReport(): GpuMemoryReport {
-  return gpuMemoryReport(ATLAS_BYTES, worstCaseCardBytes())
+  return gpuMemoryReport(0, worstCaseCardBytes())
 }
 
 /** The pieces of the worst case, for a report that has to be read by a person. */
 export const WORST_CASE = {
-  atlasBytes: ATLAS_BYTES,
+  /** 0 since the cutover retired the thumbnail atlas (DEC-752). */
+  atlasBytes: 0,
   cardFaceBytes: textureBytes(CARD_IMAGE_WIDTH, CARD_IMAGE_HEIGHT) * 2,
   planetBytes: PLANET_CAP * textureBytes(PRINTING_IMAGE_WIDTH, PRINTING_IMAGE_HEIGHT),
   planets: PLANET_CAP,

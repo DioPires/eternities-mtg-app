@@ -16,10 +16,10 @@ and live — `https://eternities-mtg-app.vercel.app`, deployed automatically on 
 
 A refresh is a **data** change. It does not touch rendering, so it does not need `pnpm bench`
 (PRD 9.1.2's rule is "before merging any change that touches rendering"). It does need the report
-review and the automated browser checks (§4.1), both of which are cheap — **and it needs the PRD
-9.3 visual gate (§4.2), which is not cheap and is not optional.** A refresh moves plane positions
-(PRD 4.9.3), so it can change what the multiverse looks like without touching a line of rendering
-code; that is the one thing only the gate can catch.
+review and the automated browser checks (§4.1), both of which are cheap — **and it needs the
+worlds gate (§4.3), which is not cheap and is not optional.** A refresh rebuilds every world's cell
+sheet and swatches, so it can change what the multiverse looks like without touching a line of
+rendering code; that is the one thing only the gate can catch.
 
 ---
 
@@ -231,49 +231,213 @@ one that blocks.
 `pnpm test:e2e` drives the built site under the production CSP: PRD 8.9.2's five route kinds, the
 quality ladder, and Phase 5's accessibility checklist with the CSP/HSTS self-check. It is the check
 that the new data actually *loads* — a report can be perfect over artefacts a browser cannot decode.
-It renders through SwiftShader and says nothing about how the refresh **looks**; that is 4.2.
+It renders through SwiftShader and says nothing about how the refresh **looks**; that is 4.3.
 
 > **Changed since the 2026-09-05 rehearsal.** The rehearsal ran
 > `node scripts/verify-browser.mjs --dataset production`, which passed with 0 failed Scryfall image
 > requests — the part only a real-id dataset can tell you. DEC-708 archived that script under the
 > `review-tooling-2026-09` tag and moved its a11y and CSP assertions into `e2e/a11y.spec.ts`.
-> Its Scryfall-image count did not move with them, so watch the network panel during 4.2 instead:
-> the gate loads real images on the production dataset and the card checkpoints are where a broken
-> id shows up.
+> Its Scryfall-image count did not move with them. The rehearsal's stand-in was watching the
+> network panel during the galaxy's visual gate, which retired at the cutover (§4.2), so **nothing
+> in this runbook counts failed Scryfall image requests today**. Until something does, open the
+> built site on the production dataset in a local Chrome and watch the network panel while focusing
+> a few cards: that is where a broken id shows up.
 
-### 4.2 The visual gate — every refresh, without exception
+### 4.2 The visual gate — retired at the worlds cutover
+
+`visual-gate.mjs` captured PRD 9.3's seven checkpoints for the **galaxy** and was the instrument
+DEC-661, DEC-683 and DEC-684 were accepted on. The galaxy retired at the worlds cutover (worlds spec
+§3.2, DEC-752), and PRD 9.3 was amended in the same commit to hold the worlds build to worlds spec
+§3.1 instead. The script, `lib/status-panel.mjs`, `alloc-probe.mjs` and `dec697-diag.mjs` are
+archived under the **`galaxy-cutover`** tag — the last commit on which the galaxy scene and the
+visual gate both existed — and are no longer in the tree.
+
+**Every refresh now runs §4.3.** Its reason for running on every refresh is the one this section
+used to give: the criteria are computed from the data, so a refresh can move them without a line of
+rendering code changing.
+
+### 4.3 The worlds gate — every refresh that touches the v3 dataset
 
 ```sh
 cd web
-node scripts/visual-gate.mjs --dataset production --out ../visual-gate-<new-hash>
+node scripts/worlds-gate.mjs --dataset worlds --out ../worlds-gate-<new-hash>
+node scripts/worlds-gate.mjs --dataset worlds --negative-controls --out ../worlds-gate-<new-hash>-controls
 ```
 
-**Run this on every refresh.** PRD 9.3 words its cadence as "per milestone-sized change", which
-does not obviously include a data refresh — and it must, for a reason specific to refreshes: PRD
-4.9.3 lets plane positions move between datasets, and the arm geometry every 9.3 criterion is
-judged on is *computed from the data*. A refresh can therefore break "spiral arms are legible for
-every plane with ≥ 2,000 cards" or "no label overlaps another at the home view" without a single
-line of rendering code changing, and nothing in 4.1 would notice. This is review amendment A1's
-note, written down here so the cadence has a home.
+`worlds-gate.mjs` is the acceptance instrument for the worlds spec's §3.1 — W1 through W5 — and it
+is **a check, not a capture tool**. That is the whole difference from §4.2: `visual-gate.mjs` fails
+only if it cannot reach a checkpoint and leaves the judging to the owner, while this one compares
+measured values against floors and exits non-zero when one is missed. The frames it writes are
+evidence for a verdict it has already reached, not the verdict itself.
 
-`visual-gate.mjs` is the acceptance instrument for PRD 9.3 — DEC-661, DEC-683 and DEC-684 were all
-accepted on its output — so it is maintained tooling, not one-off review tooling, and it survived
-the DEC-708 archival for exactly that reason. It captures the seven checkpoints against the
-**shipped composition** (`?probe=shell`: the scene inside the HUD, which is what 9.3 judges), plus
-the shimmer recordings and the cross-fade pass, and writes `capture.json` beside them.
+Run it on every refresh that rebuilds the v3 dataset, and for the same reason §4.2 gives: the
+criteria are computed from the data. §1.3's cell sheet is laid out from `rowCells` and the surface's
+colour comes from `swatches.bin`, so a refresh can move W1's worst plane or collapse a W3 band pair
+without a line of rendering code changing.
 
-It is a capture tool, not a check: it fails only if it cannot reach a checkpoint, never because of
-what a checkpoint looks like. **The owner judges the frames** against 9.3's seven criteria, and PRD
-9.4 makes that acceptance part of done. So:
+**Which dataset.** `--dataset worlds` or `--dataset production`; since the cutover `active` names
+the same v3 directory, so a default build measures it too.
 
-- attach the output directory to the refresh pull request (§5), and
-- if the arms on any plane over 2,000 cards read worse than the previous refresh, say so in the PR
-  rather than leaving it for the owner to spot. The previous refresh's captures are the comparison;
-  keep them until the new ones are accepted.
+> **History, kept because the rule it records was load-bearing.** Until the cutover this paragraph
+> said *never repoint `active` to test the worlds path*: `active` was contract v2,
+> `READABLE_CONTRACT_VERSIONS` was `{2, 3}`, and v3 drops the shear triple whose readers go through
+> `?? 0`, so an early repoint flattened the galaxy's shear without a warning. `active` moved exactly
+> once, in the commit that deleted the galaxy scene (DEC-752), and the same commit closed the
+> readable set to `{3}` — so a v2 dataset is now refused at load instead of silently misdrawn.
 
-Two practical notes. It needs a **real GPU** and a local Chrome — a software rasteriser cannot
-answer a question about bloom or shimmer — so it runs on the refresher's machine, not in CI. And it
-builds the site itself unless you pass `--no-build`, so it will pick up the dataset you just made.
+The two v3 *fixtures* carry `swatches.bin` since DEC-796, so a fixture build composes worlds and the
+CI smoke build exercises the worlds path. They remain fixtures: the gate's criteria are specified on
+the production roster, and only the `worlds`/`production` role answers them.
+
+**Reading the output.** Every row prints the measure it aimed at, not just its criterion: W2 and W4
+are conjunctions and a conjunction hides which half did the work. Three verdicts, and the third is
+not a kind of failure — `insufficient` means the subject was outside the criterion's domain, which
+on the v3 roster is the ordinary state of the six one-card worlds for W2 and W3. The run prints how
+many planes landed there; a criterion that is silently skipped is how a gate prints green while
+measuring nothing.
+
+`--negative-controls` runs §3.1's matrix, and it is the run that says whether the instrument works
+at all. The run prints its own census — `N expected-RED rows, M expected-GREEN, … — K of T scored
+this run` — and that line, not a count written down here, is what to read: a number in this file is a
+claim about a matrix that keeps growing, and it goes stale silently. At the cutover's
+confirmation run (`9ff1d81`) it read **4 expected-RED, 7 expected-GREEN, 1 N/A-only, 2 derivation
+(unscored), 3 MIXED — 13 of 15 scored**, and every one of 39 expectations landed on its colour. **`--only` scores a
+subset, so check `K of T` before reading a GREEN summary as a full matrix run.** The green rows are
+the ones to read first: in a
+matrix where everything is red, a broken baseline scores identically to a perfect guard, so only the
+rows expected to stay green can falsify the instrument. A red row that has gone green means the
+control stopped engaging, not that the renderer improved — the gate asserts each seam's read-back
+before it scores the row, and prints whether the witness was the renderer's own policy or merely an
+echo of the query parameter.
+
+**`?artThreshold=fixed24` alone no longer perturbs anything, and its rows are now RETIRED** (DEC-752
+ask `f9e273fb`, board answer `replace_row`, 2026-09-17). Measured on `fec45c9`: the adaptive quantile
+at a 1,024-layer pool already sits *at* the 24 px floor, so forcing 24 px moves the threshold by
+nothing — `fixed24` read `artFraction` 0.9979 against `no-seams`' 0.9968, at the same 24.00 px. The
+budget no longer starves it either, now that it is capacity-derived: 155 MB against ~95 MB
+outstanding, `declinedBudget` 0 and `swatchOnly` false at exit. The seam does engage and does read
+back its policy; it simply has no pixel to move.
+
+**They were left unfitted until the owner ruled, and then retired rather than re-fitted.** That
+order is the point: a matrix edited to agree with the build is not a matrix, and retiring a control
+§3.1 publishes is the owner's call. The seam itself stays in the renderer — the replacement row
+composes it.
+
+**W4's live art falsifier is `fixed24-layers-128`**, which composes the fixed threshold with a tier-4
+pool: 24 px holds demand at dominaria's full ~946 cells while the pool holds 128, a **7.39×**
+overshoot, and `artFraction` reads **0.1342 against a bar of 0.5**. That is the condition Appendix A
+actually captured — a fixed threshold against a pool too small for it, not a fixed threshold on its
+own. It is also the row that proves the absolute floor does work: at the same frame on the previous
+bar (`0.9 × ceiling`, no floor) it read 0.1341 against 0.1216 and went **GREEN**, because a
+pool-starved frame is saturated and `artFraction` equals its ceiling exactly.
+
+**W4's eviction half has two live rows and both assert `N/A`, because what they falsify is its
+domain and not its bound** (DEC-842). `layers-128` covers the capacity rule; `unsaturated-pool`
+(kamigawa, high-water 265 of 1,024) covers the occupancy one — below saturation `claimLayer` never
+reaches its victim search, so the rate is a structural 0 the bound cannot fail. **The 45-world
+`baseline` tour cannot stand in for either**: its fold is a worst-of and dominaria saturates, so it
+passes with the occupancy rule and without it, and the only thing that changes is the denominator it
+prints (`worst of 1 world in domain, 44 out of domain` where it read `worst of 45`). Read that
+denominator on every refresh. **If it ever climbs back toward 45 without dominaria's rate moving, the
+rule has stopped firing** — and a green eviction half taken over 45 readings that cannot fail is what
+this row exists to prevent.
+
+**W2's and W3's controls are composed with `?art=off`, and their sibling is `?art=off` alone.** Read
+`artoff-swatch-mean` and `artoff-bands-shuffle` against the `art-off` row, never against `baseline`.
+Both colour seams perturb the *swatch*, and at the 2.2-radii pose essentially every sampled cell
+draws card **art** over its swatch, so the bare seams move a layer the capture almost never shows —
+measured on one build, `?swatch=mean` alone lands inside its own no-seam spread, which is a control
+that proves nothing. `?art=off` drops every cell to its swatch so that a swatch seam can reach the
+pixels. It also moves W2 on its own, and that is exactly why it is the sibling: scoring a composed
+row against the bare build would credit the seam under test with the whole of `?art=off`'s move.
+
+**Re-deriving W3's floor.** `FLOORS.bandDeltaE` has to sit between two **roster means**, because §3.1
+folds W3 to the mean over its in-domain worlds (board ruling `fold_mean`) — not between two dominaria
+readings, and no longer between two worst worlds. The two rows that measure that pair are marked
+`derivation: true` — runnable by name, kept out of `--negative-controls` because they are two full
+tours and a gate that takes two hours is a gate that stops being run. **They are also W3's only live
+falsifier now**, so this is no longer an optional step of a refresh:
+
+```sh
+# five times, into five directories — one pass is not a derivation
+node scripts/worlds-gate.mjs --dataset worlds --no-captures \
+  --only w3-floor-shipped,w3-floor-control --out ../w3floor-<new-hash>-1
+node scripts/w3-floor.mjs ../w3floor-<new-hash>-1 ../w3floor-<new-hash>-2 ...
+```
+
+It prints each arm's per-session means, each arm's spread, the per-world table and the interval a
+floor may sit in — or reports that no separating floor exists, which is a finding rather than a
+number to pick. Re-run it whenever the swatch palette moves: the floor is a property of the shipped
+swatches, so a refresh can invalidate it without a line of rendering code changing.
+
+**The domain size moves with the dataset, and the gate reds until the new one is recorded.**
+`W3_DOMAIN_SIZE` in `scripts/lib/worlds-metrics.mjs` maps a dataset hash to **two** counts: the
+worlds whose cards put an adjacent band pair over the 5% share rule (`byShares`, **30** on
+`c9468f1125bcddff`) and the worlds that then present both of those bands in the sampled cells
+(`scored`, **28**). They differ, and they are meant to — `shenmeng` and `zhalfir` qualify on their
+cards and populate one band on screen. A mean over a thinned domain reads in the same units and is
+*flattered* by the thinning, so `scored` is a scored expectation rather than a report: an unrecorded
+hash reds every roster tour, and so does a tour whose scored domain is not exactly the record.
+
+Take both numbers off the first full tour on the new dataset — the gate's startup line prints the
+record, and each W3 row prints `mean of N of M worlds in domain` beside the `qualifying` count it
+derived from that run's own band shares — then record them. Do **not** set `byShares` equal to
+`scored`: that reds every correct roster tour, which is how this pair came to be recorded separately.
+
+**Run each arm at least five times, and read the shipped arm's _minimum_ against the control's
+_maximum_.** The retired 0.55 is the argument for this rule: it was derived from a single pair of
+tours under the old worst-world fold, and at n=5 that fold spanned 0.4253 – 0.8005 while its control
+reached 0.4477 — the arms overlapped, so the row's colour was the draw. A single tour per arm cannot
+see any of that, and neither can three: at n=3 the p10 fold looked like the best statistic on offer,
+and at n=5 it was the worst in the table.
+
+`scripts/w3-fold.mjs` is the instrument for that half. Point it at two or more gate run directories
+and it re-scores W3 five ways over the worlds in the domain of *all* of them:
+
+```sh
+node scripts/w3-fold.mjs --row baseline worlds-gate/accept3 worlds-gate/dec826-bare worlds-gate/accept4
+```
+
+It reports the spread of each fold, the per-world spread worst-first, and whether the same world
+scored the retired min fold every session — on the three runs above, two different worlds did, and on
+five, three did. Use it before quoting any W3 aggregate: one tour cannot tell a build that moved from
+a fold that sampled a different plane. It still carries every fold, including the retired one, so a
+refresh can confirm the mean is still the convergent choice on the *new* swatches rather than
+inheriting a ranking taken on the old ones.
+
+**One measure in that matrix has no live control, and it is `homeLabels`.** §3.1's table lists a
+sixth red row — `labels forced on for empty planes` — which this gate does not run: forcing labels
+on for suppressed planes is renderer behaviour, and none of the six shipped seams (`?probe=`,
+`?swatch=mean`, `?bands=shuffle`, `?art=off`, `?artThreshold=fixed24`, `?layers=N`) reaches
+§1.8's suppression. The unsuppressed 66–77 reading that makes the row red was taken offline through
+the shipped layout code, so it shows the measure *can* fail without being a row the gate can run.
+Read a green `homeLabels` as "the moons are still quiet", never as "the home view is legible" — the
+second is what `worldsNeverLabelled` is for, and that one does have both its rows.
+
+**Each world is toured in its own browser session, and sharing one is not an optimisation you may
+take back.** The art stream and its byte budget are *session-wide and cumulative* — `artStream.ts`
+sizes the budget as a backstop against a pathological session, and a 45-world tour is one by that
+definition: it admits about 729 bodies and then stops asking. Measured on a shared page, the budget
+was spent by the **8th** world, and each of the remaining 37 reported zero cells showing art, so W4
+scored a false RED on every one of them. A per-world criterion read out of a shared session is a
+reading of where in the tour its subject sat. Two consequences when reading the output:
+
+- **Never attribute a session-global counter to a world.** `stream` in `visits.json` is the session
+  total at that world's exit; the world's own share is `streamDelta`, differenced against the entry
+  read. `pool.evictions` is cumulative in the same way, which is why W4's eviction half is a rate
+  taken from a timeline and never off the counter.
+- **Order-independence is checked, not assumed.** Run the tour a second time with the roster
+  reversed and compare per-world numbers. If a world's W4 moves with its position in the tour, some
+  session state is crossing worlds again and every W4 number in the run is suspect. The gate's own
+  backstop is `budgetBoundAtEntry`, which reports `insufficient` rather than `fail` for a world
+  entered with the budget already spent — but a run that trips it has measured nothing, so it is a
+  guard against a silent false RED, not a way to keep touring on one page.
+
+It needs a real GPU and a local Chrome, and it builds the site itself unless you pass
+`--no-build`.
+
+This section replaced §4.2 at the cutover (DEC-752), which retired it with the galaxy along with
+PRD 9.3's criterion 2 and review T7.
 
 ---
 
@@ -291,9 +455,10 @@ gh pr create --title "Data refresh — Scryfall bulk 2026-09-05T09:05:28.871+00:
 Put the report diff summary and the classifier output in the body. A reviewer should not have to
 re-derive what you already ran.
 
-**Attach §4.2's captures.** PRD 9.4 makes the owner's acceptance of the visual review part of done,
-and the owner cannot accept frames that are sitting in a directory on your laptop. Say in the body
-which dataset they were taken on and how the arms compare to the previous refresh.
+**Attach §4.3's evidence.** PRD 9.4 makes the owner's acceptance of the visual review part of done,
+and the owner cannot accept frames that are sitting in a directory on your laptop. Paste the run's
+`GATE:` and `matrix census` lines into the body, attach the frames it wrote, and say which dataset
+they were taken on and how W1–W3 compare to the previous refresh.
 
 ---
 
@@ -368,6 +533,6 @@ un-publish. That is a true statement about git; it has never been run against a 
   deployment instead. See `docs/cross-browser.md`.
 - **Do not skip step 4 because the report was clean.** They check different things: one reads the
   pipeline's own account of the run, the other decodes the artefacts in a browser.
-- **Do not skip 4.2 because 4.1 was green.** A refresh moves plane positions (PRD 4.9.3), and the
-  arm geometry PRD 9.3 is judged on comes out of the data. Green automated checks over a multiverse
-  whose arms stopped reading is the exact failure 4.2 exists to catch.
+- **Do not skip 4.3 because 4.1 was green.** A refresh rebuilds the cell sheets and swatches, and
+  W1–W3 are computed from them. Green automated checks over worlds whose band pairs collapsed is the
+  exact failure 4.3 exists to catch.

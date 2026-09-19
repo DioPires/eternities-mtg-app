@@ -59,15 +59,18 @@ export interface WorldsSeams {
    * **Art off: every cell draws its swatch, and the stream is never asked for a printing.**
    *
    * > **Why a sixth seam exists at all (board ruling `art_off_seam`, DEC-752, DEC-821).** The two
-   * > seams above perturb the **swatch**; at §3.1's 2.2-radii pose the capture is mostly **art** —
-   * > `artFraction` measured 0.61–0.76, roughly seven cells in ten — so on the capture both are
-   * > inert. Measured on DEC-816: `?swatch=mean` leaves `W2.lightnessIqr` at 24.89 against no-seam
-   * > siblings reading 16.09 / 21.28 / 25.89, inside the spread; `?bands=shuffle` moves
-   * > `W3.minAdjacentBandDeltaE` only 0.815 → 0.476, and the shipped aggregate already scores
-   * > *below* that (0.4253 on ravnica), so no floor separates the build from its own falsifier.
+   * > seams above perturb the **swatch**; at §3.1's 2.2-radii pose the capture is almost entirely
+   * > **art** — `artFraction` measures **0.987–0.997** over four dominaria sessions (DEC-752, on
+   * > main `28d4676`), so it is ten cells in ten and not seven — and on the capture both are inert.
+   * > The 0.61–0.76 first recorded here predates DEC-812, which raised the art byte budget from
+   * > 67,108,864 to 155,129,856; dominaria no longer starves mid-visit, so this seam's case is
+   * > **stronger** than when it was argued. Measured on DEC-816: `?swatch=mean` leaves
+   * > `W2.lightnessIqr` at 24.89 against no-seam siblings reading 16.09 / 21.28 / 25.89, inside the
+   * > spread; `?bands=shuffle` moves `W3.minAdjacentBandDeltaE` only 0.815 → 0.476.
    * > Both seams engage — every read-back moves — so this was never wiring: at that pose the
    * > capture and the swatch are different quantities. `?art=off&swatch=mean` and
-   * > `?art=off&bands=shuffle` are the rows that discriminate.
+   * > `?art=off&bands=shuffle` are the rows that discriminate, and measured they do:
+   * > `?art=off&swatch=mean` reads 0.954 / 4.673 against a `?art=off` sibling at 17.92 / 16.50.
    *
    * > **Not `?layers=0`, which is also swatch-only (§1.6).** A zero-layer pool moves
    * > `pool.layers` — the quantile's own divisor — and composes **no stream at all**, so the

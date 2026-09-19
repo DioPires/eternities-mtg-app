@@ -346,9 +346,10 @@ describe('byte 7 has exactly one reader (tripwire)', () => {
   })
 
   it('holds the shaders to their own inline mask, since GLSL cannot call in', () => {
-    // `shaders.ts` indexes `uHues[7]` with byte 7 and `cardShaders.ts` with the `aHue` attribute
-    // fed from it. Both mask with `& 7`; `starfield.test.ts` pins that mask over all 256 values.
-    for (const path of ['scene/starfield/shaders.ts', 'scene/cards/cardShaders.ts']) {
+    // `cardShaders.ts` indexes its hue table with the `aHue` attribute fed from byte 7 and masks it
+    // with `& 7`; `starfield.test.ts` pins that mask over all 256 values. The star vertex shader
+    // was the other GLSL reader and retired with the star field at the cutover (DEC-752).
+    for (const path of ['scene/cards/cardShaders.ts']) {
       const shader = FILES.find((f) => f.path === path)!
       expect(shader.text).toMatch(/uHues\[[^\]]*&\s*7\s*\]|int\s+hue\s*=[^\n]*&\s*7/)
     }

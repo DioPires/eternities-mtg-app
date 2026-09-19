@@ -13,7 +13,7 @@
  */
 
 import { SHADE_AMBIENT, SHADE_GAIN } from './probePayload'
-import { glslFloat } from '../starfield/shaders'
+import { glslFloat } from '../glsl'
 
 /**
  * §1.8: undetailed worlds are dimmed so a neighbour does not outshine the world being looked at.

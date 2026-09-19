@@ -58,13 +58,14 @@ web/                      Vite 8, React 19, TypeScript strict, three.js, Zustand
   src/search/             PRD 6.5's client-side fuzzy index over search.json.
   src/app/                Cold start, dataset loading, and the shell's hooks.
   src/ui/                 HUD, drawers, overlays, toasts, WebGL2 fallback.
-  src/harness/            The still field the GPU self-check needs, behind `?selfcheck`, and the
-                          entry point of `harness.html` — the second Vite input (DEC-740). None of
-                          it is in the product's *build*, not merely out of its first chunk.
+  src/harness/            The entry point of `harness.html` — the second Vite input (DEC-740) —
+                          hosting `/bench` and `?probe=1`. None of it is in the product's *build*,
+                          not merely out of its first chunk.
   public/data/<hash>/     Committed artefacts, immutable, content-hashed.
-  scripts/                Budget check, vercel.json generation, the bench, and `visual-gate.mjs`
-                          — PRD 9.3's acceptance instrument. The browser-verification scripts were
-                          archived by DEC-708; see `docs/cross-browser.md` to restore one.
+  scripts/                Budget check, vercel.json generation, the bench, and `worlds-gate.mjs`
+                          — PRD 9.3's acceptance instrument, worlds spec §3.1. The browser-
+                          verification scripts were archived by DEC-708; see
+                          `docs/cross-browser.md` to restore one.
   e2e/                    Playwright: PRD 8.9.2's route smoke and 9.1.2's bench smoke, in CI.
 contract/test-vectors/v2/ The shared byte-level test vector. Both languages assert against it.
 docs/                     The contract and policy documents above.
@@ -91,7 +92,7 @@ pnpm typecheck && pnpm lint && pnpm test
 pnpm build && pnpm preview            # preview serves the *production* headers
 pnpm test:e2e                         # Playwright route + bench smoke; needs a build first
 node scripts/check-budget.mjs --dataset scale
-node scripts/visual-gate.mjs --dataset production   # PRD 9.3 captures; needs a local Chrome
+node scripts/worlds-gate.mjs --dataset worlds     # worlds spec §3.1, W1–W5; needs a local Chrome
 ```
 
 `pnpm test:e2e` needs Chromium once: `pnpm exec playwright install chromium`. It runs against
@@ -185,9 +186,9 @@ reachable standalone (`?probe=1`) exactly as reviewed. `/bench` flies the shippe
 2a's harness, so `web/bench/baseline-2026-09-05.json` measures the product. Phase 6 is in progress —
 the cross-browser pass, the refresh rehearsal and the visual review are outstanding.
 
-Phase 2a's harness is gone (review §6.1 group B). What it hosted that is still needed — the GPU
-self-check — lives at `?selfcheck` in `src/harness/SelfCheckScene.tsx`; `?harness=2a` and
-`?harness=3` are not routes any more.
+Phase 2a's harness is gone (review §6.1 group B); `?harness=2a` and `?harness=3` are not routes any
+more. The GPU self-check it left behind went with the galaxy at the worlds cutover (DEC-752): it is
+archived under the `galaxy-cutover` tag, and `?selfcheck` now opens the product shell.
 
 Two browser checks, with different jobs.
 
@@ -197,9 +198,11 @@ self-check (`e2e/a11y.spec.ts`). It is narrower than a real-GPU run on purpose �
 no representative GPU, so it renders through SwiftShader and asserts nothing about frame time. PRD
 7.2's ceilings are enforced by `pnpm bench` on the reference machine.
 
-`node web/scripts/visual-gate.mjs --dataset production` is the local one, on this machine's real
-GPU: PRD 9.3's seven capture checkpoints for the owner to judge. `docs/refresh-runbook.md` step 8
-runs it on every dataset refresh.
+`node web/scripts/worlds-gate.mjs --dataset worlds` is the local one, on this machine's real GPU:
+worlds spec §3.1's W1–W5, scored against their floors, plus the negative-control matrix under
+`--negative-controls`. `docs/refresh-runbook.md` §4.3 runs it on every dataset refresh. It replaced
+`visual-gate.mjs` at the cutover (DEC-752); the galaxy's capture script is archived under the
+`galaxy-cutover` tag.
 
 DEC-708 archived the wider local gate — `verify-browser.mjs`, `cross-browser.mjs` and
 `arm-lane-capture.mjs` — under the `review-tooling-2026-09` tag (review §6.1 group C). Its a11y and

@@ -40,7 +40,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { act, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Texture, Vector3, type WebGLRenderer } from 'three'
+import { Vector3, type WebGLRenderer } from 'three'
 
 import { SceneMotion } from '../src/camera/motion'
 import { ServicesProvider, createNavStore, type Services } from '../src/app/services'
@@ -53,7 +53,6 @@ import { resetHalfFloatProbeForTests } from '../src/scene/platform/capabilities'
 import { SceneHost } from '../src/scene/renderer/sceneHost'
 import { PlaneTable } from '../src/scene/starfield/planeTable'
 import { StarGeometry } from '../src/scene/starfield/starGeometry'
-import { createStarField } from '../src/scene/starfield/starFieldObjects'
 import type { SceneDataState } from '../src/scene/useSceneData'
 import { worldPlanesOf } from '../src/scene/worlds/worldSource'
 
@@ -155,11 +154,10 @@ function fakeRenderer(canvas: HTMLCanvasElement): WebGLRenderer {
 function dataState(worlds: boolean): SceneDataState {
   const table = new PlaneTable(PLANES.planes, PLANES.multiverseRadius)
   const geometry = new StarGeometry(PLANES.planes.length, 'float32')
-  const field = createStarField(table, geometry, new Texture())
   return {
     manifest: null,
     planes: PLANES,
-    resources: { table, geometry, field, positionMode: 'float32' },
+    resources: { table, geometry, positionMode: 'float32' },
     drawable: 0,
     expected: 0,
     starsComplete: true,

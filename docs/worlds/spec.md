@@ -36,19 +36,19 @@ and stays one until the W0.1 field reports land; §4.5 of this document says wha
 W4.2 gives one `SceneRenderer` owning the canvas, the `WebGLRenderer`, one `requestAnimationFrame`,
 and a fixed order per tick. Concept B changes what four of those steps do and deletes three:
 
-| W4.2 tick step | Under worlds |
-|---|---|
-| input | unchanged |
-| `rig.update(dt)` | unchanged — the camera rig imports nothing from three and is explicitly kept |
-| plane table | unchanged in shape; the per-plane `DataTexture` loses the retired layout fields (§2.4) and gains nothing |
-| uniforms | unchanged |
-| async pick | same id-buffer technique, new subject: cell instance ids, not star indices (§1.11) |
-| main pass | new content (§1.2) |
-| **bloom source** | **deleted** |
-| **mip chain** | **deleted** |
-| **composite** | **reduced** to tonemap + vignette; no bloom tap |
-| label tick | unchanged mechanism, far fewer labels (§1.8) |
-| quality sample | unchanged; the ladder gains worlds-specific rungs (§1.12) |
+| W4.2 tick step   | Under worlds                                                                                             |
+| ---------------- | -------------------------------------------------------------------------------------------------------- |
+| input            | unchanged                                                                                                |
+| `rig.update(dt)` | unchanged — the camera rig imports nothing from three and is explicitly kept                             |
+| plane table      | unchanged in shape; the per-plane `DataTexture` loses the retired layout fields (§2.4) and gains nothing |
+| uniforms         | unchanged                                                                                                |
+| async pick       | same id-buffer technique, new subject: cell instance ids, not star indices (§1.11)                       |
+| main pass        | new content (§1.2)                                                                                       |
+| **bloom source** | **deleted**                                                                                              |
+| **mip chain**    | **deleted**                                                                                              |
+| **composite**    | **reduced** to tonemap + vignette; no bloom tap                                                          |
+| label tick       | unchanged mechanism, far fewer labels (§1.8)                                                             |
+| quality sample   | unchanged; the ladder gains worlds-specific rungs (§1.12)                                                |
 
 Deleting the bloom chain is not an optimisation that can be deferred. Review §4.2 costs concept B
 **assuming there is no post chain**, and §4.1 finds that the current 0.28-threshold bloom is what
@@ -64,7 +64,7 @@ chain.
 Drawn in this order, every frame:
 
 1. **Backdrop** — the existing three-layer parallax background, unchanged.
-2. **System** — one `InstancedMesh` of icospheres, one instance per plane that is *below* §1.5's
+2. **System** — one `InstancedMesh` of icospheres, one instance per plane that is _below_ §1.5's
    upper crossover threshold, which includes every plane inside the crossover band — those draw here
    **and** in step 4 and the two cross-fade (§1.5). Only a plane fully above the band is absent from
    this pass. Dust is excluded; it is step 3. A world instance samples its baked equirect swatch
@@ -84,7 +84,7 @@ Steps 2–4 are opaque and depth-tested. Steps 5, 6, 8 are transparent; 8 is las
 atmosphere must not depth-reject the tether passing in front of it.
 
 > **Normative — there is one partition, and it is §1.5's crossover, not "the focused world".** A
-> world appears in step 2 *or* step 4, except inside the crossover band where it appears in both and
+> world appears in step 2 _or_ step 4, except inside the crossover band where it appears in both and
 > the two cross-fade (§1.5). More than one world can be above the crossover at once — a tether view
 > with both ends near is the ordinary case — so nothing in the pass list may be written as "the
 > focused world" versus "the rest".
@@ -94,7 +94,7 @@ every count in this paragraph is a worked example, not a set of constants — de
 why). 87 planes: 57 empty, 1 dust, **29 worlds with cards**. At the home
 view every world is far below the crossover, so step 2 draws **29 + 57 = 86 instances** and step 4
 draws nothing; with one world fully above the band, step 2 draws 28 worlds + 57 moons — and with
-that world *inside* the band it is 29 + 57 again, because it draws in both passes. Step 2's instance
+that world _inside_ the band it is 29 + 57 again, because it draws in both passes. Step 2's instance
 count is therefore not `29 − (sheets drawn)`; it is a count of planes below the band's top, and a
 renderer that derives one from the other will be one instance short through every approach. (The
 prototype's `captures.json` reports `system.worlds = 27` because it drew Dominaria and Rabiah in
@@ -124,11 +124,11 @@ detail and had no equirect rung at all; 27 is a prototype count and is not produ
 - **Radius.** `radius = 0.126 · √cardCount`. Constant area per card, which is what makes Dominaria's
   22% share visible: r 9.97 against Rabiah's 1.09, a **9.1×** ratio where today's `log N` law gives
   **1.568×** for the same pair (`visual_radius` in `pipeline/src/eternities/fixtures/layout.py`:
-  10.633 against 6.781). Review §4.1's oft-quoted 1.3× is a *different* pair — Dominaria against
+  10.633 against 6.781). Review §4.1's oft-quoted 1.3× is a _different_ pair — Dominaria against
   Mercadia, 20× the cards, 10.633 / 8.008 = 1.328 — and is not the comparand for this sentence.
   **The law carries the same floor empty planes do: `radius = max(0.126·√cardCount, 0.55)`** (§1.8).
   Without it the law inverts below **19 cards** — `0.126·√19 = 0.549` — and a world is drawn
-  *smaller* than a plane with no cards at all. On the 87-plane roster nothing is: the smallest world
+  _smaller_ than a plane with no cards at all. On the 87-plane roster nothing is: the smallest world
   is 30 cards (r 0.690). On the v3 roster **15 of 45 worlds** are under the floor and six carry one
   card, which the unfloored law draws at r 0.126 — **4.4× smaller in radius and 19× smaller in
   silhouette than a dark moon**, which is §1.8's sentence "emptiness becomes a colour and not a
@@ -235,8 +235,8 @@ detail and had no equirect rung at all; 27 is a prototype count and is not produ
   equator**: colourless is split between the two ice caps, each mono colour is a matched pair of
   bands, gold is the single equatorial belt. North to south:
   `C G R B U W · Gold · W U B R G C`.
-- **Bands are equal-*area*, not equal-angle.** A band's share of `sin(latitude)` is its share of the
-  plane's cards, so the area a colour covers *is* the fraction of the plane that colour is. Gold
+- **Bands are equal-_area_, not equal-angle.** A band's share of `sin(latitude)` is its share of the
+  plane's cards, so the area a colour covers _is_ the fraction of the plane that colour is. Gold
   takes its whole share in one belt; every other class takes half its share per band.
 - **Longitude** is sliced per plane by the plane's own `sets` array in chronological order, each set
   taking its share of 360°. A single-set plane is one slice covering the whole sphere and looks
@@ -257,6 +257,7 @@ detail and had no equirect rung at all; 27 is a prototype count and is not produ
   > Taken literally that pair is not merely ambiguous, it is degenerate — `cos((i + ½)·dφ)` runs
   > `+1 → −1` down the sphere, so Dominaria's southern rows get **negative** cell counts and the
   > 81 rows sum to **0 cells**. Read as `sin θ` they sum to exactly 6,266, which is `cardCount`.
+
 - **Cell aspect is 4:3**, because that is what an `art_crop` letterboxes into without being
   stretched. Scryfall's terms forbid stretching card art and review §4.4 flags the current planet
   shader for exactly this class of problem; 4:3 is how concept B avoids inheriting it.
@@ -268,27 +269,27 @@ detail and had no equirect rung at all; 27 is a prototype count and is not produ
 > prototype captures the owner accepted at W2.3 are of the mirrored layout.
 
 **Assignment.** In the prototype the grid holds ≈ N slots and the population does not spread evenly
-over them, so assignment ran three passes — exact (colour *and* set), colour only, anywhere — and
+over them, so assignment ran three passes — exact (colour _and_ set), colour only, anywhere — and
 left Dominaria at 5,372 exact / 694 colour-only / 200 displaced / 0 bare, and Rabiah at 49 / 0 / 26
 / 3 bare of 75.
 
-> **Normative, and a change from the prototype.** Production relaxes the grid *to the population*
+> **Normative, and a change from the prototype.** Production relaxes the grid _to the population_
 > instead of displacing cards. Slice boundaries are chosen per row, so a row's cells are handed out
 > to bands and sets in proportion to what that row's latitude range actually contains, and the row's
 > cell count is chosen to match. The target is **100% exact, zero displaced, zero bare**, and the
 > pipeline fails its own invariant test if any card is displaced (§2.1). A displaced card is a card
 > in the wrong place on a map whose entire claim is that position means something.
 
-> **Normative — what the relaxation does *not* move.** Only the per-row **cell count** is
+> **Normative — what the relaxation does _not_ move.** Only the per-row **cell count** is
 > population-derived. The **row latitudes stay equal-angle**: `rows` rows of constant `dφ = π/rows`,
 > centres at `(i + ½)·dφ`, unchanged from the closed form. This matters twice. It is what lets the
 > client match a cell to its row by nearest latitude at all (§2.1), and it is what keeps rows and
-> bands independent: bands are equal-*area* in `sin(lat)` and rows are equal-*angle*, so a band
+> bands independent: bands are equal-_area_ in `sin(lat)` and rows are equal-_angle_, so a band
 > boundary generally falls **mid-row**. That is legal and intended — **a row straddling a band
 > boundary splits its cells between the two bands in proportion to the area each band takes of that
 > row**, which is the same proportional rule the paragraph above states, applied within a row rather
 > than across rows. Band boundaries are never snapped to rows: snapping would quantise a colour's
-> area to `1/rows` and break §1.3's central claim that a band's area *is* that colour's share.
+> area to `1/rows` and break §1.3's central claim that a band's area _is_ that colour's share.
 
 Because the counts move and the latitudes do not, the closed form is no longer a description of the
 shipped grid. Rabiah is the proof that the difference bites: the closed form gives **78 slots for 75
@@ -304,7 +305,7 @@ carry the contract consequence.
 >
 > The failure is two-sided, and the side the prototype never saw is the dangerous one. Rabiah
 > over-allocates (78 slots, 75 cards → 3 bare cells, visible). But **3,487 of those 7,000 counts
-> *under*-allocate**, and an under-allocated world drops cards silently. Of v3's 45 worlds, **18
+> _under_-allocate**, and an under-allocated world drops cards silently. Of v3's 45 worlds, **18
 > under-allocate, 15 over-allocate and only 12 are exact — 207 cards have no cell at all**, led by
 > new-phyrexia (−27), rath (−23), thunder-junction (−20) and forgotten-realms (−18). "Zero bare"
 > (§2.1) cannot detect this: a dropped card leaves no bare cell to count.
@@ -401,7 +402,7 @@ carry the contract consequence.
 >   already gives `rows = 1, rowCells = [2]`; the relaxation's exact-N invariant makes that `[1]` at
 >   N = 1 and leaves `[2]` at N = 2. **One row, whose centre is the equator, whose `dφ` is π.**
 > - At N = 1 the single cell spans the whole sphere: half-extents `(π, π/2)` in arc. This is not a
->   degenerate case to special-case away — it is what constant area per card *means*. A cell's world
+>   degenerate case to special-case away — it is what constant area per card _means_. A cell's world
 >   area is `4π·radius²/N = 4π·0.126² = 0.200` square units for every N, so one card on a one-card
 >   world is the same physical size as one card on Dominaria. The cell wraps because the world is
 >   small, not because the law failed. (With the §1.3 radius floor the drawn world is larger than
@@ -409,7 +410,7 @@ carry the contract consequence.
 > - **The 4:3 target is exempt at small N, and this costs nothing.** A closed surface cannot be tiled
 >   by one or two 4:3 cells: the slot aspect is `2π·sin θ / (rowCells·dφ)`, which at `rows = 1` is
 >   **2.00** for N = 1 and **1.00** for N = 2. Neither stretches any art — §1.4 letterboxes art into
->   the slot, so a non-4:3 slot costs slot *area* and never geometry.
+>   the slot, so a non-4:3 slot costs slot _area_ and never geometry.
 >
 > **What actually breaks at small N is §1.4's tangent quad** — see §1.4's subdivision rule. A cell's
 > corner sits `√(1.006² + α² + β²) − 1` above the unit sphere: **0.7%** of the radius on Dominaria,
@@ -486,12 +487,12 @@ subset of anything.
 > So the base geometry is **not** a unit quad in general: it is a `(k_lon + 1) × (k_lat + 1)` vertex
 > grid, **one `(k_lon, k_lat)` per world** (the sheet is already one draw per world), and a vertex at
 > `(u, v) ∈ [−1, 1]²` is placed **on the sphere** at colatitude `θ_c + v·(dφ/2)` and longitude
-> `λ_c + u·(π / rowCells[r])` — the cell's own *angular* half-extents, the same parameterisation that
+> `λ_c + u·(π / rowCells[r])` — the cell's own _angular_ half-extents, the same parameterisation that
 > placed its centre — then lifted by the same 1.006 and pulled in by the same 0.93. Every vertex now
-> sits *on* the lifted sphere at every `k`, so the residual error is the **sag** of each flat facet
+> sits _on_ the lifted sphere at every `k`, so the residual error is the **sag** of each flat facet
 > between its four vertices, `1.006·(1 − cos γ)`, and never the tangent plane's unbounded corner
 > lift. `iSize` stays what it is (arc-length half-extents) and stays what the pixel tests and §2.1's
-> contract are written against; it is `sin θ_r` times the longitudinal *angle* used here, which is
+> contract are written against; it is `sin θ_r` times the longitudinal _angle_ used here, which is
 > the whole reason the two must not be confused (§2.1's 51.6×).
 >
 > `k` is the smallest integer pair holding that sag within **1% of the radius**:
@@ -548,7 +549,7 @@ colour  = mix(colour, art, iArt)                      // art enters at full valu
 
 > **Normative — compliance is in this shader, not in a follow-up.** The lambert term is a brightness
 > shift, which Scryfall's terms forbid applying to card images, and review §4.4 flags the shipped
-> planet shader for doing it. So the shade multiplies the *swatch* only and a cell that has resolved
+> planet shader for doing it. So the shade multiplies the _swatch_ only and a cell that has resolved
 > to art is flat-lit on purpose. The art is letterboxed into its layer, never cropped or stretched.
 
 ### 1.5 LOD: baked equirect far, cells near
@@ -623,11 +624,11 @@ the pool is an array texture and not an atlas canvas.
 
 > **Normative — the layer pool needs three states, not two.** `key >= 0` resident, `FREE = -1`,
 > **`RESERVED = -2`**. Without the third state a layer claimed by an in-flight fetch still reads
-> free, two loads claim it, one silently overwrites the other, and the resident count climbs *past*
+> free, two loads claim it, one silently overwrites the other, and the resident count climbs _past_
 > the pool size. The prototype observed 1,031 resident in a 1,024-layer pool; that impossible number
 > is the only tell. Assert `resident <= layers` in the pool's own unit test.
 
-> **Normative — query `MAX_ARRAY_TEXTURE_LAYERS` and clamp.** WebGL 2's *specification minimum* is
+> **Normative — query `MAX_ARRAY_TEXTURE_LAYERS` and clamp.** WebGL 2's _specification minimum_ is
 > **256**, not 1,024. W4.1's `capabilities.ts` asserts only `>= 72` (it was sized for the printing
 > spheres, which concept B deletes, and it names W4.4 as its own successor). The worlds path must
 > read the real limit and clamp the pool to `min(tierLayers, maxLayers − 32)`. A pool that silently
@@ -637,11 +638,11 @@ the pool is an array texture and not an atlas canvas.
 > `capabilities.ts` (PR #45) reports `maxArrayTextureLayers` as **0**, not as a large number, on two
 > reachable paths: a non-WebGL2 context (`webgl2 ? getParameter(...) : 0`) and a context that has
 > been lost, where `numberParameter`'s `try/catch` returns its `0` fallback. `min(tierLayers,
-> 0 − 32)` is **−32 layers at every tier**, so the formula as written turns the one case it exists to
+0 − 32)` is **−32 layers at every tier**, so the formula as written turns the one case it exists to
 > protect into a negative allocation. The pool size is
 > `max(0, min(tierLayers, maxLayers − 32))`, and a pool of 0 is a legal, swatch-only world — which is
 > what §1.4's shading path already degrades to when no cell holds a layer — not a black one. R1 reads
-> `arrayLayersAffordable` / `webgl2` to decide *whether* to build the pool at all, and never
+> `arrayLayersAffordable` / `webgl2` to decide _whether_ to build the pool at all, and never
 > subtracts from an unanswered limit. Assert the 0 case in the pool's unit test alongside
 > `resident <= layers`; on this Mac the limit is slack and neither bound can bind, so an
 > injected-limit test is the only thing that can fail here (DEC-739's vacuous-clamp finding).
@@ -653,11 +654,11 @@ the pool is an array texture and not an atlas canvas.
 > is cheap insurance (1.5 MiB at tier 0) against drivers that report a limit they will not actually
 > allocate at 128×96×4; it is not headroom being reserved for anything. **Knock-on:** on a
 > spec-minimum 256-layer device tiers 0, 1, 2 and 3 all clamp to 224, so §1.12's ladder assertion
-> must be written against the *clamped* value, not against the tier constant.
+> must be written against the _clamped_ value, not against the tier constant.
 
 **Selection.** Each frame, for every cell on a world above the LOD crossover: reject if
 `dot(normal, toCamera) <= 0.12`; reject if off-screen — transform by `camera.matrixWorldInverse`,
-reject `z > -camera.near`, *then* apply `camera.projectionMatrix` and require `|x| <= 2, |y| <= 2`.
+reject `z > -camera.near`, _then_ apply `camera.projectionMatrix` and require `|x| <= 2, |y| <= 2`.
 
 > **Normative — `Vector3.applyMatrix4` already divides by w.** You cannot recover w from `.z` for a
 > frustum test. The view-space rejection must happen before the projection, or a point behind the
@@ -702,7 +703,7 @@ fetches (≈ 170 MB) for one camera pose.
 > the prototype's behaviour exactly — a constant 24 CSS px threshold, no histogram, no hysteresis,
 > let the pool run out — and it is W4's negative control (§3.1). This has to be a seam in the
 > shipped renderer rather than a patched build, for the reason §3.1 gives: W4's whole subject is the
-> *absence* of exhaustion, and the only frame known to exhaust is the prototype's `tether-surface`.
+> _absence_ of exhaustion, and the only frame known to exhaust is the prototype's `tether-surface`.
 > Note what the control may **not** be: shrinking the pool does not work. The threshold is defined
 > relative to pool capacity, so a smaller pool simply raises the threshold and the criterion passes.
 > Starving the resource the policy adapts to makes the criterion GREEN; the control has to starve
@@ -733,7 +734,7 @@ fetches (≈ 170 MB) for one camera pose.
 > probe's `effectiveThresholdPx` reads **exactly 24**, and the gate asserts that before it reads
 > W4's criterion. Under the quantile it reads the bucket edge the histogram chose, which is
 > quantised and is not 24 except by coincidence. Without the read-back, a seam that silently fails
-> to parse its own query parameter runs the *unmodified* policy, W4 passes, and the matrix records
+> to parse its own query parameter runs the _unmodified_ policy, W4 passes, and the matrix records
 > a passing control — the `verify-browser --dataset all` shape of failure. The same applies to
 > every control seam: `?swatch=mean`, `?bands=shuffle`, `?art=off` and `?layers=N` each report a
 > value the gate can check moved.
@@ -744,12 +745,16 @@ fetches (≈ 170 MB) for one camera pose.
 > `wantsArt` denominator that is unchanged. **Everything else is unchanged too** — the pool is the
 > tier's, the stream is composed, and the quantile, its hysteresis and the admitted set read
 > bit-identically to the same pose with the seam absent. That is the seam's whole purpose: at
-> §3.1's 2.2-radii pose `artFraction` measures 0.61–0.76, so roughly seven cells in ten draw
-> **art**, and the two seams that perturb the **swatch** move nothing the capture can see — measured
-> on DEC-816, `?swatch=mean` leaves `lightnessIqr` at 24.89 inside a no-seam sibling spread of
-> 16.09–25.89, and `?bands=shuffle` moves `minAdjacentBandDeltaE` only 0.815 → 0.476 while the
-> shipped aggregate already scores below it at 0.4253. `?art=off&swatch=mean` and
-> `?art=off&bands=shuffle` are the composed rows that discriminate. `?layers=0` is *also*
+> §3.1's 2.2-radii pose `artFraction` measures **0.987–0.997** over four dominaria sessions, so
+> essentially every cell draws **art**, and the two seams that perturb the **swatch** move nothing
+> the capture can see — measured on DEC-816, `?swatch=mean` leaves `lightnessIqr` at 24.89 inside a
+> no-seam sibling spread of 16.09–25.89, and `?bands=shuffle` moves `minAdjacentBandDeltaE` only
+> 0.815 → 0.476. (This paragraph first said 0.61–0.76, "roughly seven cells in ten". That was taken
+> before DEC-812 raised the art byte budget from 67,108,864 to 155,129,856, after which dominaria no
+> longer starves mid-visit — the seam's case got **stronger**, which is why the stale figure never
+> surfaced as a failure. Re-measured on DEC-752, main `28d4676`.) `?art=off&swatch=mean` and
+> `?art=off&bands=shuffle` are the composed rows that discriminate, and measured they do: the first
+> reads 0.954 / 4.673 against a `?art=off` sibling at 17.92 / 16.50. `?layers=0` is *also*
 > swatch-only (§1.6's zero-layer pool) and is **not** a substitute: it moves `pool.layers` — the
 > quantile's own divisor — and composes no `ArtStream` at all, so its payload reports `stream` as
 > `null`, which would run W2's and W3's controls against a differently-configured renderer.
@@ -995,7 +1000,7 @@ This resolves review §10 Q3 and the §4.4 distortion finding in one move: a fla
 without needing the artist beside it.
 
 **The cap, and the one thing it actually hides.** PRD 5.6.8 caps at 72 (three rings of 24).
-`planets.ts:48` computes `const shown = Math.min(printings, PLANET_CAP)`, and the remainder is *not*
+`planets.ts:48` computes `const shown = Math.min(printings, PLANET_CAP)`, and the remainder is _not_
 dropped: `planets.ts:35-37` declares `overflow` — "Printings past the 72 the rings can hold. PRD
 5.6.8 sends these to the card panel" — `planetLayout` returns it, `focusedCard.ts:243` exposes it as
 `printingOverflow`, and `ui/CardPanel.tsx:181` already renders `Printings ({printings.length})`, the
@@ -1009,7 +1014,7 @@ is Sol Ring at 60). It is a five-card edge case, not a 669-card one; 669 is the 
 more than **9** printings, a different predicate.
 
 What is genuinely missing is the visual tie between the ring and the tail: nothing in the scene
-marks *which* printings the ring dropped, or that it dropped any. The ring inherits the cap for v1 —
+marks _which_ printings the ring dropped, or that it dropped any. The ring inherits the cap for v1 —
 this spec does not widen product scope — and adds only that: **when printings exceed the cap, the
 ring shows the cap's worth as quads and the remainder as 1 px ticks at their own release angle.**
 The ticks are the requirement; the panel already holds up its end. On production this draws on five
@@ -1308,19 +1313,19 @@ the constant in this table, which is what `WorldsAttachment.setArtLayers` and th
 
 Every one of these cost real time in the prototype and every one of them is silent:
 
-| # | Trap | Where it bites |
-|---|---|---|
-| 1 | Quad winding `[0,2,1, 0,3,2]`; CCW faces inward and *both* failure modes look like something else | §1.4 |
-| 2 | `Vector3.applyMatrix4` already divides by w — view-space reject before projecting | §1.6 |
-| 3 | `PointsMaterial` with `sizeAttenuation: true` makes belt points 70 px squares on a fly-in | §1.8 |
-| 4 | An LRU layer pool needs `RESERVED`; two states let two loads claim one layer and `resident` climbs past the pool size | §1.6 |
-| 5 | A `DataArrayTexture` ignores `UNPACK_FLIP_Y_WEBGL` — flip V in the shader | §1.6 |
-| 6 | A fixed world-space light puts the subject on its night side half the time | §1.7 |
-| 7 | `MAX_ARRAY_TEXTURE_LAYERS` has a spec minimum of 256, not 1,024 | §1.6 |
-| 7b | …and W4.1 reports it as **0** on a WebGL1 or lost context, so `maxLayers − 32` is −32 layers | §1.6 |
-| 9 | `iSize` is arc length: drop `sin θ` from the longitudinal half-extent and the polar row is 51.6× too wide | §2.1 |
-| 10 | `θ` is colatitude everywhere; read as latitude the row formula sums to 0 cells | §1.3 |
-| 8 | `renderer.copyTextureToTexture` changed argument order at three r165 | §1.6 |
+| #   | Trap                                                                                                                  | Where it bites |
+| --- | --------------------------------------------------------------------------------------------------------------------- | -------------- |
+| 1   | Quad winding `[0,2,1, 0,3,2]`; CCW faces inward and _both_ failure modes look like something else                     | §1.4           |
+| 2   | `Vector3.applyMatrix4` already divides by w — view-space reject before projecting                                     | §1.6           |
+| 3   | `PointsMaterial` with `sizeAttenuation: true` makes belt points 70 px squares on a fly-in                             | §1.8           |
+| 4   | An LRU layer pool needs `RESERVED`; two states let two loads claim one layer and `resident` climbs past the pool size | §1.6           |
+| 5   | A `DataArrayTexture` ignores `UNPACK_FLIP_Y_WEBGL` — flip V in the shader                                             | §1.6           |
+| 6   | A fixed world-space light puts the subject on its night side half the time                                            | §1.7           |
+| 7   | `MAX_ARRAY_TEXTURE_LAYERS` has a spec minimum of 256, not 1,024                                                       | §1.6           |
+| 7b  | …and W4.1 reports it as **0** on a WebGL1 or lost context, so `maxLayers − 32` is −32 layers                          | §1.6           |
+| 9   | `iSize` is arc length: drop `sin θ` from the longitudinal half-extent and the polar row is 51.6× too wide             | §2.1           |
+| 10  | `θ` is colatitude everywhere; read as latitude the row formula sums to 0 cells                                        | §1.3           |
+| 8   | `renderer.copyTextureToTexture` changed argument order at three r165                                                  | §1.6           |
 
 ---
 
@@ -1333,7 +1338,7 @@ colour is a version bump. Both of those are here, so they ride together.
 
 > **The dual-scene period is free, and this is why.** Data directories are content-hashed and
 > immutable, and `web/datasets.json` names which one a build uses, with `active` already separate
-> from `production`. A v3 dataset is a *new directory*. The galaxy build keeps pointing at the last
+> from `production`. A v3 dataset is a _new directory_. The galaxy build keeps pointing at the last
 > v2 dataset and is not touched; the worlds build points at the v3 one. So the pipeline leg can land,
 > run, and publish a full v3 dataset with **zero risk to what is deployed**, long before any renderer
 > work exists. §4 sequences on this.
@@ -1343,15 +1348,15 @@ colour is a version bump. Both of those are here, so they ride together.
 The 12-byte record and the 16-byte header are unchanged, and so is the interleaved stride-12 upload.
 What changes is what bytes 0–5 mean.
 
-| Offset | Field | v2 | v3 |
-|---|---|---|---|
-| 0–5 | `x, y, z` float16 | plane-local position within frame radius 1.2 | **unit-sphere cell centre**, `|p| = 1`, for a plane with cards; belt position for dust, normalised the same way |
-| 6 | `planeIndex` | unchanged | unchanged |
-| 7 | `colour` | `hueClass` bits 0–2, `colourIdentity` bits 3–7 | unchanged — and still the thing a reader must mask (`colourByte.ts` owns both masks) |
-| 8 | `sizeClass` | rarity | unchanged, unread by the worlds renderer |
-| 9 | `brightness` | quantised log printing count | unchanged, unread by the worlds renderer |
-| 10 | `twinklePhase` | twinkle phase | **reserved, written 0** — there is no twinkle |
-| 11 | `typeMask` | card-type bits | unchanged; the type facet still reads it |
+| Offset | Field             | v2                                             | v3                                                                                   |
+| ------ | ----------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------ |
+| 0–5    | `x, y, z` float16 | plane-local position within frame radius 1.2   | **unit-sphere cell centre**, `                                                       | p   | = 1`, for a plane with cards; belt position for dust, normalised the same way |
+| 6      | `planeIndex`      | unchanged                                      | unchanged                                                                            |
+| 7      | `colour`          | `hueClass` bits 0–2, `colourIdentity` bits 3–7 | unchanged — and still the thing a reader must mask (`colourByte.ts` owns both masks) |
+| 8      | `sizeClass`       | rarity                                         | unchanged, unread by the worlds renderer                                             |
+| 9      | `brightness`      | quantised log printing count                   | unchanged, unread by the worlds renderer                                             |
+| 10     | `twinklePhase`    | twinkle phase                                  | **reserved, written 0** — there is no twinkle                                        |
+| 11     | `typeMask`        | card-type bits                                 | unchanged; the type facet still reads it                                             |
 
 Bytes 8–9 stay written rather than being reclaimed, so that a v3 dataset would still render on the
 galaxy path if the dual-scene period ever needs it. Reclaiming them is a v4 conversation.
@@ -1372,7 +1377,7 @@ In **angle**, for a cell in row `r`, they are `(π / rowCells[r], dφ / 2)`.
 > ```
 >
 > **Dropping the factor draws Dominaria's polar row 51.6× too wide** — `rowCells[0] = 2`, so the
-> uncorrected half-extent is `π/2 = 1.571` *world radii*, a quad wider than the globe it sits on,
+> uncorrected half-extent is `π/2 = 1.571` _world radii_, a quad wider than the globe it sits on,
 > against a correct `0.0305`. The tell is geometric and total, not a subtle stretch.
 >
 > The conversion is also exactly what makes §1.3's **4:3 cell aspect** true. A cell's full width over
@@ -1387,7 +1392,7 @@ In **angle**, for a cell in row `r`, they are `(π / rowCells[r], dφ / 2)`.
 > may not assume 4:3 anywhere; a shader that hard-codes the ratio mis-frames the ice caps of every
 > small plane. The extreme is §1.3's floor — **2.00 at `rowCells = 1`** (a one-card world, six of
 > them on v3) and **1.00 at `rowCells = [2]`, `rows = 1`** — which the same letterbox handles, and
-> which is therefore *not* where small worlds break: §1.4's subdivision is.
+> which is therefore _not_ where small worlds break: §1.4's subdivision is.
 
 > **Normative — the per-row cell counts are shipped, not derived.** §1.3's relaxation makes a row's
 > cell count population-derived, so it is **not** a function of `cardCount` and a row count and the
@@ -1395,10 +1400,10 @@ In **angle**, for a cell in row `r`, they are `(π / rowCells[r], dφ / 2)`.
 > from the closed form, 75 cells in fact). The v3 contract therefore carries a per-plane **`rowCells`
 > table** — one `uint` cell count per row, in north-to-south order — in place of the scalar `rows`
 > (§2.4). `rowCells.length` is the row count; row latitudes are equal-`dφ` with `dφ = π /
-> rowCells.length` and centres at `(i + ½)·dφ` (§1.3), so the client's only remaining derivation is
+rowCells.length` and centres at `(i + ½)·dφ` (§1.3), so the client's only remaining derivation is
 > matching a cell to its row by latitude.
 
-Counting stars per row would also recover the counts, and would be sound — but only *because* §1.3
+Counting stars per row would also recover the counts, and would be sound — but only _because_ §1.3
 mandates zero bare cells. The table is 734 numbers across the 87-plane roster's 29 worlds and 777
 across v3's 45 (81 for Dominaria, 162 B as `uint16`, ≈ 3 KB raw as JSON against `planes.json`'s
 11.6 KB brotli), which is
@@ -1431,13 +1436,13 @@ at the artefact rather than load-bearing and invisible.
 
 **Retired laws.** `layout.py`'s spiral machinery goes with the galaxy: arm generation and
 `arm_width_scale` (inert on every plane over 500 cards — review §4.1), `BULGE_SCALE`, the chronology
-*radius* mapping of PRD 5.4.2 (chronology becomes longitude), shear, bar and disc thickness. Review
+_radius_ mapping of PRD 5.4.2 (chronology becomes longitude), shear, bar and disc thickness. Review
 §6.1 group D's dead pipeline code (`hue_of`, `iter_star_offsets`, the unread `AssemblyStats` fields)
 should go in the same pass.
 
 ### 2.2 `swatches.bin` — the new artefact
 
-The enabler for the whole concept: a per-card colour derived from the *art*. The contract carries
+The enabler for the whole concept: a per-card colour derived from the _art_. The contract carries
 `hueClass` today, which is a seven-way classification of colour identity, not a pixel statistic —
 which is why the prototype had to fake it, and why the fake is the thing to be most sceptical of in
 the W2.3 captures.
@@ -1452,18 +1457,18 @@ then: starCount × 8 bytes, in star order (the same order as ORACLE_IDS)
 
 Star order means a swatch lookup is `starIndex × 8 + 16` with no map and no table. Size on production:
 28,587 × 8 + 16 = **223.4 KB raw** (v3: 28,603 cards, 223.5 KB — the multiverse total, dust
-included, which is *not* the cell count; only cards on worlds get cells).
+included, which is _not_ the cell count; only cards on worlds get cells).
 
 > **Normative — `swatches.bin` is a separate artefact and must not become a section of `sets.bin`.**
 > `sets.bin` is a sectioned container and adding section id 4 would be the tidier-looking choice. It
 > is the wrong one: PRD 7.2 budgets the pair `search.json` + `sets.bin` at ≤ 700 KB target, and that
 > pair is at **668.5 KB — 95% of target** on production today (`docs/data-contract.md` §8). Another
-> ~200 KB puts it at ~870 KB: 24% *over* the reported target, though still well under the 1.5 MB
+> ~200 KB puts it at ~870 KB: 24% _over_ the reported target, though still well under the 1.5 MB
 > ceiling, which is the only one of the two that fails the build (`docs/data-contract.md` §8:
 > "Only the 1.5 MB ceiling fails the build; the target is reported"). So this would overshoot a
 > reported target rather than break one — and that is still the wrong trade, because it spends the
 > project's one genuinely tight row to save a file. As its own file fetched with `stars.bin`, it
-> lands on the *before-intro* row instead: 253.9 KB → ≈ 455 KB against a 3 MB target (§2.5).
+> lands on the _before-intro_ row instead: 253.9 KB → ≈ 455 KB against a 3 MB target (§2.5).
 
 **Which image the swatch comes from is an open question (§5, Q1).** Review §4.2 says fetch each
 card's `small`. `small` is the whole card — frame, border, text box — so a 2×2 of it is dominated by
@@ -1517,14 +1522,14 @@ cell's caption therefore credits `p[0][5]`.
 
 ### 2.4 `planes.json` — what retires and what arrives
 
-| Field | v3 |
-|---|---|
-| `home`, `radius`, `tilt`, `spinPeriodS`, `spinDirection`, `driftAmplitude/PeriodS/Phase` | **keep** |
-| `palette`, `nebulaTint`, `firstYear`, `lastYear`, `sets`, `cardCount`, `starOffset`, `starCount`, `shardCount`, `index`, `slug`, `displayName`, `notes`, `kind` | **keep** |
-| `shearAmplitude`, `shearPeriodS`, `shearPhase` | **retire** — PRD 5.4.13 shear is a spiral-disc law |
-| `armPitch`, `bar`, per-plane `discThickness` | **retire** — PRD 8.6.2 seeded spiral params |
-| top-level `discThickness` | **retire** |
-| `rowCells` *(new, `uint[]`)* | the surface grid's per-row cell counts, north to south. `rowCells.length` is the row count; row latitudes are equal-`dφ`, `dφ = π / rowCells.length`, centres at `(i + ½)·dφ`. Shipped rather than derived because §1.3's relaxation makes the counts population-derived (§2.1). Empty planes and the belt omit it |
+| Field                                                                                                                                                           | v3                                                                                                                                                                                                                                                                                                                 |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `home`, `radius`, `tilt`, `spinPeriodS`, `spinDirection`, `driftAmplitude/PeriodS/Phase`                                                                        | **keep**                                                                                                                                                                                                                                                                                                           |
+| `palette`, `nebulaTint`, `firstYear`, `lastYear`, `sets`, `cardCount`, `starOffset`, `starCount`, `shardCount`, `index`, `slug`, `displayName`, `notes`, `kind` | **keep**                                                                                                                                                                                                                                                                                                           |
+| `shearAmplitude`, `shearPeriodS`, `shearPhase`                                                                                                                  | **retire** — PRD 5.4.13 shear is a spiral-disc law                                                                                                                                                                                                                                                                 |
+| `armPitch`, `bar`, per-plane `discThickness`                                                                                                                    | **retire** — PRD 8.6.2 seeded spiral params                                                                                                                                                                                                                                                                        |
+| top-level `discThickness`                                                                                                                                       | **retire**                                                                                                                                                                                                                                                                                                         |
+| `rowCells` _(new, `uint[]`)_                                                                                                                                    | the surface grid's per-row cell counts, north to south. `rowCells.length` is the row count; row latitudes are equal-`dφ`, `dφ = π / rowCells.length`, centres at `(i + ½)·dφ`. Shipped rather than derived because §1.3's relaxation makes the counts population-derived (§2.1). Empty planes and the belt omit it |
 
 `radius` stays but changes meaning: it is now `max(0.126 · √cardCount, 0.55)` — the moon floor applies
 to worlds too, and binds on 15 of v3's 45 (§1.3, §1.8) — and the Blind Eternities keeps `R` for the belt. Seven fields retire and one arrives;
@@ -1534,13 +1539,13 @@ for completeness, not for savings.
 
 ### 2.5 Budget summary
 
-| Row | Target | v2 today | v3 estimate |
-|---|---|---|---|
-| `search.json` + `sets.bin` | 700 KB / 1.5 MB ceiling | 668.5 KB (95%) | **unchanged** |
-| First frame (`manifest` + `planes`) | — | 16.2 KB | ≈ 16 KB |
-| Before intro (+ `stars.bin`, + `swatches.bin`) | 3 MB | 253.9 KB | ≈ 455 KB (15%) |
-| Largest plane shard | 1.5 MB / 2.5 MB ceiling | 339.8 KB | ≈ 365 KB |
-| GPU resident (MiB) | 96 / 160 ceiling | 83 worst case | **63.6**, 66.0 with a DFC in focus (§1.12) |
+| Row                                            | Target                  | v2 today       | v3 estimate                                |
+| ---------------------------------------------- | ----------------------- | -------------- | ------------------------------------------ |
+| `search.json` + `sets.bin`                     | 700 KB / 1.5 MB ceiling | 668.5 KB (95%) | **unchanged**                              |
+| First frame (`manifest` + `planes`)            | —                       | 16.2 KB        | ≈ 16 KB                                    |
+| Before intro (+ `stars.bin`, + `swatches.bin`) | 3 MB                    | 253.9 KB       | ≈ 455 KB (15%)                             |
+| Largest plane shard                            | 1.5 MB / 2.5 MB ceiling | 339.8 KB       | ≈ 365 KB                                   |
+| GPU resident (MiB)                             | 96 / 160 ceiling        | 83 worst case  | **63.6**, 66.0 with a DFC in focus (§1.12) |
 
 **Basis.** Every KB figure in this table except the GPU row is **encoded transferred size at brotli
 11**, which is what `docs/data-contract.md` §8 reports and what `check-budget` compares; the GPU row
@@ -1549,7 +1554,7 @@ is MiB (§1.12). That makes the before-intro estimate an assumption worth statin
 That is the right expectation for 2×2 RGB565 art statistics — four uncorrelated 16-bit samples per
 card, close to incompressible — but it is an estimate doing real work in a budget table, and it is
 the estimate to replace with a measurement the moment leg P emits the first `swatches.bin`. The
-worst case, zero compression, is 477 KB, still 16% of a 3 MB target, so the row's *conclusion* does
+worst case, zero compression, is 477 KB, still 16% of a 3 MB target, so the row's _conclusion_ does
 not depend on the assumption. Nothing here needs a budget amendment.
 
 ### 2.6 Pipeline work, concretely
@@ -1590,20 +1595,20 @@ PNG**, so every criterion below measures the frame after tonemap and vignette at
 scale — which is the thing T7 said was missing.
 
 > **Normative — what a probe "cell" is, and what its rect measures (DEC-749, on DEC-752's pin).**
-> `cells[]` has **one entry per card**, never one per sub-quad: §1.4 subdivides the *base geometry*
+> `cells[]` has **one entry per card**, never one per sub-quad: §1.4 subdivides the _base geometry_
 > of the instanced draw, so N instances survive the re-mesh untouched. And the screen-space rect is
 > the axis-aligned bound of the projected **sphere-following vertex grid** — the geometry §1.4
 > actually renders — never of a tangent quad's four corners.
 >
 > > **The overstatement is `γ/sin γ`, and it is not §1.3's corner lift.** Leg G pinned this contract
 > > with §1.3's lift figures (0.7% Dominaria, 5.7% Rabiah, 265% at N = 1). Those measure how far a
-> > corner floats *radially* off the globe, which is the right statistic for "does this read as a
+> > corner floats _radially_ off the globe, which is the right statistic for "does this read as a
 > > billboard" and the wrong one for an extent. In **arc length** the two models are identical to
 > > machine precision at every N in 1..7000 — `iSize` is arc length (§2.1's 51.6×), so a flat quad
 > > built from it has exactly the patch's length, just laid flat. So a pin worded only as "the
 > > patch's extent, not the quad's" is **vacuous**: both readings give the same number.
 > >
-> > What differs is the *projection*. A patch spanning half-angle γ projects to its chord
+> > What differs is the _projection_. A patch spanning half-angle γ projects to its chord
 > > `2·sin γ`; the flat quad projects to `2γ`. The ratio is `γ/sin γ`: **1.0001 on Dominaria**,
 > > 1.0051 on Rabiah, 1.0115 at 30 cards, and **1.5708 at N = 1** — smaller than the lift figures by
 > > 106× on Dominaria, 11× on Rabiah and 4.6× at N = 1, and that is the direction that matters
@@ -1632,7 +1637,7 @@ scale — which is the thing T7 said was missing.
 > **Normative — the probe reports §1.4's `shade` per cell (DEC-749).** It is the scalar
 > `0.10 + 0.95·clamp(dot(n, light)·0.5 + 0.5, 0, 1)²` the renderer already computes, and W2's second
 > half cannot be measured without it — see the note under the criteria table. Reporting it costs the
-> renderer nothing and is the one probe field that is a *derived* quantity rather than a state
+> renderer nothing and is the one probe field that is a _derived_ quantity rather than a state
 > read; it is normative anyway, because the gate may not re-derive it (it would then be asserting
 > against its own model of the light rather than against the shipped one).
 
@@ -1668,13 +1673,13 @@ scale — which is the thing T7 said was missing.
 > **Normative — `ProbeState.multiverseAngle` is the renderer's azimuth, and a frozen one is a real
 > reading (DEC-785 F2).** An azimuth sweep needs the angle the frame was *drawn* at, and the gate may
 > not derive it from its own clock. Two reasons, and neither is fastidiousness: under reduced motion
-> `starScene` advances the plane table with `motion` 0, so a wall-clock sweep would report evenly
+> `sceneFrame.ts` advances the plane table with `motion` 0, so a wall-clock sweep would report evenly
 > spaced azimuths of a scene frozen at exactly **one** — this section's own named degeneracy, reached
 > through the harness instead of through a short sweep, and still reading as the stronger claim; and
 > even with motion live, an angle computed from elapsed time makes an even-spacing check a test of
 > the gate's arithmetic against itself, passing by construction on a sweep the renderer never took.
 >
-> > The field is `PlaneTable.multiverseAngle` — the same integrated angle `starScene` mirrors into
+> > The field is `PlaneTable.multiverseAngle` — the same integrated angle `sceneFrame.ts` mirrors into
 > > the background, never a second clock — published **always and unsmoothed**. Under reduced motion
 > > it therefore does not advance, and that is the specified behaviour rather than a gap: the gate
 > > reports a non-advancing angle as a named **setup failure**, which it can only do if the seam
@@ -1783,16 +1788,18 @@ scale — which is the thing T7 said was missing.
 The gate also depends on **control seams** in the shipped renderer, which is why they are normative
 in §1 rather than being a gate-side patch.
 
-> **Normative — seam ownership, and there are five of them, not four (DEC-749).** The five are
-> `?probe=`, `?swatch=mean`, `?bands=shuffle`, `?artThreshold=fixed24` (§1.6) and `?layers=N`.
-> `?probe=` is one of them: the paragraph above introduces it separately as the gate's geometry
-> source, but it is the same kind of object — normative renderer surface the gate reads and does not
-> build. **All five are owned by leg R1**, which builds them as part of §1.3–§1.6. **Leg G consumes
-> them; it does not build them, and it may not patch the build to get them.** An earlier draft said
-> "legs R1 and R3 own them" here while §4's R1 row already listed all five under R1; R1 is the
-> ruling, and R3's row (§1.10–§1.12) carries none of them. This matters beyond tidiness: a seam
-> built gate-side is a seam that is not in the shipped renderer, and §3.1's whole argument for W4's
-> control is that the control must exercise the *shipped* policy.
+> **Normative — seam ownership, and there are six of them, not four (DEC-749, DEC-821).** The six
+> are `?probe=`, `?swatch=mean`, `?bands=shuffle`, `?artThreshold=fixed24` (§1.6), `?layers=N` and
+> `?art=off` (§1.6). `?probe=` is one of them: the paragraph above introduces it separately as the
+> gate's geometry source, but it is the same kind of object — normative renderer surface the gate
+> reads and does not build. **All six are owned by leg R1**, which builds them as part of §1.3–§1.6;
+> `?art=off` arrived later, on DEC-821, under the same ownership and for the reason §1.6 records —
+> without it the two swatch-perturbing seams do not reach the capture at all. **Leg G consumes them;
+> it does not build them, and it may not patch the build to get them.** An earlier draft said "legs
+> R1 and R3 own them" here while §4's R1 row already listed them all under R1; R1 is the ruling, and
+> R3's row (§1.10–§1.12) carries none of them. This matters beyond tidiness: a seam built gate-side
+> is a seam that is not in the shipped renderer, and §3.1's whole argument for W4's control is that
+> the control must exercise the _shipped_ policy.
 
 > **Normative — `?layers=N` pins the art pool and nothing else; it is not `?quality=N` (DEC-751).**
 > The two are easy to conflate because §1.12 makes the pool a rung of the same ladder, and one of
@@ -1810,11 +1817,38 @@ in §1 rather than being a gate-side patch.
 > **The renderer reports the pool size back clamped**, `max(0, min(requested, MAX_ARRAY_TEXTURE_LAYERS − 32))`
 > (§1.6), and §1.12's assertion is against that reported value rather than against the requested N
 > or the tier constant — on a spec-minimum 256-layer device tiers 0–3 all clamp to 224 and only tier
-> 4 is distinct. So `?layers=N` is a *request*, and the reported figure is the answer.
+> 4 is distinct. So `?layers=N` is a _request_, and the reported figure is the answer.
 >
 > What this note does **not** decide is whether a quality tier may set the pool size as its rung.
 > That touches the ladder's one-quantity-per-rung invariant and is **DEC-753's** ruling, not R1's;
 > R1 owes the seam and the clamped read-back either way.
+
+> **Normative — the gate checks §1.3's table, and checks three things about it (DEC-752, measured).**
+> The gate reads `planes.json` for its rosters anyway, so `rowCellsFaults` asserts the table there:
+> `Σ rowCells == cardCount`, `rowCells[r] ≥ 1`, `rows == max(1, min(rows_closed, N))`, and that
+> `rowCells` is **present on worlds and absent — not empty — everywhere else**. All hold on 45 of 45
+> published worlds (`3ce85aed`). **It asserts no equatorial-symmetry bound in any form**, per §1.3.
+>
+> Two of these are weaker than they look, and are recorded as such rather than quietly counted:
+>
+> - The `≥ 1` floor cannot fail unless the exact-N check already has. The minimum cell count over
+>   the 39 multi-card worlds is **2**; the six one-card worlds are the only place it binds, and
+>   there `Σ == 1` already forces `[1]`.
+> - **§1.3's `min(rows_closed, N)` clamp is unreachable.** `rows_closed ≈ √(1.047·N)`, which is
+>   below `N` for every `N ≥ 2` and rounds to 1 at `N = 1`; swept over `N = 1…200,000` it never
+>   binds. The assertion is `rows == rows_closed` on every input, and the clamp is decoration — a
+>   reader must not score that clause as a tested guard. Routed to DEC-749 as a §1.3 wording matter.
+>
+> **Row centres are not the gate's to measure, and do not need to be.** `(i + ½)·dφ` is the one
+> offered invariant with real content — it is what separates §1.3's colatitude placement from the
+> degenerate `i·dφ` form — but neither `planes.json` nor the probe payload carries a `dφ` or a row
+> index, so the gate's only reading of `dφ = π/rows` is `π/len(rowCells)` against itself. The
+> centres live in the **emitted positions**: decoded straight out of `stars.bin` on `3ce85aed`, the
+> per-row populations reproduce `rowCells` on **45 of 45** worlds and every star sits within
+> **0.0004 rad** of `(i + ½)·π/rows`, while the same test against `i·dφ` fails on 44 of 45 — a live
+> negative control, so the check is worth having where it can be taken at full precision, beside the
+> pipeline's own. (The tolerance must scale with `dφ`: at a fixed 0.02 rad Dominaria's 81 rows put
+> the two grids `dφ/2 = 0.019` apart and the degenerate form passes.) **No new seam is requested.**
 
 Five criteria assert. The rest stay owner-judged, because they are about feel and 9.3 never asked for
 an assertion there.
@@ -1823,8 +1857,8 @@ an assertion there.
 > (DEC-751).** Two sets, and every count below is one of their sizes:
 >
 > ```
-> worldsWithCards  = planes.filter(p => p.kind !== 'dust' && p.cardCount > 0)   // 29 today
-> planesWithCards  = planes.filter(p => p.cardCount > 0)                        // 30 today
+> worldsWithCards  = planes.filter(p => p.kind !== 'dust' && p.cardCount > 0)   // 45 on v3
+> planesWithCards  = planes.filter(p => p.cardCount > 0)                        // 46 on v3
 > ```
 >
 > W1 and W5 both iterate `worldsWithCards`, and for the same reason: the Blind Eternities has cards
@@ -1857,12 +1891,255 @@ an assertion there.
 
 | # | Criterion | Measurement | Floor |
 |---|---|---|---|
-| **W1** | **Cells are resolvable at framing distance.** | At the plane-level settle for each of `worldsWithCards` (**29** on the 87-plane roster, **45** on v3), the median on-screen height of front-facing cells. Not the Blind Eternities: it has cards but no cell sheet (§1.8), so the statistic is undefined there — `planesWithCards` would be 30 / 46 and would include it. | **≥ 24 CSS px.** Binds on the largest plane: Dominaria **28.74** at its worst azimuth, at §1.3's framing distance — a **20% margin** (`[shipped]`, the arm the build renders; `[tilted]` it is Ravnica 25.21 and 5% — §1.3 on the two arms). |
+| **W1** | **Cells are resolvable at framing distance.** | At the plane-level settle for each of `worldsWithCards` (**29** on the 87-plane roster, **45** on v3), the median on-screen height of front-facing cells; the verdict is the **worst** world, not the pooled median. Not the Blind Eternities: it has cards but no cell sheet (§1.8), so the statistic is undefined there — `planesWithCards` would be 30 / 46 and would include it. | **≥ 24 CSS px.** Binds on the largest plane: Dominaria **28.74** at its worst azimuth, at §1.3's framing distance — a **20% margin** (`[shipped]`, the arm the build renders; `[tilted]` it is Ravnica 25.21 and 5% — §1.3 on the two arms). |
 | **W2** | **The mosaic reads as tiles, not as a wash.** This is T7's replacement. | Sample the captured frame at the centre of every front-facing cell ≥ 6 px tall, convert to CIELAB. Report the median ΔE to a cell's nearest on-screen neighbour, and the interquartile range of L\* **across the iso-shade subset** — the cells whose reported `shade` lies within ±2.5% of the median shade. | **median neighbour ΔE ≥ 6** and **iso-shade IQR(L\*) ≥ 8**. |
-| **W3** | **Latitude reads as colour.** | Group the same samples by band. For every pair of bands adjacent **in §1.3's 13-band chain** (a chain, not a cycle: the two ice caps are its two ends and are the furthest apart of any pair) where the smaller holds ≥ 5% of the plane's cards, the ΔE between their mean a\*b\*. | **≥ 10** for every such pair. |
-| **W4** | **Art resolves without exhausting.** | At the surface view (2.2× radius), after a 5 s settle: the fraction of on-screen front-facing cells above the effective threshold that are showing art, and evictions per second over the last 2 s. | **≥ 90%** showing art, **≤ 5 evictions/s**. |
-| **W5** | **The home view is not a wall of labels.** | Count rendered plane labels in the DOM at the home view. | **≤ `worldsWithCards.length`** — **29** on the 87-plane roster and **45** on v3 (measured, not predicted — §1.2). Not the Blind Eternities, the same exclusion W1 makes and for the matching reason: `PlaneLabels` drops it before projection (PRD 5.3.4), so it can never carry a label — `planesWithCards` would be 30 / 46 and would leave the ceiling one short of ever binding. Read it from the dataset under test; today the view renders 82. |
+| **W3** | **Latitude reads as colour.** | Group the same samples by band. For every pair of bands adjacent **in §1.3's 13-band chain** (a chain, not a cycle: the two ice caps are its two ends and are the furthest apart of any pair) where the smaller holds ≥ 5% of the plane's cards, the ΔE between their mean a\*b\*. A world's own reading is the **closest** of its qualifying pairs; **the roster's is the mean of the per-world readings over W3's domain — 28 of the 45 worlds on `c9468f1125bcddff`** (board ruling `fold_mean`) — published with every reading and with the denominator beside it. | `FLOORS.bandDeltaE`, **derived on the mean and re-derivable** — see the amendment note below; the **≥ 10 for every such pair** this table published was never met by any build and is retired. A tour whose scored domain is **not exactly 28** is **RED on its denominator**, whatever its mean reads. |
+| **W4** | **Art resolves without exhausting.** | At the surface view (2.2× radius), after a 5 s settle: the fraction of on-screen front-facing cells above the effective threshold that are showing art, **the absolute count of cells showing art**, and evictions per second **on a fill-excluded tail** whose own second half agrees with it. **Demand as a multiple of pool capacity is reported alongside them and is not scored.** | **`artFraction ≥ max(0.9 × capacityCeiling, 0.5)`**, **`artCellsShowing ≥ 32`** where the frame presents at least 128 front-facing on-screen cells, and **≤ 21 evictions/s at the 1,024-layer pool alone, and only where that pool actually filled** — see the amendment notes below. The published flat **≥ 90%** is the bar only where demand fits the pool, and the published **≤ 5 evictions/s over the last 2 s** was unreachable by construction and is retired. |
+| **W5** | **The home view is not a wall of labels**, and every world is still reachable from it. | Two halves, both over a **sweep of ≥ 12 azimuths** — the home view is a family of frames, not a pose (see below). **Ceiling:** the worst-case count of plane labels **at opacity > 0.05** over the sweep; a node count is not a measurement here. **Reachability:** the number of `worldsWithCards` carrying no such label at **any** sampled azimuth, with those slugs named. | **Ceiling ≤ `worldsWithCards.length`** — **29** on the 87-plane roster and **45** on v3 (measured, not predicted — §1.2), derived from the dataset under test and never a literal. The belt is *not* added: it is in `planesWithCards` but `PlaneLabels.tsx:116` filters it by slug before projection (PRD 5.3.4), so it can never carry a label and `planesWithCards` would leave the ceiling one short of ever binding. **Reachability = 0 worlds.** Below 12 azimuths both halves report `insufficient`. |
 
+> **Normative — W4's art floor is a bar derived from pool capacity, not the flat 90% this table
+> published (DEC-752, three board rulings, 2026-09-16).** The flat floor was unreachable by
+> construction on a small pool: a showing cell holds a layer, so `artFraction` cannot exceed
+> `capacityCeiling = min(1, layers / wanting)`, and at quality tier 4 dominaria's ceiling is **0.624**
+> — the row was scored against a bar its hardware could not reach. The amended criterion, and the
+> order the three rulings landed in, because each repairs the one before it:
+>
+> 1. **`split_measures`** (card `62f32092`) — score `artFraction` against a **reachable** bar, and add
+>    a separate `demandFitsCapacity` measure so the overshoot the bar forgives stays visible.
+> 2. **`floor_times_ceiling`** (card `2e92df81`) — that bar is `0.9 × capacityCeiling`: *show 90% of
+>    what your pool could show*. **`demand_measure_scored` = `reported_only`** on the same card, so
+>    the new measure carries a verdict and no colour.
+> 3. **`absolute_floor`** (card `74114193`) — floor the bar at **0.5**, because rule 2 alone **could
+>    not fail on a saturated pool**. There `showing == layers`, so `artFraction == capacityCeiling`
+>    *exactly* and the value clears a bar that is a fixed fraction of that same ceiling at **every**
+>    capacity — 37%, 10%, 1%. This was not hypothetical: it greened Appendix A's `tether-surface`
+>    capture, the frame §3.1 names as W4's own falsifier, at 37% art.
+>
+> **What the 0.5 says, in the terms the criterion is about:** on a saturated pool `artFraction` clears
+> it iff `wanting / layers ≤ 2`, so the absolute floor **is** a scored 2× bound on demand-over-capacity
+> for exactly the frames where the pool is the constraint. The board's admissible interval was
+> (0.371, 0.610] — above the capture that must red, at or below tier 4's measured 0.610 that must
+> green — which is [1.64×, 2.69×) in overshoot terms. Do not read the 0.5 as calibrated more finely.
+>
+> **The two frames §3.1 calls "the fixed24 control" are not the same row, and only one was ever at
+> risk.** The *live* `?artThreshold=fixed24` row is **budget**-starved: its demand fits its pool, its
+> ceiling is 1, its bar is the unmodified 0.9, and it stayed RED through all three rulings. Appendix
+> A's capture is **pool**-starved. A control named once and measured twice is how the green went
+> unnoticed for half a day.
+>
+> **Superseded on the live half, 2026-09-17: the bare `?artThreshold=fixed24` row is retired** (ask
+> `f9e273fb`, board answer `replace_row`). It is no longer budget-starved and no longer starved at
+> all — see the matrix note below. **W4's art falsifier is now `?artThreshold=fixed24&layers=128`**,
+> the composition that restores what Appendix A actually captured.
+
+> **Normative — W4's eviction half is re-bound to 21/s, scoped to the shipped pool, and measured on
+> a fill-excluded tail (board ruling on DEC-833 card `bd5c9aad`, option (a), 2026-09-17).** The
+> published **≤ 5 evictions/s over the last 2 s** was not a bound the renderer could meet, and the
+> reason is structural rather than a matter of tuning. **There is no stream defect.** DEC-833 filed
+> one and DEC-834 falsified the filing; what follows is the corrected record.
+>
+> ### `evictions == requested` is an identity, so this criterion bounds want-set turnover
+>
+> `pool.evictions` is incremented in exactly one place — `artPool.ts`'s `claimLayer` — whose only
+> caller is `reserve`, and only on the `byKey.get(key) === undefined` path, which is the same path
+> that reaches `requested += 1` in `artStream.ts`. **Every eviction carries exactly one request, by
+> construction.** Measured equal *to the unit* over three nested windows of a 120 s dominaria
+> baseline — 1,647/1,647, 1,064/1,064, 533/533 — and 405/405 at a 128-layer pool.
+>
+> So the number is not a measure of waste. For an LRU smaller than its working set, eviction rate ==
+> admission rate == the rate at which the want set turns over, and dominaria's want set turns over
+> because **the world spins**: 6,271 cards into 1,024 layers at `spinPeriodS` 262.592, so 4,750 cells
+> — 75.8% of the roster — cross the admission boundary every revolution. Of 1,946 distinct keys asked
+> over 60 s, 1,689 were asked exactly once and none more than three times: **no path re-asks for a
+> resident cell.** Meeting 5/s would have needed a **3.6× slower spin**, a **72% roster cut**, or
+> **~4,750 pool layers** against a GPU-bound 1,024 — three product changes, none of them a defect.
+>
+> ### The bound, its margin, and where it is scored
+>
+> Steady-state turnover measured **18.1–18.5/s** over six long runs plus DEC-834's two extra arms.
+> **18.1 × 1.15 ≈ 21.** The margin is deliberately small: the identity above means a stream that
+> began re-asking shows up here at once and much larger, and a spin speedup or a roster that grows
+> moves the number by far more than 15%. **It is not derived from the run it scores** — the readings
+> are `worlds-evict-longrun.mjs`'s, over 120–150 s on a parked page, and the gate scores its own
+> tour's tail.
+>
+> **Scored at the 1,024-layer pool alone; every other capacity is `insufficient`, not green.** At
+> `?layers=128` the rate is **6.73/s** — a third of the bound — and it gets there by refusing
+> ~4,670 wants/s for exhaustion and dropping `artFraction` to **~0.617**. Shrinking the pool moves
+> this number toward any bound you like by destroying the picture the other half of W4 measures, so
+> **the two halves select disjoint configurations** and requiring both rungs to hold one bound asks
+> for a configuration that does not exist. The 128-layer rung is therefore **not** required to hold
+> this bound, and the gate records that as a domain rule rather than as a footnote.
+>
+> ### The fill is the climb to saturation, and the tail has to converge
+>
+> A cold pool's first 1,024 admissions are page load. **Two obvious detectors are wrong, in opposite
+> directions, and each is the natural rule for one half of the roster:**
+>
+> - **"`resident` stops climbing"** is wrong on a pool that saturates. A saturated pool churns
+>   1023 → 1024 → 1023 forever, so the last upward tick lands in the final seconds: on a 60 s
+>   baseline it put the fill's end at **t = 57.1 s**, leaving a two-row "steady state" (DEC-835).
+> - **"the first sample holding `max(resident)`"** is wrong on a pool that does not. Below saturation
+>   `claimLayer` always finds a free layer, so nothing is ever evicted and nothing ever leaves:
+>   `resident` only climbs, `max(resident)` is *the last sample*, and the tail collapses to whatever
+>   run of equal values the window ended on. Measured on the first live tour to run it, **alara
+>   plateaued at t = 42.5 s of a 45 s window and was scored off a 2.0 s two-sample tail** — the same
+>   defect from the other side, and 44 of the 45 worlds have that shape.
+>
+> **The rule is therefore written from what the counter can physically do.** `pool.evictions` cannot
+> move below saturation at all, so there is no fill transient *in that counter* to exclude on an
+> unsaturated pool and the whole window is the tail. The fill excluded is specifically the **climb to
+> saturation** — the one interval in which eviction goes from impossible to possible. This is
+> deliberately not the rule `worlds-evict-longrun.mjs` uses: that instrument differences *bytes*,
+> which keep flowing below saturation, so its fill really does end at the demand plateau. Two
+> instruments, two fills.
+>
+> **Excluding the fill is necessary and not sufficient.** The same run read 1,461 KiB/s differenced
+> from t = 6, 1,445 from t = 18 and 1,382 from t = 36 — a monotone decline *after* the pool held
+> every layer it would hold. So the tail is scored against **its own second half**, and a tail that
+> has not settled publishes no rate. **A 60 s run does not converge.** The gate's W4 window is
+> therefore chosen by the pool rather than by the clock: it samples until the tail settles, up to a
+> cap, which costs the 44 worlds that never saturate almost nothing.
+>
+> **What the 10% tolerance refuses, corrected and measured (DEC-843, rider 3 of the DEC-841
+> review).** `W4_EVICTION_TAIL_CONVERGENCE`'s own docblock used to claim that the 5.4% monotone
+> decline quoted above "would be caught by this". It would not, and the correction matters because
+> the number is quoted as a settle bound. `drift` compares the tail's own second half against the
+> **whole** tail, and on a linear decline those two means differ by about **a quarter** of the
+> end-to-end trend — so a 10% tolerance on that statistic is roughly a **33%** tolerance on the
+> trend. Swept: 5.4% end-to-end reads drift 1.41% and converges, 20% reads 5.69% and converges, 30%
+> reads 8.80% and converges, 35% reads 10.57% and is refused. **DEC-835's 5.4% was caught by the
+> long-run instrument's 2%, not by this** — recomputed from its published tail, 1,461 KiB/s over
+> t = 6→60 against 1,395 over its own second half, a drift of 4.5%. The rule is still the right one
+> for what it guards (a fill read as a steady state is a factor-of-several error) and it must not be
+> quoted as catching a few-percent settle.
+>
+> **A known selection, recorded rather than removed.** The gate's sampling loop breaks on
+> `elapsed >= MIN && evictionTail(timeline).converged` — it stops on the statistic it then scores, so
+> the rate is read at the first moment the tail looks settled. It does not bite on dominaria today,
+> where drift is 0.9% and the value is 17.9 against 21, near neither boundary; the alternative is
+> burning the 45 s cap on every world, ~24 minutes a tour, to re-confirm settled zeros.
+>
+> ### Amendment — a pool that never filled is `insufficient`, not a passing 0 (DEC-842)
+>
+> Rider 1 of the DEC-841 review of PR #77, and it is the same argument as the capacity domain above
+> arriving one level out. The three rules just stated are all about *which* reading is scored; none
+> of them could see that **on 44 of the 45 worlds the reading cannot fail**. Below saturation
+> `claimLayer` never reaches its victim search, so `pool.evictions` is pinned at 0 and the rate is a
+> fact about occupancy rather than a reading of churn. Scored `pass`, it made the roster headline
+> *"17.8969/s, worst of 45 worlds"* a fold over **44 readings that could not move and one that
+> could** — measured, alara-shaped, 1,024-layer pool, `resident` creeping 100 → 283, `atEvictionPool`
+> true, `insufficientReason` null.
+>
+> That GREEN was not wrong: the worst-of fold takes dominaria's colour. **What it could not do is go
+> red when the bound stopped binding** — a roster change, a larger pool or a threshold change that
+> stops dominaria saturating would have greened the half on 45 structural zeros with nothing in the
+> summary saying so. `a-bound-check-is-vacuous-when-the-bound-never-binds`, reached through the
+> domain instead of through the constant, which is the shape DEC-834 used to kill option (b).
+>
+> **An unsaturated session is therefore out of the eviction half's domain**, exactly as a 128-layer
+> session already was. The half now folds to `N/A` rather than GREEN when nothing saturates, and the
+> `no-seams` row's `expect: 'GREEN'` on `evictionsPerSecond` fails against an `N/A` — so the gate
+> reds instead of going quiet. The eviction domain count printed beside the fold (`scoredPlanes`)
+> reads **1 of 45** where it read 45 of 45, which is the honest denominator for a worst-of over a
+> bound only dominaria can reach.
+>
+> **The rule is a conjunction, and the second half is what makes it safe to score.** `poolHighWater`
+> is a *lower* bound on occupancy — `?probe=` publishes `resident` and not `reserved`, so a full pool
+> with a layer in flight reads `layers - 1` — and on `saturated` alone this would mark a real reading
+> absent, which is that function's own stated objection to promoting it to a domain rule. So a
+> session is out of domain only when it never saturated **and** the counter provably never moved: a
+> counter that moved is proof of saturation whatever occupancy was sampled at. A churning pool
+> reading 1023/1024 is still scored, and still fails at 24.2/s.
+>
+> **Stated gap, because it is a decision and not an oversight.** The mirror case — a pool that *did*
+> fill and then had no key left to admit — also reports a structural 0, and it stays scored.
+> `saturated` is a necessary condition and never a sufficient one (DEC-834 measured 128/128 flat at 0
+> for 150 s), and "it filled and did not churn" cannot be told from "it filled and churn stopped"
+> without `pool.reserved` and an admission counter on the probe — R1's surface, DEC-744 B1.
+>
+> **The gate's patience is what decides the domain, and that is the cost of the rule.** The sampling
+> loop stops as soon as the tail converges past `MIN`, so a world that would saturate at t = 30 s is
+> filed out of domain at the break. Right on this roster — the unsaturated worlds are unsaturated
+> because their whole demand *fits*, alara asks for 283 of 1,024 — and a full-patience tour would
+> spend ~24 minutes re-confirming zeros. The symptom if a world ever lands near capacity is that it
+> flickers between `n/a — unsaturated` and a rate across runs, and the driver prints the high-water
+> mark on every world so that is visible in the log.
+>
+> ### Criterion 3's no-starvation clause becomes an absolute term
+>
+> `artFraction` is a ratio, and **a ratio is blind to its own denominator being chosen by the policy
+> under test.** At `?layers=128` under reduced motion the adaptive threshold collapsed the want set
+> to **14 cells**; all 14 showed art, so `artFraction` read **1.00** — better than the healthy
+> baseline's 0.9968 — on a frame showing fourteen cells of art out of some two thousand on screen.
+>
+> The repair is **`artCellsShowing ≥ 32`**: the numerator, scored on its own against a fixed number.
+> 32 is `SMALLEST_SHIPPED_POOL_LAYERS / 4`, fixed at write time and deliberately *not* re-derived per
+> run from `pool.layers` or `wanting`, both of which are outputs of the policy being graded.
+>
+> **Its domain is the frame's geometry, not its want set** — the term is scored only where **128**
+> cells are front-facing and on screen, 13 of the 45 worlds. A domain written off `wanting` would
+> have gone `insufficient` on the starved frame, because `wanting` is 14 there: the collapse the term
+> exists to catch would have switched the term off. The worlds below the cut-off are scored by W1 and
+> `artFraction`, both of which are defined at n = 1 — and threshold starvation is a large-world
+> phenomenon, so this is the coverage the term wants rather than a concession.
+>
+> **The floor and the domain cut-off are different numbers, and the first draft of this leg had them
+> equal at 64.** Set equal, the domain admits a frame at the instant it reaches the floor, so the
+> worst in-domain reading is pinned just above the bound **however healthy the build is** — and the
+> roster offers no gap to hide the cut-off in, its `presented` counts running
+> 0, 1, 7, 15, 18, 26, 33, 61, 65, 66, 68, 69, 75, 77, 95 … unbroken. Measured: the first full
+> acceptance tour read **65 against 64**, a 1.5% margin on a correct renderer. With the cut-off at
+> 128 and the floor at 32 the term sits clear on every side, all four figures measured:
+>
+> | reading | value | vs 32 |
+> |---|---|---|
+> | the witness that must RED (want set collapsed to 14) | 14 | **2.3× below** |
+> | healthy tier-4 rung, `?layers=128` | 124 | 3.9× above |
+> | worst in-domain world of the 45-world tour (forgotten-realms) | 146 | **4.6× above** |
+> | shipped 1,024-layer baseline, dominaria | 941 | 29× above |
+>
+> ### What this costs the matrix, stated rather than left to be discovered
+>
+> **The eviction half has no live expected-RED row.** Exceeding 21/s needs a faster spin or a bigger
+> roster; `spinPeriodS` is dataset data (`src/data/types.ts:325`), so a live row there means a
+> fixture corpus, and a corpus change can retire a sibling control. That falsifier is therefore a
+> **unit row** in `worlds-metrics.test.ts` — *"still reds the same row when turnover climbs past the
+> new bound"* — with its expected-GREEN partner live in the matrix. It is a real gap in
+> `--negative-controls` and it is named here for the same reason W3's is: a control that exists only
+> as a number in a comment is not a control.
+>
+> **The absolute term's gap was closed by `layers-128-reduced` (DEC-843), and the argument that said
+> it could not be is worth keeping.** This section used to say the term's witness needed reduced
+> motion and that **`?motion=0` is inert exactly on `?probe=shell`** (it is read on `?probe=1`,
+> `/bench` and `?selfcheck`, never by the app shell — which is what cost DEC-752 its first
+> conclusion), and concluded from that to *no live row*. The premise is still true; the conclusion
+> never followed. **The matrix is not restricted to query seams** — `w5-narrow` moves a viewport and
+> `one-card-world` moves a pose, neither of which reaches the URL — and the mechanism was already in
+> this tree on this route: `worlds-evict-longrun.mjs` emulates the **OS preference** before `goto`,
+> which is the input `App.tsx`'s `useReducedMotion()` actually reads. `?motion=0` was the wrong seam,
+> not the only one. See the row below for what it measures.
+>
+> **Measured, and the reviewer's prediction was recorded before the row existed** (DEC-841 verdict
+> comment `b64059df`): `artCellsShowing` **14 against 32, RED**, in domain because dominaria presents
+> ~1,383 ≥ 128; `evictionsPerSecond` **N/A**, out of the capacity domain at 128 layers; `artFraction`
+> **GREEN at 1.00**. The live row read **14 / N/A / 1.00** on a frame presenting **1,388** — all
+> three as predicted, and the presented count 0.4% off. **The two halves of W4 disagreeing on that
+> one frame is the whole of this section's argument, now on the gate instead of in a comment.**
+>
+> **Both halves of its read-back were confirmed against their own defect.** Drop the
+> `emulateMediaFeatures` call and the row reads **123** cells, well above the floor, and the guard
+> reds it as `reduced-motion-did-not-take` rather than letting it report as a W4 regression; give
+> *every* page the preference and the unseamed `?layers=128` sibling reds as
+> `scene-frozen-without-the-seam`. `confirm-the-instrument-sees-the-defect`.
+>
+> **The gap is the two *bounds*, and since DEC-842 it is no longer the two domain rules.** Both of
+> the eviction half's domain rules are falsifiable live: `?layers=128` asserts `N/A` on the capacity
+> one, and `unsaturated-pool` asserts `N/A` on the occupancy one. Each was confirmed against its own
+> defect rather than assumed — dropping the occupancy clause turns `unsaturated-pool` from `N/A` to
+> `GREEN (value 0, bound 21)` and reds the gate, measured, while the row's two GREEN partners stay
+> green on the same frame. `confirm-the-instrument-sees-the-defect`.
+>
 > **Normative — W1's pose is the *plane-level settle*, which §1.3 now makes per-world, and it is
 > **not** W4's 2.2-radii surface view (DEC-818).** The two are one row apart in this table and were
 > conflated once already: DEC-752's acceptance comment and the DEC-818 routing that followed it both
@@ -1891,12 +2168,143 @@ an assertion there.
 > new law gives dominaria 25.56–31.15 and ravnica 26.63–34.52 `[tilted]`, both clear. **Do not
 > compare an offline `HOME_POLAR` figure to a gate artefact without pricing the 2%.**
 
+> **Normative — W5 counts labels by opacity, not by DOM node, and the literal reading is a
+> constant (DEC-751's measurement, DEC-752).** This row used to say "count rendered plane labels in
+> the DOM", which reads as `querySelectorAll('.label').length`. That number is **87 on v3 for every
+> renderer**: `labels/layout.ts` gives _every_ candidate a placement and signals the drop through
+> opacity alone — its own comment says "every candidate still gets a placement, faded or not" — so a
+> label the solver gave up on after `MAX_SHIFTS` is still a node. Read literally, W5 would compare 87
+> against 46 and fail forever, including on a correct render. **The predicate is `opacity > 0.05`.**
+> It sits above 0 because the gate reads a float back through the DOM, and well below 0.4 because
+> PRD 5.3.11 dims an occluded plane label to 40% and a dimmed label is still on screen and still
+> readable. Do not "simplify" this to a node count.
+>
+> **Normative — W5 is measured over a sweep of azimuths, because the home view is not a pose
+> (DEC-752, measured; DEC-751's finding).** `motion.ts:247` rotates every plane by `multiverseAngle`
+> every tick, so the camera azimuth is not a harness setting — it is what the scene does
+> continuously, and any number read off one frame is one draw from a distribution. Measured on
+> `3ce85aed66e9dc3a` at 1920×1080, fov 55, over 360 azimuths:
+>
+> |                                           | v3 `3ce85aed` | v2 `dabe2c9a` |
+> | ----------------------------------------- | ------------- | ------------- |
+> | labels visible, post-suppression          | 33 – 42       | 33 – 43       |
+> | worlds labelled                           | 33 – 42 of 45 | 33 – 43 of 45 |
+> | worlds **never** labelled, at any azimuth | **0**         | **0**         |
+>
+> The gate therefore samples **≥ 12 azimuths** (`W5_MIN_AZIMUTHS`) and reports `insufficient` below
+> that. One frame is not a sweep, and the degeneracy is silent in the dangerous direction: handed a
+> single azimuth, reachability collapses into exactly the single-frame coverage count it replaces
+> while still reading as the stronger claim.
+>
+> **The sweep parameter is the multiverse rotation, not a plane's own spin — so the pending
+> spin-axis ruling does not reach W5 (DEC-752, measured at `613715f`).** R1 raised on DEC-749 that
+> `motion.ts` spins a plane about plane-local **+z** (the disc normal, PRD 8.6.2) while the surface
+> law's poles are **±y**, and noted it would move what a sweep over azimuth means here. It does not,
+> and the reason is structural rather than numerical: `planePosition` (`camera/motion.ts:239-248`) is
+> `home + drift`, rotated by `multiverseAngle` about **y** — it applies neither spin nor shear.
+> W5 anchors every label at exactly that point (`labels/PlaneLabels.tsx:206`, `:217`). A plane's spin
+> is a rotation about an axis **through its own centre**, and the centre is the local origin, which
+> every such rotation fixes. So the spin axis cannot move a label by construction, at any azimuth and
+> under either ruling. `motion.ts:14-19` records the same invariant from the other side: the axis
+> error went undetected for a whole phase precisely because every tether then resolved to a plane
+> centre or a dust anchor.
+>
+> This is scoped to W5. The ruling is still R1's to take and still matters on R1's own surface — an
+> attached sheet is not at the origin, so a globe tumbling end-over-end through the bands is a real
+> defect there. W5 simply does not depend on its outcome, and no gate row should be held for it.
+>
+> **Normative — the ceiling half is a regression check on §1.8's suppression, and is named as one
+> (DEC-752).** Once the moons are unlabelled until hover, the candidate list is the 45 worlds and
+> the belt is filtered by slug, so at most 45 labels can exist against a ceiling of 45: the half
+> holds **360 of 360 azimuths, for every renderer, by construction**. A bound-check is vacuous when
+> the bound never binds. It is kept because it does bind on the one renderer that matters — with
+> suppression regressed the same sweep reads **66 – 77 and fails 360 of 360** — but a green
+> `homeLabels` is evidence that the moons are quiet, **not** evidence that the home view is legible.
+> Do not read it as the latter.
+>
+> **Normative — a label count quoted against this ceiling must name its candidate list (DEC-752,
+> measured on DEC-751's branch).** DEC-751 read 66 – 75 visible plane labels today and 75 – 85 under
+> their separation epsilon, against a ceiling of 45, and raised it as a ruling that the ceiling is
+> unreachable. It is the same sweep over a different population — theirs the **pre-§1.8 list of 87
+> planes**, the ceiling's the **post-§1.8 list of 45 worlds** — and §1.8 is exactly the transform
+> between them. Measured at 1920×1080, 360 azimuths, both arms through the shipped solver:
+>
+> | candidates                  | pre-fix | with the epsilon |
+> | --------------------------- | ------- | ---------------- |
+> | 87 planes (today, pre-§1.8) | 64 – 78 | 75 – 85          |
+> | 45 worlds (post-§1.8)       | 33 – 42 | 40 – 45          |
+>
+> There is no ruling to make: the ceiling is not violated on the tree the gate runs against. The
+> epsilon does take its slack from 3 labels to **0** — 45 against 45 — which is tight but still
+> unexceedable, since 45 candidates cannot make 46 labels. The bound stays non-binding.
+>
+> **Normative — the second half is reachability, not coverage-at-a-frame, and DEC-751's proposed
+> coverage floor is not adopted (DEC-752, measured).** A ceiling is satisfied by rendering _fewer_
+> labels and does not care which, so W5 needs a half that does. DEC-751 proposed ≥ 90% of worlds
+> labelled (equivalently ≤ 4 missing). Over the sweep the shipping renderer meets that at **17 of
+> 360 azimuths — 4.7%**: adopting it scores a renderer doing exactly what §1.8 and §2.4 ask as RED
+> at 95% of the frames the harness might grab, and takes this section's expected-GREEN row with it.
+>
+> That is the **third instance of one defect** — the stale ceiling of 30, the 0.9 floor, and now the
+> coverage proposal that replaced it — and the shape is always the same: a threshold read off a
+> single measurement of a moving system, then written down as a law. The lesson is normative for
+> this section: _a bar proposed alongside a measurement must be checked against that measurement's
+> own spread before it is written down._
+>
+> Coverage also does not buy the stability it was proposed for. Its argument was that it does not
+> care _which_ worlds win — but the **count** of winners swings 33 – 42 across azimuth, a band as
+> wide as the label count's own. Changing which quantity is sampled does not stop it being a sample.
+>
+> What is invariant under the rotation is **reachability**: whether a world is labelled at _some_
+> azimuth. It is the claim PRD 5.3.8 actually makes, it reads 0 never-labelled on both datasets, and
+> unlike a count it distinguishes "hidden this frame" from "permanently lost" — which is the defect
+> a coverage cap cannot see at all.
+>
+> **The open ruling is now the share, not the floor.** The gate reports how often each world is
+> legible and sets no bar on it: v3's weakest is `karsus` at **20.3%** of azimuths, v2's is
+> `avishkar` at **49.7%**, so v3 is a regression on a measure nobody has set a bar for. That is a
+> product ruling about how often a world may be invisible, and it is routed to the CEO rather than
+> retuned here — picking a number alongside the measurement is exactly how the 0.9 happened.
+> `evaluateW5` takes `minAzimuths` as a **required argument with no default**, for the reason the
+> 30 went stale.
+>
+> **Normative — the sweep must be evenly spaced around the turn, and the gate checks it (DEC-752,
+> measured).** `minAzimuths` bounds how many samples a sweep has; this bounds _where they are_, and
+> the second turns out to be load-bearing. Reachability survives a sweep as sparse as 12 only
+> because the miss pattern has arc structure at the scale of the spiral's arms and an evenly-spaced
+> comb crosses every arm. Against the 360-azimuth hit matrix on `3ce85aed66e9dc3a` — every strided
+> sweep enumerated exactly, random ones over 2,000 trials:
+>
+> | sampling                   | N = 12      | N = 24  | N = 36  |
+> | -------------------------- | ----------- | ------- | ------- |
+> | evenly spaced (all phases) | **0 of 30** | 0 of 15 | 0 of 10 |
+> | random                     | **2.5%**    | 0.1%    | 0.0%    |
+>
+> Every one of those is a **false RED** — the renderer reaches all 45 worlds and the sweep says
+> otherwise. A gate that flakes 1 run in 40 gets its reds explained away, which costs more than the
+> criterion is worth, so `azimuthSpacingFault` makes uniformity a precondition rather than a
+> convention. It reports `insufficient`, never `fail`: a badly sampled sweep is the harness's defect
+> and not the renderer's.
+>
+> **Normative — W5's 800×600 control expires when DEC-751's separation epsilon lands, and the row
+> moves to 320×240 (DEC-752, measured).** The reachability half is falsifiable today at 800×600,
+> where the sweep leaves `thunder-junction` unlabelled at all 360 azimuths. Applying DEC-751's
+> 0.01 px epsilon to the shipped solver and re-running the same sweep takes that to **0 worlds never
+> labelled** — the control goes green and the half is left with nothing that can turn it red. The
+> replacement is the same seam pushed further: at **320×240** five worlds (`amonkhet`, `gobakhan`,
+> `muraganda`, `shandalar`, `tolvada`) are unlabelled at every azimuth, while 640×480, 480×360 and
+> 400×300 are all still 0 — so the row moves to 320×240 and not to the next size down.
+>
+> Switch the row **when the epsilon lands, not before**: on today's tree both viewports are red, and
+> 800×600 is the honest one. A control row whose expiry is known and unrecorded is how a gate keeps
+> a green it has stopped earning.
+>
 > **Normative — W2's IQR(L\*) half is measured on an iso-shade subset, and the un-subsetted version
 > it replaces could not fail (DEC-749, on DEC-752's finding).** §1.4's shade runs
 > `0.10 + 0.95·s²` with `s = clamp(dot(n, light)·0.5 + 0.5, 0, 1)`, and §1.7 puts the key light
 > 0.798 rad off the camera axis, so over the front-facing cap (`dot(n, toCamera) > 0.12`) shade
-> spans quartiles **0.363 / 0.611 / 0.852**. That gradient alone — *one swatch for the whole
-> world* — puts IQR(L\*) between **12.6 and 21.6** for every swatch luminance from Y = 0.10 to 0.50,
+> spans quartiles **0.363 / 0.611 / 0.852**. That gradient alone — _one swatch for the whole
+> world_ — puts IQR(L\*) between **12.6 and 21.6** for every swatch luminance from Y = 0.10 to 0.50,
 > against a floor of 8; the ≥ 6 px cut trims the limb and narrows the worst case only to 11.9.
 > (`surface-law-check.py` re-derives all of it.) The lightness spread W2 was reading is the
 > **sphere being lit**, not the mosaic
@@ -1904,17 +2312,17 @@ an assertion there.
 > the globe is shaded and round. A criterion that cannot fail is not a criterion.
 >
 > Holding shade fixed removes the gradient and leaves swatch-to-swatch lightness, which is what W2's
-> title claims to measure. **±2.5% of the median shade** is the band: it is an iso-shade *ring*
+> title claims to measure. **±2.5% of the median shade** is the band: it is an iso-shade _ring_
 > around the sub-light point, so it crosses most of the 13 bands and samples the palette widely,
 > while a tonemap — monotone and per-channel — maps every cell in the ring identically and so cannot
 > reintroduce a gradient. This also repairs the control: under `?swatch=mean` every cell in the ring
-> is the *same colour*, iso-shade IQR(L\*) goes to ≈ 0, and one control row now falsifies **both**
+> is the _same colour_, iso-shade IQR(L\*) goes to ≈ 0, and one control row now falsifies **both**
 > halves of W2 instead of one.
 >
 > **The floor of 8 is provisional and is re-derived once leg P publishes `swatches.bin`**, because 8
 > was set against a measure that could not go below ~12. R1's first full gate run records the
 > observed iso-shade IQR per plane and the floor is set from the worst plane, in a spec amendment;
-> until then the gate reports the measure and the matrix asserts its *direction* (real build high,
+> until then the gate reports the measure and the matrix asserts its _direction_ (real build high,
 > `?swatch=mean` ≈ 0), which is decisive wherever between ~2 and ~20 the floor lands.
 
 > **Normative — a control row names the measure it aims at, not just the criterion (DEC-752).** W2
@@ -1922,6 +2330,72 @@ an assertion there.
 > went RED" reads as evidence for both halves when it may be evidence for one. Each row below
 > carries the measure key it must move, and the runner asserts that measure, so a half with no
 > control of its own is visible as a gap rather than borrowed from its partner.
+> **Normative — the smallest worlds are below W2's and W3's domain, and a correct build goes RED
+> without this (DEC-752, on DEC-751's finding).** The Forgotten Realms refresh introduces **six
+> worlds holding exactly one card** (ergamon, muraganda, pyrulea, regatha, segovia, shandalar) and
+> 15 holding ≤ 4; `minWorld` across tracked datasets was {41, 30, 6} and production now contributes
+> **1**. W1 survives this — a one-cell world's cell is enormous and never becomes the worst plane —
+> but W2 and W3 are **undefined** there, not merely noisy, and the gate's own module returns:
+>
+> | measure                 | value at n = 1 | why                                                         |
+> | ----------------------- | -------------- | ----------------------------------------------------------- |
+> | `medianNeighbourDeltaE` | `null`         | "nearest on-screen neighbour" has no referent with one cell |
+> | iso-shade `IQR(L*)`     | `0`            | the interquartile range of a single sample                  |
+> | `minAdjacentBandDeltaE` | `null`         | one populated band, so **zero** qualifying adjacent pairs   |
+>
+> Scored as ordinary failures — which is what a floor comparison does to a `null` — those six worlds
+> turn the matrix's **expected-GREEN** row ("the unmodified build on the v3 production dataset")
+> RED, on a renderer doing exactly what this section asks. That is W5's stale-30 failure again, one
+> criterion over: unsatisfiable by construction on the dataset the gate exists to accept.
+>
+> So W2 and W3 carry a **sample-size precondition** and a third verdict. A plane with fewer than
+> **4 sampled cells** for W2, or with no qualifying adjacent band pair for W3, reports
+> `insufficientSamples` — not `pass`, not `fail` — and the gate prints the count of planes that
+> landed there. A criterion may not be silently skipped: an `n/a` that is invisible is how a gate
+> comes to measure nothing while printing green. The threshold is 4 because IQR needs two quartiles
+> to be a spread rather than a gap, and because a 4-cell world measured 133.0 ΔE / 33.6 IQR in the
+> module's own test — comfortably inside the domain — while 1 is outside it.
+>
+> **The degenerate worlds are still covered, by W1 and W4, which are defined at n = 1**, and by the
+> dedicated matrix row below. What may not happen is a whole-multiverse aggregate quietly averaging
+> over them: a single degenerate world is exactly what an aggregate seam measure does not catch.
+
+> **Normative amendment — W2's lightness half carries its own, larger domain: 20 iso-shade cells
+> (DEC-752, ruling `w2_ring` on DEC-816 R3; supersedes the "4 sampled cells" threshold for this half
+> only).** The 4 above is the domain of the **sampled set**, which is what the neighbour half walks.
+> The lightness half is an IQR over the **iso-shade ring**, and ±2.5% of the median shade selects a
+> sliver of the disc by construction — so that half spends its life at the bottom of its domain and
+> four cells is not enough to make it reproducible. Measured across two 45-world acceptance runs of
+> the same head (`21737f3`) on the same dataset (`c9468f1125bcddff`):
+>
+> | ring ≥ | worlds scored | worst run-to-run move | worst world              | smallest IQR seen |
+> | ------ | ------------- | --------------------- | ------------------------ | ----------------- |
+> | 4      | 20            | 58.4%                 | capenna (16.04 → 38.54)  | 4.40              |
+> | 6      | 15            | 56.6%                 | arcavios (5.87 → 13.55)  | 4.40              |
+> | 8      | 11            | 55.4%                 | theros (32.23 → 14.38)   | 14.05             |
+> | 14     | 6             | 18.9%                 | innistrad (27.73 → 22.48)| 14.46             |
+> | 20     | 2             | **7.6%**              | dominaria (26.34 → 28.52)| 26.34             |
+>
+> **Both worlds that carried W2's RED were scored off six cells** — ixalan 4.40/4.53 and arcavios
+> 5.87/13.55, the latter moving by 131% of the floor between two runs of one build. The verdict does
+> not turn on the exact threshold: from ring ≥ 8 upward every world clears the floor of 8 on both
+> runs and the smallest reading anywhere in that set is 14.05, so anywhere in 8…20 gives the same
+> GREEN and only the stability of the surviving statistics changes. 20 is the conservative end of a
+> range whose verdict is constant.
+>
+> **The cost, stated: at 20 the half scores 2 of the 45 worlds** (dominaria 64, ravnica 22) and the
+> aggregate is the worse of two. **The subject of the `swatch-mean` control row is therefore no longer
+> a free choice** — a control measured on a world below the domain reports `insufficient`, which is
+> not RED, and the matrix would record a retired falsifier as a passing row. The gate refuses to score
+> that row without a qualifying ring (`W2_CONTROL_SUBJECT_MIN_RING`) rather than reporting it.
+
+> **Normative — a folded verdict is printed with the set it was folded over.** Every multi-world
+> measure is the worst world *in domain*, so `checkControlRow` reports `worst of N worlds in domain
+> (slug), M out of domain` beside the value. Without it this domain would have made the report most
+> reassuring exactly where its evidence had thinned: `W2.lightnessIqr went GREEN as expected (value
+> 20.2, bound 8)` reads identically whether it was folded over two worlds or forty-five. The
+> denominator prints on a full-roster GREEN too — one that appeared only when the evidence was thin
+> would be a warning, and its absence would come to be read as "fine".
 
 **Owner-judged, carried over from 9.3 unchanged:** motion perceptible within 3 s of arriving at any
 level; no aliasing shimmer on slow camera moves (recordings cast at the drawing buffer's own
@@ -1933,17 +2407,368 @@ events; the focused card's tilt feels physical; and, new, **the tether reads as 
 > the same discipline that caught `verify-browser --dataset all` printing "all datasets verified"
 > while running two fixtures.
 
-| Criterion | Measure asserted | Control | Must go |
-|---|---|---|---|
-| W1 | `medianCellHeightPx` | capture at 6× radius instead of the settle (prototype measured 10.1 px there) | **RED** |
-| W2 | `medianNeighbourDeltaE` | `?swatch=mean` — every cell takes the plane's mean swatch | **RED** |
-| W2 | `lightnessIqr` | `?swatch=mean` — same row, second half: iso-shade cells become one colour | **RED** |
-| W3 | `worstBandPairDeltaE` | `?bands=shuffle` — cards permuted across the plane's cells, grid and reported `band` unchanged | **RED** |
-| W4 | `artFraction` | `?artThreshold=fixed24` — §1.6's seam: the prototype's constant threshold, no quantile | **RED** |
-| W4 | `evictionsPerSecond` | `?artThreshold=fixed24` — same row, second half | **RED** |
-| W5 | `homeLabels` | labels forced on for empty planes | **RED** |
-| W4 | both | `?layers=128` — tier 4's pool, unmodified policy | **GREEN** |
-| all | all | the unmodified build on the v3 production dataset | **GREEN** |
+| Criterion | Measure asserted                       | Control                                                                                                                                                                     | Must go   |
+| --------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| W1        | `minMedianCellHeightPx`                | capture at 6× radius instead of the settle (prototype measured 10.1 px there)                                                                                               | **RED**   |
+| W2        | `medianNeighbourDeltaE`                | `?art=off&swatch=mean` — every cell takes the plane's mean swatch, **and draws it**                                                                                         | **RED**   |
+| W2        | `lightnessIqr`                         | `?art=off&swatch=mean` — same row, second half: iso-shade cells become one colour                                                                                           | **RED**   |
+| W3        | `minAdjacentBandDeltaE`                | `?art=off&bands=shuffle` **over the full tour** (`w3-floor-control`) — cards permuted across each plane's cells, grid and reported `band` unchanged. A roster mean can only be falsified by a roster; the one-world row that used to sit here now asserts **N/A** — see the fold amendment | **RED**   |
+| W2        | both measures                          | `?art=off` **alone** — the sibling the composed rows are read against, not the bare build                                                                                   | **GREEN** |
+| W3        | `minAdjacentBandDeltaE`                | `?art=off` **over the full tour** (`w3-floor-shipped`) — the shipped side of the same derivation, differing in the one seam                                                  | **GREEN** |
+| W4        | `artFraction`                          | `?artThreshold=fixed24&layers=128` — §1.6's seam against a tier-4 pool: **a fixed threshold against a pool too small for it**, which is what Appendix A captured. 0.1342 against a bar of 0.5, a 7.39× overshoot. The **bare** `fixed24` row this replaces is retired — see the note | **RED**   |
+| W4        | `evictionsPerSecond`                   | **the bound has no live row.** Exceeding want-set turnover at the 1,024-layer pool needs a faster spin or a bigger roster; `spinPeriodS` is dataset data, so a live row means a fixture corpus. Falsified by unit row *"still reds the same row when turnover climbs past the new bound"*. **Its two domain rules do have live rows** — `?layers=128` for the capacity one and `unsaturated-pool` below for the occupancy one | **n/a**   |
+| W4        | `evictionsPerSecond`                   | **`unsaturated-pool`** — kamigawa (917 cards) at the shipped pool, no seams: a world whose whole demand fits, high-water **265 of 1,024**, so `claimLayer` never reaches its victim search and the rate is a structural 0. The 45-world tour runs this rule on 44 worlds and cannot falsify it — the fold is a worst-of and dominaria saturates, so `baseline` passes with the rule and without it | **N/A**   |
+| W4        | `artFraction`, `artCellsShowing`       | **`unsaturated-pool`**, same row, the half that says it rendered: an `N/A`-only row cannot tell a working domain rule from a page that failed to draw, and both report the same `n/a`. The art half going green on that frame is what makes the `N/A` above a reading | **GREEN** |
+| W4        | `artCellsShowing`                      | **`layers-128-reduced`** (DEC-843) — `prefers-reduced-motion: reduce` emulated as the **OS preference** before `goto`, at `?layers=128`. The adaptive threshold collapses the want set to **14** cells against a floor of 32, on a frame presenting **1,388** ≥ 128. Not a query seam: `?motion=0` is inert on `?probe=shell`, so the row moves a harness parameter as `w5-narrow` moves a viewport. Its read-back is asserted **in both directions** — `multiverseAngle` frozen bit-identically here, and moving on the unseamed `?layers=128` sibling | **RED**   |
+| W4        | `artFraction`                          | **`layers-128-reduced`**, same row, and the disagreement is the point: all 14 wanted cells show art, so the ratio reads **1.00** — above the healthy baseline's 0.9968 — on the frame the absolute term reds. This is `a-ratio-is-blind-to-its-own-denominator` as a live control instead of a note | **GREEN** |
+| W4        | `evictionsPerSecond`                   | `?artThreshold=fixed24&layers=128`, `?layers=128` and `layers-128-reduced` — the rows that pin the **capacity domain**: at 128 layers the eviction half must read `N/A` and not a comfortable green. A want set that stops asking is a pool that stops churning, so the frozen row asserts it too | **N/A**   |
+| W4        | `artCellsShowing`                      | `?layers=128` — the absolute term must stay **green on a healthy tier-4 frame** (**124** cells against 32, 3.9× above; two draws, DEC-845), which is the partner that keeps the row above from scoring an always-red instrument. **The figure belongs to this row's harness configuration and not to the build**: DEC-843 attached a 3 s `multiverseAngle` read-back to it, and the frame is taken after that hold — 128 with the hold removed, 127 before the read-back existed. A number quoted from a sibling configuration of the same build would be wrong by 3% here | **GREEN** |
+| W5        | `homeLabels`                           | labels forced on for empty planes — suppression regressed; **66 – 77 over the sweep, _above_ the unmodified build's 33 – 42; see the note**                                 | **RED**   |
+| W5        | `worldsNeverLabelled`                  | **viewport 800×600** — collision pressure raised by the harness, not by a renderer seam; `thunder-junction` is labelled at **none** of 360 azimuths                         | **RED**   |
+| W1, W4    | `minMedianCellHeightPx`, `artFraction` | a **one-card world** (`?plane=segovia`) at its own settle — the n = 1 extreme, never rendered in any tracked dataset before v3. **Does not assert its label**; see the note. Its `artCellsShowing` asserts **N/A**: a frame presenting one cell is far below the 128 that term needs before an absolute count means anything, and that is domain, not failure | **GREEN** |
+| W4        | `artFraction`, `artCellsShowing`       | `?layers=128` — tier 4's pool, unmodified policy. **`evictionsPerSecond` is N/A here, not GREEN** (ruling `bd5c9aad`): 6.73/s is inside 21 only because the pool refuses ~4,670 wants/s, and recording that as a pass would certify the starvation the art half forbids | **GREEN** |
+| W5        | `worldsNeverLabelled`                  | **viewport 1920×1080** — the non-binding partner to the row above, differing in that one parameter                                                                          | **GREEN** |
+| all       | all                                    | the unmodified build on the v3 production dataset                                                                                                                           | **GREEN** |
+
+> **Measured, diagnosed and repaired — the three RED rows that did not go RED now do (DEC-752,
+> DEC-821, DEC-824).** The history is kept because it is the argument for the sixth seam, and because
+> the diagnosis is the reusable part. On matrix run `controls1` (head `21737f3`, dominaria, one
+> build), every seam **engaged** — requested, echoed, and where there was a policy witness the policy
+> had moved — and three rows still failed to falsify anything:
+>
+> | row / measure                        | with the seam | siblings **without** it   | floor | verdict on the control |
+> | ------------------------------------ | ------------- | ------------------------- | ----- | ---------------------- |
+> | `?swatch=mean` → `lightnessIqr`      | 24.89         | 16.09 / 21.28 / 25.89     | ≥ 8   | **inert** — inside the sibling spread |
+> | `?swatch=mean` → `medianNeighbourDeltaE` | 15.73     | 19.37 / 23.79 / 25.72     | ≥ 6   | moves, stays 2.6× above the floor |
+> | `?bands=shuffle` → `minAdjacentBandDeltaE` | 0.476   | 0.815 / 1.116 / 1.121 / 1.450 | ≥ 10 | moves; both sides already RED |
+>
+> **One mechanism explained all three: at the 2.2-radii pose the sampled pixel is card _art_, and
+> both seams perturb the _swatch_.** `artFraction` at that pose measures **0.987–0.997** — ten cells
+> in ten — so the swatch is a layer the capture does not show. §3.1 defines W2 and W3 on the
+> **swatch** and requires sampling the **capture**; at this pose those were not the same quantity,
+> and a seam that moves only the swatch is inert by construction rather than by accident.
+>
+> **The repair is `?art=off` (DEC-821): drop every cell to its swatch, so the swatch _is_ the
+> capture.** Composed, both W2 halves fall below their floors, measured on main `28d4676`:
+>
+> | row | `medianNeighbourDeltaE` (≥ 6) | `lightnessIqr` (≥ 8) | `minAdjacentBandDeltaE` |
+> | --- | --- | --- | --- |
+> | no seams | 27.41 – 27.86 | 24.42 – 28.84 | 2.354 – 3.050 |
+> | `?art=off` — **the sibling** | 17.92 | 16.50 | 1.329 – 1.333 |
+> | `?art=off&swatch=mean` | **0.954** | **4.673** | — |
+> | `?art=off&bands=shuffle` | — | — | **0.422 – 0.423** |
+>
+> Read the composed rows against `?art=off` **alone**, never against the bare build: the seam moves
+> W2 by itself, and scoring the composition against `baseline` would credit the seam under test with
+> that move too.
+>
+> **W3's floor, re-derived rather than argued down (ruling `hold_pending_control`, now retired).**
+> The impasse recorded here was that the shipped aggregate read **0.4253** (ravnica, worst of 28),
+> *below* its own shuffled control at **0.4757** — a criterion that cannot fail. On main `28d4676`
+> the shipped aggregate reads **0.7070**, so the impasse's figures have moved out from under it; the
+> old pair predates DEC-804's centre fix, DEC-812's budget and DEC-814's belt rotation and must not
+> be re-carried. The floor is now **0.55**, derived from three live readings — acceptance tour worst
+> **0.7070** (n=1), the composed control **0.4195–0.4477** (n=4) and the sibling **1.2935–1.3327**
+> (n=4) — which leaves the interval **(0.4477, 0.7070]**; 0.55 sits 23% above the control's
+> worst-case reading and 29% below the build's. The lower bound is the **max** of four control
+> sessions and not one of them: a single session would have given a floor that looked 31% clear of a
+> control it is really 23% clear of. The upper bound is n=1 and is the less-tested half.
+> `scripts/w3-floor.mjs` re-derives it; §4.3 of the runbook says when.
+>
+> **Three things that floor does not claim, each measured and none of them a defect.** A tour-wide
+> `?art=off` row would go RED against it (that arm's worst world is avishkar at 0.4505; no shipped
+> row asserts it). `?bands=shuffle` is **one permutation seeded by a constant**, so it reproduces
+> exactly without being the statistic — on **8 of 28 worlds the shuffled frame scores _higher_ than
+> the unshuffled one**, and the direction does not correlate with cell count, band count or band
+> share. And the floor is a property of the shipped swatches, resting on one world (ravnica) from
+> above, so a refresh can invalidate it without a line of rendering code changing.
+
+> **Retraction — the interval `(0.4477, 0.7070]` does not exist, and 0.55 does not separate
+> anything (DEC-752, routed from DEC-830).** The block above flags its own weakness in one line —
+> "the upper bound is n=1 and is the less-tested half" — and that line turns out to carry the whole
+> derivation. Re-read off the gate's own summaries rather than off this document, the upper bound is
+> not a reading but a **draw from a distribution that straddles the floor**:
+>
+> | run | worlds visited | in W3's domain | `minAdjacentBandDeltaE` | worst plane | `artFraction` |
+> | --- | --- | --- | --- | --- | --- |
+> | `accept3` | 45 | 28 | **0.8005** | innistrad | 0.6956 |
+> | `dec826-bare` | 45 | 28 | **0.7070** | ravnica | 0.7447 |
+> | `accept4` | 45 | 28 | **0.4253** | ravnica | 0.6952 |
+> | `acceptance2` | 45 | 28 | 0.5316 | forgotten-realms | 0.0000 |
+> | `acceptance` | 45 | 28 | 0.2528 | eldraine | 0.0000 |
+> | `order-fwd` | 8 | 5 | 1.3499 | avishkar | 0.9896 |
+> | `order-rev` | 8 | 5 | 1.3926 | avishkar | 0.9896 |
+>
+> "In W3's domain" is 45 less the 17 planes the criterion reports `insufficientSamples` on — the
+> six one-card worlds and their kin — and it is the population the fold minimises over. Read the top
+> three rows alone. They are the same dataset (`c9468f1125bcddff`), the same 45-world roster, the
+> same 28 worlds in domain, and the same 2.2-radii pose, and they span **0.4253 – 0.8005, a factor
+> of 1.9, with 0.55 inside it**. The floor was set from the middle one. Two further draws on
+> DEC-830's tree — 0.1632 and 1.2100/1.2259 — widen the same span without changing its verdict.
+>
+> **0.4253 was not a retired figure.** The block above dismisses it as predating DEC-804's centre
+> fix, DEC-812's budget and DEC-814's belt rotation. It does not: `accept4` drew it on leg G, with
+> all three in the tree, and DEC-830 re-drew it again. The impasse's figures did not move out from
+> under the impasse — the impasse is reproducible, and the composed control's worst reading
+> (**0.4477**, n=4) sits *above* the shipped arm's lowest (**0.4253**). The two intervals **overlap**,
+> which is `w3-floor.mjs`'s documented "no separating floor exists" outcome rather than a floor to
+> pick.
+>
+> **Why the fold moves this much, which is the part that generalises.** §3.1 folds W3 to the worst
+> world, and each world's own reading is already the closest of its qualifying band pairs — so the
+> tour value is a **minimum of minima over a population**, and its expected value falls as the
+> population grows. The last two rows measure exactly that on the same dataset: truncated to the
+> first 8 worlds alphabetically the fold reads 1.35 and 1.39 over 5 in-domain planes; over all 28 it
+> reads 0.25 – 0.80. The worst plane's *identity* is not stable either — innistrad, ravnica,
+> eldraine, forgotten-realms, avishkar across five draws — which is what a min over a fluctuating
+> population looks like from the outside.
+>
+> **That it is the fold and not the renderer is measurable, and it was measured.** The three
+> full-roster draws above put the same 28 worlds in W3's domain, and their per-world readings are on
+> disk in each run's `baseline/visits.json`. Re-folded four ways over exactly those 28 values:
+>
+> | fold | `accept3` | `dec826-bare` | `accept4` | spread |
+> | --- | --- | --- | --- | --- |
+> | **min** (shipped) | 0.8005 | 0.7070 | 0.4253 | **1.88×** |
+> | p10 | 1.3190 | 1.4626 | 0.8962 | 1.63× |
+> | p25 | 2.1101 | 1.9939 | 1.9588 | **1.08×** |
+> | median | 3.0965 | 3.0155 | 3.6764 | 1.22× |
+> | mean | 4.0393 | 3.9835 | 4.1361 | **1.04×** |
+>
+> `scripts/w3-fold.mjs` prints this table from the run directories; it is not a figure to take on
+> trust here. The underlying frames are the same frames — only the choice of fold decides whether the
+> criterion reproduces. At p25 or the mean the three draws agree to within 8%; at the minimum they
+> disagree by a factor of two. **"Use a quantile" is not by itself the fix**: p10 still swings 1.63×,
+> because the low tail is where all of the movement lives. The volatility is not spread evenly
+> either — ulgrotha reads 12.13 / 11.90 / 12.00 across the three (1.02×) while avishkar reads
+> 1.39 / 2.03 / 5.74 (4.14×) — so the fold is sampling whichever world happens to draw badly that
+> session, and 0.55 is a bet on which one that is.
+>
+> So a converging statistic exists in this data — p25 or the mean over in-domain worlds, with the
+> worst plane and its value still reported as evidence rather than as the score. **Choosing one is a
+> §3.1 amendment and belongs to the owner, not to this leg**; leg G records the measurement and does
+> not move the criterion. Note what the change would *not* buy: it makes W3 reproducible, and it does
+> not by itself re-establish separation from `?art=off&bands=shuffle`, which has to be re-derived
+> under whichever fold is chosen — and re-derived from the arms' *distributions*, since that is the
+> error this block exists to retract.
+>
+> Until that is settled, `FLOORS.bandDeltaE` stays at 0.55 **as a recorded non-separating value**,
+> not as an accepted floor, and §3.2's condition 1 may not be read as cleared for W3 on the strength
+> of a GREEN row — see the note there.
+
+> **Normative — W3's roster fold is the MEAN, and this settles the retraction above (board ruling
+> `fold_mean`, card `7d3653f6`, 2026-09-17; implemented DEC-836).** The worst-world fold is retired,
+> and `0.55` retires with it: a floor derived against a statistic nobody uses any more is not a floor
+> that was lowered, it is a floor whose subject no longer exists.
+>
+> **What changed, exactly.** A world's own reading is untouched — still the closest of its qualifying
+> adjacent band pairs. Only the cross-world fold moves: from `min` over the in-domain worlds to their
+> **arithmetic mean**. The board chose it on the table in the retraction above, re-checked at n=5
+> before the choice was made rather than after: mean **1.09×** across five identical sessions, median
+> 1.22×, p25 1.38×, min 1.88×, and **p10 2.37× — worse than the min it was offered to replace, having
+> looked like the best quantile in the table at n=3**. A fold ranking taken at one n is not a ranking.
+>
+> **What a mean costs, said plainly.** One degenerate world can no longer red the roster by itself,
+> and that is the property the worst-case fold had. The board took the trade knowingly, because the
+> fold it replaces did not have that property *either* in any usable sense: across five sessions it
+> scored **three different worlds**, so what it actually reported was whichever world happened to
+> draw badly that session. Two things are owed in exchange, and §3.1 requires both.
+>
+> **1. The domain is scored, not reported.** A mean over a thinned domain is a different statistic in
+> the same units, and thinning *flatters* it — drop the low worlds and the number goes up. So the
+> gate carries the roster's expected denominator and a tour whose scored domain is not exactly that
+> is **RED on its denominator**, with the shortfall named, whatever its mean reads. This is a real
+> failure mode and not a hypothetical: the two truncated runs in the table above (`order-fwd` /
+> `order-rev`, 5 in-domain worlds) printed a W3 line in exactly the same shape as a full tour's.
+>
+> **The record is two numbers, because W3's domain has two gates and they do not agree.**
+> `W3_DOMAIN_SIZE` (beside `FLOORS`) carries, per dataset hash, the count of worlds whose **cards**
+> put an adjacent band pair over the 5% share rule, and the count that then **present both of those
+> bands in the sampled cells**. On `c9468f1125bcddff` those are **30 and 28**: `shenmeng` (30 cells)
+> and `zhalfir` (4 cells) qualify on their card distribution and populate a single band on screen, so
+> W3 has no pair to compare on them. The first draft of this amendment asserted the two counts were
+> equal, and the first full tour that ran it went **RED on every roster row, including the acceptance
+> row** — the by-share count is an **upper bound** on the scored one, never a second spelling of it.
+>
+> Neither number is redundant and neither is left alone with itself. The domain size is a **dataset
+> property** not derivable from `planes.json` — band shares come from per-hue card counts in the
+> shards — so both are recorded; the **scored** count catches a tour that visited too few worlds or a
+> world that lost a band at the pose, which the run's own data cannot (eight worlds toured report
+> eight of everything), and the **by-share** count is a pure function of the dataset, so it catches a
+> refresh moving under the record even where the scored count lands on 28 again. An unrecorded
+> dataset is a **RED**, never a skipped check.
+>
+> **2. The per-world readings are published.** `summary.json` carries every reading the mean was
+> taken over, lowest first, beside `scoredPlanes` and the expected denominator, and the report prints
+> `mean of 28 of 28 worlds in domain, lowest <slug>`. A roster mean that cannot be taken apart is a
+> number asking to be trusted.
+>
+> **A one-world row cannot score this criterion, and the matrix says so.** W3's verdict is a roster
+> statistic; measured on a single subject it is a different number, not a small version of the same
+> one. The gate reports **N/A** for W3 on every subject row, and the three that named W3 —
+> `art-off`, `artoff-bands-shuffle`, `no-seams` — now assert that N/A. **The consequence is that W3's
+> live falsifier is a full tour**: the `w3-floor-control` row, which is also the control side of the
+> floor derivation. `--negative-controls` does not run it (two tours, ~30 minutes), so exercising
+> W3's control means running the derivation pair. That cost is the ruling's, not an omission:
+> scoring dominaria's own ~1.3 reading against a roster mean would red the `?art=off` sibling every
+> composed control row is read against, for arithmetic rather than for a defect.
+
+> **Normative — `FLOORS.bandDeltaE` is 3.1, derived on the mean over seven sessions per arm
+> (DEC-836).** Both arms are full 45-world tours at the 2.2-radii pose on leg G `f821ccd`, **28
+> worlds in W3's domain in every one of the fourteen, 0 dropped**. The mean fold is computed offline
+> from the tours' own per-world readings, so these numbers do not depend on the gate change they
+> justify.
+>
+> | arm | seven session means | spread | binds |
+> | --- | --- | --- | --- |
+> | `?art=off` (`w3-floor-shipped`) | 3.3102 · 3.4558 · 3.4493 · 3.3982 · 3.3696 · 3.3359 · 3.3062 | **1.05×** | floor ≤ the **min**, 3.3062 |
+> | `?art=off&bands=shuffle` (`w3-floor-control`) | 2.7835 · 2.8203 · 2.9467 · 2.9058 · 2.9587 · 2.8762 · 2.8013 | **1.06×** | floor > the **max**, 2.9587 |
+>
+> **The arms do not overlap**, which is the thing the retracted floor could not claim, and the
+> interval is **(2.9587, 3.3062]**. **3.1** sits inside it — 4.8% above the control's worst reading,
+> 6.2% below the build's — at two significant figures, because a third would claim precision a
+> 0.35-wide interval does not support. The bare acceptance tour clears it with room: its own five
+> sessions fold to **3.98 – 4.34**, ~20% above the `?art=off` arm the floor is derived from. The
+> floor is taken on that sibling and not on the bare build because it is the arm the control differs
+> from by exactly one seam.
+>
+> **Seven per arm rather than the five asked for, and the two extra were not a formality.** At n=5
+> the control arm's three highest draws were its three most recent (2.9467 · 2.9058 · 2.9587), and a
+> trend that would have walked through the floor is precisely what the retracted derivation was
+> killed for not looking at. Passes 6 and 7 read 2.8762 and 2.8013: the trend was not there, and the
+> shipped arm's minimum moved 3.3102 → 3.3062, so the interval is stable under the two draws that
+> could have closed it.
+>
+> **The fold ranking was re-checked at the n the floor comes from, on arms it was never chosen
+> from.** The board picked the mean off five *baseline* sessions; these are fourteen `?art=off` and
+> `?art=off&bands=shuffle` tours, and the ranking holds — including the part that is a warning:
+>
+> | fold | `?art=off` spread | `+shuffle` spread |
+> | --- | --- | --- |
+> | min (retired) | 2.40× | **4.02×** (1.82× at n=5) |
+> | p10 | 1.26× | 1.65× |
+> | p25 | 1.16× | 1.29× |
+> | median | 1.23× | 1.12× |
+> | **mean (§3.1)** | **1.05×** | **1.06×** |
+>
+> The retired fold's control-arm spread more than doubled between n=5 and n=7. That is the same
+> lesson that retired it — a fold's stability estimated at one n is not its stability — landing a
+> second time, and it is the reason the mean has to be re-checked on every refresh rather than
+> inherited.
+>
+> **Two things this floor does not claim.** First, **4.8% is thin**, and it is thin because of the
+> control rather than the build: a permutation moves most worlds down and some up, and a mean dilutes
+> it — 6 to 10 of the 28 worlds score *higher* shuffled, depending on the pass. Under the retired min
+> fold the arms were further apart per world and still **overlapped** as aggregates; under the mean
+> they sit closer together and **separate**, because both are now stable. Reproducibility is what
+> bought the separation. Second, **the median would separate these arms by more** — 1.9713–2.4190
+> against 1.3810–1.5529, a 1.27× gap where the mean's is 1.12× — at a spread of 1.23× against 1.05×.
+> That is recorded as evidence for the next refresh, not as a re-litigation of the ruling.
+
+> **Normative — the measure keys in this table are the keys the module emits.** `checkControlRow`
+> resolves a row by `{criterion, measure}` and reports `W1 has no measure "…"` when the name is not
+> one a criterion actually returned, so a typo here surfaces as a failing row with a confusing
+> detail rather than as a silent pass — safe, but only once. The seven keys are
+> `minMedianCellHeightPx`, `medianNeighbourDeltaE`, `lightnessIqr`, `minAdjacentBandDeltaE`,
+> `artFraction`, `evictionsPerSecond`, `homeLabels`, `worldsNeverLabelled`. Two rows above named
+> `medianCellHeightPx` and `worstBandPairDeltaE`, which no criterion emits; both are corrected.
+
+> **On W5's control reading _higher_ than the build it is a control for.** Every other RED row in
+> this table degrades a number downward, so a reviewer reads "control below baseline" as normal.
+> This one goes the other way and it is not a regression. §1.3's worlds are **smaller spheres** than
+> today's galaxy dots, and `layout.ts` anchors a label at `y + radiusPx + halfHeight + 6` — a
+> smaller radius pulls each label _closer_ to the thing it names, fewer boxes collide, and **more**
+> labels survive. Unsuppressed the sweep reads **66 – 77**; suppressed it reads **33 – 42**, so
+> **moon suppression is the entire distance from RED to PASS**, not one contributor among several.
+>
+> **Two superseded digits, recorded so they are not re-carried.** DEC-751 first reported 77 visible
+> labels under the worlds law, then retracted it to 72, then to 68 — the first substituted the
+> radius law onto v2 positions, and leg P's build moves `home` too. All three are **interior points
+> of the 65 – 77 band** the sweep measures, which is the whole reason this row asserts a worst case
+> over a sweep and not a count at a frame. Do not re-pin any single number here.
+
+> **Gap closed — W5's reachability half has a control row, and it needs nothing from R1
+> (DEC-752).** This was a declared gap: the `labels forced on for empty planes` control _adds_ moon
+> labels and cannot take a world label away, so it tested the ceiling and nothing else, and a
+> coverage seam was routed to R1 as the only way out. It does not need one. The collision solver's
+> pressure is set by the **viewport**, which the gate chooses — no renderer seam is involved, so
+> DEC-744 B1 / DEC-746 D5's seam ownership does not bind here. Measured over 360 azimuths on
+> `3ce85aed66e9dc3a`: at 1920×1080 every world is labelled at some azimuth, at 800×600
+> `thunder-junction` is labelled at **none** (and `segovia` at 1.4%). That is a RED row with a
+> non-binding GREEN partner differing in one harness parameter, aimed at the half the empty-planes
+> row cannot reach. The **R1 control-seam request is withdrawn.** R3's separate `data-plane-slug`
+> _readback_ ask is untouched and still required: the control decides what the renderer draws, but
+> the gate still cannot tell _which_ world a label belongs to, and sweeping azimuths means resolving
+> that identity once per sampled frame. See the seam contract, §2a.
+>
+> Note what the control does _not_ do: it does not starve the resource the solver adapts to, it
+> raises the pressure the solver is solving against. A priority-flattening variant was measured too
+> and leaves reachability at 0 never-labelled — it redistributes which worlds are weakest (`karsus`
+> 20.3% → 47.2%, `vryn` 58% → 41%) without losing any — so reachability is carried by the rotation,
+> not by `PlaneLabels.tsx:67`'s card-count priority tiering. A control that moved only the priority
+> would have been a control for the wrong signal.
+
+> **On the one-card-world row (DEC-752, raised by DEC-751).** It is an expected-**GREEN** row and it
+> is not redundant with the last row: the whole-multiverse capture _averages over_ a degenerate
+> world, and an aggregate that averages is precisely what cannot catch one. Pinning the row to a
+> named one-card world makes the extreme a subject in its own right.
+>
+> It asserts the two criteria that are **defined** at n = 1 — W1's cell height and W4's art
+> fraction — and asserts that W2 and W3 report `insufficientSamples` rather than either verdict.
+> That second half is the one that matters: it is the guard against the precondition above being
+> quietly widened later until it swallows real planes. A control that asserts an `n/a` is still a
+> control, because the alternative readings (silently pass, silently skip) are both reachable and
+> both wrong.
+>
+> **Normative — this row sweeps the world's own spin, and a single frame cannot score it (DEC-752,
+> F3).** "Defined at n = 1" is true of the criteria and was false of the *frame*. A one-card world
+> has exactly one cell and its normal is equatorial — all six store `(-1, 0, 0)` in `stars.bin` —
+> so with `FACING_CUTOFF` at 0.12 it turns in and out of the facing cut once per `spinPeriodS`.
+> Held live through the shipped probe, the cell is front-facing on **18 of 64 phases (28.1%) on
+> `segovia`** over 260 s against its 175.8 s period, and **19 of 63 (30.2%) on `muraganda`** over
+> its 246.6 s one. A row reading one instant therefore drew its verdict about seven times in ten
+> red, which is how it behaved: it failed the `controls1` matrix and the cutover matrix alike, and
+> would have passed on another draw. The width of the family, not the renderer, was the finding.
+>
+> The repair is the one W5 took two criteria over, and for the same reason: what is invariant under
+> a rotation is **reachability**, never the instantaneous value. `sweepSpinPhase` samples a full
+> period and scores the **worst presenting phase** — never the first, and never the best, because a
+> loop that stopped when the cell appeared would select on the statistic it then scores and green a
+> floor by choosing its own sample. Three rules make that a measurement rather than a search:
+>
+> 1. **A phase is scorable only if the previous phase was presenting too.** The leading edge of a
+>    presenting run is mid cross-fade — `ART_SHOWN_AT` is the fade's *landing* — so `showingArt` is
+>    false there by §1.6's design. Exactly one of segovia's 18 presenting phases read `wantsArt`
+>    without `showingArt`, and it was the first sample of the run. Scoring it would red the row for
+>    the renderer doing what it is specified to do; this is `W4_SETTLE_S`'s rule, not a new one.
+> 2. **No presenting phase at all is a named failure (`never-presented`), not `N/A`.** A one-card
+>    world whose only cell never faces the camera across a full turn has an unreachable card, and
+>    that is the renderer defect this sweep was built to rule out. Filing it under the same word as
+>    the domain rules would hide it.
+> 3. **The sweep is refused unless the mosaic demonstrably turned.** A one-cell world has no
+>    front-facing *set* whose turnover witnesses the rotation, so "never front-facing" and "the
+>    scene never moved" are the same reading. The cell's own projected centre is the witness — it
+>    travelled 680 px on segovia — and below `SPIN_SWEEP_MIN_TRAVEL_PX` the row reports a harness
+>    fault rather than a verdict.
+>
+> The margin this buys is not marginal: at the worst *presenting* phase the cell measures **684.95
+> px** against W1's 24 px floor, and the height varies by under 1 px across the whole family. The
+> row was never close to failing W1 on the merits — it was failing on whether the frame contained
+> the cell at all.
+>
+> **This row does not assert that its world carries a label**, and that is deliberate. DEC-751
+> measured the six one-card worlds across azimuth: `muraganda` is labelled at 10 of 24, `shandalar`
+> at 11 of 24, `segovia` at 17 of 24, because `PlaneLabels.tsx:67` sets `priority: plane.cardCount`
+> and a one-card world is the lowest priority tier there is. An expected-GREEN row that asserted a
+> label on a named one-card world would be red at roughly half the azimuths the harness might grab
+> — the same defect as the coverage floor, in a row whose job is to be reliably green.
+>
+> The row was also the surface law's extreme, and that half is **resolved**: §1.3 now apportions by
+> largest-remainder floored at 1 rather than rounding, so N = 1 returns one row of one cell and the
+> sweep 1..7000 is exact at every N (DEC-749 `55d3b15`). The earlier reading here — 1→2 cells,
+> half-extents 1.571 × 1.571, aspect 1.000 — was `closed_form()`, which R1's head renamed and
+> demoted to the reference implementation; `grid()` is now the exact-N relaxation. Reproduce with
+> `surface-law-check.py`'s `grid()`, not `closed_form()`.
 
 > **Normative — what `?bands=shuffle` permutes, because three of the four readings pass
 > (DEC-749, on DEC-752's finding).** The seam applies **one global permutation of the plane's cards
@@ -1983,14 +2808,95 @@ of settling — both halves of W4 go red, and they go red for the reason W4 exis
 
 Shrinking the pool is **not** a control here, and the near-miss is worth writing down because it is
 the shape of mistake that survives review. `?layers=128` reads like "pool pinned below demand", but
-§1.6 defines demand *relative to pool capacity*: with 128 layers the effective threshold simply
+§1.6 defines demand _relative to pool capacity_: with 128 layers the effective threshold simply
 rises until ~128 cells want art, ~128 resolve, and steady-state eviction goes to ~0. W4 measures the
-fraction above the *effective* threshold that resolved — ≈100% — and evictions/s — ≈0. The row
+fraction above the _effective_ threshold that resolved — ≈100% — and evictions/s — ≈0. The row
 passes. **Starving the resource a policy adapts to makes the criterion green; only starving the
-policy makes it red.** Worse, 128 layers is **tier 4 of §1.12's ladder**, a shipped configuration: a
-row that went red there would be condemning the exact low-end device the ladder exists to protect.
-So `?layers=128` stays in the matrix — as an **expected-GREEN** row asserting that tier 4 still
-passes W4.
+policy makes it red.** Worse, 128 layers is **§1.12's tier-4 allocation**, the configuration the
+ladder exists to protect: a row that went red there would be condemning the exact low-end device.
+So `?layers=128` stays in the matrix — as an **expected-GREEN** row asserting that a tier-4-sized
+pool still passes W4.
+
+> **Normative — this paragraph was right about the mechanism and wrong about the numbers, and board
+> ruling `bd5c9aad` turned the mechanism into a domain rule (DEC-834, measured).** Measured in the
+> shipped composition, `?layers=128` does **not** read ≈100% and ≈0/s. It reads **6.73 evictions/s**
+> and `artFraction` **~0.617**, with ~4,670 wants/s refused for exhaustion. The threshold does rise
+> and demand does fall, exactly as above — but not far enough to stop the churn, and far enough to
+> cost the picture a third of its art.
+>
+> The conclusion the paragraph draws survives and is now enforced rather than argued: **starving the
+> resource a policy adapts to makes the eviction number look good and the picture worse.** So the
+> eviction half is scored at the 1,024-layer pool alone and this row asserts **N/A** on it, while
+> keeping its expected-GREEN on `artFraction` and on the absolute `artCellsShowing` term. See the
+> eviction amendment in §3.1.
+>
+> **The composed row `?artThreshold=fixed24&layers=128` is the one that restores what this appendix
+> captured.** Appendix A's `tether-surface` was never "a fixed threshold"; it was **a fixed threshold
+> against a pool too small for it**. Composing the two seams keeps dominaria's full ~945-cell want
+> set against 128 layers — a 7.39× overshoot against `tether-surface`'s 2.69× — and `artFraction`
+> reads **0.1342 against a bar of 0.5**. The **bare** `?artThreshold=fixed24` row is retired (ask
+> `f9e273fb`, answer `replace_row`): on the shipped tree the adaptive quantile at a 1,024-layer pool
+> already sits *at* the 24 px floor, so forcing 24 px moves nothing, and the byte budget is
+> capacity-derived at 155 MB against ~95 MB outstanding, so nothing starves. The seam engages, reads
+> its policy back, and moves no pixel.
+
+> **Normative — name that row by its capacity, never by its tier (DEC-752, measured on main
+> `f049dca`).** §1.12's rung is not implemented: `setArtLayers` (`attachWorlds.ts:135`, implemented
+> at `:356`) has **zero callers** in `web/src`, `web/test` or `web/e2e`, and `tierArtLayers` is
+> never passed, so the pool is always `DEFAULT_TIER_ART_LAYERS` = 1,024. Measured through
+> `?quality=N` on dominaria at 1920×1080: tiers 0, 2, 3 and 4 **all report `pool.layers` = 1024**,
+> where §1.12's table says 1,024 / 512 / 256 / 128. **No tier yields 128 layers today**; 128 is
+> reachable only through `?layers=128`, which is R1's seam and does work. A row — or a DEC-770
+> note N1 bar — written as "quality tier 4" therefore runs at 1,024 layers and measures nothing.
+> Attach the bar to the **capacity**, which is the quantity §1.6's quantile is relative to anyway.
+> Implementing the rung is R3's row (§1.10–§1.12), relayed on DEC-751; it is what would make the
+> two spellings agree.
+
+> **The effective threshold moves with capacity — live readings, and a one-bucket gap that is the
+> gate's own problem to close (DEC-752, main `f049dca`, dominaria, 1920×1080).** Off the live
+> renderer, `pool.layers` 1,024 → **24.00 px** (the `BASE_THRESHOLD_PX` floor), 128 → **27.93 px**,
+> 0 → **30.13 px**.
+>
+> §1.6's note above gives dominaria **30.13 px at 16, 64 and 128 layers alike** at this same
+> 2.2-radii pose, so the live 128-layer reading sits **one bucket low**. The likely cause is not a
+> renderer disagreement but the gate's own camera: `focusPlane('dominaria')` settles at
+> **`radii` ≈ 2.14**, not 2.2, and ~3% nearer makes every cell ~3% taller, which is enough to cross
+> one bucket edge. **The driver must therefore drive the camera to the specified pose and assert
+> `worlds().radii` before reading any threshold-dependent number, rather than accepting wherever
+> `focusPlane` settles** — a criterion specified "at 2.2 radii" that is in fact measured at 2.14 is
+> a number taken at a pose the spec does not name. Recorded as a discrepancy to close by
+> re-measuring at a pinned pose, **not** as a defect in either figure: the offline sweep and this
+> reading have not yet been taken at the same distance.
+
+> **Normative — W4 is unmeasurable until the art stream is connected, and the matrix must not be
+> read as passing before then (DEC-752 → DEC-772).** On main the worlds art stream is never asked:
+> `renderer/sceneHost.ts:207` calls `attachWorlds` with no `cardOf`, so `worldSource.ts:149`
+> defaults it to `() => null` and `worldSurface.ts:407-412`'s `stream.request(...)` is unreachable
+> for every cell on every world. Measured at 2.2 radii after a 20 s settle: **`showingArt` false for
+> all cells, `pool.resident` 0, artFraction 0.0%, and zero requests to the image origin** under
+> `?probe=shell`, `?layers=128` and `?artThreshold=fixed24` alike — with the image queue reading
+> `inFlight 0, waiting 0, completed 0, failed 0` and the network demonstrably reachable. A local
+> positive control supplying one constant printing (reverted) takes the same three rows to 15.0% /
+> **73.0%** / 13.8% with `resident` 686 / 128 / 686, so the pool, the LRU, the threshold, the
+> cross-fade and the eviction counter are all correct — only the printing lookup is absent.
+>
+> The consequence is the one this section exists to forbid, in its mirror form: **both W4 rows are
+> inert.** The `fixed24` expected-RED row is red for the wrong cause, and the `?layers=128`
+> expected-GREEN row cannot go green, so neither falsifies anything. Per the rule below — only the
+> green rows can falsify the instrument — a W4 verdict taken before DEC-772 lands is not a
+> measurement. Score W4 `insufficient`, not `fail`, until `worlds()` reports art on the shipped path.
+>
+> No unit suite caught this: every `WorldSurface` test supplies `cardOf` directly, so the suite
+> exercises the stream fully while the composition's call site is covered by nothing. The fix's
+> acceptance must include a test that goes red when the *composition* stops supplying it.
+
+> **The four control seams are verified live and leg G is routing nothing against them (DEC-752,
+> main `f049dca`).** Read back off `worlds().seams` at 1920×1080 on dominaria: `?swatch=mean` →
+> `swatchMean`, `?bands=shuffle` → `bandsShuffle`, `?artThreshold=fixed24` → `artThresholdFixed24`
+> (with `effectiveThresholdPx` pinned to exactly 24), and `?layers=N` → `layersRequested` with
+> `pool.layers` actually moving 1024 → 128 → 0. `?probe=` returns a full payload — 6,271 cells on
+> dominaria, 13 band shares, per-cell `shade`, `frontFacing`, `onScreen`, `wantsArt`, `showingArt`.
+> R1's seam surface (DEC-744 B1 / DEC-746 D5) is complete as specified.
 
 The same relative definition has a second consequence, this one for the gate's own *readings* rather
 than its rows, and §1.6 states it normatively: **how much of W4's subject is even reachable is a
@@ -1999,9 +2905,15 @@ visibility, `wantsArt && !frontFacing`, is non-empty on 30 of 45 worlds at 64 la
 at 1,024 — and 64 layers is below tier 4. A number taken at a capacity the renderer never ships is
 a reading of the harness. Report `pool.layers` alongside any such count.
 
-The two green rows are the ones that matter most and the ones most often left out: in a matrix where
+The green rows are the ones that matter most and the ones most often left out: in a matrix where
 everything is red, a broken baseline scores identically to a perfect guard. **Only the rows expected
 to stay green can falsify the instrument.**
+
+> **How many of each there are is reported by the gate, not stated here (DEC-752).** This sentence
+> said "the two green rows" and §3.2 said "four" while the shipped matrix had six; the count has gone
+> stale every time a row was added, because prose is not attached to the row list. `worlds-gate.mjs`
+> now prints a `matrix census` line — counted over the whole of `MATRIX` and not over the subset a
+> `--only` run scores — and writes it to `summary.json`. Read the pair off a run.
 
 The gate runs at 1920×1080 CSS, dpr 1 — true CSS scale, never an upscaled crop (DEC-683), and the
 native resolution of the Iris Xe laptop review §9 targets, so a Windows re-capture is directly
@@ -2012,8 +2924,65 @@ comparable. It is added to `docs/refresh-runbook.md` as the per-refresh instrume
 
 The galaxy ships until **all four** of these hold:
 
-1. `worlds-gate.mjs` passes W1–W5 on the v3 production dataset, with the negative-control matrix
-   showing the expected **five red and two green** (§3.1);
+1. `worlds-gate.mjs` passes W1–W5 on the v3 production dataset, with every row of the
+   negative-control matrix landing on the colour it expects — which the gate checks itself, and
+   whose tally it prints as its `matrix census` line (§3.1);
+
+   > **This condition no longer carries the counts, because they went stale twice (DEC-752).** It
+   > read "five red and two green", written when the matrix had seven rows; that was corrected to
+   > "four green" for `?layers=128` and the one-card world, and was stale again on arrival — DEC-821
+   > had added the `?art=off` sibling rows, making six. It then went stale a third time, as "five
+   > expected-RED, six expected-GREEN, two derivation rows", once the mean fold and the `MIXED` and
+   > `N/A-only` buckets landed. What the gate printed on `de677cc` (DEC-856's matrix draw), quoted
+   > rather than counted:
+   >
+   > ```
+   > matrix census: 4 expected-RED rows, 7 expected-GREEN, 1 N/A-only, 2 of them derivation tours (excluded from --negative-controls), 3 MIXED — 13 of 15 scored this run
+   > ```
+   >
+   > Read it off a run rather than off this block: a number in prose cannot testify that it still
+   > describes the matrix.
+   >
+   > Nothing is lost by dropping the pair from the condition. The gate already fails a row that lands
+   > on the wrong colour, so "shows the expected five and four" was never the thing being checked —
+   > `GATE: GREEN` is.
+   >
+   > **§3.1's table lists one control the matrix does not carry.** It is `labels forced on for
+   > empty planes`, the control for `homeLabels`, and `worlds-gate.mjs` does **not** run it: forcing labels on for suppressed planes is a renderer
+   > behaviour and `web/src/scene/worlds/seams.ts` ships exactly five seams that perturb the build —
+   > `?swatch=mean`, `?bands=shuffle`, `?art=off`, `?artThreshold=fixed24`, `?layers=N` (`?probe=` is
+   > the sixth entry in that file's table, and it reports rather than perturbs). None of them reaches
+   > §1.8's suppression, and leg G may not add one (DEC-744 B1 / DEC-746 D5). The 66–77 unsuppressed
+   > reading that makes the row red was taken offline, through the shipped `layout.ts` and
+   > `project.ts` against the pre-§1.8 candidate list — evidence that the measure *can* fail, but
+   > not a row the gate can run against a shipped build.
+   >
+   > So `homeLabels` ships **measured and scored, with no live falsifier**. It is a suppression
+   > regression check whose control is historical, which is weaker than every other row here and is
+   > recorded as such rather than counted as though the gate exercised it. Routed to the CEO for a
+   > ruling on whether §1.8 is owed a seam; it does not block the matrix's other expectations.
+   >
+   > **A GREEN W3 row does not clear this condition, and today it cannot (DEC-752, routed from
+   > DEC-830).** `minAdjacentBandDeltaE` folds to a minimum of minima over the in-domain worlds, and
+   > on one unchanged dataset at one pose it draws **0.4253 – 0.8005** with `FLOORS.bandDeltaE` at
+   > **0.55** inside that span — so whether the row prints GREEN is settled by the draw, and the
+   > shipped arm's lowest reading sits *below* the composed control's highest. The §3.1 retraction
+   > block carries the seven-run table and the reason. Condition 1 therefore reads: `GATE: GREEN`
+   > **plus** a W3 floor that separates the shipped arm from `?art=off&bands=shuffle` across
+   > sessions, not at one. Until the owner rules on §3.1's fold, **a green W3 is evidence of a lucky
+   > tour and nothing else** — re-running until one appears would be the failure this condition
+   > exists to prevent.
+   >
+   > **Settled (board ruling `fold_mean`, 2026-09-17; DEC-836).** The fold is the mean, the floor is
+   > re-derived on it over five sessions per arm, and the note above is history. What condition 1
+   > requires of W3 now is **three** things, and a `GATE: GREEN` on its own is still not one of them:
+   >
+   > 1. the acceptance tour's W3 row GREEN **with `scoredPlanes` equal to the recorded domain size**
+   >    — the gate reds a short denominator by itself, but the number is what a reader checks;
+   > 2. the derivation pair run and separating — `w3-floor-shipped` GREEN and `w3-floor-control` RED
+   >    on the same tree, since `--negative-controls` no longer carries a W3 falsifier;
+   > 3. the floor re-derived on **the shipped swatches under test**. It is a property of the data, so
+   >    a refresh can invalidate it with no rendering change (§4.3 of the runbook).
 2. the owner accepts the judged criteria of §3.1 on the capture set;
 3. the W0.1 Windows field reports confirm concept B's cost class on the Iris Xe and the 780M — or the
    owner explicitly waives the hardware gate. This is the outstanding item the W2.3 record names, and
@@ -2021,12 +2990,57 @@ The galaxy ships until **all four** of these hold:
 4. the worlds build reaches feature parity on the shipped surfaces: search, filters, deep links,
    plane index, card focus, printing ring, attract mode, reduced motion, a11y.
 
-Until then the two coexist at zero cost, on two dataset directories (§2). Dataset refreshes in the
-interim keep running `visual-gate.mjs` per `docs/refresh-runbook.md`.
+Until then the two coexisted at zero cost, on two dataset directories (§2), and dataset refreshes
+ran `visual-gate.mjs`. Since the cutover (DEC-752) that script is archived under `galaxy-cutover`
+and every refresh runs `worlds-gate.mjs` per `docs/refresh-runbook.md` §4.3.
 
 At cutover, in one PR: `datasets.json`'s `active` moves to the v3 directory; the galaxy scene, the
 spiral laws, the star shaders, the thumbnail atlas and the card-sheet tier are deleted; PRD §5 and §9
 are amended (§6); and the v2 dataset directories are removed from `web/public/data/`.
+
+#### 3.2.1 Which dataset the gate may measure, and why `active` is not it
+
+Three facts about the shipped `datasets.json` roles, measured on the bytes at `613715f`. They are
+constraints on *this runbook*, not defects in any leg.
+
+**Only the `worlds`/`production` directory can build a surface.** `swatches.bin` exists in exactly one
+of the four published datasets:
+
+| role | directory | contract | `swatches.bin` | planes with `rowCells` |
+| --- | --- | --- | --- | --- |
+| `production`, `worlds` | `c9468f1125bcddff` | 3 | **yes** (228,840 B) | 45 |
+| `fixtures.scale` | `f6f712c6e70a6a51` | 3 | no | 80 |
+| `fixtures.small` | `2e6f120ee85a5b23` | 3 | no | 3 |
+| `active` | `dabe2c9a68b4d799` | 2 | no | 0 |
+
+Both v3 fixtures declare contract v3 and carry `rowCells`, but neither carries `swatches.bin`. **A gate
+row written against a fixture therefore cannot construct a `WorldSurfaceSource` at all, and the failure
+surfaces inside R1's loader — it will read as an R1 defect when it is a missing fixture artefact.** Gate
+rows that build a surface bind to the `worlds` role only. Fixture-backed rows are limited to assertions
+that need `planes.json` alone. Raised to leg P on DEC-749.
+
+**`active` is contract v2 and cannot serve the worlds path** — 0 of its 88 planes carry `rowCells`. So
+"the deployed app" and "the dataset the gate measures" are different *contracts*. They are **not**
+different rosters: the world set is identical across the two — the same 45 ids (29 spiral + 16
+irregular), matching on `kind` and `cardCount` for all 45, with zero ids on either side alone. The only
+per-plane difference is `rowCells`, which v3 adds. Stating this precisely matters because a "different
+roster" reading would imply the gate measures a different population than the app ships, and it does
+not.
+
+**The cutover's `active` move must stay atomic with the galaxy deletion, because splitting it fails
+silently.** v3 also *drops* six v2-only fields (`shearAmplitude`/`PeriodS`/`Phase`, `armPitch`,
+`discThickness`, `bar` — §2.4 retires them with the spiral disc). Of those, three have live readers
+today: `camera/motion.ts:229-234` and `scene/starfield/planeTable.ts:149-152`, and **every one of them
+reads through `?? 0`**. `READABLE_CONTRACT_VERSIONS` is `{2, 3}` by design for the dual-scene period, so
+a v3 `planes.json` clears `assertContractVersion` unchanged. Repointing `active` at the v3 directory
+*before* the galaxy is deleted therefore does not throw and does not warn — the spiral shear flattens to
+zero and the galaxy keeps rendering, wrong. There is no instrument in the gate that would catch it,
+because at that point the gate is measuring worlds. `armPitch`, `discThickness` and `bar` are already
+declared-but-unread outside `data/types.ts`, so only the shear triple carries this risk.
+
+> **Runbook rule.** Never repoint `active` to test the worlds path — use the `worlds` role, which
+> already points at the v3 directory. `active` moves exactly once, in the cutover PR, in the same commit
+> that deletes the galaxy scene.
 
 ### 3.3 The archival tag
 
@@ -2044,19 +3058,31 @@ diagnostics under **`review-tooling-2026-09-dec714`**.
 Tag the commit, do not keep the code: the scripts stay retrievable, and a dead 1,195-line script in
 the tree is read as maintained tooling by the next person.
 
+> **Landed (DEC-752).** `galaxy-cutover` tags `107fdf8` — leg G at main `c91666c`, the last commit
+> with the galaxy scene and `visual-gate.mjs` both in the tree — and the cutover commit deletes both.
+> What it had to *move* first, because the module graph named for the galaxy was also hosting the
+> worlds build, is recorded in `docs/worlds/cutover-inventory.md`: the printing ring's host
+> (`split_cardtier`, `cards/focusedCardHost.ts`), the input layer and the star data layer (DEC-852),
+> and the plane table's clock, the quality monitor, the focused-star mirror and the sky
+> (`scene/sceneFrame.ts`). Deleted with the field and not moved, because their subject went with
+> it: the GPU self-check (`?selfcheck=1`) and the star field's sprite clamp. `?probe=`'s
+> `quality.glowShader` now reads the worlds rim (§1.12 row 4, wired in the same leg — the rim's knob
+> had never been connected to the ladder), `quality.motion` reads the frame's clock, and
+> `platform.starMaxPixels` stays at a structural `-1`.
+
 ---
 
 ## 4. Sequencing and staffing
 
 Five legs, ≈ **18 engineer-days**. The critical path is R1 → R2/R3 → G; leg P is entirely off it.
 
-| Leg | Content | Days | Starts | Role |
-|---|---|---|---|---|
-| **P — pipeline and contract** | §2 in full: contract v3, `swatches.bin`, `artist`, the surface law in Python, the swatch fetch stage, invariants, report lines, a published v3 dataset | **4** | **now — no renderer dependency at all** | pipeline/data engineer |
-| **R1 — renderer core** | §1.3–§1.6: surface law on the client, the cell sheet, the equirect bake and LOD crossover, the art pool with the three-state LRU and the adaptive threshold — **including the `?probe=`, `?swatch=mean`, `?bands=shuffle`, `?artThreshold=fixed24` and `?layers=N` seams §3.1's gate is built on** | **5** | on W4.2's merge | graphics engineer (prototype author) |
-| **R2 — system, belt, tether** | §1.7–§1.9: undetailed worlds, dark moons, the belt, the atmosphere rim, the surface-following tether | **3** | on R1's merge | graphics engineer |
-| **R3 — product surfaces** | §1.10–§1.12: the flat printing ring, picking, labels, filters, GPU budget and the ladder rungs, feature parity | **3** | on R1's merge, parallel with R2 | frontend engineer |
-| **G — gate and cutover** | §3: `worlds-gate.mjs`, the negative-control matrix, runbook and PRD amendments, the archival tag | **3** | on R1's merge (needs the probe seam), lands after R3 | the engineer who built `visual-gate.mjs` |
+| Leg                           | Content                                                                                                                                                                                                                                                                                            | Days  | Starts                                               | Role                                     |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ---------------------------------------------------- | ---------------------------------------- |
+| **P — pipeline and contract** | §2 in full: contract v3, `swatches.bin`, `artist`, the surface law in Python, the swatch fetch stage, invariants, report lines, a published v3 dataset                                                                                                                                             | **4** | **now — no renderer dependency at all**              | pipeline/data engineer                   |
+| **R1 — renderer core**        | §1.3–§1.6: surface law on the client, the cell sheet, the equirect bake and LOD crossover, the art pool with the three-state LRU and the adaptive threshold — **including the `?probe=`, `?swatch=mean`, `?bands=shuffle`, `?artThreshold=fixed24`, `?layers=N` and `?art=off` (DEC-821) seams §3.1's gate is built on** | **5** | on W4.2's merge                                      | graphics engineer (prototype author)     |
+| **R2 — system, belt, tether** | §1.7–§1.9: undetailed worlds, dark moons, the belt, the atmosphere rim, the surface-following tether                                                                                                                                                                                               | **3** | on R1's merge                                        | graphics engineer                        |
+| **R3 — product surfaces**     | §1.10–§1.12: the flat printing ring, picking, labels, filters, GPU budget and the ladder rungs, feature parity                                                                                                                                                                                     | **3** | on R1's merge, parallel with R2                      | frontend engineer                        |
+| **G — gate and cutover**      | §3: `worlds-gate.mjs`, the negative-control matrix, runbook and PRD amendments, the archival tag                                                                                                                                                                                                   | **3** | on R1's merge (needs the probe seam), lands after R3 | the engineer who built `visual-gate.mjs` |
 
 **What can start before W4.2 merges: all of leg P, and nothing else.** That is 4 of the 18 days, and
 it is the leg with the longest wall-clock tail — the swatch fetch is tens of thousands of HTTP
@@ -2080,7 +3106,7 @@ Six, batched. Each carries a recommendation, so none of them blocks: if no answe
 recommendation is what gets built.
 
 **Q1 — Which image is the swatch computed from?** Review §4.2 says `small`. But `small` is the whole
-card, so a 2×2 of it is dominated by frame and border colour — which *is* the colour identity, which
+card, so a 2×2 of it is dominated by frame and border colour — which _is_ the colour identity, which
 is `hueClass`, the statistic the swatch exists to replace. `art_crop` is the honest source at ~9× the
 bytes: ≈ 2.5 GB of one-time pipeline fetch against ≈ 290 MB, a few hours at 6 concurrent, cached by
 `imageTs` so a refresh re-fetches only what changed. It is a pipeline cost, not a user cost — the
@@ -2107,10 +3133,10 @@ rather than decided in §2.3.
 **Q5 — Does the printing ring keep PRD 5.6.8's cap of 72?** On the production dataset the cap binds
 on **five cards** — the basic lands, Swamp 570 down to Island 535 — and the next card down is Sol
 Ring at 60, so there is nothing in between to trade off against. (An earlier draft of this batch put
-that number at 669; 669 is the count of cards with more than *nine* printings, and the two questions
+that number at 669; 669 is the count of cards with more than _nine_ printings, and the two questions
 have different answers. If you have already answered against the old number, please re-read against
 this one.) The remainder is not lost today: the card panel already lists every printing (§1.10). The
-only thing the scene hides is *which* printings the ring dropped, and §1.10 fixes that with 1 px
+only thing the scene hides is _which_ printings the ring dropped, and §1.10 fixes that with 1 px
 ticks whatever this answer is. Raising the cap has a real texture cost — 570 `small` quads is
 64.8 MiB, two thirds of the whole GPU target on its own — and buys a readable ring for nobody, because 570
 quads on one orbit is not readable either. **Recommendation: keep 72 for v1, revisit after the
@@ -2130,20 +3156,20 @@ law is settled.**
 None of these are optional and all of them are the owner's to accept. Listed here so the cutover PR
 has a checklist rather than a discovery process.
 
-| PRD | Today | Under worlds |
-|---|---|---|
-| 5.1.1 | "photoreal space, not data visualisation" | still satisfied — worlds are objects in space — but the surface *is* an encoding and the wording should say so |
-| 5.3.4 | the Blind Eternities as dust | a belt, one arc per set (§1.8) |
-| 5.3.6 | plane kinds `dust` / `spiral` / `irregular` / `empty` | `spiral` and `irregular` collapse into one `world` kind; `empty` becomes `moon` |
-| 5.3.8 | every plane is labelled | the empty planes are unlabelled until hover — 57 of 87 on today's roster, **42 of 88** on v3 (§1.8, criterion W5) |
-| 5.4.2 | chronology bands map to radius | chronology maps to longitude (§1.3) |
-| 5.4.8 / 5.4.10 | hue class, brightness percentile | superseded by the art swatch (§2.2); `brightness` goes unread |
-| 5.4.13 | shear | retired with the disc (§2.4) |
-| 5.5.1 | the thumbnail cross-fade band | replaced by the swatch→art threshold (§1.6) |
-| 5.6.7–5.6.8 | printings as 72 orbiting spheres | a flat ring (§1.10) |
-| 8.6.1–8.6.2 | seeded spiral parameters | retired (§2.4) |
-| 8.5.8 / 8.5.10 | the 128×178 thumbnail atlas, 256 px planet textures | replaced by the 128×96 art array (§1.6, §1.12) |
-| 9.3 | seven checkpoints, criterion 2 on spiral arms | the checkpoints and criteria of §3.1 |
+| PRD            | Today                                                 | Under worlds                                                                                                      |
+| -------------- | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| 5.1.1          | "photoreal space, not data visualisation"             | still satisfied — worlds are objects in space — but the surface _is_ an encoding and the wording should say so    |
+| 5.3.4          | the Blind Eternities as dust                          | a belt, one arc per set (§1.8)                                                                                    |
+| 5.3.6          | plane kinds `dust` / `spiral` / `irregular` / `empty` | `spiral` and `irregular` collapse into one `world` kind; `empty` becomes `moon`                                   |
+| 5.3.8          | every plane is labelled                               | the empty planes are unlabelled until hover — 57 of 87 on today's roster, **42 of 88** on v3 (§1.8, criterion W5) |
+| 5.4.2          | chronology bands map to radius                        | chronology maps to longitude (§1.3)                                                                               |
+| 5.4.8 / 5.4.10 | hue class, brightness percentile                      | superseded by the art swatch (§2.2); `brightness` goes unread                                                     |
+| 5.4.13         | shear                                                 | retired with the disc (§2.4)                                                                                      |
+| 5.5.1          | the thumbnail cross-fade band                         | replaced by the swatch→art threshold (§1.6)                                                                       |
+| 5.6.7–5.6.8    | printings as 72 orbiting spheres                      | a flat ring (§1.10)                                                                                               |
+| 8.6.1–8.6.2    | seeded spiral parameters                              | retired (§2.4)                                                                                                    |
+| 8.5.8 / 8.5.10 | the 128×178 thumbnail atlas, 256 px planet textures   | replaced by the 128×96 art array (§1.6, §1.12)                                                                    |
+| 9.3            | seven checkpoints, criterion 2 on spiral arms         | the checkpoints and criteria of §3.1                                                                              |
 
 ---
 
@@ -2152,28 +3178,33 @@ has a checklist rather than a discovery process.
 From `captures.json`, production dataset `6d4779695fde33ea`, 1920×1080 CSS, dpr 1, art threshold
 24 px, pool 1,024 layers, on an Apple Silicon Mac. **Not a Windows measurement.**
 
-| View | Camera distance | In radii | Cell height | Art resident | Evicted | Drawn / wanted |
-|---|---|---|---|---|---|---|
-| `system` | 362.85 | 36.4 | 1.4 px | 0 | 0 | 0 / 0 |
-| `dominaria-far` | 59.84 | 6.0 | 10.1 px | 0 | 0 | 0 / 0 |
-| `dominaria-frame` | 29.92 | 3.0 | 25.3 px | 333 | 0 | 333 / 333 |
-| `dominaria-terminator` | 20.95 | 2.1 | 46.0 px | 1,024 | 479 | 1,024 / 2,759 |
-| `tether-surface` | 21.94 | 2.2 | 42.1 px | 1,024 | 925 | 1,024 / 2,759 |
-| `dominaria-near` | 13.17 | 1.32 | 158.0 px | 1,024 | 63 | 1,024 / 1,766 |
-| `rabiah` | 3.71 | 3.4 | 189.6 px | 1,024 | 514 | 35 / 35 |
-| `rabiah-near` | 1.64 | 1.5 | 910.1 px | 1,024 | 515 | 33 / 33 |
+| View                   | Camera distance | In radii | Cell height | Art resident | Evicted | Drawn / wanted |
+| ---------------------- | --------------- | -------- | ----------- | ------------ | ------- | -------------- |
+| `system`               | 362.85          | 36.4     | 1.4 px      | 0            | 0       | 0 / 0          |
+| `dominaria-far`        | 59.84           | 6.0      | 10.1 px     | 0            | 0       | 0 / 0          |
+| `dominaria-frame`      | 29.92           | 3.0      | 25.3 px     | 333          | 0       | 333 / 333      |
+| `dominaria-terminator` | 20.95           | 2.1      | 46.0 px     | 1,024        | 479     | 1,024 / 2,759  |
+| `tether-surface`       | 21.94           | 2.2      | 42.1 px     | 1,024        | 925     | 1,024 / 2,759  |
+| `dominaria-near`       | 13.17           | 1.32     | 158.0 px    | 1,024        | 63      | 1,024 / 1,766  |
+| `rabiah`               | 3.71            | 3.4      | 189.6 px    | 1,024        | 514     | 35 / 35        |
+| `rabiah-near`          | 1.64            | 1.5      | 910.1 px    | 1,024        | 515     | 33 / 33        |
 
 Radii: Dominaria 9.97 (6,266 cells), Rabiah 1.09 (75 cells) — a 9.1× ratio where the shipped `log N`
 law gives **1.568×** for that same pair (§1.3; review §4.1's 1.3× is Dominaria against Mercadia).
 Cells cross the 24 px art threshold at ≈ 3× radius, which is about where a world fills the frame, so
-the all-swatch state exists only *further out* than framing distance. System: 27 undetailed worlds,
+the all-swatch state exists only _further out_ than framing distance. System: 27 undetailed worlds,
 57 moons, 4,980 belt points — **27 because the prototype drew Dominaria and Rabiah in detail and had
 no equirect rung; production's home view has 29 worlds (45 on v3) and no cell sheets at all** (§1.2).
 The prototype's 57 moons and 4,980 belt points are likewise the roster it was built on: v3 has 42
 moons, and the belt's population moves with the curation refresh (DEC-745).
 
-The `drawn / wanted` column is the case for §1.6's adaptive threshold, and the two 900+ eviction rows
-are the case for criterion W4.
+The `drawn / wanted` column is the case for §1.6's adaptive threshold, and `tether-surface`'s 925
+evictions — the one row above 900, the next being `rabiah-near` at 515 — are the case for criterion
+W4. Note that this column is a **cumulative** counter, not a rate: W4's second half is specified as
+evictions per second **on a fill-excluded tail** (§3.1, board ruling `bd5c9aad`), which is a
+measurement the gate takes and not one this table can be read off. The 925 is in fact a *worked
+example* of why: it is every eviction since the camera started moving, so most of it is the pool
+filling, and the same 925 on a settled pool is 0/s.
 
 Frames: branch `dec694-worlds-prototype` at `8c5fa25`, tag `worlds-prototype-dec694`, under
 `review/dec694-worlds/`. They are not copied onto `main`: review §6.6 already counts 31 MB of review
@@ -2182,14 +3213,14 @@ more.
 
 ## Appendix B — what the prototype faked, and what replaces each fake
 
-| # | Fake | Replacement |
-|---|---|---|
-| 1 | The swatch — hue-class colour plus per-card hash noise | `swatches.bin`, §2.2. **The one that matters**; everything the W2.3 captures show about colour is provisional until it lands |
-| 2 | The set index, reconstructed as "the earliest of the plane's sets the card was printed in" | baked by the pipeline, §2.1 — the position *is* the answer, so the reconstruction disappears |
-| 3 | Mirrored bands as a refinement of review §4.2's sketch | promoted to the normative surface law, §1.3 |
-| 4 | Three-pass assignment leaving 894 non-exact cells on Dominaria | per-row grid relaxation, zero displaced, pipeline-enforced, §1.3 / §2.1 |
-| 5 | Camera-relative key light | kept, promoted to a product decision, §1.7 and Q6 |
-| 6 | The art pool exhausting mid-frame | the adaptive threshold, §1.6, measured by W4 |
-| 7 | Undetailed worlds contrast-stretched ×3.2 | kept as normative, §1.8 |
-| 8 | No production wiring — no shell, store, filters, search, labels, picking, ladder, printings | legs R3 and G, §4 |
-| 9 | Not measured on Windows | W0.1 field reports, §3.2 condition 3 |
+| #   | Fake                                                                                        | Replacement                                                                                                                  |
+| --- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| 1   | The swatch — hue-class colour plus per-card hash noise                                      | `swatches.bin`, §2.2. **The one that matters**; everything the W2.3 captures show about colour is provisional until it lands |
+| 2   | The set index, reconstructed as "the earliest of the plane's sets the card was printed in"  | baked by the pipeline, §2.1 — the position _is_ the answer, so the reconstruction disappears                                 |
+| 3   | Mirrored bands as a refinement of review §4.2's sketch                                      | promoted to the normative surface law, §1.3                                                                                  |
+| 4   | Three-pass assignment leaving 894 non-exact cells on Dominaria                              | per-row grid relaxation, zero displaced, pipeline-enforced, §1.3 / §2.1                                                      |
+| 5   | Camera-relative key light                                                                   | kept, promoted to a product decision, §1.7 and Q6                                                                            |
+| 6   | The art pool exhausting mid-frame                                                           | the adaptive threshold, §1.6, measured by W4                                                                                 |
+| 7   | Undetailed worlds contrast-stretched ×3.2                                                   | kept as normative, §1.8                                                                                                      |
+| 8   | No production wiring — no shell, store, filters, search, labels, picking, ladder, printings | legs R3 and G, §4                                                                                                            |
+| 9   | Not measured on Windows                                                                     | W0.1 field reports, §3.2 condition 3                                                                                         |

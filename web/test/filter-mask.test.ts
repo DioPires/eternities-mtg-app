@@ -46,7 +46,6 @@ import {
 } from '../src/data'
 import { evaluateFilters, type FilterEvaluation } from '../src/filters/evaluate'
 import { EMPTY_FILTERS, type FilterState } from '../src/filters/types'
-import { STAR_VERTEX_SHADER } from '../src/scene/starfield/shaders'
 import { StarGeometry } from '../src/scene/starfield/starGeometry'
 import { useStore } from '../src/store/store'
 import { fixturePath } from './fixtures'
@@ -156,22 +155,12 @@ describe('the filter mask reaches the geometry (PRD 5.8, review F1)', () => {
    * divide would dim every passing star to 1/255 of itself, which is the original F1 bug rebuilt
    * from the other side.
    */
-  it('turns 255 into 1.0 exactly once, in the shader (DEC-739)', () => {
+  it('keeps the filter lane un-normalised, as the shader that read it required (DEC-739)', () => {
     const attribute = filterAttribute(loadedGeometry())
     expect(attribute.itemSize).toBe(4)
     expect(attribute.normalized).toBe(false)
-    // The divide, in the one line of GLSL that reads the lane.
-    expect(STAR_VERTEX_SHADER).toContain('float pass = aClass.w * (1.0 / 255.0);')
-    // ...and PRD 5.5.3's thumbnail byte, which rides the other vector's spare lane and needs the
-    // same treatment for the same reason.
-    expect(STAR_VERTEX_SHADER).toContain('(aStyle.w * (1.0 / 255.0))')
-    // No *declaration* of either old mask attribute survives. A leftover one would compile to an
-    // attribute the geometry no longer supplies, which reads as zeros — every star dimmed to
-    // `FILTER_DIM` and unpickable, which is precisely the shape of the F1 bug. Matched as a
-    // declaration rather than as a substring because the shader's comments still name the old
-    // attributes, and they should: the comment is the record of where the lane came from.
-    expect(STAR_VERTEX_SHADER).not.toMatch(/\battribute\s+\w+\s+aFilter\b/)
-    expect(STAR_VERTEX_SHADER).not.toMatch(/\battribute\s+\w+\s+aThumb\b/)
+    // The shader half of this — the divide in the star vertex program — retired with the star
+    // field at the cutover (DEC-752). The buffer half above is what still ships.
   })
 
   it('a null evaluation clears the filter rather than dimming everything', () => {

@@ -22,8 +22,8 @@
  * the two, all named on {@link SceneViewProps} — who loads the data, who starts PRD 6.8.2's intro,
  * and who owns the keyboard.
  *
- * The GPU self-check is not here: it holds the field still and reads pixels back, which it cannot
- * do in a scene where the rig is flying the camera. `App` routes `?selfcheck` to `harness/`.
+ * The GPU self-check that used to live beside this retired with the star field at the cutover
+ * (DEC-752); it is archived under the `galaxy-cutover` tag.
  */
 
 import {
@@ -343,10 +343,6 @@ export function SceneView({
   const { cards, cardsRef, cardVersion, detail } = usePlaneDetail(data.planes !== null, focusedPlane)
 
   useEffect(() => {
-    scene3d.setPlane(focusedPlane)
-  }, [scene3d, focusedPlane])
-
-  useEffect(() => {
     scene3d.setCards(cards)
     // `cardVersion` moves when a shard lands and fills the same `cards` object, so it is a real
     // dependency even though `cards` is identical across it.
@@ -378,7 +374,7 @@ export function SceneView({
         return
       }
       pendingStar.current = -1
-      const known = scene3d.starScene.starPosition(index, anchorScratch)
+      const known = scene3d.sceneFrame.starPosition(index, anchorScratch)
       built.api.flyToCard(
         {
           planeSlug: plane.slug,
@@ -416,7 +412,7 @@ export function SceneView({
         // Resolved from the *clicked* planet, not from whichever one the hover label last named:
         // reaching for the hover state made the click depend on a hover having been reported first,
         // which before the dedupe fix in the star field it very often had not been.
-        const slot = scene3d.cardTier?.card
+        const slot = scene3d.focusedCard?.card
         if (slot) {
           const printing = slot.printingOfPlanet(pick.index)
           if (printing !== null) slot.setActivePrinting(printing)
@@ -459,7 +455,7 @@ export function SceneView({
         built.api.flyToBlindEternities(undefined, { reason: 'user' })
       } else if (event.key === 'f' || event.key === 'F') {
         // PRD 5.6.5's flip control; the shell's HUD calls the same handle.
-        scene3d.cardTier?.card.toggleFlip()
+        scene3d.focusedCard?.card.toggleFlip()
       }
     }
     window.addEventListener('keydown', onKeyDown)

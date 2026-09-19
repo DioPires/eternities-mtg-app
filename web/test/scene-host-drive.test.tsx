@@ -30,11 +30,10 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Texture, type WebGLRenderer } from 'three'
+import type { WebGLRenderer } from 'three'
 
 import { PlaneTable } from '../src/scene/starfield/planeTable'
 import { StarGeometry } from '../src/scene/starfield/starGeometry'
-import { createStarField } from '../src/scene/starfield/starFieldObjects'
 import { createSceneNavigation, type SceneNavigation } from '../src/navigation/scene'
 import { SceneHost } from '../src/scene/renderer/sceneHost'
 import type { SceneResources } from '../src/scene/useSceneData'
@@ -79,8 +78,7 @@ function resourcesFor(planes: ReturnType<typeof loadFixturePlanes>): SceneResour
   // `float32`, not the `float16` default: nothing here reads a position, and the unpadded stride is
   // the simpler of the two to construct without a GL probe deciding for us.
   const geometry = new StarGeometry(planes.planes.length, 'float32')
-  const field = createStarField(table, geometry, new Texture())
-  return { table, geometry, field, positionMode: 'float32' }
+  return { table, geometry, positionMode: 'float32' }
 }
 
 /**

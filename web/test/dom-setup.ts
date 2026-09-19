@@ -25,6 +25,20 @@ if (typeof window.matchMedia !== 'function') {
   }))
 }
 
+// jsdom implements no `ResizeObserver` at all, and `cards/focusedCardHost.ts` observes the canvas
+// to keep its CSS box without a forced layout on the frame path (DEC-692 R11). The real one fires
+// once on `observe()`, and the host relies on that for its initial size, so this one does too.
+if (typeof globalThis.ResizeObserver !== 'function') {
+  globalThis.ResizeObserver = class {
+    constructor(private readonly callback: ResizeObserverCallback) {}
+    observe(): void {
+      this.callback([], this)
+    }
+    unobserve(): void {}
+    disconnect(): void {}
+  }
+}
+
 // The label frame loop drives itself off rAF. jsdom's is a 16 ms timer, which makes "how many
 // times did this run" untestable; the tests drive `requestAnimationFrame` by hand instead.
 if (typeof window.requestAnimationFrame !== 'function') {

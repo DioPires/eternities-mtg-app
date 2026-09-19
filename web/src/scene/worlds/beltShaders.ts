@@ -4,7 +4,7 @@
  * Two lines of shader, and both of them are the trap §1.13 lists as number 3.
  */
 
-import { glslFloat } from '../starfield/shaders'
+import { glslFloat } from '../glsl'
 
 /**
  * §1.8's constant point size, in **CSS** pixels.

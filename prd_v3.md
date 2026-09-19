@@ -185,6 +185,7 @@ Every plane referenced by Appendix B or `overrides.json` must exist in Appendix 
 ### 5.1 Principles
 
 1. **Photoreal space.** The reference is astrophotography, not data visualisation: bloom, dust, nebulae, a near-black sky. Every visual choice below serves that.
+   *Amended at the worlds cutover (2026-09-18, DEC-752; worlds spec §6).* Still satisfied — worlds are objects in space — but the surface *is* an encoding: a card's cell sits at a longitude set by chronology and in a latitude band set by colour class (worlds spec §1.3), so this principle now coexists with a legible data layer rather than excluding one.
 2. **Never static.** At every level something moves: planes spin and drift, stars orbit, ambient effects breathe. Stillness happens only where the user asks for it (focus, reduced motion).
 3. **One continuous world.** There is a single scene from multiverse to card. Levels are camera distances, not separate views.
 4. **The picture is the data.** Galaxy shapes, arm density, star brightness, and dust density are all derived from real card data. Nothing decorative is fabricated where a data-driven form is possible.
@@ -208,6 +209,7 @@ Every plane referenced by Appendix B or `overrides.json` must exist in Appendix 
 2. Plane visual radius ∝ log(card count), clamped to [r_min, r_max]. Planes with zero cards render at r_min.
 3. Minimum spacing between planes must exceed the sum of their radii plus a margin of at least twice the drift amplitude (5.3.15), so galaxies never overlap from any angle, drift included.
 4. Blind Eternities cards are scattered through the supercluster volume, avoiding plane interiors, with density highest between neighbouring planes. This dust is the Blind Eternities; it is also a selectable target (see 5.7). Focusing it brightens the dust and fades plane labels. Because the dust spans the whole multiverse, the Blind Eternities focus carries an **anchor point**: the clicked location when reached by clicking dust, the card's position when reached through a card, and the multiverse centre when reached from the plane index or search. The camera tethers to the anchor with plane-level distance limits, and clicking dust elsewhere re-anchors without a route change, so every region of dust is reachable at card-sheet tier (5.5), which applies to dust exactly as to stars.
+   *Amended at the worlds cutover (2026-09-18, DEC-752; worlds spec §6).* The Blind Eternities is no longer scattered dust. It renders as a belt around the multiverse, one arc per set (worlds spec §1.8).
 
 **Plane signature**
 5. Each plane derives a palette from its cards' colour identity distribution (W, U, B, R, G, multicolour, colourless), using the base hues in 5.4.8. The nebula tint is a weighted blend of the two dominant hues.
@@ -216,10 +218,12 @@ Every plane referenced by Appendix B or `overrides.json` must exist in Appendix 
    - Planes with 1–49 cards render as an irregular cloud (no arm structure).
    - Planes with 0 cards render as a small, dim elliptical glow with no stars.
    - Seeded per plane: arm pitch angle, disc tilt (two axes), disc thickness, presence of a central bar.
+   *Amended at the worlds cutover (2026-09-18, DEC-752; worlds spec §6).* Galaxy morphology is retired. `spiral` and `irregular` collapse into one `world` kind, drawn as a globe whose surface is the card mosaic; `empty` becomes `moon` (worlds spec §1.2, §2.4).
 7. Stars are rendered at all levels as GL points with bloom, so a galaxy's shape from afar is literally its cards' positions. No pre-rendered galaxy sprites.
 
 **Labels**
 8. Plane names are always visible at multiverse level, as HTML overlay billboards anchored to the plane centre, never as 3D text.
+   *Amended at the worlds cutover (2026-09-18, DEC-752; worlds spec §6).* Not every plane is labelled any more: the empty planes (moons) are unlabelled until hover — **42 of 88** on the v3 roster (worlds spec §1.8, criterion W5).
 9. Label size scales with the plane's on-screen size, clamped to [min, max] pixel sizes.
 10. Label collision: when two labels overlap, the plane with fewer cards yields (shifts along its screen-space normal, then fades if still overlapping). Priority ties resolve by alphabetical order.
 11. Labels for planes occluded by a nearer plane are dimmed to 40%.
@@ -247,6 +251,7 @@ Every plane referenced by Appendix B or `overrides.json` must exist in Appendix 
 **Layout** (computed in preprocessing, stored per card as position in the plane's local frame)
 1. Five spiral arms, one per colour: W, U, B, R, G. Multicolour cards occupy the central bulge. Colourless cards occupy a sparse halo around the disc.
 2. Radius encodes chronology as ordinal set bands: the sets mapped to the plane in Appendix B are ordered by release date, and each set occupies one concentric band, oldest at the core, newest at the rim, with bands evenly spaced. Ordinal spacing (rather than linear dates) keeps a plane like Dominaria, with an 18-year gap in its history, a continuous spiral instead of a core with a detached outer ring.
+   *Amended at the worlds cutover (2026-09-18, DEC-752; worlds spec §6).* Chronology maps to **longitude** on the world's surface, not to radius (worlds spec §1.3).
 3. Angular position along an arm is deterministic per card (seeded by oracle id), with a small radial and angular jitter so arms read as organic rather than plotted.
 4. Vertical spread is thin (default: 5% of disc radius), thicker in the bulge.
 5. Cards within the same set therefore form a faint concentric band. Set name labels appear on these bands only when the camera is close enough that the band is ≥ 120 px wide on screen, at low priority beneath star labels.
@@ -255,13 +260,16 @@ Every plane referenced by Appendix B or `overrides.json` must exist in Appendix 
 
 **Star encoding**
 8. Hue = colour identity, seven classes: W warm ivory, U cerulean, B violet, R ember orange, G viridian, multicolour gold, colourless silver. Every multicolour card is gold; hues are never mixed per card, because a blue–red mix is indistinguishable from black's violet and the star record stores a class, not a colour.
+   *Amended at the worlds cutover (2026-09-18, DEC-752; worlds spec §6).* Superseded by the art swatch (worlds spec §2.2): a cell's colour is its card art reduced to a swatch. The hue class survives only as the colour-class key the surface law bands by.
 9. Size = rarity: common smallest, uncommon, rare, mythic largest. Default ratio common:mythic = 1:2.2.
 10. Brightness = number of printings on a log scale, capped at the plane's 98th percentile so basic lands and staple reprints do not dominate the bloom.
+    *Amended at the worlds cutover (2026-09-18, DEC-752; worlds spec §6).* Superseded by the art swatch (worlds spec §2.2); `brightness` is still written by the pipeline and goes unread.
 11. Each star twinkles with a subtle seeded phase and amplitude. Default amplitude: ±8% brightness.
 12. On hover, a star brightens by 30% and its name appears as an HTML label; nothing else changes.
 
 **Rotation**
 13. Stars orbit the galactic centre as a rigid rotation of the plane's transform. On top of it, an oscillating shear in the vertex shader gives the arms a slow breathing motion: each star's angular offset is `A · sin(2π t / T + φ(r))`, with amplitude `A` ≤ 10° and period `T` in the 40–90 s range, seeded per plane. The offset is bounded, so arms never wind up however long the session runs. A true differential rotation (inner stars permanently faster) is forbidden: at a 1.3 speed ratio and a 3-minute spin it would wind the arms three full turns in half an hour.
+    *Amended at the worlds cutover (2026-09-18, DEC-752; worlds spec §6).* Retired with the disc (worlds spec §2.4). A globe has no radial shear.
 14. Plane spin rate and direction are the same values as at multiverse level (5.3.14); entering a plane does not change its motion.
 
 **Labels**
@@ -271,6 +279,7 @@ Every plane referenced by Appendix B or `overrides.json` must exist in Appendix 
 ### 5.5 Card sheet tier
 
 1. When the camera is close enough that a star would occupy ≥ 24 px on screen, the star cross-fades into a card thumbnail billboard showing that card's first-printing image (Scryfall `small` size). This is the moment the user "sees the cards".
+   *Amended at the worlds cutover (2026-09-18, DEC-752; worlds spec §6).* Replaced by the swatch→art threshold (worlds spec §1.6): a cell shows its swatch until it is large enough on screen to earn a pool layer, then cross-fades to art. The thumbnail tier is deleted.
 2. Thumbnails keep their orbital motion and their hue as a rim glow, so encoding is not lost.
 3. Thumbnails load lazily, nearest to the camera first, and fall back to the star glow until loaded. No thumbnail is ever a placeholder rectangle.
 4. Moving away reverses the cross-fade. Thumbnails outside the frustum unload after a grace period.
@@ -284,7 +293,9 @@ Every plane referenced by Appendix B or `overrides.json` must exist in Appendix 
 5. Double-faced cards show the front face; a flip control turns the card 180° around its vertical axis to show the back face. Flipping never changes focus.
 6. While a card is focused, its plane's rotation eases to a stop over 1 s and eases back over 1 s when focus is released; the bounded shear (5.4.13) keeps breathing, since it never displaces a star more than a few degrees. Other planes keep moving.
 7. Printings appear as planets orbiting the card, ordered clockwise by release date starting at 12 o'clock, evenly spaced, each textured with that printing's art crop. Planets orbit at their own rate (default: one revolution per 60 s), independent of the plane's spin, so they keep moving while the plane is paused.
+   *Amended at the worlds cutover (2026-09-18, DEC-752; worlds spec §6).* Printings are a **flat ring** around the focused card (worlds spec §1.10), not orbiting spheres.
 8. Rings hold up to 24 planets each and are added as needed: one ring up to 24 printings, two up to 48, three up to 72. Beyond 72 the outermost ring is capped and the remainder is listed in the card panel. Cards with one printing show no planets.
+   *Amended at the worlds cutover (2026-09-18, DEC-752; worlds spec §6).* See 5.6.7: the ring is flat (worlds spec §1.10); the 24-per-ring capacity and the overflow tail are specified there.
 9. Hovering a planet shows set name and year as an HTML label. Clicking a planet swaps the card front to that printing and marks the planet as active.
 10. The card panel (2D overlay, see section 6) shows oracle text and the full printings list.
 
@@ -543,8 +554,10 @@ The Blind Eternities is one row of the plane table like any other, with the iden
 
 **Card sheet, card, planets**
 8. Thumbnails: one `InstancedMesh` of quads with a fixed capacity (default 512) backed by a texture atlas (default 4096², 128 × 178 cells, base level only — no mipmap chain, since a full chain would add a third to the atlas's 64 MB and put the 7.2 target out of reach). An LRU loader fetches Scryfall `small` images nearest-first, decodes with `createImageBitmap`, and evicts least-recently-visible. Instances cross-fade with the star per 5.5.
+   *Amended at the worlds cutover (2026-09-18, DEC-752; worlds spec §6).* The 128×178 thumbnail atlas is replaced by the 128×96 art array (worlds spec §1.6, §1.12), sized by the quality ladder.
 9. Focused card: a rounded-box mesh with `large` front, Scryfall back, dark edge; pointer-driven tilt via a damped spring.
 10. Planets: individual small sphere meshes (≤ 72), each with an `art_crop` texture downscaled on decode to 256 px on the long side (`createImageBitmap` with `resizeWidth`), roughly 190 KB each and under 14 MB for a 72-planet card. Native-size art crops (about 1 MB each) would exceed the 7.2 GPU budget on their own. Orbit per 5.6.7.
+    *Amended at the worlds cutover (2026-09-18, DEC-752; worlds spec §6).* The 256 px planet textures are replaced by the same art array (worlds spec §1.6, §1.12); printings draw as flat quads (§1.10).
 
 **Adaptive quality**
 11. A frame-time monitor steps quality down after sustained drops, in this order: pixel ratio cap 1.5 → 1.0, bloom resolution, thumbnail capacity. Geometry and motion are never degraded. Quality steps back up after sustained headroom.
@@ -552,11 +565,15 @@ The Blind Eternities is one row of the plane table like any other, with the iden
 ### 8.6 Layout algorithms
 
 **8.6.1 Plane placement (multiverse)**
+
+*Amended at the worlds cutover (2026-09-18, DEC-752; worlds spec §6).* The seeded spiral parameters this section and 8.6.2 define are retired (worlds spec §2.4). Plane homes are still placed by the pipeline, now as a function of each world's §1.3 radius.
 - Domain: a disc of radius `R` and thickness `0.15 R`.
 - Sort planes by visual radius descending. Place each with seeded rejection sampling subject to: distance to every placed plane ≥ `r_i + r_j + margin`; zero-card planes prefer the outer half of the disc.
 - The home camera frames the whole disc at ~30° elevation.
 
 **8.6.2 Card placement (plane-local frame; bands fill the unit disc, the halo extends to 1.2)**
+
+*Amended at the worlds cutover (2026-09-18, DEC-752; worlds spec §6).* Retired with the disc. A card's position is a cell centre on the unit sphere under the surface law (worlds spec §1.3, §2.1); `stars.bin` keeps its 12-byte record and changes what bytes 0–5 mean.
 - Band: index of the card's first-printing set in the plane's chronological set list; `r = (band + 0.5 + j_r) / bands`, `j_r` hashed jitter within ±0.35 of a band.
 - Arm: hue class W, U, B, R, G → arms 0–4. Angle follows a log spiral, `θ = 2π·arm/5 + pitch · ln(r / r₀) + j_θ`, with `j_θ` hashed jitter whose spread is the arm's angular width. Width scales with `sqrt(count_arm / mean_count)`, clamped, so dense colours make wider, brighter arms.
 - Multicolour: bulge, `r` scaled by 0.3, uniform angle. Colourless: halo, `r` scaled to 1.05–1.2, uniform angle.
@@ -619,6 +636,8 @@ No analytics, no error tracking, no cookies, no accounts. Settings and the hint 
 4. Planes with zero cards: listed, so roster errors (a plane that should have cards) stand out.
 
 ### 9.3 Visual review (manual, per milestone-sized change)
+
+*Amended at the worlds cutover (2026-09-18, DEC-752; worlds spec §6).* The checkpoints and criteria below were written for the galaxy — criterion 2 is about spiral arms. The worlds build is held to the checkpoints and criteria of worlds spec §3.1 instead, and `web/scripts/worlds-gate.mjs` asserts them (W1–W5 plus the negative-control matrix). The galaxy-era `visual-gate.mjs` is archived under the `galaxy-cutover` tag.
 
 Claude Code captures a fixed set of checkpoint screenshots and a short screen recording from the `/bench` path and presents them for the owner's review. Checkpoints:
 

@@ -25,7 +25,6 @@
 import type { Camera, Scene, WebGLRenderer } from 'three'
 
 import type { PostChain } from '../post/postChain'
-import type { StarField } from '../starfield/starFieldObjects'
 
 import { detectPlatformCapabilities } from './capabilities'
 import {
@@ -41,11 +40,6 @@ export interface ProgramWarmupOptions {
   readonly gl: WebGLRenderer
   readonly scene: Scene
   readonly camera: Camera
-  /**
-   * The star field, whose five programs include two that no traversal can reach — the bloom
-   * source's copy and the ladder's cheap glow.
-   */
-  readonly field: StarField
   /** The post chain, whose four passes share one quad and so are also unreachable by traversal. */
   readonly chain: PostChain | null
   /**
@@ -68,7 +62,6 @@ export function attachProgramWarmup({
   gl,
   scene,
   camera,
-  field,
   chain,
   extraSpecs,
   onComplete,
@@ -81,7 +74,6 @@ export function attachProgramWarmup({
   // Deduped so the count reported is a count of programs rather than of scene-graph nodes.
   const specs = dedupeSpecs([
     ...specsFromObject(scene),
-    ...field.warmupSpecs,
     ...(chain ? chain.warmupSpecs : []),
     ...(extraSpecs?.() ?? []),
   ])

@@ -52,7 +52,7 @@ export function useBenchSeam(deps: BenchSeamDeps): BenchContext | null {
         return true
       },
       cardPosition: (out: Vector3) => {
-        const slot = deps.scene.cardTier?.card
+        const slot = deps.scene.focusedCard?.card
         if (!slot?.visible) return false
         out.copy(slot.root.position)
         return true

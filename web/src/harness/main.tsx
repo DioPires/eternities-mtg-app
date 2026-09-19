@@ -26,8 +26,6 @@ import { createRoot } from 'react-dom/client'
 import { benchRouteWanted } from '../app/harnessRoute'
 import { ServicesProvider, createServices, type ServicesOptions } from '../app/services'
 import { EternitiesScene } from '../scene/EternitiesScene'
-import { registerSelfCheck } from '../scene/selfCheck.register'
-import { SELF_CHECK_FAR, selfCheckRequested } from '../scene/selfCheck.url'
 import { initSettings } from '../store/store'
 import { WebGLFallback, hasWebGL2 } from '../ui/WebGLFallback'
 import '../styles.css'
@@ -39,11 +37,8 @@ import './harness.css'
  * between the product and all three of them, not the ones between them.
  */
 const BenchScene = lazy(async () => ({ default: (await import('../bench/BenchScene')).BenchScene }))
-const SelfCheckScene = lazy(async () => ({
-  default: (await import('./SelfCheckScene')).SelfCheckScene,
-}))
 
-type HarnessRoute = 'bench' | 'selfcheck' | 'probe' | null
+type HarnessRoute = 'bench' | 'probe' | null
 
 /**
  * Which harness the URL asks for.
@@ -56,9 +51,6 @@ function harnessRequested(): HarnessRoute {
   const search = typeof location === 'undefined' ? '' : location.search
   const pathname = typeof location === 'undefined' ? '' : location.pathname
   if (benchRouteWanted(pathname, search)) return 'bench'
-  // The GPU self-check needs a still field over a fixed camera: it reads pixels back, which it
-  // cannot do in a scene where a rig or a bench is flying the camera.
-  if (selfCheckRequested(search)) return 'selfcheck'
   // The scene on its own, with the `scene/probe.ts` seam installed — what `verify-browser.mjs`
   // drives the card tier through. `?probe=shell` never arrives here: it is the shipped
   // composition, and the product entry keeps it.
@@ -68,20 +60,17 @@ function harnessRequested(): HarnessRoute {
 /**
  * What this route needs of the renderer before the handle exists.
  *
- * All three read the canvas back, so all three need the drawing buffer preserved — without it a
- * read gives whatever frame the compositor last kept rather than the frame the assertions were made
- * against. The self-check additionally needs PRD 8.5.7's far plane: `selfCheck.ts` derives its
- * star-depth band from the pose `[0, 150, 260]` at `fov` 55, against 6000 rather than the product's
- * 8000.
+ * Both read the canvas back, so both need the drawing buffer preserved — without it a read gives
+ * whatever frame the compositor last kept rather than the frame the assertions were made against.
+ * (The GPU self-check was a third route, with its own far plane; it compared the star field's id
+ * buffer against the CPU mirror, and retired with the star field at the cutover — DEC-752. It is
+ * archived under the `galaxy-cutover` tag.)
  *
  * This is the half of item 4 that `createServices` used to do by reading `location.search` itself.
  */
 function servicesOptions(route: HarnessRoute): ServicesOptions {
   if (route === null) return {}
-  return {
-    preserveDrawingBuffer: true,
-    ...(route === 'selfcheck' ? { cameraFar: SELF_CHECK_FAR } : {}),
-  }
+  return { preserveDrawingBuffer: true }
 }
 
 function Harness({ route }: { route: HarnessRoute }): ReactElement {
@@ -90,12 +79,6 @@ function Harness({ route }: { route: HarnessRoute }): ReactElement {
       return (
         <Suspense fallback={null}>
           <BenchScene />
-        </Suspense>
-      )
-    case 'selfcheck':
-      return (
-        <Suspense fallback={null}>
-          <SelfCheckScene />
         </Suspense>
       )
     case 'probe':
@@ -115,15 +98,11 @@ function HarnessIndex(): ReactElement {
   return (
     <main className="harness-index">
       <h1>Eternities — measurement harness</h1>
-      <p>Not the product. Three routes live here; each bypasses the shell and drives its own camera.</p>
+      <p>Not the product. Two routes live here; each bypasses the shell and drives its own camera.</p>
       <ul>
         <li>
           <a href="/bench">/bench</a> — PRD 9.1.2's scripted flight over the shipped scene.{' '}
           <code>?hold=&lt;segment&gt;</code> parks it at the end of one segment.
-        </li>
-        <li>
-          <a href="?selfcheck=1">?selfcheck=1</a> — PRD 8.5.7's GPU self-check: a still field, read
-          back and asserted.
         </li>
         <li>
           <a href="?probe=1">?probe=1</a> — the scene on its own with the probe seam installed.
@@ -138,14 +117,6 @@ function HarnessIndex(): ReactElement {
   )
 }
 
-/**
- * The one import edge to the GPU self-check, and it is on this side of the boundary.
- *
- * Unconditional and at module scope, so it is the harness entry that owns the edge no matter which
- * of the three routes the URL asked for. Still a dynamic import: `starScene` only calls the loader
- * under `?selfcheck=1`, so opening the bench does not fetch 993 lines of read-back.
- */
-registerSelfCheck(() => import('../scene/selfCheck'))
 
 const container = document.getElementById('root')
 if (!container) throw new Error('#root is missing from harness.html')

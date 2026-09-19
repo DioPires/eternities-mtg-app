@@ -7,7 +7,7 @@
  * is a pass-through and the interesting half is `tether.ts`.
  */
 
-import { glslFloat } from '../starfield/shaders'
+import { glslFloat } from '../glsl'
 
 /** How much of each end fades out, as a fraction of the curve. */
 const END_FADE = 0.012

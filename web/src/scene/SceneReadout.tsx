@@ -155,9 +155,9 @@ export function SceneReadout({
           card:{' '}
           {focusedCardName === null
             ? '—'
-            : `${focusedCardName} · ${host.cardTier?.card.planetCount ?? 0} planet(s)` +
+            : `${focusedCardName} · ${host.focusedCard?.card.planetCount ?? 0} planet(s)` +
               ` of ${focusedPrintings} printing(s)` +
-              (host.cardTier?.card.canFlip ? ' · flippable' : '')}
+              (host.focusedCard?.card.canFlip ? ' · flippable' : '')}
         </li>
         <li data-testid="hover">
           hover:{' '}

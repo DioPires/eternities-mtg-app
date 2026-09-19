@@ -1063,12 +1063,14 @@ describe('§1.6 the stream report reaches the probe (DEC-778)', () => {
 /**
  * §1.6's swatch-only control seam, `?art=off` (DEC-821; board ruling `art_off_seam` on DEC-752).
  *
- * The seam exists because at §3.1's 2.2-radii pose the capture is mostly **art** — `artFraction`
- * measured 0.61–0.76 on DEC-816 — so `?swatch=mean` and `?bands=shuffle`, which perturb the
- * *swatch*, move nothing a screenshot can see. Its whole contract is therefore a **pair** of claims,
- * and both are scored below: art is gone, and **nothing else is**. A seam that also moved the pool,
- * the threshold or the admitted set would hand W2 and W3 a control whose readings differ from the
- * build for a reason that has nothing to do with the criterion.
+ * The seam exists because at §3.1's 2.2-radii pose the capture is almost entirely **art** —
+ * `artFraction` measures **0.987–0.997** over four dominaria sessions (DEC-752, main `28d4676`;
+ * the 0.61–0.76 recorded on DEC-816 predates DEC-812's budget rise) — so `?swatch=mean` and
+ * `?bands=shuffle`, which perturb the *swatch*, move nothing a screenshot can see. Its whole
+ * contract is therefore a **pair** of claims, and both are scored below: art is gone, and **nothing
+ * else is**. A seam that also moved the pool, the threshold or the admitted set would hand W2 and
+ * W3 a control whose readings differ from the build for a reason that has nothing to do with the
+ * criterion.
  *
  * Every row is a matrix against a no-seam sibling built from the same roster at the same pose, for
  * the reason the block above gives: a rig that asked for nothing because its queue, its budget or

@@ -24,7 +24,7 @@
 
 import { HalfFloatType, UnsignedByteType, type TextureDataType, type WebGLRenderer } from 'three'
 
-import type { PositionMode } from '../starfield/starGeometry'
+import type { PositionMode } from './positionMode'
 
 import { probeHalfFloatAttributes, type HalfFloatProbeResult } from './halfFloatProbe'
 

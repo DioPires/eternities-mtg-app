@@ -262,10 +262,19 @@ test('every rung of the quality ladder lands, and only its own rung (PRD 8.5.11,
   expect(cardImagery.drawingBuffer).toEqual(bloom.drawingBuffer)
   expect(cardImagery.bloomSource).toEqual(bloom.bloomSource)
   expect(cardImagery.bloomLevels).toBe(bloom.bloomLevels)
-  expect(cardImagery.thumbnailCapacity).toBeLessThan(bloom.thumbnailCapacity)
-  // ...and nothing below rung 3 touches it.
-  expect(bloom.thumbnailCapacity).toBe(full.thumbnailCapacity)
-  expect(pixelRatio.thumbnailCapacity).toBe(full.thumbnailCapacity)
+  // **The atlas half of this rung retired at the cutover (DEC-752).** It read
+  // `cardImagery.thumbnailCapacity < bloom.thumbnailCapacity`, which is unfalsifiable now that the
+  // thumbnail tier is gone and the field is a structural 0 at every rung. The rung's *surviving*
+  // field is the worlds art pool, and it has its own test below — so the knob is still asserted to
+  // move; it is asserted in the one place it still moves.
+  //
+  // Pinned rather than deleted: 0 at every rung is what the retirement looks like from here, and a
+  // capacity that came back to life without this spec noticing is exactly the regression the
+  // original assertion existed to catch.
+  expect(full.thumbnailCapacity).toBe(0)
+  expect(bloom.thumbnailCapacity).toBe(0)
+  expect(pixelRatio.thumbnailCapacity).toBe(0)
+  expect(cardImagery.thumbnailCapacity).toBe(0)
 
   // Rung 4 — the cheap glow program (DEC-739, review §3.5's "new tier 4 cheap glow variant, one
   // tap, no dither").
@@ -281,12 +290,16 @@ test('every rung of the quality ladder lands, and only its own rung (PRD 8.5.11,
   // `defines` on a live material re-links the program on the next draw, which is the several-hundred
   // millisecond first-use stall the boot warm-up exists to remove — so a rung meant to recover
   // frames would cost them.
-  expect(glow.glowShader, 'rung 4 draws the cheap glow program').not.toBe(cardImagery.glowShader)
-  expect(glow.glowShader).toBe('PlaneGlowCheap')
+  //
+  // **The glow is the worlds rim since the cutover (§1.12 row 4, DEC-752).** The galaxy's plane
+  // glow was this rung's other consumer and retired with the star field; `?probe=`'s `glowShader`
+  // now reads the rim's live program, and the rim is driven off the same knob.
+  expect(glow.glowShader, 'rung 4 draws the cheap rim program').not.toBe(cardImagery.glowShader)
+  expect(glow.glowShader).toBe('WorldAtmosphereCheap')
   // ...and every rung above it draws the full one. Both directions, because a spec that only
   // checked the bottom rung would pass on a build where *every* tier drew the cheap glow.
   for (const tier of [full, pixelRatio, bloom, cardImagery]) {
-    expect(tier.glowShader, `${tier.tier} must keep the full glow`).toBe('PlaneGlow')
+    expect(tier.glowShader, `${tier.tier} must keep the full rim`).toBe('WorldAtmosphere')
   }
   // Rung 4 moves the glow and nothing else: the three quantities the rungs above it own are held.
   expect(glow.drawingBuffer).toEqual(cardImagery.drawingBuffer)
@@ -382,11 +395,10 @@ test('the platform layer asks the GPU and the app acts on the answer (review §3
   // assertion is the *clamp*, not the value: a driver silently clamps `gl_PointSize` and says
   // nothing, so the only observable half is that the app stopped asking for more than it can get.
   expect(state.platform.pointSizeMax).toBeGreaterThanOrEqual(1)
-  expect(state.platform.starMaxPixels).toBeGreaterThan(0)
-  expect(
-    state.platform.starMaxPixels,
-    'the star shader must never ask for a sprite larger than the driver will rasterise',
-  ).toBeLessThanOrEqual(state.platform.pointSizeMax)
+  // `starMaxPixels` was the star field's clamped sprite ceiling; the field retired at the cutover
+  // (DEC-752), and the key stays at a structural -1 because `ProbeState` publishes it. The worlds
+  // belt draws fixed 2 px points, well inside any driver's range.
+  expect(state.platform.starMaxPixels).toBe(-1)
 
   // PRD 8.5.8's atlas is 4096 square, and `MAX_TEXTURE_SIZE` was assumed rather than asked.
   expect(state.platform.maxTextureSize).toBeGreaterThanOrEqual(4096)

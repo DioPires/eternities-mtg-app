@@ -10,7 +10,7 @@
  */
 
 import { useEffect, type MutableRefObject, type RefObject } from 'react'
-import { Vector2, Vector3, type ShaderMaterial } from 'three'
+import { Vector2, Vector3 } from 'three'
 
 import type { CardRecord } from '../data'
 
@@ -84,8 +84,6 @@ export function useProbeSeam(deps: ProbeSeamDeps): void {
   useEffect(() => {
     if (!enabled || !planes || !resources) return
     const geometry = resources.geometry
-    // The uniform the star shader actually samples, not the `motion` argument passed to `update`.
-    const motionUniform = (resources.field.points.material as ShaderMaterial).uniforms['uMotion']
 
     // Read back off the live objects, never off QUALITY_TIERS. See `ProbeState.quality`.
     const qualityState = (): ProbeState['quality'] => {
@@ -94,7 +92,7 @@ export function useProbeSeam(deps: ProbeSeamDeps): void {
       const chain = scene.postChain
       // One size, where `Effects.BloomProbe` had to report two — see `ProbeState.bloomSource`.
       const source = chain?.bloomSourceSize
-      const band = scene.starScene.qualityThresholds
+      const band = scene.sceneFrame.qualityThresholds
       const tier = scene.qualityTier
       return {
         tier: tier.label,
@@ -107,15 +105,21 @@ export function useProbeSeam(deps: ProbeSeamDeps): void {
           source && source.width > 0 ? { width: source.width, height: source.height } : null,
         bloomLevels: chain.bloomLevels,
         bloomFloatTargets: chain.floatTargets,
-        thumbnailCapacity: scene.cardTier?.stats.capacity ?? 0,
+        // 0 since the thumbnail tier retired (DEC-752). The field stays: `ProbeState` publishes
+        // it and e2e reads the contract.
+        thumbnailCapacity: 0,
         starsDrawn: geometry.drawCount,
-        motion: typeof motionUniform?.value === 'number' ? motionUniform.value : -1,
+        // The factor the plane table's clock advances with, off the live frame. Was the star
+        // shader's `uMotion` until the cutover deleted the field (DEC-752).
+        motion: scene.sceneFrame.motionScale,
         refreshMs: band.refreshMs,
         degradeMs: band.degradeMs,
         restoreMs: band.restoreMs,
         // Off the live mesh, so this reports the program that is drawn rather than the one the
-        // tier asked for. See `ProbeState.quality.glowShader`.
-        glowShader: (resources.field.glow.material as ShaderMaterial).name,
+        // tier asked for. The worlds rim since the cutover (§1.12 row 4, DEC-752): the galaxy's
+        // plane glow was this rung's other consumer and went with the star field. Empty until a
+        // roster composes, which is before any tier could be read off it.
+        glowShader: scene.worlds.rimProgram ?? '',
       }
     }
 
@@ -124,7 +128,6 @@ export function useProbeSeam(deps: ProbeSeamDeps): void {
       // `detectPlatformCapabilities` caches per renderer, so this is a map lookup — the probe seam
       // is polled by the browser checks and must not re-run a half-float probe each time.
       const capabilities = detectPlatformCapabilities(scene.renderer.renderer)
-      const maxPixels = (resources.field.points.material as ShaderMaterial).uniforms['uMaxPixels']
       return {
         webgl2: capabilities?.webgl2 ?? false,
         maxTextureSize: capabilities?.maxTextureSize ?? 0,
@@ -135,15 +138,18 @@ export function useProbeSeam(deps: ProbeSeamDeps): void {
         positionMode: resources.positionMode,
         halfFloatProbeOk: capabilities?.halfFloatProbe.ok ?? false,
         halfFloatProbeMs: capabilities?.halfFloatProbe.durationMs ?? 0,
-        starMaxPixels: typeof maxPixels?.value === 'number' ? maxPixels.value : -1,
+        // -1, structurally: the star points whose sprite this clamped retired at the cutover
+        // (DEC-752). The key stays because `ProbeState` publishes it.
+        starMaxPixels: -1,
       }
     }
 
     const state = (): ProbeState => {
       const built = deps.sceneRef.current
       const snap = built?.api.snapshot()
-      const handle = scene.cardTier
-      const memoryNow = gpuMemoryReport(handle?.gpuBytes.atlas ?? 0, handle?.gpuBytes.card ?? 0)
+      const handle = scene.focusedCard
+      // The atlas term is a real 0 — it retired with the thumbnail tier (DEC-752).
+      const memoryNow = gpuMemoryReport(0, handle?.gpuBytes.card ?? 0)
       const focused = deps.focusedStarRef.current
       const record = focused >= 0 ? deps.cardsRef.current.get(focused) : undefined
       const cardState = handle?.card
@@ -168,14 +174,10 @@ export function useProbeSeam(deps: ProbeSeamDeps): void {
         // not, which is what makes the direct read honest rather than lucky.
         multiverseAngle: resources.table.multiverseAngle,
         cardsLoaded: deps.cardsRef.current.size,
-        thumbnails: {
-          drawn: handle?.stats.drawn ?? 0,
-          cells: handle?.stats.cells ?? 0,
-          capacity: handle?.stats.capacity ?? 0,
-          requested: handle?.stats.requested ?? 0,
-          loaded: handle?.stats.loaded ?? 0,
-          failed: handle?.stats.failed ?? 0,
-        },
+        // All zero since the thumbnail tier retired at the cutover (DEC-752). The BLOCK stays
+        // because `ProbeState` publishes it and e2e reads the contract; reporting real zeros is
+        // honest where dropping the keys would be a probe-surface change no criterion asked for.
+        thumbnails: { drawn: 0, cells: 0, capacity: 0, requested: 0, loaded: 0, failed: 0 },
         images: handle?.imageStats ?? {
           inFlight: 0,
           waiting: 0,
@@ -244,18 +246,20 @@ export function useProbeSeam(deps: ProbeSeamDeps): void {
         return best
       },
       flip: () => {
-        const handle = scene.cardTier?.card
+        const handle = scene.focusedCard?.card
         if (!handle?.canFlip) return false
         handle.toggleFlip()
         return true
       },
       activatePrinting: (index) => {
-        const handle = scene.cardTier?.card
+        const handle = scene.focusedCard?.card
         if (!handle?.visible) return false
         handle.setActivePrinting(index)
         return handle.activePrinting === index
       },
-      thumbnailStars: () => [...(scene.cardTier?.drawnStars ?? [])],
+      // Empty since the thumbnail tier retired (DEC-752); the seam stays for the same reason
+      // `thumbnailCapacity` does.
+      thumbnailStars: () => [],
       // `undefined`, never an empty payload: leg G scores a missing seam as a setup failure and an
       // empty one as a world that drew no cells. See `worldsProbeOf`.
       //
@@ -263,7 +267,7 @@ export function useProbeSeam(deps: ProbeSeamDeps): void {
       // path and it must reach the attachment as a genuine absence, not as a string (DEC-785 F1).
       worlds: (slug) => worldsProbeOf(deps.worldsSource?.(slug)),
       planetScreen: (index) => {
-        const handle = scene.cardTier?.card
+        const handle = scene.focusedCard?.card
         const camera = scene.renderer.camera
         if (!handle?.visible) return null
         if (!handle.planetWorldPosition(index, screen)) return null

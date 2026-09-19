@@ -17,8 +17,8 @@
     "test:e2e": "playwright test",
     "check-budget": "node scripts/check-budget.mjs",
     "bench": "node scripts/bench.mjs",
-    "visual-gate": "node scripts/visual-gate.mjs",
-    "windows-kit": "node bench/windows/run.mjs"
+    "windows-kit": "node bench/windows/run.mjs",
+    "worlds-gate": "node scripts/worlds-gate.mjs"
   },
   "dependencies": {
     "react": "19.3.0",
