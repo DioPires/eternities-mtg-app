@@ -137,12 +137,21 @@ async function pinnedTier(page: Page, index: number): Promise<Quality> {
 }
 
 /**
- * Wait until `stars.bin` is fully decoded and the composer has sized the bloom.
+ * Wait until `stars.bin` is fully decoded, the composer has sized the bloom, and the worlds rim has
+ * a program name.
  *
  * The harness panel's own words for the stream, not a sleep. `starsDrawn` has to be *final* before
  * it can be compared across tiers, or the invariant would be reading the stream's progress rather
  * than the ladder's effect on it. The bloom source is waited for too: it is `null` until the
  * chain's first `configure`, and a `null` would make the rung-2 comparisons read as equal.
+ *
+ * **`glowShader` is the third wait, and it was a race until it was** (DEC-854). `probeSeam.ts`
+ * reports `worlds.rimProgram ?? ''` and says in its own comment that the roster composes "before
+ * any tier could be read off it". On a cold cache in CI it does not: rung 4's assertions read `''`
+ * for tier 0 on both attempts of a run whose other 25 tests passed. An empty program name is not a
+ * rung that failed to land, it is a rim that has not been built yet, so it is waited for here
+ * rather than asserted below — and a rim that never composes still fails, on this line, with this
+ * explanation.
  */
 async function waitForField(page: Page): Promise<void> {
   await expect(page.getByTestId('eternities-status')).toContainText('(complete)', {
@@ -153,7 +162,7 @@ async function waitForField(page: Page): Promise<void> {
     .poll(
       async () => {
         const quality = await readQuality(page)
-        return quality.bloomSource !== null && quality.bloomLevels > 0
+        return quality.bloomSource !== null && quality.bloomLevels > 0 && quality.glowShader !== ''
       },
       { timeout: 30_000 },
     )
