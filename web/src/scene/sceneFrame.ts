@@ -144,8 +144,11 @@ export function attachSceneFrame({
       }
     }),
 
-    // Subscribed after `input/attachScenePicking.ts`, which `SceneHost` attaches first, so the
-    // mirror runs after the frame's pick has been issued (DEC-852).
+    // Which of this and `input/attachScenePicking.ts` subscribed to `pick` first cannot change
+    // what the mirror reads (DEC-853): the phase only issues `runPick(false)`, `focused` is
+    // written only on the select path — from `pointerup` — and the pick is `async` besides.
+    // `SceneHost` still attaches picking first, but for a construction dependency: this call takes
+    // the handle as an argument (DEC-852).
     loop.subscribe('pick', () => {
       if (!resources) return
       // PRD 8.5.7: the one star position the CPU computes, refreshed while it is focused so the

@@ -226,17 +226,25 @@ export class SceneHost {
     this.post = attachPostChain(gl, scene, camera, loop)
 
     /**
-     * The pointer input layer (DEC-852), attached **before** the star field and disposed after it.
+     * The pointer input layer (DEC-852), attached **before** the frame below and disposed after it.
      *
-     * The order is a **construction dependency**: `attachStarScene` hands this handle the field's
-     * star highlight while it builds, so the handle has to exist by then — and the type enforces
-     * it, because `attachStarScene` takes it as an argument. That is the whole of the reason.
+     * The order is a **construction dependency**, and the type is what enforces it: this handle is
+     * a required argument of `attachSceneFrame`, which holds it for PRD 8.5.7's mirror and for its
+     * own `focusedIndex` getter, so it has to exist by the time that call runs. That is the whole
+     * of the reason.
+     *
      * The `pick` phase's subscription order between the two is *not* load-bearing (DEC-853): that
-     * phase only issues `runPick(false)`, `focused` is written only under `if (select)`, which is
-     * reached only from `pointerup`, and `runPick` is `async` — so PRD 8.5.7's mirror in
-     * `starScene.ts` cannot observe the frame's own pick in either order.
+     * phase only issues `runPick(false)` (`input/attachScenePicking.ts:273`), `focused` is written
+     * only under `if (select)` (`:199-200`), which is reached only from `pointerup` (`:236`), and
+     * `runPick` is `async` — so the mirror cannot observe the frame's own pick in either order.
+     * `renderer/frameLoop.ts` says the same thing in general: `TICK_PHASES` is the order, so a
+     * subscription order is not one.
      *
-     * This is the half of the old `starScene.ts` that worlds spec §3.2 must *not* delete: every
+     * The hand-over the pre-cutover version of this comment named is gone with the star field
+     * (DEC-752): `ScenePickingHandle.setStarHighlight` still exists for a field to register with,
+     * and nothing in the product calls it since `starScene.ts` was deleted.
+     *
+     * This is the half of the old `starScene.ts` that worlds spec §3.2 did *not* delete: every
      * pointer listener in the app is here, and so is the only emitter of the hover the printing
      * ring's label reads and the selection card focus runs on.
      */
@@ -259,8 +267,9 @@ export class SceneHost {
     })
 
     // The frame's shared machinery — the plane table's clock, the quality monitor, PRD 8.5.7's
-    // mirror and the sky — ahead of the star field, which is the galaxy's alone (DEC-752). Attached
-    // after the picker so its `pick` subscriber runs after the frame's pick has been issued.
+    // mirror and the sky (DEC-752). After the picker because it takes the handle as an argument,
+    // not because of the `pick` phase's order between them: that order is not load-bearing, for
+    // the reason given above.
     this.sceneFrameHandle = attachSceneFrame({
       gl,
       scene,
