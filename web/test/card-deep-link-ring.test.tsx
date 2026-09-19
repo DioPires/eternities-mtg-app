@@ -209,7 +209,7 @@ describe('§1.10 the printing ring follows the route, not only the pointer (DEC-
    * draw, and `SETS.oracleId` turns it back into the id a URL would carry.
    */
   it('a click sets the ring subject', async () => {
-    window.history.replaceState({}, '', `/plane/${PLANE_SLUG}?probe=1`)
+    window.history.replaceState({}, '', `/plane/${PLANE_SLUG}?probe=shell`)
     mount(scene, nav)
     act(() => {
       nav.flyToPlane(PLANE_SLUG, { reason: 'user' })
@@ -217,7 +217,7 @@ describe('§1.10 the printing ring follows the route, not only the pointer (DEC-
     await settle()
 
     const probe = window.__eternitiesProbe
-    expect(probe, 'the `?probe=1` seam must be installed').toBeDefined()
+    expect(probe, 'the `?probe=shell` seam must be installed').toBeDefined()
     expect(probe!.state().cardsLoaded, 'alara shard 0 must have landed').toBeGreaterThan(0)
     expect(probe!.state().card, 'nothing is focused yet').toBeNull()
 
@@ -242,7 +242,7 @@ describe('§1.10 the printing ring follows the route, not only the pointer (DEC-
    */
   it('a card focus that arrives from the route sets the same subject', async () => {
     // The star a click lands on, named by the control above, addressed here as a URL would.
-    window.history.replaceState({}, '', `/plane/${PLANE_SLUG}?probe=1`)
+    window.history.replaceState({}, '', `/plane/${PLANE_SLUG}?probe=shell`)
     mount(scene, nav)
     act(() => {
       nav.flyToPlane(PLANE_SLUG, { reason: 'user' })
@@ -252,6 +252,9 @@ describe('§1.10 the printing ring follows the route, not only the pointer (DEC-
     expect(star).toBeGreaterThanOrEqual(0)
     const oracleId = SETS.oracleId(star)
     expect(SETS.starIndexOf(oracleId), 'the sidecar round-trips the id the URL carries').toBe(star)
+    // Kept for the camera check at the end of this row. See the assertion there for why a `Focus`
+    // is the right thing to compare two camera poses by.
+    const clickedFocus = nav.snapshot().focus
 
     // Back to the multiverse, so nothing a click did is still standing when the route arrives.
     act(() => {
@@ -262,7 +265,7 @@ describe('§1.10 the printing ring follows the route, not only the pointer (DEC-
 
     // 1. The address bar, parsed by the router and dispatched by the binding. A route carries no
     //    star index — only a plane slug and an `oracle_id` — which is the whole of the defect.
-    window.history.replaceState({}, '', `/plane/${PLANE_SLUG}/card/${oracleId}?probe=1`)
+    window.history.replaceState({}, '', `/plane/${PLANE_SLUG}/card/${oracleId}?probe=shell`)
     const route = new Router(browserHost()).snapshot()
     expect(route.focus.kind, 'the URL must parse as a card focus').toBe('card')
     act(() => {
@@ -283,6 +286,22 @@ describe('§1.10 the printing ring follows the route, not only the pointer (DEC-
     expect(state.card, 'a route-sourced card focus must build the ring').not.toBeNull()
     expect(state.card!.starIndex).toBe(star)
     expect(state.card!.planets).toBeGreaterThan(0)
+
+    /*
+     * DEC-858 item 4: **the deep link ends at the pose the click ends at**, and this is the whole
+     * check rather than a camera read, because the pose is a pure function of the focus. `scene.ts`
+     * frames a card level as `tetherFor(out, focus)` — `cardTether(focus)` falling back to
+     * `planeTether(focus.planeSlug, focus.anchor)` — and nothing else about how the focus arrived
+     * reaches it. Two identical `Focus` values are therefore two identical tethers, and PRD 6.2.3's
+     * two stages are computed from the same value again in `twoStageFor`.
+     *
+     * The live `flying: false` is **not** part of the defect: `ProbeState.flying` is `flight !==
+     * null`, true only while a tween is in the air, and PRD 5.7.3 caps one at 3 s. A reading taken
+     * 45 s into a settled cold load is a flight that finished, not a flight that never started.
+     */
+    expect(nav.snapshot().focus, 'the route must land on the focus a click lands on').toEqual(
+      clickedFocus,
+    )
 
     // And it comes down again when the route leaves. This half used to be an effect of its own —
     // "Esc leaves the card, so the card object has to go with it" — and the derivation above
