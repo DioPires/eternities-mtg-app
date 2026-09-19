@@ -567,9 +567,11 @@ The Blind Eternities is one row of the plane table like any other, with the iden
 **8.6.1 Plane placement (multiverse)**
 
 *Amended at the worlds cutover (2026-09-18, DEC-752; worlds spec §6).* The seeded spiral parameters this section and 8.6.2 define are retired (worlds spec §2.4). Plane homes are still placed by the pipeline, now as a function of each world's §1.3 radius.
-- Domain: a disc of radius `R` and thickness `0.15 R`.
-- Sort planes by visual radius descending. Place each with seeded rejection sampling subject to: distance to every placed plane ≥ `r_i + r_j + margin`; zero-card planes prefer the outer half of the disc.
-- The home camera frames the whole disc at ~30° elevation.
+
+*Amended again for the pick target (2026-09-20, DEC-759; worlds spec §1.11).* The disc's thickness is retired for **planes** — the belt keeps its own jitter — and placement gains a second, screen-space rule. Both changes are one fix: a plane's height projects at `cos(30°)` against an in-plane distance's `sin(30°)`, so the scatter was cancelling the separation the new rule buys, and the measurement that made the case is in worlds spec §1.11.
+- Domain: the disc plane, radius `R`. Planes sit at `y = 0`.
+- Sort planes by visual radius descending. Place each with seeded rejection sampling subject to **both**: distance to every placed plane ≥ `r_i + r_j + margin`, in world space; and, in the home view, `(d - drift_i - drift_j) · sin(30°) ≥ ρ_i + ρ_j`, where `d` is the in-plane centre distance and `ρ = max(1.15 · r, 24 px at the home distance)` is the plane's pick proxy under the screen-space floor of worlds spec §1.11. Zero-card planes prefer the outer half of the disc.
+- The home camera frames the whole disc at ~30° elevation, and the second rule is written against that pose and §1.3's reference viewport. It buys less separation on a shorter viewport, because 24 CSS px is a larger share of one.
 
 **8.6.2 Card placement (plane-local frame; bands fill the unit disc, the halo extends to 1.2)**
 

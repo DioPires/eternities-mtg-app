@@ -29,10 +29,32 @@ SPIRAL_THRESHOLD: Final = 50
 does not read it, the galaxy renderer does, and re-labelling the enum would be a contract change
 §2.4 did not ask for."""
 
-DUST_HALF_THICKNESS_RATIO: Final = 0.075
-"""PRD 8.6.1: half the disc's thickness, as a fraction of the multiverse radius. Read by plane
-placement, which is the only thing left that needs it — the belt of §1.8 has its own vertical
-jitter and no longer scatters through the disc."""
+HOME_ELEVATION_RAD: Final = math.pi / 6
+"""PRD 8.6.1 / `HOME_POLAR` in ``web/src/camera/framing.ts``: the home view looks down on the disc
+from 30 degrees above it.
+
+The ``home`` law has to know this angle (§1.11's layout amendment, DEC-759). The camera compresses
+in-plane distance by ``sin(30 deg) = 0.5`` and leaves vertical distance nearly intact, and that
+compression is the whole reason one world ends up behind another on screen."""
+
+HOME_DISTANCE_FACTOR: Final = 1.9
+"""``framing.multiverse``'s ``frame: r * 1.9`` — where the home view's eye sits, in multiverse
+radii. With :data:`REFERENCE_FOCAL_PX` it converts a pixel size into world units."""
+
+REFERENCE_FOCAL_PX: Final = 1080.0 / (2.0 * math.tan(math.radians(55.0) / 2.0))
+"""§1.3's ``focalPx``: the reference viewport's focal length, 1080 rows at a 55 degree vertical
+fov. Pixels are a viewport-relative unit, so a law written in them has to name the viewport it was
+written for; on a shorter viewport the floor below is a larger share of the screen and the
+separation this module buys shrinks with it."""
+
+PICK_PROXY_MARGIN: Final = 1.15
+"""``PLANE_PICK_MARGIN`` in ``web/src/scene/worlds/scenePicker.ts``: a plane is picked through a
+proxy this much larger than the world it draws."""
+
+PICK_FLOOR_PX: Final = 12.0
+"""§1.11's screen-space pick floor: 24 CSS px of *diameter*, so 12 px of radius. A world smaller
+than this on screen is still picked through a 24 px proxy, which is why the separation law floors
+every plane's proxy here rather than using the drawn radius."""
 
 PLANE_MARGIN_FACTOR: Final = 0.15
 """PRD 5.3.3, as a fraction of mean plane spacing: the anti-overlap margin :func:`place_planes`
@@ -128,19 +150,53 @@ def plane_motion(slug: str, mean_spacing: float) -> PlaneMotion:
     )
 
 
+def pick_proxy_radius(radius: float, multiverse_radius: float) -> float:
+    """The radius of a plane's pick proxy at the home view, in world units.
+
+    §1.11 floors the plane-level proxy at 24 CSS px of diameter *after projection*, so a small
+    world's pick target is not its drawn disc: it is whichever is larger of the drawn proxy and
+    that floor. :func:`place_planes` separates the proxies, not the discs, because the proxy is
+    what the pointer hits.
+    """
+    floor = PICK_FLOOR_PX * HOME_DISTANCE_FACTOR * multiverse_radius / REFERENCE_FOCAL_PX
+    return max(PICK_PROXY_MARGIN * radius, floor)
+
+
 def place_planes(
     entries: list[tuple[str, float, bool]],
     multiverse_radius: float,
     margin: float,
+    drift_amplitude: float,
 ) -> dict[str, tuple[float, float, float]]:
     """PRD 8.6.1 plane placement by seeded rejection sampling.
 
     ``entries`` are ``(slug, visual_radius, is_zero_card)``. Returns home positions. Placement is
     largest-first so the tight constraints are satisfied while the disc is still empty. The
-    ``margin`` must be at least twice the drift amplitude (PRD 5.3.3), which the caller enforces.
+    ``margin`` must be at least twice the ``drift_amplitude`` (PRD 5.3.3), which the caller
+    enforces; both rules below are stated at maximum drift, because a gap that exists only at rest
+    is not a gap (PRD 8.9.1's reading on the world-space one).
+
+    Two rules, and they answer different questions (§1.11's layout amendment, DEC-759):
+
+    * ``margin`` keeps the *drawn* discs apart in world space, at maximum drift. PRD 5.3.3.
+    * the **home-view separation rule** keeps the *pick proxies* apart on screen, at every azimuth
+      of the multiverse's turn. A proxy floored to 24 px is 2.9 world units in radius on production,
+      and the camera compresses in-plane distance by ``sin(30 deg)``, so two worlds a comfortable
+      world-space margin apart can still land on top of each other in the home view. That is what
+      §1.11 measured and could not fix from the renderer: a nearer disc takes the pixels, and no
+      pick policy recovers them.
+
+    The vertical scatter that PRD 8.6.1's disc thickness used to give each plane is gone with it,
+    and that is not a simplification — it is half the fix. Over a turn a pair's worst screen
+    separation is ``|d*sin(elev) - dy*cos(elev)|``: at 30 degrees, 8 units of height cancels 14
+    units of in-plane distance, so the thickness was *manufacturing* coincidences that the
+    in-plane rule cannot see. The disc is flat here; the belt (§1.8) keeps its own jitter.
     """
-    half_thickness = DUST_HALF_THICKNESS_RATIO * multiverse_radius
-    placed: list[tuple[str, float, tuple[float, float, float]]] = []
+    proxy = {slug: pick_proxy_radius(radius, multiverse_radius) for slug, radius, _ in entries}
+    sin_elevation = math.sin(HOME_ELEVATION_RAD)
+    # Two planes can drift toward each other at once, so the worst case closes by both amplitudes.
+    drift_closure = 2.0 * drift_amplitude
+    placed: list[tuple[float, float, tuple[float, float, float]]] = []
     result: dict[str, tuple[float, float, float]] = {}
 
     for slug, radius, zero_card in sorted(entries, key=lambda e: (-e[1], e[0])):
@@ -151,23 +207,29 @@ def place_planes(
             frac = math.sqrt(0.5 + 0.5 * u) if zero_card else math.sqrt(u)
             r = frac * (multiverse_radius - radius)
             theta = rng.between(0.0, 2.0 * math.pi, slug, "theta", attempt)
-            y = rng.gaussian(slug, "y", attempt) * half_thickness * 0.5
-            y = max(-half_thickness, min(half_thickness, y))
-            candidate = (r * math.cos(theta), y, r * math.sin(theta))
+            candidate = (r * math.cos(theta), 0.0, r * math.sin(theta))
             if all(
                 _distance(candidate, other) >= radius + other_radius + margin
-                for _, other_radius, other in placed
+                and (_in_plane(candidate, other) - drift_closure) * sin_elevation
+                >= proxy[slug] + other_proxy
+                for other_radius, other_proxy, other in placed
             ):
                 position = candidate
                 break
         if position is None:
             raise RuntimeError(
-                f"could not place plane {slug!r} without overlap after 4000 attempts; "
-                "raise multiverse_radius or lower the radius law's constant"
+                f"could not place plane {slug!r} after 4000 attempts; it either overlaps a "
+                "neighbour in world space or its pick proxy overlaps one in the home view. "
+                "Raise multiverse_radius, or lower the radius law's constant"
             )
-        placed.append((slug, radius, position))
+        placed.append((radius, proxy[slug], position))
         result[slug] = position
     return result
+
+
+def _in_plane(a: tuple[float, float, float], b: tuple[float, float, float]) -> float:
+    """Distance in the disc plane. The home view's compression acts on this, not on the 3-D one."""
+    return math.hypot(a[0] - b[0], a[2] - b[2])
 
 
 def _distance(a: tuple[float, float, float], b: tuple[float, float, float]) -> float:

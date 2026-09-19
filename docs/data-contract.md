@@ -476,7 +476,17 @@ artefact re-hashes: the test vector moved from `contract/test-vectors/v2/` to `v
 were `2e6f120ee85a5b23` and `f6f712c6e70a6a51`, and production is `c9468f1125bcddff` with
 `dabe2c9a68b4d799` kept on disk and still named by `active`. §8.1 has the measured budget.
 
-**The fixture hashes moved again in DEC-796**, to `7588f66591d5900f` (small) and
+**The fixture hashes moved again in DEC-759**, to `8bf8a37fe3789b57` (small) and
+`007db49f32af560f` (scale), when `place_planes` gained the home-view separation rule and stopped
+scattering planes through the disc's thickness (worlds spec §1.11). `home` is the only field that
+moved and `planes.json` is the only file that changed — stars are plane-local, so `stars.bin`, the
+per-plane shards, `search.json` and `swatches.bin` are byte-identical — but the directory is
+content-hashed, so the dataset name moves with any byte. 23 of the 88 fixture-scale planes
+actually moved in-plane; the rest were already legal and the rejection sampler drew them at the
+same attempt. Production is untouched until a refresh re-lays it out; the homes that refresh will
+produce are vendored at `docs/worlds/dec759-home-law.json`.
+
+**The fixture hashes moved in DEC-796**, to `7588f66591d5900f` (small) and
 `36e442aea0130106` (scale), when both fixtures gained a `swatches.bin`. A fixture has no art to
 take §5.1's statistic from, so the column is *invented* from each card's own id: a base per card,
 then a per-corner swing around it, with every component held off both ends of its channel so that
