@@ -31,14 +31,29 @@ does not read it, the galaxy renderer does, and re-labelling the enum would be a
 
 # --- the six constants mirrored from the renderer ----------------------------------------------
 #
-# **This mirror is one-way and nothing guards it.** Each of the six below restates a value that
-# lives in TypeScript, named beside it. If the renderer's copy moves, nothing in either suite
-# fails: the Python law never reads the TypeScript, and the web tests never read this module.
-# Verified rather than assumed — a reviewer doubled `DRIFT_VERTICAL_RATIO` in `tuning.ts` and the
-# whole web suite stayed green (DEC-865, item 3). A cross-language check is tracked separately;
-# until it lands, moving either half of a pair means moving the other by hand — and since the
-# homes are baked into `planes.json`, it also means regenerating the fixtures, or the law's
-# guarantee is stated against a camera the renderer no longer uses.
+# Each of the six below restates a value that lives in TypeScript, named beside it. The mirror
+# **was** one-way and unguarded: a reviewer doubled `DRIFT_VERTICAL_RATIO` in `tuning.ts` and the
+# whole web suite stayed green (DEC-865, item 3), because the Python law never read the TypeScript
+# and the web tests never read this module.
+#
+# **DEC-884 closed it through the shared test vector, not through a source-text parse.** These
+# constants are published into `contract/test-vectors/v3/vector.json` under `cameraLaw` (see
+# `eternities.testvector.vector_summary`), which is the artefact the `data contract` CI job already
+# reads from both sides:
+#
+#   * move a constant here alone and `vector_summary()` no longer equals the committed
+#     `vector.json` — `pipeline/tests/test_test_vector.py` reds;
+#   * regenerate the vector to make that green and the *TypeScript* half of the same file reds,
+#     because `web/test/test-vector.test.ts` now reads `cameraLaw` back and checks it against the
+#     renderer's live values — and reads the two that are not exported (`framing.ts`'s `r * 1.9`
+#     and `scenePicker.ts`'s `PLANE_PICK_MARGIN`) *behaviourally*, through `Framing.multiverse()`
+#     and `PlanePicker.pick`, so a respelling cannot slip past a parser;
+#   * move the TypeScript half alone and that same web test reds against the unchanged vector.
+#
+# What the guard still does not do is regenerate anything for you. The homes are baked into
+# `planes.json`, so a constant that legitimately moves also means regenerating the fixtures and
+# `docs/worlds/dec759-home-law.json`, or the law's guarantee is stated against a camera the
+# renderer no longer uses.
 
 HOME_ELEVATION_RAD: Final = math.pi / 6
 """PRD 8.6.1. Mirrors `HOME_POLAR` in ``web/src/camera/framing.ts`` (line 30,
@@ -53,10 +68,23 @@ HOME_DISTANCE_FACTOR: Final = 1.9
 — where the home view's eye sits, in multiverse radii. With :data:`REFERENCE_FOCAL_PX` it converts
 a pixel size into world units."""
 
-REFERENCE_FOCAL_PX: Final = 1080.0 / (2.0 * math.tan(math.radians(55.0) / 2.0))
+REFERENCE_FOV_DEG: Final = 55.0
+"""Mirrors `FOV` in ``web/src/scene/renderer/sceneRenderer.ts`` (line 37), and its second
+TypeScript spelling `FRAMING_REFERENCE_FOV_RADIANS` in ``web/src/scene/worlds/surfaceLaw.ts``.
+
+Named rather than written inside :data:`REFERENCE_FOCAL_PX` so that the vector can publish the
+*mirrored* quantity itself: a focal length alone cannot say whether the fov or the viewport height
+moved, and the renderer has no focal-length constant to compare it against."""
+
+REFERENCE_VIEWPORT_HEIGHT_PX: Final = 1080.0
+"""§1.3's reference viewport height. Mirrors `FRAMING_REFERENCE_VIEWPORT_HEIGHT_PX` in
+``web/src/scene/worlds/surfaceLaw.ts``."""
+
+REFERENCE_FOCAL_PX: Final = REFERENCE_VIEWPORT_HEIGHT_PX / (
+    2.0 * math.tan(math.radians(REFERENCE_FOV_DEG) / 2.0)
+)
 """§1.3's ``focalPx``: the reference viewport's focal length, 1080 rows at a 55 degree vertical
-fov. Mirrors `FOV` in ``web/src/scene/renderer/sceneRenderer.ts`` (line 37) and §1.3's reference
-viewport height; the renderer builds the same number from the live canvas instead of a constant.
+fov. The renderer builds the same number from the live canvas instead of a constant.
 
 Pixels are a viewport-relative unit, so a law written in them has to name the viewport it was
 written for; on a shorter viewport the floor below is a larger share of the screen and the
@@ -212,6 +240,30 @@ def pick_proxy_radius(radius: float, multiverse_radius: float) -> float:
     return max(PICK_PROXY_MARGIN * radius, PICK_FLOOR_PX * depth / REFERENCE_FOCAL_PX)
 
 
+def drift_closure(drift_amplitude: float) -> float:
+    """How much of the home view's screen separation a drifting *pair* can eat, in world units.
+
+    PRD 5.3.15's drift closes the gap two ways at once. Horizontally, each plane can move one
+    amplitude toward the other. Vertically, the same orbit lifts a plane off the disc by
+    :data:`DRIFT_VERTICAL_RATIO` of its amplitude, and under a 30 degree view one unit of height
+    cancels ``cot(30 deg) = 1.732`` units of in-plane distance — so the vertical half is worth
+    ``0.35 * 1.732 = 0.606`` of an amplitude, not nothing, and *more* than half of what the
+    horizontal half buys.
+
+    Per plane that is ``1 + DRIFT_VERTICAL_RATIO / tan(30 deg) = 1.606`` amplitudes. Bounding the
+    two terms separately is looser than their true joint maximum (1.393 a per plane) and is
+    deliberately the bound and not the peak: it does not depend on the phase law the two terms
+    happen to share today.
+
+    Separated from :func:`place_planes` so that the vertical term has a falsifier of its own.
+    Inside the rule it was reachable only through the placement it produces, and a placement is
+    pinned byte for byte — so *every* change to this expression failed identically, whether it was
+    a sign error or a re-spelling. ``test_home_separation.py`` now checks the value against
+    §1.11's literals, which is a test a wrong value fails and a byte pin is not (DEC-884).
+    """
+    return 2.0 * drift_amplitude * (1.0 + DRIFT_VERTICAL_RATIO / math.tan(HOME_ELEVATION_RAD))
+
+
 def place_planes(
     entries: list[tuple[str, float, bool]],
     multiverse_radius: float,
@@ -256,15 +308,9 @@ def place_planes(
     proxy = {slug: pick_proxy_radius(radius, multiverse_radius) for slug, radius, _ in entries}
     world = {slug: not zero_card for slug, _, zero_card in entries}
     sin_elevation = math.sin(HOME_ELEVATION_RAD)
-    # A drifting pair closes the home view's separation two ways at once: horizontally, by up to
-    # one amplitude each, and vertically, because PRD 5.3.15's drift also lifts a plane off the
-    # disc and `cot(30 deg)` of in-plane distance buys only as much screen separation as one unit
-    # of height. Bounding the two terms separately is looser than their true joint maximum
-    # (1.393 a per plane against the 1.606 a below) and is deliberately the bound and not the
-    # peak: it does not depend on the phase law the two terms happen to share today.
-    drift_closure = (
-        2.0 * drift_amplitude * (1.0 + DRIFT_VERTICAL_RATIO / math.tan(HOME_ELEVATION_RAD))
-    )
+    # A drifting pair closes the home view's separation two ways at once; `drift_closure` above
+    # carries the reasoning and the falsifier.
+    closure = drift_closure(drift_amplitude)
     placed: list[tuple[float, float, bool, tuple[float, float, float]]] = []
     result: dict[str, tuple[float, float, float]] = {}
 
@@ -281,7 +327,7 @@ def place_planes(
                 _distance(candidate, other) >= radius + other_radius + margin
                 and (
                     not (world[slug] or other_is_world)
-                    or (_in_plane(candidate, other) - drift_closure) * sin_elevation
+                    or (_in_plane(candidate, other) - closure) * sin_elevation
                     >= proxy[slug] + other_proxy
                 )
                 for other_radius, other_proxy, other_is_world, other in placed

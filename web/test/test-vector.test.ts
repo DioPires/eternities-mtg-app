@@ -48,6 +48,18 @@ import {
   type SearchFile,
 } from '../src/data'
 import { StarGeometry } from '../src/scene/starfield/starGeometry'
+import { PerspectiveCamera, Vector2, Vector3 } from 'three'
+
+import { Framing, HOME_POLAR } from '../src/camera/framing'
+import { DRIFT_VERTICAL_RATIO } from '../src/scene/tuning'
+import { PLANE_PICK_FLOOR_PX, PlanePicker } from '../src/scene/picking/scenePicker'
+import { FOV } from '../src/scene/renderer/sceneRenderer'
+import {
+  FRAMING_REFERENCE_FOV_RADIANS,
+  FRAMING_REFERENCE_VIEWPORT_HEIGHT_PX,
+} from '../src/scene/worlds/surfaceLaw'
+import { driftOffset } from '../src/scene/starfield/motion'
+import { PlaneTable } from '../src/scene/starfield/planeTable'
 
 const VECTOR_DIR = resolve(__dirname, '../../contract/test-vectors/v3')
 
@@ -112,6 +124,22 @@ interface Vector {
   typeMaskChecks: Array<{ typeLine: string; typeMask: number }>
   backImageChecks: Array<{ layout: CardLayout; hasBackImage: boolean }>
   shardIndexChecks: Array<{ localIndex: number; shard: number }>
+  /**
+   * The `home`-law camera constants `pipeline/src/eternities/fixtures/layout.py` mirrors by hand
+   * (DEC-884). Published by the Python half, checked against the renderer by the block at the
+   * bottom of this file — which is what makes the mirror two-way.
+   */
+  cameraLaw: {
+    homeElevationRad: number
+    homeDistanceFactor: number
+    fovDegrees: number
+    referenceViewportHeightPx: number
+    referenceFocalPx: number
+    pickProxyMargin: number
+    /** A **diameter**, in `scenePicker.ts`' units; `layout` keeps it as a radius. */
+    pickFloorDiameterPx: number
+    driftVerticalRatio: number
+  }
 }
 
 function bytes(relative: string): ArrayBuffer {
@@ -700,3 +728,173 @@ describe('loud failures', () => {
   })
 })
 
+
+/**
+ * The `home`-law camera mirror, from the renderer's side (DEC-884).
+ *
+ * `pipeline/src/eternities/fixtures/layout.py` restates six constants that live in TypeScript, and
+ * bakes the result into `planes.json` as every plane's `home`. The mirror used to be one-way and
+ * unguarded: DEC-865 doubled `DRIFT_VERTICAL_RATIO` in `tuning.ts` and the entire web suite stayed
+ * green, because the Python law never read this side and this side never read the Python law.
+ *
+ * `vector.json` is the bridge, and it is the bridge that already exists — the `data contract` CI
+ * job runs `test_test_vector.py` and this file against the same committed bytes, so the six
+ * constants ride the freeze point the rest of the contract rides. Move one half alone and one of
+ * the two suites goes red; regenerate the vector to silence the Python half and this one reds
+ * instead.
+ *
+ * **Not a source-text parse, and deliberately not.** A guard that grepped `framing.ts` for `1.9`
+ * would be only as good as its parser: `1.9`, `19 / 10`, `1.90`, a value moved behind a helper or
+ * a `const` re-export all mean the same thing to the renderer and different things to a regex.
+ * Two of the six are not exported at all — `framing.ts`' `r * 1.9` is a literal inside an object
+ * argument, and `scenePicker.ts`' `PLANE_PICK_MARGIN` is a module-private `const` — and rather
+ * than export them (which would put a non-comment change into `web/src/scene`, and the Renderer
+ * Draw Rule with it) this block reads both *behaviourally*, through `Framing.multiverse()` and
+ * through `PlanePicker.pick` itself. A behavioural read cannot be fooled by a respelling, and it
+ * fails if the constant is right but no longer reaches the code path, which is the failure a
+ * parse cannot see at all.
+ */
+describe('the home-law camera constants are mirrored in both directions', () => {
+  const law = vector.cameraLaw
+
+  /** A `planes.json` with nothing in it but the field `Framing` reads. */
+  function discOfRadius(multiverseRadius: number): PlanesFile {
+    return { contractVersion: CONTRACT_VERSION, shardSize: SHARD_SIZE, multiverseRadius, planes: [] }
+  }
+
+  /** One plane, carrying only the fields the picker and the drift read. */
+  function planeRecord(overrides: Partial<PlaneRecord>): PlaneRecord {
+    return {
+      index: 0,
+      slug: 'dominaria' as PlaneSlug,
+      displayName: 'dominaria',
+      notes: '',
+      kind: 'spiral',
+      cardCount: 10,
+      starOffset: 0,
+      starCount: 0,
+      shardCount: 1,
+      home: [0, 0, 0],
+      radius: 1,
+      tilt: [0, 0, 0, 1],
+      spinPeriodS: 100,
+      spinDirection: 1,
+      driftAmplitude: 0,
+      driftPeriodS: 1,
+      driftPhase: 0,
+      palette: [1, 0, 0, 0, 0, 0, 0],
+      nebulaTint: [1, 1, 1],
+      firstYear: null,
+      lastYear: null,
+      sets: [],
+      ...overrides,
+    }
+  }
+
+  const DRIFT_PERIOD_S = 100
+
+  it('agrees about the home view elevation', () => {
+    // `framing.ts` stores the polar angle from +Y and `layout.py` stores the elevation above the
+    // disc. The subtraction is done here, in the open, rather than published twice.
+    expect(HOME_POLAR).toBeCloseTo(Math.PI / 2 - law.homeElevationRad, 15)
+    expect(new Framing(discOfRadius(130)).multiverse().framePolar).toBeCloseTo(HOME_POLAR, 15)
+  })
+
+  it('agrees about how far the home view sits from the origin', () => {
+    // `r * 1.9` is a literal inside `Framing.multiverse`'s argument, so this reads the factor back
+    // out of the tether. Two radii, because one would pass a `frameDistance` that had quietly
+    // become a constant — the same hole DEC-865 found on the Python side of this very number.
+    for (const radius of [130, 325]) {
+      const tether = new Framing(discOfRadius(radius)).multiverse()
+      expect(tether.frameDistance / radius).toBeCloseTo(law.homeDistanceFactor, 12)
+    }
+  })
+
+  it('agrees about the reference viewport the pixel law is written for', () => {
+    // Three spellings of one fov: the renderer's degrees, the surface law's radians, and the
+    // focal length `layout.py` pre-multiplies. All three have to move together.
+    expect(FOV).toBe(law.fovDegrees)
+    expect(FRAMING_REFERENCE_FOV_RADIANS).toBeCloseTo((law.fovDegrees * Math.PI) / 180, 15)
+    expect(FRAMING_REFERENCE_VIEWPORT_HEIGHT_PX).toBe(law.referenceViewportHeightPx)
+
+    const focalPx =
+      law.referenceViewportHeightPx / (2 * Math.tan(((law.fovDegrees * Math.PI) / 180) / 2))
+    // Both engines land on the same double here, but the mirrored quantities are the fov and the
+    // height; the focal length is their product and is checked as one.
+    expect(Math.abs(focalPx / law.referenceFocalPx - 1)).toBeLessThan(1e-12)
+  })
+
+  it('agrees about the screen-space pick floor', () => {
+    expect(PLANE_PICK_FLOOR_PX).toBe(law.pickFloorDiameterPx)
+  })
+
+  it('agrees about the pick proxy margin, measured through the picker', () => {
+    // `PLANE_PICK_MARGIN` is module-private, so the margin is recovered from the shipped raycast:
+    // find the pointer offset at which a plane stops being picked, and the ray that grazes the
+    // proxy there is at one proxy radius from its centre.
+    const WIDTH = 1920
+    const HEIGHT = 1080
+    // A viewport tall enough that §1.11's floor converts to ~1e-5 world units. The floor and the
+    // margin are a `max`, and this is what makes the margin the branch under test.
+    const TALL = 1e7
+    const DEPTH = 400
+    const RADIUS = 10
+
+    const camera = new PerspectiveCamera(law.fovDegrees, WIDTH / HEIGHT, 0.1, 8000)
+    camera.position.set(0, 0, 0)
+    camera.lookAt(0, 0, -1)
+    camera.updateMatrixWorld(true)
+    camera.updateProjectionMatrix()
+
+    const table = new PlaneTable([planeRecord({ home: [0, 0, -DEPTH], radius: RADIUS })], 200)
+    table.revealPlane(0)
+    table.advance(10, 0)
+    const picker = new PlanePicker()
+    const picks = (ndcX: number) =>
+      picker.pick(new Vector2(ndcX, 0), camera, table, 0, TALL) === 0
+
+    expect(picks(0)).toBe(true)
+    // The proxy is ~11.5 units at 400 of depth, well inside the frustum, so the bracket holds.
+    let inside = 0
+    let outside = 1
+    expect(picks(outside)).toBe(false)
+    for (let step = 0; step < 60; step += 1) {
+      const middle = (inside + outside) / 2
+      if (picks(middle)) inside = middle
+      else outside = middle
+    }
+
+    // The grazing ray, and its perpendicular distance to the plane's centre: that distance is the
+    // proxy radius the picker used, and the margin is what it is in units of the drawn radius.
+    const direction = new Vector3(inside, 0, 0.5).unproject(camera).normalize()
+    const centre = new Vector3(0, 0, -DEPTH)
+    const along = centre.dot(direction)
+    const perpendicular = Math.sqrt(centre.lengthSq() - along * along)
+    expect(perpendicular / RADIUS).toBeCloseTo(law.pickProxyMargin, 6)
+  })
+
+  it('agrees about the vertical half of the drift orbit, measured through the drift', () => {
+    // The constant is exported, so this checks it directly — and then checks that it is the number
+    // the drift actually applies, which is the half a constant comparison cannot see.
+    expect(DRIFT_VERTICAL_RATIO).toBe(law.driftVerticalRatio)
+
+    const AMPLITUDE = 7
+    const table = new PlaneTable(
+      [planeRecord({ driftAmplitude: AMPLITUDE, driftPeriodS: DRIFT_PERIOD_S })],
+      200,
+    )
+    table.revealPlane(0)
+    const out = { x: 0, y: 0, z: 0 }
+    let tallest = 0
+    let widest = 0
+    // `y` peaks at `sin(2a) = 1`; sweeping rather than solving keeps this a measurement of the
+    // shipped orbit instead of a second copy of its formula.
+    for (let step = 0; step <= 2000; step += 1) {
+      driftOffset(table.raw, 0, (step / 2000) * DRIFT_PERIOD_S, out)
+      tallest = Math.max(tallest, Math.abs(out.y))
+      widest = Math.max(widest, Math.hypot(out.x, out.z))
+    }
+    expect(widest).toBeCloseTo(AMPLITUDE, 4)
+    expect(tallest / widest).toBeCloseTo(law.driftVerticalRatio, 4)
+  })
+})
