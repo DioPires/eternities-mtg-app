@@ -1205,7 +1205,8 @@ tick positions, not with a capture. See §5, Q5.
   >   and every plane stays reachable by name through the search path, which is why this is a price
   >   worth paying and not a regression to fix.
   >
-  >   The attempt budget rises from 4,000 to **20,000** for the same reason. That figure is
+  >   The attempt budget rises from 4,000 to **20,000** because the second rule is much harder to
+  >   satisfy by rejection than the world-space margin alone was. That figure is
   >   measured, not estimated: counting `rng.unit(slug, "r", attempt)` per plane, the hardest plane
   >   needs **189** draws on the densest roster the tree builds, 165 on `fixture-scale`, **51** on
   >   the production roster and 1 on the two four-plane rosters; the median plane on the dense
