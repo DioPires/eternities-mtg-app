@@ -924,14 +924,16 @@ describe('plane table layout', () => {
  *
  * `scene/starfield/motion.ts` is what the star field draws from and what the vertex shader mirrors;
  * `camera/motion.ts` is what the camera tethers to. Until Phase 3 they disagreed — the camera
- * rotated a star about world +Y where the field rotates it about the plane's local +z, and the two
+ * rotated a star about world +Y where the field rotated it about a plane-local axis, and the two
  * used different shear phase gradients — and nothing caught it, because every tether the rig had
  * ever resolved had a local position of (0,0,0), where neither difference can show. The card tether
  * is the first with a star's own local position in it.
  *
- * This is not the same claim `scripts/verify-browser.mjs` makes. That one compares the CPU mirror
- * with the *GPU*; this compares the camera's copy with the field's, which is the pair a card tier
- * puts on screen together.
+ * **This pair is a symmetry, and a symmetry is not a falsifier.** Both sides answered "plane-local
+ * Z" until DEC-774 and this describe stayed green throughout, because moving both onto the same
+ * wrong axis is invisible from inside the pair. `worlds-spin.test.ts` carries the row that is not
+ * inside it: the mirror against `worlds/spin.ts`'s pole-axis law, which is what decides where the
+ * cell is drawn.
  */
 describe('the camera mirror agrees with the star field (PRD 8.5.3, 8.5.7)', () => {
   const LOCALS: ReadonlyArray<readonly [number, number, number]> = [

@@ -11,15 +11,22 @@
  *   local → spin + bounded shear about the plane axis → tilt → × radius → + drift → + home
  *         → multiverse rotation
  *
- * **"The plane axis" is local +z, and the constants are `scene/tuning`'s.** Until Phase 3 this file
- * rotated about world +Y with a shear phase gradient of its own, and nothing caught it: every
- * tether the rig had ever resolved was either a plane centre or a dust anchor, and the local
+ * **"The plane axis" is plane-local +Y, and the constants are `scene/tuning`'s.** Until Phase 3
+ * this file rotated about world +Y with a shear phase gradient of its own, and nothing caught it:
+ * every tether the rig had ever resolved was either a plane centre or a dust anchor, and the local
  * position of both is the origin, where the axis and the gradient cannot matter. The card tether is
- * the first one with a star's own local position in it, so the card tier is where a plane's disc —
- * which lies in local xy with its normal at local +z (PRD 8.6.2) — stopped agreeing with a rotation
- * about y. `scene/starfield/motion.ts` and the vertex shader are the definition; this mirrors them,
- * and `test/starfield.test.ts` now checks the two against each other on the same numbers rather
- * than each against itself.
+ * the first one with a star's own local position in it, so the card tier is where the axis started
+ * to matter at all.
+ *
+ * Phase 3 answered "plane-local +z" from PRD 8.6.2's prose. **It is +Y, measured (DEC-750, ruled on
+ * DEC-774).** The generator writes `x = r·cos θ`, `z = r·sin θ`, `y = gaussian·thickness`, so the
+ * disc lies in local xz and local Z is an axis *in* it; v3's cells are a unit sphere whose pole is
+ * the same +Y `worlds/spin.ts` spins about. Both contract versions put the axis in one place, and
+ * the plane-local frame is the frame the whole chain below is stated in, so this is `rotateY` on a
+ * local vector, not the world-+Y rotation the multiverse turns by at the end.
+ * `scene/starfield/motion.ts` and the vertex shader are the definition; this mirrors them, and
+ * `test/starfield.test.ts` checks the two against each other on the same numbers rather than each
+ * against itself.
  *
  * **Frame-rate independence (PRD 5.3.17, 9.1.3).** Everything except the two accumulated angles is
  * a pure function of elapsed time, and the two accumulators are integrated exactly: at constant
@@ -41,7 +48,6 @@ import {
   applyQuat,
   copy,
   rotateY,
-  rotateZ,
   set,
   type MutVec3,
   vec,
@@ -216,12 +222,14 @@ export class SceneMotion {
   }
 
   /**
-   * PRD 5.4.13's bounded shear for one star, in radians about the plane's local +z.
+   * PRD 5.4.13's bounded shear for one star, in radians about the plane's local +Y.
    *
-   * The radius it is a function of is the star's radius *in the disc*, which is its local xy
-   * distance from the plane's centre — the same `length(p.xy)` the vertex shader takes.
+   * The radius it is a function of is the star's radius *in the disc*, which is its local **xz**
+   * distance from the plane's centre — the same `length(p.xz)` the vertex shader takes (DEC-774).
+   * The shear shares the spin's axis, so it moved with it: a radius measured across the disc and a
+   * rotation about its normal are the same disc, or neither is.
    */
-  private shearAngle(plane: PlaneRecord, lx: number, ly: number): number {
+  private shearAngle(plane: PlaneRecord, lx: number, lz: number): number {
     // PRD 5.4.13's shear is a spiral-disc law and retires in contract v3 (worlds spec §2.4), so a
     // v3 `planes.json` simply does not carry these three fields. This is the galaxy path, which is
     // pointed at a v2 dataset for the whole dual-scene period — but "absent" must mean "no shear"
@@ -229,7 +237,7 @@ export class SceneMotion {
     const amplitude = plane.shearAmplitude ?? 0
     const periodS = plane.shearPeriodS ?? 0
     if (amplitude === 0 || periodS === 0 || this.reducedMotion) return 0
-    const r = Math.hypot(lx, ly)
+    const r = Math.hypot(lx, lz)
     const phase =
       (2 * Math.PI * this.elapsed) / periodS + (plane.shearPhase ?? 0) + r * SHEAR_RADIAL_PHASE
     return amplitude * Math.sin(phase)
@@ -263,7 +271,7 @@ export class SceneMotion {
 
     // PRD 5.4.13: a bounded angular offset A·sin(2πt/T + φ(r)) on top of the rigid spin. Bounded is
     // the point — a true differential rotation would wind the arms up over a long session.
-    const shear = this.shearAngle(plane, lx, ly)
+    const shear = this.shearAngle(plane, lx, lz)
 
     if (plane.kind === 'dust') {
       // PRD 8.6.3 / 5.3.16: the Blind Eternities does not spin — it turbulates. The dust's stored
@@ -282,7 +290,7 @@ export class SceneMotion {
       set(this.tmpB, lx + this.tmpB.x * amplitude, ly + this.tmpB.y * amplitude, lz + this.tmpB.z * amplitude)
     } else {
       set(this.tmpB, lx, ly, lz)
-      rotateZ(this.tmpB, this.tmpB, spin + shear)
+      rotateY(this.tmpB, this.tmpB, spin + shear)
     }
     applyQuat(this.tmpB, this.tmpB, plane.tilt)
     set(this.tmpB, this.tmpB.x * plane.radius, this.tmpB.y * plane.radius, this.tmpB.z * plane.radius)
@@ -325,13 +333,13 @@ export class SceneMotion {
     // Inverse tilt: conjugate the unit quaternion.
     applyQuat(this.tmpA, this.tmpA, [-plane.tilt[0], -plane.tilt[1], -plane.tilt[2], plane.tilt[3]])
     const spin = this.states[plane.index]?.spinAngle ?? 0
-    return rotateZ(out, this.tmpA, -spin)
+    return rotateY(out, this.tmpA, -spin)
   }
 
   /** The forward direction of `worldToPlaneLocal`, so a local offset tracks the spinning plane. */
   planeLocalToWorld(out: MutVec3, plane: PlaneRecord, local: Readonly<MutVec3>): MutVec3 {
     const spin = this.states[plane.index]?.spinAngle ?? 0
-    rotateZ(this.tmpB, local, spin)
+    rotateY(this.tmpB, local, spin)
     applyQuat(this.tmpB, this.tmpB, plane.tilt)
     set(
       this.tmpB,
@@ -360,7 +368,7 @@ export class SceneMotion {
    */
   planeLocalDirToWorld(out: MutVec3, plane: PlaneRecord, local: Readonly<MutVec3>): MutVec3 {
     const spin = this.states[plane.index]?.spinAngle ?? 0
-    rotateZ(this.tmpB, local, spin)
+    rotateY(this.tmpB, local, spin)
     applyQuat(this.tmpB, this.tmpB, plane.tilt)
     return rotateY(out, this.tmpB, this.multiverseAngle)
   }
@@ -374,7 +382,7 @@ export class SceneMotion {
       plane.tilt[3],
     ])
     const spin = this.states[plane.index]?.spinAngle ?? 0
-    return rotateZ(out, this.tmpB, -spin)
+    return rotateY(out, this.tmpB, -spin)
   }
 
   spinAngleOf(index: number): number {
