@@ -1235,7 +1235,7 @@ const MATRIX = [
       // the floor's first value.** With floor and domain cut-off both at 64 the tour read 65 against
       // 64 — a 1.5% margin on a correct renderer, because a domain opening *at* the floor pins its
       // own worst reading just above it. At 32 against a 128-cell domain the worst in-domain world
-      // (forgotten-realms, 146) clears by 4.6x. A term must be green on a healthy build with room,
+      // (forgotten-realms, 141) clears by 4.4x. A term must be green on a healthy build with room,
       // or it is not a control but a tripwire.
       { criterion: 'W4', measure: 'artCellsShowing', expect: 'GREEN' },
     ],
@@ -1557,13 +1557,21 @@ const MATRIX = [
     // **The mechanism here is an inequality, which is what makes it survivable.** A cell shows art by
     // holding a layer, so `showing ≤ pool.layers` on every frame of every build; a pool below the
     // floor cannot reach it however the quantile is resolved, posed or held. See
-    // {@link W4_STARVED_POOL_LAYERS} for why the capacity is 24 and for the six readings that bracket
-    // it — 8 and 16 red `artFraction` as well, which loses the disagreement this row is for.
+    // {@link W4_STARVED_POOL_LAYERS} for why the capacity is 24 and for the held-frame sweep across
+    // 16…31 that shows the capacity does not move the settled reading at all.
     //
-    // **The disagreement is the row.** 1,386 cells are front-facing and on screen, 15 of them draw
-    // art, and `artFraction` reads its ceiling because every cell the policy still wants is served.
-    // A ratio cannot see its own denominator being chosen by the policy it grades, and this is that
-    // sentence as a live frame rather than as a fixture. `a-ratio-is-blind-to-its-own-denominator`.
+    // **The frame is the settled one (DEC-896).** `reducedMotion: false` holds the page 3 s for the
+    // motion read-back before the frame is taken, as it does on both tier-4 siblings above. Without
+    // it this row was scored ~3 s earlier than its neighbours and read `artFraction` 1.0000 on 9 of 10
+    // draws; with it the same row reads 0.875 on 23 of 24. A row that passes only because it reads
+    // earlier than its siblings has a hidden parameter — the trap the `layers-128` comment documents.
+    // `a-harness-default-is-a-hidden-parameter`.
+    //
+    // **The disagreement is the row's argument, and on the settled frame it does not hold.** 1,384
+    // cells are presented, 16 want art and 14 draw it: `artCellsShowing` is RED, and `artFraction`
+    // reads 0.875 — RED as well, because the scene turns during the hold and carries two cells into
+    // the want set that have not drawn yet. The frozen arm of the same row reads 14 wanted, 14
+    // drawn, 1.0000. See the constant for the sweep, the cause and the margin arithmetic.
     //
     // **What it does not cover is stated on the constant and is repeated here because a matrix is
     // read row by row:** this falsifies the *measure*, not the *policy*. No threshold regression can
@@ -1575,16 +1583,22 @@ const MATRIX = [
     label:
       '?layers=24 — a pool below the absolute floor, so the count of cells showing art cannot reach it',
     seams: { layersRequested: W4_STARVED_POOL_LAYERS },
+    reducedMotion: false,
     subject: 'dominaria',
     expect: [
-      // **The falsifier.** 15 against 32 over three draws, 2.1× below, on a frame presenting 1,386.
-      // Mutating `FLOORS.artCellsAbsolute` to 0 turns this cell green and reds the gate, which is the
-      // check that says the row is tied to this floor and not to a neighbouring term.
+      // **The falsifier.** 14 against 32 on 23 of 24 settled draws (16 on the other), 2.3× below, on
+      // a frame presenting 1,383–1,385. Mutating `FLOORS.artCellsAbsolute` to 0 turns this cell green
+      // and reds the gate, which is the check that says the row is tied to this floor and not to a
+      // neighbouring term. **It pins "the floor is above 16", not "the floor is 32"**: any floor in
+      // 17…32 leaves this cell RED (a floor of 16 would green the one draw that read 16), so the
+      // distance to the floor is not something this row testifies to.
       { criterion: 'W4', measure: 'artCellsShowing', expect: 'RED' },
-      // **GREEN, and a reader who expects a starved frame to red W4 outright will read this as a
-      // mistake.** It is the finding: the want set collapsed *with* its numerator, so the ratio is
-      // satisfied on the frame the absolute count reds. The day the ratio starts catching this on
-      // its own, this cell reds and someone has to look at why.
+      // **PENDING A RULING (DEC-896): this cell FAILS on the settled frame — 0.875 against 0.900 on
+      // 23 of 24 held draws.** The expectation is left GREEN on purpose rather than dropped or
+      // flipped by the implementer; the ruling is the board's, and the sweep and the two measured
+      // alternatives are on the hand-back. Its argument, as written for the unheld frame: the want
+      // set collapsed *with* its numerator, so the ratio is satisfied on the frame the absolute
+      // count reds.
       { criterion: 'W4', measure: 'artFraction', expect: 'GREEN' },
       // Out of the bound's capacity domain at 24 layers, exactly as `?layers=128` is. Asserted so a
       // pool too small to churn cannot be recorded as good eviction behaviour — a pool that refuses
@@ -1592,10 +1606,11 @@ const MATRIX = [
       { criterion: 'W4', measure: 'evictionsPerSecond', expect: 'N/A' },
       // **The second of the two inequalities the row rests on, asserted rather than assumed.**
       // `demandFitsCapacity` is `wanting / pool.layers`, and it going green is exactly the condition
-      // that lets every wanted cell be served and keeps `artFraction` at its ceiling. It read 0.625
-      // and 0.667 across the draws — 15 and 16 cells into 24 layers. If a future pose or grid pushes
-      // the want set past the pool, this reds first and names the reason, instead of `artFraction`
-      // sliding off its ceiling and the row failing as a W4 regression.
+      // that the want set fits the pool. It read 0.6667 — 16 cells into 24 layers — on 24 of 24
+      // settled draws. **It does not keep `artFraction` at its ceiling**: the held sweep reads this
+      // GREEN and the ratio at 0.875 on the same frames, because the two undrawn cells are turnover,
+      // not a pool without room. What it does do is red first, and name the reason, if a future pose
+      // or grid pushes the want set past the pool.
       { criterion: 'W4', measure: 'demandFitsCapacity', expect: 'GREEN' },
     ],
   },
