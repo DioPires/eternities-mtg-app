@@ -2199,11 +2199,14 @@ describe("W4 — art resolves without exhausting", () => {
       // Named from every side so the margins are on the record rather than implied, and all four
       // are measured readings: 14 is DEC-834's witness, 124 the live `?layers=128` row as the gate
       // now measures it (DEC-845), 146 the worst in-domain world of the 45-world acceptance tour
-      // (forgotten-realms), 941 dominaria at the shipped pool.
+      // (forgotten-realms, 146 on DEC-837's tour and 141 on DEC-890's), 941 dominaria at the
+      // shipped pool.
       expect(tier4.measures.find((m) => m.key === "artCellsShowing")!.value!).toBe(124);
       expect(32 / 14).toBeGreaterThan(2.2);
       expect(124 / 32).toBeGreaterThan(3.8);
-      expect(146 / 32).toBeGreaterThan(4.5);
+      // 146 was DEC-837's `dec837-accept2` tour; DEC-890's tour re-reads the same world and the same
+      // worst-of-13 fold at 141, after PR #85 moved the arrival pose and DEC-882 raised the grid.
+      expect(141 / 32).toBeGreaterThan(4.4);
     });
 
     it("is out of domain on a frame too small to offer the floor, not red on it", () => {

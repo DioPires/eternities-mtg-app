@@ -252,7 +252,7 @@ export const FLOORS = {
    * |---|---|---|
    * | the witness that must RED (want set collapsed to 14) | 14 | **2.3× below** |
    * | healthy tier-4 rung, `?layers=128` | 124 | 3.9× above |
-   * | worst in-domain world of the 45-world tour (forgotten-realms) | 146 | **4.6× above** |
+   * | worst in-domain world of the 45-world tour (forgotten-realms) | **141** | **4.4× above** |
    * | shipped 1,024-layer baseline, dominaria | 941 | 29× above |
    */
   artCellsAbsolute: 32,

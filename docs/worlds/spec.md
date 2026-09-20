@@ -2243,13 +2243,19 @@ an assertion there.
 > | the live witness that must RED, `?layers=24` (DEC-890) | 15 | **2.1× below** |
 > | the witness the floor was derived against (want set collapsed to 14) | 14 | **2.3× below** |
 > | healthy tier-4 rung, `?layers=128` | 76 | 2.4× above |
-> | worst in-domain world of the 45-world tour (forgotten-realms) | 146 | **4.6× above** |
+> | worst in-domain world of the 45-world tour (forgotten-realms) | **141** | **4.4× above** |
 > | shipped 1,024-layer baseline, dominaria | 941 | 29× above |
 >
 > The tier-4 rung read **124** at the arrival pose PR #85 replaced and **76** at the pose and grid
-> shipped now (DEC-882, five draws reading 76–82). Both are readings of a healthy build and the floor
-> clears both; quoted here with their eras because the row is the tightest healthy margin on record
-> and a stale figure there would flatter it.
+> shipped now (DEC-882, five draws reading 76–82; DEC-890's tour re-read it at 76). Both are readings
+> of a healthy build and the floor clears both; quoted here with their eras because the row is the
+> tightest healthy margin on record and a stale figure there would flatter it.
+>
+> **The tour figure moved too, and it is 141 rather than 146 (DEC-890).** 146 was DEC-837's
+> `dec837-accept2` reading, taken before PR #85 moved the arrival colatitude and before DEC-882
+> raised the grid. The `--negative-controls` tour on DEC-890's head reads **141**, same world
+> (forgotten-realms), same worst-of-13 fold — 4.4× the floor rather than 4.6×.
+> `remeasure-before-repeating-a-recorded-number`.
 >
 > ### What this costs the matrix, stated rather than left to be discovered
 >
