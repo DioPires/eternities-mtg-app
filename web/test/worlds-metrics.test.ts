@@ -2175,6 +2175,11 @@ describe("W4 — art resolves without exhausting", () => {
       // (The rung read ~126–127 until DEC-843 attached a 3 s read-back to that gate row; the frame
       // is now taken after the hold and the adaptive threshold has kept rising through it. DEC-845
       // re-measured on the shipping harness: 124, two draws.)
+      //
+      // The want set beside it is the figure that moved: 209 cells on the post-cutover tree against
+      // the 205 this fixture carried, and the two DEC-847 draws read 207 and 209 while the 124 held
+      // across both. The drawn count is what this row asserts, so the want set is here only to make
+      // the frame a real one — but it is a measured reading and is kept re-measured (DEC-847).
       const baseline = evaluateW4(
         frameOf(2_000, 945, 942),
         churningAt(18.4),
@@ -2183,7 +2188,7 @@ describe("W4 — art resolves without exhausting", () => {
         HEALTHY_EXIT,
       );
       const tier4 = evaluateW4(
-        frameOf(2_000, 205, 124),
+        frameOf(2_000, 209, 124),
         settled(0, 128),
         { layers: 128, resident: 128 },
         FRESH_SESSION,
@@ -3144,6 +3149,12 @@ describe("W4 — art resolves without exhausting", () => {
       // The row the split was raised for, at its measured numbers: the policy raised its threshold
       // 24 → 35.06 px, cut demand 945 → 205, and still admitted 205 into a 128-layer pool. 125 of
       // them draw art — 0.610 against a ceiling of 0.624.
+      //
+      // **Those are the DEC-752-era readings of that row and they stay as they were taken.** The
+      // live row has since moved — 207 and 209 cells wanting art across DEC-847's two post-cutover
+      // draws, 124 drawn — and this fixture is a worked example of the arithmetic, not a mirror of
+      // the current gate. The figure that tracks the live row is the `frameOf(2_000, 209, 124)`
+      // rung above.
       const tier4 = evaluateW4(
         cells(205, 125),
         settled(0),
@@ -3720,24 +3731,28 @@ describe("the negative-control matrix", () => {
   const MATRIX = [
     {
       row: "W1 · capture at 6× radius",
+      id: "w1-far",
       criterion: "W1",
       measure: "minMedianCellHeightPx",
       expect: "RED",
     },
     {
       row: "W2 · ?swatch=mean",
+      id: "artoff-swatch-mean",
       criterion: "W2",
       measure: "medianNeighbourDeltaE",
       expect: "RED",
     },
     {
       row: "W2 · ?swatch=mean (iso-shade half)",
+      id: "artoff-swatch-mean",
       criterion: "W2",
       measure: "lightnessIqr",
       expect: "RED",
     },
     {
       row: "W3 · ?bands=shuffle",
+      id: "w3-floor-control",
       criterion: "W3",
       measure: "minAdjacentBandDeltaE",
       expect: "RED",
@@ -3750,6 +3765,7 @@ describe("the negative-control matrix", () => {
     // improvements, so it was retired rather than re-fitted to whatever it now reads.
     {
       row: "W4 · ?artThreshold=fixed24&layers=128",
+      id: "fixed24-layers-128",
       criterion: "W4",
       measure: "artFraction",
       expect: "RED",
@@ -3762,6 +3778,7 @@ describe("the negative-control matrix", () => {
     // expected-GREEN baseline below. Recorded here so the gap is visible rather than inferred.
     {
       row: "W4 · ?artThreshold=fixed24&layers=128 (evictions)",
+      id: "fixed24-layers-128",
       criterion: "W4",
       measure: "evictionsPerSecond",
       expect: "N/A",
@@ -3771,6 +3788,7 @@ describe("the negative-control matrix", () => {
     // anything, and that is domain rather than failure.
     {
       row: "W4 · one-card world (absolute art term)",
+      id: "one-card-world",
       criterion: "W4",
       measure: "artCellsShowing",
       expect: "N/A",
@@ -3784,12 +3802,14 @@ describe("the negative-control matrix", () => {
     // `?layers=128` sibling — `a-control-that-agrees-is-not-a-control-that-took`.
     {
       row: "W4 · prefers-reduced-motion at ?layers=128",
+      id: "layers-128-reduced",
       criterion: "W4",
       measure: "artCellsShowing",
       expect: "RED",
     },
     {
       row: "W4 · the unmodified build (absolute art term)",
+      id: "baseline",
       criterion: "W4",
       measure: "artCellsShowing",
       expect: "GREEN",
@@ -3809,61 +3829,180 @@ describe("the negative-control matrix", () => {
     // `n/a`. `negative-controls-distinguish-guard-from-rubble`.
     {
       row: "W4 · kamigawa at the shipped pool (evictions)",
+      id: "unsaturated-pool",
       criterion: "W4",
       measure: "evictionsPerSecond",
       expect: "N/A",
     },
     {
       row: "W4 · kamigawa at the shipped pool (art fraction)",
+      id: "unsaturated-pool",
       criterion: "W4",
       measure: "artFraction",
       expect: "GREEN",
     },
     {
       row: "W4 · kamigawa at the shipped pool (absolute art term)",
+      id: "unsaturated-pool",
       criterion: "W4",
       measure: "artCellsShowing",
       expect: "GREEN",
     },
     {
+      // **`id: null` — §3.1's table lists this control and `worlds-gate.mjs` does not run it.**
+      // Forcing labels on for suppressed planes is a renderer change, not a harness parameter, and
+      // no seam produces it; the spec says so where it names the gap, and `homeLabels` ships
+      // measured and scored with no live falsifier. The cross-check below reads this `null` as
+      // "deliberately not a gate row" rather than as a missing one.
       row: "W5 · labels forced on for empty planes",
+      id: null,
       criterion: "W5",
       measure: "homeLabels",
       expect: "RED",
     },
     {
       row: "W5 · viewport 800×600",
+      id: "w5-narrow",
       criterion: "W5",
       measure: "worldsNeverLabelled",
       expect: "RED",
     },
     {
       row: "W1 · one-card world",
+      id: "one-card-world",
       criterion: "W1",
       measure: "minMedianCellHeightPx",
       expect: "GREEN",
     },
     {
+      // **The gate's one-card row asserts the neighbour-ΔE half, and this entry used to name the
+      // lightness one.** Nothing caught it: the mirror was checked against nothing but itself
+      // (DEC-847 item 2). Repointed at the expectation the live row actually carries. The lightness
+      // half is out of domain on a one-cell frame too, but the gate does not assert it there and a
+      // mirror may not assert what its subject does not — that gap is recorded, not papered over.
       row: "W2 · one-card world",
+      id: "one-card-world",
       criterion: "W2",
-      measure: "lightnessIqr",
+      measure: "medianNeighbourDeltaE",
       expect: "N/A",
     },
     {
       row: "W3 · one-card world",
+      id: "one-card-world",
       criterion: "W3",
       measure: "minAdjacentBandDeltaE",
       expect: "N/A",
     },
-    { row: "W4 · ?layers=128 (tier 4)", criterion: "W4", expect: "GREEN" },
+    {
+      row: "W4 · ?layers=128 (tier 4)",
+      id: "layers-128",
+      criterion: "W4",
+      expect: "GREEN",
+    },
     {
       row: "W5 · viewport 1920×1080",
+      id: "w5-wide",
       criterion: "W5",
       measure: "worldsNeverLabelled",
       expect: "GREEN",
     },
-    { row: "all · the unmodified build", criterion: "W2", expect: "GREEN" },
+    {
+      row: "all · the unmodified build",
+      id: "baseline",
+      criterion: "W2",
+      expect: "GREEN",
+    },
   ] as const;
+
+  /**
+   * Gate rows this mirror deliberately does not carry, and why — read by the cross-check below as
+   * the other half of its census. A row may be left out, but not silently: adding one to
+   * `worlds-gate.mjs` without a line here or an entry above reds the check.
+   */
+  const UNMIRRORED: Readonly<Record<string, string>> = {
+    "art-off":
+      "the sibling the composed rows are read against, asserting no falsifier of its own (DEC-821)",
+    "artoff-bands-shuffle":
+      "the one-world band row, N/A since the W3 fold amendment; W3's live falsifier is the full-tour derivation pair, and `w3-floor-control` above is the row that carries it",
+    "no-seams":
+      "the unseamed sibling every composed row is read against, asserted green rather than falsifying anything",
+    "w3-floor-shipped":
+      "the shipped side of the W3 floor derivation — a derivation, excluded from --negative-controls",
+  };
+
+  it("mirrors the gate's live MATRIX in both directions", async () => {
+    // **The mirror above guarded only itself until this ran** (DEC-844's finding, measured by
+    // DEC-846): deleting a whole live gate row — `unsaturated-pool`, the occupancy rule's only live
+    // falsifier — left this suite green at 1,390 passing. Every entry above is a claim about a row
+    // in `worlds-gate.mjs`, so it is checked against that file rather than against the prose beside
+    // it. `a-hand-written-mirror-guards-only-itself`.
+    //
+    // Both directions, because each catches a different way to go stale: forward, an entry naming a
+    // row or an expectation the gate no longer has; reverse, a gate row nothing here mentions.
+    const { MATRIX: GATE } = await import("../scripts/worlds-gate.mjs");
+    const live = new Map(GATE.map((row) => [row.id, row] as const));
+
+    for (const entry of MATRIX) {
+      // The one documented mirror-only row; see its comment.
+      if (entry.id === null) continue;
+      const row = live.get(entry.id);
+      expect(row, `${entry.row} names gate row '${entry.id}'`).toBeDefined();
+      // An entry without a `measure` asserts the criterion's folded colour, so it matches any
+      // expectation of that criterion reading that colour.
+      const measure = "measure" in entry ? entry.measure : null;
+      const matched = row!.expect.filter(
+        (e) =>
+          e.criterion === entry.criterion &&
+          e.expect === entry.expect &&
+          (measure === null || e.measure === measure),
+      );
+      expect(
+        matched.length,
+        `${entry.row}: gate row '${entry.id}' expects ${entry.criterion}` +
+          `${measure === null ? "" : `.${measure}`} ${entry.expect}`,
+      ).toBeGreaterThan(0);
+    }
+
+    const mirrored = new Set<string>(
+      MATRIX.flatMap((e) => (e.id === null ? [] : [e.id])),
+    );
+    expect(
+      [...live.keys()].filter((id) => !mirrored.has(id) && !(id in UNMIRRORED)),
+      "gate rows neither mirrored above nor listed in UNMIRRORED",
+    ).toEqual([]);
+    expect(
+      Object.keys(UNMIRRORED).filter((id) => !live.has(id)),
+      "UNMIRRORED names rows the gate no longer has",
+    ).toEqual([]);
+
+    // **The census, because the two directions above are row-level and a row can lose a half.**
+    // Measured: deleting `layers-128`'s `artCellsShowing` expectation left both checks green — the
+    // mirror is a curated list of falsifiers and names only one of that row's four expectations, so
+    // nothing above claims the other three. This is the whole matrix by the count each row carries,
+    // so an expectation deleted from *any* row reds here whether or not an entry above mentions it.
+    // A hand-kept number, but one that cannot drift quietly: it is compared to the live file on
+    // every run, and the failure prints the number to write.
+    const CENSUS: Readonly<Record<string, number>> = {
+      baseline: 7,
+      "w1-far": 1,
+      "art-off": 3,
+      "artoff-swatch-mean": 2,
+      "artoff-bands-shuffle": 1,
+      "fixed24-layers-128": 4,
+      "layers-128": 4,
+      "unsaturated-pool": 3,
+      "layers-128-reduced": 3,
+      "no-seams": 4,
+      "w3-floor-shipped": 1,
+      "w3-floor-control": 1,
+      "one-card-world": 5,
+      "w5-narrow": 1,
+      "w5-wide": 1,
+    };
+    expect(
+      Object.fromEntries(GATE.map((row) => [row.id, row.expect.length])),
+    ).toEqual(CENSUS);
+  });
 
   it("has eight expected-RED rows, seven expected-GREEN and five expected-N/A", () => {
     expect(MATRIX.filter((r) => r.expect === "RED")).toHaveLength(8);

@@ -1210,8 +1210,13 @@ async function sweepHomeView(page, { minAzimuths }) {
  * `subject` is the world a row is measured on. Rows that are about the roster run the whole tour;
  * the rest name one world, because a control's job is to falsify a measure and 45 worlds of it is
  * 45× the runtime for the same evidence.
+ *
+ * **Exported so the unit suite can read the live rows rather than a copy of them** (DEC-847 item 2,
+ * DEC-844's finding). `worlds-metrics.test.ts` mirrors this matrix by hand; until it imported this
+ * binding, deleting a whole live row left that suite green — the mirror guarded the mirror. Nothing
+ * outside the test reads it, and the export is not a seam for the gate's behaviour.
  */
-const MATRIX = [
+export const MATRIX = [
   {
     id: 'baseline',
     label: 'the unmodified build on the v3 production dataset',
@@ -1413,8 +1418,14 @@ const MATRIX = [
       // **The overshoot the reachable bar forgives, asserted so it cannot go quiet.** Ruling
       // `demand_measure_scored` is `reported_only`, so this measure cannot colour the row — which
       // makes it exactly the kind of number that stops being read. Naming it here keeps it
-      // falsifiable: the policy admits ~205 cells into a 128-layer pool, 1.60× capacity, and the day
-      // it stops doing that this row goes red and someone has to look.
+      // falsifiable: the policy admits **207–209** cells into a 128-layer pool, **1.617–1.633×**
+      // capacity, and the day it stops doing that this row goes red and someone has to look.
+      //
+      // **Two draws, and they disagree — so this one is a range and not a figure** (DEC-847,
+      // re-measured post-cutover; it read ~205 / 1.60× before). The want set is the adaptive
+      // threshold's output and it lands a couple of cells apart run to run, while `artCellsShowing`
+      // above holds at 124 across the same two draws. Quote the range; a single value here would be
+      // one draw wearing the authority of a constant.
       { criterion: 'W4', measure: 'demandFitsCapacity', expect: 'RED' },
     ],
   },
@@ -1801,12 +1812,21 @@ async function runRow(browser, url, row, { roster, args, baselineProbe }) {
               ? ''
               : ` (pool hw ${hw.resident}/${hw.layers}${hw.saturated ? ' SATURATED' : ''})`) +
             ` [art ${visit.w4.showing}/${visit.w4.presented} presented; ev ` +
-            // Three domain rules can null this rate and the line has to say which — an `n/a` that
-            // does not name its cause is how "the bound stopped binding" reads identically to "this
-            // world is quiet". The occupancy clause is read off `tail.saturated`, the same boolean
-            // the criterion's rule tests, rather than re-derived here: a second spelling is a second
-            // thing to keep in step. Ordered as the criterion orders them, so the printed reason is
-            // the reason that actually fired.
+            // **Five domain rules can null this rate and these three labels cover two of them.**
+            // `evaluateW4`'s `evictionWhy` branches, in order: no admission at all (the stream never
+            // ran, or the budget was already committed at entry), the budget exhausted *during* the
+            // visit, the wrong pool capacity, the occupancy rule, and finally `tail.why` — too short
+            // a tail or one that never settled. `n/a — pool` and `n/a — unsaturated` name one rule
+            // each; **`n/a — tail` is the fallback and it is three of the five**, so it names the
+            // last rule only by accident of ordering. The cause is never lost: the criterion writes
+            // the whole sentence to `ev.insufficientReason`, and that field — not this tag — is what
+            // to read when an `n/a` has to be explained. This line is a tour-legible summary.
+            //
+            // The two named clauses are re-spelled here rather than read back, which is the cost of
+            // printing a short tag: `tail.saturated === false && tail.evictionsObserved === 0` is
+            // the criterion's own conjunction written a second time, and a second spelling is a
+            // second thing to keep in step. It is kept in step by ordering these branches exactly as
+            // `evictionWhy` orders its own, so the tag that prints is the rule that fired.
             (ev.status === 'insufficient'
               ? !visit.w4.atEvictionPool
                 ? `n/a — pool ${visit.poolLayers}`
@@ -2183,4 +2203,10 @@ async function main() {
   process.exitCode = failed ? 1 : 0
 }
 
-await main()
+// **Run only as a program.** `worlds-metrics.test.ts` imports `MATRIX` from this file to cross-check
+// its hand-written mirror (DEC-847 item 2), and a bare `await main()` would build the app and drive
+// a browser on import. `process.argv[1]` is the script node was told to run; equal to this module's
+// own path, this file is the entry point rather than a dependency.
+if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  await main()
+}
