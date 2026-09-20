@@ -124,10 +124,12 @@ function expectAffordsLevels(
  * `motion=1` forces reduced motion *off* whatever the runner prefers. The equality on `motion` it
  * used to justify is gone (DEC-857 R2), and the shader it used to name went with the star field at
  * the cutover — `motion` is `sceneFrame.motionScale` now (DEC-752, `probeSeam.ts`). What needs the
- * flag is the row below it: `PlaneTable.advance` returns early under reduced motion, so on a runner
- * that prefers it `multiverseAngle` would sit frozen and {@link multiverseAdvance} would read 0 —
- * which is the reading this spec spends that row calling "the rung stopped the multiverse". The
- * flag is what keeps a 0 there a statement about the ladder rather than about the machine.
+ * flag is the row below it: `PlaneTable.advance` takes the motion factor as a parameter and scales
+ * its angle step by it (`planeTable.ts`), and `sceneFrame.ts` passes `reducedMotion ? 0 : 1`. So on
+ * a runner that prefers reduced motion `multiverseAngle` sits frozen where it stands and
+ * {@link multiverseAdvance} reads 0 — which is the reading this spec spends that row calling "the
+ * rung stopped the multiverse". The flag is what keeps a 0 there a statement about the ladder
+ * rather than about the machine.
  */
 async function pinnedTier(page: Page, index: number): Promise<Quality> {
   await page.goto(`/?probe=1&quality=${index}&motion=1`)
