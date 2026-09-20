@@ -16,10 +16,12 @@
  *     turbulence amplitude itself.
  *
  * `starfield.test.ts` asserts the shared invariants on this side. Nothing checks the GLSL twin
- * against it: `scripts/verify-browser.mjs` was the CPU-to-GPU read-back and it left the tree with
- * the star field at the cutover (DEC-752), so the agreement the three points above describe now
- * rests on the two being read side by side. The twin is still live — `cards/cardShaders.ts`
- * compiles `MOTION_GLSL` into the thumbnail program. Recorded on DEC-872.
+ * against it: `web/scripts/verify-browser.mjs` was the CPU-to-GPU read-back and it left the tree
+ * with the rest of the one-off review tooling on DEC-708 (`318ea83`, archived at tag
+ * `review-tooling-2026-09`), so the agreement the three points above describe now rests on the two
+ * being read side by side. Nor is the twin compiled anywhere today: `cards/cardShaders.ts` still
+ * interpolates `MOTION_GLSL` into `THUMBNAIL_VERTEX_SHADER`, but nothing imports that shader, so no
+ * drawn program carries it. Recorded on DEC-872, corrected on the DEC-879 review.
  */
 
 import {

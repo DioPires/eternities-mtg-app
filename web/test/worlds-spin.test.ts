@@ -504,8 +504,8 @@ describe('the CPU motion mirror spins about the pole axis too (DEC-774)', () => 
     // norm 1 - 2.9e-7 and the conjugate the inverse halves apply undoes it only to about 4.4e-8 —
     // 87% of the 7-decimal budget below, which a re-emit that rounds dominaria differently could
     // push over with no code change. Normalising removes that cause and leaves the budget where it
-    // is, where a looser tolerance would keep the coupling and weaken every row; the residual goes
-    // to 1.5e-15, and all three axis mutants stay red. Same move as the composition row above.
+    // is, where a looser tolerance would keep the coupling and weaken every row; the residual drops
+    // to order 1e-15, and all three axis mutants stay red. Same move as the composition row above.
     const unit = new Quaternion(
       source.tilt[0],
       source.tilt[1],
