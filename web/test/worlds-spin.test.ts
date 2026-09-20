@@ -485,16 +485,39 @@ describe('the CPU motion mirror spins about the pole axis too (DEC-774)', () => 
    *
    * Unlike {@link spinningPlane}, these run the roster row as it ships — real tilt, real home,
    * real drift, a live multiverse angle — with only the shear switched off, because that is the
-   * one term `planeLocalToWorld` deliberately omits. Seven decimals: `planes.json` emits `tilt` to
-   * four, so the conjugate `worldDirToPlaneLocal` applies is an inverse to about 4e-8, not to
-   * machine epsilon.
+   * one term `planeLocalToWorld` deliberately omits. Seven decimals, and {@link tiltedRig}
+   * normalises the fixture tilt first, so none of that budget is spent on `planes.json`'s
+   * four-decimal rounding.
    */
   function tiltedRig(): { plane: PlaneRecord; motion: SceneMotion } {
     const source = WORLDS.find((candidate) => candidate.slug === 'dominaria')!
-    // A real tilt, or `applyQuat` and its conjugate are both the identity and rows 3 and 4 pass on
-    // any axis at all.
+    // A real tilt, or every `applyQuat` below is the identity and a half that simply drops its own
+    // tilt term passes all four rows. That — not the spin axis — is what this guard buys. Measured
+    // on DEC-872: at `tilt = [0, 0, 0, 1]` each of `planeLocalToWorld`, `planeLocalDirToWorld` and
+    // `worldDirToPlaneLocal` survives deleting its own `applyQuat`, and at this row's tilt each one
+    // reds the rows it feeds. The three single-half *axis* mutants red at identity tilt exactly as
+    // they do here, so rows 3 and 4 do not go vacuous without a tilt; the spin guard below is what
+    // carries the axis.
     expect(Math.abs(source.tilt[3])).toBeLessThan(0.999)
-    const plane: PlaneRecord = { ...source, index: 0, shearAmplitude: 0 }
+
+    // Normalised before use. `planes.json` emits `tilt` to four decimals, so the shipped row has
+    // norm 1 - 2.9e-7 and the conjugate the inverse halves apply undoes it only to about 4.4e-8 —
+    // 87% of the 7-decimal budget below, which a re-emit that rounds dominaria differently could
+    // push over with no code change. Normalising removes that cause and leaves the budget where it
+    // is, where a looser tolerance would keep the coupling and weaken every row; the residual goes
+    // to 1.5e-15, and all three axis mutants stay red. Same move as the composition row above.
+    const unit = new Quaternion(
+      source.tilt[0],
+      source.tilt[1],
+      source.tilt[2],
+      source.tilt[3],
+    ).normalize()
+    const plane: PlaneRecord = {
+      ...source,
+      index: 0,
+      shearAmplitude: 0,
+      tilt: [unit.x, unit.y, unit.z, unit.w],
+    }
 
     const table = spunTable(plane, 17)
     const motion = new SceneMotion({
@@ -506,7 +529,13 @@ describe('the CPU motion mirror spins about the pole axis too (DEC-774)', () => 
     motion.syncClock(table.time, table.multiverseAngle)
     motion.syncSpin(0, table.planes[0]!.spinAngle)
 
-    // Both angles have to be off zero, or every row below is stated at the identity.
+    // The spin angle has to be off zero or every row below really is stated at the identity: at
+    // `syncSpin(0, 0)` all three single-half axis mutants pass all four rows. The multiverse angle
+    // is guarded for a narrower reason. It enters the round trips as `rotateY(+angle)` closing the
+    // forward half and `rotateY(-angle)` opening the inverse, so it cancels and cannot make rows 3
+    // and 4 vacuous — zeroing it leaves each axis mutant red on the rows it feeds. What it does
+    // bind is a half that drops its own multiverse rotation, which passes all four rows at zero
+    // and reds them here.
     expect(Math.abs(table.planes[0]!.spinAngle)).toBeGreaterThan(0.1)
     expect(Math.abs(table.multiverseAngle)).toBeGreaterThan(0.05)
     return { plane, motion }

@@ -15,8 +15,11 @@
  *     hash would diverge between the CPU's float64 and the GPU's float32 by more than the
  *     turbulence amplitude itself.
  *
- * `starfield.test.ts` asserts the shared invariants; `scripts/verify-browser.mjs` reads world
- * positions back off the GPU and compares them with this file.
+ * `starfield.test.ts` asserts the shared invariants on this side. Nothing checks the GLSL twin
+ * against it: `scripts/verify-browser.mjs` was the CPU-to-GPU read-back and it left the tree with
+ * the star field at the cutover (DEC-752), so the agreement the three points above describe now
+ * rests on the two being read side by side. The twin is still live — `cards/cardShaders.ts`
+ * compiles `MOTION_GLSL` into the thumbnail program. Recorded on DEC-872.
  */
 
 import {
