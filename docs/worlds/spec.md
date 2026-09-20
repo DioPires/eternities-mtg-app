@@ -675,14 +675,32 @@ boundary in that frame is the budget being exhausted, and the churn behind it is
 fetches (≈ 170 MB) for one camera pose.
 
 > **Normative.** The effective art threshold is a **per-frame quantile**, not a constant. Maintain a
-> 64-bucket histogram of the on-screen pixel heights of wanting cells (one pass, no sort). If the
+> 256-bucket histogram of the on-screen pixel heights of wanting cells (one pass, no sort). If the
 > count above 24 px exceeds the pool capacity, count down from the tallest bucket until admitting one
 > more would carry the running total past capacity, and raise the effective threshold to the lower
-> edge of the bucket **above** that crossing one — the last bucket that fit — with one bucket of
-> hysteresis so the boundary does not oscillate. The result is the same picture — a ring of art
-> around the sub-camera point — reached by design rather than by exhaustion, with a bounded fetch
-> count and near-zero steady-state eviction. Acceptance criterion **W4** (§3.1) measures exactly
-> this.
+> edge of the bucket **above** that crossing one — the last bucket that fit — with **7.88% of
+> hysteresis**, a width in pixels rather than a count of buckets, so the boundary does not
+> oscillate. The result is the same picture — a ring of art around the sub-camera point — reached by
+> design rather than by exhaustion, with a bounded fetch count and near-zero steady-state eviction.
+> Acceptance criterion **W4** (§3.1) measures exactly this.
+>
+> **Normative — the resolution is 256, and only the resolution changed (DEC-882).** This read 64,
+> and a 64-bucket grid is ~7.88% per step. At `dominaria` 2.2 world-radii under tier 4 the 128th-
+> and 208th-tallest cells are **0.77 px** apart, about a quarter of one such step, and a single old
+> bucket laid on the capacity rank held **128** cells — the whole pool. There was no edge to place
+> *inside* the pool, so the only admissions the quantile could reach were 16 cells (0.125x capacity)
+> and 291 (2.27x); "admit about 128 here" was not on the grid, and the tier-4 rung read 14 cells of
+> art against §3.1's floor of 32. 256 buckets is ~1.91% per step and the two grids **nest** — every
+> 64-bucket edge is still an edge, 64-bucket *k* being 256-bucket *4k* — so this refines the
+> boundary rather than moving it. Measured live at that pose over five draws: threshold **37.11 px**
+> and **82 of 128** layers admitted, against 37.82 px and 14–17 before, with 124–128 cells drawing
+> art on both. The intent of this section is unchanged, and so is "one pass, no sort".
+>
+> **Normative — the hysteresis hold is a width in pixels (DEC-882).** The drift the hold absorbs is
+> a property of the camera, and bucket indices are only how the implementation addresses pixels: a
+> hold stated as "one bucket" quarters itself when the resolution is raised four-fold, re-opening
+> the flicker DEC-768 F2 closed. The width is therefore pinned at the one that was measured to work,
+> **7.88%** — one step of the grid it was measured on — which this grid spells as four buckets.
 >
 > **Normative — the one exception, and a pool with demand in front of it is never left idle (DEC-768
 > F1, DEC-770 N3).** Where the crossing bucket is the **first non-empty** one, "the last bucket that

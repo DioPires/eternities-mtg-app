@@ -137,10 +137,19 @@ export interface ThresholdReport {
  * > statement about *the previous surface* instead. Measured on the shipped roster before this type
  * > existed — `zendikar` alternating between 2.18 and 2.20 world-radii at 224 layers, where the raw
  * > quantile moves one bucket every frame: alone on the roster it held at
- * > `44.02 47.48 47.48 47.48 …`, and on the full 45 it oscillated `44.02 47.48 44.02 47.48 …` —
+ * > `44.02 44.86 44.86 44.86 …`, and on the full 45 it oscillated `44.02 44.86 44.02 44.86 …` —
  * > the ring of art flickering one cell wide that the hold branch is declared normative to remove.
  * > A roster of 45 always has a preceding world, so the second row was what always happened. The
  * > mechanism was present, normative, and inert.
+ * >
+ * > **Those two readings are DEC-882's, not DEC-768's.** The flicker's amplitude is one grid step
+ * > by construction — the raw quantile straddles an edge, so it alternates between that edge and
+ * > its neighbour — and the raise carried it with the grid: this case read
+ * > `44.02 47.48 44.02 47.48 …` at 64 buckets, a 7.88% swing, and reads 1.91% now. Finer buckets
+ * > therefore make the flicker *smaller* as well as rarer, which is why the hold is stated in
+ * > pixels: at one bucket it would still cover this case and would no longer cover the drift it
+ * > was measured against. Re-swept over 2.10-2.30 radii in 0.005 steps, `zendikar`'s raw quantile
+ * > still moves **2 buckets** in one step at 2.105, which a one-bucket hold releases on.
  *
  * It is a required argument of {@link AdaptiveThreshold.end} rather than a field with a default,
  * so that sharing one is a thing a caller has to *write* rather than a thing it gets by omission.
@@ -204,13 +213,21 @@ export class AdaptiveThreshold {
    * > one** — where "the last that fit" is a bucket nothing is in, so the frame admits **nothing at
    * > all** and every layer of the pool sits idle in front of a world that wants art.
    * >
-   * > Measured before this branch existed: `dominaria` at 2.2 world-radii, tier 4's
-   * > 128 layers, 922 wanting cells in buckets 0–3 (185/299/280/158) — bucket 3 alone exceeds 128,
-   * > the threshold jumped to bucket 4's 32.50 px and **0** of 128 layers were used; it now sits at
-   * > bucket 3's **30.13 px** and admits that bucket (DEC-770 N2). The same world at 1.8
-   * > radii wanted 961 and admitted 0 as well; they were the only two poses of ninety in that sweep
-   * > that did. That is strictly worse than the `fixed24` prototype this quantile replaces, at the
-   * > pose §3.1 states W4 at.
+   * > Measured before this branch existed, on the 64-bucket grid: `dominaria` at 2.2 world-radii,
+   * > tier 4's 128 layers, 922 wanting cells piled into buckets 0–3 (185/299/280/158) — bucket 3
+   * > alone exceeds 128, the threshold jumped to bucket 4's 32.50 px and **0** of 128 layers were
+   * > used; with the branch it sat at bucket 3's **30.13 px** and admitted that bucket, 158 of 128
+   * > (DEC-770 N2). The same world at 1.8 radii wanted 961 and admitted 0 as well; they were the
+   * > only two poses of ninety in that sweep that did. That is strictly worse than the `fixed24`
+   * > prototype this quantile replaces, at the pose §3.1 states W4 at.
+   * >
+   * > **Where it binds moved at DEC-882, and the branch stays (ruling 5).** A 256-bucket grid does
+   * > not pile 922 cells into four buckets, so at tier 4 `dominaria` now spreads over dozens, reads
+   * > **30.71 px** and admits **90** of 128 with `running > 0` at the crossing — F1 does not fire
+   * > there, and no pose of ninety overshoots capacity at 64 layers or above. It is not thereby
+   * > dead: re-swept on the shipped roster, F1 still fires at capacity **16**, on four poses of
+   * > ninety (`dominaria` 41/16 and 27/16, `innistrad` 19/16, `ravnica` 17/16), where the pool is
+   * > small enough for one bucket to cross it. Its overshoot there fell from 12.1 pools to 2.6.
    * >
    * > So the crossing bucket is taken whenever the bucket above it would admit nothing, and the
    * > overshoot — at most that one bucket's own count, 158 against 128 above — is left to the
