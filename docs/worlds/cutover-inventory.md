@@ -316,12 +316,25 @@ emitters of `onHover` and `onSelect`. `starScene.ts` holds galaxy rendering and 
 no picker, no listener, no routing — and reads the input layer for one thing, PRD 8.5.7's focused
 star index.
 
-The one galaxy-shaped part of picking is the star field's hover highlight. It is **handed over**
-(`ScenePickingHandle.setStarHighlight`, called from `attachStarScene`'s `setResources`) rather than
-reached for, so the cutover stops registering it by deleting `starScene.ts` and touches no line of
-the input layer. `SceneHost` attaches picking **before** the field — the `pick` phase's order
-between the two is load-bearing — and feeds it the star *data* layer (`{ geometry, table }`)
-directly, never through `SceneResources.field`.
+The one galaxy-shaped part of picking was the star field's hover highlight. It was **handed over**
+(`ScenePickingHandle.setStarHighlight`, called from `attachStarScene`'s `setResources` — the
+hand-over is in that setter, not in the attach body) rather than reached for, so the cutover could
+stop registering it by deleting `starScene.ts` without touching a line of the input layer. **That is
+what happened** (DEC-752, DEC-857 item 7): `setStarHighlight` is still declared and implemented in
+`input/attachScenePicking.ts`, ready for a field to register with, and since the deletion nothing in
+`src/` calls it — the only caller left in the tree is `test/scene-picking-host.test.tsx`, which
+drives it directly. There is no hand-over on the shipped path any more.
+
+`SceneHost` still attaches picking **before** the rest of the frame, and it is still a construction
+dependency the type enforces — but of a different call since the cutover: the handle is a required
+argument of `attachSceneFrame`, which is where PRD 8.5.7's mirror and the `focusedIndex` getter now
+live (`sceneFrame.ts`). The `pick` phase's subscription order between the two is **not** load-bearing
+(DEC-853): that phase only issues `runPick(false)`, `focused` is written only on the select path,
+which runs from `pointerup`, and the pick is `async`, so the mirror cannot observe the frame's own
+pick in either order. DEC-853's reviewer swapped the two attach calls on the pre-cutover tree and
+their suite stayed green at 1,394/1,394; the reading above is the mechanism, and `frameLoop.ts` says
+the same thing in general — `TICK_PHASES` exists so subscription order is not load-bearing. Picking
+is fed the star *data* layer (`{ geometry, table }`) directly, never through `SceneResources.field`.
 
 So §3.2's delete of `starScene.ts` no longer takes the app's pointer with it. What remains of §7 is
 the **star data layer** half: `useSceneData` still builds `StarGeometry`/`PlaneTable`/
@@ -333,9 +346,14 @@ was, because nothing outside the galaxy *routes* through it.
 Evidenced, not asserted: `test/scene-picking-host.test.tsx` drives the input layer with no galaxy in
 the scene at all, and `test/scene-host-picking.test.tsx` drives the two routes through a real
 `SceneHost` — hover to §1.10's label, click to the selection — behind the `createPicker` seam, so
-the assertions are about the shipped wiring and not a copy of it. Both label rows carry a negative
-control, because a label that is never written reads identically to one correctly withheld. An
-11-mutant matrix over the two files and their `sceneHost` call sites is 11/11 caught.
+the assertions are about the shipped wiring and not a copy of it. Both label rows drive `visible`
+**true** and then take the pointer off the canvas before asserting the label comes back down
+(DEC-854): the withdraw path is the half that a `visible: false` initial value hides, because a
+label that is never written reads identically to one correctly withheld. Two mutants say how much
+that was worth: deleting `focusedCardHost.ts`'s clearing write reds both rows and left them green as
+DEC-852 shipped them, and dropping the `-1` the hover route sends on a miss reds the `SceneHost` row
+against a pre-fix suite that was 1,394/1,394 green on it. An 11-mutant matrix over the two files and
+their `sceneHost` call sites is 11/11 caught.
 
 ## 5. The two things §3.2 makes atomic with all of the above
 

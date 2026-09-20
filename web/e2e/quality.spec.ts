@@ -137,12 +137,21 @@ async function pinnedTier(page: Page, index: number): Promise<Quality> {
 }
 
 /**
- * Wait until `stars.bin` is fully decoded and the composer has sized the bloom.
+ * Wait until `stars.bin` is fully decoded, the composer has sized the bloom, and the worlds rim has
+ * a program name.
  *
  * The harness panel's own words for the stream, not a sleep. `starsDrawn` has to be *final* before
  * it can be compared across tiers, or the invariant would be reading the stream's progress rather
  * than the ladder's effect on it. The bloom source is waited for too: it is `null` until the
  * chain's first `configure`, and a `null` would make the rung-2 comparisons read as equal.
+ *
+ * **`glowShader` is the third wait, and it was a race until it was** (DEC-854). `probeSeam.ts`
+ * reports `worlds.rimProgram ?? ''` and says in its own comment that the roster composes "before
+ * any tier could be read off it". On a cold cache in CI it does not: rung 4's assertions read `''`
+ * for tier 0 on both attempts of a run whose other 25 tests passed. An empty program name is not a
+ * rung that failed to land, it is a rim that has not been built yet, so it is waited for here
+ * rather than asserted below — and a rim that never composes still fails, on this line, with this
+ * explanation.
  */
 async function waitForField(page: Page): Promise<void> {
   await expect(page.getByTestId('eternities-status')).toContainText('(complete)', {
@@ -153,7 +162,7 @@ async function waitForField(page: Page): Promise<void> {
     .poll(
       async () => {
         const quality = await readQuality(page)
-        return quality.bloomSource !== null && quality.bloomLevels > 0
+        return quality.bloomSource !== null && quality.bloomLevels > 0 && quality.glowShader !== ''
       },
       { timeout: 30_000 },
     )
@@ -165,6 +174,32 @@ async function readQuality(page: Page): Promise<Quality> {
     const probe = window.__eternitiesProbe
     if (!probe) throw new Error('?probe=1 did not install the probe')
     return probe.state().quality
+  })
+}
+
+/**
+ * How far `ProbeState.multiverseAngle` moved across ten animation frames, in radians.
+ *
+ * The frames are the point. A reading taken twice off a timer would advance on a page whose loop
+ * had stopped entirely, because the angle is a number on the plane table and a stopped loop leaves
+ * the last one there — so this waits on `requestAnimationFrame`, which is the same clock the frame
+ * runs on. Ten of them, because one frame's step at 60 Hz is a few thousandths of a radian and the
+ * reading has to survive a SwiftShader frame rate.
+ *
+ * Wrapped forward (`% TAU`), because the table wraps: a sweep that crosses the turn during the
+ * sample must not read as a negative advance. The consequence to know about is that an exactly
+ * frozen angle is the only reading that comes back 0, which is exactly the failure being watched.
+ */
+async function multiverseAdvance(page: Page): Promise<number> {
+  return page.evaluate(async () => {
+    const probe = window.__eternitiesProbe
+    if (!probe) throw new Error('?probe=1 did not install the probe')
+    const nextFrame = async (): Promise<void> =>
+      new Promise((resolve) => requestAnimationFrame(() => resolve()))
+    const first = probe.state().multiverseAngle
+    for (let frame = 0; frame < 10; frame += 1) await nextFrame()
+    const TAU = Math.PI * 2
+    return (((probe.state().multiverseAngle - first) % TAU) + TAU) % TAU
   })
 }
 
@@ -186,8 +221,12 @@ test('every rung of the quality ladder lands, and only its own rung (PRD 8.5.11,
   page,
 }) => {
   const tiers: Quality[] = []
+  // Read on the tier's own page, before the next `goto` takes it away — the spin is a live
+  // reading, not a field of the snapshot `pinnedTier` returns.
+  const advances: number[] = []
   for (let index = 0; index < TIER_LABELS.length; index += 1) {
     tiers.push(await pinnedTier(page, index))
+    advances.push(await multiverseAdvance(page))
   }
   const [full, pixelRatio, bloom, cardImagery, glow] = tiers as [
     Quality,
@@ -301,18 +340,48 @@ test('every rung of the quality ladder lands, and only its own rung (PRD 8.5.11,
   for (const tier of [full, pixelRatio, bloom, cardImagery]) {
     expect(tier.glowShader, `${tier.tier} must keep the full rim`).toBe('WorldAtmosphere')
   }
-  // Rung 4 moves the glow and nothing else: the three quantities the rungs above it own are held.
+  // Rung 4 moves the glow and nothing else: the quantities the rungs above it own are held.
+  //
+  // The fourth line here was `glow.thumbnailCapacity` against `cardImagery`'s, which is `0 === 0`
+  // since the thumbnail tier retired — both sides are pinned to the structural 0 twenty lines
+  // above, so it could not fail (DEC-857 item 5). Dropped rather than re-pointed: the pin it would
+  // duplicate is already there.
   expect(glow.drawingBuffer).toEqual(cardImagery.drawingBuffer)
   expect(glow.bloomSource).toEqual(cardImagery.bloomSource)
   expect(glow.bloomLevels).toBe(cardImagery.bloomLevels)
-  expect(glow.thumbnailCapacity).toBe(cardImagery.thumbnailCapacity)
 
-  // The structural promise: "geometry and motion are never degraded". Same stars drawn, same
-  // `uMotion`, at every rung including the bottom one.
-  expect(full.starsDrawn).toBeGreaterThan(0)
+  // The structural promise: "geometry and motion are never degraded" (PRD 8.5.11), at every rung
+  // including the bottom one.
+  //
+  // **The motion half used to be true by construction** (DEC-857 R2). It read `tier.motion`, which
+  // is `sceneFrame.motionScale`, which is `reducedMotion ? 0 : 1` — and no rung of the ladder
+  // writes `reducedMotion`. `applyQualityTier` has six targets and that is not one of them; the
+  // only writer is PRD 5.9's setting, which `?motion=1` pins off before any of this runs. So the
+  // row asserted `1 === 1` five times: it could not have gone red for a ladder that stopped the
+  // multiverse, which is the degradation it existed to catch.
+  //
+  // What replaced it is the quantity that would actually stop: `ProbeState.multiverseAngle`, the
+  // table's own integrated spin, sampled across ten animation frames on each pinned page and
+  // required to have moved. A rung that froze the clock, or an `advance` that stopped reaching it,
+  // reds this. See {@link multiverseAdvance} for why the reading is a live one.
+  for (let index = 0; index < advances.length; index += 1) {
+    expect(
+      advances[index],
+      `${TIER_LABELS[index]} stopped the multiverse: the spin angle did not move across ten frames`,
+    ).toBeGreaterThan(0)
+  }
+
+  // **`starsDrawn` is the star *data* layer's drawable record count since the cutover** (DEC-752):
+  // it reads `StarGeometry.drawCount`, which `useSceneData` still builds, and not a mesh — the mesh
+  // that drew those records went with the star field. It is therefore no longer evidence for
+  // "geometry is never degraded"; no rung has a writer for it, exactly as none has for the
+  // thumbnail capacity above.
+  //
+  // Pinned rather than deleted, for the same reason that one is: a count that started moving with
+  // the tier would be a regression this spec should be the one to see.
+  expect(full.starsDrawn, 'the star data layer is loaded, or the pin below is vacuous').toBeGreaterThan(0)
   for (const tier of tiers) {
-    expect(tier.starsDrawn, `${tier.tier} changed the star count`).toBe(full.starsDrawn)
-    expect(tier.motion, `${tier.tier} changed the motion`).toBe(1)
+    expect(tier.starsDrawn, `${tier.tier} changed the star record count`).toBe(full.starsDrawn)
   }
 })
 
