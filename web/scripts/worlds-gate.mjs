@@ -27,8 +27,8 @@
  */
 
 import { spawn, execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { basename, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import puppeteer from 'puppeteer-core'
@@ -2207,6 +2207,33 @@ async function main() {
 // its hand-written mirror (DEC-847 item 2), and a bare `await main()` would build the app and drive
 // a browser on import. `process.argv[1]` is the script node was told to run; equal to this module's
 // own path, this file is the entry point rather than a dependency.
-if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+//
+// Both sides must be realpath'd before they can be compared (DEC-869 claim 1). Node sets
+// `process.argv[1] = resolve(arg)` and does **not** follow symlinks, while the ESM loader hands
+// `import.meta.url` back already resolved, so any absolute invocation whose prefix crosses a
+// symlink — `/tmp` and `/var/folders` are symlinks on macOS, and that is where our detached chains
+// live — makes a bare compare false. The failure is silent: `main()` never runs, `process.exitCode`
+// is never set, and the shell reads 0 from a gate that checked nothing. Hence the second arm: when
+// the basename matches but the path does not, we are the script someone meant to run and the
+// compare still failed, so say which two paths disagreed and exit non-zero rather than quietly
+// toward green. `realpathSync` throws on a path that does not exist; fall back to the resolved
+// spelling there so a missing entry cannot crash the guard itself.
+const self = fileURLToPath(import.meta.url)
+const entry =
+  process.argv[1] === undefined
+    ? null
+    : (() => {
+        try {
+          return realpathSync(resolve(process.argv[1]))
+        } catch {
+          return resolve(process.argv[1])
+        }
+      })()
+if (entry === self) {
   await main()
+} else if (entry !== null && basename(entry) === basename(self)) {
+  console.error(
+    `worlds-gate.mjs: ${entry} is not ${self} — refusing to run rather than exit 0 silently`,
+  )
+  process.exit(2)
 }
