@@ -1299,6 +1299,79 @@ export const SMALLEST_SHIPPED_POOL_LAYERS = 128;
 export const W4_STARVATION_DOMAIN_CELLS = SMALLEST_SHIPPED_POOL_LAYERS;
 
 /**
+ * The pool capacity the absolute term's **live falsifier** runs at — `?layers=24` (DEC-890).
+ *
+ * ## Why this row exists, and what killed the one before it
+ *
+ * `FLOORS.artCellsAbsolute` needs a live expected-RED row or it is a bound nothing in
+ * `--negative-controls` can fail. Until DEC-882 that row was `layers-128-reduced`, which read **14**
+ * cells against the floor of 32 with `artFraction` at 1.00 on the same frame. That 14 was an
+ * artefact of the 64-bucket quantile: at `dominaria` 2.2 radii the old grid had no edge to place
+ * inside a 128-layer pool, so it could admit ~14–17 cells or ~291 and nothing between. DEC-882
+ * raised the grid to 256 buckets, the same row now admits 78, and it proves nothing. A falsifier
+ * that rests on a **quantisation accident** expires when the quantisation is repaired, which is
+ * `a-corpus-change-can-retire-a-sibling-control` arriving through the resolution instead.
+ *
+ * ## The mechanism the resolution cannot undo, and it is an inequality rather than a reading
+ *
+ * A cell shows art by holding a layer, so **`showing ≤ pool.layers` on every frame of every build**,
+ * whatever the threshold policy does with its histogram. Set the pool below the floor and the
+ * measure cannot reach it — no bucket count, no hysteresis width and no pose can lift `showing` past
+ * a capacity that is not there. The quantile's resolution moves *which* cells are admitted; it
+ * cannot move how many layers exist.
+ *
+ * That inequality is the first of the two this number has to satisfy, and the second is what keeps
+ * the row's *other* half honest:
+ *
+ * 1. **`W4_STARVED_POOL_LAYERS < FLOORS.artCellsAbsolute`** — `artCellsShowing` is RED by
+ *    construction, so the row cannot quietly stop being a falsifier.
+ * 2. **the quantile's chosen bucket must fit inside the pool** — if it does not, the frame asks for
+ *    more cells than the pool holds, `artFraction` falls off its ceiling, and the row stops showing
+ *    the *disagreement* between the two measures that is its whole argument.
+ *
+ * ## 24, measured, and it is the midpoint of the two slacks rather than a fitted number
+ *
+ * At `dominaria`'s 2.2-radii pose the 256-bucket quantile sits on the 37.82 px edge for every
+ * capacity in ~17…81 and admits **15–16** cells there — the want set is set by the height
+ * distribution, not by the capacity, across that whole window. So condition 2 wants capacity above
+ * ~16 and condition 1 wants it below 32, and 24 is the value that maximises the smaller of the two
+ * margins: 8 layers of room above the want set, 8 below the floor.
+ *
+ * Both ends were measured rather than argued, three draws each at the gate pose (DEC-890):
+ *
+ * | `?layers=` | `artFraction` | `artCellsShowing` | verdict |
+ * |---|---|---|---|
+ * | 8  | **0.375** vs 0.500 | 6  | RED/RED — the F1 branch overshoots a pool this small, 16 wanted into 8 |
+ * | 16 | **0.8667** vs 0.900 | 13 | RED/RED — 15 wanted into 16, and two cells mid-fade clear the bar |
+ * | 20 | 1.0000 | 15 | GREEN/RED |
+ * | **24** | **1.0000, 1.0000, 0.9375** | **15, 15, 15** | **GREEN/RED — the row** |
+ * | 28 | 1.0000 | 15 | GREEN/RED |
+ * | 31 | 1.0000 | 15 | GREEN/RED |
+ *
+ * `artCellsShowing` read **15 on 12 of 12** readings across the window; the one 0.9375 is a single
+ * cell still cross-fading in a want set of 16, and it clears the 0.9 bar because the pool has room
+ * for every cell that asked. 20 and 28 would both work today and are rejected for margin, not for
+ * their reading: 20 leaves four layers between the pool and the want set, 28 leaves four between the
+ * pool and the floor.
+ *
+ * ## What this row does **not** cover, stated rather than left to be discovered
+ *
+ * It falsifies the **measure**, not the **policy**. No regression in the adaptive threshold can turn
+ * this row green, because the capacity bound holds whatever the threshold does — so a reader must
+ * not score it as coverage for §1.6. The policy direction is covered by `layers-128`, the tightest
+ * healthy rung, which reds the moment the quantile starves a shipped pool again.
+ *
+ * **And after DEC-882 that split is forced rather than chosen.** The quantile now tracks capacity to
+ * within a bucket, so on any rung the renderer actually ships — 128 at the smallest — it admits of
+ * the order of the pool's own size, and `showing` cannot fall below 32 at a surface pose without the
+ * frame having fewer than 32 cells over 24 px in the first place. There is no shipped configuration
+ * left that starves this term. A pool below the smallest shipped rung is therefore the only live
+ * falsifier available, and `belowShippedPool` is already on the W4 record so the row cannot be read
+ * as a claim about a configuration a browser can be in.
+ */
+export const W4_STARVED_POOL_LAYERS = 24;
+
+/**
  * W4's eviction rate, measured on the **fill-excluded tail** and scored for its own convergence.
  *
  * Board ruling on DEC-833 card `bd5c9aad`, option (a). A cold pool's first `layers` admissions are

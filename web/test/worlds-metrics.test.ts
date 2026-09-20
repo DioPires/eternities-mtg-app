@@ -40,6 +40,7 @@ import {
   poolHighWater,
   foldCriteria,
   SMALLEST_SHIPPED_POOL_LAYERS,
+  W4_STARVED_POOL_LAYERS,
   W5_MIN_AZIMUTHS,
   W5_AZIMUTH_UNIFORMITY_TOLERANCE,
   azimuthSpacingFault,
@@ -2273,6 +2274,123 @@ describe("W4 — art resolves without exhausting", () => {
       expect(absolute?.status).toBe("insufficient");
       expect(absolute?.insufficientReason).toMatch(/art stream never ran/);
     });
+
+    /**
+     * **The live falsifier's constructed twin (DEC-890).**
+     *
+     * DEC-882 raised the quantile to 256 buckets and took the term's live RED row away with it:
+     * `layers-128-reduced` read 14 cells because the 64-bucket grid had no edge to place inside a
+     * 128-layer pool at that pose, and at 256 it reads 78. A falsifier resting on a quantisation
+     * accident expires when the quantisation is repaired.
+     *
+     * The replacement rests on an inequality instead. A cell shows art by holding a layer, so
+     * `showing <= pool.layers` on every frame of every build, and a pool below the floor cannot
+     * reach it whatever the threshold policy does. These rows are the gate row `layers-24` at its
+     * measured readings, so a change to either side fails here before it costs a gate run.
+     */
+    describe("the ?layers=24 falsifier, at the readings the gate row takes", () => {
+      /** The row's frame: dominaria at 2.2 radii, 1,386 cells presented, the want set served. */
+      const starvedPool = (wanted: number, drawn: number) =>
+        evaluateW4(
+          frameOf(1_386, wanted, drawn),
+          settled(0, W4_STARVED_POOL_LAYERS),
+          {
+            layers: W4_STARVED_POOL_LAYERS,
+            resident: W4_STARVED_POOL_LAYERS,
+          },
+          FRESH_SESSION,
+          HEALTHY_EXIT,
+        );
+
+      it("separates the two measures on one frame, as the row is asserted to", () => {
+        // Draws 2 and 3: 15 cells wanted art at the 37.82 px quantile edge, all 15 got it.
+        const w4 = starvedPool(15, 15);
+        const fraction = w4.measures.find((m) => m.key === "artFraction");
+        const absolute = w4.measures.find((m) => m.key === "artCellsShowing");
+
+        // `artFraction` sits at its ceiling — the pool has room for every cell that asked — and the
+        // absolute count sits at less than half the floor on the same frame. That disagreement is
+        // the row's whole argument. `a-ratio-is-blind-to-its-own-denominator`.
+        expect(fraction?.value).toBe(1);
+        expect(fraction?.status).toBe("pass");
+        expect(absolute?.value).toBe(15);
+        expect(absolute?.bound).toBe(32);
+        expect(absolute?.status).toBe("fail");
+
+        // In domain, and by geometry rather than by want set: 1,386 presented against the 128 the
+        // term needs. A domain written off `wanting` would read 15 here and switch the term off.
+        expect(w4.presented).toBe(1_386);
+        expect(absolute?.insufficientReason ?? null).toBe(null);
+
+        // The eviction half is out of its capacity domain at 24 layers, exactly as it is at 128, so
+        // a pool too small to churn cannot be recorded as good eviction behaviour.
+        expect(
+          w4.measures.find((m) => m.key === "evictionsPerSecond")?.status,
+        ).toBe("insufficient");
+
+        // ...and the record says this is a harness configuration, not a rung a browser can be on.
+        expect(w4.belowShippedPool).toBe(true);
+      });
+
+      it("keeps artFraction green on the draw where a cell is still cross-fading", () => {
+        // Draw 1 of three: the want set turned over to 16 while one cell was still fading in, so the
+        // ratio read 0.9375. It clears the 0.9 bar because the pool has room for every cell that
+        // asked — which is the condition `demandFitsCapacity` below states, and the reason the row
+        // asserts that measure rather than leaving it to be read.
+        const w4 = starvedPool(16, 15);
+        expect(w4.measures.find((m) => m.key === "artFraction")?.value).toBeCloseTo(
+          0.9375,
+          4,
+        );
+        expect(w4.measures.find((m) => m.key === "artFraction")?.status).toBe("pass");
+        expect(w4.measures.find((m) => m.key === "artCellsShowing")?.status).toBe(
+          "fail",
+        );
+        const demand = w4.measures.find((m) => m.key === "demandFitsCapacity");
+        expect(demand?.value).toBeCloseTo(16 / W4_STARVED_POOL_LAYERS, 6);
+        expect(demand?.status).toBe("pass");
+      });
+
+      it("cannot be greened by any policy, because the pool is the bound", () => {
+        // **The property that makes this row survive what killed the last one.** Hand the frame
+        // every outcome the policy could possibly produce — from no cell served to the whole pool
+        // serving a cell each — and the measure reds on all of them. No bucket count, hysteresis
+        // width or pose lifts `showing` past a capacity that is not there.
+        for (let drawn = 0; drawn <= W4_STARVED_POOL_LAYERS; drawn += 1) {
+          const w4 = starvedPool(W4_STARVED_POOL_LAYERS, drawn);
+          expect(
+            w4.measures.find((m) => m.key === "artCellsShowing")?.status,
+          ).toBe("fail");
+        }
+        // And the red is the inequality rather than something else about a small pool: give the
+        // frame a pool at the floor and the same shape of frame passes. `confirm-the-instrument-
+        // sees-the-defect`, from the green side.
+        expect(
+          evaluateW4(
+            frameOf(1_386, 32, 32),
+            settled(0, 32),
+            { layers: 32, resident: 32 },
+            FRESH_SESSION,
+            HEALTHY_EXIT,
+          ).measures.find((m) => m.key === "artCellsShowing")?.status,
+        ).toBe("pass");
+      });
+
+      it("sits between the want set and the floor with room on both sides", () => {
+        // The two inequalities the capacity has to satisfy, and 24 is the value that maximises the
+        // smaller margin rather than the value that produced the answer. Below the floor, so the
+        // measure is RED by construction:
+        expect(W4_STARVED_POOL_LAYERS).toBeLessThan(FLOORS.artCellsAbsolute);
+        // ...and above the want set the quantile admits at the row's pose, so every cell that asked
+        // is served and `artFraction` can reach its ceiling. Measured 15-16 over three draws; 16 is
+        // pinned here because that is the reading the margin is claimed against.
+        expect(W4_STARVED_POOL_LAYERS).toBeGreaterThanOrEqual(16);
+        expect(FLOORS.artCellsAbsolute - W4_STARVED_POOL_LAYERS).toBe(8);
+        expect(W4_STARVED_POOL_LAYERS - 16).toBe(8);
+        // It is a harness capacity and not a rung, which is why `belowShippedPool` rides the record.
+        expect(W4_STARVED_POOL_LAYERS).toBeLessThan(SMALLEST_SHIPPED_POOL_LAYERS);
+      });
+    });
   });
 
   /**
@@ -3783,18 +3901,47 @@ describe("the negative-control matrix", () => {
       measure: "artCellsShowing",
       expect: "N/A",
     },
-    // **The absolute term's live RED (DEC-843), and this row is why the count above moved.** It used
-    // to say the term's witness — a want set collapsed under reduced motion — was unreachable
-    // because `?motion=0` is inert on the shell. True of that seam, and the matrix is not restricted
-    // to query seams: `layers-128-reduced` emulates the OS preference before `goto`, exactly as
-    // `worlds-evict-longrun.mjs` does, and reads 14 cells against the floor of 32 on a frame
-    // presenting 1,388. Its read-back is asserted in both directions against the unseamed
-    // `?layers=128` sibling — `a-control-that-agrees-is-not-a-control-that-took`.
+    // **This was the absolute term's live RED from DEC-843 until DEC-882 retired it, and it is
+    // GREEN here because the gate row is GREEN (DEC-890).** It read 14 cells against the floor of 32
+    // under an emulated OS reduced-motion preference at `?layers=128` — but the 14 was the 64-bucket
+    // grid having no edge to place inside a 128-layer pool at that pose, not the policy starving.
+    // PR #93 raised the grid to 256, the row reads 78, and it flipped its own gate expectation to
+    // GREEN. **It did not flip this mirror, and nothing cross-checks the two** — which is exactly
+    // `a-hand-written-mirror-guards-only-itself`, the defect DEC-845 landed this block to repair,
+    // arriving one leg later from the other side. Corrected here, with the row it still earns:
+    // dominaria presents ~1,388 >= 128, so the measure is scored rather than `N/A`, and the row
+    // still reds if the reduced-motion path ever starves the want set again.
     {
       row: "W4 · prefers-reduced-motion at ?layers=128",
       criterion: "W4",
       measure: "artCellsShowing",
+      expect: "GREEN",
+    },
+    // **The absolute term's live RED since DEC-890, and the mechanism is an inequality rather than a
+    // reading.** A cell shows art by holding a layer, so `showing <= pool.layers` on every frame:
+    // set the pool to 24, below the floor of 32, and the measure cannot reach it however the
+    // quantile is resolved. That is what the row above could not promise. Three entries, as
+    // `unsaturated-pool` has three, because an all-one-colour row cannot tell a working measure from
+    // a page that failed to draw: the RED is the claim, the GREEN `artFraction` on the same frame is
+    // the disagreement that is the term's whole case, and the `N/A` keeps a pool too small to churn
+    // from being recorded as good eviction behaviour.
+    {
+      row: "W4 · ?layers=24 (absolute art term)",
+      criterion: "W4",
+      measure: "artCellsShowing",
       expect: "RED",
+    },
+    {
+      row: "W4 · ?layers=24 (art fraction)",
+      criterion: "W4",
+      measure: "artFraction",
+      expect: "GREEN",
+    },
+    {
+      row: "W4 · ?layers=24 (evictions)",
+      criterion: "W4",
+      measure: "evictionsPerSecond",
+      expect: "N/A",
     },
     {
       row: "W4 · the unmodified build (absolute art term)",
@@ -3873,10 +4020,14 @@ describe("the negative-control matrix", () => {
     { row: "all · the unmodified build", criterion: "W2", expect: "GREEN" },
   ] as const;
 
-  it("has eight expected-RED rows, seven expected-GREEN and five expected-N/A", () => {
+  it("has eight expected-RED rows, nine expected-GREEN and six expected-N/A", () => {
+    // The RED count is unchanged across DEC-882 and DEC-890 and that is a coincidence worth naming,
+    // because it is the one number a reader might use to conclude nothing moved: DEC-882 retired the
+    // reduced-motion RED and DEC-890 added `?layers=24` in its place. The row-level assertion below
+    // is what actually pins which RED the absolute term has. `a-total-is-invariant-under-misrouting`.
     expect(MATRIX.filter((r) => r.expect === "RED")).toHaveLength(8);
-    expect(MATRIX.filter((r) => r.expect === "GREEN")).toHaveLength(7);
-    expect(MATRIX.filter((r) => r.expect === "N/A")).toHaveLength(5);
+    expect(MATRIX.filter((r) => r.expect === "GREEN")).toHaveLength(9);
+    expect(MATRIX.filter((r) => r.expect === "N/A")).toHaveLength(6);
   });
 
   it("leaves W4's absolute art term a live RED row and a live GREEN partner", () => {
@@ -3885,15 +4036,22 @@ describe("the negative-control matrix", () => {
     // one measure that had no live falsifier, and that it still has its healthy partner — a RED row
     // on its own scores an always-red instrument exactly as well as a working one.
     // `negative-controls-distinguish-guard-from-rubble`.
+    //
+    // **The RED it pins is `?layers=24` now, not the reduced-motion row (DEC-890).** DEC-882 took
+    // that witness away and left the count at one only because this mirror had not been flipped —
+    // so for one leg this assertion passed while the gate carried *no* RED for the term at all. The
+    // count is the same and the row underneath it is not, which is the reason the partner count
+    // below moved from two to three.
     const cells = MATRIX.filter(
       (r) => "measure" in r && r.measure === "artCellsShowing",
     );
     expect(cells.filter((r) => r.expect === "RED")).toHaveLength(1);
-    // Two GREEN partners since DEC-845 mirrored `unsaturated-pool`, and the second one is not a
-    // duplicate of the first: `?layers=128` is the term at its tightest on a healthy build (124
-    // against 32), kamigawa is the term saying a page rendered at all so the `N/A` beside it is a
-    // reading. Counted rather than named because a rename must not silently drop one.
-    expect(cells.filter((r) => r.expect === "GREEN")).toHaveLength(2);
+    // Three GREEN partners, and none is a duplicate of another: `?layers=128` is the term at its
+    // tightest on a healthy build (76 against 32 since DEC-882 raised the grid), kamigawa is the
+    // term saying a page rendered at all so the `N/A` beside it is a reading, and
+    // `layers-128-reduced` is the one DEC-882 turned from the RED into a partner. Counted rather
+    // than named because a rename must not silently drop one.
+    expect(cells.filter((r) => r.expect === "GREEN")).toHaveLength(3);
     expect(cells.filter((r) => r.expect === "N/A")).toHaveLength(1);
   });
 

@@ -438,6 +438,14 @@ export declare const SMALLEST_SHIPPED_POOL_LAYERS: number;
 export declare const W4_STARVATION_DOMAIN_CELLS: number;
 
 /**
+ * The pool capacity the absolute term's live falsifier runs at — the `?layers=24` matrix row
+ * (DEC-890). Below `FLOORS.artCellsAbsolute` on purpose: a cell shows art by holding a layer, so
+ * `showing <= pool.layers` on every frame and a pool under the floor cannot reach it however the
+ * quantile is resolved.
+ */
+export declare const W4_STARVED_POOL_LAYERS: number;
+
+/**
  * W4's eviction rate on the fill-excluded tail, with the tail's own convergence scored.
  *
  * `rate` is `null` — and `why` says which condition failed — when the timeline is too short, when
