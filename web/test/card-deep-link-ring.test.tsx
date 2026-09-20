@@ -6,9 +6,12 @@
  * `setFocusedStar`, and it calls it itself. `EternitiesScene` is where the call has to come from,
  * and until this file there was nothing between the two: the attachment set `focusedStar` from
  * `focusStar` alone, which is a click (PRD 5.6.1) or the probe. A card focus that arrived from the
- * URL — PRD 6.7.1's deep link, PRD 6.5.4's search result, PRD 6.2.2's back button — set nothing, so
- * the sheet showed the card and the scene showed no ring. Measured live on a real GPU: `card` null
- * for 45 s at `focus: 'card'` (DEC-857 R5, comment `a600281a` item 4).
+ * URL — PRD 6.7.1's deep link, PRD 6.5.4's search result, PRD 6.9's random — set nothing, so the
+ * sheet showed the card and the scene showed no ring. Measured live on a real GPU: `card` null for
+ * 45 s at `focus: 'card'` (DEC-857 R5, comment `a600281a` item 4). PRD 6.2.2's back button is not
+ * in that list: its focus is parsed from the URL, which carries no `starIndex` by design, so an
+ * in-session popstate resolves no star for this derivation to read. Its own defect, tracked
+ * separately; a fresh load of the same URL is the deep link this file drives.
  *
  * So the subject is the **composition**: `SceneView` mounted for real over a real {@link SceneHost},
  * driven through the product's own route-to-navigation adapter, asserted through the same
@@ -296,8 +299,10 @@ describe('§1.10 the printing ring follows the route, not only the pointer (DEC-
      * two stages are computed from the same value again in `twoStageFor`.
      *
      * The live `flying: false` is **not** part of the defect: `ProbeState.flying` is `flight !==
-     * null`, true only while a tween is in the air, and PRD 5.7.3 caps one at 3 s. A reading taken
-     * 45 s into a settled cold load is a flight that finished, not a flight that never started.
+     * null`, true only while a tween is in the air, and a tween is capped — PRD 5.7.3 caps a
+     * single fly-to at 3 s, and a deep link's two-stage fly-to at PRD 6.2.3 is capped at 3.5 s
+     * combined. A reading taken 45 s into a settled cold load is a flight that finished, not a
+     * flight that never started.
      */
     expect(nav.snapshot().focus, 'the route must land on the focus a click lands on').toEqual(
       clickedFocus,

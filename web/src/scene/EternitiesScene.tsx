@@ -321,12 +321,17 @@ export function SceneView({
    * PRD 5.6.1's focused star — **read off the focus, never held beside it** (DEC-858).
    *
    * This was `useState`, written by `focusStar` and cleared by an effect watching `focus`. Which
-   * made a click the only way to focus a card in the scene: `Focus` already carries `starIndex`
-   * (navigation contract §1), and every other route to a card level fills it — PRD 6.7.1's deep
-   * link through `boot`'s `resolveCard`, PRD 6.5.4's search result, PRD 6.2.2's back button, PRD
-   * 6.9's random — but none of them goes near `focusStar`, so none of them set the state the ring
-   * host is built from. The sheet showed the card; the scene showed nothing. Measured live on a
-   * real GPU: `card` null for 45 s at `focus: 'card'` (DEC-857 R5).
+   * made a click the only way to focus a card in the scene: `Focus` already carries `starIndex`,
+   * and the routes that resolve a card fill it (navigation contract §1) — PRD 6.7.1's deep link
+   * through `boot`'s `resolveCard`, PRD 6.5.4's search result, PRD 6.9's random — but none of them
+   * goes near `focusStar`, so none of them set the state the ring host is built from. The sheet
+   * showed the card; the scene showed nothing. Measured live on a real GPU: `card` null for 45 s
+   * at `focus: 'card'` (DEC-857 R5).
+   *
+   * PRD 6.2.2's back button is *not* one of those routes, and this derivation does not reach it:
+   * `createRouterBinding`'s popstate arm navigates to a focus parsed from the URL, and `route.ts`
+   * leaves `starIndex` out of a URL deliberately. A fresh load of that same URL does fill it,
+   * through `boot`. The in-session popstate gap is its own defect, tracked separately.
    *
    * A derivation rather than a second writer, and the reviewer's "one call through the existing
    * `focusStar` path" is exactly what it must not be: `focusStar` flies. Called for a focus the
