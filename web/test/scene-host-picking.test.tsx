@@ -202,6 +202,13 @@ describe('SceneHost routes the pick with no galaxy in the picture (DEC-852)', ()
     await flush()
   }
 
+  /** The pointer off the canvas, then the tick whose pick resolves to nothing under it. */
+  async function leavePointer(at: number): Promise<void> {
+    host.renderer.canvas.dispatchEvent(new MouseEvent('pointerleave'))
+    host.renderer.loop.tick(at)
+    await flush()
+  }
+
   it('subscribes the input phase the pointer drains in', () => {
     // The control row: without it, a host that attached no input layer at all would pass the
     // negative assertions below by doing nothing, which is the failure this whole leg is about.
@@ -225,22 +232,29 @@ describe('SceneHost routes the pick with no galaxy in the picture (DEC-852)', ()
     expect(hovered).toEqual([{ kind: 'star', index: 2, planeIndex: 0 }])
   })
 
-  it("routes a hovered planet into the printing ring's label (PRD 5.6.9)", async () => {
+  it("routes a hovered planet into the printing ring's label, and out again (PRD 5.6.9)", async () => {
     host.setResources(data.resources)
     host.setNavigation(navigation)
     host.setCards({ get: () => cardWith(4) })
     host.setFocusedStar(0)
-
-    // The negative control, and it is the half that matters: `visible: false` is also this object's
-    // initial value, so a label that is never written reads identically to one correctly withheld.
-    host.renderer.loop.tick(16)
-    expect(host.labelState.visible, 'nothing hovered').toBe(false)
 
     answers(PLANET_ID_BASE + 2)
     await movePointer(32)
     host.renderer.loop.tick(48)
 
     expect(host.labelState.printing, 'the hovered planet names a printing').toBeGreaterThanOrEqual(0)
+    expect(host.labelState.visible, 'the label is up').toBe(true)
+
+    // The withdraw path — and driving `visible` true first is what makes it a control at all.
+    // `visible: false` is also this object's initial value, so asserting it against an untouched
+    // label proves nothing: a label that is never written reads identically to one correctly
+    // withheld. Only a label raised and then *written back down* separates the two.
+    await leavePointer(64)
+    host.renderer.loop.tick(80)
+
+    expect(host.labelState.visible, 'the pointer left the planet, so the label comes down').toBe(
+      false,
+    )
   })
 
   it('routes a click into the selection card focus runs on', async () => {

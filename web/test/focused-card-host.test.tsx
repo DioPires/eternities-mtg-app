@@ -97,19 +97,24 @@ describe('§1.10 the printing ring is attached, not only implemented (DEC-752)',
     handle.setCards({ get: () => cardWith(4) })
     handle.setFocusedStar(0)
 
-    // The negative control, and it is the half that matters: `visible: false` is also this object's
-    // initial value, so a label that is never written reads identically to one correctly withheld.
-    // Driving a tick with nothing hovered is what separates them.
+    // A tick with nothing hovered, which on its own separates nothing: `visible: false` is also
+    // this object's initial value, so a label that is never written reads identically to one
+    // correctly withheld. What separates them is the pair below — the label goes **up** on a
+    // hovered planet and back **down** when the hover is released (DEC-857 R1). Without the
+    // `true` in the middle, replacing the write with a constant `false` passes this row.
     loop.tick(16)
     expect(labelState.visible, 'nothing hovered').toBe(false)
 
     handle.setHoveredPlanet(0)
     loop.tick(32)
     expect(labelState.printing, 'the hovered planet names a printing').toBeGreaterThanOrEqual(0)
+    expect(labelState.visible, 'a hovered planet in front of the camera raises the label').toBe(
+      true,
+    )
 
     handle.setHoveredPlanet(-1)
     loop.tick(48)
-    expect(labelState.visible).toBe(false)
+    expect(labelState.visible, 'releasing the hover takes it down again').toBe(false)
     handle.dispose()
   })
 })
