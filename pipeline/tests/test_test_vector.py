@@ -81,9 +81,10 @@ def test_zero_card_plane_still_gets_one_empty_shard():
 #     against the renderer's unchanged values;
 #   * TypeScript constant moves -> green here, red in `web/test/test-vector.test.ts`.
 #
-# The pairs below are the mirror's index: `layout`'s spelling on the left, the vector's on the
-# right. A constant that is in `layout`'s mirror block and not in this list is unguarded, which is
-# the state the whole leg exists to leave.
+# Each row below is an entry in the mirror's index: `layout`'s spelling, the vector's, and the
+# factor between them — 1.0 except where the two sides differ in units. A constant that is in
+# `layout`'s mirror block and not in this list is unguarded, which is the state the whole leg
+# exists to leave.
 CAMERA_LAW_MIRROR = [
     ("HOME_ELEVATION_RAD", "homeElevationRad", 1.0),
     ("HOME_DISTANCE_FACTOR", "homeDistanceFactor", 1.0),
