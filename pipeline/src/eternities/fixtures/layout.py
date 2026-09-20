@@ -29,12 +29,17 @@ SPIRAL_THRESHOLD: Final = 50
 does not read it, the galaxy renderer does, and re-labelling the enum would be a contract change
 §2.4 did not ask for."""
 
-# --- the six constants mirrored from the renderer ----------------------------------------------
+# --- the camera mirror: seven constants from the renderer, one derived -------------------------
 #
-# Each of the six below restates a value that lives in TypeScript, named beside it. The mirror
-# **was** one-way and unguarded: a reviewer doubled `DRIFT_VERTICAL_RATIO` in `tuning.ts` and the
-# whole web suite stayed green (DEC-865, item 3), because the Python law never read the TypeScript
-# and the web tests never read this module.
+# Eight names live in this block. Seven of them restate a value that lives in TypeScript, named
+# beside each one. The eighth, :data:`REFERENCE_FOCAL_PX`, mirrors nothing: it is derived from two
+# of the seven, because the renderer has no focal-length constant to compare against — it builds
+# the same number from the live canvas. All eight are published, one `cameraLaw` key each, so the
+# derived one is guarded alongside its inputs.
+#
+# The mirror **was** one-way and unguarded: a reviewer doubled `DRIFT_VERTICAL_RATIO` in
+# `tuning.ts` and the whole web suite stayed green (DEC-865, item 3), because the Python law never
+# read the TypeScript and the web tests never read this module.
 #
 # **DEC-884 closed it through the shared test vector, not through a source-text parse.** These
 # constants are published into `contract/test-vectors/v3/vector.json` under `cameraLaw` (see

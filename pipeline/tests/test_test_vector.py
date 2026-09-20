@@ -70,9 +70,10 @@ def test_zero_card_plane_still_gets_one_empty_shard():
 
 # --- the `home`-law camera mirror (DEC-884) -----------------------------------------------------
 #
-# `fixtures/layout.py` restates six constants that live in TypeScript. Publishing them into
-# `vector.json` is what makes a one-sided move visible, and it is visible in three different ways
-# depending on which side moved and whether the vector was regenerated:
+# `fixtures/layout.py` restates seven constants that live in TypeScript and derives an eighth,
+# `REFERENCE_FOCAL_PX`, from two of the seven. Publishing all eight — one `cameraLaw` key per name
+# — into `vector.json` is what makes a one-sided move visible, and it is visible in three
+# different ways depending on which side moved and whether the vector was regenerated:
 #
 #   * Python constant moves, vector not regenerated -> `test_summary_matches_committed_vector_json`
 #     and `test_the_camera_law_mirror_is_published_from_the_law_itself` both red here;

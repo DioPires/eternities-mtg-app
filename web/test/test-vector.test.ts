@@ -734,25 +734,26 @@ describe('loud failures', () => {
 /**
  * The `home`-law camera mirror, from the renderer's side (DEC-884).
  *
- * `pipeline/src/eternities/fixtures/layout.py` restates six constants that live in TypeScript, and
- * bakes the result into `planes.json` as every plane's `home`. The mirror used to be one-way and
- * unguarded: DEC-865 doubled `DRIFT_VERTICAL_RATIO` in `tuning.ts` and the entire web suite stayed
- * green, because the Python law never read this side and this side never read the Python law.
+ * `pipeline/src/eternities/fixtures/layout.py` restates seven constants that live in TypeScript
+ * and derives an eighth, its reference focal length, from two of the seven; it bakes the result
+ * into `planes.json` as every plane's `home`. The mirror used to be one-way and unguarded:
+ * DEC-865 doubled `DRIFT_VERTICAL_RATIO` in `tuning.ts` and the entire web suite stayed green,
+ * because the Python law never read this side and this side never read the Python law.
  *
  * `vector.json` is the bridge, and it is the bridge that already exists — the `data contract` CI
- * job runs `test_test_vector.py` and this file against the same committed bytes, so the six
- * constants ride the freeze point the rest of the contract rides. Move one half alone and one of
- * the two suites goes red; regenerate the vector to silence the Python half and this one reds
- * instead.
+ * job runs `test_test_vector.py` and this file against the same committed bytes, so all eight
+ * `cameraLaw` keys ride the freeze point the rest of the contract rides. Move one half alone and
+ * one of the two suites goes red; regenerate the vector to silence the Python half and this one
+ * reds instead.
  *
  * **Not a source-text parse, and deliberately not.** A guard that grepped `framing.ts` for `1.9`
  * would be only as good as its parser: `1.9`, `19 / 10`, `1.90`, a value moved behind a helper or
  * a `const` re-export all mean the same thing to the renderer and different things to a regex.
- * Two of the six are not exported at all — `framing.ts`' `r * 1.9` is a literal inside an object
- * argument, and `scenePicker.ts`' `PLANE_PICK_MARGIN` is a module-private `const` — and rather
- * than export them (which would put a non-comment change into `web/src/scene`, and the Renderer
- * Draw Rule with it) this block reads both *behaviourally*, through `Framing.multiverse()` and
- * through `PlanePicker.pick` itself. A behavioural read cannot be fooled by a respelling, and it
+ * Two of the seven are not exported at all — `framing.ts`' `r * 1.9` is a literal inside an
+ * object argument, and `scenePicker.ts`' `PLANE_PICK_MARGIN` is a module-private `const` — and
+ * rather than export them (which would put a non-comment change into `web/src/scene`, and the
+ * Renderer Draw Rule with it) this block reads both *behaviourally*, through `Framing.multiverse()`
+ * and through `PlanePicker.pick` itself. A behavioural read cannot be fooled by a respelling, and it
  * fails if the constant is right but no longer reaches the code path, which is the failure a
  * parse cannot see at all.
  */
@@ -836,8 +837,10 @@ describe('the home-law camera constants are mirrored in both directions', () => 
     // proxy there is at one proxy radius from its centre.
     const WIDTH = 1920
     const HEIGHT = 1080
-    // A viewport tall enough that §1.11's floor converts to ~1e-5 world units. The floor and the
-    // margin are a `max`, and this is what makes the margin the branch under test.
+    // A viewport tall enough that §1.11's floor is the branch the `max` does not take:
+    // `planePickFloorRadius(400, 55 deg, 1e7)` is 4.997e-4 world units, against the ~11.5-unit
+    // proxy below. The floor and the margin are a `max`, and this is what makes the margin the
+    // branch under test.
     const TALL = 1e7
     const DEPTH = 400
     const RADIUS = 10

@@ -173,9 +173,12 @@ def test_the_pick_floor_is_converted_at_the_discs_far_rim():
         "rule satisfied (DEC-759, DEC-865 item 5)"
     )
 
-    # The floor is a function of the disc, not of the number 130 (DEC-865's re-read, gap 1). Both
-    # halves are needed: the second radius alone would pass a law that scaled by the wrong power,
-    # and the ratio alone would pass one that scaled correctly from a wrong base.
+    # The floor is a function of the disc, not of the number 130 (DEC-865's re-read, gap 1). The
+    # second radius is what closes that gap: it pins the floor at R = 325 exactly as the assertion
+    # above pins it at R = 130, so even a law that is exact on production — `depth` scaled by
+    # `multiverse_radius**2 / 130.0`, say — reds on that pin. The ratio assertion that follows is
+    # not a second falsifier; 2.5 already follows from the two pins. It is there for the message
+    # it carries, which names a loss of linearity rather than reporting two figures that differ.
     wider_depth = (
         SPEC_HOME_DISTANCE_FACTOR + math.cos(math.radians(SPEC_HOME_ELEVATION_DEG))
     ) * SECOND_MULTIVERSE_RADIUS
