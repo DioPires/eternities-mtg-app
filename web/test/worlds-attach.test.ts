@@ -1273,7 +1273,7 @@ describe('§1.6 on the shipped roster (DEC-768 F1, F2)', () => {
     expect(idle.map((r) => `${r.slug}@${r.radii}r (${r.wanting} wanting)`)).toEqual([])
   })
 
-  it('bounds the overshoot at one bucket, and says where it binds', () => {
+  it('bounds the overshoot, and says where it still binds after DEC-882', () => {
     // The branch admits a bucket that does not fit, so the row above is only half the claim: the
     // other half is that the overshoot is small and rare rather than the exhaustion §1.6 removes.
     // `ArtPool` absorbs it without churn — a key wanted this frame is not an eviction candidate, so
@@ -1283,15 +1283,24 @@ describe('§1.6 on the shipped roster (DEC-768 F1, F2)', () => {
         .filter((r) => r.admitted > capacity)
         .map((r) => `${r.slug}@${r.radii}r ${r.admitted}/${capacity}`)
 
-    // Tier 4, where it binds: two poses of ninety, and neither asks for more than 1.6 pools.
-    const tier4 = over(128)
-    expect(tier4).toHaveLength(2)
-    expect(tier4.every((row) => row.startsWith('dominaria@'))).toBe(true)
-    for (const reading of sweep(128)) expect(reading.admitted).toBeLessThan(2 * 128)
-
-    // The control, and the reason the row above is a measurement of the dataset rather than of the
-    // branch: at the capacity tiers 0-3 actually run at, no pose overshoots at all.
+    // **This expectation moved at DEC-882, and it moved because the defect did.** On the 64-bucket
+    // grid this read "two poses of ninety, both dominaria, neither over 1.6 pools" at tier 4 —
+    // `dominaria@1.8r 194/128` and `dominaria@2.2r 158/128`. Raising the resolution to 256 gives
+    // the quantile an edge to land on inside the pool, so at every capacity the product actually
+    // ships — tier 4's 128 and up — **no pose overshoots at all** any more. The same sweep on
+    // `a0eec54` reds this row, which is the point.
+    expect(over(128)).toEqual([])
     expect(over(SPEC_MINIMUM.maxArrayTextureLayers - 32)).toEqual([])
+    expect(over(64)).toEqual([])
+
+    // **F1 is not thereby retired, and this is the row that says so.** Below every shipped rung the
+    // pool is small enough that a single bucket still crosses it, the branch still fires, and the
+    // overshoot it trades for a non-idle pool is still bounded. Four poses of ninety at 16 layers,
+    // against fifteen on the old grid, and the worst falls from 12.1 pools to 2.6.
+    const tiny = over(16)
+    expect(tiny).toHaveLength(4)
+    expect(tiny.filter((row) => row.startsWith('dominaria@'))).toHaveLength(2)
+    for (const reading of sweep(16)) expect(reading.admitted).toBeLessThan(3 * 16)
   })
 
   /**
