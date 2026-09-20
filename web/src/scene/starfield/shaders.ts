@@ -201,11 +201,12 @@ vec3 starWorldPosition(int row, vec3 local) {
     vec3 sample_ = p * DUST_CURL_SCALE + vec3(uTime * DUST_CURL_SPEED);
     p += curlNoise(sample_) * DUST_CURL_AMPLITUDE * uMotion;
   } else {
-    float radial = length(p.xy);
+    // About plane-local +Y, the disc's own normal — the JS twin's step, step for step (DEC-774).
+    float radial = length(p.xz);
     float angle = drift.w + shearAngle(shear, radial, uTime) * uMotion;
     float c = cos(angle);
     float s = sin(angle);
-    p = vec3(p.x * c - p.y * s, p.x * s + p.y * c, p.z);
+    p = vec3(p.x * c + p.z * s, p.y, -p.x * s + p.z * c);
   }
 
   p = quatRotate(tilt, p) * home.w;
