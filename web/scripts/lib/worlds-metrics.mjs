@@ -1783,8 +1783,10 @@ export function evaluateW4(cells, evictionTimeline, pool, entryStream, exitStrea
           // `(end.evictions - start.evictions) / span` across the same two samples — so
           // `evictionsObserved === 0` gives `rate === 0` identically, a reading that clears a `max`
           // bound of 21/s by construction. Every reading this branch converts to `insufficient` was
-          // therefore a **pass** before the rule existed. No failing rate is reachable through it,
-          // and a rule that can only subtract passes cannot hide a red.
+          // therefore never a **fail** before the rule existed — a short or unsettled tail was
+          // already `insufficient` through `tail.why`, so on those rows this re-labels rather than
+          // demotes. No failing rate is reachable through it, and a rule that can only subtract
+          // passes cannot hide a red.
           tail.saturated === false && tail.evictionsObserved === 0
           ? `the pool never had a free layer to lose: it peaked at ${tail.peakResident} of ` +
             `${pool.layers} resident layers and the counter did not move once across the window. ` +

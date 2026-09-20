@@ -1444,9 +1444,12 @@ export const MATRIX = [
     //
     // **kamigawa, and the subject is chosen for margin rather than for tightness.** 917 cards, a
     // high-water mark of 265 of 1,024 — 26% of capacity — so it is nowhere near the boundary it is
-    // asserted to sit below, and it still presents 202 front-facing on-screen cells, which puts it
-    // inside `artCellsShowing`'s 128-cell domain. The tightest subject available (ravnica, 606) would
-    // be the flakiest, and a control that flickers is not a control.
+    // asserted to sit below, and it still presents **202–203** front-facing on-screen cells, which
+    // puts it inside `artCellsShowing`'s 128-cell domain. Ranged for the same reason the row above
+    // ranges 207–209 (DEC-869 R-b): 202 on this branch's two draws, 203 on the reviewer's third, and
+    // a value that moves between draws quoted as a constant is one draw wearing that authority. The
+    // margin to 128 swallows the spread either way. The tightest subject available (ravnica, 606)
+    // would be the flakiest, and a control that flickers is not a control.
     //
     // **The two GREEN expectations are not decoration**: an `N/A`-only row cannot tell a working
     // domain rule from a page that failed to render, and both would print the same `n/a`. The art
@@ -1825,8 +1828,12 @@ async function runRow(browser, url, row, { roster, args, baselineProbe }) {
             // The two named clauses are re-spelled here rather than read back, which is the cost of
             // printing a short tag: `tail.saturated === false && tail.evictionsObserved === 0` is
             // the criterion's own conjunction written a second time, and a second spelling is a
-            // second thing to keep in step. It is kept in step by ordering these branches exactly as
-            // `evictionWhy` orders its own, so the tag that prints is the rule that fired.
+            // second thing to keep in step. What this ordering does and does not buy (DEC-869 R-c):
+            // the tag is the **first of the two named rules that holds**, not the rule that fired.
+            // `evictionWhy` tests admission and the exit budget *ahead* of capacity and occupancy,
+            // so a row that was budget-bound at exit and also off-capacity prints `n/a — pool` while
+            // branch 2 is what nulled the rate. Read `ev.insufficientReason` for the rule that
+            // fired; this tag only says which named rule was available to explain it.
             (ev.status === 'insufficient'
               ? !visit.w4.atEvictionPool
                 ? `n/a — pool ${visit.poolLayers}`

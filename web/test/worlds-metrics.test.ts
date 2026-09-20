@@ -3917,7 +3917,12 @@ describe("the negative-control matrix", () => {
   /**
    * Gate rows this mirror deliberately does not carry, and why — read by the cross-check below as
    * the other half of its census. A row may be left out, but not silently: adding one to
-   * `worlds-gate.mjs` without a line here or an entry above reds the check.
+   * `worlds-gate.mjs` under a fresh `id`, without a line here or an entry above, reds the check.
+   *
+   * **A row added under an `id` the gate already uses is a different case, and this list cannot see
+   * it** (DEC-869 R-a, measured green before the fix): `id` is the key on both sides, so a duplicate
+   * collapses in the live map and in the census object alike and the whole row goes invisible to
+   * every by-`id` check here. The row *count* is what catches that, and it is asserted below.
    */
   const UNMIRRORED: Readonly<Record<string, string>> = {
     "art-off":
@@ -3982,6 +3987,11 @@ describe("the negative-control matrix", () => {
     // so an expectation deleted from *any* row reds here whether or not an entry above mentions it.
     // A hand-kept number, but one that cannot drift quietly: it is compared to the live file on
     // every run, and the failure prints the number to write.
+    //
+    // The count is asserted before the contents because `id` is the key on both sides: a gate row
+    // reusing an existing `id` collapses under the last writer in `Object.fromEntries` *and* in
+    // `CENSUS`, so the comparison below reads identical while a whole row is unseen. Only the
+    // length disagrees. `a-hand-written-mirror-guards-only-itself`, one level down.
     const CENSUS: Readonly<Record<string, number>> = {
       baseline: 7,
       "w1-far": 1,
@@ -3999,6 +4009,10 @@ describe("the negative-control matrix", () => {
       "w5-narrow": 1,
       "w5-wide": 1,
     };
+    expect(
+      GATE.length,
+      "gate rows vs census entries — a mismatch means two rows share an `id`",
+    ).toBe(Object.keys(CENSUS).length);
     expect(
       Object.fromEntries(GATE.map((row) => [row.id, row.expect.length])),
     ).toEqual(CENSUS);

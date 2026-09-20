@@ -34,7 +34,8 @@ import tseslint from 'typescript-eslint'
  * identically to a boundary violation otherwise). DEC-763's evidence comment records the 23-row
  * run; its load-bearing rows are the four asserting the harness boundary still fires *inside*
  * `ui/` and `app/`, and `npx eslint --print-config src/ui/<file>` is the one-line check that the
- * resolved rule still lists all four pattern groups.
+ * resolved rule still lists all three pattern groups (bench/harness, three, @react-three — the
+ * `selfCheck` group was dropped with DEC-847 R4 once no such module survived on `main`).
  */
 
 /**

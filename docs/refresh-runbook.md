@@ -347,7 +347,12 @@ this row exists to prevent.
 >
 > | `baseline` tour, `W4.evictionsPerSecond` | denominator |
 > |---|---|
-> | the reading this rule was landed on (DEC-842) | **worst of 1 world in domain, 44 out of domain** |
+> | **17.8969/s** — the reading this rule was landed on (DEC-842) | **worst of 1 world in domain, 44 out of domain** |
+>
+> That rate is dominaria's and only dominaria's: it is the DEC-842 tour's fold, and the other 44
+> worlds contributed a pinned 0 to it. It is quoted from the tree (`web/scripts/lib/worlds-metrics.mjs`
+> and `docs/worlds/spec.md`, where the same draw is recorded), not re-taken here — the fix leg that
+> filled this cell (DEC-869 fix 3) changed no driver, so there was nothing to re-measure.
 >
 > One world in domain is the healthy state, not a degraded one: dominaria is the only world on the v3
 > roster whose demand saturates the shipped pool, so it is the only world whose rate the bound can
