@@ -259,7 +259,9 @@ export const FLOORS = {
    * taken after DEC-843's 3 s `reducedMotion: false` read-back hold and the adaptive threshold goes
    * on rising through it: 128 with the hold removed, 127 on the tree that had no read-back at all,
    * the renderer identical in all three. Re-measure through the harness that will quote it rather
-   * than carrying the figure across a harness change.
+   * than carrying the figure across a harness change. Within that one harness it is **123–124**
+   * across four post-cutover draws (124, 124, 124, 123) — draw noise, not a harness difference, and
+   * an order of magnitude clear of the 32 either way.
    */
   artCellsAbsolute: 32,
 };

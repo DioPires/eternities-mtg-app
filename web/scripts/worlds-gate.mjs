@@ -1421,11 +1421,13 @@ export const MATRIX = [
       // falsifiable: the policy admits **207–209** cells into a 128-layer pool, **1.617–1.633×**
       // capacity, and the day it stops doing that this row goes red and someone has to look.
       //
-      // **Two draws, and they disagree — so this one is a range and not a figure** (DEC-847,
-      // re-measured post-cutover; it read ~205 / 1.60× before). The want set is the adaptive
-      // threshold's output and it lands a couple of cells apart run to run, while `artCellsShowing`
-      // above holds at 124 across the same two draws. Quote the range; a single value here would be
-      // one draw wearing the authority of a constant.
+      // **Draws disagree — so this one is a range and not a figure** (DEC-847, re-measured
+      // post-cutover; it read ~205 / 1.60× before). The want set is the adaptive threshold's output
+      // and it lands a couple of cells apart run to run: 207, 209, 208 and 207 across the four
+      // post-cutover draws on this harness (1.617×, 1.633×, 1.625×, 1.617×). `artCellsShowing`
+      // above moves far less but it does move — **123–124**, 124 on the first three draws and 123
+      // on the fix leg's — so neither is a constant and neither is quoted as one. Quote the range;
+      // a single value here would be one draw wearing the authority of a constant.
       { criterion: 'W4', measure: 'demandFitsCapacity', expect: 'RED' },
     ],
   },
@@ -1446,10 +1448,10 @@ export const MATRIX = [
     // high-water mark of 265 of 1,024 — 26% of capacity — so it is nowhere near the boundary it is
     // asserted to sit below, and it still presents **202–203** front-facing on-screen cells, which
     // puts it inside `artCellsShowing`'s 128-cell domain. Ranged for the same reason the row above
-    // ranges 207–209 (DEC-869 R-b): 202 on this branch's two draws, 203 on the reviewer's third, and
-    // a value that moves between draws quoted as a constant is one draw wearing that authority. The
-    // margin to 128 swallows the spread either way. The tightest subject available (ravnica, 606)
-    // would be the flakiest, and a control that flickers is not a control.
+    // ranges 207–209 (DEC-869 R-b): 202 on three draws, 203 on DEC-869's, and a value that moves
+    // between draws quoted as a constant is one draw wearing that authority. The margin to 128
+    // swallows the spread either way. The tightest subject available (ravnica, 606) would be the
+    // flakiest, and a control that flickers is not a control.
     //
     // **The two GREEN expectations are not decoration**: an `N/A`-only row cannot tell a working
     // domain rule from a page that failed to render, and both would print the same `n/a`. The art
