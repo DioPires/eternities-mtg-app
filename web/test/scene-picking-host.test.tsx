@@ -165,6 +165,13 @@ async function movePointer(canvas: HTMLCanvasElement, loop: FrameLoop, at: numbe
   await flush()
 }
 
+/** The pointer off the canvas, then the tick whose pick resolves to nothing under it. */
+async function leavePointer(canvas: HTMLCanvasElement, loop: FrameLoop, at: number): Promise<void> {
+  canvas.dispatchEvent(new MouseEvent('pointerleave'))
+  loop.tick(at)
+  await flush()
+}
+
 /** A click is down and up at the same point — a drag past 4 px is a camera gesture, not a select. */
 async function clickPointer(canvas: HTMLCanvasElement): Promise<void> {
   canvas.dispatchEvent(new MouseEvent('pointerdown', { clientX: 400, clientY: 300 }))
@@ -258,21 +265,26 @@ describe('the input layer runs with no galaxy scene attached (DEC-852)', () => {
     expect(dust).toEqual([true])
   })
 
-  it("writes the printing ring's hover label for a hovered planet (PRD 5.6.9)", async () => {
+  it("writes the printing ring's hover label, and withdraws it again (PRD 5.6.9)", async () => {
     const { canvas, loop, ring, labelState, answers } = rig()
     ring.setCards({ get: () => cardWith(4) })
     ring.setFocusedStar(0)
-
-    // The negative control again, on the label this time: `visible: false` is the initial value, so
-    // a label that is never written reads identically to one correctly withheld.
-    loop.tick(16)
-    expect(labelState.visible, 'nothing hovered').toBe(false)
 
     answers(PLANET_ID_BASE + 1)
     await movePointer(canvas, loop, 32)
     loop.tick(48)
 
     expect(labelState.printing, 'the hovered planet names a printing').toBeGreaterThanOrEqual(0)
+    expect(labelState.visible, 'the label is up').toBe(true)
+
+    // The withdraw path — and driving `visible` true first is what makes it a control at all.
+    // `visible: false` is this object's initial value, so asserting it against an untouched label
+    // proves nothing: a label that is never written reads identically to one correctly withheld.
+    // Only a label raised and then *written back down* separates the two.
+    await leavePointer(canvas, loop, 64)
+    loop.tick(80)
+
+    expect(labelState.visible, 'the pointer left the planet, so the label comes down').toBe(false)
   })
 
   it('stops listening on dispose, and takes the picker with it', async () => {
