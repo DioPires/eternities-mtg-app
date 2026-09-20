@@ -50,6 +50,8 @@ import {
 import { StarGeometry } from '../src/scene/starfield/starGeometry'
 import { PerspectiveCamera, Vector2, Vector3 } from 'three'
 
+import type { PlaneRecord } from '../src/data/types'
+
 import { Framing, HOME_POLAR } from '../src/camera/framing'
 import { DRIFT_VERTICAL_RATIO } from '../src/scene/tuning'
 import { PLANE_PICK_FLOOR_PX, PlanePicker } from '../src/scene/picking/scenePicker'
@@ -766,7 +768,7 @@ describe('the home-law camera constants are mirrored in both directions', () => 
   function planeRecord(overrides: Partial<PlaneRecord>): PlaneRecord {
     return {
       index: 0,
-      slug: 'dominaria' as PlaneSlug,
+      slug: 'dominaria',
       displayName: 'dominaria',
       notes: '',
       kind: 'spiral',

@@ -313,7 +313,7 @@ def test_the_drift_closure_budgets_the_vertical_half_of_the_orbit():
 
     # The two wrong values this has to be told apart from, named so the failure message above is
     # not the only thing standing between a maintainer and a plausible-looking regression.
-    horizontal_only = 2.0 * EXPECTED_PER_PLANE_DRIFT_CLOSURE / per_plane
+    horizontal_only = 2.0  # one amplitude per plane, and nothing for the bob
     assert not math.isclose(layout.drift_closure(1.0), horizontal_only, rel_tol=0.01), (
         "the rule is budgeting only the horizontal half of the drift; it is short by 61% of one "
         "amplitude per plane, which is the term the flattening exists to remove"
@@ -374,9 +374,7 @@ def test_the_law_places_against_the_full_drift_closure():
             )
             worst = min(worst, slack)
 
-    vertical_share = (
-        2.0 * amplitude * (EXPECTED_PER_PLANE_DRIFT_CLOSURE - 1.0)
-    ) * sin_elevation
+    vertical_share = (2.0 * amplitude * (EXPECTED_PER_PLANE_DRIFT_CLOSURE - 1.0)) * sin_elevation
     assert worst < vertical_share, (
         f"the tightest pair clears the rule by {worst:.4f} world units, more than the "
         f"{vertical_share:.4f} the vertical half of the drift closure is worth. The roster has "

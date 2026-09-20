@@ -7,6 +7,7 @@ test failing means the contract moved on one side only.
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 import pytest
@@ -107,7 +108,7 @@ def test_the_camera_law_mirror_is_published_from_the_law_itself():
         "but not published is not seen by the web half at all"
     )
     for attribute, key, scale in CAMERA_LAW_MIRROR:
-        assert committed[key] == pytest.approx(getattr(layout, attribute) * scale, rel=1e-15), (
+        assert math.isclose(committed[key], getattr(layout, attribute) * scale, rel_tol=1e-15), (
             f"`layout.{attribute}` and the committed `cameraLaw.{key}` disagree. If the constant "
             "really moved, regenerate the vector with `uv run eternities test-vector` — and "
             "expect web/test/test-vector.test.ts to fail next, because the renderer's half of "
