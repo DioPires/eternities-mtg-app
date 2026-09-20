@@ -12,12 +12,21 @@
  * simplification deletes. This is the test that turns red when it does.
  */
 
+import { spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
+
 import { describe, expect, it } from 'vitest'
 
-import { UsageError, parseArgs } from '../scripts/lib/budget-args.mjs'
+import { USAGE_EXIT, UsageError, parseArgs } from '../scripts/lib/budget-args.mjs'
 
 /** No `ETERNITIES_DATASET`, so the default is the registry's active dataset. */
 const NO_ENV = {}
+
+describe('USAGE_EXIT', () => {
+  it('is 2, so a broken invocation is distinguishable from a budget breach (exit 1)', () => {
+    expect(USAGE_EXIT).toBe(2)
+  })
+})
 
 describe('parseArgs', () => {
   it('rejects --dataset with an empty value', () => {
@@ -62,5 +71,40 @@ describe('parseArgs', () => {
       dataset: 'scale',
       dist: 'dist',
     })
+  })
+})
+
+const CHECK_BUDGET = fileURLToPath(new URL('../scripts/check-budget.mjs', import.meta.url))
+
+/**
+ * The wiring in `check-budget.mjs`'s `main()`: a `UsageError` from `parseArgs` must reach the
+ * process as exit `USAGE_EXIT`, with the message on stderr and nothing measured. The `parseArgs`
+ * rows above cannot see this — `process.exit(0)` in that `catch` left them all green while
+ * `--dataset ""` exited 0 again (mutant D1, DEC-897).
+ *
+ * Limit of this pattern: spawn only rows that exit during argument parsing. A row that gets past
+ * `parseArgs` runs a real budget measurement against whatever `dist/` and dataset are on disk,
+ * which is slow and environment-dependent; measurement behaviour is not tested here.
+ *
+ * `env` is explicit and carries no `ETERNITIES_DATASET`, so the ambient environment cannot change
+ * which dataset a row would resolve to.
+ */
+describe('check-budget.mjs exit code on a malformed command line', () => {
+  function run(args: string[]) {
+    return spawnSync(process.execPath, [CHECK_BUDGET, ...args], { encoding: 'utf8', env: {} })
+  }
+
+  it('exits USAGE_EXIT on --dataset with an empty value', () => {
+    const result = run(['--dataset', ''])
+    expect(result.status).toBe(2)
+    expect(result.stderr).toMatch(/^--dataset needs a value/)
+    expect(result.stdout).toBe('')
+  })
+
+  it('exits USAGE_EXIT on --dist as the last argument', () => {
+    const result = run(['--dataset', 'scale', '--dist'])
+    expect(result.status).toBe(2)
+    expect(result.stderr).toMatch(/^--dist needs a value/)
+    expect(result.stdout).toBe('')
   })
 })
