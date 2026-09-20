@@ -467,6 +467,127 @@ describe('the CPU motion mirror spins about the pole axis too (DEC-774)', () => 
       expect(back.z).toBeCloseTo(local.z, 6)
     }
   })
+
+  /**
+   * The other three local-frame halves, each against something that is not its own twin
+   * (DEC-863 claim 4).
+   *
+   * The row above binds `worldToPlaneLocal`, because it is the inverse in a round trip whose
+   * forward leg is `starPosition`. The other three halves had nothing: the reviewer moved
+   * `planeLocalToWorld` back to local Z on its own and the suite stayed 1378/1378 green, and the
+   * same held for `planeLocalDirToWorld` and for `worldDirToPlaneLocal`. `rig.ts:739/746` steers
+   * through the two direction halves, so that was a live consumer resting on unguarded code.
+   *
+   * Rows 1 and 2 are asymmetric on purpose: they bind a half to `starPosition`, which the rows
+   * above bind to `worldOrientation` — the law that decides where the cell is drawn. So moving a
+   * half *and* its natural twin together is still caught, which a half-against-half row would not
+   * be. Rows 3 and 4 are the pair round trips, and those are what catch a half-applied change.
+   *
+   * Unlike {@link spinningPlane}, these run the roster row as it ships — real tilt, real home,
+   * real drift, a live multiverse angle — with only the shear switched off, because that is the
+   * one term `planeLocalToWorld` deliberately omits. Seven decimals: `planes.json` emits `tilt` to
+   * four, so the conjugate `worldDirToPlaneLocal` applies is an inverse to about 4e-8, not to
+   * machine epsilon.
+   */
+  function tiltedRig(): { plane: PlaneRecord; motion: SceneMotion } {
+    const source = WORLDS.find((candidate) => candidate.slug === 'dominaria')!
+    // A real tilt, or `applyQuat` and its conjugate are both the identity and rows 3 and 4 pass on
+    // any axis at all.
+    expect(Math.abs(source.tilt[3])).toBeLessThan(0.999)
+    const plane: PlaneRecord = { ...source, index: 0, shearAmplitude: 0 }
+
+    const table = spunTable(plane, 17)
+    const motion = new SceneMotion({
+      contractVersion: 3,
+      shardSize: 2000,
+      multiverseRadius: 130,
+      planes: [plane],
+    })
+    motion.syncClock(table.time, table.multiverseAngle)
+    motion.syncSpin(0, table.planes[0]!.spinAngle)
+
+    // Both angles have to be off zero, or every row below is stated at the identity.
+    expect(Math.abs(table.planes[0]!.spinAngle)).toBeGreaterThan(0.1)
+    expect(Math.abs(table.multiverseAngle)).toBeGreaterThan(0.05)
+    return { plane, motion }
+  }
+
+  /** Nothing on an axis, nothing on the pole alone, nothing symmetric about the local frame. */
+  const LOCALS = [
+    { x: 0.5, y: 0.2, z: -0.8 },
+    { x: 0, y: 1, z: 0 },
+    { x: -0.9, y: 0, z: 0.1 },
+    { x: 0.4, y: -0.6, z: 0.7 },
+  ] as const
+
+  it('places a local offset exactly where `starPosition` places that star, shear aside', () => {
+    const { plane, motion } = tiltedRig()
+    const viaOffset = { x: 0, y: 0, z: 0 }
+    const viaStar = { x: 0, y: 0, z: 0 }
+    for (const local of LOCALS) {
+      motion.planeLocalToWorld(viaOffset, plane, local)
+      motion.starPosition(viaStar, plane, local.x, local.y, local.z)
+      expect(viaOffset.x).toBeCloseTo(viaStar.x, 9)
+      expect(viaOffset.y).toBeCloseTo(viaStar.y, 9)
+      expect(viaOffset.z).toBeCloseTo(viaStar.z, 9)
+    }
+  })
+
+  it('points a local direction along the bearing that placement puts it on', () => {
+    // The direction half drops the radius scale, the home and the drift — PRD 5.7.5's framing
+    // offset is a direction, not a point — so it is scored as a bearing from the plane's own
+    // centre rather than against a position.
+    const { plane, motion } = tiltedRig()
+    const star = { x: 0, y: 0, z: 0 }
+    const centre = { x: 0, y: 0, z: 0 }
+    const dir = { x: 0, y: 0, z: 0 }
+    for (const local of LOCALS) {
+      motion.starPosition(star, plane, local.x, local.y, local.z)
+      motion.planePosition(centre, plane)
+      motion.planeLocalDirToWorld(dir, plane, local)
+
+      const chord = new Vector3(star.x - centre.x, star.y - centre.y, star.z - centre.z)
+      expect(chord.length()).toBeGreaterThan(1)
+      expect(new Vector3(dir.x, dir.y, dir.z).normalize().angleTo(chord.normalize())).toBeCloseTo(
+        0,
+        7,
+      )
+    }
+  })
+
+  it('round-trips a position through `planeLocalToWorld` and back', () => {
+    const { plane, motion } = tiltedRig()
+    const world = { x: 0, y: 0, z: 0 }
+    const back = { x: 0, y: 0, z: 0 }
+    for (const local of LOCALS) {
+      motion.planeLocalToWorld(world, plane, local)
+      motion.worldToPlaneLocal(back, plane, world)
+      expect(back.x).toBeCloseTo(local.x, 7)
+      expect(back.y).toBeCloseTo(local.y, 7)
+      expect(back.z).toBeCloseTo(local.z, 7)
+    }
+  })
+
+  it('round-trips a direction through both halves, in both orders', () => {
+    // Both orders, so neither half is allowed to be the definition of the other: one composition
+    // alone is satisfied by a pair that agree on a wrong axis, and `rig.ts` calls both.
+    const { plane, motion } = tiltedRig()
+    const world = { x: 0, y: 0, z: 0 }
+    const back = { x: 0, y: 0, z: 0 }
+    for (const local of LOCALS) {
+      motion.planeLocalDirToWorld(world, plane, local)
+      motion.worldDirToPlaneLocal(back, plane, world)
+      expect(back.x).toBeCloseTo(local.x, 7)
+      expect(back.y).toBeCloseTo(local.y, 7)
+      expect(back.z).toBeCloseTo(local.z, 7)
+
+      motion.worldDirToPlaneLocal(world, plane, local)
+      motion.planeLocalDirToWorld(back, plane, world)
+      expect(back.x).toBeCloseTo(local.x, 7)
+      expect(back.y).toBeCloseTo(local.y, 7)
+      expect(back.z).toBeCloseTo(local.z, 7)
+    }
+  })
 })
 
 describe('the galaxys own axis, as the evidence behind the ruling', () => {
