@@ -29,50 +29,77 @@ SPIRAL_THRESHOLD: Final = 50
 does not read it, the galaxy renderer does, and re-labelling the enum would be a contract change
 §2.4 did not ask for."""
 
+# --- the six constants mirrored from the renderer ----------------------------------------------
+#
+# **This mirror is one-way and nothing guards it.** Each of the six below restates a value that
+# lives in TypeScript, named beside it. If the renderer's copy moves, nothing in either suite
+# fails: the Python law never reads the TypeScript, and the web tests never read this module.
+# Verified rather than assumed — a reviewer doubled `DRIFT_VERTICAL_RATIO` in `tuning.ts` and the
+# whole web suite stayed green (DEC-865, item 3). A cross-language check is tracked separately;
+# until it lands, moving either half of a pair means moving the other by hand — and since the
+# homes are baked into `planes.json`, it also means regenerating the fixtures, or the law's
+# guarantee is stated against a camera the renderer no longer uses.
+
 HOME_ELEVATION_RAD: Final = math.pi / 6
-"""PRD 8.6.1 / `HOME_POLAR` in ``web/src/camera/framing.ts``: the home view looks down on the disc
-from 30 degrees above it.
+"""PRD 8.6.1. Mirrors `HOME_POLAR` in ``web/src/camera/framing.ts`` (line 30,
+``Math.PI / 2 - Math.PI / 6``): the home view looks down on the disc from 30 degrees above it.
 
 The ``home`` law has to know this angle (§1.11's layout amendment, DEC-759). The camera compresses
 in-plane distance by ``sin(30 deg) = 0.5`` and leaves vertical distance nearly intact, and that
 compression is the whole reason one world ends up behind another on screen."""
 
 HOME_DISTANCE_FACTOR: Final = 1.9
-"""``framing.multiverse``'s ``frame: r * 1.9`` — where the home view's eye sits, in multiverse
-radii. With :data:`REFERENCE_FOCAL_PX` it converts a pixel size into world units."""
+"""Mirrors ``framing.multiverse``'s ``frame: r * 1.9`` in ``web/src/camera/framing.ts`` (line 116)
+— where the home view's eye sits, in multiverse radii. With :data:`REFERENCE_FOCAL_PX` it converts
+a pixel size into world units."""
 
 REFERENCE_FOCAL_PX: Final = 1080.0 / (2.0 * math.tan(math.radians(55.0) / 2.0))
 """§1.3's ``focalPx``: the reference viewport's focal length, 1080 rows at a 55 degree vertical
-fov. Pixels are a viewport-relative unit, so a law written in them has to name the viewport it was
+fov. Mirrors `FOV` in ``web/src/scene/renderer/sceneRenderer.ts`` (line 37) and §1.3's reference
+viewport height; the renderer builds the same number from the live canvas instead of a constant.
+
+Pixels are a viewport-relative unit, so a law written in them has to name the viewport it was
 written for; on a shorter viewport the floor below is a larger share of the screen and the
 separation this module buys shrinks with it."""
 
 PICK_PROXY_MARGIN: Final = 1.15
-"""``PLANE_PICK_MARGIN`` in ``web/src/scene/picking/scenePicker.ts``: a plane is picked through a
-proxy this much larger than the world it draws."""
+"""Mirrors `PLANE_PICK_MARGIN` in ``web/src/scene/picking/scenePicker.ts`` (line 85): a plane is
+picked through a proxy this much larger than the world it draws."""
 
 PICK_FLOOR_PX: Final = 12.0
-"""§1.11's screen-space pick floor: 24 CSS px of *diameter*, so 12 px of radius. A world smaller
-than this on screen is still picked through a 24 px proxy, which is why the separation law floors
-every plane's proxy here rather than using the drawn radius."""
+"""§1.11's screen-space pick floor as a *radius*. Mirrors `PLANE_PICK_FLOOR_PX` in
+``web/src/scene/picking/scenePicker.ts`` (line 114), which is 24 — that floor is 24 CSS px of
+*diameter*, so this is half of it. A world smaller than this on screen is still picked through a
+24 px proxy, which is why the separation law floors every plane's proxy here rather than using the
+drawn radius."""
 
 DRIFT_VERTICAL_RATIO: Final = 0.35
-"""``DRIFT_VERTICAL_RATIO`` in ``web/src/scene/tuning.ts``: PRD 5.3.15's drift lifts a plane off
-the disc by this fraction of its amplitude while it orbits.
+"""Mirrors `DRIFT_VERTICAL_RATIO` in ``web/src/scene/tuning.ts`` (line 86): PRD 5.3.15's drift
+lifts a plane off the disc by this fraction of its amplitude while it orbits.
 
 It belongs in this module because ``home`` being flat does not make the *rendered* plane flat, and
 under the home view a unit of height cancels ``cot(30 deg)`` units of in-plane distance. A
 separation rule that budgeted only the horizontal half of the drift would be short by exactly the
 term the flattening exists to remove."""
 
-PLACEMENT_ATTEMPTS: Final = 200_000
+# --- end of the mirror -------------------------------------------------------------------------
+
+PLACEMENT_ATTEMPTS: Final = 20_000
 """How many seeded candidates :func:`place_planes` may draw for one plane before giving up.
 
 It was 4,000 while the only rule was PRD 5.3.3's world-space margin, which the first handful of
-draws almost always satisfied. The home-view rule of §1.11 is far tighter — the sufficient-packing
-area it asks of the production roster is 40% of the disc against 24% before — and the hardest
-plane on that roster now needs about 19,000 draws. The cap is an order of magnitude above that so
-that a roster which has genuinely run out of room fails loudly instead of failing on the budget."""
+draws almost always satisfied. The home-view rule of §1.11 is tighter, and the budget is set from
+what it actually costs rather than from an estimate: counting ``rng.unit(slug, "r", attempt)`` per
+plane, the hardest plane needs **189** draws on the densest roster the tree builds (the ``dense``
+fixture of ``test_pipeline_invariants.py``; 165 on ``fixture-scale``, 51 on the production roster,
+1 on the two four-plane rosters). The median plane on ``dense`` takes 3.
+
+20,000 is ~106x that worst case. Acceptance is geometric, so a plane that *can* be placed at the
+observed 1-in-189 rate exhausts this budget with probability ``exp(-20000/189)``, and the margin
+is really there for a future roster many times tighter than any in the tree today. The cost of
+being wrong the other way is small and measured: a 60-plane roster with genuinely no room raises
+in 0.06 s at this budget against 0.57 s at 200,000, which is the only thing the larger number
+bought."""
 
 PLANE_MARGIN_FACTOR: Final = 0.15
 """PRD 5.3.3, as a fraction of mean plane spacing: the anti-overlap margin :func:`place_planes`

@@ -33,9 +33,13 @@
  * target is there.
  *
  * `DEC759_HOMES` (a homes file from that study), `DEC759_VIEWPORT` and `DEC759_AZIMUTHS` re-point
- * the candidate arm, and `DEC759_OUT` collects the numbers. With `DEC759_HOMES` set the acceptance
- * assertions step aside — an ablation arm is expected to fall short, that is what it is for. No
- * environment at all is the committed measurement, and is what CI scores.
+ * the candidate arm, and `DEC759_OUT` collects the numbers. With `DEC759_HOMES` set, exactly two
+ * of the six tests step aside: the roster-identity check (a study file names no dataset) and the
+ * exact acceptance criterion (an ablation arm is expected to fall short — that is what it is for).
+ * The other four still run and an ablation arm will fail them, so a study sweep is read from
+ * `DEC759_OUT` rather than from the exit code; `DEC759_VIEWPORT=1280x720` on the committed homes
+ * fails them too, for the reason in the limits above. No environment at all is the committed
+ * measurement, and is what CI scores.
  */
 
 import { appendFileSync, readFileSync } from 'node:fs'
@@ -162,12 +166,13 @@ describe('the home law as a pick target (spec §1.11 layout amendment, DEC-759)'
   it('sees the defect: the shipped layout leaves worlds occluded, one of them entirely', () => {
     // The control. `home` predates the law until a dataset refresh carries it, and while it does
     // this arm must fall short — otherwise the candidate arm's zero says nothing.
-    //
-    // When a refresh does land, this is the assertion that will fail, and the fix is not to
-    // loosen it: delete this arm, point the file at the shipped homes alone, and retire
-    // `docs/worlds/dec759-home-law.json` with the pipeline test that pins it.
-    expect(shippedArm.occlusionOnly.length).toBeGreaterThan(0)
-    expect(shippedArm.worstOcclusionPx).toBe(0)
+    const retire =
+      'the shipped layout no longer loses a world to occlusion. If a dataset refresh has ' +
+      'landed, that is the good outcome and the fix is NOT to loosen this: DELETE this arm and ' +
+      'this test, point the file at the shipped homes alone, and DELETE ' +
+      'docs/worlds/dec759-home-law.json with pipeline/tests/test_home_separation.py’s pin'
+    expect(shippedArm.occlusionOnly.length, retire).toBeGreaterThan(0)
+    expect(shippedArm.worstOcclusionPx, retire).toBe(0)
   })
 
   it.skipIf(study)('separates every world far enough that occlusion never takes its target', () => {
@@ -180,15 +185,29 @@ describe('the home law as a pick target (spec §1.11 layout amendment, DEC-759)'
     // the next test; what must never come back is a world losing a material share of its target.
     expect(candidateArm.occlusionOnly).toEqual([])
     expect(candidateArm.worstOcclusionPx).toBe(TARGET_PX)
+
+    // Exact, not bounded, and it is the one assertion here that a *constant* inside the rule can
+    // move. Converting the pick floor at `1.9 R` instead of the disc's far rim still satisfies
+    // every pipeline invariant — they read the generator's own `pick_proxy_radius` on both sides
+    // of their comparison — but it leaves four worlds short here, worst 20.64 px. The law's own
+    // seeded draws reach 19.68 px (the study), so no *bound* can separate that regression from a
+    // legitimate reseed; only this committed layout's exact 24.00 can. `pipeline/tests/
+    // test_home_separation.py::test_the_pick_floor_is_converted_at_the_discs_far_rim` is the
+    // reseed-proof half of the same guard. DEC-865, item 5.
+    expect(candidateArm.worstFlooredPx).toBe(TARGET_PX)
   })
 
   it('never lets occlusion take a material share of a world’s target', () => {
     // The durable half of the criterion, and the one a refresh is held to rather than the exact
     // zero above. The bound is set where the *law's* draws are, not where this one is: every draw
-    // of the old law buries some world at 0 px, while the worst of the law's seven study draws
-    // holds 19.7 px and five of the seven lose nothing at all. 18 px — three quarters of the
-    // target — separates those two populations with room for a reseed, so a failure here is a
-    // regression and not a new roster.
+    // of the old law buries some world at 0 px, while across the law's seven study draws the
+    // worst effective diameter runs 19.68–24.00 px under both coverage rules, and four of the
+    // seven lose nothing at all as drawn (two of the seven under the floored rule — an earlier
+    // draft said five, which was neither). 18 px — three quarters of the target — separates those
+    // two populations with room for a reseed, so a failure is a regression and not a new roster.
+    // It deliberately does NOT try to catch the far-rim regression, which lands at 20.64 px and
+    // so sits *inside* the law's own range; the exact assertion above and the pipeline
+    // cross-check do that.
     expect(candidateArm.worstOcclusionPx).toBeGreaterThan(18)
     expect(candidateArm.occlusionOnly.length).toBeLessThan(shippedArm.occlusionOnly.length)
   })

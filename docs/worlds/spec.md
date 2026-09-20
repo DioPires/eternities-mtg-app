@@ -1110,9 +1110,20 @@ tick positions, not with a capture. See §5, Q5.
   >
   > Everything else is residual exposure, and is recorded as a count rather than a guarantee:
   > **19 of the 33 worlds the floor lifts somewhere in the turn fall under 24 px of effective
-  > diameter at some azimuth**, and the floor itself pushes **2 worlds that already cleared 24 px as
-  > drawn** (`eldraine`, `kamigawa`) below it, to a worst of **~20.6 px**. Those counts move with the
-  > sweep and with `home`; see the warning below.
+  > diameter at some azimuth**, and some of those already cleared 24 px as drawn — the floor itself
+  > is what pushes them under, to a worst of **~20.6 px**. Those counts move with the sweep and with
+  > `home`; see the warning below.
+  >
+  > *Corrected on DEC-759 (review DEC-865, item 1).* This paragraph read "**2** worlds (`eldraine`,
+  > `kamigawa`)", from R1's probe at 24 and 37 azimuths. Re-measured on the committed instrument —
+  > `pick-floor-screen-space.test.ts` and `pick-target-separation.test.ts`, which now share
+  > `web/test/effective-target.ts` — it is **7** at 24 azimuths and **6** at 36, 37, 48, 72 and 144,
+  > and the ~20.6 px is **`kaldheim`** (20.60 at 24 azimuths, 20.55 above it), not either of the two
+  > named. `eldraine`'s own worst floored effective diameter is 11.09 px, which is occlusion rather
+  > than the floor. The **6** is the same 6 the next paragraph calls floor-on-floor: this sentence
+  > and that one are two readings of one statistic, not two statistics. The figure survived the
+  > re-measurement; the count and the names did not, which is exactly what the warning below says
+  > will happen.
   >
   > **Most of that shortfall is not the floor's to fix, and that is why no overlap rule is adopted.**
   > Re-run with the neighbours' floors switched off, so only a disk something really draws can take a
@@ -1186,8 +1197,22 @@ tick positions, not with a capture. See §5, Q5.
   >   world always has the world in it — and the 42 empty planes are all at the radius floor, so
   >   demanding it of them too asks 44% of the disc's area from a sequential sampler that jams near
   >   55%. The all-empty roster, which the pipeline's own tests build, cannot be placed at all
-  >   under the unexempted rule. The attempt budget rises from 4,000 to 200,000 for the same
-  >   reason: the hardest plane on the production roster now needs about 19,000 draws.
+  >   under the unexempted rule. The exemption is not free, and the price is a moon's own target:
+  >   over the 861 moon-on-moon pairs at 144 azimuths, overlapping floored proxies go **23 → 47**
+  >   and the moons under 24 px of effective diameter **24 → 25 of 42**. The severity inverts
+  >   though — the worst moon effective diameter goes **0.00 px (buried) → 14.62 px**, so under the
+  >   law no moon is lost outright and more of them graze. Moons are unlabelled until hover (§1.8)
+  >   and every plane stays reachable by name through the search path, which is why this is a price
+  >   worth paying and not a regression to fix.
+  >
+  >   The attempt budget rises from 4,000 to **20,000** for the same reason. That figure is
+  >   measured, not estimated: counting `rng.unit(slug, "r", attempt)` per plane, the hardest plane
+  >   needs **189** draws on the densest roster the tree builds, 165 on `fixture-scale`, **51** on
+  >   the production roster and 1 on the two four-plane rosters; the median plane on the dense
+  >   roster takes 3, and `place_planes` runs in 4.6 ms over the whole production roster. 20,000 is
+  >   ~106× the worst of those. A roster with genuinely no room raises in 0.06 s at this budget.
+  >   (An earlier draft of this section claimed "about 19,000 draws" and set the budget to 200,000
+  >   on that basis. Nothing in the tree approaches 19,000 — DEC-865, item 9.)
   >
   > **The planes also sit flat in the disc plane now.** Over a turn a pair's worst screen
   > separation is `|d · sin(30°) − Δy · cos(30°)|`, so 8 units of height *cancels* 14 units of
@@ -1205,13 +1230,15 @@ tick positions, not with a capture. See §5, Q5.
   > | **occlusion-only — the layout's half** | **13** | **0** |
   > | floor-on-floor — §1.11's own half | 6 | 0 |
   > | worst effective diameter, any lifted world, occlusion-only | **0 px** (buried) | 24 px (nothing lost) |
-  > | worlds pushed under 24 px that cleared it as drawn | 3 | 0 |
+  > | worst effective diameter, any lifted world, floored | **0 px** (buried) | 24 px (nothing lost) |
   > | floored proxies that overlap at any of 144 azimuths (2,880 pairs with a world in them) | 68 | **0** |
   >
-  > The second-to-last row reads **3**, not the **2** recorded higher up this section. The grids are
-  > not nested — 24 and 37 azimuths catch only `eldraine` and `kamigawa`, while 36, 48, 72 and 144
-  > also catch `edge` — so a finer sweep is not a superset of a coarser one, and the earlier figure
-  > was taken at a density that had not converged for *this* statistic.
+  > An earlier draft of this table carried a seventh row, "worlds pushed under 24 px that cleared it
+  > as drawn: 3 → 0", with a rider about azimuth grids not nesting. It is **withdrawn**: no
+  > instrument in the tree produces a 3, and under the definition the committed instrument can
+  > express — short under the floored rule, clear under the as-drawn one — it is the *floor-on-floor*
+  > row above, which reads **6**. One statistic, printed twice, with the second copy wrong
+  > (DEC-865, item 9). The `→ 0` half held under every definition tried.
   >
   > **Seven seeded draws of each arm, not one**, because a layout is a draw and `home` moves on
   > every refresh (72 azimuths; `docs/worlds/dec759-separation-study.py` reproduces all 28):
@@ -1220,8 +1247,15 @@ tick positions, not with a capture. See §5, Q5.
   > |---|---|---|---|
   > | PRD 8.6.1 as it was | 7–21 | **0 in every draw** | 11–22 |
   > | flat disc only | 3–9 | 0–22.4 | 9–20 |
-  > | separation rule only | 0–5 | 21.3–24 | 1–6 |
+  > | separation rule only | 0–5 | 21.4–24 | 1–6 |
   > | **both — this law** | **0–2** | **19.7–24** | **0–3** |
+  >
+  > Under the floored rule the same seven draws of this law run **19.68–24.00 px** at their worst,
+  > and that range is what `pick-target-separation.test.ts`'s durable bound is set against. It also
+  > says what that bound cannot do: converting the floor at `1.9 R` instead of the far rim lands at
+  > **20.64 px**, *inside* the law's own range, so no bound on this number separates that regression
+  > from a legitimate reseed. The committed layout's exact 24.00, and the far-rim cross-check in
+  > `pipeline/tests/test_home_separation.py`, are what do (DEC-865, item 5).
   >
   > Read that honestly: **the separation rule is the lever, and the flat disc is a consistent
   > improvement on top of it rather than half the fix.** On the production draw the rule alone

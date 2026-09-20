@@ -5,7 +5,13 @@
     "by web/datasets.json, under the home-view separation rule of spec.md \u00a71.11 (DEC-759).",
     "Production still carries the pre-DEC-759 layout: `home` only moves on a dataset refresh,",
     "and a refresh re-hashes the directory. Until one lands this file is the candidate layout",
-    "the acceptance sweep measures, and test_home_separation.py pins it to the law."
+    "the acceptance sweep measures, and test_home_separation.py pins it to the law.",
+    "DELETE ME at the next dataset refresh \u2014 scaffolding, not a record. The refresh bakes these",
+    "homes into planes.json, which makes this file a second copy of them that can go stale.",
+    "Delete it, delete the two scaffolding tests in test_home_separation.py (the vendored pin and",
+    "the shipped-layout falsifier; the far-rim cross-check stays), and point",
+    "web/test/pick-target-separation.test.ts at the shipped homes. Do NOT regenerate this file:",
+    "regenerating is only right while production predates the law, which the refresh ends."
   ],
   "dataset": "c9468f1125bcddff",
   "multiverseRadius": 130.0,
