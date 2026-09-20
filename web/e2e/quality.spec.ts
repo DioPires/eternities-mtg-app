@@ -121,9 +121,13 @@ function expectAffordsLevels(
 /**
  * Load the multiverse with tier `index` pinned and read the ladder's effects back.
  *
- * `motion=1` forces reduced motion *off* whatever the runner prefers, so `motion` below is the
- * exact 1 the shader gets rather than a value that depends on the machine — which is what makes
- * "motion is never degraded" checkable as an equality.
+ * `motion=1` forces reduced motion *off* whatever the runner prefers. The equality on `motion` it
+ * used to justify is gone (DEC-857 R2), and the shader it used to name went with the star field at
+ * the cutover — `motion` is `sceneFrame.motionScale` now (DEC-752, `probeSeam.ts`). What needs the
+ * flag is the row below it: `PlaneTable.advance` returns early under reduced motion, so on a runner
+ * that prefers it `multiverseAngle` would sit frozen and {@link multiverseAdvance} would read 0 —
+ * which is the reading this spec spends that row calling "the rung stopped the multiverse". The
+ * flag is what keeps a 0 there a statement about the ladder rather than about the machine.
  */
 async function pinnedTier(page: Page, index: number): Promise<Quality> {
   await page.goto(`/?probe=1&quality=${index}&motion=1`)
@@ -314,6 +318,7 @@ test('every rung of the quality ladder lands, and only its own rung (PRD 8.5.11,
   expect(bloom.thumbnailCapacity).toBe(0)
   expect(pixelRatio.thumbnailCapacity).toBe(0)
   expect(cardImagery.thumbnailCapacity).toBe(0)
+  expect(glow.thumbnailCapacity).toBe(0)
 
   // Rung 4 — the cheap glow program (DEC-739, review §3.5's "new tier 4 cheap glow variant, one
   // tap, no dither").
@@ -343,9 +348,12 @@ test('every rung of the quality ladder lands, and only its own rung (PRD 8.5.11,
   // Rung 4 moves the glow and nothing else: the quantities the rungs above it own are held.
   //
   // The fourth line here was `glow.thumbnailCapacity` against `cardImagery`'s, which is `0 === 0`
-  // since the thumbnail tier retired — both sides are pinned to the structural 0 twenty lines
-  // above, so it could not fail (DEC-857 item 5). Dropped rather than re-pointed: the pin it would
-  // duplicate is already there.
+  // since the thumbnail tier retired, so it could not fail (DEC-857 item 5). Dropped rather than
+  // re-pointed — but dropping it left `glow` with no capacity assertion anywhere in this file: the
+  // rung-3 block above pinned four tiers and not this one, so the field went unwatched at exactly
+  // the rung whose own comparison had been the thing watching it (DEC-864 claim 5). `glow` is
+  // pinned with the other four up there now, and that pin — not this dropped comparison — is what
+  // would red a capacity that came back to life.
   expect(glow.drawingBuffer).toEqual(cardImagery.drawingBuffer)
   expect(glow.bloomSource).toEqual(cardImagery.bloomSource)
   expect(glow.bloomLevels).toBe(cardImagery.bloomLevels)
