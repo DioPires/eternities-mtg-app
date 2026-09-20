@@ -1161,52 +1161,85 @@ tick positions, not with a capture. See §5, Q5.
   > 1. PRD 5.3.3's world-space margin, unchanged: the **drawn discs** clear each other at maximum
   >    drift.
   > 2. **The home-view separation rule:** the **pick proxies** clear each other on screen, at every
-  >    azimuth of the turn. In world units, for planes `a` and `b` whose in-plane centres are `d`
-  >    apart, `(d - driftₐ - drift_b) · sin(30°) ≥ ρₐ + ρ_b`, where `ρ = max(1.15 · radius, 24 px
-  >    at the home distance)` — the drawn proxy or this section's floor, whichever is larger.
-  >    `sin(30°)` is the home view's own compression: PRD 8.6.1 puts the eye 30° above the disc, so
-  >    in-plane distance projects at half its length and that is what buries a world.
+  >    azimuth of the turn, for every pair with a card-bearing plane in it. In world units, for
+  >    planes `a` and `b` whose in-plane centres are `d` apart,
+  >    `(d − closureₐ − closure_b) · sin(30°) ≥ ρₐ + ρ_b`, where `ρ = max(1.15 · radius, 12 px at
+  >    the disc's deepest point)` — the drawn proxy or **half** this section's floor, because `ρ`
+  >    is a radius and the floor is 24 px of diameter. `sin(30°)` is the home view's own
+  >    compression: PRD 8.6.1 puts the eye 30° above the disc, so in-plane distance projects at
+  >    half its length, and that is what buries a world.
   >
-  > **The planes also sit flat in the disc plane now, and that is half the fix rather than a
-  > simplification.** PRD 8.6.1's disc scattered each plane through ±0.075 R of height. Over a turn
-  > a pair's worst screen separation is `|d · sin(30°) − Δy · cos(30°)|`, so 8 units of height
-  > *cancels* 14 units of in-plane distance: the thickness was manufacturing the coincidences rule
-  > 2 exists to prevent, and no in-plane rule can see it happen. A 2×2 separates the two levers on
-  > the production roster — occlusion-only short worlds read **13** (shipped), **9** (flat only),
-  > **5** (rule only), **0** (both), and the worst effective diameter any lifted world holds goes
-  > 0 px → 16.0 → 19.3 → 24.0. Neither lever alone is the fix.
+  > **Three details in that formula are the difference between a rule and a wish**, and each was
+  > caught by measuring rather than by reading:
   >
-  > **Measured** on the production roster at the reference viewport, 36 azimuths (converged: 24
-  > reads 12, and 36/48/72/144 all read 13 on the shipped arm):
+  > - **The floor is converted at the disc's far rim**, `(1.9 + cos 30°) · R`, not at the camera's
+  >   distance to the origin. A pixel buys more world units the further away it is; converting at
+  >   1.9 R under-sizes the floor by 46% out there, and the proxies of two far-side planes then
+  >   overlap by up to 11 px while satisfying the rule. The `1.15 · radius` branch needs no such
+  >   care — a drawn proxy and the gap to its neighbour shrink with depth together.
+  > - **`closure` covers the vertical drift as well as the horizontal.** `home` being flat does not
+  >   make the rendered plane flat: PRD 5.3.15's drift lifts it by `DRIFT_VERTICAL_RATIO = 0.35` of
+  >   its amplitude (`web/src/scene/tuning.ts`), and a unit of height cancels `cot(30°)` units of
+  >   in-plane distance. So `closure = a · (1 + 0.35 · cot 30°) = 1.606 a`, a bound rather than the
+  >   true joint maximum of 1.393 a, chosen not to depend on the phase law the two terms share.
+  > - **Moon-on-moon pairs are exempt.** It costs no world its target — the pair that can bury a
+  >   world always has the world in it — and the 42 empty planes are all at the radius floor, so
+  >   demanding it of them too asks 44% of the disc's area from a sequential sampler that jams near
+  >   55%. The all-empty roster, which the pipeline's own tests build, cannot be placed at all
+  >   under the unexempted rule. The attempt budget rises from 4,000 to 200,000 for the same
+  >   reason: the hardest plane on the production roster now needs about 19,000 draws.
+  >
+  > **The planes also sit flat in the disc plane now.** Over a turn a pair's worst screen
+  > separation is `|d · sin(30°) − Δy · cos(30°)|`, so 8 units of height *cancels* 14 units of
+  > in-plane distance: PRD 8.6.1's ±0.075 R scatter was manufacturing the coincidences rule 2
+  > exists to prevent, and an in-plane rule cannot see it happen.
+  >
+  > **Measured** on the production roster at §1.3's reference viewport, 36 azimuths — the counts
+  > are minima over the sweep, so they move with its density until it converges: the shipped arm
+  > reads 12 occlusion-only at 24 azimuths and 13 at 36, 48, 72 and 144.
   >
   > | | shipped `home` | under this law |
   > |---|---|---|
   > | worlds the floor lifts somewhere in the turn | 33 | 32 |
-  > | of those, under 24 px of effective diameter | 19 | 3 |
+  > | of those, under 24 px of effective diameter | 19 | **0** |
   > | **occlusion-only — the layout's half** | **13** | **0** |
-  > | floor-on-floor — §1.11's own half | 6 | 3 |
-  > | worst effective diameter, any lifted world | **0 px** (buried) | 22.4 px |
+  > | floor-on-floor — §1.11's own half | 6 | 0 |
+  > | worst effective diameter, any lifted world, occlusion-only | **0 px** (buried) | 24 px (nothing lost) |
   > | worlds pushed under 24 px that cleared it as drawn | 3 | 0 |
+  > | floored proxies that overlap at any of 144 azimuths (2,880 pairs with a world in them) | 68 | **0** |
   >
-  > The last row reads **3**, not the **2** recorded higher up this section: at 24 and 37 azimuths
-  > only `eldraine` and `kamigawa` appear, and `edge` joins them from 36 on. That is the same
-  > min-over-sweep effect as the counts above and not a contradiction — the earlier figure was
-  > measured at a density that had not converged for *this* statistic.
+  > The second-to-last row reads **3**, not the **2** recorded higher up this section. The grids are
+  > not nested — 24 and 37 azimuths catch only `eldraine` and `kamigawa`, while 36, 48, 72 and 144
+  > also catch `edge` — so a finer sweep is not a superset of a coarser one, and the earlier figure
+  > was taken at a density that had not converged for *this* statistic.
   >
-  > **Seven seeded draws of each law, not one**, because a layout is a draw and `home` moves on
-  > every refresh: occlusion-only ranges **7–21** under the old law and **0–2** under this one, and
-  > every old-law draw leaves at least one world at *zero* effective target where no new-law draw
-  > leaves any world below **19.4 px** (worst 19.48, draw `n5`; the production draw is 22.4). That is the claim that survives a refresh; the single
-  > numbers in the table do not, and must not be quoted as constants.
+  > **Seven seeded draws of each arm, not one**, because a layout is a draw and `home` moves on
+  > every refresh (72 azimuths; `docs/worlds/dec759-separation-study.py` reproduces all 28):
   >
-  > **Three limits.** The rule is written against §1.3's reference viewport and the floor is 24 CSS
-  > px on every viewport, so it buys less on a shorter one — at 1280×720 the same two layouts read
-  > **22** and **4** occlusion-only, and at 3840×2160 they read **5** and **0**. The residual is floor-on-floor and out of this law's reach for
-  > the reason the tie-break was rejected: screen area is conserved. And **production only carries
-  > the law when a dataset refresh re-lays it out** — until then `docs/worlds/dec759-home-law.json`
-  > carries the candidate homes, `pipeline/tests/test_home_separation.py` pins that file to
-  > `place_planes`, and `web/test/pick-target-separation.test.ts` measures both arms so the
-  > shipped one stays the control.
+  > | arm | occlusion-only | worst occlusion-only px | under 24 px of effective diameter |
+  > |---|---|---|---|
+  > | PRD 8.6.1 as it was | 7–21 | **0 in every draw** | 11–22 |
+  > | flat disc only | 3–9 | 0–22.4 | 9–20 |
+  > | separation rule only | 0–5 | 21.3–24 | 1–6 |
+  > | **both — this law** | **0–2** | **19.7–24** | **0–3** |
+  >
+  > Read that honestly: **the separation rule is the lever, and the flat disc is a consistent
+  > improvement on top of it rather than half the fix.** On the production draw the rule alone
+  > already reaches zero; across the seven it roughly halves the residual (mean occlusion-only 2.1
+  > against 0.6, mean short-under-floor 3.1 against 1.1). The flat disc's own arm is the weakest of
+  > the three, which is the answer to "is the thickness the problem" — it is not, on its own.
+  >
+  > **Two limits.** The rule is written against the reference viewport and the floor is 24 CSS px on
+  > *any* viewport, so it buys less on a shorter one: at 1280×720 the two layouts read **22** and
+  > **1** occlusion-only, at 3840×2160 **5** and **0**. And **production only carries the law when a
+  > dataset refresh re-lays it out** — until then `docs/worlds/dec759-home-law.json` carries the
+  > candidate homes, `pipeline/tests/test_home_separation.py` pins that file to `place_planes`, and
+  > `web/test/pick-target-separation.test.ts` measures both arms so the shipped one stays the
+  > control. All three retire on that refresh, and say so where they fail.
+  >
+  > **Rider, not acceptance:** world-label coverage over 24 azimuths goes from a mean of **97.2%**
+  > (min 93.3%) to **99.5%** (min 97.8%). Separating pick proxies separates label anchors too.
+
 - **Labels.** The label solver is kept. Under worlds its home-view subject count is
   `worldsWithCards.length`, not the plane count, because the moons are unlabelled until hover
   (§1.8) and the belt is dropped before projection (PRD 5.3.4, and §3.1's W5): **29 of 87** on
@@ -3225,7 +3258,7 @@ has a checklist rather than a discovery process.
 | 5.5.1          | the thumbnail cross-fade band                         | replaced by the swatch→art threshold (§1.6)                                                                       |
 | 5.6.7–5.6.8    | printings as 72 orbiting spheres                      | a flat ring (§1.10)                                                                                               |
 | 8.6.1–8.6.2    | seeded spiral parameters                              | retired (§2.4)                                                                                                    |
-| 8.6.1          | the disc has thickness; planes scatter through ±0.075 R | planes sit flat in the disc plane, and `place_planes` also separates pick proxies in the home view (§1.11, DEC-759) |
+| 5.3.1 / 8.6.1  | the disc has thickness; planes scatter through ±0.075 R | plane *homes* sit flat in the disc plane, and `place_planes` also separates pick proxies in the home view (§1.11, DEC-759); the cards and the belt keep their thickness |
 | 8.5.8 / 8.5.10 | the 128×178 thumbnail atlas, 256 px planet textures   | replaced by the 128×96 art array (§1.6, §1.12)                                                                    |
 | 9.3            | seven checkpoints, criterion 2 on spiral arms         | the checkpoints and criteria of §3.1                                                                              |
 

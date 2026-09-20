@@ -110,6 +110,8 @@ def test_the_home_view_rule_is_not_implied_by_the_world_space_margin():
                 f"{a['slug']} and {b['slug']} overlap in world space under drift — this dataset "
                 "does not satisfy the rule the new one is being compared against"
             )
+            if a["cardCount"] == 0 and b["cardCount"] == 0:
+                continue  # exempt from the rule; see `place_planes`
             gap = math.hypot(a["home"][0] - b["home"][0], a["home"][2] - b["home"][2])
             need = layout.pick_proxy_radius(a["radius"], radius) + layout.pick_proxy_radius(
                 b["radius"], radius

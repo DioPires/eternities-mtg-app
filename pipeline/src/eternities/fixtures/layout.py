@@ -48,13 +48,31 @@ written for; on a shorter viewport the floor below is a larger share of the scre
 separation this module buys shrinks with it."""
 
 PICK_PROXY_MARGIN: Final = 1.15
-"""``PLANE_PICK_MARGIN`` in ``web/src/scene/worlds/scenePicker.ts``: a plane is picked through a
+"""``PLANE_PICK_MARGIN`` in ``web/src/scene/picking/scenePicker.ts``: a plane is picked through a
 proxy this much larger than the world it draws."""
 
 PICK_FLOOR_PX: Final = 12.0
 """§1.11's screen-space pick floor: 24 CSS px of *diameter*, so 12 px of radius. A world smaller
 than this on screen is still picked through a 24 px proxy, which is why the separation law floors
 every plane's proxy here rather than using the drawn radius."""
+
+DRIFT_VERTICAL_RATIO: Final = 0.35
+"""``DRIFT_VERTICAL_RATIO`` in ``web/src/scene/tuning.ts``: PRD 5.3.15's drift lifts a plane off
+the disc by this fraction of its amplitude while it orbits.
+
+It belongs in this module because ``home`` being flat does not make the *rendered* plane flat, and
+under the home view a unit of height cancels ``cot(30 deg)`` units of in-plane distance. A
+separation rule that budgeted only the horizontal half of the drift would be short by exactly the
+term the flattening exists to remove."""
+
+PLACEMENT_ATTEMPTS: Final = 200_000
+"""How many seeded candidates :func:`place_planes` may draw for one plane before giving up.
+
+It was 4,000 while the only rule was PRD 5.3.3's world-space margin, which the first handful of
+draws almost always satisfied. The home-view rule of §1.11 is far tighter — the sufficient-packing
+area it asks of the production roster is 40% of the disc against 24% before — and the hardest
+plane on that roster now needs about 19,000 draws. The cap is an order of magnitude above that so
+that a roster which has genuinely run out of room fails loudly instead of failing on the budget."""
 
 PLANE_MARGIN_FACTOR: Final = 0.15
 """PRD 5.3.3, as a fraction of mean plane spacing: the anti-overlap margin :func:`place_planes`
@@ -158,8 +176,13 @@ def pick_proxy_radius(radius: float, multiverse_radius: float) -> float:
     that floor. :func:`place_planes` separates the proxies, not the discs, because the proxy is
     what the pointer hits.
     """
-    floor = PICK_FLOOR_PX * HOME_DISTANCE_FACTOR * multiverse_radius / REFERENCE_FOCAL_PX
-    return max(PICK_PROXY_MARGIN * radius, floor)
+    # A pixel is worth more world units the further away it is, and the disc is deep: a plane on
+    # the far rim sits at `1.9 + cos(30 deg)` multiverse radii rather than 1.9. Converting the
+    # floor at the *nearest* depth would under-size it by 46% out there, so it is converted at the
+    # depth where it costs the most. The `1.15 * radius` branch needs no such care — a drawn proxy
+    # and the distance to its neighbour shrink with depth together, so their ratio is depth-free.
+    depth = (HOME_DISTANCE_FACTOR + math.cos(HOME_ELEVATION_RAD)) * multiverse_radius
+    return max(PICK_PROXY_MARGIN * radius, PICK_FLOOR_PX * depth / REFERENCE_FOCAL_PX)
 
 
 def place_planes(
@@ -180,28 +203,47 @@ def place_planes(
 
     * ``margin`` keeps the *drawn* discs apart in world space, at maximum drift. PRD 5.3.3.
     * the **home-view separation rule** keeps the *pick proxies* apart on screen, at every azimuth
-      of the multiverse's turn. A proxy floored to 24 px is 2.9 world units in radius on production,
-      and the camera compresses in-plane distance by ``sin(30 deg)``, so two worlds a comfortable
-      world-space margin apart can still land on top of each other in the home view. That is what
-      §1.11 measured and could not fix from the renderer: a nearer disc takes the pixels, and no
-      pick policy recovers them.
+      of the multiverse's turn, for every pair with a **card-bearing plane** in it. A proxy
+      floored to 24 px is 4.2 world units in radius at the disc's far rim, and the camera
+      compresses in-plane distance by ``sin(30 deg)``, so two worlds a comfortable world-space
+      margin apart can still land on top of each other in the home view. That is what §1.11
+      measured and could not fix from the renderer: a nearer disc takes the pixels, and no pick
+      policy recovers them.
 
-    The vertical scatter that PRD 8.6.1's disc thickness used to give each plane is gone with it,
-    and that is not a simplification — it is half the fix. Over a turn a pair's worst screen
-    separation is ``|d*sin(elev) - dy*cos(elev)|``: at 30 degrees, 8 units of height cancels 14
-    units of in-plane distance, so the thickness was *manufacturing* coincidences that the
-    in-plane rule cannot see. The disc is flat here; the belt (§1.8) keeps its own jitter.
+    Moon-on-moon pairs are exempt from the second rule, and that is a capacity judgement rather
+    than an oversight: it costs no world its target — the pair that can bury a world always has
+    the world in it — and the 42 empty planes of the v3 roster are all at the radius floor, so
+    demanding it of them too asks 44% of the disc's area from a sequential sampler that jams near
+    55%. The all-empty roster is the degenerate case, and it is one the pipeline's own tests
+    build.
+
+    The vertical scatter PRD 8.6.1's disc thickness used to give each plane goes with it, and not
+    as tidying. Over a turn a pair's worst screen separation is ``|d*sin(elev) - dy*cos(elev)|``:
+    at 30 degrees, 8 units of height cancels 14 units of in-plane distance, so the thickness was
+    *manufacturing* coincidences an in-plane rule cannot see. Measured over seven seeded draws it
+    is the smaller of the two levers — the rule alone already reaches zero on the shipped roster,
+    and flattening roughly halves what is left on the others (§1.11's table) — so it is worth
+    exactly that much and not more. The plane homes are flat here; the cards and the belt (§1.8)
+    keep their own thickness.
     """
     proxy = {slug: pick_proxy_radius(radius, multiverse_radius) for slug, radius, _ in entries}
+    world = {slug: not zero_card for slug, _, zero_card in entries}
     sin_elevation = math.sin(HOME_ELEVATION_RAD)
-    # Two planes can drift toward each other at once, so the worst case closes by both amplitudes.
-    drift_closure = 2.0 * drift_amplitude
-    placed: list[tuple[float, float, tuple[float, float, float]]] = []
+    # A drifting pair closes the home view's separation two ways at once: horizontally, by up to
+    # one amplitude each, and vertically, because PRD 5.3.15's drift also lifts a plane off the
+    # disc and `cot(30 deg)` of in-plane distance buys only as much screen separation as one unit
+    # of height. Bounding the two terms separately is looser than their true joint maximum
+    # (1.393 a per plane against the 1.606 a below) and is deliberately the bound and not the
+    # peak: it does not depend on the phase law the two terms happen to share today.
+    drift_closure = (
+        2.0 * drift_amplitude * (1.0 + DRIFT_VERTICAL_RATIO / math.tan(HOME_ELEVATION_RAD))
+    )
+    placed: list[tuple[float, float, bool, tuple[float, float, float]]] = []
     result: dict[str, tuple[float, float, float]] = {}
 
     for slug, radius, zero_card in sorted(entries, key=lambda e: (-e[1], e[0])):
         position: tuple[float, float, float] | None = None
-        for attempt in range(4000):
+        for attempt in range(PLACEMENT_ATTEMPTS):
             # sqrt keeps the sample uniform over the disc's area.
             u = rng.unit(slug, "r", attempt)
             frac = math.sqrt(0.5 + 0.5 * u) if zero_card else math.sqrt(u)
@@ -210,19 +252,22 @@ def place_planes(
             candidate = (r * math.cos(theta), 0.0, r * math.sin(theta))
             if all(
                 _distance(candidate, other) >= radius + other_radius + margin
-                and (_in_plane(candidate, other) - drift_closure) * sin_elevation
-                >= proxy[slug] + other_proxy
-                for other_radius, other_proxy, other in placed
+                and (
+                    not (world[slug] or other_is_world)
+                    or (_in_plane(candidate, other) - drift_closure) * sin_elevation
+                    >= proxy[slug] + other_proxy
+                )
+                for other_radius, other_proxy, other_is_world, other in placed
             ):
                 position = candidate
                 break
         if position is None:
             raise RuntimeError(
-                f"could not place plane {slug!r} after 4000 attempts; it either overlaps a "
-                "neighbour in world space or its pick proxy overlaps one in the home view. "
-                "Raise multiverse_radius, or lower the radius law's constant"
+                f"could not place plane {slug!r} after {PLACEMENT_ATTEMPTS} attempts; it either "
+                "overlaps a neighbour in world space or its pick proxy overlaps one in the home "
+                "view. Raise multiverse_radius, or lower the radius law's constant"
             )
-        placed.append((radius, proxy[slug], position))
+        placed.append((radius, proxy[slug], world[slug], position))
         result[slug] = position
     return result
 

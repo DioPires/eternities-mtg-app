@@ -308,11 +308,17 @@ def test_no_two_pick_proxies_overlap_in_the_home_view(dataset: Dataset):
     that only exists at rest is not a gap.
     """
     sin_elevation = math.sin(layout.HOME_ELEVATION_RAD)
+    per_plane = 1.0 + layout.DRIFT_VERTICAL_RATIO / math.tan(layout.HOME_ELEVATION_RAD)
     named = [p for p in dataset.planes if p.slug != "blind-eternities"]
     for i, a in enumerate(named):
         for b in named[i + 1 :]:
+            # Moon-on-moon is exempt: the pair that can bury a world always has the world in it,
+            # and the empty planes are too many, and too uniformly at the radius floor, to pack at
+            # this separation. See `place_planes`.
+            if a.card_count == 0 and b.card_count == 0:
+                continue
             gap = math.hypot(a.home[0] - b.home[0], a.home[2] - b.home[2])
-            closing = gap - a.drift_amplitude - b.drift_amplitude
+            closing = gap - per_plane * (a.drift_amplitude + b.drift_amplitude)
             need = layout.pick_proxy_radius(a.radius, MULTIVERSE_RADIUS) + layout.pick_proxy_radius(
                 b.radius, MULTIVERSE_RADIUS
             )

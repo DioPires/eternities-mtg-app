@@ -18,18 +18,27 @@
  *   pins that file to the law, so this file cannot be measuring a layout no law produces.
  *
  * Measured on the reference viewport (§1.3's 1920x1080) over a full turn. The counts are minima
- * over the sweep — one bad azimuth condemns a world — so they move with sweep density until it
- * is fine enough: shipped reads 12 occlusion-only at 24 azimuths and 13 at 36, 48, 72 and 144;
- * candidate reads 0 at all five. 36 is the first density that has converged, so it is what runs
- * here. A single-azimuth number is not evidence and must not be quoted (§1.11).
+ * over the sweep — one bad azimuth condemns a world — so they move with sweep density until it is
+ * fine enough. 36 is the first density that has converged for both arms, so it is what runs here.
+ * A single-azimuth number is not evidence and must not be quoted (§1.11).
  *
- * Two limits this file does not hide. The law is written against the reference viewport, and the
- * floor is 24 CSS px on *any* viewport: at 1280x720 the same two layouts read 22 and 4
- * occlusion-only rather than 13 and 0. And `home` moves on every dataset refresh, so these are
- * one draw of each law; the seed study over seven draws is in the DEC-759 hand-back.
+ * Three limits this file does not hide. The law is written against the reference viewport, and the
+ * floor is 24 CSS px on *any* viewport, so it buys less on a shorter one: at 1280x720 the two arms
+ * read 22 and 1 occlusion-only rather than 13 and 0. `home` moves on every dataset refresh, so
+ * these are one draw of each law — the seed study over seven draws of four arms is reproduced by
+ * `docs/worlds/dec759-separation-study.py`, whose header gives the commands. And the rule the
+ * layout satisfies is a world-space approximation: it converts the pixel floor at the *deepest*
+ * point of the disc and bounds the drift, which makes it conservative in those two terms, but the
+ * projection is not affine and the rule cannot see that. This file, not the rule, is what says the
+ * target is there.
+ *
+ * `DEC759_HOMES` (a homes file from that study), `DEC759_VIEWPORT` and `DEC759_AZIMUTHS` re-point
+ * the candidate arm, and `DEC759_OUT` collects the numbers. With `DEC759_HOMES` set the acceptance
+ * assertions step aside — an ablation arm is expected to fall short, that is what it is for. No
+ * environment at all is the committed measurement, and is what CI scores.
  */
 
-import { readFileSync } from 'node:fs'
+import { appendFileSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -37,7 +46,13 @@ import { describe, expect, it } from 'vitest'
 
 import type { PlanesFile } from '../src/data/types'
 
-import { effectiveDiameterPx, effectiveFraction, FLOOR_PX, sweepAzimuths } from './effective-target'
+import {
+  effectiveDiameterPx,
+  effectiveFraction,
+  FLOOR_PX,
+  REFERENCE_VIEWPORT,
+  sweepAzimuths,
+} from './effective-target'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const webRoot = resolve(here, '..')
@@ -47,19 +62,28 @@ const registry = JSON.parse(readFileSync(resolve(webRoot, 'datasets.json'), 'utf
 const shipped = JSON.parse(
   readFileSync(resolve(webRoot, 'public', 'data', registry.production, 'planes.json'), 'utf8'),
 ) as PlanesFile
+
+const study = process.env.DEC759_HOMES
 const law = JSON.parse(
-  readFileSync(resolve(webRoot, '..', 'docs', 'worlds', 'dec759-home-law.json'), 'utf8'),
-) as { readonly dataset: string; readonly homes: Record<string, [number, number, number]> }
+  readFileSync(study ?? resolve(webRoot, '..', 'docs', 'worlds', 'dec759-home-law.json'), 'utf8'),
+) as {
+  readonly dataset?: string
+  readonly homes?: Record<string, [number, number, number]>
+}
+const homes = law.homes ?? (law as unknown as Record<string, [number, number, number]>)
 
 const candidate: PlanesFile = {
   ...shipped,
   planes: shipped.planes.map((plane) => {
-    const home = law.homes[plane.slug]
+    const home = homes[plane.slug]
     return home ? { ...plane, home } : plane
   }),
 }
 
-const AZIMUTHS = 36
+const [width, height] = (process.env.DEC759_VIEWPORT ?? '').split('x').map(Number)
+const VIEWPORT =
+  width && height ? { viewportWidth: width, viewportHeight: height } : REFERENCE_VIEWPORT
+const AZIMUTHS = Number(process.env.DEC759_AZIMUTHS ?? 36)
 const TARGET_PX = 2 * FLOOR_PX
 /** Floating-point slack: a world that misses by a millionth of a pixel is not short. */
 const EPSILON = 1e-9
@@ -77,7 +101,7 @@ interface Shortfall {
 
 function measure(planes: PlanesFile): Shortfall {
   const worst = new Map<string, { floored: number; asDrawn: number }>()
-  for (const disks of sweepAzimuths(planes, AZIMUTHS)) {
+  for (const disks of sweepAzimuths(planes, AZIMUTHS, VIEWPORT)) {
     for (const disk of disks) {
       if (!disk.isWorld || disk.rRaw >= FLOOR_PX) continue
       const floored = effectiveDiameterPx(effectiveFraction(disk, disks, 'rFloored'), disk.rFloored)
@@ -106,13 +130,26 @@ function measure(planes: PlanesFile): Shortfall {
 const shippedArm = measure(shipped)
 const candidateArm = measure(candidate)
 
+if (process.env.DEC759_OUT) {
+  appendFileSync(
+    process.env.DEC759_OUT,
+    `${JSON.stringify({
+      homes: study ?? 'docs/worlds/dec759-home-law.json',
+      viewport: `${VIEWPORT.viewportWidth}x${VIEWPORT.viewportHeight}`,
+      azimuths: AZIMUTHS,
+      shipped: shippedArm,
+      candidate: candidateArm,
+    })}\n`,
+  )
+}
+
 describe('the home law as a pick target (spec §1.11 layout amendment, DEC-759)', () => {
-  it('measures the roster the candidate homes were cut from', () => {
+  it.skipIf(study)('measures the roster the candidate homes were cut from', () => {
     // A seam that answers is not a seam that answers about the right thing: the vendored homes
     // name the dataset they were laid out for, and overlaying them onto a different roster would
     // silently measure a layout nothing produces.
     expect(law.dataset).toBe(registry.production)
-    expect(Object.keys(law.homes).length).toBe(shipped.planes.length - 1)
+    expect(Object.keys(homes).length).toBe(shipped.planes.length - 1)
   })
 
   it('has floored worlds to measure in both arms', () => {
@@ -133,18 +170,34 @@ describe('the home law as a pick target (spec §1.11 layout amendment, DEC-759)'
     expect(shippedArm.worstOcclusionPx).toBe(0)
   })
 
-  it('separates every world far enough that occlusion never takes its target', () => {
+  it.skipIf(study)('separates every world far enough that occlusion never takes its target', () => {
     // The acceptance criterion of DEC-759. Occlusion-only, because that is the half a layout owns:
     // a world short under this rule is behind something a neighbour really draws.
+    //
+    // The exact zero is a property of *this* committed layout rather than a guarantee of the law
+    // — other draws of the same law land one or two grazing worlds (the study in the header). A
+    // refresh that regenerates the vendored homes may legitimately need only the looser bound in
+    // the next test; what must never come back is a world losing a material share of its target.
     expect(candidateArm.occlusionOnly).toEqual([])
     expect(candidateArm.worstOcclusionPx).toBe(TARGET_PX)
   })
 
-  it('leaves a residual that is floor-on-floor and a graze', () => {
-    // What is left is §1.11's own budget, not the layout's, and it is small in a way the count
-    // alone hides: the worlds still short are short by a few percent, where the shipped layout
-    // buries one completely. Reporting the count without the severity is how "13 of 19" and
-    // "0 of 3" get read as the same kind of number.
+  it('never lets occlusion take a material share of a world’s target', () => {
+    // The durable half of the criterion, and the one a refresh is held to rather than the exact
+    // zero above. The bound is set where the *law's* draws are, not where this one is: every draw
+    // of the old law buries some world at 0 px, while the worst of the law's seven study draws
+    // holds 19.7 px and five of the seven lose nothing at all. 18 px — three quarters of the
+    // target — separates those two populations with room for a reseed, so a failure here is a
+    // regression and not a new roster.
+    expect(candidateArm.worstOcclusionPx).toBeGreaterThan(18)
+    expect(candidateArm.occlusionOnly.length).toBeLessThan(shippedArm.occlusionOnly.length)
+  })
+
+  it('leaves §1.11’s own half nothing to recover either', () => {
+    // Separating the proxies removes the floor-on-floor shortfall as a side effect: the rule is
+    // stated on proxies rather than on drawn discs, so the floored disks stop eating each other
+    // too. That is worth pinning because it is the budget DEC-749's rejected tie-break was
+    // arguing over — on this layout it is empty, and severity, not just the count, says so.
     expect(candidateArm.shortFloored.length).toBeLessThan(shippedArm.shortFloored.length)
     expect(candidateArm.worstFlooredPx).toBeGreaterThan(18)
     expect(shippedArm.worstFlooredPx).toBe(0)
