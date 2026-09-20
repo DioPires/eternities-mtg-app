@@ -1227,10 +1227,20 @@ export function evictionRate(samples, windowS = W4_EVICTION_WINDOW_S) {
  *
  * **`saturated` is a NECESSARY condition, never a sufficient one — it says the reading *could* have
  * moved, not that it should have.** `claimLayer` runs only on an admission, so a full pool with no
- * new key to admit evicts nothing. Measured, not argued: at `?layers=128` the adaptive threshold
- * rises to 37.82 px, demand collapses to 14 cells that are already resident, and the pool sits at
- * **128/128 with `evictions` flat at 0 for 150 s**. Reading `saturated` as "should have churned"
- * would score that row backwards.
+ * new key to admit evicts nothing.
+ *
+ * **The example this used to give has expired twice over, and the rule it illustrates has not.** It
+ * read: at `?layers=128` the threshold rises to 37.82 px, demand collapses to 14 cells already
+ * resident, and the pool sits at 128/128 with `evictions` flat at 0 for 150 s. Both halves are now
+ * false. PR #85 moved the arrival pose and the world turns under the camera, so cells rotate through
+ * the admitted ring and the 128-layer pool churns — DEC-877 measured **2.41/s** there on `a0eec54`,
+ * and 5 draws at 256 buckets read `evictions` 0 → 15 → 31 → 51 → 67 over ~12 s, about **5.3/s**.
+ * DEC-882 then raised the quantile's resolution, so the same pose admits **76** cells at **37.11 px**
+ * rather than 14 at 37.82. A frame that admits more of what it can see churns more, not less.
+ *
+ * The rule stands on its own mechanism rather than on that frame: `claimLayer` is reached only by an
+ * admission, so a pool holding exactly the keys this frame wants evicts nothing however full it is.
+ * `unsaturated-pool` is the live row that pins the domain, and it pins it from the other side.
  *
  * **It is a lower bound, deliberately, and that is why it is reported and not scored.** Occupancy is
  * `resident + reserved`; `?probe=` publishes only `resident`, so a pool sitting at `layers` with a

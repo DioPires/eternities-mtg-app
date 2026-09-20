@@ -3141,9 +3141,17 @@ describe("W4 — art resolves without exhausting", () => {
    */
   describe("demand against capacity", () => {
     it("greens the tier-4 row on artFraction while reporting the overshoot that would red it", () => {
-      // The row the split was raised for, at its measured numbers: the policy raised its threshold
-      // 24 → 35.06 px, cut demand 945 → 205, and still admitted 205 into a 128-layer pool. 125 of
-      // them draw art — 0.610 against a ceiling of 0.624.
+      // The row the split was raised for, at the numbers measured when it was raised: the policy
+      // took its threshold 24 → 35.06 px, cut demand 945 → 205, and still admitted 205 into a
+      // 128-layer pool. 125 of them draw art — 0.610 against a ceiling of 0.624.
+      //
+      // **Those are a record of one era's pose and grid, and the constructed pair below is what the
+      // row actually tests.** Re-measured off the gate at DEC-882: the same seam now takes the
+      // threshold 24 → **37.11 px**, demand 1,383 → **76**, admits 76 into the 128-layer pool, and
+      // 75 of them draw art — `artFraction` **0.9870**. The overshoot the split exists to report is
+      // gone at this pose, which is DEC-882's whole point, so the numbers here are kept as the
+      // worked example of an *overshooting* frame rather than re-fitted to a frame that no longer
+      // overshoots. `evaluateW4` is fed constructed counts either way.
       const tier4 = evaluateW4(
         cells(205, 125),
         settled(0),

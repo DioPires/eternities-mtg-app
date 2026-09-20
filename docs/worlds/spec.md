@@ -743,9 +743,12 @@ fetches (≈ 170 MB) for one camera pose.
 > terms unpinned on the default path while every assertion about them still passes.
 >
 > The mechanism is not a property of any one world, and in particular it is **not** "the worlds whose
-> threshold rises highest go empty": dominaria has the *lowest* risen threshold on the roster (30.13
-> px at 16, 64 and 128 layers alike — it read 32.50, one bucket higher, until DEC-769 fixed F1 above)
-> and goes empty, while bloomburrow at 35.06 px does not. A back-facing cell projects at most
+> threshold rises highest go empty": at 128 layers dominaria has the *lowest* risen threshold on the
+> roster (**30.71 px** at 256 buckets, 30.13 before DEC-882 raised the grid, and 32.50 before DEC-769
+> fixed F1 above) and goes empty, while at 64 layers bloomburrow sits **below** it at 25.40 px and
+> does not — 232 excluded cells against dominaria's none. The threshold is quoted with its capacity
+> because the quantile is defined relative to capacity; without one it is not a reading. A
+> back-facing cell projects at most
 > ~0.82x the height of the world's tallest front-facing cell at this pose — near-constant across the
 > roster — so the exclusion binds exactly while the threshold sits below that fraction, and the
 > threshold is set by **demand against capacity**, nothing else.
@@ -3005,6 +3008,13 @@ pool still passes W4.
 > gate's own problem to close (DEC-752, main `f049dca`, dominaria, 1920×1080).** Off the live
 > renderer, `pool.layers` 1,024 → **24.00 px** (the `BASE_THRESHOLD_PX` floor), 128 → **27.93 px**,
 > 0 → **30.13 px**.
+>
+> **Re-taken at DEC-882 off the worlds gate at the driven 2.2-radii pose**, which is the pose the
+> discrepancy below asks for: 1,024 → **24.00 px** on both trees, unchanged and still the floor; 128
+> → **37.82 px** on `a0eec54` and **37.11 px** at 256 buckets. The 128-layer reading is no longer
+> one bucket *below* the offline sweep — it is well above it, because the arrival pose moved at PR
+> #85 and cells at 2.2 radii are taller than the 2.14 the gate used to settle at. The offline rig
+> and the driven gate are two instruments and both reproduce on `a0eec54`; quote each with its own.
 >
 > §1.6's note above gives dominaria **30.13 px at 16, 64 and 128 layers alike** at this same
 > 2.2-radii pose, so the live 128-layer reading sits **one bucket low**. The likely cause is not a
