@@ -7,7 +7,7 @@
 | Field | Value |
 |---|---|
 | Dataset | production |
-| Data hash | `51beadfbdedb3cca` |
+| Data hash | `c7de37b93d7ea133` |
 | Run date (`--as-of`) | 2026-09-04 |
 | Scryfall bulk `updated_at` | 2026-09-04T09:05:32.308+00:00 |
 | Scryfall bulk file | `default-cards-20260904090532.json` |
@@ -146,11 +146,11 @@ Each row should trace to an appendix or override edit (PRD 9.2.3).
 
 | File | Bytes |
 |---|---|
-| `planes.json` | 2,286 |
+| `planes.json` | 2,269 |
 | `search.json` | 862 |
 | `sets.bin` | 312 |
 | `stars.bin` | 160 |
 | `planes/*.json` (4 shards) | 3,079 |
 
-Written to `web/public/data/51beadfbdedb3cca/` (PRD 8.8.3).
+Written to `web/public/data/c7de37b93d7ea133/` (PRD 8.8.3).
 
