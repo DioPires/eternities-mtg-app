@@ -2095,9 +2095,14 @@ an assertion there.
 > | reading | value | vs 32 |
 > |---|---|---|
 > | the witness that must RED (want set collapsed to 14) | 14 | **2.3× below** |
-> | healthy tier-4 rung, `?layers=128` | 124 | 3.9× above |
+> | healthy tier-4 rung, `?layers=128` † | 124 | 3.9× above |
 > | worst in-domain world of the 45-world tour (forgotten-realms) | 146 | **4.6× above** |
 > | shipped 1,024-layer baseline, dominaria | 941 | 29× above |
+>
+> † **The 124 belongs to that row's harness configuration and not to the build** — the frame is taken
+> after DEC-843's 3 s `reducedMotion: false` read-back hold, and the adaptive threshold goes on
+> rising through it: 128 with the hold removed, 127 on the tree that had no read-back at all, the
+> renderer identical in all three. The full statement is at the matrix row itself.
 >
 > ### What this costs the matrix, stated rather than left to be discovered
 >

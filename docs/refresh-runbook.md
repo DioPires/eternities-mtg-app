@@ -342,6 +342,21 @@ denominator on every refresh. **If it ever climbs back toward 45 without dominar
 rule has stopped firing** — and a green eviction half taken over 45 readings that cannot fail is what
 this row exists to prevent.
 
+> **The climb-back baseline, written down so the comparison has a fixed end** (DEC-844 rider, recorded
+> by DEC-847). The number to compare each refresh against is:
+>
+> | `baseline` tour, `W4.evictionsPerSecond` | denominator |
+> |---|---|
+> | the reading this rule was landed on (DEC-842) | **worst of 1 world in domain, 44 out of domain** |
+>
+> One world in domain is the healthy state, not a degraded one: dominaria is the only world on the v3
+> roster whose demand saturates the shipped pool, so it is the only world whose rate the bound can
+> fail. A refresh that adds a saturating world moves this legitimately — **so the check is the pair,
+> not the number**: a denominator that climbs while dominaria's rate stands still is the rule going
+> quiet, and a denominator that climbs alongside a second world's non-zero rate is the roster
+> growing. Carried from the DEC-842 tour rather than re-measured here; re-measuring it costs a
+> 45-world tour, which is what the refresh already runs.
+
 **W2's and W3's controls are composed with `?art=off`, and their sibling is `?art=off` alone.** Read
 `artoff-swatch-mean` and `artoff-bands-shuffle` against the `art-off` row, never against `baseline`.
 Both colour seams perturb the *swatch*, and at the 2.2-radii pose essentially every sampled cell
