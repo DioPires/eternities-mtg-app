@@ -259,8 +259,9 @@ export class WorldSurface {
    * This world's orientation — `tilt ∘ spin`, written by the owner once per frame (§1.3, DEC-750).
    *
    * > **Normative — the spin axis is the pole axis, `±Y` (CEO ruling, DEC-750).** See `spin.ts` for
-   * > the ruling, the measurement behind it and why `starfield/motion.ts` disagrees with both
-   * > datasets rather than with this file.
+   * > the ruling and the measurement behind it. `starfield/motion.ts` disagreed with both datasets
+   * > until DEC-774 moved PRD 8.5.7's CPU mirror onto the same axis; `worlds-spin.test.ts` now
+   * > checks the mirror against this file's law rather than only against its own twin.
    *
    * **The frame does not rotate the cells; it rotates the camera.** Every per-cell quantity below —
    * facing, the frustum test, the projected rect, the shade — is computed in the world's **own**

@@ -2196,8 +2196,8 @@ an assertion there.
 > single azimuth, reachability collapses into exactly the single-frame coverage count it replaces
 > while still reading as the stronger claim.
 >
-> **The sweep parameter is the multiverse rotation, not a plane's own spin — so the pending
-> spin-axis ruling does not reach W5 (DEC-752, measured at `613715f`).** R1 raised on DEC-749 that
+> **The sweep parameter is the multiverse rotation, not a plane's own spin — so the spin-axis
+> ruling does not reach W5 (DEC-752, measured at `613715f`).** R1 raised on DEC-749 that
 > `motion.ts` spins a plane about plane-local **+z** (the disc normal, PRD 8.6.2) while the surface
 > law's poles are **±y**, and noted it would move what a sweep over azimuth means here. It does not,
 > and the reason is structural rather than numerical: `planePosition` (`camera/motion.ts:239-248`) is
@@ -2212,6 +2212,12 @@ an assertion there.
 > This is scoped to W5. The ruling is still R1's to take and still matters on R1's own surface — an
 > attached sheet is not at the origin, so a globe tumbling end-over-end through the bands is a real
 > defect there. W5 simply does not depend on its outcome, and no gate row should be held for it.
+>
+> *Amended after the cutover (DEC-774).* The ruling was taken: PRD 8.6.2's prose was wrong about
+> which axis is the disc normal, and `starfield/motion.ts`, its vertex twin and `camera/motion.ts`
+> now spin about plane-local **+y** — the axis §1.3 names. The paragraph above is unchanged in
+> substance: its argument is structural — a plane's spin fixes the plane's own centre, whatever the
+> axis — so it holds on both sides of the change, which is why W5 was not re-derived for it.
 >
 > **Normative — the ceiling half is a regression check on §1.8's suppression, and is named as one
 > (DEC-752).** Once the moons are unlabelled until hover, the candidate list is the 45 worlds and
