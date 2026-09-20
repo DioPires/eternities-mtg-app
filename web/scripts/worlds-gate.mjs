@@ -1428,6 +1428,14 @@ export const MATRIX = [
       // above moves far less but it does move — **123–124**, 124 on the first three draws and 123
       // on the fix leg's — so neither is a constant and neither is quoted as one. Quote the range;
       // a single value here would be one draw wearing the authority of a constant.
+      //
+      // **Every figure above was drawn on `main` at or before `7dfea1d`, and `main` has since moved
+      // out from under them — see DEC-876.** PR #85 (DEC-774, spin about the plane-local disc
+      // normal) collapses this rung's want set to 16 cells and its drawn count to 14, so both
+      // expectations below invert and the row goes RED on `a0eec54` and on anything merged with it.
+      // The readings are left as taken rather than refitted: the row is the control and the tree is
+      // what changed, and a control refitted to the reading it was built to catch stops being one.
+      // Re-derive these ranges only once DEC-876 rules the new want set intended.
       { criterion: 'W4', measure: 'demandFitsCapacity', expect: 'RED' },
     ],
   },
