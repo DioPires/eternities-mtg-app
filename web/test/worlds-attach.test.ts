@@ -1617,6 +1617,39 @@ describe('§1.11 a filtered cell drops to its swatch, and never to art', () => {
     rig.worlds.dispose()
   })
 
+  it('flags iFiltered for upload on every mask, or the GPU keeps the previous filter', () => {
+    // Every other row here reads the CPU array, which is written whether or not the attribute is
+    // flagged; without `needsUpdate` the shader goes on dimming the old selection. Three bumps
+    // `version` on each flag, so it is the observable the upload is scheduled from.
+    const rig = build({ capabilities: { webgl2: true, maxArrayTextureLayers: 2048 } })
+    rig.worlds.setData(roster())
+    const filtered = surfaceOf(rig, 'dominaria').sheet.filtered
+    const before = filtered.version
+    rig.worlds.setFilterMask(maskExcluding('dominaria'))
+    expect(filtered.version).toBeGreaterThan(before)
+    const afterMask = filtered.version
+    rig.worlds.setFilterMask(null)
+    expect(filtered.version).toBeGreaterThan(afterMask)
+    rig.worlds.dispose()
+  })
+
+  it('leaves the cards past the end of a short mask unfiltered', () => {
+    // A mask shorter than the roster disagrees with it; an absent byte excludes nothing. The mask
+    // is all zeros, so any spelling that reads a missing byte as "not a pass" dims the tail too.
+    const rig = build({ capabilities: { webgl2: true, maxArrayTextureLayers: 2048 } })
+    rig.worlds.setData(roster())
+    const world = surfaceOf(rig, 'dominaria')
+    const flags = world.sheet.filtered.array as Float32Array
+    const covered = Math.floor(flags.length / 2)
+    expect(covered).toBeGreaterThan(0)
+    const mask = new Uint8Array(world.artKeyBase + covered) // every byte 0: every covered card out
+
+    expect(() => rig.worlds.setFilterMask(mask)).not.toThrow()
+    expect([...flags.subarray(0, covered)].every((f) => f === 1)).toBe(true)
+    expect([...flags.subarray(covered)].every((f) => f === 0)).toBe(true)
+    rig.worlds.dispose()
+  })
+
   it('clears on a null mask, which is also "no filter"', () => {
     const rig = build({ capabilities: { webgl2: true, maxArrayTextureLayers: 2048 } })
     rig.worlds.setData(roster())

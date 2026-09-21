@@ -322,10 +322,10 @@ The one galaxy-shaped part of picking was the star field's hover highlight. It w
 (`ScenePickingHandle.setStarHighlight`, called from `attachStarScene`'s `setResources` — the
 hand-over is in that setter, not in the attach body) rather than reached for, so the cutover could
 stop registering it by deleting `starScene.ts` without touching a line of the input layer. **That is
-what happened** (DEC-752, DEC-857 item 7): `setStarHighlight` is still declared and implemented in
-`input/attachScenePicking.ts`, ready for a field to register with, and since the deletion nothing in
-`src/` calls it — the only caller left in the tree is `test/scene-picking-host.test.tsx`, which
-drives it directly. There is no hand-over on the shipped path any more. DEC-868 deleted the seam
+what happened** (DEC-752, DEC-857 item 7): `setStarHighlight` stayed declared and implemented in
+`input/attachScenePicking.ts`, ready for a field to register with, but after the deletion nothing in
+`src/` called it — the only caller left in the tree was `test/scene-picking-host.test.tsx`, which
+drove it directly. There is no hand-over on the shipped path any more. DEC-868 deleted the seam
 and replaced both of its guard rows with rows on the surviving hover and focus routes.
 
 `SceneHost` still attaches picking **before** the rest of the frame, and it is still a construction
