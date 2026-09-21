@@ -62,6 +62,7 @@ import {
   rowCellsFaults,
   selectSpinPhases,
   steerAzimuthComb,
+  sweepFrames,
   w3QualifiesByShares,
 } from './lib/worlds-metrics.mjs'
 import {
@@ -708,12 +709,7 @@ async function sweepSpinPhase(page, slug, { dir, captures, periodS }) {
 
   const picked = selectSpinPhases(phases, { periodS })
   if (!picked.ok) return picked
-  return {
-    ok: true,
-    frame: frames[picked.w1Phase],
-    w4Frame: frames[picked.w4Phase],
-    sweep: picked.sweep,
-  }
+  return { ok: true, ...sweepFrames(frames, picked), sweep: picked.sweep }
 }
 
 async function visitWorld(page, world, { dir, captures, pose = SURFACE_RADII, spinSweep = false }) {
@@ -1346,7 +1342,7 @@ export const MATRIX = [
       // **17**, below the floor — the DEC-876 RED. Re-measured at 256 buckets (DEC-882): **76**
       // cells against a floor of 32, 2.4× above, over a matrix draw and five step-1 draws reading
       // 76–82, and **75** on both of DEC-899's draws after the merge with `c49315c`. Quote it as
-      // wanted 76–77, drawn 75–76, admitted 76–84 over all eight live draws.
+      // wanted 76–77, drawn 75–77, admitted 76–84 over the live draws since DEC-882.
       //
       // **Its RED partner one row down no longer reds.** `layers-128-reduced` is this same pool with
       // the OS reduced-motion preference emulated; it read 14 and now reads 78. See that row for why
@@ -1384,11 +1380,11 @@ export const MATRIX = [
       //    which is the opposite of the health this expectation was written to deny.
       // 2. **It is green for the right reason now.** At 256 buckets the quantile can land inside the
       //    pool, so this reads **0.594–0.602** — **76–77 cells wanted** of 128 — and
-      //    `artCellsShowing` above, the *drawn* count, reads **75–76** against its floor of 32 on
+      //    `artCellsShowing` above, the *drawn* count, reads **75–77** against its floor of 32 on
       //    the same frames. Per draw: DEC-882 read 77 wanted / 76 drawn, and its logs hold 0.594
       //    twice; DEC-899 drew 75 twice; DEC-901's three re-reads read 76 / 75 (0.59375), then
-      //    77 / 76 (0.6015625) twice. Demand fitting capacity *while the pool is well used* is the
-      //    state §1.6 is written to produce.
+      //    77 / 76 (0.6015625) twice; DEC-868, DEC-907 and DEC-912 drew 77 on `main`. Demand
+      //    fitting capacity *while the pool is well used* is the state §1.6 is written to produce.
       //
       // So the RED's premise expired with the mechanism it described. What replaces it as a tripwire
       // is the pair: if the policy ever goes back to overshooting, this reads above 1 and reds, and

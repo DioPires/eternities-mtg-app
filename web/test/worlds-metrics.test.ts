@@ -56,6 +56,7 @@ import {
   rowCellsFaults,
   rowsClosedForm,
   selectSpinPhases,
+  sweepFrames,
   artFractionOf,
   srgbToLab,
   LABEL_VISIBLE_MIN_OPACITY,
@@ -473,20 +474,35 @@ describe("the one-card sweep picks each criterion's phase (DEC-861 items 1–3)"
 
   describe("rule 4 — W1 scores the worst counted phase, never the first or the best", () => {
     // Counted phases 80, 18, 120 px: the first and the best clear the 24 px floor by 56 and 96 px,
-    // the worst sits 6 px under it. Every spelling but "lowest" greens this sweep.
-    const sweep = [away(0), presents(100, 80), presents(200, FLOOR - 6), presents(300, 120), away(400)];
+    // the worst sits 6 px under it. Every spelling but "lowest" greens this sweep. The 90 px phase is
+    // the leading edge, which rule 3 never counts — it is there so the first *counted* phase is the
+    // 80 rather than the worst (DEC-912 F1: without it "first counted" and "worst" were one phase,
+    // and the first-phase mutant died only on rule 3's row).
+    const sweep = [
+      away(0),
+      presents(50, 90),
+      presents(100, 80),
+      presents(200, FLOOR - 6),
+      presents(300, 120),
+      away(400),
+    ];
 
     it("reds the sweep on its worst phase", () => {
       const picked = pick(sweep);
-      expect(picked.ok && picked.w1Phase).toBe(2);
+      expect(picked.ok && picked.sweep.scorable).toBe(3);
+      expect(picked.ok && picked.w1Phase).toBe(3);
       expect(picked.ok && picked.sweep.medianHeightPx).toEqual({ worst: 18, best: 120 });
       expect(w1On(sweep)).toBe("fail");
     });
 
-    it("has a first and a best phase that would each have passed", () => {
-      // The precondition that makes the row above discriminating, stated rather than assumed.
-      expect(evaluateW1([{ slug: "s", cells: [{ height: 80, frontFacing: true }] }]).status).toBe("pass");
-      expect(evaluateW1([{ slug: "s", cells: [{ height: 120, frontFacing: true }] }]).status).toBe("pass");
+    it("has a first and a best counted phase that would each have passed", () => {
+      // The precondition that makes the row above discriminating, stated rather than assumed: the
+      // phases a wrong rule would pick are counted ones, and each greens W1 on its own.
+      const counted = sweep.filter((p, i) => i > 0 && p.presented > 0 && sweep[i - 1]!.presented > 0);
+      expect(counted.map((p) => p.medianHeightPx)).toEqual([80, FLOOR - 6, 120]);
+      for (const height of [counted[0]!.medianHeightPx!, Math.max(...counted.map((p) => p.medianHeightPx!))]) {
+        expect(evaluateW1([{ slug: "s", cells: [{ height, frontFacing: true }] }]).status).toBe("pass");
+      }
     });
   });
 
@@ -555,6 +571,26 @@ describe("the one-card sweep picks each criterion's phase (DEC-861 items 1–3)"
       expect(picked.ok && picked.w1Phase).toBe(2);
       expect(picked.ok && picked.w4Phase).toBe(3);
       expect(picked.ok && picked.sweep.artFraction).toMatchObject({ worst: 0, best: 1 });
+    });
+
+    it("hands W4 the frame of its own worst phase, not the frame W1 scored (F4)", () => {
+      // The driver scores W4 on `sweepFrames(...).w4Frame`. The live rows cannot tell the two
+      // frames apart (artFraction 1 at every counted phase), so this fixture is built to: the
+      // worst-height phase shows all its art, the worst-art phase is the tallest counted one.
+      const sweep = [
+        away(0),
+        presents(100, 90, { artFraction: 0.75 }),
+        presents(200, 60, { artFraction: 1 }),
+        presents(300, 95, { artFraction: 0 }),
+        presents(400, 80, { artFraction: 0.5 }),
+      ];
+      const picked = pick(sweep);
+      if (!picked.ok) throw new Error(`sweep refused: ${picked.reason}`);
+      const frames = sweep.map((_, i) => ({ phase: i }));
+      const { frame, w4Frame } = sweepFrames(frames, picked);
+      expect(frame).toBe(frames[2]);
+      expect(w4Frame).toBe(frames[3]);
+      expect(sweep[w4Frame.phase]!.artFraction).toBe(picked.sweep.artFraction.worst);
     });
 
     it("steps over a counted phase where nothing wants art, and falls back to W1's phase when every one is", () => {
@@ -2476,8 +2512,9 @@ describe("W4 — art resolves without exhausting", () => {
       }
       // Named from every side so the margins are on the record rather than implied, and all four
       // are measured readings: 14 is DEC-834's witness; 75 the live `?layers=128` row as the gate
-      // now measures it (DEC-899) — wanted 76–77, drawn 75–76, admitted 76–84 over all eight live
-      // draws (DEC-882/889/894/896) — it read 124 at the DEC-845 arrival pose, before PR #85 and DEC-882;
+      // now measures it (DEC-899) — wanted 76–77, drawn 75–77, admitted 76–84 over the live draws
+      // since DEC-882 (DEC-882/889/894/896/868/907/912) — it read 124 at the DEC-845 arrival pose,
+      // before PR #85 and DEC-882;
       // 141 the worst in-domain world of the 45-world acceptance tour (forgotten-realms, 146 on
       // DEC-837's tour and 141 on DEC-890's); 941 dominaria at the shipped pool (n = 1, DEC-837).
       expect(tier4.measures.find((m) => m.key === "artCellsShowing")!.value!).toBe(75);
@@ -4589,7 +4626,7 @@ describe("the negative-control matrix", () => {
     // Three GREEN partners, and none is a duplicate of another: the unmodified build; kamigawa, the
     // term saying a page rendered at all so the `N/A` beside it is a reading; and
     // `layers-128-reduced`, the one DEC-882 turned from the RED into a partner. (`?layers=128`, the
-    // term at its tightest on a healthy build at 75–76 drawn against 32, is mirrored by its folded W4
+    // term at its tightest on a healthy build at 75–77 drawn against 32, is mirrored by its folded W4
     // colour and so is not among these.) Counted rather than named because a rename must not
     // silently drop one.
     expect(cells.filter((r) => r.expect === "GREEN")).toHaveLength(3);
