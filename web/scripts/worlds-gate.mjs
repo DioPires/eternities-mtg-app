@@ -27,8 +27,8 @@
  */
 
 import { spawn, execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { basename, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import puppeteer from 'puppeteer-core'
@@ -1210,8 +1210,13 @@ async function sweepHomeView(page, { minAzimuths }) {
  * `subject` is the world a row is measured on. Rows that are about the roster run the whole tour;
  * the rest name one world, because a control's job is to falsify a measure and 45 worlds of it is
  * 45× the runtime for the same evidence.
+ *
+ * **Exported so the unit suite can read the live rows rather than a copy of them** (DEC-847 item 2,
+ * DEC-844's finding). `worlds-metrics.test.ts` mirrors this matrix by hand; until it imported this
+ * binding, deleting a whole live row left that suite green — the mirror guarded the mirror. Nothing
+ * outside the test reads it, and the export is not a seam for the gate's behaviour.
  */
-const MATRIX = [
+export const MATRIX = [
   {
     id: 'baseline',
     label: 'the unmodified build on the v3 production dataset',
@@ -1413,8 +1418,24 @@ const MATRIX = [
       // **The overshoot the reachable bar forgives, asserted so it cannot go quiet.** Ruling
       // `demand_measure_scored` is `reported_only`, so this measure cannot colour the row — which
       // makes it exactly the kind of number that stops being read. Naming it here keeps it
-      // falsifiable: the policy admits ~205 cells into a 128-layer pool, 1.60× capacity, and the day
-      // it stops doing that this row goes red and someone has to look.
+      // falsifiable: the policy admits **207–209** cells into a 128-layer pool, **1.617–1.633×**
+      // capacity, and the day it stops doing that this row goes red and someone has to look.
+      //
+      // **Draws disagree — so this one is a range and not a figure** (DEC-847, re-measured
+      // post-cutover; it read ~205 / 1.60× before). The want set is the adaptive threshold's output
+      // and it lands a couple of cells apart run to run: 207, 209, 208 and 207 across the four
+      // post-cutover draws on this harness (1.617×, 1.633×, 1.625×, 1.617×). `artCellsShowing`
+      // above moves far less but it does move — **123–124**, 124 on the first three draws and 123
+      // on the fix leg's — so neither is a constant and neither is quoted as one. Quote the range;
+      // a single value here would be one draw wearing the authority of a constant.
+      //
+      // **Every figure above was drawn on `main` at or before `7dfea1d`, and `main` has since moved
+      // out from under them — see DEC-876.** PR #85 (DEC-774, spin about the plane-local disc
+      // normal) collapses this rung's want set to 16 cells and its drawn count to 14, so both
+      // expectations below invert and the row goes RED on `a0eec54` and on anything merged with it.
+      // The readings are left as taken rather than refitted: the row is the control and the tree is
+      // what changed, and a control refitted to the reading it was built to catch stops being one.
+      // Re-derive these ranges only once DEC-876 rules the new want set intended.
       { criterion: 'W4', measure: 'demandFitsCapacity', expect: 'RED' },
     ],
   },
@@ -1433,9 +1454,12 @@ const MATRIX = [
     //
     // **kamigawa, and the subject is chosen for margin rather than for tightness.** 917 cards, a
     // high-water mark of 265 of 1,024 — 26% of capacity — so it is nowhere near the boundary it is
-    // asserted to sit below, and it still presents 202 front-facing on-screen cells, which puts it
-    // inside `artCellsShowing`'s 128-cell domain. The tightest subject available (ravnica, 606) would
-    // be the flakiest, and a control that flickers is not a control.
+    // asserted to sit below, and it still presents **202–203** front-facing on-screen cells, which
+    // puts it inside `artCellsShowing`'s 128-cell domain. Ranged for the same reason the row above
+    // ranges 207–209 (DEC-869 R-b): 202 on three draws, 203 on DEC-869's, and a value that moves
+    // between draws quoted as a constant is one draw wearing that authority. The margin to 128
+    // swallows the spread either way. The tightest subject available (ravnica, 606) would be the
+    // flakiest, and a control that flickers is not a control.
     //
     // **The two GREEN expectations are not decoration**: an `N/A`-only row cannot tell a working
     // domain rule from a page that failed to render, and both would print the same `n/a`. The art
@@ -1801,12 +1825,25 @@ async function runRow(browser, url, row, { roster, args, baselineProbe }) {
               ? ''
               : ` (pool hw ${hw.resident}/${hw.layers}${hw.saturated ? ' SATURATED' : ''})`) +
             ` [art ${visit.w4.showing}/${visit.w4.presented} presented; ev ` +
-            // Three domain rules can null this rate and the line has to say which — an `n/a` that
-            // does not name its cause is how "the bound stopped binding" reads identically to "this
-            // world is quiet". The occupancy clause is read off `tail.saturated`, the same boolean
-            // the criterion's rule tests, rather than re-derived here: a second spelling is a second
-            // thing to keep in step. Ordered as the criterion orders them, so the printed reason is
-            // the reason that actually fired.
+            // **Five domain rules can null this rate and these three labels cover two of them.**
+            // `evaluateW4`'s `evictionWhy` branches, in order: no admission at all (the stream never
+            // ran, or the budget was already committed at entry), the budget exhausted *during* the
+            // visit, the wrong pool capacity, the occupancy rule, and finally `tail.why` — too short
+            // a tail or one that never settled. `n/a — pool` and `n/a — unsaturated` name one rule
+            // each; **`n/a — tail` is the fallback and it is three of the five**, so it names the
+            // last rule only by accident of ordering. The cause is never lost: the criterion writes
+            // the whole sentence to `ev.insufficientReason`, and that field — not this tag — is what
+            // to read when an `n/a` has to be explained. This line is a tour-legible summary.
+            //
+            // The two named clauses are re-spelled here rather than read back, which is the cost of
+            // printing a short tag: `tail.saturated === false && tail.evictionsObserved === 0` is
+            // the criterion's own conjunction written a second time, and a second spelling is a
+            // second thing to keep in step. What this ordering does and does not buy (DEC-869 R-c):
+            // the tag is the **first of the two named rules that holds**, not the rule that fired.
+            // `evictionWhy` tests admission and the exit budget *ahead* of capacity and occupancy,
+            // so a row that was budget-bound at exit and also off-capacity prints `n/a — pool` while
+            // branch 2 is what nulled the rate. Read `ev.insufficientReason` for the rule that
+            // fired; this tag only says which named rule was available to explain it.
             (ev.status === 'insufficient'
               ? !visit.w4.atEvictionPool
                 ? `n/a — pool ${visit.poolLayers}`
@@ -2183,4 +2220,37 @@ async function main() {
   process.exitCode = failed ? 1 : 0
 }
 
-await main()
+// **Run only as a program.** `worlds-metrics.test.ts` imports `MATRIX` from this file to cross-check
+// its hand-written mirror (DEC-847 item 2), and a bare `await main()` would build the app and drive
+// a browser on import. `process.argv[1]` is the script node was told to run; equal to this module's
+// own path, this file is the entry point rather than a dependency.
+//
+// Both sides must be realpath'd before they can be compared (DEC-869 claim 1). Node sets
+// `process.argv[1] = resolve(arg)` and does **not** follow symlinks, while the ESM loader hands
+// `import.meta.url` back already resolved, so any absolute invocation whose prefix crosses a
+// symlink — `/tmp` and `/var/folders` are symlinks on macOS, and that is where our detached chains
+// live — makes a bare compare false. The failure is silent: `main()` never runs, `process.exitCode`
+// is never set, and the shell reads 0 from a gate that checked nothing. Hence the second arm: when
+// the basename matches but the path does not, we are the script someone meant to run and the
+// compare still failed, so say which two paths disagreed and exit non-zero rather than quietly
+// toward green. `realpathSync` throws on a path that does not exist; fall back to the resolved
+// spelling there so a missing entry cannot crash the guard itself.
+const self = fileURLToPath(import.meta.url)
+const entry =
+  process.argv[1] === undefined
+    ? null
+    : (() => {
+        try {
+          return realpathSync(resolve(process.argv[1]))
+        } catch {
+          return resolve(process.argv[1])
+        }
+      })()
+if (entry === self) {
+  await main()
+} else if (entry !== null && basename(entry) === basename(self)) {
+  console.error(
+    `worlds-gate.mjs: ${entry} is not ${self} — refusing to run rather than exit 0 silently`,
+  )
+  process.exit(2)
+}

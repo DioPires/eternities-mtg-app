@@ -491,6 +491,19 @@ that cannot expose a misrouted star lookup, because reading the wrong card's swa
 nearly the same colour. `active` was left where it was. Production is untouched: its swatches are
 still real pixel statistics, and §8.1's figures are unchanged.
 
+**And once more in DEC-759**, to `8bf8a37fe3789b57` (small) and `03f9a15e268f3d05` (scale), when
+`place_planes` gained the home-view separation rule of worlds spec §1.11 and stopped scattering
+plane homes through the disc's thickness. `home` is the only *field* that moved, so `planes.json`
+is the only artefact whose content changed — stars are plane-local, and `stars.bin`, `sets.bin`,
+the per-plane shards, `search.json` and `swatches.bin` are byte-identical — but `manifest.json`
+moves with it, since it carries that file's length, its sha256 and the `dataHash` over all of
+them, and the directory name is that hash. 53 of the 88 fixture-scale planes changed position
+in-plane; `fixture-small`'s four named planes kept their `(x, z)` exactly and lost only their
+vertical offsets, which is the cheapest possible demonstration that a re-hash is not a reshuffle.
+Production is untouched, which is the point: no gate baseline of DEC-752's moves with this change.
+The homes a refresh *will* produce are vendored at `docs/worlds/dec759-home-law.json` and pinned
+to the generator by `pipeline/tests/test_home_separation.py`.
+
 Three things a reviewer should check rather than take on trust:
 
 1. **The surface law is exact, not approximate** — but read the right evidence for it. The run
