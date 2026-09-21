@@ -7,6 +7,7 @@ test failing means the contract moved on one side only.
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 import pytest
@@ -65,3 +66,53 @@ def test_zero_card_plane_still_gets_one_empty_shard():
     assert manifest["planeShards"]["segovia"] == 1
     shard = json.loads((VECTOR_DIR / "planes" / "segovia.0.json").read_text(encoding="utf-8"))
     assert shard["cards"] == []
+
+
+# --- the `home`-law camera mirror (DEC-884) -----------------------------------------------------
+#
+# `fixtures/layout.py` restates seven constants that live in TypeScript and derives an eighth,
+# `REFERENCE_FOCAL_PX`, from two of the seven. Publishing all eight — one `cameraLaw` key per name
+# — into `vector.json` is what makes a one-sided move visible, and it is visible in three
+# different ways depending on which side moved and whether the vector was regenerated:
+#
+#   * Python constant moves, vector not regenerated -> `test_summary_matches_committed_vector_json`
+#     and `test_the_camera_law_mirror_is_published_from_the_law_itself` both red here;
+#   * Python constant moves, vector regenerated -> green here, red in `web/test/test-vector.test.ts`
+#     against the renderer's unchanged values;
+#   * TypeScript constant moves -> green here, red in `web/test/test-vector.test.ts`.
+#
+# Each row below is an entry in the mirror's index: `layout`'s spelling, the vector's, and the
+# factor between them — 1.0 except where the two sides differ in units. A constant that is in
+# `layout`'s mirror block and not in this list is unguarded, which is the state the whole leg
+# exists to leave.
+CAMERA_LAW_MIRROR = [
+    ("HOME_ELEVATION_RAD", "homeElevationRad", 1.0),
+    ("HOME_DISTANCE_FACTOR", "homeDistanceFactor", 1.0),
+    ("REFERENCE_FOV_DEG", "fovDegrees", 1.0),
+    ("REFERENCE_VIEWPORT_HEIGHT_PX", "referenceViewportHeightPx", 1.0),
+    ("REFERENCE_FOCAL_PX", "referenceFocalPx", 1.0),
+    ("PICK_PROXY_MARGIN", "pickProxyMargin", 1.0),
+    # `layout` keeps the floor as a radius; `scenePicker.ts` declares it as a diameter, and the
+    # vector is spelled in the renderer's units so the web half compares without converting.
+    ("PICK_FLOOR_PX", "pickFloorDiameterPx", 2.0),
+    ("DRIFT_VERTICAL_RATIO", "driftVerticalRatio", 1.0),
+]
+
+
+def test_the_camera_law_mirror_is_published_from_the_law_itself():
+    """Every mirrored constant reaches the committed vector, and reaches it unchanged."""
+    from eternities.fixtures import layout
+
+    committed = json.loads((VECTOR_DIR / "vector.json").read_text(encoding="utf-8"))["cameraLaw"]
+    assert set(committed) == {key for _, key, _ in CAMERA_LAW_MIRROR}, (
+        "the published camera law and the mirror index have parted company; a constant that is "
+        "published but not listed here is not checked against `layout`, and one that is listed "
+        "but not published is not seen by the web half at all"
+    )
+    for attribute, key, scale in CAMERA_LAW_MIRROR:
+        assert math.isclose(committed[key], getattr(layout, attribute) * scale, rel_tol=1e-15), (
+            f"`layout.{attribute}` and the committed `cameraLaw.{key}` disagree. If the constant "
+            "really moved, regenerate the vector with `uv run eternities test-vector` — and "
+            "expect web/test/test-vector.test.ts to fail next, because the renderer's half of "
+            "the mirror has not moved with it (DEC-884)"
+        )
