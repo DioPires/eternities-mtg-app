@@ -258,6 +258,47 @@ test('a card route renders and the breadcrumb reaches the card', async ({ page }
     .toBe(`Multiverse › ${targets.plane.displayName} › ${targets.card.name}`)
 })
 
+/**
+ * A card reached from the **URL** gets §1.10's printing ring, not just a breadcrumb (DEC-858).
+ *
+ * The row above proves the shell agrees the route is a card. It cannot see what the *scene* did
+ * with that, and for the whole of the galaxy era and the first week after the cutover the answer was
+ * nothing: `focusedStar` was written by `focusStar` alone, so only a click built a card. Measured
+ * here, headless, on this exact page — `card` null at t=7/17/27/42 s before the fix, the card and
+ * its 72 planets after it.
+ *
+ * `?probe=shell` and not `?probe=1`: `App` routes the latter to `harness.html`, a page with no
+ * router, which parks at the multiverse and can never answer a question about a deep link at all.
+ *
+ * **What this instrument sees.** SwiftShader draws no representative pixels and nothing here reads
+ * one. `ProbeState.card` is `record && card.visible` — which star the ring was built around and how
+ * many planets it laid out — so this confirms the ring was *constructed and shown*, and says
+ * nothing about how it looks. The visual half is `scripts/visual-gate.mjs` on a real GPU.
+ */
+test('a card deep link builds the printing ring, not only the breadcrumb (DEC-858)', async ({
+  page,
+}) => {
+  await page.goto(`/plane/${targets.plane.slug}/card/${targets.card.oracleId}?probe=shell`)
+  await waitForScene(page)
+  await expect
+    .poll(() => page.evaluate(() => window.__eternitiesProbe !== undefined), { timeout: 30_000 })
+    .toBe(true)
+
+  // The precondition, asserted so a null `card` below cannot be a route that never arrived.
+  await expect
+    .poll(() => page.evaluate(() => window.__eternitiesProbe?.state().focus ?? null))
+    .toBe('card')
+
+  await expect
+    .poll(() => page.evaluate(() => window.__eternitiesProbe?.state().card?.name ?? null), {
+      timeout: 30_000,
+    })
+    .toBe(targets.card.name)
+
+  const planets = await page.evaluate(() => window.__eternitiesProbe?.state().card?.planets ?? 0)
+  expect(planets, 'PRD 5.6.7: the ring is the planets').toBeGreaterThan(0)
+})
+
 test('a filtered route renders, reaches its plane, and shows one chip per facet value', async ({
   page,
 }) => {
