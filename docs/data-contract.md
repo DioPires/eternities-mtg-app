@@ -501,8 +501,27 @@ them, and the directory name is that hash. 53 of the 88 fixture-scale planes cha
 in-plane; `fixture-small`'s four named planes kept their `(x, z)` exactly and lost only their
 vertical offsets, which is the cheapest possible demonstration that a re-hash is not a reshuffle.
 Production is untouched, which is the point: no gate baseline of DEC-752's moves with this change.
-The homes a refresh *will* produce are vendored at `docs/worlds/dec759-home-law.json` and pinned
-to the generator by `pipeline/tests/test_home_separation.py`.
+Until a refresh re-laid production out, the homes it would produce were vendored at
+`docs/worlds/dec759-home-law.json` and pinned to the generator by
+`pipeline/tests/test_home_separation.py`.
+
+**Production carried the law from DEC-885**, the 2026-09-21 refresh: `c9468f1125bcddff` →
+`f2be4a22ce639774` (Scryfall bulk `2026-09-21T09:05:30.034+00:00`). The shipped homes equal the
+vendored candidate to its six-decimal rounding, so the vendored file, its pin and the web sweep's
+shipped-arm control were deleted in the same commit. The refresh moved more than `home`, and none
+of it is a contract change. The same refresh amended PRD 4.3.8 to read each printing's own
+`released_at` rather than its set's (review finding DEC-910 F1), and that is most of what moved:
+`c9468f1125bcddff` already carried 491 printings Scryfall dates after the run date — 482 on The
+List (`plst`, set date 2020-09-26, printings dated 2026-11-09) and 9 Special Guests (`spg`, set
+date 2023-11-17, printings dated 2026-10-02) — and 274 cards drew their cell art from one of them.
+Counted against `c9468f1125bcddff`: `swatches.bin` moves on **127** cards, 125 because the card's
+art source (printing index 0) was one of those unreleased printings and is now a released one (15
+of them a different illustration, 110 a different scan of the same one; the other 149 of the 274
+re-derive to the same 8 bytes), and 2 because Scryfall re-scanned the art on the same printing (The Many Deeds of Belzenlok, The
+Antiquities War). `sets.bin` loses 442 card-set entries on 442 cards and gains none; `stars.bin`
+moves only byte 9 (`brightness`, a quantised printing count the worlds renderer does not read) on
+1,492 records; 34 of 94 plane detail shards change, in `cards[].p` only. `planes.json` is
+byte-identical to the one the pre-amendment build of the same refresh produced.
 
 Three things a reviewer should check rather than take on trust:
 

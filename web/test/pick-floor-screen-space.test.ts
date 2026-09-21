@@ -18,17 +18,25 @@
  *   this rule are honest occlusion; no pick policy can recover them.
  * - **floored** — neighbours claim their floored proxy too. This is what shipping §1.11 does.
  *
- * What the three tests pin:
+ * What this file pins, since the DEC-885 refresh:
  *
  *  1. The floor never *creates* an unpickable world — every world with zero effective target is
  *     already zero as-drawn, i.e. genuinely behind something. The floor is not self-defeating.
- *  2. The floor does not deliver a 24 px *target*. It guarantees a 24 px *proxy*, which is a
- *     different thing, because floored proxies overlap each other and the nearer one wins.
- *  3. That shortfall is caused by neighbours' floors and not only by occlusion — there is a world
- *     that is nearly unoccluded as drawn and still loses most of its target once the floor is on.
  *
- * (2) and (3) are why §1.11's wording overstates its guarantee; the ruling on what to do about it
- * is R1's, and the measurement behind it is in the DEC-751 hand-back.
+ * Until DEC-885 it pinned two more, and both were findings about the layout production then
+ * shipped rather than about the floor: that the floor does not deliver a 24 px *target* (floored
+ * proxies overlapped and the nearer one won), and that some of that shortfall was caused by
+ * neighbours' floors rather than by occlusion. They were why §1.11's wording overstated its
+ * guarantee, and they are what DEC-759's `home` law was written to remove. The refresh carried the
+ * law into `planes.json` and both went false on the shipped roster — by design, so they were
+ * retired rather than loosened. `pick-target-separation.test.ts` now asserts the opposite on the
+ * same homes: every lifted world holds its full 24 px. The measurement behind the retired pair is
+ * in §1.11 and the DEC-751 hand-back.
+ *
+ * The same refresh left (1)'s old control with nothing to see: the shipped layout buries no world
+ * at any azimuth, so "dead floored == dead as-drawn" reads 0 == 0 there. The control now runs on a
+ * layout built to bury — every home collapsed onto the origin — so the equality is still backed by
+ * an instrument shown to see burial.
  *
  * The projection and the area sampling live in `effective-target.ts`, shared with DEC-759's
  * `pick-target-separation.test.ts`: that file asks what the *layout* delivers against the same
@@ -43,7 +51,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { PlanesFile } from '../src/data/types'
 
-import { effectiveDiameterPx, effectiveFraction, FLOOR_PX, sweepAzimuths } from './effective-target'
+import { effectiveFraction, FLOOR_PX, sweepAzimuths } from './effective-target'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const webRoot = resolve(here, '..')
@@ -55,7 +63,6 @@ const planes = JSON.parse(
 ) as PlanesFile
 
 const AZIMUTHS = 24
-const sweep = sweepAzimuths(planes, AZIMUTHS)
 
 interface Sample {
   readonly slug: string
@@ -64,17 +71,32 @@ interface Sample {
 }
 
 /** Every world the floor actually lifts, at every azimuth. */
-const samples: Sample[] = []
-for (const disks of sweep) {
-  for (const disk of disks) {
-    if (!disk.isWorld || disk.rRaw >= FLOOR_PX) continue
-    samples.push({
-      slug: disk.slug,
-      floored: effectiveFraction(disk, disks, 'rFloored'),
-      asDrawn: effectiveFraction(disk, disks, 'rRaw'),
-    })
+function sampleLifted(subject: PlanesFile): Sample[] {
+  const out: Sample[] = []
+  for (const disks of sweepAzimuths(subject, AZIMUTHS)) {
+    for (const disk of disks) {
+      if (!disk.isWorld || disk.rRaw >= FLOOR_PX) continue
+      out.push({
+        slug: disk.slug,
+        floored: effectiveFraction(disk, disks, 'rFloored'),
+        asDrawn: effectiveFraction(disk, disks, 'rRaw'),
+      })
+    }
   }
+  return out
 }
+
+const samples = sampleLifted(planes)
+
+/**
+ * The control: the shipped roster with every home on the origin, so the planes sit on one another
+ * and only drift separates them. Nothing ships like this; it exists so that the burial count below
+ * is shown to be non-zero on *some* input before a zero on the shipped one is trusted.
+ */
+const collapsed = sampleLifted({
+  ...planes,
+  planes: planes.planes.map((plane) => ({ ...plane, home: [0, 0, 0] })),
+})
 
 describe('the screen-space pick floor (spec §1.11, WCAG 2.5.8)', () => {
   it('has floored worlds to measure, at more than one azimuth', () => {
@@ -92,25 +114,9 @@ describe('the screen-space pick floor (spec §1.11, WCAG 2.5.8)', () => {
     const deadAsDrawn = samples.filter((s) => s.asDrawn <= 0)
     expect(deadFloored.length).toBe(deadAsDrawn.length)
 
-    // ...and the instrument does see burial, so the equality above is not two zeroes agreeing.
-    expect(deadAsDrawn.length).toBeGreaterThan(0)
-  })
-
-  it('guarantees a 24 px proxy, but not a 24 px target', () => {
-    // The finding §1.11's wording does not yet carry. WCAG 2.5.8 is about the target the pointer can
-    // actually hit; a proxy floored to 24 px whose nearer neighbour covers most of it is not one.
-    const short = samples.filter(
-      (s) => effectiveDiameterPx(s.floored, FLOOR_PX) < 2 * FLOOR_PX - 1e-9,
-    )
-    expect(short.length).toBeGreaterThan(0)
-  })
-
-  it('loses target area to neighbours’ floors, not only to occlusion', () => {
-    // What makes the previous test a fact about the floor rather than about the layout: a world that
-    // is essentially unoccluded by anything drawn, and still loses a large share of its target once
-    // the neighbours are floored too. Floored proxies eat each other, so the floor is partly
-    // self-cancelling and no nearest-hit tie-break can conjure the area back.
-    const selfInflicted = samples.filter((s) => s.asDrawn > 0.9 && s.floored < 0.5)
-    expect(selfInflicted.length).toBeGreaterThan(0)
+    // ...and the instrument does see burial, so the equality above is not two zeroes agreeing by
+    // construction. On the shipped homes it *is* two zeroes since DEC-885; the collapsed layout is
+    // where the instrument proves it can count a buried world at all.
+    expect(collapsed.filter((s) => s.asDrawn <= 0).length).toBeGreaterThan(0)
   })
 })

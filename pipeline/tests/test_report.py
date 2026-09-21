@@ -128,7 +128,7 @@ def _report_input(data_root: Path, codes: list[str] | None = None) -> ReportInpu
         total_printings=40,
         total_oracle_ids=20,
         printings_dropped=Counter({"4.3.4 promo": 9, "4.3.1 Appendix B universes_beyond": 4}),
-        unreleased_sets=["trk"],
+        unreleased_by_set={"fdc": 316, "trk": 3},
         cards_excluded=Counter({"4.4.1 no included printing": 6, "4.4.3 Universes Beyond": 2}),
         via_parent={"dmr": "lea"},
         via_override=["Card 3 -> ravnica"],
@@ -267,7 +267,7 @@ def test_an_absent_section_says_so_rather_than_vanishing(tmp_path: Path):
     data.via_override = []
     data.dropped_via_parent = {}
     data.parent_rule_only = {}
-    data.unreleased_sets = []
+    data.unreleased_by_set = {}
     data.findings = []
     data.plane_changes = []
     data.previous_run = None

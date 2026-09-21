@@ -1190,7 +1190,15 @@ describe("W3 — latitude reads as colour", () => {
       // fifteen-minute tour is the wrong time) and that they are **not** the same number, which is
       // the mistake the first draft shipped: 30 worlds qualify on their cards, 28 present both bands
       // in the sampled cells.
-      const recorded = W3_DOMAIN_SIZE["c9468f1125bcddff"]!;
+      //
+      // Keyed off the registry rather than a literal hash, so a refresh that forgets to record its
+      // new dataset reds here in milliseconds instead of on the reviewer's first full tour.
+      const registry = JSON.parse(
+        readFileSync(new URL("../datasets.json", import.meta.url), "utf8"),
+      ) as { readonly worlds: string };
+      const recorded = W3_DOMAIN_SIZE[registry.worlds];
+      expect(recorded, `no W3 domain recorded for ${registry.worlds}`).toBeDefined();
+      if (!recorded) return;
       expect(recorded.scored).toBe(28);
       expect(recorded.byShares).toBe(30);
       expect(recorded.byShares).toBeGreaterThan(recorded.scored);

@@ -198,3 +198,18 @@ unaffected.
 **§7.3's ask is discharged into the runbook, not here.** "Re-read the terms" belongs in the periodic
 refresh the Simulation Engineer owns, so it goes in the refresh runbook rather than being re-promised
 in this document.
+
+## 10. Refresh re-confirmation, 2026-09-21 (DEC-885)
+
+Every check in §8 re-run before the DEC-885 production refresh, except the last (the CSP as the
+browser sees it), which that refresh's own `pnpm test:e2e` covers. Verdict: **PASS**, no drift,
+nothing to escalate.
+
+| Check | Result |
+|---|---|
+| §2 CORS, `cards.scryfall.io` | `HTTP/2 200`, `access-control-allow-origin: *`, `access-control-allow-methods: GET, OPTIONS`, `cache-control: public, max-age=31556952`. |
+| §2 CORS, `backs.scryfall.io` | `HTTP/2 200`, `access-control-allow-origin: *`. |
+| §3 CSP guidance (`/docs/api/http-concerns`) | Unchanged, including the exhaustive spec `connect-src api.scryfall.com embed.scryfall.com; img-src *.scryfall.io …`. |
+| §4 rate limits (`/docs/api/rate-limits`) | Unchanged from §9: `*.scryfall.io` has no rate limits; 2/second on `/cards/search`, `/named`, `/random`, `/collection`; `/cards/manifest` 10/minute; 10/second elsewhere; "cache … at least for 24 hours" and "must use the bulk data files" unchanged. |
+| §5 terms of use (`/docs/api`) | Unchanged clause for clause — the four data guidelines and the six image guidelines, including the `art_crop` rule. The page closes with "Repeated mishandling or misrepresentation of data or images in your project may result in Scryfall restricting or blocking your API access": a consequence clause, not a new obligation, and §5's table already satisfies everything it could be invoked over. |
+| §6 URI derivation | Still holds. Sol Ring returns `…/small/front/9/1/91fdb56b-….jpg?1783903215` and the same for `art_crop`; Delver of Secrets (`6904ea20-e504-47da-95a0-08739fdde260`, `layout: transform`) returns `…/small/front/6/9/….jpg?1783908173` and `…/small/back/6/9/….jpg?1783908173`. |

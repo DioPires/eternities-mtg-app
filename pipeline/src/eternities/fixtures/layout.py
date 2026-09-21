@@ -57,8 +57,8 @@ does not read it, the galaxy renderer does, and re-labelling the enum would be a
 #
 # What the guard still does not do is regenerate anything for you. The homes are baked into
 # `planes.json`, so a constant that legitimately moves also means regenerating the fixtures and
-# `docs/worlds/dec759-home-law.json`, or the law's guarantee is stated against a camera the
-# renderer no longer uses.
+# refreshing production, or the law's guarantee is stated against a camera the renderer no longer
+# uses.
 
 HOME_ELEVATION_RAD: Final = math.pi / 6
 """PRD 8.6.1. Mirrors `HOME_POLAR` in ``web/src/camera/framing.ts`` (line 30,

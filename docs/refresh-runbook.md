@@ -47,29 +47,42 @@ serve superseded bulk files, so once the cached file is gone that run is no long
 
 ```sh
 cd pipeline
-uv run eternities build --as-of $(date +%F)
+uv run eternities build --as-of $(date +%F) --register worlds
 ```
+
+**`--register worlds` is not optional since the cutover** (added after the DEC-885 refresh, which
+ran without it first). `web/datasets.json` has carried a third key naming the production directory,
+`worlds`, since DEC-748, and a bare `build` moves only `active` and `production`. It then *keeps*
+the old directory — a registry key is a claim that something still fetches it — so the run ends
+`kept <old>/: still named by another datasets.json key`, ships two datasets, and leaves the worlds
+gate (`--dataset worlds`) measuring the one you meant to replace.
 
 `--as-of` fixes which sets count as released (PRD 4.3.8) and is recorded in the manifest. The same
 date and the same bulk file give byte-identical artefacts, so it is also how you reproduce a run.
 
-The tail of a good run:
+The tail of a good run (the 2026-09-21 refresh; the rehearsal predates the flag and printed no
+`worlds` line):
 
 ```
-data:   web/public/data/97984b20156c63f0
-report: pipeline/reports/2026-09-05.md
-datasets.json active = 97984b20156c63f0
-  removed stale d5ee9661aaffafa3/
+data:   web/public/data/f2be4a22ce639774
+report: pipeline/reports/2026-09-21.md
+datasets.json active = f2be4a22ce639774
+datasets.json worlds = f2be4a22ce639774
+  removed stale c9468f1125bcddff/
 ```
+
+No `datasets.json worlds = …` line means the flag was missed, and a `kept <old>/` line in place of
+`removed stale` is the same mistake seen from the other end.
 
 Three things happen automatically and none of them need doing by hand: the new data directory is
-written, `web/datasets.json` is repointed (`active` **and** `production`), and the previous
-production directory is deleted from the working tree. That last line is why `git status` will show
+written, `web/datasets.json` is repointed (`active`, `production` and — with the flag — `worlds`),
+and the previous production directory is deleted from the working tree. That last line is why `git status` will show
 a few hundred deletions next to a few hundred additions. It is the flow working, not a mistake.
 
-**Check the `datasets.json` diff: it is exactly two lines**, `active` and `production`. The fixture
-hashes must not move — a `build` reads the registry and writes only those two keys, so if a fixture
-hash changed, you ran something other than `build` and the diff is telling you so.
+**Check the `datasets.json` diff: it is exactly three lines**, `active`, `production` and
+`worlds`. The fixture hashes must not move — a `build` reads the registry and writes only those
+keys, so if a fixture hash changed, you ran something other than `build` and the diff is telling
+you so.
 
 **Re-running.** A second run on the same day against the same bulk file produces the same hash and
 an empty diff. To re-run after editing an appendix without picking up a newer card file, pin the
@@ -81,6 +94,23 @@ uv run eternities build --as-of 2026-09-05 --bulk-updated-at 2026-09-05T09:05:28
 
 Without that pin, an appendix-only re-run silently gets whatever Scryfall published since (PRD
 4.9.1). The timestamp is in the report's Run table and in `manifest.json`.
+
+**Re-run from a clean tree, or the report diffs against the wrong predecessor.** The report's
+predecessor is the production directory on disk with the latest `asOf`, and a run that is still on
+disk from an earlier attempt *is* that directory. What you see depends on whether the re-run
+produces the same hash:
+
+- **Same hash** (same bulk file, same code): the run overwrites its own predecessor, and the report
+  prints "Not computed … removed that directory when it was superseded" where the 9.2.3
+  plane-change count belongs.
+- **Different hash** (a code or appendix change in between): nothing looks wrong. The report
+  computes 9.2.3 and every other diff against the aborted attempt, not against the dataset
+  production actually serves, and names that attempt's hash as "the previous run".
+
+Either way the fix is the same: delete the new directory and the report, restore the served
+dataset (`git checkout <base> -- web/datasets.json web/public/data/<served-hash>`), then re-run, and
+check that the report's 9.2.3 row names the served hash. The swatch cache survives, so the second
+run fetches only art it has not seen.
 
 ---
 
