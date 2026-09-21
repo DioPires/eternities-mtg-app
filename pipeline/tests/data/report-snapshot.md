@@ -107,7 +107,12 @@ Only 1 of these 2 sets is load-bearing: `pza` (15 printings, inherited from `tmt
 
 ## Sets excluded as unreleased (PRD 4.3.8)
 
-`trk`
+| set | printings excluded |
+|---|---|
+| `fdc` | 316 |
+| `trk` | 3 |
+
+319 printings in 2 sets excluded: each printing's own `released_at` is after the run date. The set's own date is not read, so a listed set may also hold printings dated on or before the run date; this rule does not drop those. A printing an earlier 4.3 rule drops is counted under that rule, not here.
 
 ## Card-level overrides applied (PRD 4.6 rule 1)
 

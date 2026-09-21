@@ -35,7 +35,7 @@ class ReportInput:
     total_printings: int
     total_oracle_ids: int
     printings_dropped: Counter[str]
-    unreleased_sets: list[str]
+    unreleased_by_set: dict[str, int]
     cards_excluded: Counter[str]
     via_parent: dict[str, str]
     via_override: list[str]
@@ -231,6 +231,30 @@ def _parent_rule_only_note(via_parent: dict[str, str], parent_only: dict[str, in
         "to 4.3.2 whichever Appendix B row is consulted — so the length of the table is not a "
         "measure of how much the walk is doing."
     )
+
+
+def _unreleased_section(unreleased_by_set: dict[str, int]) -> list[str]:
+    """PRD 4.3.8 as amended: the printings its date check excluded, counted per set.
+
+    The check reads each printing's own ``released_at``, so a set listed here may also have
+    printings that shipped and are in the dataset (`fdc`). It runs last in 4.3, so a printing
+    another 4.3 rule already dropped is counted under that rule instead.
+    """
+    if not unreleased_by_set:
+        return ["None."]
+    total = sum(unreleased_by_set.values())
+    return [
+        *_table(
+            ["set", "printings excluded"],
+            [[f"`{code}`", f"{count:,}"] for code, count in unreleased_by_set.items()],
+        ),
+        "",
+        f"{total:,} printing{'' if total == 1 else 's'} in {len(unreleased_by_set)} "
+        f"set{'' if len(unreleased_by_set) == 1 else 's'} excluded: each printing's own "
+        "`released_at` is after the run date. The set's own date is not read, so a listed set may "
+        "also hold printings dated on or before the run date; this rule does not drop those. A "
+        "printing an earlier 4.3 rule drops is counted under that rule, not here.",
+    ]
 
 
 def _table(header: list[str], rows: list[list[str]]) -> list[str]:
@@ -580,11 +604,7 @@ def render(data: ReportInput) -> str:
             "",
             "## Sets excluded as unreleased (PRD 4.3.8)",
             "",
-            (
-                ", ".join(f"`{c}`" for c in data.unreleased_sets)
-                if data.unreleased_sets
-                else "None."
-            ),
+            *_unreleased_section(data.unreleased_by_set),
             "",
             "## Card-level overrides applied (PRD 4.6 rule 1)",
             "",

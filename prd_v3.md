@@ -113,7 +113,9 @@ A printing is excluded if any of the following hold:
 5. `security_stamp` is `triangle` (Universes Beyond stamp; secondary guard for UB cards inside otherwise included sets — verify this field's semantics against current Scryfall documentation at build time), **unless its Appendix B row (or the nearest one up its parent chain) is marked `stampExempt`**. The stamp is a proxy, and a set can carry it for a reason unrelated to Universes Beyond; the exemption is how Appendix B records that for one set, and it does not change what the stamp means anywhere else. A row marked both `stampExempt` and Universes Beyond is a contradiction the pipeline rejects. Added 2026-09-14 for `clu` by owner decision (DEC-710 sign-off 0dec0512).
 6. `lang` is not `en`.
 7. `flavor_name` is present. These are Universes Beyond skins printed on in-universe cards (the Godzilla series in Ikoria, the Dracula series in Crimson Vow); the card itself stays, the skinned printing goes.
-8. Its set's release date is after the pipeline run date. Preview cards for unreleased sets never enter; a set is added to Appendix B once it has shipped.
+8. Its release date **as a printing** is after the pipeline run date. Preview cards for unreleased sets never enter; a set is added to Appendix B once it has shipped.
+
+   *Amended at the 2026-09-21 refresh (DEC-885, review finding DEC-910 F1).* This rule read "its **set's** release date", which lets preview cards in whenever Scryfall files them under a set that has already shipped. Foundations Commander (`fdc`) is the case: Scryfall dates the set 2024-11-15, when it held 3 printings, and dates the 316 printings added since 2026-10-02, after that run's date. The set-date reading admitted all 316. The date is now the printing's own `released_at`, as 4.5.1 already reads it; it equals the set's date for every ordinary set, so the two readings differ only where the set date does not describe the printing. A printing whose set has no `/sets` record is still not date-checked here; 4.6.4 fails the run if one becomes a first printing.
 
 ### 4.4 Card exclusion
 

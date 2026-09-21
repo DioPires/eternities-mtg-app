@@ -236,7 +236,7 @@ def build(
             total_printings=len(all_printings),
             total_oracle_ids=len({p.oracle_id for p in all_printings}),
             printings_dropped=filtered.dropped_by_rule,
-            unreleased_sets=filtered.unreleased_sets,
+            unreleased_by_set=filtered.unreleased_by_set,
             dropped_via_parent=filtered.dropped_via_parent,
             parent_rule_only=filtered.parent_rule_only,
             cards_excluded=excluded.excluded_by_rule,

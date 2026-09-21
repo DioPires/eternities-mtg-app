@@ -6,8 +6,8 @@
  * `scenePicker.ts` resolves overlap by nearest ray hit. This module measures the difference, and
  * it is shared rather than copied so that the two files asking about it cannot drift apart:
  *
- * - `pick-floor-screen-space.test.ts` (DEC-751) asks what the *floor* delivers, and pins the three
- *   claims §1.11 carries.
+ * - `pick-floor-screen-space.test.ts` (DEC-751) asks what the *floor* delivers, and pins the one
+ *   §1.11 claim that is about the floor rather than the layout (the other two retired at DEC-885).
  * - `pick-target-separation.test.ts` (DEC-759) asks what the *layout* delivers, which is the only
  *   lever left once §1.11 has ruled the floor cannot deliver a target on its own.
  *

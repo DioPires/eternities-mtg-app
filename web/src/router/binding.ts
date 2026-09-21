@@ -48,7 +48,24 @@ export function navigateTo(
   )
 }
 
-export function createRouterBinding(nav: NavigationApi, router: Router): () => void {
+/**
+ * Turns a card focus parsed from the URL into its star index, or `undefined` while that is not
+ * knowable. The URL carries no `starIndex` by design (`route.ts`), so the binding cannot recover it
+ * alone; `boot` owns the data it resolves through.
+ */
+export type StarResolver = (focus: Extract<Focus, { kind: 'card' }>) => number | undefined
+
+function withResolvedStar(focus: Focus, resolveStar: StarResolver): Focus {
+  if (focus.kind !== 'card' || focus.starIndex !== undefined) return focus
+  const starIndex = resolveStar(focus)
+  return starIndex === undefined ? focus : { ...focus, starIndex }
+}
+
+export function createRouterBinding(
+  nav: NavigationApi,
+  router: Router,
+  resolveStar: StarResolver = () => undefined,
+): () => void {
   const offFocus = nav.on('focuschange', ({ focus, reason }) => {
     const route = router.snapshot()
     if (reason === 'correction') {
@@ -67,8 +84,10 @@ export function createRouterBinding(nav: NavigationApi, router: Router): () => v
     const route = router.snapshot()
     if (pathOf(route.focus) === pathOf(nav.snapshot().focus)) return
     // PRD 6.2.2: "browser back behaves like Esc and browser forward replays the fly-to" — both
-    // are ordinary fly-tos to whatever the restored URL names.
-    navigateTo(nav, route.focus, 'history')
+    // are ordinary fly-tos to whatever the restored URL names. A replay lands on the focus the
+    // original landed on, and a card focus without its `starIndex` is not that focus: no tether to
+    // the star and no printing ring (DEC-887). The URL dropped it, so it is resolved back here.
+    navigateTo(nav, withResolvedStar(route.focus, resolveStar), 'history')
   })
 
   return () => {
