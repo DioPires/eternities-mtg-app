@@ -523,7 +523,11 @@ describe('a world is where the camera thinks it is (DEC-804)', () => {
       fixed.dispose()
       unfixed.dispose()
     }
-  })
+    // Two full holds: ~0.8 s locally, 2,583 ms and 2,905 ms on hosted `web` jobs on `main` (runs
+    // 35597198933, 35588107255) — over half the default, with the same ~3.5x hosted ratio that took
+    // the W1 comb row past it (DEC-908). 10 s is ~3.4x the worst hosted reading. The limit is this
+    // row's, not the suite's.
+  }, 10_000)
 
   describe('the four other consumers of the live centre (DEC-811, DEC-809 N1-N3)', () => {
     // 60 s a sample: 0.3142 rad of PRD 8.5.3's rotation, so a four-sample sweep covers a fifth of
