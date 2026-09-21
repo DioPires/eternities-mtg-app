@@ -695,9 +695,9 @@ fetches (≈ 170 MB) for one camera pose.
 > art against §3.1's floor of 32. 256 buckets is ~1.91% per step and the two grids **nest** — every
 > 64-bucket edge is still an edge, 64-bucket *k* being 256-bucket *4k* — so this refines the
 > boundary rather than moving it. Measured live at that pose: threshold **37.11 px** on every draw,
-> and **76–82 of 128** layers admitted over DEC-882's five draws (three later `main` draws of
-> `layers-128` admitted 76–77, of which 75–76 drew art), against 37.82 px and 14–17 before; the
-> frame's `showingArtAll` read 124–128 on both grids. **82 is also the offline rig's figure**:
+> and **77–84 of 128** layers admitted over DEC-882's five draws, of which 76–82 drew art (three
+> later `main` draws of `layers-128` admitted 76–77, of which 75–76 drew art), against 37.82 px and
+> 14–17 before; the frame's `showingArtAll` read 124–128 on both grids. **82 is also the offline rig's figure**:
 > the committed height fixture (`web/test/worlds-tier4-heights.ts`) reads 37.1134 px and 82
 > admitted, and it is a fixture, not a draw. The intent of this section is unchanged, and so is
 > "one pass, no sort".

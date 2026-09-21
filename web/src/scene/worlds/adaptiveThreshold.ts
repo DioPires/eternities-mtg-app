@@ -29,7 +29,7 @@
  * > 64-bucket edge is still an edge here (64-bucket *k* is 256-bucket *4k*), so this refines the
  * > boundary rather than moving it. Measured on the offline rig (the committed tier-4 height
  * > fixture at that pose): threshold 37.1134 px, **82 of 128 layers** admitted, against 37.8235 px
- * > and 15 before. Live draws at that pose admit 76-82 (spec §1.6 carries the spread). The
+ * > and 15 before. Live draws at that pose admit 76-84 (spec §1.6 carries the spread). The
  * > picture a user sees is unchanged — 124-128 on-screen cells drew art on both (`showingArtAll`,
  * > not the admitted count) — but the ring is now sized to the pool instead of trailing a
  * > stale tail behind it (DEC-877 SS4).

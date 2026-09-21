@@ -700,6 +700,12 @@ describe('§1.6 lands near capacity at every phase of the grid (DEC-882)', () =>
    * this step, the frame never asks for more than capacity, and it never admits nothing while the
    * raw quantile admits something.
    *
+   * **What the pin measures.** On this path every hold ends by the admit-nothing escape after about
+   * one bucket of drift (1.91%), so {@link HOLD_LIMIT_FRAMES} is the bucket width over the step: 6
+   * frames at 0.30%, 4 at 0.45%, 3 at 0.60%. The row stays green at `HOLD_BUCKETS` 1 to 64. It pins
+   * the escape and the bucket width; `expect(HOLD_BUCKETS).toBe(4)` below is what guards the hold's
+   * width.
+   *
    * **The mutant.** Delete the admit-nothing escape in `applyHysteresis`
    * (`countAtOrAbove(previous) === 0`) and this row reds: the longest hold becomes **17** frames and
    * **52** of the 90 admit 0 of 128.
@@ -741,6 +747,8 @@ describe('§1.6 lands near capacity at every phase of the grid (DEC-882)', () =>
     expect(idle, 'frames admitting nothing while the raw quantile admits something').toEqual([])
     // Pinned exactly, so the row is not vacuous: a sweep that never held would read 0 and red.
     expect(longestHold).toBe(HOLD_LIMIT_FRAMES)
+    // A domain guard, not a hold assertion: it reds if the sweep leaves the span where the raw
+    // quantile admits something (0.60% per frame does).
     expect(lowest).toBeGreaterThanOrEqual(1)
   })
 
