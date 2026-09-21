@@ -538,9 +538,9 @@ describe('§3.1 the control seams, which R1 owns and leg G consumes', () => {
   })
 
   it('keeps ?layers=N separate from ?quality=N', () => {
-    // Tier 4 differs from tier 0 in FIVE quantities — pixelRatioCap, bloomScale, bloomLevels,
-    // thumbnailCapacity and glow — so routing a pool-size request through the quality ladder would
-    // make W4's expected-GREEN row measure four other things at once.
+    // Tier 4 differs from tier 0 in FOUR quantities besides the pool — pixelRatioCap, bloomScale,
+    // bloomLevels and glow — so routing a pool-size request through the quality ladder would make
+    // W4's expected-GREEN row measure four other things at once.
     const seams = readWorldsSeams('?quality=4')
     expect(seams.layersRequested).toBeNull()
     expect(readWorldsSeams('?layers=4&quality=0').layersRequested).toBe(4)

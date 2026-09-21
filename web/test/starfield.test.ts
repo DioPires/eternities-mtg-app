@@ -18,14 +18,9 @@ import {
   CONTRACT_VERSION,
   HUE_CLASS_MASK,
   HueClass,
-  PACKED_ATTRIBUTE_BYTES,
-  PACKED_CLASS_OFFSET,
-  PACKED_POSITION_HALVES,
-  PACKED_STYLE_OFFSET,
   STAR_RECORD_BYTES,
   type PlaneRecord,
 } from '../src/data/types'
-import type { InterleavedBuffer, InterleavedBufferAttribute } from 'three'
 
 import { SceneErrorHub } from '../src/scene/errors'
 import {
@@ -301,11 +296,10 @@ describe('star geometry (PRD 8.5.1, 8.7.3)', () => {
     return bytes
   }
 
-  it('grows the draw range as records arrive and never shrinks it', () => {
+  it('grows the drawable count as records arrive and never shrinks it', () => {
     const geometry = new StarGeometry(10)
     geometry.append(body(10), 3)
     expect(geometry.drawCount).toBe(3)
-    expect(geometry.geometry.drawRange.count).toBe(3)
     geometry.append(body(10), 7)
     expect(geometry.drawCount).toBe(7)
     geometry.append(body(10), 5)
@@ -318,7 +312,7 @@ describe('star geometry (PRD 8.5.1, 8.7.3)', () => {
     expect(geometry.drawCount).toBe(4)
   })
 
-  it('exposes the interleaved record fields the shader reads', () => {
+  it('exposes the record fields the pick and the printing ring read', () => {
     const geometry = new StarGeometry(4)
     geometry.append(body(4, 3), 4)
     expect(geometry.planeRowOf(0)).toBe(3)
@@ -341,72 +335,43 @@ describe('star geometry (PRD 8.5.1, 8.7.3)', () => {
   })
 
   /**
-   * The 16-byte aligned repack of review §3.5 (DEC-739).
-   *
-   * Every number here is an *alignment* claim, and alignment is the only thing the repack is for:
-   * D3D11 wants each vertex element's offset within its stride to be a multiple of four and the
-   * stride itself to be a multiple of four, and ANGLE answers a buffer that breaks either by
-   * repacking it on the CPU — once per plane as `stars.bin` streams, on the Windows laptops review
-   * §9 is about and nobody has measured. None of that is observable from here, which is exactly why
-   * the layout is asserted rather than the effect: this is the only place the claim can be checked
-   * at all, so it is checked as arithmetic.
-   *
-   * The shipped layout broke the rule in four places at once and is listed in each assertion below,
-   * so a future reader can see what moved.
+   * Replaces the 16-byte GPU upload-layout row and the two-mask-lanes row, both deleted with the
+   * scaffolding they pinned (DEC-868): no mesh uploads this buffer since the cutover, and the two
+   * mask lanes had no reader left. What the worlds build still binds to is the CPU read-back — the
+   * printing ring's `localPosition` / `hueClassOf`, the pick's `planeRowOf` — and the way that goes
+   * wrong silently is a streamed chunk landing at the wrong star. Every other row here appends from
+   * 0 in one call with identical positions, so a tail written relative to the chunk instead of the
+   * buffer would pass them all. Distinct values per star, two chunks, both position paths.
    */
-  it('uploads a 16-byte, four-byte-aligned layout (DEC-739, review §3.5)', () => {
-    const geometry = new StarGeometry(4).geometry
-    const position = geometry.getAttribute('position') as InterleavedBufferAttribute
-    const aClass = geometry.getAttribute('aClass') as InterleavedBufferAttribute
-    const aStyle = geometry.getAttribute('aStyle') as InterleavedBufferAttribute
-
-    // Positions: four halves, stride 8 bytes, offset 0. Was three halves at a stride of *6*, so
-    // every odd-indexed star began two bytes off a four-byte boundary.
-    expect(position.data.stride).toBe(PACKED_POSITION_HALVES)
-    expect(position.data.array).toBeInstanceOf(Uint16Array)
-    expect(position.itemSize).toBe(3)
-    expect(position.offset).toBe(0)
-    const positionStrideBytes = position.data.stride * Uint16Array.BYTES_PER_ELEMENT
-    expect(positionStrideBytes).toBe(8)
-    expect(positionStrideBytes % 4).toBe(0)
-
-    /*
-     * And the half-float flag, which is the one place this code reaches into three's internals.
-     * `WebGLAttributes.createBuffer` maps a `Uint16Array` to `UNSIGNED_SHORT` unless this flag is
-     * set, in which case `HALF_FLOAT`; there is no `Float16InterleavedBuffer` in r170 to use
-     * instead. Without the flag every position would upload as an unsigned short and the field
-     * would be a smear of integers at the origin — loud, but only on a GPU, and nothing else in
-     * this suite has one. A three upgrade that renames the flag fails here.
-     */
-    expect(
-      (position.data as InterleavedBuffer & { isFloat16BufferAttribute?: boolean })
-        .isFloat16BufferAttribute,
-    ).toBe(true)
-
-    // The byte attributes: two `u8x4` vectors in one 8-byte stride, at offsets 0 and 4. Was
-    // `aClass` at 6 and `aStyle` at 9 — neither a multiple of four — inside the on-disk record.
-    for (const attribute of [aClass, aStyle]) {
-      expect(attribute.data.array).toBeInstanceOf(Uint8Array)
-      expect(attribute.data.stride).toBe(PACKED_ATTRIBUTE_BYTES)
-      expect(attribute.itemSize).toBe(4)
-      expect(attribute.offset % 4).toBe(0)
+  it('reads every star back from its own slot across streamed chunks, on both position paths', () => {
+    const records = 6
+    const bytes = new Uint8Array(records * STAR_RECORD_BYTES)
+    for (let i = 0; i < records; i += 1) {
+      const at = i * STAR_RECORD_BYTES
+      // x = i + 1 as IEEE binary16 (exact for small integers): 1.0 is 0x3C00, 2.0 0x4000, ...
+      const half = [0x3c00, 0x4000, 0x4200, 0x4400, 0x4500, 0x4600][i]!
+      bytes[at] = half & 0xff
+      bytes[at + 1] = half >> 8
+      bytes[at + 6] = i
+      // Hue in bits 0-2, identity in bits 3-7 (contract §5, A3): identity 1 on every star, so a
+      // hue read that forgot the mask would answer 8 + i and fail.
+      bytes[at + 7] = (1 << 3) | (i % 5)
     }
-    expect(aClass.offset).toBe(PACKED_CLASS_OFFSET)
-    expect(aStyle.offset).toBe(PACKED_STYLE_OFFSET)
-    // One buffer for both, or they would not share a stride.
-    expect(aStyle.data).toBe(aClass.data)
-
-    // The two masks are lanes now, not attributes. A stride of 1 is the worst-aligned thing in the
-    // old layout, and both vectors had a spare lane.
-    expect(geometry.getAttribute('aFilter')).toBeUndefined()
-    expect(geometry.getAttribute('aThumb')).toBeUndefined()
-
-    // Sixteen bytes a star, which is review §3.5's number — and four fewer than the 20 the shipped
-    // layout uploaded (12 + 6 + 1 + 1).
-    expect(positionStrideBytes + PACKED_ATTRIBUTE_BYTES).toBe(16)
+    for (const mode of ['float16', 'float32'] as const) {
+      const geometry = new StarGeometry(records, mode)
+      geometry.append(bytes, 2)
+      geometry.append(bytes, records)
+      const local = vec()
+      for (let i = 0; i < records; i += 1) {
+        geometry.localPosition(i, local)
+        expect(local.x, `${mode} star ${i} x`).toBe(i + 1)
+        expect(geometry.planeRowOf(i), `${mode} star ${i} plane row`).toBe(i)
+        expect(geometry.hueClassOf(i), `${mode} star ${i} hue`).toBe(i % 5)
+      }
+    }
   })
 
-  it('repacks the record into the lanes the shader reads, losslessly', () => {
+  it('repacks the record into the lanes its readers index, losslessly', () => {
     // The repack is a transcription, and a transcription is exactly the kind of change that can be
     // green everywhere while putting the size class where the colour byte should be. So this reads
     // every derived field back and compares it against the record bytes `body()` wrote.
@@ -419,9 +384,6 @@ describe('star geometry (PRD 8.5.1, 8.7.3)', () => {
       // is that value and the identity is zero.
       expect(geometry.hueClassOf(i), `star ${i} hue`).toBe(i % 7)
       expect(geometry.colourIdentityOf(i), `star ${i} identity`).toBe(0)
-      // Everything passes until a filter says otherwise, and nothing has a thumbnail yet.
-      expect(geometry.passesFilter(i)).toBe(true)
-      expect(geometry.hasThumbnail(i)).toBe(false)
     }
     // The padded stride is the easiest thing in this change to get wrong, and it goes wrong
     // silently: a `* 3` where a `* 4` belongs reads star N's position from between stars.
@@ -430,27 +392,6 @@ describe('star geometry (PRD 8.5.1, 8.7.3)', () => {
     expect(local.x).toBeCloseTo(1, 6)
     expect(local.y).toBeCloseTo(0, 6)
     expect(local.z).toBeCloseTo(0, 6)
-  })
-
-  it('keeps the two mask lanes independent of each other and of their neighbours', () => {
-    // Both masks live in the `w` lane of a vector whose other three lanes are record data, so a
-    // scatter that got the stride or the offset wrong would corrupt a plane row or a brightness
-    // rather than failing. This writes each mask and re-reads everything around it.
-    const geometry = new StarGeometry(4)
-    geometry.append(body(4), 4)
-
-    geometry.setFilterMask(Uint8Array.from([255, 0, 255, 0]))
-    geometry.setThumbnailPresent(1, true)
-    geometry.setThumbnailPresent(3, true)
-
-    for (let i = 0; i < 4; i += 1) {
-      expect(geometry.passesFilter(i), `star ${i} filter`).toBe(i % 2 === 0)
-      expect(geometry.hasThumbnail(i), `star ${i} thumbnail`).toBe(i % 2 === 1)
-      // ...and the record lanes either side of them are untouched.
-      expect(geometry.planeRowOf(i), `star ${i} plane row`).toBe(0)
-      expect(geometry.sizeClassOf(i), `star ${i} size class`).toBe(i % 4)
-      expect(geometry.hueClassOf(i), `star ${i} hue`).toBe(i % 7)
-    }
   })
 
   it('reads the position mode from the URL, then storage, then the GPU probe', () => {
@@ -481,21 +422,6 @@ describe('star geometry (PRD 8.5.1, 8.7.3)', () => {
     expect(resolvePositionMode('', undefined, fails)).toBe('float32')
   })
 
-  it('dims stars that fail the filter and leaves the rest alone (PRD 5.8.1)', () => {
-    const geometry = new StarGeometry(4)
-    geometry.append(body(4), 4)
-    expect(geometry.passesFilter(1)).toBe(true)
-    geometry.setFilterMask(Uint8Array.from([255, 0, 255, 0]))
-    expect(geometry.passesFilter(1)).toBe(false)
-    expect(geometry.passesFilter(2)).toBe(true)
-    geometry.clearFilter()
-    expect(geometry.passesFilter(1)).toBe(true)
-  })
-
-  it('refuses a filter mask longer than the star field (PRD 7.7.2)', () => {
-    const geometry = new StarGeometry(4)
-    expect(() => geometry.setFilterMask(new Uint8Array(9))).toThrow(RangeError)
-  })
 })
 
 describe('stream reader body view (PRD 8.7.3)', () => {
@@ -602,10 +528,8 @@ describe('adaptive quality (PRD 8.5.11)', () => {
     expect(QUALITY_TIERS[1]!.bloomLevels).toBe(QUALITY_TIERS[0]!.bloomLevels)
     expect(QUALITY_TIERS[2]!.bloomLevels).toBeLessThan(QUALITY_TIERS[1]!.bloomLevels)
     expect(QUALITY_TIERS[3]!.bloomLevels).toBe(QUALITY_TIERS[2]!.bloomLevels)
-    // Rung 3's knob is the resident card-image budget, and it is two fields for the same reason
-    // the bloom rung is two: which one reaches the picture is a function of which card path is
-    // live (DEC-753, worlds §1.12). `test/quality-ladder.test.ts` holds the grouping itself.
-    expect(QUALITY_TIERS[3]!.thumbnailCapacity).toBeLessThan(QUALITY_TIERS[2]!.thumbnailCapacity)
+    // Rung 3's knob is the resident card-image budget: worlds' art pool (DEC-753, worlds §1.12).
+    // `test/quality-ladder.test.ts` holds the grouping itself.
     expect(QUALITY_TIERS[3]!.artPoolLayers).toBeLessThan(QUALITY_TIERS[2]!.artPoolLayers)
     for (let i = 1; i < 3; i += 1) {
       expect(QUALITY_TIERS[i]!.artPoolLayers).toBe(QUALITY_TIERS[0]!.artPoolLayers)
@@ -620,7 +544,6 @@ describe('adaptive quality (PRD 8.5.11)', () => {
     expect(QUALITY_TIERS[4]!.pixelRatioCap).toBe(QUALITY_TIERS[3]!.pixelRatioCap)
     expect(QUALITY_TIERS[4]!.bloomScale).toBe(QUALITY_TIERS[3]!.bloomScale)
     expect(QUALITY_TIERS[4]!.bloomLevels).toBe(QUALITY_TIERS[3]!.bloomLevels)
-    expect(QUALITY_TIERS[4]!.thumbnailCapacity).toBe(QUALITY_TIERS[3]!.thumbnailCapacity)
     expect(QUALITY_TIERS[4]!.artPoolLayers).toBe(QUALITY_TIERS[3]!.artPoolLayers)
     // Nothing in a tier can reach the star count or the motion.
     for (const tier of QUALITY_TIERS) {
@@ -631,7 +554,6 @@ describe('adaptive quality (PRD 8.5.11)', () => {
         'glow',
         'label',
         'pixelRatioCap',
-        'thumbnailCapacity',
       ])
     }
   })

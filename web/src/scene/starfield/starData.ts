@@ -27,7 +27,7 @@ export interface StarData {
   readonly table: PlaneTable
   readonly geometry: StarGeometry
   readonly positionMode: PositionMode
-  /** Both buffers, in the order `useSceneData`'s disposer used to release them. */
+  /** The plane table's GPU texture. The star buffer is CPU arrays only since DEC-868. */
   dispose: () => void
 }
 
@@ -46,7 +46,6 @@ export function createStarData(planes: PlanesFile, starCount: number): StarData 
     geometry,
     positionMode,
     dispose: () => {
-      geometry.dispose()
       table.dispose()
     },
   }

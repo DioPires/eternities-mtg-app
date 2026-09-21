@@ -27,9 +27,9 @@
 /**
  * `?layers=N` is **not** `?quality=N` and must never be aliased to it.
  *
- * Tier 4 differs from tier 0 in five quantities — `pixelRatioCap`, `bloomScale`, `bloomLevels`,
- * `thumbnailCapacity` and `glow` — so routing a pool-size request through the quality ladder would
- * make W4's *expected-GREEN* row measure four other things at once. This is a request for one
+ * Tier 4 differs from tier 0 in four quantities besides the pool — `pixelRatioCap`, `bloomScale`,
+ * `bloomLevels` and `glow` — so routing a pool-size request through the quality ladder would make
+ * W4's *expected-GREEN* row measure four other things at once. This is a request for one
  * number, and the renderer answers with the number it actually allocated.
  */
 export interface WorldsSeams {

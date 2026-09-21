@@ -15,11 +15,11 @@
  * reason: split the module that carries two concerns, keep the half that outlives the galaxy, and
  * let §3.2 delete only the half it actually named. **This file deletes nothing** — see DEC-852.
  *
- * **What is galaxy-shaped here and how it leaves.** Exactly one thing: the star field's hover
- * highlight. It arrives through {@link ScenePickingHandle.setStarHighlight}, so the field can
- * register while it exists and the cutover can stop registering without touching this file. The id
- * buffer itself is *not* galaxy-shaped, whatever its history suggests — worlds cells write star ids
- * into it too (`worlds/cellShaders.ts`), which is why a picked cell arrives here as a `star`.
+ * **Nothing here is galaxy-shaped any more.** The one thing that was — the star field's hover
+ * highlight, a registration seam the field wrote into — went with the field (DEC-752) and its dead
+ * seam with DEC-868. The id buffer is *not* galaxy-shaped, whatever its history suggests: worlds
+ * cells write star ids into it (`worlds/cellShaders.ts`), which is why a picked cell arrives here as
+ * a `star`.
  *
  * **What deliberately did not move.** The camera. PRD 5.7 and the navigation contract are the rig's;
  * this reports what was picked and stops there — the same boundary `starScene.ts`'s header drew.
@@ -50,9 +50,6 @@ export interface PickSources {
   readonly geometry: StarGeometry
   readonly table: PlaneTable
 }
-
-/** The star field's hover highlight, while there is a star field. See the header. */
-export type StarHighlight = (starIndex: number) => void
 
 export interface ScenePickingOptions {
   readonly gl: WebGLRenderer
@@ -86,8 +83,6 @@ export interface ScenePickingHandle {
   setSources: (sources: PickSources | null) => void
   /** PRD 5.9: a plane's pick radius grows with its motion, so a frozen table picks differently. */
   setReducedMotion: (reduced: boolean) => void
-  /** Register the star field's highlight, or `null` once there is no field to highlight. */
-  setStarHighlight: (highlight: StarHighlight | null) => void
   dispose: () => void
 }
 
@@ -140,7 +135,6 @@ export function attachScenePicking({
   let focused = -1
 
   let sources: PickSources | null = null
-  let starHighlight: StarHighlight | null = null
   let reducedMotion = false
   let disposed = false
 
@@ -150,11 +144,10 @@ export function attachScenePicking({
    */
   async function runPick(select: boolean): Promise<void> {
     if (!sources || !isPerspective(camera)) return
-    // Bound before the awaits below, so the closures the resolver takes cannot see a `sources` —
-    // or a star field — that a load swapped underneath them.
+    // Bound before the awaits below, so the closures the resolver takes cannot see a `sources`
+    // that a load swapped underneath them.
     const geometry = sources.geometry
     const table = sources.table
-    const highlight = starHighlight
     let result: PickResult = null
 
     if (pointer.inside) {
@@ -186,18 +179,14 @@ export function attachScenePicking({
       result = resolved
     }
 
-    const hoverIndex = pickedStarIndex(result)
-    // On the *pick*, not on its star index: a planet and a plane both have index -1 as far as the
-    // star field is concerned, and collapsing them onto one another is what silenced PRD 5.6.9's
-    // planet hover entirely. The highlight still takes the star index, because the glow it drives
-    // belongs to the star field and a planet is not one of its stars.
+    // On the *pick*, not on its star index: a planet and a plane both have star index -1, and
+    // collapsing them onto one another is what silenced PRD 5.6.9's planet hover entirely.
     if (!samePick(result, hovered)) {
       hovered = result
-      highlight?.(hoverIndex)
       onHover?.(result)
     }
     if (select) {
-      focused = hoverIndex
+      focused = pickedStarIndex(result)
       // PRD 5.3.4: the dust brightens while it is the focus, and the dust is exactly the stars of
       // the Blind Eternities row.
       table.setDustFocused(result?.kind === 'star' && geometry.planeRowOf(result.index) === 0)
@@ -286,9 +275,6 @@ export function attachScenePicking({
     },
     setReducedMotion: (reduced) => {
       reducedMotion = reduced
-    },
-    setStarHighlight: (highlight) => {
-      starHighlight = highlight
     },
 
     dispose: () => {

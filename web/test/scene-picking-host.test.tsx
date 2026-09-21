@@ -237,19 +237,21 @@ describe('the input layer runs with no galaxy scene attached (DEC-852)', () => {
     ])
   })
 
-  it('writes the star highlight only while one is registered (DEC-852 hand-over)', async () => {
-    const { canvas, loop, picking, answers } = rig()
-    const highlights: number[] = []
-    picking.setStarHighlight((index) => highlights.push(index))
+  it('moves the focus on a click and never on a hover (PRD 8.5.7)', async () => {
+    // Replaces DEC-852's star-highlight hand-over row, whose seam DEC-868 deleted: the highlight was
+    // the hover's only *galaxy* consumer, and it read the same star index the focus does. What the
+    // worlds build still binds to that index is PRD 8.5.7's mirror (`sceneFrame.ts` reads
+    // `focusedIndex`), and the property is the one the highlight row sat beside: a hover reports,
+    // it does not select. Hover first, so the `-1` is a focus a hover declined to write rather than
+    // this handle's initial value.
+    const { canvas, loop, picking, hovers, answers } = rig()
     answers(3)
     await movePointer(canvas, loop, 16)
-    expect(highlights, 'the galaxy registered, so the galaxy is told').toEqual([3])
+    expect(hovers, 'the hover was reported').toHaveLength(1)
+    expect(picking.focusedIndex, 'a hover is not a selection').toBe(-1)
 
-    // The cutover's shape: the field is gone, so nothing is registered, and the pick keeps working.
-    picking.setStarHighlight(null)
-    answers(5)
-    await movePointer(canvas, loop, 32)
-    expect(highlights, 'nothing left to highlight').toEqual([3])
+    await clickPointer(canvas)
+    expect(picking.focusedIndex, 'the click is').toBe(3)
   })
 
   it('reports a click as a select, and marks the dust when the focus is a dust star', async () => {

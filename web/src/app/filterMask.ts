@@ -1,28 +1,22 @@
 /**
- * PRD 5.8's dimming, delivered: the store's filter evaluation, subscribed to the GPU.
+ * PRD 5.8's dimming, delivered: the store's filter evaluation, subscribed to the worlds cell sheets.
  *
- * This is the missing half of the filter requirement. `filters/evaluate.ts` has computed the
- * per-star mask since Phase 4 and `StarGeometry.setFilterMask` has been able to upload it since
- * Phase 2a, but nothing joined them — `setFilterMask` and `clearFilter` had test callers only, so
- * `FILTER_DIM` and the shader's `vPickable` gate were dead code and a filter changed the chip count
- * and nothing else on screen.
+ * **Why a plain function and not a hook.** The hook is a few lines at the bottom of this file; the
+ * work is in {@link bindWorldsFilterMask} so that a test can drive the real seam — the real store,
+ * the real `evaluateFilters` — without a React renderer. The defect this module was written against
+ * was a *wiring* defect (the mask was computed and never reached a GPU, review §5.2 F1), so the test
+ * has to exercise the wiring rather than re-assert the rule. See `test/filter-mask.test.ts`.
  *
- * **Why a plain function and not a hook.** The hook is three lines at the bottom of this file; the
- * work is here so that a test can drive the real seam — the real store, the real
- * `evaluateFilters`, a real `StarGeometry` — under Node, without a React renderer (this repo's
- * vitest environment is `node` and it collects only `.test.ts` files, so there is no renderer to
- * reach for). The defect being fixed was precisely a *wiring* defect, so the test has to be able to
- * exercise the wiring rather than re-assert the rule. See `test/filter-mask.test.ts`.
+ * **One writer.** `useFilterEvaluation` is the only producer of `filterEvaluation` and this is the
+ * only consumer that writes it at a GPU; `test/filter-mask.test.ts` pins that too.
  *
- * **One writer.** `useFilterEvaluation` is the only producer of `filterEvaluation` (it says so, at
- * length) and this is the only consumer that writes to the GPU. Nothing else may call
- * `setFilterMask`; `test/filter-mask.test.ts` pins that too.
+ * The star field's half — `bindFilterMask`, which scattered the mask into `StarGeometry`'s filter
+ * lane — outlived the field it fed (DEC-752) and was deleted by DEC-868: after the cutover no mesh
+ * uploaded that lane, so every chip click cost a ~28 KB strided write nothing read.
  */
 
 import { useEffect } from 'react'
 
-import type { FilterEvaluation } from '../filters/evaluate'
-import type { StarGeometry } from '../scene/starfield/starGeometry'
 import { useStore, type AppState } from '../store/store'
 
 /** Just the slice of the store this needs, so a test can pass a stub without faking the rest. */
@@ -32,65 +26,12 @@ export interface FilterMaskSource {
 }
 
 /**
- * Push one evaluation at the geometry. `null` — no `stars.bin` yet, or no filter — clears.
+ * Subscribe the worlds attachment to the store's filter evaluation until the returned function is
+ * called (spec §1.11, DEC-751). `null` — no `stars.bin` yet, or no filter — clears.
  *
- * The mask and the geometry are both sized from `manifest.counts.stars`, so the lengths agree by
- * construction. The clamp is there because this runs inside a store listener: a manifest that
- * disagreed with itself should cost the tail of the dimming, not throw out of a subscriber and take
- * the frame loop with it.
- */
-export function applyFilterMask(
-  geometry: StarGeometry,
-  evaluation: FilterEvaluation | null,
-): void {
-  if (evaluation === null) {
-    geometry.clearFilter()
-    return
-  }
-  const count = Math.min(evaluation.mask.length, geometry.capacity)
-  geometry.setFilterMask(evaluation.mask, 0, count)
-}
-
-/**
- * Subscribe `geometry` to the store's filter evaluation until the returned function is called.
- *
- * Applies the current evaluation immediately: the geometry is built when `planes.json` lands and a
- * deep link may already carry filters in the URL, so "the next change" is not soon enough.
- */
-export function bindFilterMask(
-  geometry: StarGeometry,
-  source: FilterMaskSource = useStore,
-): () => void {
-  let last = source.getState().filterEvaluation
-  applyFilterMask(geometry, last)
-  return source.subscribe((state) => {
-    // `evaluateFilters` reuses its output buffer, so the *array* is the same object across
-    // evaluations and only the wrapper is new. Comparing the wrapper is therefore the only honest
-    // change test — and it is also why `setFilterMask` has to copy rather than retain (it does).
-    if (state.filterEvaluation === last) return
-    last = state.filterEvaluation
-    applyFilterMask(geometry, last)
-  })
-}
-
-/** The React attachment. One call, from `App`, next to `useFilterEvaluation`'s. */
-export function useFilterMask(geometry: StarGeometry | null): void {
-  useEffect(() => {
-    if (geometry === null) return
-    return bindFilterMask(geometry)
-  }, [geometry])
-}
-
-/**
- * The same subscription, for the worlds path (spec §1.11, DEC-751).
- *
- * A separate binding rather than a second consumer inside {@link bindFilterMask}, because the two
- * subjects have different lifetimes: the star geometry is built once with `planes.json`, while the
- * worlds attachment outlives every roster it composes and rebuilds its surfaces on §1.12's rung.
- * The attachment holds the last mask for exactly that reason, so this is a push, not a handshake.
- *
- * The rule the two share is the one that matters: **one writer**. `useFilterEvaluation` produces
- * the evaluation, and these two functions are the only things that write it at a GPU.
+ * Applies the current evaluation immediately, because a deep link may already carry filters in the
+ * URL. The attachment outlives every roster it composes and rebuilds its surfaces on §1.12's rung,
+ * so it holds the last mask itself: this is a push, not a handshake.
  */
 export function bindWorldsFilterMask(
   worlds: WorldsFilterTarget,
@@ -100,7 +41,7 @@ export function bindWorldsFilterMask(
   worlds.setFilterMask(last?.mask ?? null)
   return source.subscribe((state) => {
     // Identity on the wrapper, not on the array: `evaluateFilters` reuses its buffer, so the array
-    // is the same object across evaluations. Same reasoning as `bindFilterMask` above.
+    // is the same object across evaluations and comparing it would never see a change.
     if (state.filterEvaluation === last) return
     last = state.filterEvaluation
     worlds.setFilterMask(last?.mask ?? null)
