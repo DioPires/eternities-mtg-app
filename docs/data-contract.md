@@ -501,8 +501,18 @@ them, and the directory name is that hash. 53 of the 88 fixture-scale planes cha
 in-plane; `fixture-small`'s four named planes kept their `(x, z)` exactly and lost only their
 vertical offsets, which is the cheapest possible demonstration that a re-hash is not a reshuffle.
 Production is untouched, which is the point: no gate baseline of DEC-752's moves with this change.
-The homes a refresh *will* produce are vendored at `docs/worlds/dec759-home-law.json` and pinned
-to the generator by `pipeline/tests/test_home_separation.py`.
+Until a refresh re-laid production out, the homes it would produce were vendored at
+`docs/worlds/dec759-home-law.json` and pinned to the generator by
+`pipeline/tests/test_home_separation.py`.
+
+**Production carried the law from DEC-885**, the 2026-09-21 refresh: `c9468f1125bcddff` →
+`ef2ad991f81dfddf` (Scryfall bulk `2026-09-21T09:05:30.034+00:00`). The shipped homes equal the
+vendored candidate to its six-decimal rounding, so the vendored file, its pin and the web sweep's
+shipped-arm control were deleted in the same commit. The refresh moved more than `home`, and none
+of it is a contract change: `sets.bin` carries 316 cards' new printings (and one upstream
+collector-number correction), `stars.bin` moves only byte 9 (`brightness`, a quantised printing
+count the worlds renderer does not read) on 7,535 records, and `swatches.bin` moves on 17 cards
+whose art Scryfall re-scanned (11 dust, 5 `tarkir`, 1 `dominaria`).
 
 Three things a reviewer should check rather than take on trust:
 

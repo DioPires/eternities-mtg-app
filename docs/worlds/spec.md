@@ -1288,10 +1288,24 @@ tick positions, not with a capture. See §5, Q5.
   > **Two limits.** The rule is written against the reference viewport and the floor is 24 CSS px on
   > *any* viewport, so it buys less on a shorter one: at 1280×720 the two layouts read **22** and
   > **1** occlusion-only, at 3840×2160 **5** and **0**. And **production only carries the law when a
-  > dataset refresh re-lays it out** — until then `docs/worlds/dec759-home-law.json` carries the
-  > candidate homes, `pipeline/tests/test_home_separation.py` pins that file to `place_planes`, and
-  > `web/test/pick-target-separation.test.ts` measures both arms so the shipped one stays the
-  > control. All three retire on that refresh, and say so where they fail.
+  > dataset refresh re-lays it out** — until then `docs/worlds/dec759-home-law.json` carried the
+  > candidate homes, `pipeline/tests/test_home_separation.py` pinned that file to `place_planes`,
+  > and `web/test/pick-target-separation.test.ts` measured both arms so the shipped one stayed the
+  > control.
+  >
+  > **Carried by the DEC-885 refresh** (`c9468f1125bcddff` → `ef2ad991f81dfddf`, 2026-09-21), which
+  > retired all three. Re-measured on the shipped homes, not carried over — `home` moves on every
+  > refresh, and this one happens to equal the vendored candidate because the roster did not
+  > change: at 1920×1080 and 36 azimuths, **32** worlds lifted, **0** under 24 px, **0**
+  > occlusion-only, worst effective diameter **24.00 px** under both coverage rules (the same at 72
+  > azimuths); floored proxies overlapping at any of 144 azimuths **0** of the 2,880 pairs with a
+  > world in them (moon-on-moon **47** of 861). At 1280×720 it reads **1** occlusion-only
+  > (`avishkar`, 23.30 px), worst floored 22.16 px. The web sweep now measures the shipped homes
+  > alone. Its exact `worstFlooredPx` assertion survives because the refreshed draw still sits at
+  > the lattice ceiling of 24.00 px; a refresh that reads below 24 deletes it rather than
+  > re-baselining it, and the far-rim cross-check is then the only far-rim guard. The same refresh
+  > retired two of `pick-floor-screen-space.test.ts`'s three findings (DEC-751) — the floor-on-floor
+  > shortfall they pinned was the old layout's, and the law removed it.
   >
   > **Rider, not acceptance:** world-label coverage over 24 azimuths goes from a mean of **97.2%**
   > (min 93.3%) to **99.5%** (min 97.8%). Separating pick proxies separates label anchors too.

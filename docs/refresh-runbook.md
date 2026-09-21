@@ -47,8 +47,15 @@ serve superseded bulk files, so once the cached file is gone that run is no long
 
 ```sh
 cd pipeline
-uv run eternities build --as-of $(date +%F)
+uv run eternities build --as-of $(date +%F) --register worlds
 ```
+
+**`--register worlds` is not optional since the cutover** (added after the DEC-885 refresh, which
+ran without it first). `web/datasets.json` has carried a third key naming the production directory,
+`worlds`, since DEC-748, and a bare `build` moves only `active` and `production`. It then *keeps*
+the old directory — a registry key is a claim that something still fetches it — so the run ends
+`kept <old>/: still named by another datasets.json key`, ships two datasets, and leaves the worlds
+gate (`--dataset worlds`) measuring the one you meant to replace.
 
 `--as-of` fixes which sets count as released (PRD 4.3.8) and is recorded in the manifest. The same
 date and the same bulk file give byte-identical artefacts, so it is also how you reproduce a run.
@@ -63,13 +70,14 @@ datasets.json active = 97984b20156c63f0
 ```
 
 Three things happen automatically and none of them need doing by hand: the new data directory is
-written, `web/datasets.json` is repointed (`active` **and** `production`), and the previous
-production directory is deleted from the working tree. That last line is why `git status` will show
+written, `web/datasets.json` is repointed (`active`, `production` and — with the flag — `worlds`),
+and the previous production directory is deleted from the working tree. That last line is why `git status` will show
 a few hundred deletions next to a few hundred additions. It is the flow working, not a mistake.
 
-**Check the `datasets.json` diff: it is exactly two lines**, `active` and `production`. The fixture
-hashes must not move — a `build` reads the registry and writes only those two keys, so if a fixture
-hash changed, you ran something other than `build` and the diff is telling you so.
+**Check the `datasets.json` diff: it is exactly three lines**, `active`, `production` and
+`worlds`. The fixture hashes must not move — a `build` reads the registry and writes only those
+keys, so if a fixture hash changed, you ran something other than `build` and the diff is telling
+you so.
 
 **Re-running.** A second run on the same day against the same bulk file produces the same hash and
 an empty diff. To re-run after editing an appendix without picking up a newer card file, pin the
@@ -81,6 +89,13 @@ uv run eternities build --as-of 2026-09-05 --bulk-updated-at 2026-09-05T09:05:28
 
 Without that pin, an appendix-only re-run silently gets whatever Scryfall published since (PRD
 4.9.1). The timestamp is in the report's Run table and in `manifest.json`.
+
+**Re-run from a clean tree, or the report loses 9.2.3.** The report's predecessor is the production
+directory on disk with the latest `asOf`, and a run that is still on disk from an earlier attempt
+*is* that directory — so re-running over it prints "Not computed … removed that directory when it
+was superseded" where the plane-change count belongs. Delete the new directory and the report,
+`git checkout -- web/datasets.json web/public/data`, then re-run. The swatch cache survives, so the
+second run skips the ~25-minute art fetch.
 
 ---
 
