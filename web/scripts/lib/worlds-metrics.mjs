@@ -539,11 +539,13 @@ export const W3_MIN_BAND_SHARE = 0.05;
  * - **`c9468f1125bcddff` — `scored` 28 of 45, `byShares` 30 of 45.** 28 in domain on five full-roster
  *   baseline sessions (`accept3`, `dec826-bare`, `accept4`, `rebase-w3b`, `rebase-w3c`) and on all
  *   fourteen arms of the DEC-836 floor derivation — **0 dropped, the same 28 slugs every time.**
- * - **`ef2ad991f81dfddf` — `scored` 28 of 45, `byShares` 30 of 45.** The DEC-885 refresh (2026-09-21):
- *   one full `baseline` tour on the new hash (`--only baseline --no-captures`), 28 worlds scoring
- *   W3 and `qualifyingPlanes` 30, with `shenmeng` and `zhalfir` again the two that qualify on their
- *   cards and present one band. Same roster, same card-to-plane assignment (report 9.2.3: 0 moved),
- *   so the unchanged pair is expected — but it was read off the tour, not copied from the row above.
+ * - **`f2be4a22ce639774` — `scored` 28 of 45, `byShares` 30 of 45.** The DEC-885 refresh (2026-09-21),
+ *   rebuilt after DEC-910 F1 moved rule 4.3.8 to the printing's own date: one full `baseline` tour
+ *   on the new hash (`--only baseline --no-captures`, run while another leg's gate held the GPU), 28
+ *   worlds scoring W3 and `qualifyingPlanes` 30, with `shenmeng` and `zhalfir` again the two that
+ *   qualify on their cards and present one band. Same roster, same card-to-plane assignment (report
+ *   9.2.3: 0 moved), so the unchanged pair is expected — but it was read off the tour, not copied
+ *   from the row above. The intermediate hash `ef2ad991f81dfddf` never shipped and has no row.
  *
  * A constant cannot testify to its own provenance, so neither of these is left alone with itself.
  * `scored` catches a tour that visited too few worlds, or a world that lost a band at the pose —
@@ -557,7 +559,7 @@ export const W3_MIN_BAND_SHARE = 0.05;
  */
 export const W3_DOMAIN_SIZE = Object.freeze({
   c9468f1125bcddff: Object.freeze({ scored: 28, byShares: 30 }),
-  ef2ad991f81dfddf: Object.freeze({ scored: 28, byShares: 30 }),
+  f2be4a22ce639774: Object.freeze({ scored: 28, byShares: 30 }),
 });
 
 /**
