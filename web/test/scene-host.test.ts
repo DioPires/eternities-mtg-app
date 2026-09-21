@@ -36,7 +36,6 @@ function record(): { calls: string[]; targets: QualityRungTargets } {
       setPixelRatioCap: (v) => calls.push(`pixelRatioCap=${v}`),
       setBloomScale: (v) => calls.push(`bloomScale=${v}`),
       setBloomLevels: (v) => calls.push(`bloomLevels=${v}`),
-      setThumbnailCapacity: (v) => calls.push(`thumbnailCapacity=${v}`),
       setArtPoolLayers: (v) => calls.push(`artPoolLayers=${v}`),
       setGlowQuality: (v) => calls.push(`glowQuality=${v}`),
     },
@@ -59,7 +58,6 @@ describe('applyQualityTier (PRD 8.5.11: one announcement, every rung)', () => {
       'pixelRatioCap',
       'bloomScale',
       'bloomLevels',
-      'thumbnailCapacity',
       'artPoolLayers',
       'glowQuality',
     ])
@@ -75,10 +73,8 @@ describe('applyQualityTier (PRD 8.5.11: one announcement, every rung)', () => {
       bloomScale: 'bloom chain',
       bloomLevels: 'bloom chain',
       starBloomScale: 'bloom chain',
-      // One knob, two consumers, for the same reason the bloom chain is one: rung 3 is the
-      // resident card-image budget, and which of the two reaches the picture depends on whether
-      // the page is on the galaxy's atlas or worlds' art pool (DEC-753, worlds §1.12).
-      thumbnailCapacity: 'card imagery',
+      // Rung 3, the resident card-image budget: worlds' art pool (DEC-753, worlds §1.12). The
+      // galaxy's atlas was this knob's second consumer until DEC-868 removed its dead target.
       artPoolLayers: 'card imagery',
       glowQuality: 'glow',
     }
