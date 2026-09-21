@@ -127,8 +127,6 @@ export interface QualityTier {
    * the chain's cost is made of.
    */
   readonly bloomLevels: number
-  /** PRD 8.5.8's default atlas capacity. Phase 3 reads it; Phase 2a only carries it. */
-  readonly thumbnailCapacity: number
   /**
    * Layers the worlds art pool is *asked* for at this rung (worlds spec §1.12, DEC-751).
    *
@@ -161,13 +159,11 @@ export const QUALITY_KNOBS: Readonly<Record<string, readonly (keyof QualityTier)
   'pixel-ratio': ['pixelRatioCap'],
   bloom: ['bloomScale', 'bloomLevels'],
   /**
-   * One knob, two fields, for the same reason bloom is: this is the budget for *resident card
-   * imagery*, and which field carries it is a function of which card path is live. The galaxy
-   * spends it on PRD 8.5.8's thumbnail atlas; worlds retires that atlas (§1.12) and spends it on
-   * the art pool. Until the cutover both paths ship, so the rung steps both — and after it, the
-   * atlas field goes and the knob is unchanged.
+   * The budget for *resident card imagery*. It was two fields until the cutover — the galaxy spent
+   * it on PRD 8.5.8's thumbnail atlas as `thumbnailCapacity` — and worlds retires that atlas
+   * (§1.12), so the atlas field went (DEC-868) and the knob is unchanged.
    */
-  'card-imagery': ['thumbnailCapacity', 'artPoolLayers'],
+  'card-imagery': ['artPoolLayers'],
   glow: ['glow'],
 }
 
@@ -218,7 +214,6 @@ export const QUALITY_TIERS: readonly QualityTier[] = [
     pixelRatioCap: 1.5,
     bloomScale: 0.5,
     bloomLevels: FULL,
-    thumbnailCapacity: 512,
     artPoolLayers: 1024,
     glow: 'full',
     label: 'full',
@@ -227,7 +222,6 @@ export const QUALITY_TIERS: readonly QualityTier[] = [
     pixelRatioCap: 1.0,
     bloomScale: 0.5,
     bloomLevels: FULL,
-    thumbnailCapacity: 512,
     artPoolLayers: 1024,
     glow: 'full',
     label: 'pixel-ratio',
@@ -236,7 +230,6 @@ export const QUALITY_TIERS: readonly QualityTier[] = [
     pixelRatioCap: 1.0,
     bloomScale: 0.25,
     bloomLevels: REDUCED,
-    thumbnailCapacity: 512,
     artPoolLayers: 1024,
     glow: 'full',
     label: 'bloom',
@@ -245,7 +238,6 @@ export const QUALITY_TIERS: readonly QualityTier[] = [
     pixelRatioCap: 1.0,
     bloomScale: 0.25,
     bloomLevels: REDUCED,
-    thumbnailCapacity: 256,
     artPoolLayers: 128,
     glow: 'full',
     label: 'art-pool',
@@ -254,7 +246,6 @@ export const QUALITY_TIERS: readonly QualityTier[] = [
     pixelRatioCap: 1.0,
     bloomScale: 0.25,
     bloomLevels: REDUCED,
-    thumbnailCapacity: 256,
     artPoolLayers: 128,
     glow: 'cheap',
     label: 'glow',

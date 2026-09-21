@@ -141,16 +141,15 @@ export function shouldLoadSwatches(
 }
 
 /**
- * PRD 5.8/8.5.1's filter mask byte for a star that passes, on both sides of the GPU boundary.
+ * PRD 5.8/8.5.1's filter mask byte for a star that passes.
  *
- * It lives here, in the contract module, because it is a contract between two files that never
- * import each other: `filters/evaluate.ts` writes the mask and `scene/starfield/starGeometry.ts`
- * uploads it as a **normalised** `uint8` vertex attribute, where the shader reads `1.0` for a pass
- * and gates picking on `aFilter > 0.5` (`starfield/shaders.ts`). The two halves shipped with
- * different encodings — the producer wrote `1`, the buffer was initialised to `255` — and because
- * the mask had no production consumer nothing ever compared them. Uploaded as it was, a passing
- * star would have read `1/255 = 0.004`: dimmed to `FILTER_DIM` and discarded by the pickable gate,
- * i.e. the whole field invisible and unclickable. One constant, so they cannot drift again.
+ * It lives here, in the contract module, because it is a contract between files that never import
+ * each other: `filters/evaluate.ts` writes the mask and `worlds/worldSurface.ts` reads it (a card
+ * whose byte is 0 is dimmed). The value 255 is the star field's legacy: that field uploaded the mask
+ * as a **normalised** `uint8` attribute, where a pass had to read `1.0`, and the two halves once
+ * shipped disagreeing (`1` against `255`) because the mask had no production consumer to compare
+ * them. The field and its upload are gone (DEC-752, DEC-868); the one constant stays so producer and
+ * reader still cannot drift.
  */
 export const FILTER_MASK_PASS = 255
 
@@ -192,6 +191,11 @@ export const FILTER_MASK_PASS = 255
  * component of the two byte attributes rather than kept as stride-1 attributes of their own: a
  * stride of one is the worst-aligned thing in the old layout, and the two vectors had a free lane
  * each.
+ *
+ * **Since DEC-868 nothing uploads this layout.** The star field that drew it retired at the
+ * cutover (DEC-752); `StarGeometry` keeps the repacked arrays as the CPU store the picker, the
+ * printing ring and the motion mirror read, and its GPU buffers and both mask lanes were deleted.
+ * Everything above about alignment is the layout's history, not a live constraint.
  * ---------------------------------------------------------------------------------------------
  */
 
@@ -201,17 +205,11 @@ export const PACKED_POSITION_HALVES = 4
 /** Bytes per star in the repacked **byte-attribute** buffer: two `u8x4` vectors. */
 export const PACKED_ATTRIBUTE_BYTES = 8
 
-/** `aClass` — (planeIndex, colourByte, sizeClass, filter). Offset 0, so four-byte aligned. */
+/** `aClass` — (planeIndex, colourByte, sizeClass, unused). Offset 0, so four-byte aligned. */
 export const PACKED_CLASS_OFFSET = 0
 
-/** `aStyle` — (brightness, twinklePhase, typeMask, thumbnailPresent). Offset 4, likewise aligned. */
+/** `aStyle` — (brightness, twinklePhase, typeMask, unused). Offset 4, likewise aligned. */
 export const PACKED_STYLE_OFFSET = 4
-
-/** Where PRD 5.8's filter mask sits inside `aClass`: its `w` lane. */
-export const PACKED_FILTER_LANE = PACKED_CLASS_OFFSET + 3
-
-/** Where PRD 5.5.1's "thumbnail is in the atlas" byte sits inside `aStyle`: its `w` lane. */
-export const PACKED_THUMB_LANE = PACKED_STYLE_OFFSET + 3
 
 export const BinaryKind = { Stars: 1, Sets: 2, Swatches: 3 } as const
 export type BinaryKind = (typeof BinaryKind)[keyof typeof BinaryKind]

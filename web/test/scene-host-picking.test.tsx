@@ -11,14 +11,12 @@
  * already sets: inject the one object that touches the context, and the rest of the file is
  * testable. Deleting either route leaves `scene-picking-host.test.tsx` fully green.
  *
- * **No `attachStarScene` reaches the picture here.** The host builds one — this leg deletes nothing
- * — but no `StarField` is ever handed to it, so the field's objects are never added and its hover
- * highlight is never registered. That is the post-cutover shape: picking, card focus and the label
- * all answer with the galaxy contributing nothing.
+ * **No galaxy reaches the picture here.** The host is handed the star *data* layer and nothing
+ * else — the post-cutover shape: picking, card focus and the label all answer with no star field.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Color, Object3D, type WebGLRenderer } from 'three'
+import { Color, type WebGLRenderer } from 'three'
 
 import { STAR_RECORD_BYTES, type CardRecord, type PrintingTuple } from '../src/data/types'
 import { PLANET_ID_BASE } from '../src/scene/cards/focusedCard'
@@ -30,6 +28,31 @@ import type { SceneResources } from '../src/scene/useSceneData'
 import { createSceneNavigation, type SceneNavigation } from '../src/navigation/scene'
 
 import { loadFixturePlanes } from './fixtures'
+
+/**
+ * Every art-pool request the host hands the worlds attachment, in order (§1.12 row 3).
+ *
+ * A pass-through wrapper, not a double: the real attachment still receives every call. It exists
+ * because the request is the attachment's private state until a roster composes, and the host
+ * applies its starting tier during construction — before a test could spy on the instance.
+ */
+const artLayerRequests = vi.hoisted(() => [] as number[])
+vi.mock('../src/scene/worlds/attachWorlds', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/scene/worlds/attachWorlds')>()
+  return {
+    ...actual,
+    attachWorlds: (...args: Parameters<typeof actual.attachWorlds>) => {
+      const attachment = actual.attachWorlds(...args)
+      const setArtLayers = attachment.setArtLayers
+      return Object.assign(attachment, {
+        setArtLayers: (layers: number) => {
+          artLayerRequests.push(layers)
+          setArtLayers(layers)
+        },
+      })
+    },
+  }
+})
 
 /** Enough drawable records for a star id to be in range. See {@link dataOnlyResources}. */
 const STAR_COUNT = 8
@@ -94,40 +117,21 @@ function fakeRenderer(canvas: HTMLCanvasElement): WebGLRenderer {
 }
 
 /**
- * The star **data** layer, real, plus a `StarField` that draws nothing — which is the point.
- *
- * `SceneResources.field` is non-optional today because the galaxy still ships, so the host has to be
- * handed something. What it is handed here has empty `Object3D`s for the four star meshes and
- * records `setHovered` instead of lighting a star, so **no galaxy geometry is in the scene and none
- * of it participates in a pick**. The ids come from the picker double; the routing is the subject.
+ * The star **data** layer, real, and nothing else — exactly `SceneResources` since the cutover. The
+ * ids come from the picker double; the routing is the subject.
  */
 function dataOnlyResources(planes: ReturnType<typeof loadFixturePlanes>) {
   // The product's own data-layer constructor (DEC-852), not a hand-built pair: it is what
   // `useSceneData` calls, and it reaches no galaxy module — which is the claim this file rests on.
   const data = createStarData(planes, STAR_COUNT)
   const { table, geometry } = data
-  // A fresh `StarGeometry` draws nothing, and `resolvePick` reads `drawCount` to tell a star id
+  // A fresh `StarGeometry` holds no records, and `resolvePick` reads `drawCount` to tell a star id
   // from an out-of-range one — so without a stream a star pick would silently fall through to the
   // plane raycast and this file would be asserting about the wrong branch. Zeroed records: every
   // star lands on plane row 0, which is all these cases need of the data.
   geometry.append(new Uint8Array(STAR_RECORD_BYTES * STAR_COUNT), STAR_COUNT)
-  const highlights: number[] = []
-  const resources = {
-    table,
-    geometry,
-    field: {
-      glow: new Object3D(),
-      points: new Object3D(),
-      pickPoints: new Object3D(),
-      bloomPoints: new Object3D(),
-      setHovered: (index: number) => highlights.push(index),
-      setGlowQuality: () => {},
-      update: () => {},
-      dispose: () => {},
-    },
-    positionMode: data.positionMode,
-  } as unknown as SceneResources
-  return { resources, highlights, dispose: () => data.dispose() }
+  const resources: SceneResources = { table, geometry, positionMode: data.positionMode }
+  return { resources, dispose: () => data.dispose() }
 }
 
 function pickerDouble() {
@@ -271,20 +275,17 @@ describe('SceneHost routes the pick with no galaxy in the picture (DEC-852)', ()
     expect(host.sceneFrame.focusedIndex, 'PRD 8.5.7 reads its subject from the input layer').toBe(2)
   })
 
-  it('leaves the star highlight unwritten when no field was handed over', async () => {
-    // The recorder below would catch a write. Since the cutover (DEC-752) nothing hands the input
-    // layer a highlight — the star scene that did is deleted — so a pick must still be reported and
-    // the highlight must stay unwritten. A highlight the input layer reached for on its own would
-    // show up here as a write with no hand-over, which is the DEC-852 property this row guards.
+  it('withdraws a hover through the host when the pointer leaves (PRD 5.4.12)', async () => {
+    // Replaces the "star highlight unwritten" row, whose seam DEC-868 deleted. The worlds consumer
+    // of the host's hover is `EternitiesScene`'s `hovered` subscription (the hover label), and the
+    // arm no other row here drives is the withdraw: a route that forwarded only non-null picks
+    // would leave the last card's label up after the pointer left the canvas.
     host.setResources(data.resources)
     answers(2)
     await movePointer(16)
+    await leavePointer(32)
 
-    expect(hovered).toHaveLength(1)
-    expect(
-      data.highlights,
-      'no star field, so no hand-over, so no write — see the DEC-852 hand-over',
-    ).toEqual([])
+    expect(hovered).toEqual([{ kind: 'star', index: 2, planeIndex: 0 }, null])
   })
 
   /*
@@ -314,6 +315,25 @@ describe('SceneHost routes the pick with no galaxy in the picture (DEC-852)', ()
     const held = data.resources.table.multiverseAngle
     host.renderer.loop.tick(3016)
     expect(data.resources.table.multiverseAngle, 'PRD 5.9 freezes the multiverse').toBe(held)
+  })
+
+  it('drives the worlds art pool from the card-imagery rung (§1.12 row 3)', () => {
+    // The rung's surviving consumer. Its sibling target — the galaxy atlas's `setThumbnailCapacity`
+    // — was a no-op since the cutover and DEC-868 deleted it with the tier column it read; this is
+    // the row that fails if the one that is left stops reaching worlds. The default host is the arm
+    // that makes the pinned one evidence: 1,024 is also the attachment's own default.
+    expect(artLayerRequests.at(-1), 'no pin: rung 0 asks for the full pool').toBe(1024)
+
+    const url = window.location.href
+    window.history.replaceState(null, '', '?quality=3')
+    artLayerRequests.length = 0
+    const pinned = new SceneHost({ createRenderer: fakeRenderer, createPicker: () => pickerDouble().picker })
+    try {
+      expect(artLayerRequests, 'tier 3 asks worlds for its 128-layer pool').toEqual([128])
+    } finally {
+      pinned.dispose()
+      window.history.replaceState(null, '', url)
+    }
   })
 
   it("drives the worlds rim from the glow rung, on the same knob (§1.12 row 4)", () => {
