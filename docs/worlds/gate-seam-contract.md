@@ -304,6 +304,21 @@ not a constant**, and a row without it is a reading of the harness. Measured ove
 | 1,024 — tier 0 on this Mac | 45 of 45, 12,771 | empty on all 45 | 45 of 45 |
 | `?artThreshold=fixed24` (capacity-independent) | 45 of 45, 12,771 | empty on all 45 | n/a |
 
+**Re-measured at DEC-882, on the same offline roster rig at the same 2.2-radii pose**, because raising
+§1.6's quantile from 64 buckets to 256 moves every threshold and therefore every `wantsArt`. The
+shape of the table is unchanged and the `!onScreen` column is still **empty on all 45 at every
+capacity**, which is the claim it exists to make:
+
+| `pool.layers` | `wantsArt && !frontFacing`, `a0eec54` | same, at 256 buckets | at the floor, both |
+|---|---|---|---|
+| 16 | 18 of 45, 113 cells | 19 of 45, 118 | 17 of 45 |
+| 64 | 30 of 45, 1,877 | 30 of 45, 1,897 | 21 of 45 |
+| **128** | 38 of 45, 4,268 | 39 of 45, 4,363 | 32 of 45 |
+| **224** | 42 of 45, 8,249 | 42 of 45, 8,343 | 39 of 45 |
+
+The `caa3c4f` row above and the `a0eec54` column here differ by under 6% on every count, which is
+what says the two measurements are of the same thing across three intervening renderer changes.
+
 **An earlier revision of this table reported the 64-layer row alone, without saying 64 was the
 pool** — and 64 is below every configuration the renderer ships. The correction is R1's (DEC-749),
 independently re-measured here; §3.1 now requires `pool.layers` beside any such count, and
@@ -316,10 +331,21 @@ evidence.** It claimed the excluded set goes empty on the worlds whose threshold
 reading: `amonkhet`, `avishkar` and `capenna` sit at *exactly* the same 93.94 px as alara and
 eldraine and have 6, 8 and 16 excluded cells, so **avishkar was listed as empty while measuring 8**.
 An identical threshold with opposite outcomes cannot be the threshold. It fails from the other end
-too — `dominaria` has the *lowest* risen threshold on the roster at 32.50 px and is empty, while
-`bloomburrow` at 35.06 px has 222. What actually moves the count is the pool: the quantile is
-relative to capacity, so an undersized pool raises the threshold past what any back-facing cell
-reaches. At 1,024 the policy meets `fixed24` exactly, because the threshold never leaves the floor.
+too — at 64 layers `bloomburrow` has the **lowest** risen threshold on the roster and the **largest**
+excluded set on it, which is the refuted mechanism running backwards. What actually moves the count
+is the pool: the quantile is relative to capacity, so an undersized pool raises the threshold past
+what any back-facing cell reaches. At 1,024 the policy meets `fixed24` exactly, because the
+threshold never leaves the floor.
+
+> **Those pixel figures are re-derived at DEC-882 and the pairing is now stated with its capacity**,
+> because the quantile is relative to capacity and a threshold quoted without one is not a reading.
+> At **64 layers**: `bloomburrow` **25.89 px with 232 excluded** against `dominaria` **30.13 px with
+> 0** — lower threshold, larger excluded set. At **128 layers** `bloomburrow` is back at the 24 px
+> floor entirely while `dominaria` reads 30.13 px and is still empty. Raising the grid to 256 moves
+> the edges and not the argument: 25.40 / 232 against 30.71 / 0 at 64 and 128 respectively. The
+> roster's highest risen threshold reads **93.94 px** on `a0eec54` — reproducing the figure above
+> exactly — and **90.45 px** at 256, where `amonkhet` and `avishkar` sit together on it with 12
+> excluded cells each while `alara` on the same edge has none.
 
 **The two terms are therefore not the same kind of claim, and only one needed the qualifier.**
 `AdaptiveThreshold` floors the quantile at `BASE_THRESHOLD_PX`: `offer()` drops anything under 24 px,

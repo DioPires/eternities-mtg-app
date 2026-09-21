@@ -29,6 +29,10 @@
  *
  * (2) and (3) are why §1.11's wording overstates its guarantee; the ruling on what to do about it
  * is R1's, and the measurement behind it is in the DEC-751 hand-back.
+ *
+ * The projection and the area sampling live in `effective-target.ts`, shared with DEC-759's
+ * `pick-target-separation.test.ts`: that file asks what the *layout* delivers against the same
+ * instrument, and a second copy of it would let the two answers drift apart.
  */
 
 import { readFileSync } from 'node:fs'
@@ -37,12 +41,9 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
-import { emptyTether } from '../src/camera/framing'
-import { CameraRig } from '../src/camera/rig'
-import { vec, type MutVec3 } from '../src/camera/vec'
 import type { PlanesFile } from '../src/data/types'
-import { BLIND_ETERNITIES_SLUG } from '../src/data/types'
-import { createProjected, Projector } from '../src/labels/project'
+
+import { effectiveDiameterPx, effectiveFraction, FLOOR_PX, sweepAzimuths } from './effective-target'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const webRoot = resolve(here, '..')
@@ -53,104 +54,8 @@ const planes = JSON.parse(
   readFileSync(resolve(webRoot, 'public', 'data', registry.worlds, 'planes.json'), 'utf8'),
 ) as PlanesFile
 
-const VIEWPORT = { viewportWidth: 1920, viewportHeight: 1080 }
-/** `scenePicker.ts`'s `PLANE_PICK_MARGIN`. */
-const MARGIN = 1.15
-/** §1.11 / WCAG 2.5.8: 24 CSS px of diameter, so 12 px of radius. */
-const FLOOR_PX = 12
-
-/** The Blind Eternities is not a sphere and is skipped by the picker for the same reason. */
-const pickable = planes.planes.filter((plane) => plane.slug !== BLIND_ETERNITIES_SLUG)
-const worldSlugs = new Set(
-  planes.planes
-    .filter((plane) => plane.kind === 'spiral' || plane.kind === 'irregular')
-    .map((plane) => plane.slug),
-)
-
-interface Disk {
-  readonly slug: string
-  readonly x: number
-  readonly y: number
-  readonly depth: number
-  /** The proxy the world actually draws, in px of radius. */
-  readonly rRaw: number
-  /** The same proxy after §1.11's floor. */
-  readonly rFloored: number
-  readonly isWorld: boolean
-}
-
-/** One home-view frame, with the multiverse turned to `angleRad` and the clock pinned at zero. */
-function readAt(angleRad: number): Disk[] {
-  const rig = new CameraRig(planes)
-  rig.snapTo({ tether: rig.framing.multiverse(emptyTether()), durationS: 0, holdS: 0 })
-  rig.update(1 / 60)
-  rig.motion.syncClock(0, angleRad)
-
-  const projector = new Projector()
-  projector.update({
-    position: rig.position,
-    target: rig.lookAt,
-    fov: (55 * Math.PI) / 180,
-    near: 0.1,
-    ...VIEWPORT,
-  })
-
-  const point: MutVec3 = vec()
-  const projected = createProjected()
-  const out: Disk[] = []
-  for (const plane of pickable) {
-    rig.motion.planePosition(point, plane)
-    projector.project(projected, point)
-    const rRaw = projector.radiusPx(plane.radius * MARGIN, projected.depth)
-    out.push({
-      slug: plane.slug,
-      x: projected.x,
-      y: projected.y,
-      depth: projected.depth,
-      rRaw,
-      rFloored: Math.max(rRaw, FLOOR_PX),
-      isWorld: worldSlugs.has(plane.slug),
-    })
-  }
-  return out
-}
-
-/**
- * The fraction of `a`'s floored proxy the picker would award to `a`, by area sampling.
- *
- * `neighbourRadius` picks the coverage rule: `rRaw` is the as-drawn control, `rFloored` is shipping
- * §1.11. Only strictly nearer disks can take a pixel, which is `scenePicker.ts`'s nearest-hit
- * resolution written in screen space.
- */
-function effectiveFraction(a: Disk, all: readonly Disk[], neighbourRadius: 'rRaw' | 'rFloored') {
-  const N = 48
-  let inside = 0
-  let mine = 0
-  for (let i = 0; i < N; i += 1) {
-    for (let j = 0; j < N; j += 1) {
-      const px = a.x + ((i + 0.5) / N - 0.5) * 2 * a.rFloored
-      const py = a.y + ((j + 0.5) / N - 0.5) * 2 * a.rFloored
-      if (Math.hypot(px - a.x, py - a.y) > a.rFloored) continue
-      inside += 1
-      let taken = false
-      for (const b of all) {
-        if (b === a || b.depth >= a.depth) continue
-        if (Math.hypot(px - b.x, py - b.y) <= b[neighbourRadius]) {
-          taken = true
-          break
-        }
-      }
-      if (!taken) mine += 1
-    }
-  }
-  return inside === 0 ? 1 : mine / inside
-}
-
-/** A disk of this fraction of a 24 px target, expressed back as a diameter. */
-const effectiveDiameterPx = (fraction: number): number => 2 * FLOOR_PX * Math.sqrt(fraction)
-
 const AZIMUTHS = 24
-const sweep = Array.from({ length: AZIMUTHS }, (_, i) => readAt((i * 2 * Math.PI) / AZIMUTHS))
+const sweep = sweepAzimuths(planes, AZIMUTHS)
 
 interface Sample {
   readonly slug: string
@@ -194,7 +99,9 @@ describe('the screen-space pick floor (spec §1.11, WCAG 2.5.8)', () => {
   it('guarantees a 24 px proxy, but not a 24 px target', () => {
     // The finding §1.11's wording does not yet carry. WCAG 2.5.8 is about the target the pointer can
     // actually hit; a proxy floored to 24 px whose nearer neighbour covers most of it is not one.
-    const short = samples.filter((s) => effectiveDiameterPx(s.floored) < 2 * FLOOR_PX - 1e-9)
+    const short = samples.filter(
+      (s) => effectiveDiameterPx(s.floored, FLOOR_PX) < 2 * FLOOR_PX - 1e-9,
+    )
     expect(short.length).toBeGreaterThan(0)
   })
 

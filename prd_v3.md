@@ -205,7 +205,7 @@ Every plane referenced by Appendix B or `overrides.json` must exist in Appendix 
 ### 5.3 Multiverse level
 
 **Layout**
-1. Planes are placed on a seeded flattened supercluster distribution (a thick disc, not a sphere), computed in preprocessing and stored, so every user of a given build sees the same multiverse (positions may move between data refreshes; see 4.9.3).
+1. Planes are placed on a seeded flattened supercluster distribution (a thick disc, not a sphere; *amended 2026-09-20, DEC-759: the plane **homes** of 8.6.1 are flat — the thickness is the cards' and the belt's*), computed in preprocessing and stored, so every user of a given build sees the same multiverse (positions may move between data refreshes; see 4.9.3).
 2. Plane visual radius ∝ log(card count), clamped to [r_min, r_max]. Planes with zero cards render at r_min.
 3. Minimum spacing between planes must exceed the sum of their radii plus a margin of at least twice the drift amplitude (5.3.15), so galaxies never overlap from any angle, drift included.
 4. Blind Eternities cards are scattered through the supercluster volume, avoiding plane interiors, with density highest between neighbouring planes. This dust is the Blind Eternities; it is also a selectable target (see 5.7). Focusing it brightens the dust and fades plane labels. Because the dust spans the whole multiverse, the Blind Eternities focus carries an **anchor point**: the clicked location when reached by clicking dust, the card's position when reached through a card, and the multiverse centre when reached from the plane index or search. The camera tethers to the anchor with plane-level distance limits, and clicking dust elsewhere re-anchors without a route change, so every region of dust is reachable at card-sheet tier (5.5), which applies to dust exactly as to stars.
@@ -567,9 +567,11 @@ The Blind Eternities is one row of the plane table like any other, with the iden
 **8.6.1 Plane placement (multiverse)**
 
 *Amended at the worlds cutover (2026-09-18, DEC-752; worlds spec §6).* The seeded spiral parameters this section and 8.6.2 define are retired (worlds spec §2.4). Plane homes are still placed by the pipeline, now as a function of each world's §1.3 radius.
-- Domain: a disc of radius `R` and thickness `0.15 R`.
-- Sort planes by visual radius descending. Place each with seeded rejection sampling subject to: distance to every placed plane ≥ `r_i + r_j + margin`; zero-card planes prefer the outer half of the disc.
-- The home camera frames the whole disc at ~30° elevation.
+
+*Amended again for the pick target (2026-09-20, DEC-759; worlds spec §1.11).* The disc's thickness is retired for **plane homes** — the cards and the belt keep theirs — and placement gains a second, screen-space rule. The two go together: a plane's height projects at `cos(30°)` against an in-plane distance's `sin(30°)`, so the scatter was cancelling the separation the new rule buys. The measurement that made the case, and what each half of it is worth, is in worlds spec §1.11.
+- Domain: the disc plane, radius `R`. Planes sit at `y = 0`.
+- Sort planes by visual radius descending. Place each with seeded rejection sampling subject to **both**: distance to every placed plane ≥ `r_i + r_j + margin`, in world space; and, for every pair with a card-bearing plane in it, `(d − closure_i − closure_j) · sin(30°) ≥ ρ_i + ρ_j` in the home view, where `d` is the in-plane centre distance and `ρ = max(1.15 · r, 12 px at the disc's deepest point)` is the plane's pick proxy under the screen-space floor of worlds spec §1.11 — 12 px because `ρ` is a radius and that floor is 24 px of *diameter*. `closure = a · (1 + 0.35 · cot 30°)` bounds how far one plane's drift can close the gap, its vertical component included (5.3.15). Zero-card planes prefer the outer half of the disc, and pairs of them are exempt from the second rule: it costs no world its target, and 42 planes at the radius floor cannot be packed at that separation.
+- The home camera frames the whole disc at ~30° elevation, and the second rule is written against that pose and the reference viewport of worlds spec §1.3 (1080 rows at 55°). It buys less separation on a shorter viewport, because 24 CSS px is a larger share of one.
 
 **8.6.2 Card placement (plane-local frame; bands fill the unit disc, the halo extends to 1.2)**
 
