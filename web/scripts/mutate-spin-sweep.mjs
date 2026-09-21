@@ -72,8 +72,14 @@ const MUTANTS = [
   {
     name: 'F4: the driver hands W4 the frame W1 scored',
     file: METRICS,
-    from: '  return { frame: frames[picked.w1Phase], w4Frame: frames[picked.w4Phase] };',
-    to: '  return { frame: frames[picked.w1Phase], w4Frame: frames[picked.w1Phase] };',
+    from: '  const w4Frame = frames[picked.w4Phase];',
+    to: '  const w4Frame = frames[picked.w1Phase];',
+  },
+  {
+    name: 'DEC-919: a W4 phase outside the frames silently falls back to the frame W1 scored',
+    file: METRICS,
+    from: '  const w4Frame = frames[picked.w4Phase];',
+    to: '  const w4Frame = frames[picked.w4Phase] ?? frame;',
   },
   {
     name: 'item 4: the witness counts the leading edge, like rule 3 in reverse',

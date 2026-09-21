@@ -587,10 +587,19 @@ describe("the one-card sweep picks each criterion's phase (DEC-861 items 1–3)"
       const picked = pick(sweep);
       if (!picked.ok) throw new Error(`sweep refused: ${picked.reason}`);
       const frames = sweep.map((_, i) => ({ phase: i }));
-      const { frame, w4Frame } = sweepFrames(frames, picked);
-      expect(frame).toBe(frames[2]);
-      expect(w4Frame).toBe(frames[3]);
-      expect(sweep[w4Frame.phase]!.artFraction).toBe(picked.sweep.artFraction.worst);
+      const swept = sweepFrames(frames, picked);
+      if (!swept.ok) throw new Error(`frames refused: ${swept.detail}`);
+      expect(swept.frame).toBe(frames[2]);
+      expect(swept.w4Frame).toBe(frames[3]);
+      expect(sweep[swept.w4Frame.phase]!.artFraction).toBe(picked.sweep.artFraction.worst);
+    });
+
+    it("refuses a W4 phase outside the frames as no-settled-phase, never W1's frame (DEC-919)", () => {
+      // Scored on W1's frame, this row would read GREEN on a phase W4 never chose.
+      const frames = [{ phase: 0 }, { phase: 1 }, { phase: 2 }];
+      const swept = sweepFrames(frames, { w1Phase: 2, w4Phase: 3 });
+      expect(swept).toMatchObject({ ok: false, reason: "no-settled-phase" });
+      expect(swept).not.toHaveProperty("w4Frame");
     });
 
     it("steps over a counted phase where nothing wants art, and falls back to W1's phase when every one is", () => {

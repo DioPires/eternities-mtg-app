@@ -499,7 +499,9 @@ export declare function selectSpinPhases(
 export declare function sweepFrames<F>(
   frames: readonly F[],
   picked: { readonly w1Phase: number; readonly w4Phase: number },
-): { readonly frame: F; readonly w4Frame: F };
+):
+  | { readonly ok: false; readonly reason: "no-settled-phase"; readonly detail: string }
+  | { readonly ok: true; readonly frame: F; readonly w4Frame: F };
 export declare function evaluateW2(samples: readonly CellSample[]): W2Criterion;
 export declare function evaluateW3(
   samples: readonly CellSample[],

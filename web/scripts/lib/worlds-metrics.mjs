@@ -1298,9 +1298,27 @@ export function selectSpinPhases(
  * Lifted out of `sweepSpinPhase` in `worlds-gate.mjs` so the one index that routes W4 to its own
  * phase has a unit row and a mutant (DEC-912 F4). On the live matrix it cannot fail: both sweeping
  * rows read `artFraction` 1 at every counted phase, so W1's frame and W4's score the same.
+ *
+ * **An index outside `frames` is `no-settled-phase`, never a fallback to the other frame** (DEC-919).
+ * `w4Frame ?? frame` in the driver once scored a missing W4 frame on W1's, and the row still read
+ * GREEN — the silent pass DEC-861 item 3 was written to remove. The phase a criterion was owed
+ * could not be scored, which is the harness defect that reason already names.
+ *
+ * Returns `{ ok: false, reason, detail }`, or `{ ok: true, frame, w4Frame }` with both frames present.
  */
 export function sweepFrames(frames, picked) {
-  return { frame: frames[picked.w1Phase], w4Frame: frames[picked.w4Phase] };
+  const frame = frames[picked.w1Phase];
+  const w4Frame = frames[picked.w4Phase];
+  if (frame === undefined || w4Frame === undefined) {
+    return {
+      ok: false,
+      reason: "no-settled-phase",
+      detail:
+        `the sweep picked phase ${picked.w1Phase} for W1 and ${picked.w4Phase} for W4, but took ` +
+        `${frames.length} frames — a criterion with no frame of its own is not scored on another's`,
+    };
+  }
+  return { ok: true, frame, w4Frame };
 }
 
 /**
