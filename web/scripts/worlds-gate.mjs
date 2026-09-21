@@ -709,7 +709,10 @@ async function sweepSpinPhase(page, slug, { dir, captures, periodS }) {
 
   const picked = selectSpinPhases(phases, { periodS })
   if (!picked.ok) return picked
-  return { ok: true, ...sweepFrames(frames, picked), sweep: picked.sweep }
+  // Refuses rather than lending W4 W1's frame when an index falls outside `frames` (DEC-919).
+  const swept = sweepFrames(frames, picked)
+  if (!swept.ok) return swept
+  return { ...swept, sweep: picked.sweep }
 }
 
 async function visitWorld(page, world, { dir, captures, pose = SURFACE_RADII, spinSweep = false }) {
@@ -846,6 +849,9 @@ async function visitWorld(page, world, { dir, captures, pose = SURFACE_RADII, sp
   }
   if (!frame.ok) return { slug, ok: false, detail: `${frame.reason}: ${frame.detail}` }
   const { probe, image } = frame
+  // `?? frame` is for rows that do not sweep, where `w4Frame` stays `null` and W4 shares the one
+  // frame. A swept row always carries its own: `sweepFrames` refuses a missing one as
+  // `no-settled-phase`, and that returned above, so it never reaches this fallback (DEC-919).
   const w4Probe = (w4Frame ?? frame).probe
   // The settle-time reasoning applies again at the measurement pose, for the same reason and with
   // the same force: the check is a contract restatement now, not a reading. What the drive really
