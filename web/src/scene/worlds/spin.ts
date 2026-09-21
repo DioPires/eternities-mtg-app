@@ -42,14 +42,18 @@
  * three that survive — the CPU mirror, its vertex twin and `camera/motion.ts` — now spin about
  * plane-local **+Y**, the axis this file names.
  *
- * **Two differences between that mirror and this law are still open, and are not the axis.** The
- * mirror applies `tilt` unconditionally where {@link planeOrientation} gates it on
- * {@link APPLY_PLANE_TILT}, and it carries PRD 5.3.13's multiverse rotation into the plane-local
- * offset where `WorldSurface` applies that rotation only to the centre. Both are owner decisions
- * rather than defects this leg could settle. Measured over the v3 roster — 87 worlds × 64 cell
- * directions, cell-to-cell chord in units of the world's own radius — the tilt term is worth up to
- * **0.86 radii** and does not decay with time, and the multiverse term grows with the angle itself:
- * 0.05 radii at t=10 s, 0.31 at 60 s, 1.41 at 300 s, 2.00 at the half turn. See DEC-774's hand-back.
+ * **Two further differences between that mirror and this law were closed on DEC-873.** The mirror
+ * applied `tilt` unconditionally where {@link planeOrientation} gates it on
+ * {@link APPLY_PLANE_TILT}, and it carried PRD 5.3.13's multiverse rotation into the plane-local
+ * offset where `WorldSurface` applies that rotation only to the centre. Measured over the v3
+ * roster — 87 worlds × 64 cell directions, cell-to-cell chord in units of the world's own radius —
+ * the tilt term was worth up to **0.86 radii** at every instant, and the multiverse term grew with
+ * the angle: 0.05 radii at t=10 s, 0.31 at 60 s, 1.41 at 300 s, 2.00 at the half turn. They
+ * mattered because on a v3 dataset a star record *is* a cell centre (§2.1), so the focused card,
+ * its tether and the fly-to target are all points meant to sit on the drawn globe. The mirror now
+ * reads {@link appliedTilt} and rotates only the centre — **except for the dust plane**, whose
+ * drawn twin is §1.8's belt, which DEC-814 turns *as an object*: there the rotation still carries
+ * the offset, because that is what is drawn.
  *
  * ---
  *
@@ -139,5 +143,17 @@ export function planeOrientation(
   spinAngleOf: SpinAngleSource,
   out: Quaternion,
 ): Quaternion {
-  return worldOrientation(APPLY_PLANE_TILT ? plane.tilt : NO_TILT, spinAngleOf(plane.index), out)
+  return worldOrientation(appliedTilt(plane), spinAngleOf(plane.index), out)
+}
+
+/**
+ * The tilt a plane is actually drawn with: `plane.tilt` when {@link APPLY_PLANE_TILT} is set, the
+ * identity otherwise.
+ *
+ * Exported for the camera's mirror (`camera/motion.ts`), which places the focused card and the
+ * fly-to target on the drawn globe and so has to read the same gate (DEC-873). One predicate,
+ * read by both, rather than two spellings of the flag that agree only until one of them moves.
+ */
+export function appliedTilt(plane: PlaneRecord): readonly [number, number, number, number] {
+  return APPLY_PLANE_TILT ? plane.tilt : NO_TILT
 }

@@ -22,7 +22,7 @@
  * *shape* is still what review §3.6 phase 3 item 3 asks for; only the reader is not the HUD.
  *
  * **The inbound direction is five imperative calls**, driven by store subscriptions rather than by
- * props: `focusStar`, `setFilterMask` (through `bindFilterMask`), `setReducedMotion`,
+ * props: `focusStar`, `setFilterMask` (through `bindWorldsFilterMask`), `setReducedMotion`,
  * `setQualityCap` and `setLabelsEnabled`. None of them renders anything.
  *
  * **The ladder has exactly one application point.** {@link applyTier} is called by the quality
@@ -93,15 +93,11 @@ export interface QualityRungTargets {
   /** Rung 2, both halves. */
   setBloomScale: (scale: number) => void
   setBloomLevels: (levels: number) => void
-  /** Rung 2's third consumer: the field sizes its bloom-source sprites by the same fraction. */
   /**
-   * Rung 3, both halves — one knob, the resident card-image budget (`QUALITY_KNOBS`, DEC-753).
-   *
-   * The galaxy spends it on PRD 8.5.8's atlas and worlds spends it on §1.12's art pool, so which
-   * of the two moves the picture is a function of which card path the page is on. Both are driven
-   * from the one rung so that the cutover deletes a field rather than re-cutting the ladder.
+   * Rung 3 — the resident card-image budget (`QUALITY_KNOBS`, DEC-753), which worlds spends on
+   * §1.12's art pool. The galaxy's half of this knob, PRD 8.5.8's thumbnail atlas, retired at the
+   * cutover (DEC-752) and its no-op target with DEC-868: the field went and the knob did not move.
    */
-  setThumbnailCapacity: (capacity: number) => void
   setArtPoolLayers: (layers: number) => void
   /** Rung 4. */
   setGlowQuality: (quality: QualityTier['glow']) => void
@@ -119,7 +115,6 @@ export function applyQualityTier(tier: QualityTier, targets: QualityRungTargets)
   targets.setPixelRatioCap(tier.pixelRatioCap)
   targets.setBloomScale(tier.bloomScale)
   targets.setBloomLevels(tier.bloomLevels)
-  targets.setThumbnailCapacity(tier.thumbnailCapacity)
   targets.setArtPoolLayers(tier.artPoolLayers)
   targets.setGlowQuality(tier.glow)
 }
@@ -239,10 +234,6 @@ export class SceneHost {
      * `runPick` is `async` — so the mirror cannot observe the frame's own pick in either order.
      * `renderer/frameLoop.ts` says the same thing in general: `TICK_PHASES` is the order, so a
      * subscription order is not one.
-     *
-     * The hand-over the pre-cutover version of this comment named is gone with the star field
-     * (DEC-752): `ScenePickingHandle.setStarHighlight` still exists for a field to register with,
-     * and nothing in the product calls it since `starScene.ts` was deleted.
      *
      * This is the half of the old `starScene.ts` that worlds spec §3.2 did *not* delete: every
      * pointer listener in the app is here, and so is the only emitter of the hover the printing
@@ -624,10 +615,7 @@ export class SceneHost {
       setPixelRatioCap: (cap) => this.renderer.setPixelRatioCap(cap),
       setBloomScale: (scale) => this.post.setBloomScale(scale),
       setBloomLevels: (levels) => this.post.setBloomLevels(levels),
-      // The tier may be announced before the card tier exists; `buildFocusedCard` re-applies it.
-      // The thumbnail tier retired at the cutover (DEC-752); §1.12's art pool is the worlds
-      // spend of this rung and `attachWorlds.setArtLayers` carries it.
-      setThumbnailCapacity: () => {},
+      // §1.12's art pool: the worlds spend of rung 3, held by the attachment until a roster composes.
       setArtPoolLayers: (layers) => this.worldsAttachment.setArtLayers(layers),
       // §1.12 row 4: *"cheap rim, **on the same knob**"*. The rim's knob was built (R2) and its
       // docblock left the line here to R3, which never landed it — so on every worlds page tier 4

@@ -732,5 +732,6 @@ the canvas rather than in React, so a pointer move costs no render.
 
 Plane labels and the chronology bands (2b), the camera rig, intro and attract mode (2b), runtime
 plane-detail loading (2b), thumbnails, the focused card and planets (3), the HUD, filters and the
-toast surface (4). The filter mask attribute and `StarGeometry.setFilterMask` exist and are wired
-into the shader; the rules that populate them are Phase 4's.
+toast surface (4). At the time the filter mask attribute and `StarGeometry.setFilterMask` existed and
+were wired into the shader, for Phase 4's rules to populate. DEC-868 deleted both: worlds filters
+through `worldSurface.setFilterMask` instead.

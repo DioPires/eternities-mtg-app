@@ -56,9 +56,10 @@ export interface SceneDataState {
   readonly starsComplete: boolean
   /**
    * The decoded `stars.bin`, once the transfer completed. The scene itself never reads it — the
-   * geometry owns those bytes on the GPU — but PRD 6.6.5's filter mask and PRD 6.3.2's count are
-   * built per record on the CPU, and this is how the shell gets them without a second transfer of
-   * the largest artefact on the page. `null` while streaming, and after a failed transfer.
+   * geometry holds its own repack of those bytes — but PRD 6.6.5's filter mask and PRD 6.3.2's
+   * count are built per record on the CPU, and this is how the shell gets them without a second
+   * transfer of the largest artefact on the page. `null` while streaming, and after a failed
+   * transfer.
    */
   readonly stars: Stars | null
   /**

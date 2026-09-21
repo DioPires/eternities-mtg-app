@@ -161,7 +161,6 @@ export function SceneView({
   }))
   const [hover, setHover] = useState<PickResult>(null)
   const [toast, setToast] = useState<SceneDataError | null>(null)
-  const [focusedStar, setFocusedStar] = useState(-1)
   // The three values the probe's `state()` reads that must not re-install it. See `ProbeSeamDeps`.
   const focusedStarRef = useRef(-1)
   const focusedSlugRef = useRef<string | null>(null)
@@ -262,9 +261,8 @@ export function SceneView({
     scene3d.setWorldData(worldData)
   }, [scene3d, worldData])
 
-  // PRD 5.8's dimming, for the worlds path (spec §1.11). The star field's half is `App`'s
-  // `useFilterMask`; this is the same evaluation reaching the cell sheets, where a filtered cell
-  // drops to its swatch and is never admitted to the art pool at all.
+  // PRD 5.8's dimming (spec §1.11): `App`'s filter evaluation reaching the cell sheets, where a
+  // filtered cell drops to its swatch and is never admitted to the art pool at all.
   useWorldsFilterMask(scene3d.worlds)
 
   useEffect(() => {
@@ -317,8 +315,36 @@ export function SceneView({
     })
   }, [scene, data.resources])
 
-  focusedStarRef.current = focusedStar
   const focus = snapshot?.focus
+  /**
+   * PRD 5.6.1's focused star — **read off the focus, never held beside it** (DEC-858).
+   *
+   * This was `useState`, written by `focusStar` and cleared by an effect watching `focus`. Which
+   * made a click the only way to focus a card in the scene: `Focus` already carries `starIndex`,
+   * and the routes that resolve a card fill it (navigation contract §1) — PRD 6.7.1's deep link
+   * through `boot`'s `resolveCard`, PRD 6.5.4's search result, PRD 6.9's random — but none of them
+   * goes near `focusStar`, so none of them set the state the ring host is built from. The sheet
+   * showed the card; the scene showed nothing. Measured live on a real GPU: `card` null for 45 s
+   * at `focus: 'card'` (DEC-857 R5).
+   *
+   * PRD 6.2.2's back button is *not* one of those routes, and this derivation does not reach it:
+   * `createRouterBinding`'s popstate arm navigates to a focus parsed from the URL, and `route.ts`
+   * leaves `starIndex` out of a URL deliberately. A fresh load of that same URL does fill it,
+   * through `boot`. The in-session popstate gap is its own defect, tracked separately.
+   *
+   * A derivation rather than a second writer, and the reviewer's "one call through the existing
+   * `focusStar` path" is exactly what it must not be: `focusStar` flies. Called for a focus the
+   * route already delivered it would re-issue `flyToCard` over PRD 6.8.2's second stage, and on the
+   * cold-start ordering it aims at — shards land *after* the navigation — it would take its
+   * no-record branch and `flyToPlane` **off** the card the URL names, rewriting the deep link out
+   * of the address bar. The focus is the one authority either path ends at, so it is the one this
+   * reads. `focusStar` keeps its `flyToCard`, which is what puts `starIndex` there.
+   *
+   * `undefined` until `resolveCard` lands it (contract §1): a card whose star is not yet known has
+   * no subject to build a ring around, and -1 is what the host hides on.
+   */
+  const focusedStar = focus?.kind === 'card' && focus.starIndex !== undefined ? focus.starIndex : -1
+  focusedStarRef.current = focusedStar
   const focusedSlug =
     focus === undefined
       ? null
@@ -387,7 +413,6 @@ export function SceneView({
         },
         { reason: 'user' },
       )
-      setFocusedStar(index)
     },
     [data.planes, data.resources, anchorScratch, cardsRef, scene3d],
   )
@@ -422,7 +447,6 @@ export function SceneView({
       if (pick.kind === 'plane') {
         const plane = data.planes?.planes[pick.index]
         if (plane) built.api.flyToPlane(plane.slug, { reason: 'user' })
-        setFocusedStar(-1)
         return
       }
       focusStar(pick.index, pick.planeIndex)
@@ -431,11 +455,6 @@ export function SceneView({
   )
 
   useEffect(() => scene3d.selected.add(onSelect), [scene3d, onSelect])
-
-  // Esc leaves the card, so the card object has to go with it.
-  useEffect(() => {
-    if (focus?.kind !== 'card') setFocusedStar(-1)
-  }, [focus])
 
   // The harness's own shortcuts. Not bound under the shell: PRD 6.11's map is `useKeyboardMap`,
   // and two listeners on `window` for the same key would run Esc twice — once up the focus chain

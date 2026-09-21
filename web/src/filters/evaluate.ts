@@ -36,9 +36,8 @@ export interface FilterEvaluation {
    * One byte per star: {@link FILTER_MASK_PASS} matches, 0 is dimmed. Reused between calls — do not
    * retain a copy.
    *
-   * The byte value is not free choice. This array is handed to `StarGeometry.setFilterMask`
-   * verbatim (`app/filterMask.ts`) and becomes a **normalised** vertex attribute, so the pass value
-   * has to be the one the shader reads as `1.0`. See {@link FILTER_MASK_PASS}.
+   * Handed verbatim to the worlds attachment (`app/filterMask.ts`), whose surfaces dim a cell whose
+   * card's byte is 0 (`worlds/worldSurface.ts`). See {@link FILTER_MASK_PASS}.
    */
   readonly mask: Uint8Array
   /** Exact number of matching cards (PRD 6.3.2). */

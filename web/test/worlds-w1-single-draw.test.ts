@@ -421,5 +421,10 @@ describe('W1 is scored from one azimuth, and that is a claim about APPLY_PLANE_T
       expect(dense, `${slug} dense`).toBeGreaterThanOrEqual(W1_FLOOR_PX)
       expect((coarse - dense) / coarse, `${slug} drift`).toBeLessThan(0.01)
     }
-  })
+    // Four sweeps, two of them at ten times the density: ~1.2-1.3 s locally, 4.1-4.9 s on hosted
+    // `web` jobs on `main` (runs 35586935935, 35586386891, 35597198933) — and 5,084 ms and 5,007 ms,
+    // timed out at the default, on PR #96 run 35587119331 and PR #101 run 35594382248, neither of
+    // which touches this file. 15 s is ~3x the worst hosted reading. The limit is this row's, not
+    // the suite's (DEC-908).
+  }, 15_000)
 })
