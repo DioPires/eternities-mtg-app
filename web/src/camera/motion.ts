@@ -11,6 +11,12 @@
  *   local → spin + bounded shear about the plane axis → tilt → × radius → + drift → + home
  *         → multiverse rotation
  *
+ * **Amended by the worlds law (DEC-873):** the tilt is `worlds/spin.ts`'s `appliedTilt`, gated on
+ * `APPLY_PLANE_TILT`, and the multiverse rotation turns the plane's centre, not the offset from it
+ * — `WorldSurface` draws a world that way — except on the dust plane, whose belt turns whole. See
+ * `placeOffset`. The direction pair (`planeLocalDirToWorld` / `worldDirToPlaneLocal`) follows the
+ * same law, so a fly-to's framing offset is held in the frame the destination is *drawn* in.
+ *
  * **"The plane axis" is plane-local +Y, and the constants are `scene/tuning`'s.** Until Phase 3
  * this file rotated about world +Y with a shear phase gradient of its own, and nothing caught it:
  * every tether the rig had ever resolved was either a plane centre or a dust anchor, and the local
@@ -53,6 +59,7 @@ import {
   vec,
 } from './vec'
 import { MULTIVERSE_PERIOD_S } from '../scene/tuning'
+import { appliedTilt } from '../scene/worlds/spin'
 
 /** PRD 5.6.6: a focused plane's rotation eases to a stop over 1 s, and back over 1 s. */
 export const SPIN_EASE_S = 1
@@ -292,17 +299,47 @@ export class SceneMotion {
       set(this.tmpB, lx, ly, lz)
       rotateY(this.tmpB, this.tmpB, spin + shear)
     }
-    applyQuat(this.tmpB, this.tmpB, plane.tilt)
+    applyQuat(this.tmpB, this.tmpB, appliedTilt(plane))
     set(this.tmpB, this.tmpB.x * plane.radius, this.tmpB.y * plane.radius, this.tmpB.z * plane.radius)
+    return this.placeOffset(out, plane, this.tmpB)
+  }
 
+  /**
+   * Put an offset from a plane's centre — already spun, tilted and scaled — into the world, the way
+   * the scene draws it (DEC-873).
+   *
+   * A world is drawn by `WorldSurface` at `planePosition`, with an orientation that carries the spin
+   * and nothing of PRD 5.3.13's multiverse angle; so the offset is added *after* the centre is
+   * rotated, not rotated with it. On a v3 dataset a star record is a cell centre (§2.1), and doing
+   * otherwise put the focused card and the fly-to target up to two radii round the globe from the
+   * cell at the half turn. The dust plane is the exception: its drawn twin is §1.8's belt, which
+   * DEC-814 turns as one object, and PRD 8.3 defines a dust anchor's frame as multiverse
+   * coordinates over `R` so that it turns with it.
+   */
+  private placeOffset(out: MutVec3, plane: PlaneRecord, offset: Readonly<MutVec3>): MutVec3 {
     this.driftOffset(this.tmpA, plane)
     set(
-      this.tmpB,
-      this.tmpB.x + plane.home[0] + this.tmpA.x,
-      this.tmpB.y + plane.home[1] + this.tmpA.y,
-      this.tmpB.z + plane.home[2] + this.tmpA.z,
+      this.tmpA,
+      plane.home[0] + this.tmpA.x,
+      plane.home[1] + this.tmpA.y,
+      plane.home[2] + this.tmpA.z,
     )
-    return rotateY(out, this.tmpB, this.multiverseAngle)
+    if (plane.kind === 'dust') {
+      set(this.tmpA, this.tmpA.x + offset.x, this.tmpA.y + offset.y, this.tmpA.z + offset.z)
+      return rotateY(out, this.tmpA, this.multiverseAngle)
+    }
+    rotateY(this.tmpA, this.tmpA, this.multiverseAngle)
+    return set(out, this.tmpA.x + offset.x, this.tmpA.y + offset.y, this.tmpA.z + offset.z)
+  }
+
+  /**
+   * The spin a plane's local frame turns by — none on the dust plane, which turbulates instead
+   * (PRD 8.6.3). `starPosition` has always skipped it there; the anchor transforms below read this
+   * so the three cannot disagree the day a dust plane is given a spin period (DEC-873).
+   */
+  private frameSpin(plane: PlaneRecord): number {
+    if (plane.kind === 'dust') return 0
+    return this.states[plane.index]?.spinAngle ?? 0
   }
 
   /**
@@ -320,41 +357,40 @@ export class SceneMotion {
    * takes.
    */
   worldToPlaneLocal(out: MutVec3, plane: PlaneRecord, world: Readonly<MutVec3>): MutVec3 {
-    rotateY(this.tmpA, world, -this.multiverseAngle)
+    // The exact inverse of `placeOffset`: the centre is subtracted in whichever frame that added it.
     this.driftOffset(this.tmpB, plane)
     set(
-      this.tmpA,
-      this.tmpA.x - plane.home[0] - this.tmpB.x,
-      this.tmpA.y - plane.home[1] - this.tmpB.y,
-      this.tmpA.z - plane.home[2] - this.tmpB.z,
+      this.tmpB,
+      plane.home[0] + this.tmpB.x,
+      plane.home[1] + this.tmpB.y,
+      plane.home[2] + this.tmpB.z,
     )
+    if (plane.kind === 'dust') {
+      rotateY(this.tmpA, world, -this.multiverseAngle)
+    } else {
+      rotateY(this.tmpB, this.tmpB, this.multiverseAngle)
+      copy(this.tmpA, world)
+    }
+    set(this.tmpA, this.tmpA.x - this.tmpB.x, this.tmpA.y - this.tmpB.y, this.tmpA.z - this.tmpB.z)
     const inv = plane.radius === 0 ? 0 : 1 / plane.radius
     set(this.tmpA, this.tmpA.x * inv, this.tmpA.y * inv, this.tmpA.z * inv)
     // Inverse tilt: conjugate the unit quaternion.
-    applyQuat(this.tmpA, this.tmpA, [-plane.tilt[0], -plane.tilt[1], -plane.tilt[2], plane.tilt[3]])
-    const spin = this.states[plane.index]?.spinAngle ?? 0
-    return rotateY(out, this.tmpA, -spin)
+    const tilt = appliedTilt(plane)
+    applyQuat(this.tmpA, this.tmpA, [-tilt[0], -tilt[1], -tilt[2], tilt[3]])
+    return rotateY(out, this.tmpA, -this.frameSpin(plane))
   }
 
   /** The forward direction of `worldToPlaneLocal`, so a local offset tracks the spinning plane. */
   planeLocalToWorld(out: MutVec3, plane: PlaneRecord, local: Readonly<MutVec3>): MutVec3 {
-    const spin = this.states[plane.index]?.spinAngle ?? 0
-    rotateY(this.tmpB, local, spin)
-    applyQuat(this.tmpB, this.tmpB, plane.tilt)
+    rotateY(this.tmpB, local, this.frameSpin(plane))
+    applyQuat(this.tmpB, this.tmpB, appliedTilt(plane))
     set(
       this.tmpB,
       this.tmpB.x * plane.radius,
       this.tmpB.y * plane.radius,
       this.tmpB.z * plane.radius,
     )
-    this.driftOffset(this.tmpA, plane)
-    set(
-      this.tmpB,
-      this.tmpB.x + plane.home[0] + this.tmpA.x,
-      this.tmpB.y + plane.home[1] + this.tmpA.y,
-      this.tmpB.z + plane.home[2] + this.tmpA.z,
-    )
-    return rotateY(out, this.tmpB, this.multiverseAngle)
+    return this.placeOffset(out, plane, this.tmpB)
   }
 
   /**
@@ -367,22 +403,20 @@ export class SceneMotion {
    * plane radius and drag the drift offset in with it.
    */
   planeLocalDirToWorld(out: MutVec3, plane: PlaneRecord, local: Readonly<MutVec3>): MutVec3 {
-    const spin = this.states[plane.index]?.spinAngle ?? 0
-    rotateY(this.tmpB, local, spin)
-    applyQuat(this.tmpB, this.tmpB, plane.tilt)
-    return rotateY(out, this.tmpB, this.multiverseAngle)
+    rotateY(this.tmpB, local, this.frameSpin(plane))
+    applyQuat(this.tmpB, this.tmpB, appliedTilt(plane))
+    // A direction has no centre to carry the multiverse angle, so it carries it only where
+    // `placeOffset` rotates the offset itself: on the dust plane (DEC-873).
+    if (plane.kind === 'dust') return rotateY(out, this.tmpB, this.multiverseAngle)
+    return copy(out, this.tmpB)
   }
 
   worldDirToPlaneLocal(out: MutVec3, plane: PlaneRecord, world: Readonly<MutVec3>): MutVec3 {
-    rotateY(this.tmpB, world, -this.multiverseAngle)
-    applyQuat(this.tmpB, this.tmpB, [
-      -plane.tilt[0],
-      -plane.tilt[1],
-      -plane.tilt[2],
-      plane.tilt[3],
-    ])
-    const spin = this.states[plane.index]?.spinAngle ?? 0
-    return rotateY(out, this.tmpB, -spin)
+    if (plane.kind === 'dust') rotateY(this.tmpB, world, -this.multiverseAngle)
+    else copy(this.tmpB, world)
+    const tilt = appliedTilt(plane)
+    applyQuat(this.tmpB, this.tmpB, [-tilt[0], -tilt[1], -tilt[2], tilt[3]])
+    return rotateY(out, this.tmpB, -this.frameSpin(plane))
   }
 
   spinAngleOf(index: number): number {
