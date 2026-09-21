@@ -372,7 +372,10 @@ def build(spec: FixtureSpec) -> Dataset:
     # so the margin has to clear 4 x that, with slack for the float16 round trip.
     margin = layout.PLANE_MARGIN_FACTOR * mean_spacing
     positions = layout.place_planes(
-        [(s, radii[s], counts[s] == 0) for s in named], MULTIVERSE_RADIUS, margin
+        [(s, radii[s], counts[s] == 0) for s in named],
+        MULTIVERSE_RADIUS,
+        margin,
+        layout.DRIFT_FACTOR * mean_spacing,
     )
     motions = {s: layout.plane_motion(s, mean_spacing) for s in slugs}
 

@@ -295,6 +295,55 @@ def test_no_two_planes_overlap_even_at_maximum_drift(dataset: Dataset):
             )
 
 
+def test_no_two_pick_proxies_overlap_in_the_home_view(dataset: Dataset):
+    """§1.11's layout amendment (DEC-759): separation is a *screen* property, not a world one.
+
+    The home view looks down the disc at 30 degrees, which compresses in-plane distance by
+    ``sin(30 deg)`` and leaves a plane's pick proxy at full size — floored to 24 CSS px for any
+    world smaller than that (§1.11). So the quantity that decides whether a pointer can reach a
+    world is the compressed gap against the *sum of the two proxies*, and the world-space margin
+    the test above asserts says nothing about it.
+
+    Stated at maximum drift for the same reason PRD 8.9.1 states the overlap rule there: a gap
+    that only exists at rest is not a gap.
+    """
+    sin_elevation = math.sin(layout.HOME_ELEVATION_RAD)
+    per_plane = 1.0 + layout.DRIFT_VERTICAL_RATIO / math.tan(layout.HOME_ELEVATION_RAD)
+    named = [p for p in dataset.planes if p.slug != "blind-eternities"]
+    for i, a in enumerate(named):
+        for b in named[i + 1 :]:
+            # Moon-on-moon is exempt: the pair that can bury a world always has the world in it,
+            # and the empty planes are too many, and too uniformly at the radius floor, to pack at
+            # this separation. See `place_planes`.
+            if a.card_count == 0 and b.card_count == 0:
+                continue
+            gap = math.hypot(a.home[0] - b.home[0], a.home[2] - b.home[2])
+            closing = gap - per_plane * (a.drift_amplitude + b.drift_amplitude)
+            need = layout.pick_proxy_radius(a.radius, MULTIVERSE_RADIUS) + layout.pick_proxy_radius(
+                b.radius, MULTIVERSE_RADIUS
+            )
+            assert closing * sin_elevation >= need, (
+                f"{a.slug} and {b.slug} overlap as pick targets in the home view: "
+                f"{closing * sin_elevation:.2f} < {need:.2f} world units of screen separation. "
+                "The nearer disc takes the pixels and no pick policy recovers them (DEC-749)"
+            )
+
+
+def test_planes_sit_in_the_disc_plane(dataset: Dataset):
+    """The other half of DEC-759's fix, and the one that is easy to undo by accident.
+
+    PRD 8.6.1's disc used to scatter each plane through a half-thickness of 0.075 R. At 30 degrees
+    of elevation a plane's height projects at ``cos(30 deg)`` against an in-plane distance's
+    ``sin(30 deg)``, so eight units of height cancels fourteen units of separation: the scatter
+    was *manufacturing* the screen coincidences the rule above exists to prevent, and no in-plane
+    rule can see it happen. The belt keeps its own jitter (§1.8); the planes do not.
+    """
+    assert all(p.home[1] == 0.0 for p in dataset.planes), (
+        "a plane is off the disc plane — see place_planes: the home-view separation rule is "
+        "stated in-plane and a vertical offset silently cancels it"
+    )
+
+
 def test_a_zero_card_plane_still_exists_and_renders_as_empty(dataset: Dataset):
     """PRD 4.7.1 and 5.3.6: every Appendix A plane is in the visualisation."""
     empty = [p for p in dataset.planes if p.card_count == 0]
