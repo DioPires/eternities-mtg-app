@@ -54,8 +54,10 @@ const WORLD = 'dominaria'
  * **It is not where the product arrives.** `Framing.plane` frames a plane at `r * 3.2` and lets the
  * dolly run between `r * 1.4` and `r * 8`, so `focusPlane` settles at exactly **3.200 radii** and
  * 2.2 is a place the user zooms *to*. At 3.2 radii no cell of Dominaria clears §1.6's 24 px floor
- * at 1920x1080 — DEC-771 measured 30.13 px at 2.2, which scales to ~20.7 px at 3.2 — so W4's
- * denominator is empty there and a run that accepted the arrival pose would be measuring nothing.
+ * at 1920x1080 — DEC-771 measured 30.13 px at 2.2 on the offline roster rig at tier 4's 128
+ * layers, re-measured there as **30.71 px** after DEC-882 raised the quantile's resolution, which
+ * scales to ~21.1 px at 3.2 — so W4's denominator is empty there and a run that accepted the
+ * arrival pose would be measuring nothing.
  * This harness therefore drives the shipped wheel input to the named distance and asserts it,
  * rather than reading a criterion off wherever a flight happened to stop (leg G's `ea78d54`).
  */
@@ -104,7 +106,9 @@ function parseArgs(argv) {
 async function startPreview(dataset) {
   const child = spawn('pnpm', ['exec', 'vite', 'preview', '--port', '0', '--strictPort', 'false'], {
     cwd: WEB_ROOT,
-    env: { ...process.env, ETERNITIES_DATASET: dataset },
+    // NO_COLOR: hosted runners set `CI`, which turns vite's colours on even into a pipe, and the
+    // port then arrives wrapped in bold escapes (`localhost:\e[1m4173\e[22m`) the URL match misses.
+    env: { ...process.env, ETERNITIES_DATASET: dataset, NO_COLOR: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   child.stderr.setEncoding('utf8')

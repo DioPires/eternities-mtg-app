@@ -7,14 +7,32 @@
  * churn behind it is ~1,900 `art_crop` fetches — roughly 170 MB — for one camera pose.
  *
  * > **Normative.** The effective threshold is a **per-frame quantile**, not a constant. Maintain a
- * > 64-bucket histogram of the on-screen pixel heights of wanting cells (one pass, no sort). If the
+ * > 256-bucket histogram of the on-screen pixel heights of wanting cells (one pass, no sort). If the
  * > count above 24 px exceeds the pool capacity, count down from the tallest bucket until admitting
  * > one more would carry the running total past capacity, and raise the effective threshold to the
- * > lower edge of the bucket **above** that crossing one — the last bucket that fit — with one
- * > bucket of hysteresis so the boundary does not oscillate. The result is the same picture — a ring
- * > of art around the sub-camera point — reached by design rather than by exhaustion, with a bounded
- * > fetch count and near-zero steady-state eviction. Acceptance criterion **W4** (§3.1) measures
- * > exactly this.
+ * > lower edge of the bucket **above** that crossing one — the last bucket that fit — with
+ * > {@link HOLD_FRACTION} of hysteresis so the boundary does not oscillate. The result is the same
+ * > picture — a ring of art around the sub-camera point — reached by design rather than by
+ * > exhaustion, with a bounded fetch count and near-zero steady-state eviction. Acceptance
+ * > criterion **W4** (§3.1) measures exactly this.
+ * >
+ * > **Normative — the resolution is 256, and it is a resolution, not a policy (DEC-882).** This
+ * > read 64 until the tier-4 rung went RED on `main` with 14 cells of art against a floor of 32.
+ * > Nothing above was wrong: the quantile picked the last bucket that fit, exactly as stated. A
+ * > 64-bucket grid is ~7.88% per step, which is **2.89 px** at that height, and at `dominaria`
+ * > 2.2 world-radii the 128th- and 208th-tallest cells are **0.77 px apart** — about a quarter of
+ * > one step. One such bucket laid on the capacity rank holds **128** cells, the whole pool, and up
+ * > to 288 elsewhere in the distribution: there was nowhere to put an edge *inside* the pool. The
+ * > grid could only offer 16 cells (0.125x capacity) or 291 (2.27x); "admit about 128 here" was
+ * > not on it. 256
+ * > buckets is ~1.91% per step, which resolves that span, and the two grids **nest** — every
+ * > 64-bucket edge is still an edge here (64-bucket *k* is 256-bucket *4k*), so this refines the
+ * > boundary rather than moving it. Measured on the offline rig (the committed tier-4 height
+ * > fixture at that pose): threshold 37.1134 px, **82 of 128 layers** admitted, against 37.8235 px
+ * > and 15 before. Live draws at that pose admit 76-84 (spec §1.6 carries the spread). The
+ * > picture a user sees is unchanged — 124-128 on-screen cells drew art on both (`showingArtAll`,
+ * > not the admitted count) — but the ring is now sized to the pool instead of trailing a
+ * > stale tail behind it (DEC-877 SS4).
  * >
  * > **Normative — the one exception (DEC-768 F1).** Where the crossing bucket is the first non-empty
  * > one, take the crossing bucket itself, unless capacity is zero. See {@link AdaptiveThreshold.end},
@@ -24,8 +42,16 @@
 /** The prototype's constant, which is still the floor the quantile starts from (§1.6). */
 export const BASE_THRESHOLD_PX = 24
 
-/** §1.6's bucket count. */
-const BUCKETS = 64
+/**
+ * §1.6's bucket count — the quantile's *resolution*, raised 64 -> 256 by DEC-882.
+ *
+ * See the normative note at the top of this file for the measurement. In short: the quantisation
+ * error of a geometric grid is proportional to the threshold, so the grid's step is the finest
+ * distinction it can draw between two poses. 7.88% was coarser than the tier-4 height distribution
+ * is dense, and the policy had no reachable choice near capacity. Nothing else about §1.6 changes:
+ * still one pass, still no sort, still `BUCKETS` counters.
+ */
+const BUCKETS = 256
 
 /**
  * The top of the histogram's range, in CSS px.
@@ -33,7 +59,7 @@ const BUCKETS = 64
  * The buckets are **geometric**, not linear, because the quantity is not: a cell's on-screen height
  * runs from the 24 px floor to most of the viewport as the camera closes on a surface, and a linear
  * span fine enough to separate 24 from 30 px saturates its top bucket long before the near view.
- * Geometric buckets hold a constant ~7.8% per step across the whole range, so the threshold's
+ * Geometric buckets hold a constant ~1.91% per step across the whole range, so the threshold's
  * quantisation error is proportional to the threshold — which is the behaviour a quantile wants.
  * 3,072 px is taller than a 4K viewport, so the top bucket is unreachable rather than merely large.
  */
@@ -41,6 +67,33 @@ const TOP_PX = 3072
 
 const RATIO = Math.pow(TOP_PX / BASE_THRESHOLD_PX, 1 / BUCKETS)
 const LOG_RATIO = Math.log(RATIO)
+
+/**
+ * The resolution the hysteresis hold was *measured* at (DEC-768 F2), which is not the resolution
+ * the histogram runs at any more. It appears here only to carry {@link HOLD_FRACTION} across the
+ * DEC-882 raise; nothing else reads it.
+ */
+const HOLD_MEASURED_AT_BUCKETS = 64
+
+/**
+ * The hysteresis hold, as a **fraction of the threshold** — a pixel width, not a bucket count
+ * (DEC-882 ruling 4).
+ *
+ * The hold exists to stop the boundary oscillating between two adjacent edges as the camera drifts,
+ * and the drift it has to absorb is a property of the camera and the world, measured in pixels.
+ * Bucket *indices* are just how this file addresses pixels; raising {@link BUCKETS} four-fold would
+ * quarter a hold stated as "one bucket" and re-open the flicker DEC-768 F2 closed — the same
+ * oscillation, at a quarter of the amplitude, which is still one cell wide on screen. So the hold
+ * is pinned to the width that was measured to work (~7.88%) and converted to whatever the current
+ * grid spells that as. At 256 that is exactly 4 buckets, because the grids nest.
+ */
+const HOLD_FRACTION = Math.pow(TOP_PX / BASE_THRESHOLD_PX, 1 / HOLD_MEASURED_AT_BUCKETS) - 1
+
+/**
+ * {@link HOLD_FRACTION} in buckets of the current grid, floored at 1 so a grid coarser than the
+ * hold still holds *something* rather than silently losing the branch.
+ */
+export const HOLD_BUCKETS = Math.max(1, Math.round(Math.log1p(HOLD_FRACTION) / LOG_RATIO))
 
 /** The lower edge of bucket `index`, in CSS px. Bucket 0's edge is exactly {@link BASE_THRESHOLD_PX}. */
 export function bucketEdgePx(index: number): number {
@@ -86,10 +139,19 @@ export interface ThresholdReport {
  * > statement about *the previous surface* instead. Measured on the shipped roster before this type
  * > existed — `zendikar` alternating between 2.18 and 2.20 world-radii at 224 layers, where the raw
  * > quantile moves one bucket every frame: alone on the roster it held at
- * > `44.02 47.48 47.48 47.48 …`, and on the full 45 it oscillated `44.02 47.48 44.02 47.48 …` —
+ * > `44.02 44.86 44.86 44.86 …`, and on the full 45 it oscillated `44.02 44.86 44.02 44.86 …` —
  * > the ring of art flickering one cell wide that the hold branch is declared normative to remove.
  * > A roster of 45 always has a preceding world, so the second row was what always happened. The
  * > mechanism was present, normative, and inert.
+ * >
+ * > **Those two readings are DEC-882's, not DEC-768's.** The flicker's amplitude is one grid step
+ * > by construction — the raw quantile straddles an edge, so it alternates between that edge and
+ * > its neighbour — and the raise carried it with the grid: this case read
+ * > `44.02 47.48 44.02 47.48 …` at 64 buckets, a 7.88% swing, and reads 1.91% now. Finer buckets
+ * > therefore make the flicker *smaller* as well as rarer, which is why the hold is stated in
+ * > pixels: at one bucket it would still cover this case and would no longer cover the drift it
+ * > was measured against. Re-swept over 2.10-2.30 radii in 0.005 steps, `zendikar`'s raw quantile
+ * > still moves **2 buckets** in one step at 2.105, which a one-bucket hold releases on.
  *
  * It is a required argument of {@link AdaptiveThreshold.end} rather than a field with a default,
  * so that sharing one is a thing a caller has to *write* rather than a thing it gets by omission.
@@ -126,7 +188,7 @@ export class AdaptiveThreshold {
   /** `false` under the `?artThreshold=fixed24` seam: constant 24, no histogram, no hysteresis. */
   constructor(readonly adaptive = true) {}
 
-  /** Start a frame's pass. One `fill` over 64 words; there is no sort anywhere in this class. */
+  /** Start a frame's pass. One `fill` over {@link BUCKETS} words; there is no sort in this class. */
   begin(): void {
     this.histogram.fill(0)
     this.wanting = 0
@@ -153,13 +215,21 @@ export class AdaptiveThreshold {
    * > one** — where "the last that fit" is a bucket nothing is in, so the frame admits **nothing at
    * > all** and every layer of the pool sits idle in front of a world that wants art.
    * >
-   * > Measured before this branch existed: `dominaria` at 2.2 world-radii, tier 4's
-   * > 128 layers, 922 wanting cells in buckets 0–3 (185/299/280/158) — bucket 3 alone exceeds 128,
-   * > the threshold jumped to bucket 4's 32.50 px and **0** of 128 layers were used; it now sits at
-   * > bucket 3's **30.13 px** and admits that bucket (DEC-770 N2). The same world at 1.8
-   * > radii wanted 961 and admitted 0 as well; they were the only two poses of ninety in that sweep
-   * > that did. That is strictly worse than the `fixed24` prototype this quantile replaces, at the
-   * > pose §3.1 states W4 at.
+   * > Measured before this branch existed, on the 64-bucket grid: `dominaria` at 2.2 world-radii,
+   * > tier 4's 128 layers, 922 wanting cells piled into buckets 0–3 (185/299/280/158) — bucket 3
+   * > alone exceeds 128, the threshold jumped to bucket 4's 32.50 px and **0** of 128 layers were
+   * > used; with the branch it sat at bucket 3's **30.13 px** and admitted that bucket, 158 of 128
+   * > (DEC-770 N2). The same world at 1.8 radii wanted 961 and admitted 0 as well; they were the
+   * > only two poses of ninety in that sweep that did. That is strictly worse than the `fixed24`
+   * > prototype this quantile replaces, at the pose §3.1 states W4 at.
+   * >
+   * > **Where it binds moved at DEC-882, and the branch stays (ruling 5).** A 256-bucket grid does
+   * > not pile 922 cells into four buckets, so at tier 4 `dominaria` now spreads over dozens, reads
+   * > **30.71 px** and admits **90** of 128 with `running > 0` at the crossing — F1 does not fire
+   * > there, and no pose of ninety overshoots capacity at 64 layers or above. It is not thereby
+   * > dead: re-swept on the shipped roster, F1 still fires at capacity **16**, on four poses of
+   * > ninety (`dominaria` 41/16 and 27/16, `innistrad` 19/16, `ravnica` 17/16), where the pool is
+   * > small enough for one bucket to cross it. Its overshoot there fell from 12.1 pools to 2.6.
    * >
    * > So the crossing bucket is taken whenever the bucket above it would admit nothing, and the
    * > overshoot — at most that one bucket's own count, 158 against 128 above — is left to the
@@ -191,11 +261,11 @@ export class AdaptiveThreshold {
   }
 
   /**
-   * One bucket of hysteresis, and it is **one-sided on purpose**.
+   * {@link HOLD_FRACTION} of hysteresis, and it is **one-sided on purpose**.
    *
    * Raising is immediate, because capacity is a hard bound and a frame that admits more cells than
    * the pool holds is the exhaustion this whole mechanism removes. Lowering waits until the
-   * histogram has moved clear by more than a single bucket, which is what stops the boundary
+   * histogram has moved clear by more than {@link HOLD_BUCKETS}, which is what stops the boundary
    * oscillating between two adjacent edges as the camera drifts — a ring of art flickering one cell
    * wide is more obviously wrong than a ring one cell too small.
    *
@@ -205,7 +275,7 @@ export class AdaptiveThreshold {
    */
   private applyHysteresis(chosen: number, previous: number, capacity: number): number {
     if (chosen > previous) return chosen
-    if (chosen < previous - 1) return chosen
+    if (chosen < previous - HOLD_BUCKETS) return chosen
     // A held boundary that draws nothing is the idle pool above, reached one frame later instead of
     // at once: the subject's own demand has moved entirely below a bucket it is still holding. A
     // ring one cell too small is the trade this hysteresis makes; no ring at all is not.

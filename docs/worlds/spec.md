@@ -166,7 +166,9 @@ detail and had no equirect rung at all; 27 is a prototype count and is not produ
   > law for **80% of the roster** and draws every small world **6.3× an empty moon**, inverting the
   > §1.8 relationship this floor exists to preserve. Even a 2× raise costs 17 worlds. The ruling does
   > not depend on the exact pixel figure — the lever is wrong in kind at every magnitude. **The pick
-  > floor is screen-space and belongs to §1.11.**
+  > floor is screen-space and belongs to §1.11**, and the lever that reaches a real 24 px *target*
+  > is neither of them: it is the `home` law's separation rule, landed on DEC-759 and normative at
+  > the end of §1.11's picking bullet. Radius is not the lever; separation is.
 - **Framing distance.** `frameDistance = radius · min(3.2, 1.006 + cellArc · focalPx / 30)`, where
   `cellArc` is the cell's drawn latitudinal extent in units of world radius — `π · 0.93 · 1.006 /
   rowCells.length` — and `focalPx` is the reference viewport's `1080 / (2·tan(55°/2))`. A plane with
@@ -675,14 +677,36 @@ boundary in that frame is the budget being exhausted, and the churn behind it is
 fetches (≈ 170 MB) for one camera pose.
 
 > **Normative.** The effective art threshold is a **per-frame quantile**, not a constant. Maintain a
-> 64-bucket histogram of the on-screen pixel heights of wanting cells (one pass, no sort). If the
+> 256-bucket histogram of the on-screen pixel heights of wanting cells (one pass, no sort). If the
 > count above 24 px exceeds the pool capacity, count down from the tallest bucket until admitting one
 > more would carry the running total past capacity, and raise the effective threshold to the lower
-> edge of the bucket **above** that crossing one — the last bucket that fit — with one bucket of
-> hysteresis so the boundary does not oscillate. The result is the same picture — a ring of art
-> around the sub-camera point — reached by design rather than by exhaustion, with a bounded fetch
-> count and near-zero steady-state eviction. Acceptance criterion **W4** (§3.1) measures exactly
-> this.
+> edge of the bucket **above** that crossing one — the last bucket that fit — with **7.88% of
+> hysteresis**, a width in pixels rather than a count of buckets, so the boundary does not
+> oscillate. The result is the same picture — a ring of art around the sub-camera point — reached by
+> design rather than by exhaustion, with a bounded fetch count and near-zero steady-state eviction.
+> Acceptance criterion **W4** (§3.1) measures exactly this.
+>
+> **Normative — the resolution is 256, and only the resolution changed (DEC-882).** This read 64,
+> and a 64-bucket grid is ~7.88% per step. At `dominaria` 2.2 world-radii under tier 4 the 128th-
+> and 208th-tallest cells are **0.77 px** apart, about a quarter of one such step, and a single old
+> bucket laid on the capacity rank held **128** cells — the whole pool. There was no edge to place
+> *inside* the pool, so the only admissions the quantile could reach were 16 cells (0.125x capacity)
+> and 291 (2.27x); "admit about 128 here" was not on the grid, and the tier-4 rung read 14 cells of
+> art against §3.1's floor of 32. 256 buckets is ~1.91% per step and the two grids **nest** — every
+> 64-bucket edge is still an edge, 64-bucket *k* being 256-bucket *4k* — so this refines the
+> boundary rather than moving it. Measured live at that pose: threshold **37.11 px** on every draw,
+> and **77–84 of 128** layers admitted over DEC-882's five draws, of which 76–82 drew art (three
+> later `main` draws of `layers-128` admitted 76–77, of which 75–76 drew art), against 37.82 px and
+> 14–17 before; the frame's `showingArtAll` read 124–128 on both grids. **82 is also the offline rig's figure**:
+> the committed height fixture (`web/test/worlds-tier4-heights.ts`) reads 37.1134 px and 82
+> admitted, and it is a fixture, not a draw. The intent of this section is unchanged, and so is
+> "one pass, no sort".
+>
+> **Normative — the hysteresis hold is a width in pixels (DEC-882).** The drift the hold absorbs is
+> a property of the camera, and bucket indices are only how the implementation addresses pixels: a
+> hold stated as "one bucket" quarters itself when the resolution is raised four-fold, re-opening
+> the flicker DEC-768 F2 closed. The width is therefore pinned at the one that was measured to work,
+> **7.88%** — one step of the grid it was measured on — which this grid spells as four buckets.
 >
 > **Normative — the one exception, and a pool with demand in front of it is never left idle (DEC-768
 > F1, DEC-770 N3).** Where the crossing bucket is the **first non-empty** one, "the last bucket that
@@ -723,9 +747,12 @@ fetches (≈ 170 MB) for one camera pose.
 > terms unpinned on the default path while every assertion about them still passes.
 >
 > The mechanism is not a property of any one world, and in particular it is **not** "the worlds whose
-> threshold rises highest go empty": dominaria has the *lowest* risen threshold on the roster (30.13
-> px at 16, 64 and 128 layers alike — it read 32.50, one bucket higher, until DEC-769 fixed F1 above)
-> and goes empty, while bloomburrow at 35.06 px does not. A back-facing cell projects at most
+> threshold rises highest go empty": at 128 layers dominaria has the *lowest* risen threshold on the
+> roster (**30.71 px** at 256 buckets, 30.13 before DEC-882 raised the grid, and 32.50 before DEC-769
+> fixed F1 above) and goes empty, while at 64 layers bloomburrow sits **below** it at 25.40 px and
+> does not — 232 excluded cells against dominaria's none. The threshold is quoted with its capacity
+> because the quantile is defined relative to capacity; without one it is not a reading. A
+> back-facing cell projects at most
 > ~0.82x the height of the world's tallest front-facing cell at this pose — near-constant across the
 > roster — so the exclusion binds exactly while the threshold sits below that fraction, and the
 > threshold is set by **demand against capacity**, nothing else.
@@ -1108,9 +1135,20 @@ tick positions, not with a capture. See §5, Q5.
   >
   > Everything else is residual exposure, and is recorded as a count rather than a guarantee:
   > **19 of the 33 worlds the floor lifts somewhere in the turn fall under 24 px of effective
-  > diameter at some azimuth**, and the floor itself pushes **2 worlds that already cleared 24 px as
-  > drawn** (`eldraine`, `kamigawa`) below it, to a worst of **~20.6 px**. Those counts move with the
-  > sweep and with `home`; see the warning below.
+  > diameter at some azimuth**, and some of those already cleared 24 px as drawn — the floor itself
+  > is what pushes them under, to a worst of **~20.6 px**. Those counts move with the sweep and with
+  > `home`; see the warning below.
+  >
+  > *Corrected on DEC-759 (review DEC-865, item 1).* This paragraph read "**2** worlds (`eldraine`,
+  > `kamigawa`)", from R1's probe at 24 and 37 azimuths. Re-measured on the committed instrument —
+  > `pick-floor-screen-space.test.ts` and `pick-target-separation.test.ts`, which now share
+  > `web/test/effective-target.ts` — it is **7** at 24 azimuths and **6** at 36, 37, 48, 72 and 144,
+  > and the ~20.6 px is **`kaldheim`** (20.60 at 24 azimuths, 20.55 above it), not either of the two
+  > named. `eldraine`'s own worst floored effective diameter is 11.09 px, which is occlusion rather
+  > than the floor. The **6** is the same 6 the next paragraph calls floor-on-floor: this sentence
+  > and that one are two readings of one statistic, not two statistics. The figure survived the
+  > re-measurement; the count and the names did not, which is exactly what the warning below says
+  > will happen.
   >
   > **Most of that shortfall is not the floor's to fix, and that is why no overlap rule is adopted.**
   > Re-run with the neighbours' floors switched off, so only a disk something really draws can take a
@@ -1132,8 +1170,9 @@ tick positions, not with a capture. See §5, Q5.
   > worlds, because screen area is conserved and a tie-break only moves it; and the plain floor
   > already regresses two worlds, so "it regresses worlds" is a cost both options carry rather than a
   > discriminator. Reaching a real 24 px target means separating worlds *on screen* — a layout change
-  > to the `home` law in §1.3/§2, outside both R1 and R3, tracked separately. Do not retune the
-  > tie-break to make this section's wording true.
+  > to the `home` law in §1.3/§2, outside both R1 and R3, and landed separately on DEC-759 (the
+  > normative block at the end of this bullet). Do not retune the tie-break to make this section's
+  > wording true.
   >
   > The obvious objection does not hold: inflating the proxy does not make small worlds steal their
   > neighbours' picks. Over the 15 worlds that the *world-space* pass on `3ce85aed` found floored,
@@ -1150,6 +1189,117 @@ tick positions, not with a capture. See §5, Q5.
   > collision at the required inflation* — that is what `surface-law-check.py` asserts, and it
   > reports the headroom rather than pinning it. The screen-space check and the implementation are
   > R3's; the tie-break is ruled out above, so R3 implements the plain floor.
+
+  > **Normative — the layout half, and what it delivers (DEC-759).** The sentence above sends the
+  > 24 px *target* to the `home` law, and this is that law. `place_planes` now satisfies two rules
+  > rather than one, and they are about different things:
+  >
+  > 1. PRD 5.3.3's world-space margin, unchanged: the **drawn discs** clear each other at maximum
+  >    drift.
+  > 2. **The home-view separation rule:** the **pick proxies** clear each other on screen, at every
+  >    azimuth of the turn, for every pair with a card-bearing plane in it. In world units, for
+  >    planes `a` and `b` whose in-plane centres are `d` apart,
+  >    `(d − closureₐ − closure_b) · sin(30°) ≥ ρₐ + ρ_b`, where `ρ = max(1.15 · radius, 12 px at
+  >    the disc's deepest point)` — the drawn proxy or **half** this section's floor, because `ρ`
+  >    is a radius and the floor is 24 px of diameter. `sin(30°)` is the home view's own
+  >    compression: PRD 8.6.1 puts the eye 30° above the disc, so in-plane distance projects at
+  >    half its length, and that is what buries a world.
+  >
+  > **Three details in that formula are the difference between a rule and a wish**, and each was
+  > caught by measuring rather than by reading:
+  >
+  > - **The floor is converted at the disc's far rim**, `(1.9 + cos 30°) · R`, not at the camera's
+  >   distance to the origin. A pixel buys more world units the further away it is; converting at
+  >   1.9 R under-sizes the floor by 46% out there, and the proxies of two far-side planes then
+  >   overlap by up to 11 px while satisfying the rule. The `1.15 · radius` branch needs no such
+  >   care — a drawn proxy and the gap to its neighbour shrink with depth together.
+  > - **`closure` covers the vertical drift as well as the horizontal.** `home` being flat does not
+  >   make the rendered plane flat: PRD 5.3.15's drift lifts it by `DRIFT_VERTICAL_RATIO = 0.35` of
+  >   its amplitude (`web/src/scene/tuning.ts`), and a unit of height cancels `cot(30°)` units of
+  >   in-plane distance. So `closure = a · (1 + 0.35 · cot 30°) = 1.606 a`, a bound rather than the
+  >   true joint maximum of 1.393 a, chosen not to depend on the phase law the two terms share.
+  > - **Moon-on-moon pairs are exempt.** It costs no world its target — the pair that can bury a
+  >   world always has the world in it — and the 42 empty planes are all at the radius floor, so
+  >   demanding it of them too asks 44% of the disc's area from a sequential sampler that jams near
+  >   55%. The all-empty roster, which the pipeline's own tests build, cannot be placed at all
+  >   under the unexempted rule. The exemption is not free, and the price is a moon's own target:
+  >   over the 861 moon-on-moon pairs at 144 azimuths, overlapping floored proxies go **23 → 47**
+  >   and the moons under 24 px of effective diameter **24 → 25 of 42**. The severity inverts
+  >   though — the worst moon effective diameter goes **0.00 px (buried) → 14.62 px**, so under the
+  >   law no moon is lost outright and more of them graze. Moons are unlabelled until hover (§1.8)
+  >   and every plane stays reachable by name through the search path, which is why this is a price
+  >   worth paying and not a regression to fix.
+  >
+  >   The attempt budget rises from 4,000 to **20,000** because the second rule is much harder to
+  >   satisfy by rejection than the world-space margin alone was. That figure is
+  >   measured, not estimated: counting `rng.unit(slug, "r", attempt)` per plane, the hardest plane
+  >   needs **189** draws on the densest roster the tree builds, 165 on `fixture-scale`, **51** on
+  >   the production roster and 1 on the two four-plane rosters; the median plane on the dense
+  >   roster takes 3, and `place_planes` runs in 4.6 ms over the whole production roster. 20,000 is
+  >   ~106× the worst of those. A roster with genuinely no room raises in 0.06 s at this budget.
+  >   (An earlier draft of this section claimed "about 19,000 draws" and set the budget to 200,000
+  >   on that basis. Nothing in the tree approaches 19,000 — DEC-865, item 9.)
+  >
+  > **The planes also sit flat in the disc plane now.** Over a turn a pair's worst screen
+  > separation is `|d · sin(30°) − Δy · cos(30°)|`, so 8 units of height *cancels* 14 units of
+  > in-plane distance: PRD 8.6.1's ±0.075 R scatter was manufacturing the coincidences rule 2
+  > exists to prevent, and an in-plane rule cannot see it happen.
+  >
+  > **Measured** on the production roster at §1.3's reference viewport, 36 azimuths — the counts
+  > are minima over the sweep, so they move with its density until it converges: the shipped arm
+  > reads 12 occlusion-only at 24 azimuths and 13 at 36, 48, 72 and 144.
+  >
+  > | | shipped `home` | under this law |
+  > |---|---|---|
+  > | worlds the floor lifts somewhere in the turn | 33 | 32 |
+  > | of those, under 24 px of effective diameter | 19 | **0** |
+  > | **occlusion-only — the layout's half** | **13** | **0** |
+  > | floor-on-floor — §1.11's own half | 6 | 0 |
+  > | worst effective diameter, any lifted world, occlusion-only | **0 px** (buried) | 24 px (nothing lost) |
+  > | worst effective diameter, any lifted world, floored | **0 px** (buried) | 24 px (nothing lost) |
+  > | floored proxies that overlap at any of 144 azimuths (2,880 pairs with a world in them) | 68 | **0** |
+  >
+  > An earlier draft of this table carried a seventh row, "worlds pushed under 24 px that cleared it
+  > as drawn: 3 → 0", with a rider about azimuth grids not nesting. It is **withdrawn**: no
+  > instrument in the tree produces a 3, and under the definition the committed instrument can
+  > express — short under the floored rule, clear under the as-drawn one — it is the *floor-on-floor*
+  > row above, which reads **6**. One statistic, printed twice, with the second copy wrong
+  > (DEC-865, item 9). The `→ 0` half held under every definition tried.
+  >
+  > **Seven seeded draws of each arm, not one**, because a layout is a draw and `home` moves on
+  > every refresh (72 azimuths; `docs/worlds/dec759-separation-study.py` reproduces all 28):
+  >
+  > | arm | occlusion-only | worst occlusion-only px | under 24 px of effective diameter |
+  > |---|---|---|---|
+  > | PRD 8.6.1 as it was | 7–21 | **0 in every draw** | 11–22 |
+  > | flat disc only | 3–9 | 0–22.4 | 9–20 |
+  > | separation rule only | 0–5 | 21.4–24 | 1–6 |
+  > | **both — this law** | **0–2** | **19.7–24** | **0–3** |
+  >
+  > Under the floored rule the same seven draws of this law run **19.68–24.00 px** at their worst,
+  > and that range is what `pick-target-separation.test.ts`'s durable bound is set against. It also
+  > says what that bound cannot do: converting the floor at `1.9 R` instead of the far rim lands at
+  > **20.64 px**, *inside* the law's own range, so no bound on this number separates that regression
+  > from a legitimate reseed. The committed layout's exact 24.00, and the far-rim cross-check in
+  > `pipeline/tests/test_home_separation.py`, are what do (DEC-865, item 5).
+  >
+  > Read that honestly: **the separation rule is the lever, and the flat disc is a consistent
+  > improvement on top of it rather than half the fix.** On the production draw the rule alone
+  > already reaches zero; across the seven it roughly halves the residual (mean occlusion-only 2.1
+  > against 0.6, mean short-under-floor 3.1 against 1.1). The flat disc's own arm is the weakest of
+  > the three, which is the answer to "is the thickness the problem" — it is not, on its own.
+  >
+  > **Two limits.** The rule is written against the reference viewport and the floor is 24 CSS px on
+  > *any* viewport, so it buys less on a shorter one: at 1280×720 the two layouts read **22** and
+  > **1** occlusion-only, at 3840×2160 **5** and **0**. And **production only carries the law when a
+  > dataset refresh re-lays it out** — until then `docs/worlds/dec759-home-law.json` carries the
+  > candidate homes, `pipeline/tests/test_home_separation.py` pins that file to `place_planes`, and
+  > `web/test/pick-target-separation.test.ts` measures both arms so the shipped one stays the
+  > control. All three retire on that refresh, and say so where they fail.
+  >
+  > **Rider, not acceptance:** world-label coverage over 24 azimuths goes from a mean of **97.2%**
+  > (min 93.3%) to **99.5%** (min 97.8%). Separating pick proxies separates label anchors too.
+
 - **Labels.** The label solver is kept. Under worlds its home-view subject count is
   `worldsWithCards.length`, not the plane count, because the moons are unlabelled until hover
   (§1.8) and the belt is dropped before projection (PRD 5.3.4, and §3.1's W5): **29 of 87** on
@@ -2090,14 +2240,32 @@ an assertion there.
 > roster offers no gap to hide the cut-off in, its `presented` counts running
 > 0, 1, 7, 15, 18, 26, 33, 61, 65, 66, 68, 69, 75, 77, 95 … unbroken. Measured: the first full
 > acceptance tour read **65 against 64**, a 1.5% margin on a correct renderer. With the cut-off at
-> 128 and the floor at 32 the term sits clear on every side, all four figures measured:
+> 128 and the floor at 32 the term sits clear on every side, every figure measured:
 >
 > | reading | value | vs 32 |
 > |---|---|---|
-> | the witness that must RED (want set collapsed to 14) | 14 | **2.3× below** |
-> | healthy tier-4 rung, `?layers=128` | 124 | 3.9× above |
-> | worst in-domain world of the 45-world tour (forgotten-realms) | 146 | **4.6× above** |
+> | the live witness that must RED, `?layers=24` (DEC-890), settled frame | 14 | **2.3× below** |
+> | the witness the floor was derived against (want set collapsed to 14) | 14 | **2.3× below** |
+> | healthy tier-4 rung, `?layers=128` (75–82 across four instruments) | 76 | 2.3–2.6× above |
+> | worst in-domain world of the 45-world tour (forgotten-realms) | **141** | **4.4× above** |
 > | shipped 1,024-layer baseline, dominaria | 941 | 29× above |
+>
+> The tier-4 rung read **124** † at the arrival pose PR #85 replaced and **76** at the pose and grid
+> shipped now: 76–82 over five draws (DEC-882), 75 (DEC-889), 76 (DEC-894) and 76 on 3 of 3 held
+> draws (DEC-896). Quote it as 75–82. Both are readings
+> of a healthy build and the floor clears both; quoted here with their eras because the row is the
+> tightest healthy margin on record and a stale figure there would flatter it.
+>
+> **The tour figure moved too, and it is 141 rather than 146 (DEC-890).** 146 was DEC-837's
+> `dec837-accept2` reading, taken before PR #85 moved the arrival colatitude and before DEC-882
+> raised the grid. The `--negative-controls` tour on DEC-890's head reads **141**, same world
+> (forgotten-realms), same worst-of-13 fold — 4.4× the floor rather than 4.6×.
+> `remeasure-before-repeating-a-recorded-number`.
+>
+> † **That 124 also belonged to the row's harness configuration and not to the build** — the frame
+> is taken after DEC-843's 3 s `reducedMotion: false` read-back hold, and the adaptive threshold goes
+> on rising through it: 128 with the hold removed, 127 on the tree that had no read-back at all, the
+> renderer identical in all three. The full statement is at the matrix row itself.
 >
 > ### What this costs the matrix, stated rather than left to be discovered
 >
@@ -2126,6 +2294,60 @@ an assertion there.
 > **GREEN at 1.00**. The live row read **14 / N/A / 1.00** on a frame presenting **1,388** — all
 > three as predicted, and the presented count 0.4% off. **The two halves of W4 disagreeing on that
 > one frame is the whole of this section's argument, now on the gate instead of in a comment.**
+>
+> ### That row stopped being the falsifier at DEC-882, and `layers-24` is what replaced it (DEC-890)
+>
+> **The 14 was a property of the grid, not of the policy.** At `dominaria` 2.2 radii the 64-bucket
+> quantile had no edge to place *inside* a 128-layer pool — it could admit ~14–17 cells or ~291, with
+> nothing between — so the reduced-motion row landed on the low arm and read 14. DEC-882 raised the
+> resolution to 256 buckets, the same row now admits **78**, and its `artCellsShowing` expectation
+> flipped to **GREEN**. Nothing regressed; the witness evaporated. **A falsifier resting on a
+> quantisation accident expires when the quantisation is repaired** —
+> `a-corpus-change-can-retire-a-sibling-control`, arriving through the resolution.
+>
+> **The replacement rests on an inequality instead of on a reading.** A cell shows art by holding a
+> layer, so `showing ≤ pool.layers` on **every** frame of **every** build. Put the pool below the
+> floor and the measure cannot reach it: no bucket count, hysteresis width or camera pose lifts
+> `showing` past a capacity that is not there. `layers-24` is that row — `?layers=24` at dominaria's
+> 2.2-radii pose with `prefers-reduced-motion: reduce` emulated, **14 cells against 32 on a frame
+> presenting ~1,388**, with `artFraction` at **1.0000** on the same frame because every cell the
+> policy wants is served: 14 wanted, 14 drawn, on 10 of 10 frozen draws (DEC-896).
+>
+> **The row is frozen because the moving frame loses the disagreement to turnover** (DEC-896). With
+> the scene turning over the 3 s motion read-back — the hold both tier-4 siblings take — the held
+> sweep reads the same thing at every capacity below the floor, three draws each:
+>
+> | `?layers=` | n | wanting | `artCellsShowing` | `artFraction` vs 0.900 |
+> |---|---|---|---|---|
+> | 16, 20, 22, 24, 28, 30, 31 | 3 each | 16 | 14 | **0.875** on 21 of 21 |
+> | 26 | 3 | 16 | 16, 14, 14 | 1.0000, **0.875**, **0.875** |
+>
+> The capacity does not move the reading — the pool is saturated at 31 with 16 cells asking — so
+> the two undrawn cells are not waiting for room. They are cells the rotation carried over the
+> 37.82 px threshold during the hold that have not drawn yet: freeze the scene and the want set is
+> **14**, all drawn. The same turnover costs one cell at the 128 pool (76 drawn of 77, 0.9870, 3 of
+> 3 held draws) and clears the bar there; a denominator of 16 cannot absorb it. **The frozen row
+> cannot see turnover** — a freeze that stabilises also hides — so the moving reading (16 wanted,
+> 14 drawn, 0.875) stays pinned as a unit row. The frozen reading also carries a margin of exactly
+> **one cell**: with the ceiling at 1 and the bar at 0.9, `drawn − 0.9 × wanting` is 1.4 at 14 of
+> 14, and two cells of margin would need a want set of 20, which this pose does not admit at any
+> capacity the inequality allows. 24 keeps 8 layers of room above the moving want set of 16 and 8
+> below the floor.
+>
+> ### What the new row does **not** cover, and why the split is forced rather than chosen
+>
+> **It falsifies the measure, not the policy.** No regression in the adaptive threshold can turn
+> `layers-24` green, because the capacity bound holds whatever the threshold does. A reader must not
+> score it as coverage for §1.6. The policy direction is `?layers=128` — the tightest healthy rung,
+> **76 against 32** since DEC-882 — which reds the moment the quantile starves a shipped pool again.
+>
+> **And after DEC-882 there is no shipped configuration left that can starve this term.** The
+> quantile now tracks capacity to within a bucket, so on any rung the renderer actually ships — 128
+> at the smallest — it admits of the order of the pool's own size, and `showing` cannot fall below 32
+> at a surface pose unless the frame has fewer than 32 cells over 24 px to begin with, which is a
+> frame far from any surface. A pool **below the smallest shipped rung** is therefore the only live
+> falsifier available. `belowShippedPool` rides the W4 record on that row so the reading cannot be
+> mistaken for a claim about a configuration a browser can be in.
 >
 > **Both halves of its read-back were confirmed against their own defect.** Drop the
 > `emulateMediaFeatures` call and the row reads **123** cells, well above the floor, and the guard
@@ -2196,8 +2418,8 @@ an assertion there.
 > single azimuth, reachability collapses into exactly the single-frame coverage count it replaces
 > while still reading as the stronger claim.
 >
-> **The sweep parameter is the multiverse rotation, not a plane's own spin — so the pending
-> spin-axis ruling does not reach W5 (DEC-752, measured at `613715f`).** R1 raised on DEC-749 that
+> **The sweep parameter is the multiverse rotation, not a plane's own spin — so the spin-axis
+> ruling does not reach W5 (DEC-752, measured at `613715f`).** R1 raised on DEC-749 that
 > `motion.ts` spins a plane about plane-local **+z** (the disc normal, PRD 8.6.2) while the surface
 > law's poles are **±y**, and noted it would move what a sweep over azimuth means here. It does not,
 > and the reason is structural rather than numerical: `planePosition` (`camera/motion.ts:239-248`) is
@@ -2212,6 +2434,12 @@ an assertion there.
 > This is scoped to W5. The ruling is still R1's to take and still matters on R1's own surface — an
 > attached sheet is not at the origin, so a globe tumbling end-over-end through the bands is a real
 > defect there. W5 simply does not depend on its outcome, and no gate row should be held for it.
+>
+> *Amended after the cutover (DEC-774).* The ruling was taken: PRD 8.6.2's prose was wrong about
+> which axis is the disc normal, and `starfield/motion.ts`, its vertex twin and `camera/motion.ts`
+> now spin about plane-local **+y** — the axis §1.3 names. The paragraph above is unchanged in
+> substance: its argument is structural — a plane's spin fixes the plane's own centre, whatever the
+> axis — so it holds on both sides of the change, which is why W5 was not re-derived for it.
 >
 > **Normative — the ceiling half is a regression check on §1.8's suppression, and is named as one
 > (DEC-752).** Once the moons are unlabelled until hover, the candidate list is the 45 worlds and
@@ -2419,10 +2647,11 @@ events; the focused card's tilt feels physical; and, new, **the tether reads as 
 | W4        | `evictionsPerSecond`                   | **the bound has no live row.** Exceeding want-set turnover at the 1,024-layer pool needs a faster spin or a bigger roster; `spinPeriodS` is dataset data, so a live row means a fixture corpus. Falsified by unit row *"still reds the same row when turnover climbs past the new bound"*. **Its two domain rules do have live rows** — `?layers=128` for the capacity one and `unsaturated-pool` below for the occupancy one | **n/a**   |
 | W4        | `evictionsPerSecond`                   | **`unsaturated-pool`** — kamigawa (917 cards) at the shipped pool, no seams: a world whose whole demand fits, high-water **265 of 1,024**, so `claimLayer` never reaches its victim search and the rate is a structural 0. The 45-world tour runs this rule on 44 worlds and cannot falsify it — the fold is a worst-of and dominaria saturates, so `baseline` passes with the rule and without it | **N/A**   |
 | W4        | `artFraction`, `artCellsShowing`       | **`unsaturated-pool`**, same row, the half that says it rendered: an `N/A`-only row cannot tell a working domain rule from a page that failed to draw, and both report the same `n/a`. The art half going green on that frame is what makes the `N/A` above a reading | **GREEN** |
-| W4        | `artCellsShowing`                      | **`layers-128-reduced`** (DEC-843) — `prefers-reduced-motion: reduce` emulated as the **OS preference** before `goto`, at `?layers=128`. The adaptive threshold collapses the want set to **14** cells against a floor of 32, on a frame presenting **1,388** ≥ 128. Not a query seam: `?motion=0` is inert on `?probe=shell`, so the row moves a harness parameter as `w5-narrow` moves a viewport. Its read-back is asserted **in both directions** — `multiverseAngle` frozen bit-identically here, and moving on the unseamed `?layers=128` sibling | **RED**   |
-| W4        | `artFraction`                          | **`layers-128-reduced`**, same row, and the disagreement is the point: all 14 wanted cells show art, so the ratio reads **1.00** — above the healthy baseline's 0.9968 — on the frame the absolute term reds. This is `a-ratio-is-blind-to-its-own-denominator` as a live control instead of a note | **GREEN** |
-| W4        | `evictionsPerSecond`                   | `?artThreshold=fixed24&layers=128`, `?layers=128` and `layers-128-reduced` — the rows that pin the **capacity domain**: at 128 layers the eviction half must read `N/A` and not a comfortable green. A want set that stops asking is a pool that stops churning, so the frozen row asserts it too | **N/A**   |
-| W4        | `artCellsShowing`                      | `?layers=128` — the absolute term must stay **green on a healthy tier-4 frame** (**124** cells against 32, 3.9× above; two draws, DEC-845), which is the partner that keeps the row above from scoring an always-red instrument. **The figure belongs to this row's harness configuration and not to the build**: DEC-843 attached a 3 s `multiverseAngle` read-back to it, and the frame is taken after that hold — 128 with the hold removed, 127 before the read-back existed. A number quoted from a sibling configuration of the same build would be wrong by 3% here | **GREEN** |
+| W4        | `artCellsShowing`                      | **`layers-24`** (DEC-890) — `?layers=24`, a pool **below the floor of 32**. A cell shows art by holding a layer, so `showing ≤ pool.layers` on every frame of every build: the measure cannot reach 32 however the quantile is resolved, posed or held. Reads **14** against 32 on 10 of 10 frozen draws on a frame presenting **~1,388** ≥ 128. The row takes the 3 s motion read-back its tier-4 siblings take, with `prefers-reduced-motion: reduce` emulated so the frame it scores is settled *and* still (DEC-896; see the note for why frozen). It pins "the floor is above 14", not "the floor is 32": a floor of 16 leaves it RED. This replaces `layers-128-reduced`, whose 14 was an artefact of the 64-bucket grid and which reads 78 since DEC-882 — see the note. It falsifies the **measure**, not the policy: no threshold regression can green it, and `?layers=128` below is the policy's row | **RED**   |
+| W4        | `artFraction`, `demandFitsCapacity`    | **`layers-24`**, same row, and the disagreement is the point: every cell the policy wants is served, so the ratio reads **1.0000** — 14 wanted, 14 drawn, 10 of 10 frozen draws — on the frame the absolute count reds. This is `a-ratio-is-blind-to-its-own-denominator` as a live control instead of a note. The margin is **one cell** (13 of 14 still clears 0.900). **Scored frozen, so it cannot see turnover**: with the scene moving the want set is 16, 14 draw, and the ratio reads 0.875 — pinned as a unit row; at the 128 pool the same turnover is 76 of 77 (0.9870). If the freeze does not take the read-back reds the row as `reduced-motion-did-not-take` before any cell is scored. `demandFitsCapacity` is asserted beside it — **0.5833**, 14 cells into 24 layers — so a future pose that pushed the want set past the pool reds *there* and names the reason | **GREEN** |
+| W4        | `artCellsShowing`, `artFraction`       | **`layers-128-reduced`** (DEC-843, flipped at DEC-882) — the same row at `?layers=128` with `prefers-reduced-motion: reduce` emulated as the **OS preference** before `goto`. It read **14** cells and was the term's live RED until the quantile went to 256 buckets; it now reads **78** and is a partner rather than a falsifier. It still pins the **domain** (dominaria presents ~1,388 ≥ 128, so the measure is scored, not `N/A`) and still reds if the reduced-motion path ever starves the want set again. Its read-back is asserted **in both directions** — `multiverseAngle` frozen bit-identically here, and moving on the unseamed `?layers=128` sibling | **GREEN** |
+| W4        | `evictionsPerSecond`                   | `?artThreshold=fixed24&layers=128`, `?layers=128`, `layers-128-reduced` and `layers-24` — the rows that pin the **capacity domain**: away from the 1,024-layer pool the eviction half must read `N/A` and not a comfortable green. A want set that stops asking is a pool that stops churning, and a pool too small to hold what the frame wants refuses rather than evicts, so both the frozen row and the starved one assert it | **N/A**   |
+| W4        | `artCellsShowing`                      | `?layers=128` — the absolute term must stay **green on a healthy tier-4 frame** (**76** cells against 32, 2.4× above — a point in a 75–82 spread across four instruments, DEC-882/889/894/896; it read **124** at the arrival pose PR #85 replaced, DEC-845), which is the partner that keeps the row above from scoring an always-red instrument. **The figure belongs to this row's harness configuration and not to the build**: DEC-843 attached a 3 s `multiverseAngle` read-back to it, and the frame is taken after that hold — at the DEC-845 pose, 128 with the hold removed and 127 before the read-back existed. A number quoted from a sibling configuration of the same build would be wrong by 3% here | **GREEN** |
 | W5        | `homeLabels`                           | labels forced on for empty planes — suppression regressed; **66 – 77 over the sweep, _above_ the unmodified build's 33 – 42; see the note**                                 | **RED**   |
 | W5        | `worldsNeverLabelled`                  | **viewport 800×600** — collision pressure raised by the harness, not by a renderer seam; `thunder-junction` is labelled at **none** of 360 azimuths                         | **RED**   |
 | W1, W4    | `minMedianCellHeightPx`, `artFraction` | a **one-card world** (`?plane=segovia`) at its own settle — the n = 1 extreme, never rendered in any tracked dataset before v3. **Does not assert its label**; see the note. Its `artCellsShowing` asserts **N/A**: a frame presenting one cell is far below the 128 that term needs before an absolute count means anything, and that is domain, not failure | **GREEN** |
@@ -2857,6 +3086,13 @@ pool still passes W4.
 > renderer, `pool.layers` 1,024 → **24.00 px** (the `BASE_THRESHOLD_PX` floor), 128 → **27.93 px**,
 > 0 → **30.13 px**.
 >
+> **Re-taken at DEC-882 off the worlds gate at the driven 2.2-radii pose**, which is the pose the
+> discrepancy below asks for: 1,024 → **24.00 px** on both trees, unchanged and still the floor; 128
+> → **37.82 px** on `a0eec54` and **37.11 px** at 256 buckets. The 128-layer reading is no longer
+> one bucket *below* the offline sweep — it is well above it, because the arrival pose moved at PR
+> #85 and cells at 2.2 radii are taller than the 2.14 the gate used to settle at. The offline rig
+> and the driven gate are two instruments and both reproduce on `a0eec54`; quote each with its own.
+>
 > §1.6's note above gives dominaria **30.13 px at 16, 64 and 128 layers alike** at this same
 > 2.2-radii pose, so the live 128-layer reading sits **one bucket low**. The likely cause is not a
 > renderer disagreement but the gate's own camera: `focusPlane('dominaria')` settles at
@@ -3168,6 +3404,7 @@ has a checklist rather than a discovery process.
 | 5.5.1          | the thumbnail cross-fade band                         | replaced by the swatch→art threshold (§1.6)                                                                       |
 | 5.6.7–5.6.8    | printings as 72 orbiting spheres                      | a flat ring (§1.10)                                                                                               |
 | 8.6.1–8.6.2    | seeded spiral parameters                              | retired (§2.4)                                                                                                    |
+| 5.3.1 / 8.6.1  | the disc has thickness; planes scatter through ±0.075 R | plane *homes* sit flat in the disc plane, and `place_planes` also separates pick proxies in the home view (§1.11, DEC-759); the cards and the belt keep their thickness |
 | 8.5.8 / 8.5.10 | the 128×178 thumbnail atlas, 256 px planet textures   | replaced by the 128×96 art array (§1.6, §1.12)                                                                    |
 | 9.3            | seven checkpoints, criterion 2 on spiral arms         | the checkpoints and criteria of §3.1                                                                              |
 

@@ -15,8 +15,13 @@
  *     hash would diverge between the CPU's float64 and the GPU's float32 by more than the
  *     turbulence amplitude itself.
  *
- * `starfield.test.ts` asserts the shared invariants; `scripts/verify-browser.mjs` reads world
- * positions back off the GPU and compares them with this file.
+ * `starfield.test.ts` asserts the shared invariants on this side. Nothing checks the GLSL twin
+ * against it: `web/scripts/verify-browser.mjs` was the CPU-to-GPU read-back and it left the tree
+ * with the rest of the one-off review tooling on DEC-708 (`318ea83`, archived at tag
+ * `review-tooling-2026-09`), so the agreement the three points above describe now rests on the two
+ * being read side by side. Nor is the twin compiled anywhere today: `cards/cardShaders.ts` still
+ * interpolates `MOTION_GLSL` into `THUMBNAIL_VERTEX_SHADER`, but nothing imports that shader, so no
+ * drawn program carries it. Recorded on DEC-872, corrected on the DEC-879 review.
  */
 
 import {
@@ -200,13 +205,16 @@ export function starWorldPosition(
     py += curlScratch.y * DUST_CURL_AMPLITUDE * motion
     pz += curlScratch.z * DUST_CURL_AMPLITUDE * motion
   } else {
-    const radial = Math.sqrt(px * px + py * py)
-    const angle =
-      table[base + PT_SPIN_ANGLE]! + shearAngle(table, row, radial, time) * motion
+    // The spin is about plane-local **+Y**, the disc's own normal — not local Z (DEC-750, DEC-774).
+    // See `worlds/spin.ts`: the generator writes `x = r·cos θ`, `z = r·sin θ`, `y = thickness`, so
+    // local Z lies *in* the disc and a rotation about it turns the disc end over end. The shear
+    // radius is the same disc's radius and moves with it.
+    const radial = Math.sqrt(px * px + pz * pz)
+    const angle = table[base + PT_SPIN_ANGLE]! + shearAngle(table, row, radial, time) * motion
     const c = Math.cos(angle)
     const s = Math.sin(angle)
-    const rx = px * c - py * s
-    py = px * s + py * c
+    const rx = px * c + pz * s
+    pz = -px * s + pz * c
     px = rx
   }
 

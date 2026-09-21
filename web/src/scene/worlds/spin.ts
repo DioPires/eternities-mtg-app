@@ -15,12 +15,13 @@
  * > carries its ice caps around the sky: the bands stop being latitudes, and W3 — "latitude reads as
  * > colour" — stops being a statement about a fixed thing.
  *
- * **`starfield/motion.ts` disagrees, and the measurement says it is the one that is wrong.** The
- * galaxy path rotates a plane's stars in `(x, y)` — about plane-local **Z** — and takes its shear
- * radius as `length(p.xy)`; its vertex twin (`starfield/shaders.ts`) does the same and reads the
- * disc normal as `quatRotate(tilt, vec3(0,0,1))`. The CEO's default ruling anticipated a conflict
- * between that convention and this one. There is no conflict to trade off, because plane-local Z is
- * not the galaxy's own disc normal either:
+ * **`starfield/motion.ts` disagreed, and the measurement said it was the one that was wrong — so it
+ * moved (DEC-774).** The galaxy path rotated a plane's stars in `(x, y)` — about plane-local **Z** —
+ * and took its shear radius as `length(p.xy)`; its vertex twin (`starfield/shaders.ts`) and the
+ * camera's mirror (`camera/motion.ts`) did the same, and a third site read the disc normal as
+ * `quatRotate(tilt, vec3(0,0,1))`. The CEO's default ruling anticipated a conflict between that
+ * convention and this one. There was no conflict to trade off, because plane-local Z is not the
+ * galaxy's own disc normal either:
  *
  * | measurement | result |
  * |---|---|
@@ -34,9 +35,21 @@
  * than in its own plane. That is a pre-existing galaxy defect, not a convention this leg must
  * respect — and on both contract versions the pole axis is the same `+Y` §1.3 names.
  *
- * **It is deliberately not fixed here.** `visual-gate.mjs` is the shipped instrument until §3.2's
- * cutover and the galaxy's spin axis is inside every one of its baselines, so moving it mid-cutover
- * lands a baseline churn on leg G. Reported to the CEO as its own leg instead (DEC-750 hand-back).
+ * **It was deliberately not fixed here**, because `visual-gate.mjs` was the shipped instrument
+ * until §3.2's cutover and the galaxy's spin axis sat inside every one of its baselines. Reported
+ * to the CEO as its own leg instead (DEC-750 hand-back) and carried out there, after the cutover,
+ * on DEC-774: the disc-normal site retired with the plane-glow program at the cutover, and the
+ * three that survive — the CPU mirror, its vertex twin and `camera/motion.ts` — now spin about
+ * plane-local **+Y**, the axis this file names.
+ *
+ * **Two differences between that mirror and this law are still open, and are not the axis.** The
+ * mirror applies `tilt` unconditionally where {@link planeOrientation} gates it on
+ * {@link APPLY_PLANE_TILT}, and it carries PRD 5.3.13's multiverse rotation into the plane-local
+ * offset where `WorldSurface` applies that rotation only to the centre. Both are owner decisions
+ * rather than defects this leg could settle. Measured over the v3 roster — 87 worlds × 64 cell
+ * directions, cell-to-cell chord in units of the world's own radius — the tilt term is worth up to
+ * **0.86 radii** and does not decay with time, and the multiverse term grows with the angle itself:
+ * 0.05 radii at t=10 s, 0.31 at 60 s, 1.41 at 300 s, 2.00 at the half turn. See DEC-774's hand-back.
  *
  * ---
  *

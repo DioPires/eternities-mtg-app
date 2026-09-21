@@ -22,11 +22,13 @@ import { ArtPool, LAYER_RESERVED, artPoolSize } from '../src/scene/worlds/artPoo
 import {
   AdaptiveThreshold,
   BASE_THRESHOLD_PX,
+  HOLD_BUCKETS,
   ThresholdMemory,
   bucketEdgePx,
   bucketOf,
 } from '../src/scene/worlds/adaptiveThreshold'
 import { CLIP_BOUND, FACING_CUTOFF, facesCamera, withinFrustum } from '../src/scene/worlds/cellSelection'
+import { TIER4_HEIGHTS_PX, TIER4_SHAPE } from './worlds-tier4-heights'
 import { readWorldsSeams, shufflePermutation } from '../src/scene/worlds/seams'
 
 /**
@@ -250,14 +252,17 @@ describe('§1.6 the per-frame adaptive threshold', () => {
     // Constant ratio per step, which is what makes the quantisation error proportional to the
     // threshold. A linear span fine enough to separate 24 from 30 px saturates near a surface.
     const ratio = bucketEdgePx(1) / bucketEdgePx(0)
-    for (let i = 1; i < 60; i += 1) {
+    for (let i = 1; i < 255; i += 1) {
       expect(bucketEdgePx(i + 1) / bucketEdgePx(i)).toBeCloseTo(ratio, 9)
     }
-    expect(bucketOf(1e9)).toBe(63) // saturates rather than indexing out of the histogram
-    expect(bucketEdgePx(64)).toBeCloseTo(3072, 6)
+    // DEC-882 raised the resolution 64 -> 256. The step is the quantile's finest distinction, so
+    // these two numbers are what the policy can and cannot separate: ~1.91% per step, not ~7.88%.
+    expect(ratio).toBeCloseTo(1.019134, 6)
+    expect(bucketOf(1e9)).toBe(255) // saturates rather than indexing out of the histogram
+    expect(bucketEdgePx(256)).toBeCloseTo(3072, 6)
   })
 
-  it('is one-sided: raises at once, lowers only past a full bucket', () => {
+  it('is one-sided: raises at once, lowers only past the hold', () => {
     // Raising is immediate because capacity is a hard bound. Lowering waits, so the boundary does
     // not oscillate between two adjacent edges as the camera drifts.
     const threshold = new AdaptiveThreshold()
@@ -299,19 +304,28 @@ describe('§1.6 the quantile and its hysteresis (DEC-768 F1, F2)', () => {
   }
 
   it('takes the crossing bucket when the bucket above it would admit nothing — F1', () => {
-    // `dominaria` at 2.2 world-radii under tier 4, measured on the shipped v3 roster at 1920x1080:
-    // 922 wanting cells across four buckets, and bucket 3 alone (158) exceeds the 128-layer pool.
+    // The shape DEC-770 N2 recorded for `dominaria` at 2.2 world-radii under tier 4: 922 wanting
+    // cells piled into four buckets, the topmost of which (158) alone exceeds the 128-layer pool.
     // Before this row `chosen` was `3 + 1`, `countAtOrAbove(4)` was 0, and the frame admitted
     // NOTHING — 128 layers idle in front of a world asking for art, which is strictly worse than
     // the `fixed24` prototype §1.6 replaces, at the pose §3.1 states W4 at.
+    //
+    // **The bucket indices are the case, not a pose (DEC-882).** That histogram was recorded on
+    // the 64-bucket grid, and at 256 `dominaria` no longer piles into four buckets at this pose —
+    // it spreads over dozens and F1 does not fire there at all. What F1 is *for* is the shape
+    // below, wherever it occurs, and it still occurs: re-measured across the 90-pose roster sweep,
+    // F1 binds at capacity 16 on four poses (`dominaria` 41/16 and 27/16, `innistrad` 19/16,
+    // `ravnica` 17/16) and on none at 64, 128 or 224. DEC-882 did not retire the branch; it moved
+    // where the branch is reachable, and `worlds-attach.test.ts` carries that measurement.
     const threshold = new AdaptiveThreshold()
     fill(threshold, { 0: 185, 1: 299, 2: 280, 3: 158 })
     const report = threshold.end(128, new ThresholdMemory())
 
     expect(report.wanting).toBe(922)
     expect(report.admitted, 'the pool must not sit idle in front of demand').toBe(158)
-    // §1.6's exception: the crossing bucket ITSELF, because the one above it is empty — bucket 3's
-    // edge, 30.13 px, and not bucket 4's 32.50 px, which is what this world read before the fix.
+    // §1.6's exception: the crossing bucket ITSELF, because the one above it is empty. Asserted
+    // against `bucketEdgePx` rather than a pixel literal — the literal would be a claim about the
+    // grid's resolution, which is not what this row is about, and DEC-882 moved it.
     expect(report.effectiveThresholdPx).toBeCloseTo(bucketEdgePx(3), 9)
 
     // The overshoot is real, and is bounded by that one bucket's own count. It goes to the pool's
@@ -577,5 +591,277 @@ describe('§3.1 the control seams, which R1 owns and leg G consumes', () => {
     expect(pool.report()).toEqual({ layers: 2, resident: 0, reserved: 1, evictions: 0 })
     pool.resolve(1)
     expect(pool.report()).toEqual({ layers: 2, resident: 1, reserved: 0, evictions: 0 })
+  })
+})
+
+
+/**
+ * §1.6's resolution, swept rather than posed (DEC-882).
+ *
+ * **Why a sweep and not a row at the pose.** The defect DEC-876 found was not that the quantile
+ * chose wrongly at `dominaria` 2.2 radii — it chose exactly what §1.6 says, the last bucket that
+ * fit. It was that at *that phase of the grid* the only two choices were 16 cells and 291 against a
+ * capacity of 128. A row pinned at one pose cannot tell "the policy lands near capacity" from "the
+ * policy happens to land near capacity here", and the pose is not a constant: PR #85 moved the
+ * arrival colatitude 3.2° and that alone carried the tallest cells over a bucket edge. So the thing
+ * to assert is the property across every phase the camera can present, which is what scaling the
+ * recorded distribution by one full 64-bucket width does — at the far end the grid has slid exactly
+ * one old bucket and the pattern repeats, so this covers the whole period and not a sample of it.
+ */
+describe('§1.6 lands near capacity at every phase of the grid (DEC-882)', () => {
+  const CAPACITY = 128
+  /** One full 64-bucket width: the period of the old grid, and so of the whole sweep. */
+  const PERIOD = Math.pow(3072 / BASE_THRESHOLD_PX, 1 / 64)
+  const STEPS = 80
+
+  /**
+   * The band, and where each end comes from — neither is fitted to the measurement.
+   *
+   * **The ceiling is structural.** The quantile admits the largest at-or-above count that does not
+   * exceed capacity, so the only branch that can exceed it is DEC-768 F1, and F1 needs the crossing
+   * bucket to be the first non-empty one. This distribution has ~950 cells spread over dozens of
+   * buckets, so there is always a non-empty bucket above the crossing and F1 cannot fire. Asserting
+   * `<= 1` therefore pins two things at once: that the frame never asks for more pool than exists,
+   * and that F1 stays out of a regime it is not for.
+   *
+   * **The floor is the one bucket the quantile has to give up.** When admitting the crossing bucket
+   * would exceed capacity the whole bucket is dropped, so the worst case is `capacity` minus that
+   * bucket's own population. Swept over the period, the crossing bucket here holds at most **74**
+   * cells, which puts the floor at (128 − 74) / 128 = **0.4219**. 0.40 sits just under that, so the
+   * row is a statement about the mechanism's own bound rather than about the number this tree
+   * happens to produce — the measured minimum is 0.4609, and a change that merely moved it would
+   * not red this row, while one that re-opened the cliff would.
+   */
+  const FLOOR = 0.4
+  const CEILING = 1.0
+
+  /** The fixture is only evidence about the shape it actually has. */
+  it('is sweeping the distribution it says it is', () => {
+    const sorted = [...TIER4_HEIGHTS_PX].sort((a, b) => b - a)
+    expect(TIER4_HEIGHTS_PX).toHaveLength(TIER4_SHAPE.wanting)
+    expect(sorted[0]).toBeCloseTo(TIER4_SHAPE.tallestPx, 4)
+    expect(sorted[127]).toBeCloseTo(TIER4_SHAPE.capacityRankPx, 4)
+    expect(sorted[207]).toBeCloseTo(TIER4_SHAPE.rank208Px, 4)
+    expect(sorted.every((h) => h >= BASE_THRESHOLD_PX)).toBe(true)
+    // The property that makes this shape the hard case, stated at the height it is measured at —
+    // the grid is geometric, so a width taken at the 24 px floor says nothing about 36 px.
+    const span = TIER4_SHAPE.capacityRankPx - TIER4_SHAPE.rank208Px
+    const step = bucketEdgePx(1) / bucketEdgePx(0) - 1
+    const oneBucketHere = TIER4_SHAPE.capacityRankPx * step
+    const oneOldBucketHere = TIER4_SHAPE.capacityRankPx * (Math.pow(3072 / BASE_THRESHOLD_PX, 1 / 64) - 1)
+    // Eighty cells inside ~1.1 of this grid's steps, and ~0.27 of the old grid's.
+    expect(span / oneBucketHere).toBeGreaterThan(1)
+    expect(span / oneBucketHere).toBeLessThan(1.5)
+    expect(span / oneOldBucketHere).toBeLessThan(0.35)
+    expect(
+      sorted.filter((h) => h <= TIER4_SHAPE.capacityRankPx && h >= TIER4_SHAPE.capacityRankPx - 0.78),
+    ).toHaveLength(TIER4_SHAPE.denseBelowCapacityRank)
+  })
+
+  const admittedAt = (factor: number): number => {
+    const threshold = new AdaptiveThreshold()
+    threshold.begin()
+    for (const height of TIER4_HEIGHTS_PX) threshold.offer(height * factor)
+    return threshold.end(CAPACITY, new ThresholdMemory()).admitted
+  }
+
+  it('keeps admitted/capacity inside the band at every phase of the grid', () => {
+    // Every step, not just the extremes: a band that held at both ends and collapsed in the middle
+    // is exactly the shape of the defect this replaces.
+    const outside: string[] = []
+    let lowest = Infinity
+    let highest = -Infinity
+    for (let step = 0; step < STEPS; step += 1) {
+      const factor = Math.pow(PERIOD, step / (STEPS - 1))
+      const ratio = admittedAt(factor) / CAPACITY
+      lowest = Math.min(lowest, ratio)
+      highest = Math.max(highest, ratio)
+      if (ratio < FLOOR || ratio > CEILING) outside.push(`${factor.toFixed(5)} -> ${ratio.toFixed(3)}`)
+    }
+    expect(outside, `factors outside [${FLOOR}, ${CEILING}]`).toEqual([])
+    // The band must not be vacuous in the other direction either: if the sweep never came near
+    // either end, it would pass against a grid far coarser than this one.
+    expect(lowest).toBeLessThan(0.55)
+    expect(highest).toBeGreaterThan(0.95)
+  })
+
+  /**
+   * **The row above scores the raw quantile; the product runs one memory frame to frame (DEC-895).**
+   * Each factor above gets a fresh {@link ThresholdMemory}, so the hysteresis never holds anything.
+   * This row drives one `AdaptiveThreshold` and one shared memory outward — heights shrinking by
+   * {@link OUTWARD_STEP} per frame from factor 1 for {@link OUTWARD_FRAMES} frames, the camera
+   * pulling away — which is the direction the one-sided hold acts in.
+   *
+   * **The band does not hold on this path, and this row does not assert it.** Measured at 0.45% per
+   * frame: 40 of 90 frames read under 0.40, and the minimum is **1 admitted of 128** on a frame
+   * where the raw quantile admits 63. That is the hold doing its job — a ring one cell too small
+   * rather than a flickering one — and what bounds it is asserted instead: the held threshold is
+   * never below the raw one, a hold lasts at most {@link HOLD_LIMIT_FRAMES} consecutive frames at
+   * this step, the frame never asks for more than capacity, and it never admits nothing while the
+   * raw quantile admits something.
+   *
+   * **What the pin measures.** On this path every hold ends by the admit-nothing escape after about
+   * one bucket of drift (1.91%), so {@link HOLD_LIMIT_FRAMES} is the bucket width over the step: 6
+   * frames at 0.30%, 4 at 0.45%, 3 at 0.60%. The row stays green at `HOLD_BUCKETS` 1 to 64. It pins
+   * the escape and the bucket width; `expect(HOLD_BUCKETS).toBe(4)` below is what guards the hold's
+   * width.
+   *
+   * **The mutant.** Delete the admit-nothing escape in `applyHysteresis`
+   * (`countAtOrAbove(previous) === 0`) and this row reds: the longest hold becomes **17** frames and
+   * **52** of the 90 admit 0 of 128.
+   */
+  const OUTWARD_STEP = 0.0045
+  const OUTWARD_FRAMES = 90
+  /** Measured, then pinned: the longest run of held frames at {@link OUTWARD_STEP}. */
+  const HOLD_LIMIT_FRAMES = 4
+
+  it('bounds the hold when one memory walks the sweep outward', () => {
+    const threshold = new AdaptiveThreshold()
+    const memory = new ThresholdMemory()
+    const belowRaw: string[] = []
+    const overCapacity: string[] = []
+    const idle: string[] = []
+    let run = 0
+    let longestHold = 0
+    let lowest = Infinity
+    for (let frame = 0; frame < OUTWARD_FRAMES; frame += 1) {
+      const factor = Math.pow(1 - OUTWARD_STEP, frame)
+      threshold.begin()
+      for (const height of TIER4_HEIGHTS_PX) threshold.offer(height * factor)
+      const held = threshold.end(CAPACITY, memory)
+      const raw = new AdaptiveThreshold()
+      raw.begin()
+      for (const height of TIER4_HEIGHTS_PX) raw.offer(height * factor)
+      const fresh = raw.end(CAPACITY, new ThresholdMemory())
+
+      const at = `frame ${frame} (${factor.toFixed(4)})`
+      if (held.effectiveThresholdPx < fresh.effectiveThresholdPx) belowRaw.push(at)
+      if (held.admitted > CAPACITY) overCapacity.push(`${at} -> ${held.admitted}`)
+      if (fresh.admitted > 0 && held.admitted === 0) idle.push(at)
+      run = held.effectiveThresholdPx > fresh.effectiveThresholdPx ? run + 1 : 0
+      longestHold = Math.max(longestHold, run)
+      lowest = Math.min(lowest, held.admitted)
+    }
+    expect(belowRaw, 'held threshold below the raw quantile').toEqual([])
+    expect(overCapacity, 'frames asking for more than the pool').toEqual([])
+    expect(idle, 'frames admitting nothing while the raw quantile admits something').toEqual([])
+    // Pinned exactly, so the row is not vacuous: a sweep that never held would read 0 and red.
+    expect(longestHold).toBe(HOLD_LIMIT_FRAMES)
+    // A domain guard, not a hold assertion: it reds if the sweep leaves the span where the raw
+    // quantile admits something (0.60% per frame does).
+    expect(lowest).toBeGreaterThanOrEqual(1)
+  })
+
+  /**
+   * **The mutant, and the row's whole reason for existing.** Put `BUCKETS` back to 64 in
+   * `adaptiveThreshold.ts` and the row above reds at **57 of these 80 factors** — every factor in
+   * 1.0000–1.0096 and in 1.0332–1.0788, reading as low as **0.023** (3 cells of 128) and as high as
+   * **2.148** (275 cells). The two green stretches in between are the phases where the old grid
+   * happened to have an edge in a usable place, which is precisely why a row pinned at one pose
+   * could not see this.
+   *
+   * This row states the mechanism behind that so the claim is checkable without editing the
+   * product: at this distribution's density the old grid's step spans more than a whole pool, so
+   * *no* choice of phase can land it near capacity.
+   */
+  it('shows why 64 buckets could not: one old bucket spans more than the pool', () => {
+    const sorted = [...TIER4_HEIGHTS_PX].sort((a, b) => b - a)
+    const oldStep = Math.pow(3072 / BASE_THRESHOLD_PX, 1 / 64)
+    const step = bucketEdgePx(1) / bucketEdgePx(0)
+    const within = (lower: number, ratio: number) =>
+      sorted.filter((h) => h >= lower && h < lower * ratio).length
+
+    // Lay one bucket of each grid on the cell a 128-layer pool just holds. The old one contains the
+    // **entire pool** — 128 of 128 — so wherever its edges fall, one of them admits at most the
+    // cells above the window and the next admits at least those plus a full pool more. There is no
+    // edge *inside* the pool to choose, which is the defect in one line.
+    expect(within(TIER4_SHAPE.capacityRankPx, oldStep)).toBeGreaterThanOrEqual(CAPACITY)
+    // The widest any single old bucket gets over this distribution, for scale.
+    expect(Math.max(...sorted.map((h) => within(h, oldStep)))).toBeGreaterThan(2 * CAPACITY)
+    // The same window on this grid holds about half a pool, which is the resolution the quantile
+    // needs to have a reachable choice near capacity at all.
+    expect(within(TIER4_SHAPE.capacityRankPx, step)).toBeLessThan(CAPACITY / 1.5)
+    expect(Math.max(...sorted.map((h) => within(h, step)))).toBeLessThan(CAPACITY)
+  })
+})
+
+/**
+ * The hysteresis hold is a **pixel** width, and at this resolution that is more than one bucket
+ * (DEC-882 ruling 4).
+ */
+describe('§1.6 the hold keeps its width in pixels across the resolution raise (DEC-882)', () => {
+  const CAPACITY = 100
+  /** Put `count` cells just above bucket `index`'s lower edge. */
+  const put = (t: AdaptiveThreshold, index: number, count: number) => {
+    for (let i = 0; i < count; i += 1) t.offer(bucketEdgePx(index) * 1.001)
+  }
+
+  /**
+   * Raise the boundary to `bucket`, then present a raw quantile exactly `drop` buckets below it,
+   * and return the threshold the hysteresis settles on.
+   *
+   * Both frames put the crossing mass in the bucket **immediately** below the one they mean to
+   * choose, because "the last bucket that fit" is only that bucket when the next one down is what
+   * breaks capacity — a gap would hand the quantile a different answer and the row would be about
+   * the gap. Frame two keeps cells at `bucket` itself so the `countAtOrAbove(previous) === 0`
+   * escape in `applyHysteresis` cannot be what produces a hold.
+   */
+  function afterDrop(bucket: number, drop: number): number {
+    const threshold = new AdaptiveThreshold()
+    const memory = new ThresholdMemory()
+    threshold.begin()
+    put(threshold, bucket, CAPACITY)
+    put(threshold, bucket - 1, 2 * CAPACITY)
+    expect(threshold.end(CAPACITY, memory).effectiveThresholdPx).toBeCloseTo(bucketEdgePx(bucket), 9)
+    expect(memory.bucket).toBe(bucket)
+
+    threshold.begin()
+    put(threshold, bucket, 40)
+    put(threshold, bucket - drop, CAPACITY - 40)
+    put(threshold, bucket - drop - 1, 2 * CAPACITY)
+    const report = threshold.end(CAPACITY, memory)
+    expect(report.admitted, 'the escape for a boundary with nothing above it must stay shut').toBeGreaterThan(0)
+    return report.effectiveThresholdPx
+  }
+
+  it('presents the hold with a real drop — the bound must bind', () => {
+    // Run the same second frame against a FRESH memory, so there is no hysteresis at all, and the
+    // raw quantile really is `drop` buckets down. Without this the rows below could be asserting
+    // that a boundary which never moved did not move.
+    const raw = new AdaptiveThreshold()
+    raw.begin()
+    put(raw, 40, 40)
+    put(raw, 38, CAPACITY - 40)
+    put(raw, 37, 2 * CAPACITY)
+    expect(raw.end(CAPACITY, new ThresholdMemory()).effectiveThresholdPx).toBeCloseTo(bucketEdgePx(38), 9)
+  })
+
+  it('is four buckets here, because four buckets is what 7.88% spells at 256', () => {
+    // Not a literal in the product: `HOLD_FRACTION` is the width DEC-768 F2 measured, and this is
+    // whatever the current grid spells it as. Stated here so a future change to `BUCKETS` that
+    // forgot the conversion reds rather than quietly quartering the hold.
+    expect(HOLD_BUCKETS).toBe(4)
+    expect(bucketEdgePx(HOLD_BUCKETS) / bucketEdgePx(0)).toBeCloseTo(
+      Math.pow(3072 / BASE_THRESHOLD_PX, 1 / 64),
+      9,
+    )
+  })
+
+  it('holds a two-bucket drop, which a one-bucket hold would release', () => {
+    // **Measured on the shipped roster, and the reason the hold is not one bucket here.** Swept
+    // over 2.10–2.30 world-radii in 0.005 steps at 224 layers, `zendikar`'s raw quantile moves by
+    // **2 buckets** in a single 0.005-radii step at 2.105 → 2.110. A one-bucket hold releases on
+    // that and the boundary follows the camera's jitter; this one does not.
+    expect(afterDrop(40, 2)).toBeCloseTo(bucketEdgePx(40), 9)
+  })
+
+  it('holds a four-bucket drop — the full width, the old grid\'s single step', () => {
+    expect(afterDrop(40, HOLD_BUCKETS)).toBeCloseTo(bucketEdgePx(40), 9)
+  })
+
+  it('releases once the drop exceeds the hold, so the hold is not simply a freeze', () => {
+    // The control. Without it every row above would pass against an `applyHysteresis` that never
+    // lowered the boundary at all — which is a ring of art that shrinks and never grows back.
+    expect(afterDrop(40, HOLD_BUCKETS + 1)).toBeCloseTo(bucketEdgePx(40 - HOLD_BUCKETS - 1), 9)
   })
 })

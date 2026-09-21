@@ -118,7 +118,14 @@ export function normalise(out: MutVec3, a: Readonly<MutVec3>): MutVec3 {
   return scale(out, a, 1 / l)
 }
 
-/** Rotate about the world +Y axis. The multiverse's own rotation and a plane's spin are both this. */
+/**
+ * Rotate about +Y.
+ *
+ * Both of the scene's rigid rotations are this, in two different frames: PRD 5.3.13's multiverse
+ * rotation, about **world** +Y, and PRD 5.3.14's plane spin, about **plane-local** +Y — the disc's
+ * own normal, measured (DEC-750, DEC-774), which `worlds/spin.ts` names `WORLD_POLE_AXIS`. They are
+ * the same matrix on vectors held in each frame, and `motion.ts` applies them in that order.
+ */
 export function rotateY(out: MutVec3, a: Readonly<MutVec3>, angle: number): MutVec3 {
   const c = Math.cos(angle)
   const s = Math.sin(angle)
@@ -126,25 +133,6 @@ export function rotateY(out: MutVec3, a: Readonly<MutVec3>, angle: number): MutV
   out.x = x * c + z * s
   out.y = a.y
   out.z = -x * s + z * c
-  return out
-}
-
-/**
- * Rotate about the local +Z axis.
- *
- * A plane's disc lies in its local xy plane and its normal is local +z (PRD 8.6.2), so the spin of
- * PRD 5.3.14 and the bounded shear of PRD 5.4.13 are both this — *not* {@link rotateY}, which is
- * the multiverse's own rotation about world +Y. The two axes are only interchangeable for a plane
- * whose tilt happens to lay its disc flat, which is why mixing them up survives every test that
- * looks at a plane centre and shows up the moment a card is framed. See `./motion`.
- */
-export function rotateZ(out: MutVec3, a: Readonly<MutVec3>, angle: number): MutVec3 {
-  const c = Math.cos(angle)
-  const s = Math.sin(angle)
-  const { x, y } = a
-  out.x = x * c - y * s
-  out.y = x * s + y * c
-  out.z = a.z
   return out
 }
 
