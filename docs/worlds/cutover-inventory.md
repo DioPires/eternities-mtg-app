@@ -218,7 +218,9 @@ delete safe, and it is worth writing down because the import edges suggest other
   straight at the worlds attachment and never touches the star buffer. The file's own header says
   why they are two: the star geometry is built once with `planes.json` while the worlds attachment
   outlives every roster it composes. So the cutover deletes the galaxy binding and keeps the worlds
-  one; both subscribe to the same `filterEvaluation`, so filters keep working.
+  one; both subscribe to the same `filterEvaluation`, so filters keep working. **The cutover did
+  not delete the galaxy binding** — `App.tsx` kept calling `useFilterMask` into a buffer no mesh
+  uploaded — and DEC-868 did, with `StarGeometry`'s GPU buffers and mask lanes.
 - `scene/probeSeam.ts` — reads `resources.field.points.material`'s `uMotion`, i.e. the star shader.
   Galaxy-only.
 - `scene/benchSeam.ts` — `focusCard` uses `geometry.planeRowOf` with `focusStar`. Galaxy-only.
@@ -323,7 +325,8 @@ stop registering it by deleting `starScene.ts` without touching a line of the in
 what happened** (DEC-752, DEC-857 item 7): `setStarHighlight` is still declared and implemented in
 `input/attachScenePicking.ts`, ready for a field to register with, and since the deletion nothing in
 `src/` calls it — the only caller left in the tree is `test/scene-picking-host.test.tsx`, which
-drives it directly. There is no hand-over on the shipped path any more.
+drives it directly. There is no hand-over on the shipped path any more. DEC-868 deleted the seam
+and replaced both of its guard rows with rows on the surviving hover and focus routes.
 
 `SceneHost` still attaches picking **before** the rest of the frame, and it is still a construction
 dependency the type enforces — but of a different call since the cutover: the handle is a required
