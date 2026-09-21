@@ -284,7 +284,9 @@ async function startPreview() {
   })
   const child = spawn('pnpm', ['exec', 'vite', 'preview', '--port', '0', '--strictPort', 'false'], {
     cwd: WEB_ROOT,
-    env: { ...process.env, ETERNITIES_DATASET: 'production' },
+    // NO_COLOR: hosted runners set `CI`, which turns vite's colours on even into a pipe, and the
+    // port then arrives wrapped in bold escapes (`localhost:\e[1m4173\e[22m`) the URL match misses.
+    env: { ...process.env, ETERNITIES_DATASET: 'production', NO_COLOR: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   const url = await new Promise((ok, fail) => {
