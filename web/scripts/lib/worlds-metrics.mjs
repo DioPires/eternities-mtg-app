@@ -564,6 +564,15 @@ export const W3_MIN_BAND_SHARE = 0.05;
  *   which bands turn up in the sampled cells, and this change alters the *art* in 458 of them.
  *   It did not move either. W3 itself read 4.6890 against the 3.1 floor.
  *
+ *   **Then confirmed against the row, on the tree that will actually merge.** The tour above ran
+ *   on the branch alone, and PR #103 landed on `main` between it and the hand-back — a sibling
+ *   merge expires a branch's measurement, and #103 edits `EternitiesScene.tsx`. A second
+ *   `--only baseline --no-captures` tour on the merge preview (`main` + this head) scored the
+ *   row instead of reporting it missing: **28 of 28** in the fold, `qualifyingPlanes` 30 against
+ *   the recorded 30, no domain faults, **GATE: GREEN** on all seven measures. W3 read 4.8059
+ *   there against the same 3.1 floor. The first tour is what the numbers were read from; this
+ *   one is what checked them, which is the only way a recorded constant gets to be evidence.
+ *
  * A constant cannot testify to its own provenance, so neither of these is left alone with itself.
  * `scored` catches a tour that visited too few worlds, or a world that lost a band at the pose —
  * which the run's own data cannot, because eight worlds toured would report eight of everything.
