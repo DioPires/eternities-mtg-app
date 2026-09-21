@@ -20,8 +20,10 @@ const RADII = Number(argOf('--radii', '2.2'))
 const PLANE = String(argOf('--plane', 'dominaria'))
 
 async function startPreview() {
+  // NO_COLOR: hosted runners set `CI`, which turns vite's colours on even into a pipe, and the
+  // port then arrives wrapped in bold escapes (`localhost:\e[1m4173\e[22m`) the URL match misses.
   const child = spawn('pnpm', ['exec', 'vite', 'preview', '--port', '0', '--strictPort', 'false'],
-    { cwd: WEB_ROOT, env: { ...process.env, ETERNITIES_DATASET: 'worlds' }, stdio: ['ignore', 'pipe', 'pipe'] })
+    { cwd: WEB_ROOT, env: { ...process.env, ETERNITIES_DATASET: 'worlds', NO_COLOR: '1' }, stdio: ['ignore', 'pipe', 'pipe'] })
   child.stderr.resume()
   const url = await new Promise((ok, fail) => {
     const t = setTimeout(() => fail(new Error('no preview')), 30_000)
