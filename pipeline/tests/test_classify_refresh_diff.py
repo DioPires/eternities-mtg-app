@@ -435,7 +435,13 @@ def test_a_real_printing_swap_still_reaches_the_loud_bucket(tmp_path: Path, caps
 
     Same list length, but one printing id is gone and another has arrived — the id sets differ,
     so the pairing falls back to the positional read and both sides of the swap are reported.
-    Without this row, deleting the `printing changed otherwise` bucket outright would pass.
+
+    What this row guards *alone* is that positional fallback: emptying it in the script
+    (``pairs = list(zip(pa, pb, strict=True))`` -> ``pairs = []``) reds this row and no other.
+    It is not what guards the `printing changed otherwise` bucket itself — deleting that bucket
+    with this row disabled still reds `plane_move_does_not_hide_a_printing_change`,
+    `field_change_does_not_hide_a_printing_change` and
+    `cache_buster_bucket_excludes_a_card_with_a_printing_anomaly` (DEC-918 M4b/M5).
     """
     swapped = ["printing-4", 9, "r", 1783903218, "4", "Artist D"]
     old = write_dataset(tmp_path / "old", {"alara": [card(p=[_P1, _P2])]})

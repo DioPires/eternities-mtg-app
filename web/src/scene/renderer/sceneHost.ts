@@ -581,10 +581,12 @@ export class SceneHost {
    * cards safe for a roster of 45: the windows into `stars.bin` do not overlap, so a lookup for a
    * world whose shards are not loaded **misses** rather than answering some other world's card.
    *
-   * **Printing index 0, deliberately, and it is not "the debut printing".** `p` is sorted by the
-   * *printing's* set release date (data contract §8.3), so `p[0]` is the earliest-*released*
-   * printing and a promo or a list reprint whose set shipped earlier sorts ahead of the set the card
-   * first appeared in. The reason to take it is not chronology: the pipeline's swatch stage and the
+   * **Printing index 0, deliberately, and it is the card's first printing.** `p` is sorted by the
+   * pipeline's `first_printing_sort_key` — the *printing's own* release date, then PRD 4.5.1's
+   * set-type priority and set code (data contract §9) — which is the same key PRD 4.5 picks a
+   * card's first printing with, so `p[0]` *is* that printing (DEC-913). It used to be sorted on
+   * the printing's *set* release date, which let a list reprint sort ahead of the set the card
+   * debuted in. The reason to take index 0 is not chronology either way: the swatch stage and the
    * shard writer share one `printing_order`, so `p[0]` is the printing whose `art_crop` §2.2's 2x2
    * statistic was computed from, and `p[0][5]` is the credit the cell carries (contract §5.1, §9).
    * Any other index would cross-fade a cell out of one printing's swatch and into another

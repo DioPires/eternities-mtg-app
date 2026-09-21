@@ -70,10 +70,12 @@ _TIMEOUT: Final = 60
 class SwatchRequest:
     """One card's art source: the printing whose art its cell shows.
 
-    ``printing_id``/``image_ts`` are **printing index 0** — the release-ordered first element of the
-    card's ``p`` array, which is what §2.3 says a cell shows and credits. That is deliberately *not*
-    the same thing as the card's debut printing: ``p`` is ordered by the printing's set release
-    date, and a promo or a list reprint can sort ahead of the set the card debuted in.
+    ``printing_id``/``image_ts`` are **printing index 0** — the first element of the card's ``p``
+    array, which is what §2.3 says a cell shows and credits. ``p`` is ordered by
+    :func:`~eternities.pipeline.stages.first_printing_sort_key`, the same key PRD 4.5 picks a
+    card's first printing with, so index 0 *is* the card's first printing (DEC-913). It was
+    ordered by the printing's *set* release date before that, which let a list reprint sort ahead
+    of the set the card debuted in.
     """
 
     oracle_id: str
