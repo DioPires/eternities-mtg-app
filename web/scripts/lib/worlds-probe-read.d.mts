@@ -75,6 +75,24 @@ export declare function cellSamples(
   options?: { readonly scale?: number },
 ): CellSampling
 
+/** A cell's centre pixel and the ring just outside its rect. See the implementation. */
+export interface CellContrastSamples {
+  readonly centre: [number, number, number]
+  readonly surround: ReadonlyArray<[number, number, number]>
+}
+
+export declare function cellContrastSamples(
+  cell: WorldsProbe['cells'][number],
+  image: DecodedPng,
+  options?: { scale?: number },
+): CellContrastSamples | null
+
+/** The shader name the draw-blank control suppresses. Cross-checked against `shaderNames.ts`. */
+export declare const BLANK_CELL_DRAW_PROGRAM: string
+
+/** A page init script that suppresses one program's draws and counts them in `window.__blankedCellDraws`. */
+export declare function blankCellDrawScript(program?: string): string
+
 export declare function artCells(probe: WorldsProbe): readonly ArtCell[]
 
 /**

@@ -524,6 +524,120 @@ export function cellSamples(probe, image, { scale = 1 } = {}) {
   return { samples, offFrame }
 }
 
+/**
+ * The pixel at a cell's projected centre and a ring of pixels just outside its screen rect — the
+ * one-card row's pixel witness (DEC-861 item 4).
+ *
+ * **Why the row needs one.** At n = 1, W2 and W3 — the criteria that read pixels — are out of
+ * domain, so the row read only CPU projection (W1) and art-pool state (W4). It went red on a world
+ * that stopped composing, turning, presenting or admitting art, and stayed green on one that
+ * stopped *drawing*: every number it scored is computed before a fragment is shaded.
+ *
+ * **Why the surround and not a fixed colour.** The harness cannot know what the card shows — the
+ * centre texel is whatever the art is — but it can know what is *around* it. The ring is eight
+ * points on the rect grown by 15% of its short side (4 px at least), clipped to the capture: sky on
+ * a one-card world at its settle, which is what a centre that stopped being drawn falls towards.
+ * Points outside the capture are dropped, never clamped, for `cellSamples`'s reason — clamping hands
+ * the reader the colour of the border and calls it the surround.
+ *
+ * Sampled at `(x, y)`, the projected centre, like `cellSamples` and for its reason. `null` when the
+ * centre is off the capture or no ring point is on it — the witness has nothing to compare, and
+ * that is a reading the caller scores, not a colour to invent.
+ */
+export function cellContrastSamples(cell, image, { scale = 1 } = {}) {
+  const inFrame = (x, y) => {
+    const px = Math.floor(x * scale)
+    const py = Math.floor(y * scale)
+    return px >= 0 && py >= 0 && px < image.width && py < image.height
+  }
+  if (!inFrame(cell.x, cell.y)) return null
+  const { x, y, width, height } = cell.rect
+  const margin = Math.max(4, 0.15 * Math.min(width, height))
+  const left = x - margin
+  const right = x + width + margin
+  const top = y - margin
+  const bottom = y + height + margin
+  const ring = [
+    [left, cell.y],
+    [right, cell.y],
+    [cell.x, top],
+    [cell.x, bottom],
+    [left, top],
+    [right, top],
+    [left, bottom],
+    [right, bottom],
+  ].filter(([rx, ry]) => inFrame(rx, ry))
+  if (ring.length === 0) return null
+  return {
+    centre: samplePixel(image, cell.x, cell.y, scale),
+    surround: ring.map(([rx, ry]) => samplePixel(image, rx, ry, scale)),
+  }
+}
+
+/**
+ * The shader name the draw-blank control suppresses: the worlds cell program.
+ *
+ * `worlds-probe-read.test.ts` checks it against `SHADER_NAME_WORLD_CELL` in `src/scene/shaderNames.ts`
+ * by import, because this string and that constant sit across a process boundary where a rename is
+ * not a type error — and a renamed program would leave the control suppressing nothing.
+ */
+export const BLANK_CELL_DRAW_PROGRAM = 'WorldCell'
+
+/**
+ * A page init script that stops the cell program from drawing and counts what it stopped — the
+ * one-card row's negative control (DEC-861 item 4).
+ *
+ * **A harness seam, in the class of `prefers-reduced-motion` and the viewport, not a patch to the
+ * build.** The header's rule is that the gate may not patch the build to *obtain* surface; this
+ * obtains nothing. It perturbs what the GPU is asked to do, one layer below everything the row
+ * scores, so the payload the row reads is the unmodified build's: the cell is still composed,
+ * projected, turned, and admitted art. Only its fragments are missing. That is the world the row
+ * could not see, which makes it the control the witness needs.
+ *
+ * three.js writes `#define SHADER_NAME <material.name>` into every program it builds (see
+ * `shaderNames.ts`), so the cell program is found by its own source, not by an index or an order.
+ * `window.__blankedCellDraws` counts suppressed draw calls; the row reads it back and refuses to
+ * score a control that suppressed nothing, because a control that did not take is indistinguishable
+ * from a renderer that passed.
+ */
+export function blankCellDrawScript(program = BLANK_CELL_DRAW_PROGRAM) {
+  const define = new RegExp(`^#define SHADER_NAME ${program}$`, 'm').source
+  return `(() => {
+  const proto = WebGL2RenderingContext.prototype
+  const named = new WeakSet()
+  const blanked = new WeakSet()
+  const define = new RegExp(${JSON.stringify(define)}, 'm')
+  const current = new WeakMap()
+  window.__blankedCellDraws = 0
+  const shaderSource = proto.shaderSource
+  proto.shaderSource = function (shader, source) {
+    if (define.test(source)) named.add(shader)
+    return shaderSource.call(this, shader, source)
+  }
+  const attachShader = proto.attachShader
+  proto.attachShader = function (program, shader) {
+    if (named.has(shader)) blanked.add(program)
+    return attachShader.call(this, program, shader)
+  }
+  const useProgram = proto.useProgram
+  proto.useProgram = function (program) {
+    current.set(this, program)
+    return useProgram.call(this, program)
+  }
+  for (const name of ['drawArrays', 'drawElements', 'drawArraysInstanced', 'drawElementsInstanced', 'drawRangeElements']) {
+    const draw = proto[name]
+    proto[name] = function (...args) {
+      const program = current.get(this)
+      if (program !== undefined && program !== null && blanked.has(program)) {
+        window.__blankedCellDraws += 1
+        return
+      }
+      return draw.apply(this, args)
+    }
+  }
+})()`
+}
+
 /** The four booleans W4 reads, named so a renamed payload field is a type error and not a `false`. */
 export function artCells(probe) {
   return probe.cells.map((cell) => ({

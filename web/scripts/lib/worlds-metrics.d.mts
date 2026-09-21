@@ -112,6 +112,16 @@ export interface Measure {
   /** How many worlds were out of domain for this measure. See `scoredPlanes`. */
   readonly insufficientPlanes?: number;
   /**
+   * The worlds whose own reading failed, under a `'worst'` fold — including a world that failed
+   * with no value, which the fold counts as a failure rather than as out of domain (DEC-861).
+   */
+  readonly failingPlanes?: readonly string[];
+  /**
+   * `evictionsPerSecond` only, and only when it carries a rate: the tail's own drift, printed beside
+   * the value with the band it implies (DEC-861). See `withTailDrift`.
+   */
+  readonly drift?: number;
+  /**
    * The world carrying the folded value under a `'worst'` fold; under `'mean'`, the world holding
    * the low end of the readings — reported for context, and not the subject of the verdict.
    */
@@ -335,6 +345,8 @@ export declare const FLOORS: {
    * worst in-domain reading is pinned just above the bound on every build.
    */
   readonly artCellsAbsolute: number;
+  /** W1's pixel witness on a swept row, ΔE76 centre against surround (DEC-861). */
+  readonly cellDrawnDeltaE: number;
 };
 
 export declare function homeLabelCeiling(roster: Roster): number;
@@ -411,8 +423,85 @@ export declare function evaluateW1(
       readonly height: number;
       readonly frontFacing: boolean;
     }>;
+    /**
+     * The pixel witness's worst reading over a spin sweep — present only on a swept visit, `null`
+     * where the witness could not read a counted phase. See `w1DrawWitness`.
+     */
+    readonly contrastDeltaE?: number | null;
   }>,
 ): W1Criterion;
+
+/** The least projected-centre travel, in CSS px, before a spin sweep is believed. */
+export declare const SPIN_SWEEP_MIN_TRAVEL_PX: number;
+
+/** W4's `artFraction` on one frame's cells, or `null` when no cell wants art. */
+export declare function artFractionOf(cells: readonly ArtCell[]): number | null;
+
+/** Median ΔE76 from a cell's centre pixel to the ring around it, or `null`. */
+export declare function centreContrastDeltaE(
+  samples: {
+    readonly centre: Rgb;
+    readonly surround: readonly Rgb[];
+  } | null,
+): number | null;
+
+/** One sample of a spin sweep, in sweep order. */
+export interface SpinPhase {
+  readonly t: number;
+  /** Front-facing cells on this frame. */
+  readonly presented: number;
+  /** The first cell's projected centre, or `null` when the frame reported none. */
+  readonly x: number | null;
+  readonly medianHeightPx: number | null;
+  readonly artFraction: number | null;
+  /** The pixel witness; absent on a sweep that took none, `null` where unreadable. */
+  readonly contrastDeltaE?: number | null;
+}
+
+export interface SpinSweepRecord {
+  readonly periodS: number;
+  readonly samples: number;
+  readonly presented: number;
+  readonly scorable: number;
+  readonly travelPx: number;
+  readonly atWorstPhaseS: number;
+  readonly medianHeightPx: { readonly worst: number; readonly best: number };
+  readonly artFraction: {
+    readonly atWorstPhaseS: number;
+    readonly worst: number | null;
+    readonly best: number | null;
+  };
+  readonly contrastDeltaE?: {
+    readonly atWorstPhaseS: number | null;
+    readonly worst: number | null;
+    readonly best: number | null;
+  };
+}
+
+export declare function selectSpinPhases(
+  phases: readonly SpinPhase[],
+  options: { readonly periodS: number; readonly minTravelPx?: number },
+):
+  | {
+      readonly ok: false;
+      readonly reason: "spin-sweep-frozen" | "never-presented" | "no-settled-phase";
+      readonly detail: string;
+      readonly travelPx: number;
+    }
+  | {
+      readonly ok: true;
+      /** Index into `phases` of the phase W1 scores. */
+      readonly w1Phase: number;
+      /** Index into `phases` of the phase W4 scores — its own worst, not W1's. */
+      readonly w4Phase: number;
+      readonly sweep: SpinSweepRecord;
+    };
+export declare function sweepFrames<F>(
+  frames: readonly F[],
+  picked: { readonly w1Phase: number; readonly w4Phase: number },
+):
+  | { readonly ok: false; readonly reason: "no-settled-phase"; readonly detail: string }
+  | { readonly ok: true; readonly frame: F; readonly w4Frame: F };
 export declare function evaluateW2(samples: readonly CellSample[]): W2Criterion;
 export declare function evaluateW3(
   samples: readonly CellSample[],

@@ -53,16 +53,23 @@ import {
   homeLabelCeiling,
   isLabelVisible,
   // The same fold `evaluateW1` applies, imported rather than restated: the sweep picks the worst
-  // phase by the criterion's own statistic, and a local copy could drift from it silently.
+  // phase by the criterion's own statistic, and a local copy could drift from it silently. The same
+  // goes for `artFractionOf`, which is W4's.
+  artFractionOf,
+  centreContrastDeltaE,
   median,
   poolHighWater,
   rowCellsFaults,
+  selectSpinPhases,
   steerAzimuthComb,
+  sweepFrames,
   w3QualifiesByShares,
 } from './lib/worlds-metrics.mjs'
 import {
   artCells,
+  blankCellDrawScript,
   cellCardinality,
+  cellContrastSamples,
   cellSamples,
   readWorldsProbe,
   seamEvidence,
@@ -104,18 +111,6 @@ const W4_SETTLE_S = 5
  * is the comb's density and not its length. 24 over 172-247 s puts a sample every 7-10 s.
  */
 const SPIN_SWEEP_SAMPLES = 24
-
-/**
- * The least the cell's projected centre must travel across a `spinSweep` before the sweep is
- * believed, in CSS px.
- *
- * **This is the whole difference between a family and a frozen frame, and on a one-cell world there
- * is nothing else to check.** A world with many cells has a front-facing *set* whose turnover
- * witnesses the rotation; a world with one cell has no set, so "the cell never faced the camera"
- * and "the scene never moved" produce byte-identical readings. Segovia's cell swept 680 px over a
- * 260 s hold, so 50 is two orders inside the live reading and still refuses a still frame.
- */
-const SPIN_SWEEP_MIN_TRAVEL_PX = 50
 
 /**
  * W4's eviction window — **sampled until the pool plateaus and the tail settles, not for a fixed 3 s**
@@ -656,7 +651,7 @@ async function captureFrame(page, dir, name, slug = null) {
  * because pairing `shade` with a colour requires both to come from one moment.
  */
 /**
- * Sample one world across a full turn of its own spin and return the **worst presenting** phase.
+ * Sample one world across a full turn of its own spin, and return the frame each criterion scores.
  *
  * > **Normative — a criterion defined on a cell that turns is a family, not a frame (DEC-752, F3).**
  *
@@ -668,25 +663,19 @@ async function captureFrame(page, dir, name, slug = null) {
  * 175.8 s period: **front-facing on 18 of 64 samples, 28.1%**. A single-frame row scoring W1 there
  * is a coin flip that lands red about seven times in ten, which is exactly how it behaved.
  *
- * Three decisions, each of which the obvious implementation gets wrong:
+ * **This function only takes the frames.** Which of them counts, and which one each criterion
+ * scores, is `selectSpinPhases` in `lib/worlds-metrics.mjs` — four rules, each with a unit row and a
+ * mutant (DEC-861). They lived here until then, the one piece of selection logic in a file whose
+ * header says it has none, and nothing tested them.
  *
- * 1. **The worst presenting phase, never the best, and never the first.** A loop that stopped the
- *    moment the cell presented would select on the statistic it then scores — the cell is tallest
- *    face-on, so stopping at a favourable phase greens a floor by choosing its own sample. The
- *    whole window is swept and the lowest median is what W1 reads.
- * 2. **Zero presenting phases is a hard failure with its own reason, not `N/A`.** If a one-card
- *    world's only cell never faces the camera across a full turn, its card is unreachable and that
- *    is a renderer defect — the hypothesis this sweep was built to rule out. Reporting it as "not
- *    measured" would file the defect under the same word as the domain rules, which is the
- *    distinction §3.1 spends a paragraph on.
- * 3. **The sweep is wait-driven and the claim is an envelope, not an evenly-spaced comb.** There is
- *    no per-world spin angle on the payload, so a comb would be derived from this script's own
- *    clock. What *is* read back is the cell's projected centre, and it is read back for the reason
- *    in {@link SPIN_SWEEP_MIN_TRAVEL_PX}: on a one-cell world it is the only witness that the
- *    mosaic turned at all.
+ * The sweep is wait-driven and the claim is an envelope, not an evenly-spaced comb. There is no
+ * per-world spin angle on the payload, so a comb would be derived from this script's own clock.
+ * What *is* read back is the cell's projected centre, which on a one-cell world is the only witness
+ * that the mosaic turned at all — see `SPIN_SWEEP_MIN_TRAVEL_PX`.
  */
 async function sweepSpinPhase(page, slug, { dir, captures, periodS }) {
-  const samples = []
+  const frames = []
+  const phases = []
   const started = Date.now()
   const stepMs = Math.max(1000, Math.round((periodS * 1000) / SPIN_SWEEP_SAMPLES))
   for (let i = 0; i < SPIN_SWEEP_SAMPLES; i += 1) {
@@ -699,87 +688,31 @@ async function sweepSpinPhase(page, slug, { dir, captures, periodS }) {
     if (!frame.ok) return { ok: false, reason: frame.reason, detail: frame.detail }
     const cells = frame.probe.cells
     const front = cells.filter((c) => c.frontFacing)
-    samples.push({
+    frames.push(frame)
+    phases.push({
       t: +((Date.now() - started) / 1000).toFixed(2),
-      frame,
       presented: front.length,
-      // **The leading edge of a presenting run is not a scorable frame, and this is the same rule
-      // as `W4_SETTLE_S` rather than a new one.** A cell that has just turned into the facing set
-      // is mid cross-fade — `ART_SHOWN_AT` is the fade *landing*, so `showingArt` is false for a
-      // beat after admission, by §1.6's design. Measured on segovia: of 18 presenting phases
-      // exactly one had `wantsArt` without `showingArt`, and it was the first sample of the run
-      // (t = 73.9 s); every later phase showed art. Scoring that frame would red the row for the
-      // renderer doing what it is specified to do. `settled` is therefore "the previous sample was
-      // presenting too", and the sweep's first sample can never be settled — there is no
-      // predecessor, and the cell may have turned in during the hold that preceded the sweep.
-      settled: front.length > 0 && samples.at(-1)?.presented > 0,
       // The phase read-back. One cell has one centre; many cells have a first one, and either way
       // this moves iff the mosaic turned relative to the camera.
       x: cells[0]?.x ?? null,
       medianHeightPx: median(front.map((c) => c.height)),
+      artFraction: artFractionOf(artCells(frame.probe)),
+      // The pixel witness (DEC-861 item 4), taken on every phase and scored only on the counted
+      // ones. One cell has one centre; on a many-cell world this reads the first cell, which is why
+      // only the n = 1 row sweeps.
+      contrastDeltaE: centreContrastDeltaE(
+        cells[0] === undefined ? null : cellContrastSamples(cells[0], frame.image),
+      ),
     })
     if (i < SPIN_SWEEP_SAMPLES - 1) await sleep(stepMs)
   }
 
-  const xs = samples.map((s) => s.x).filter((x) => typeof x === 'number')
-  const travel = xs.length < 2 ? 0 : Math.max(...xs) - Math.min(...xs)
-  if (travel < SPIN_SWEEP_MIN_TRAVEL_PX) {
-    return {
-      ok: false,
-      reason: 'spin-sweep-frozen',
-      detail:
-        `the cell's projected centre moved ${travel.toFixed(1)} px over ${periodS.toFixed(1)} s, ` +
-        `below ${SPIN_SWEEP_MIN_TRAVEL_PX} — the sweep sampled one phase ${SPIN_SWEEP_SAMPLES} times, ` +
-        'so a verdict here would be a reading of the harness rather than of the world',
-    }
-  }
-
-  const presenting = samples.filter((s) => s.presented > 0 && s.medianHeightPx !== null)
-  if (presenting.length === 0) {
-    return {
-      ok: false,
-      reason: 'never-presented',
-      detail:
-        `no front-facing cell at any of ${samples.length} phases across a full ${periodS.toFixed(1)} s ` +
-        'spin, on a scene the travel check proves was turning — the world never shows its cards',
-    }
-  }
-
-  const scorable = presenting.filter((s) => s.settled)
-  if (scorable.length === 0) {
-    // Reachability held and there is still nothing to score: the comb is too coarse for this
-    // world's facing window, so every presenting phase is a leading edge. A **harness** defect, and
-    // it is reported as one rather than scored — passing on the unsettled frames would score the
-    // cross-fade, and failing on them would blame the renderer for the comb.
-    return {
-      ok: false,
-      reason: 'no-settled-phase',
-      detail:
-        `the cell presented at ${presenting.length} of ${samples.length} phases but never at two ` +
-        `consecutive ones, so every presenting frame is mid cross-fade — raise SPIN_SWEEP_SAMPLES ` +
-        `above ${SPIN_SWEEP_SAMPLES} for a ${periodS.toFixed(1)} s period`,
-    }
-  }
-
-  const worst = scorable.reduce((a, b) => (b.medianHeightPx < a.medianHeightPx ? b : a))
-  return {
-    ok: true,
-    frame: worst.frame,
-    sweep: {
-      periodS,
-      samples: samples.length,
-      // Reachability and scorability are reported apart on purpose: the gap between them is the
-      // cross-fade's width in samples, and a run where it grows is worth seeing.
-      presented: presenting.length,
-      scorable: scorable.length,
-      travelPx: travel,
-      atWorstPhaseS: worst.t,
-      medianHeightPx: {
-        worst: worst.medianHeightPx,
-        best: Math.max(...scorable.map((s) => s.medianHeightPx)),
-      },
-    },
-  }
+  const picked = selectSpinPhases(phases, { periodS })
+  if (!picked.ok) return picked
+  // Refuses rather than lending W4 W1's frame when an index falls outside `frames` (DEC-919).
+  const swept = sweepFrames(frames, picked)
+  if (!swept.ok) return swept
+  return { ...swept, sweep: picked.sweep }
 }
 
 async function visitWorld(page, world, { dir, captures, pose = SURFACE_RADII, spinSweep = false }) {
@@ -885,10 +818,13 @@ async function visitWorld(page, world, { dir, captures, pose = SURFACE_RADII, sp
   await hold(page, W4_SETTLE_S)
 
   // A row that sweeps takes its frame from the worst presenting phase of a full spin; every other
-  // row takes the one frame in front of it. See `sweepSpinPhase` for why the n = 1 row cannot be
+  // row takes the one frame in front of it. See `selectSpinPhases` for why the n = 1 row cannot be
   // scored off an instant, and why "worst" rather than "first" is load-bearing.
   let sweep = null
   let frame
+  // The frame W4 is scored on. The same frame as everyone else's on a row that does not sweep; on
+  // one that does, W4's own worst phase, which need not be W1's — see `selectSpinPhases`, rule 4.
+  let w4Frame = null
   if (spinSweep) {
     const swept = await sweepSpinPhase(page, slug, {
       dir,
@@ -899,6 +835,7 @@ async function visitWorld(page, world, { dir, captures, pose = SURFACE_RADII, sp
     })
     if (!swept.ok) return { slug, ok: false, detail: `${swept.reason}: ${swept.detail}` }
     frame = swept.frame
+    w4Frame = swept.w4Frame
     sweep = swept.sweep
     // **W1 reads `settleCells`, so a swept row has to move them too, and forgetting this made the
     // fix look like it had only half worked.** `evaluateW1` scores the settle unless a row sets
@@ -912,6 +849,10 @@ async function visitWorld(page, world, { dir, captures, pose = SURFACE_RADII, sp
   }
   if (!frame.ok) return { slug, ok: false, detail: `${frame.reason}: ${frame.detail}` }
   const { probe, image } = frame
+  // `?? frame` is for rows that do not sweep, where `w4Frame` stays `null` and W4 shares the one
+  // frame. A swept row always carries its own: `sweepFrames` refuses a missing one as
+  // `no-settled-phase`, and that returned above, so it never reaches this fallback (DEC-919).
+  const w4Probe = (w4Frame ?? frame).probe
   // The settle-time reasoning applies again at the measurement pose, for the same reason and with
   // the same force: the check is a contract restatement now, not a reading. What the drive really
   // needed was `poseOf(page, slug)` — steering on a bare read stops the rig when the *neighbour*
@@ -1037,7 +978,7 @@ async function visitWorld(page, world, { dir, captures, pose = SURFACE_RADII, sp
     bandShares: probe.bandShares,
     w2: evaluateW2(samples),
     w3: evaluateW3(samples, probe.bandShares),
-    w4: evaluateW4(artCells(probe), timeline, probe.pool, entryStream, exitStream),
+    w4: evaluateW4(artCells(w4Probe), timeline, w4Probe.pool, entryStream, exitStream),
     probeChecked: frame.checked,
   }
 }
@@ -1406,7 +1347,8 @@ export const MATRIX = [
       // moved the pose to 59.91°, the 64-bucket quantile collapsed the want set, and this read
       // **17**, below the floor — the DEC-876 RED. Re-measured at 256 buckets (DEC-882): **76**
       // cells against a floor of 32, 2.4× above, over a matrix draw and five step-1 draws reading
-      // 76–82, and **75** on both of DEC-899's draws after the merge with `c49315c`. Quote 75–82.
+      // 76–82, and **75** on both of DEC-899's draws after the merge with `c49315c`. Quote it as
+      // wanted 76–77, drawn 75–77, admitted 76–84 over the live draws after DEC-882.
       //
       // **Its RED partner one row down no longer reds.** `layers-128-reduced` is this same pool with
       // the OS reduced-motion preference emulated; it read 14 and now reads 78. See that row for why
@@ -1444,11 +1386,11 @@ export const MATRIX = [
       //    which is the opposite of the health this expectation was written to deny.
       // 2. **It is green for the right reason now.** At 256 buckets the quantile can land inside the
       //    pool, so this reads **0.594–0.602** — **76–77 cells wanted** of 128 — and
-      //    `artCellsShowing` above, the *drawn* count, reads **75–76** against its floor of 32 on
+      //    `artCellsShowing` above, the *drawn* count, reads **75–77** against its floor of 32 on
       //    the same frames. Per draw: DEC-882 read 77 wanted / 76 drawn, and its logs hold 0.594
       //    twice; DEC-899 drew 75 twice; DEC-901's three re-reads read 76 / 75 (0.59375), then
-      //    77 / 76 (0.6015625) twice. Demand fitting capacity *while the pool is well used* is the
-      //    state §1.6 is written to produce.
+      //    77 / 76 (0.6015625) twice; DEC-868, DEC-907 and DEC-912 drew 77 on `main`. Demand
+      //    fitting capacity *while the pool is well used* is the state §1.6 is written to produce.
       //
       // So the RED's premise expired with the mechanism it described. What replaces it as a tripwire
       // is the pair: if the policy ever goes back to overshooting, this reads above 1 and reds, and
@@ -1711,7 +1653,7 @@ export const MATRIX = [
     // cell was front-facing on **18 of 64 samples (28.1%)**, with the scene's motion witnessed by
     // the cell's own 680 px of travel. So the two GREEN expectations below were being drawn, not
     // measured: the row failed here and in `controls1` and would have passed about three runs in
-    // ten. `sweepSpinPhase` scores the **worst** presenting phase, which is the half that stops the
+    // ten. `selectSpinPhases` scores the **worst** counted phase, which is the half that stops the
     // sweep from greening a floor by choosing its own sample.
     //
     // **The alternative was to expect `N/A` here, and it is wrong.** An all-`N/A` row would go
@@ -1722,6 +1664,12 @@ export const MATRIX = [
     spinSweep: true,
     expect: [
       { criterion: 'W1', measure: 'minMedianCellHeightPx', expect: 'GREEN' },
+      // **The row's one pixel reading (DEC-861 item 4).** Every other measure it scores is computed
+      // before a fragment is shaded — W1's height is a CPU projection and W4 is art-pool state — so
+      // until this line the row went red on a world that stopped composing, turning, presenting or
+      // admitting art, and stayed green on one that stopped drawing. `one-card-no-cell-draw` below
+      // is the control that proves it can see that.
+      { criterion: 'W1', measure: 'centreContrastDeltaE', expect: 'GREEN' },
       { criterion: 'W4', measure: 'artFraction', expect: 'GREEN' },
       // The half that matters: the guard against the sample-size precondition being quietly
       // widened later until it swallows real planes. A control that asserts an `n/a` is still a
@@ -1736,6 +1684,29 @@ export const MATRIX = [
       // output, and a term whose domain the policy chooses is the collapse this term exists to
       // catch, one level up. `artFraction` above still scores this world, as it is defined at n = 1.
       { criterion: 'W4', measure: 'artCellsShowing', expect: 'N/A' },
+    ],
+  },
+  {
+    id: 'one-card-no-cell-draw',
+    label: 'the one-card row with the cell program blanked — composed, turning, admitted, not drawn',
+    seams: {},
+    subject: 'segovia',
+    pose: 'settle',
+    spinSweep: true,
+    // **A harness seam, not a query seam** — `blankCellDrawScript` suppresses the `WorldCell`
+    // program's draw calls in the page and counts them, and the row refuses to score a control that
+    // suppressed nothing. See `openPage` for why this is the reduced-motion row's class of seam and
+    // not a patch to the build.
+    blankCellDraw: true,
+    // **Mixed on purpose: the RED is the witness and the GREENs are the blind spot.** The payload is
+    // the unmodified build's — the cell is still projected at the same height, still turning, still
+    // showing art by the pool's account — so W1's height and W4's fraction stay GREEN on a world
+    // with nothing on screen. That is the row the one-card row could not tell apart from a healthy
+    // one before DEC-861; the pixel witness is the only reading here that moves.
+    expect: [
+      { criterion: 'W1', measure: 'centreContrastDeltaE', expect: 'RED' },
+      { criterion: 'W1', measure: 'minMedianCellHeightPx', expect: 'GREEN' },
+      { criterion: 'W4', measure: 'artFraction', expect: 'GREEN' },
     ],
   },
   {
@@ -1796,7 +1767,11 @@ function parseArgs(argv) {
   return args
 }
 
-async function openPage(browser, url, { seams = {}, viewport = VIEWPORT, reducedMotion = false }) {
+async function openPage(
+  browser,
+  url,
+  { seams = {}, viewport = VIEWPORT, reducedMotion = false, blankCellDraw = false },
+) {
   const page = await browser.newPage()
   await page.setViewport(viewport)
   const errors = []
@@ -1809,6 +1784,14 @@ async function openPage(browser, url, { seams = {}, viewport = VIEWPORT, reduced
   // has it; `worlds-evict-longrun.mjs:252` sets it at the same point for the same reason.
   if (reducedMotion) {
     await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }])
+  }
+  // **The one-card row's negative control, and a harness seam for the same reason as the one above
+  // (DEC-861 item 4).** It stops the cell program from drawing and leaves every other part of the
+  // build alone — composition, projection, spin, art admission — so the payload still describes a
+  // healthy world and only the pixels do not. Installed before `goto`, so it wraps the context the
+  // first program is linked on. See `blankCellDrawScript`.
+  if (blankCellDraw) {
+    await page.evaluateOnNewDocument(blankCellDrawScript())
   }
   await page.goto(`${url}/?probe=shell${seamQuery(seams)}`, { waitUntil: 'load', timeout: 120_000 })
   await page.waitForFunction(() => window.__eternitiesProbe !== undefined, { timeout: 120_000 })
@@ -1874,11 +1857,13 @@ async function runRow(browser, url, row, { roster, args, baselineProbe }) {
   // order-independent, which is a property the reversed-order control in the runbook checks rather
   // than assumes. `budgetBoundAtEntry` is the backstop for anyone who tours a shared page anyway.
   const motionReadBacks = []
+  const blankReadBacks = []
   for (const world of subjects) {
     const opened = await openPage(browser, url, {
       seams: row.seams,
       viewport,
       reducedMotion: row.reducedMotion === true,
+      blankCellDraw: row.blankCellDraw === true,
     })
     try {
       // **Only where the row declares a motion preference, and that is a cost decision.** The
@@ -1904,6 +1889,14 @@ async function runRow(browser, url, row, { roster, args, baselineProbe }) {
         spinSweep: row.spinSweep === true,
       })
       visits.push(visit)
+      // The draw-blank control's own read-back: how many draw calls it suppressed over the visit.
+      // Zero means the program name matched nothing, the control never took, and the row would be
+      // scoring the unmodified build under a RED expectation.
+      if (row.blankCellDraw === true) {
+        const suppressed = await opened.page.evaluate(() => window.__blankedCellDraws ?? null)
+        blankReadBacks.push({ slug: world.slug, suppressed })
+        console.log(`  ${world.slug}: cell draw blanked — ${suppressed ?? 'no counter'} draw calls suppressed`)
+      }
       if (!visit.ok) {
         console.log(`  ${world.slug}: SETUP FAILURE — ${visit.detail}`)
       } else {
@@ -2020,11 +2013,32 @@ async function runRow(browser, url, row, { roster, args, baselineProbe }) {
   // discarded: with a page per world the same seam is now exercised on every load, so a seam that
   // engages on some loads and not others is a fact this row can see. Disagreement is a setup
   // failure, because a criterion folded over sessions that ran different policies is not a reading.
-  const evidence = evidencePerWorld.length === 0 ? [] : evidencePerWorld[0].evidence
+  const queryEvidence = evidencePerWorld.length === 0 ? [] : evidencePerWorld[0].evidence
+  const blankTook = blankReadBacks.length > 0 && blankReadBacks.every((b) => (b.suppressed ?? 0) > 0)
+  // The harness seam reports beside the query seams and through the same printer, so a control that
+  // did not take reds the run the way an unechoed query seam does. `echo` in the query sense does
+  // not exist for it; the witness is the renderer-side count of what was suppressed.
+  const evidence = [
+    ...queryEvidence,
+    ...(row.blankCellDraw === true
+      ? [
+          {
+            seam: 'blankCellDraw',
+            criterion: 'W1',
+            requested: true,
+            echoed: false,
+            witness: 'policy',
+            policyMoved: blankTook,
+            detail: blankReadBacks.map((b) => `${b.slug}: ${b.suppressed ?? 'no counter'} draws suppressed`).join(', '),
+            engaged: blankTook,
+          },
+        ]
+      : []),
+  ]
   const disagreeing = evidencePerWorld.filter(
     (e) =>
-      e.evidence.length !== evidence.length ||
-      e.evidence.some((row_, i) => row_.engaged !== evidence[i].engaged),
+      e.evidence.length !== queryEvidence.length ||
+      e.evidence.some((row_, i) => row_.engaged !== queryEvidence[i].engaged),
   )
   if (disagreeing.length > 0) {
     return {
@@ -2098,7 +2112,15 @@ async function runRow(browser, url, row, { roster, args, baselineProbe }) {
 
   const criteria = [
     evaluateW1(
-      good.map((v) => ({ slug: v.slug, cells: row.w1At === 'pose' ? v.poseCells : v.settleCells })),
+      good.map((v) => ({
+        slug: v.slug,
+        cells: row.w1At === 'pose' ? v.poseCells : v.settleCells,
+        // The pixel witness rides only a swept visit (DEC-861 item 4); an unswept one carries no
+        // field at all, and W1 stays a one-measure criterion there. See `w1DrawWitness`.
+        ...(v.spinSweep?.contrastDeltaE === undefined
+          ? {}
+          : { contrastDeltaE: v.spinSweep.contrastDeltaE.worst }),
+      })),
     ),
     foldCriteria(good.map((v) => ({ slug: v.slug, criterion: v.w2 }))),
     foldCriteria(good.map((v) => ({ slug: v.slug, criterion: v.w3 })), { rosterDomain }),
@@ -2107,7 +2129,7 @@ async function runRow(browser, url, row, { roster, args, baselineProbe }) {
 
   writeFileSync(
     resolve(dir, 'visits.json'),
-    `${JSON.stringify({ visits, evidence, evidencePerWorld, motionReadBacks, criteria }, null, 2)}\n`,
+    `${JSON.stringify({ visits, evidence, evidencePerWorld, motionReadBacks, blankReadBacks, criteria }, null, 2)}\n`,
   )
   return {
     row,
@@ -2116,6 +2138,7 @@ async function runRow(browser, url, row, { roster, args, baselineProbe }) {
     evidence,
     visits,
     motionReadBacks,
+    blankReadBacks,
     errors,
     probe: probeNow,
   }
@@ -2317,6 +2340,7 @@ async function main() {
           // The reduced-motion rows' read-back, beside the seam evidence and for the same reason:
           // a row's colour is only a reading if the thing that was supposed to have changed did.
           motionReadBacks: r.motionReadBacks ?? [],
+          blankReadBacks: r.blankReadBacks ?? [],
           criteria: r.criteria,
         })),
       },

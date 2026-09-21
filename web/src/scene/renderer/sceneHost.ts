@@ -312,9 +312,9 @@ export class SceneHost {
         const cards = this.focusedCardHandle
         if (cards) {
           // The four thumbnail counters and `atlasBytes` keep their zero defaults: the tier and its
-          // atlas retired at the cutover (DEC-752). The FIELDS stay because `ProbeState` and
-          // `SceneReadout` read them, and a real 0 is honest where dropping the keys would be a
-          // probe-surface change no criterion asked for.
+          // atlas retired at the cutover (DEC-752). The FIELDS stay because `SceneReadout` reads
+          // them; `ProbeState` stopped publishing them at DEC-861, so they are a readout's
+          // structural 0 and no longer a probe contract.
           this.stats.imagesInFlight = cards.imageStats.inFlight
           this.stats.cardBytes = cards.gpuBytes.card
         }

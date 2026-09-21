@@ -40,6 +40,7 @@ import {
   poolHighWater,
   foldCriteria,
   SMALLEST_SHIPPED_POOL_LAYERS,
+  SPIN_SWEEP_MIN_TRAVEL_PX,
   W4_STARVED_POOL_LAYERS,
   W5_MIN_AZIMUTHS,
   W5_AZIMUTH_UNIFORMITY_TOLERANCE,
@@ -54,8 +55,12 @@ import {
   quantile,
   rowCellsFaults,
   rowsClosedForm,
+  selectSpinPhases,
+  sweepFrames,
+  artFractionOf,
   srgbToLab,
   LABEL_VISIBLE_MIN_OPACITY,
+  type SpinPhase,
   type Criterion,
   type Measure,
   type CellSample,
@@ -422,6 +427,264 @@ describe("W1 — cells are resolvable at framing distance", () => {
       expect(w1.measures[0]?.insufficientReason).toMatch(
         /no plane presented a front-facing cell/,
       );
+    });
+  });
+});
+
+describe("the one-card sweep picks each criterion's phase (DEC-861 items 1–3)", () => {
+  // **Four rules that lived in `worlds-gate.mjs`, untested, until DEC-861 moved them here.** Each
+  // row below has a mutant in `scripts/mutate-spin-sweep.mjs`. The live row cannot falsify rule 4:
+  // on segovia the worst and best counted phases read 685.498 and 685.727 px on DEC-856's review
+  // draw, 0.23 px apart (685.19–686.07 on DEC-861's own six draws), so the
+  // fixture straddles the 24 px floor instead — the worst counted phase is below it and every other
+  // phase is well above, so picking the wrong one flips W1's verdict rather than a decimal.
+  const PERIOD_S = 175.8;
+  const FLOOR = FLOORS.cellHeightPx;
+
+  /** A phase that presents one cell `height` px tall, with its centre at `x`. */
+  const presents = (
+    x: number,
+    height: number,
+    extra: Partial<SpinPhase> = {},
+  ): SpinPhase => ({
+    t: x / 10,
+    presented: 1,
+    x,
+    medianHeightPx: height,
+    artFraction: 1,
+    ...extra,
+  });
+  /** A phase where the cell is turned away: nothing front-facing, so no median and no art reading. */
+  const away = (x: number): SpinPhase => ({
+    t: x / 10,
+    presented: 0,
+    x,
+    medianHeightPx: null,
+    artFraction: null,
+  });
+  const pick = (phases: readonly SpinPhase[]) =>
+    selectSpinPhases(phases, { periodS: PERIOD_S });
+  /** What W1 scores on the phase the sweep picked — the verdict the row would print. */
+  const w1On = (phases: readonly SpinPhase[]) => {
+    const picked = pick(phases);
+    if (!picked.ok) throw new Error(`sweep refused: ${picked.reason}`);
+    const height = phases[picked.w1Phase]!.medianHeightPx!;
+    return evaluateW1([{ slug: "segovia", cells: [{ height, frontFacing: true }] }]).status;
+  };
+
+  describe("rule 4 — W1 scores the worst counted phase, never the first or the best", () => {
+    // Counted phases 80, 18, 120 px: the first and the best clear the 24 px floor by 56 and 96 px,
+    // the worst sits 6 px under it. Every spelling but "lowest" greens this sweep. The 90 px phase is
+    // the leading edge, which rule 3 never counts — it is there so the first *counted* phase is the
+    // 80 rather than the worst (DEC-912 F1: without it "first counted" and "worst" were one phase,
+    // and the first-phase mutant died only on rule 3's row).
+    const sweep = [
+      away(0),
+      presents(50, 90),
+      presents(100, 80),
+      presents(200, FLOOR - 6),
+      presents(300, 120),
+      away(400),
+    ];
+
+    it("reds the sweep on its worst phase", () => {
+      const picked = pick(sweep);
+      expect(picked.ok && picked.sweep.scorable).toBe(3);
+      expect(picked.ok && picked.w1Phase).toBe(3);
+      expect(picked.ok && picked.sweep.medianHeightPx).toEqual({ worst: 18, best: 120 });
+      expect(w1On(sweep)).toBe("fail");
+    });
+
+    it("has a first and a best counted phase that would each have passed", () => {
+      // The precondition that makes the row above discriminating, stated rather than assumed: the
+      // phases a wrong rule would pick are counted ones, and each greens W1 on its own.
+      const counted = sweep.filter((p, i) => i > 0 && p.presented > 0 && sweep[i - 1]!.presented > 0);
+      expect(counted.map((p) => p.medianHeightPx)).toEqual([80, FLOOR - 6, 120]);
+      for (const height of [counted[0]!.medianHeightPx!, Math.max(...counted.map((p) => p.medianHeightPx!))]) {
+        expect(evaluateW1([{ slug: "s", cells: [{ height, frontFacing: true }] }]).status).toBe("pass");
+      }
+    });
+  });
+
+  describe("rule 3 — a phase counts only if its predecessor presented", () => {
+    it("steps over the leading edge of a presenting run, however low it reads", () => {
+      // The 10 px phase is the first of its run — mid cross-fade on the live renderer — and it is the
+      // lowest reading in the sweep. Counting it would red a healthy world for the fade.
+      const sweep = [away(0), presents(100, 10), presents(200, 80), presents(300, 60), away(400)];
+      const picked = pick(sweep);
+      expect(picked.ok && picked.w1Phase).toBe(3);
+      expect(picked.ok && picked.sweep.scorable).toBe(2);
+      expect(w1On(sweep)).toBe("pass");
+    });
+
+    it("never counts the first sample, which has no predecessor", () => {
+      const sweep = [presents(0, 10), presents(100, 80), presents(200, 90)];
+      const picked = pick(sweep);
+      expect(picked.ok && picked.w1Phase).toBe(1);
+    });
+
+    it("reports a comb too coarse to see two presenting phases in a row as a harness defect", () => {
+      const sweep = [away(0), presents(100, 80), away(200), presents(300, 90), away(400)];
+      expect(pick(sweep)).toMatchObject({ ok: false, reason: "no-settled-phase" });
+    });
+  });
+
+  describe("rule 2 — zero presenting phases is a named failure, not N/A", () => {
+    it("fails as never-presented on a scene the travel check proves was turning", () => {
+      const sweep = [away(0), away(100), away(200), away(300)];
+      const picked = pick(sweep);
+      // Not the harness-defect reason and not a pass: the renderer never showed the card.
+      expect(picked).toMatchObject({ ok: false, reason: "never-presented" });
+    });
+  });
+
+  describe("rule 1 — no projected-centre travel is spin-sweep-frozen", () => {
+    it("refuses a sweep whose cell never moved, even one that presented throughout", () => {
+      const sweep = [presents(500, 80), presents(500, 80), presents(500, 80)];
+      expect(pick(sweep)).toMatchObject({ ok: false, reason: "spin-sweep-frozen", travelPx: 0 });
+    });
+
+    it("is checked before never-presented, because a frozen scene reads the same as a hidden card", () => {
+      // One cell, no rotation, turned away: without the travel check first this would be filed as
+      // the renderer defect `never-presented` when it is the harness that sampled one phase.
+      const sweep = [away(500), away(500), away(500)];
+      expect(pick(sweep)).toMatchObject({ reason: "spin-sweep-frozen" });
+    });
+
+    it("believes a sweep that travelled exactly the minimum", () => {
+      const sweep = [presents(0, 80), presents(SPIN_SWEEP_MIN_TRAVEL_PX, 80)];
+      expect(pick(sweep).ok).toBe(true);
+    });
+  });
+
+  describe("W4 reads its own worst counted phase, not W1's (item 3)", () => {
+    it("scores the phase that showed no art even when W1's worst phase showed all of it", () => {
+      // W1's worst is phase 2 (60 px) with its art landed; phase 3 is taller and its cell wants art
+      // it is not showing. Reading W4 on W1's frame would print `artFraction 1` for this sweep.
+      const sweep = [
+        away(0),
+        presents(100, 90),
+        presents(200, 60, { artFraction: 1 }),
+        presents(300, 95, { artFraction: 0 }),
+      ];
+      const picked = pick(sweep);
+      expect(picked.ok && picked.w1Phase).toBe(2);
+      expect(picked.ok && picked.w4Phase).toBe(3);
+      expect(picked.ok && picked.sweep.artFraction).toMatchObject({ worst: 0, best: 1 });
+    });
+
+    it("hands W4 the frame of its own worst phase, not the frame W1 scored (F4)", () => {
+      // The driver scores W4 on `sweepFrames(...).w4Frame`. The live rows cannot tell the two
+      // frames apart (artFraction 1 at every counted phase), so this fixture is built to: the
+      // worst-height phase shows all its art, the worst-art phase is the tallest counted one.
+      const sweep = [
+        away(0),
+        presents(100, 90, { artFraction: 0.75 }),
+        presents(200, 60, { artFraction: 1 }),
+        presents(300, 95, { artFraction: 0 }),
+        presents(400, 80, { artFraction: 0.5 }),
+      ];
+      const picked = pick(sweep);
+      if (!picked.ok) throw new Error(`sweep refused: ${picked.reason}`);
+      const frames = sweep.map((_, i) => ({ phase: i }));
+      const swept = sweepFrames(frames, picked);
+      if (!swept.ok) throw new Error(`frames refused: ${swept.detail}`);
+      expect(swept.frame).toBe(frames[2]);
+      expect(swept.w4Frame).toBe(frames[3]);
+      expect(sweep[swept.w4Frame.phase]!.artFraction).toBe(picked.sweep.artFraction.worst);
+    });
+
+    it("refuses a W4 phase outside the frames as no-settled-phase, never W1's frame (DEC-919)", () => {
+      // Scored on W1's frame, this row would read GREEN on a phase W4 never chose.
+      const frames = [{ phase: 0 }, { phase: 1 }, { phase: 2 }];
+      const swept = sweepFrames(frames, { w1Phase: 2, w4Phase: 3 });
+      expect(swept).toMatchObject({ ok: false, reason: "no-settled-phase" });
+      expect(swept).not.toHaveProperty("w4Frame");
+      expect(!swept.ok && swept.detail).toContain("3 frames");
+    });
+
+    it("refuses a W1 phase outside the frames as no-settled-phase too (DEC-921)", () => {
+      const frames = [{ phase: 0 }, { phase: 1 }, { phase: 2 }];
+      const swept = sweepFrames(frames, { w1Phase: 5, w4Phase: 1 });
+      expect(swept).toMatchObject({ ok: false, reason: "no-settled-phase" });
+      expect(swept).not.toHaveProperty("frame");
+    });
+
+    it("steps over a counted phase where nothing wants art, and falls back to W1's phase when every one is", () => {
+      const some = pick([away(0), presents(100, 60, { artFraction: null }), presents(200, 70, { artFraction: 0.5 })]);
+      expect(some.ok && some.w4Phase).toBe(2);
+      const none = pick([away(0), presents(100, 60, { artFraction: null }), presents(200, 70, { artFraction: null })]);
+      expect(none.ok && none.w4Phase).toBe(none.ok && none.w1Phase);
+      expect(none.ok && none.sweep.artFraction.worst).toBeNull();
+    });
+
+    it("reads the fraction with W4's own arithmetic", () => {
+      const cell = (wantsArt: boolean, showingArt: boolean) => ({
+        frontFacing: true,
+        onScreen: true,
+        wantsArt,
+        showingArt,
+      });
+      expect(artFractionOf([cell(true, true), cell(true, false), cell(false, false)])).toBe(0.5);
+      expect(artFractionOf([cell(false, false)])).toBeNull();
+    });
+  });
+
+  describe("the pixel witness reads its own worst counted phase (item 4)", () => {
+    it("takes the lowest contrast over the counted phases, and is absent on a sweep that took none", () => {
+      const witnessed = pick([
+        presents(0, 80, { contrastDeltaE: 1 }),
+        presents(100, 80, { contrastDeltaE: 57 }),
+        presents(200, 80, { contrastDeltaE: 21 }),
+      ]);
+      // Phase 0 is the leading edge and its 1 is not counted; the worst counted phase is the 21.
+      expect(witnessed.ok && witnessed.sweep.contrastDeltaE).toMatchObject({ worst: 21, best: 57 });
+      const bare = pick([presents(0, 80), presents(100, 80)]);
+      expect(bare.ok && "contrastDeltaE" in bare.sweep).toBe(false);
+    });
+
+    it("is null when a counted phase could not be read, rather than stepping over it", () => {
+      // **The 0 ahead of the `null` is what makes this row discriminating.** A comparison against
+      // `null` coerces it to 0, so a `lowest` that was never told about unreadable phases still
+      // lands on the `null` whenever every real reading is positive — the first cut of this row
+      // passed on that coercion with the rule deleted (mutant in `mutate-spin-sweep.mjs`). Against
+      // a real 0 the coercion ties and keeps the 0, so only the explicit rule yields `null`.
+      const picked = pick([
+        presents(0, 80, { contrastDeltaE: 57 }),
+        presents(100, 80, { contrastDeltaE: 0 }),
+        presents(200, 80, { contrastDeltaE: null }),
+      ]);
+      expect(picked.ok && picked.sweep.contrastDeltaE?.worst).toBeNull();
+      expect(picked.ok && picked.sweep.contrastDeltaE?.best).toBeNull();
+    });
+
+    it("treats a counted phase with the field left off as unreadable on a witnessed sweep", () => {
+      const picked = pick([
+        presents(0, 80, { contrastDeltaE: 57 }),
+        presents(100, 80, { contrastDeltaE: 57 }),
+        presents(200, 80),
+      ]);
+      expect(picked.ok && picked.sweep.contrastDeltaE?.worst).toBeNull();
+    });
+
+    it("folds into W1 as a second measure that fails below the floor and on an unreadable plane", () => {
+      const cells = [{ height: 80, frontFacing: true }];
+      const witness = (contrastDeltaE: number | null) =>
+        evaluateW1([{ slug: "segovia", cells, contrastDeltaE }]).measures.find(
+          (m) => m.key === "centreContrastDeltaE",
+        );
+      expect(witness(FLOORS.cellDrawnDeltaE + 1)?.status).toBe("pass");
+      expect(witness(FLOORS.cellDrawnDeltaE - 1)?.status).toBe("fail");
+      expect(witness(null)?.status).toBe("fail");
+      // The verdict above would fail through coercion alone (`null` reads as 0 in a comparison); what
+      // the explicit branch buys is the reason, which must say the witness could not read the plane.
+      expect(witness(null)?.label).toMatch(/unreadable on segovia/);
+      // ...and the height half is untouched by it: the blind spot the control demonstrates.
+      expect(
+        evaluateW1([{ slug: "segovia", cells, contrastDeltaE: 0 }]).measures.find(
+          (m) => m.key === "minMedianCellHeightPx",
+        )?.status,
+      ).toBe("pass");
     });
   });
 });
@@ -1305,6 +1568,69 @@ describe("W4 — art resolves without exhausting", () => {
     bytesReserved: 0,
     byteBudget: 67_108_864,
   };
+
+  describe("the eviction rate prints its own tail drift (DEC-861 item 10)", () => {
+    const row = {
+      criterion: "W4",
+      measure: "evictionsPerSecond",
+      expect: "GREEN",
+    } as const;
+
+    it("carries the drift from the tail onto the measure, through the fold, into the row's line", () => {
+      const folded = foldCriteria([
+        {
+          slug: "dominaria",
+          criterion: evaluateW4(
+            cells(100, 100),
+            churningAt(18),
+            PROTOTYPE_POOL,
+            FRESH_SESSION,
+            HEALTHY_EXIT,
+          ),
+        },
+      ]);
+      const ev = folded?.measures.find((m) => m.key === "evictionsPerSecond");
+      expect(typeof ev?.drift).toBe("number");
+      expect(checkControlRow([folded!], row).detail).toMatch(/tail drift \d+\.\d% = ±\d+\.\d\d/);
+    });
+
+    it("states the band the review found the 0.42/s gap inside", () => {
+      // DEC-863's two acceptance draws, one per tree: 18.26/s at 3.8% drift and 17.84/s at 0.5%.
+      // The first draw's band alone is ±0.69/s, wider than the gap — which is the reading the line
+      // exists to make impossible to miss.
+      const draw = (value: number, drift: number): Criterion => ({
+        id: "W4",
+        title: "fixture",
+        status: "pass",
+        pass: true,
+        measures: [
+          {
+            key: "evictionsPerSecond",
+            label: "fixture",
+            value,
+            bound: FLOORS.evictionsPerSecond,
+            direction: "max",
+            status: "pass",
+            pass: true,
+            insufficientReason: null,
+            scored: true,
+            fold: "worst",
+            drift,
+          },
+        ],
+      });
+      expect(checkControlRow([draw(18.26, 0.038)], row).detail).toContain("tail drift 3.8% = ±0.69");
+      expect(checkControlRow([draw(17.84, 0.005)], row).detail).toContain("tail drift 0.5% = ±0.09");
+      expect(18.26 - 17.84).toBeLessThan(18.26 * 0.038 + 17.84 * 0.005);
+    });
+
+    it("prints no band on an out-of-domain rate, whose reason already says why", () => {
+      const off = evaluateW4(cells(100, 100), churningAt(18), { layers: 128, resident: 128 }, FRESH_SESSION, HEALTHY_EXIT);
+      const ev = off.measures.find((m) => m.key === "evictionsPerSecond");
+      expect(ev?.status).toBe("insufficient");
+      expect(ev?.drift).toBeUndefined();
+    });
+  });
 
   it("goes RED on its control — ?artThreshold=fixed24 — reproducing tether-surface", () => {
     const { drawn, wanted, evicted } = PROTOTYPE.tetherSurface;
@@ -2211,10 +2537,11 @@ describe("W4 — art resolves without exhausting", () => {
       }
       // Named from every side so the margins are on the record rather than implied, and all four
       // are measured readings: 14 is DEC-834's witness; 75 the live `?layers=128` row as the gate
-      // now measures it (DEC-899), inside the 75–82 the row reads across four instruments
-      // (DEC-882/889/894/896) — it read 124 at the DEC-845 arrival pose, before PR #85 and DEC-882;
+      // now measures it (DEC-899) — wanted 76–77, drawn 75–77, admitted 76–84 over the live draws
+      // after DEC-882 (DEC-889/894/896/868/907/912) — it read 124 at the DEC-845 arrival pose,
+      // before PR #85 and DEC-882;
       // 141 the worst in-domain world of the 45-world acceptance tour (forgotten-realms, 146 on
-      // DEC-837's tour and 141 on DEC-890's); 941 dominaria at the shipped pool.
+      // DEC-837's tour and 141 on DEC-890's); 941 dominaria at the shipped pool (n = 1, DEC-837).
       expect(tier4.measures.find((m) => m.key === "artCellsShowing")!.value!).toBe(75);
       expect(32 / 14).toBeGreaterThan(2.2);
       expect(75 / 32).toBeGreaterThan(2.3);
@@ -2241,6 +2568,50 @@ describe("W4 — art resolves without exhausting", () => {
       expect(oneCard.measures.find((m) => m.key === "artFraction")?.status).toBe(
         "pass",
       );
+    });
+
+    it("folds a one-card world to the verdict its own plane gives, not to pass (DEC-861 item 6)", () => {
+      // **The per-plane criterion and the roster fold used to disagree on exactly this world.** Its
+      // `artFraction` passes and its `artCellsShowing` is out of domain, so the plane reads
+      // `insufficient` — and the fold, which only went `insufficient` when *every* measure was,
+      // folded the same one plane to `pass`. Both now read one rule (`criterionStatus`).
+      const oneCard = evaluateW4(
+        frameOf(1, 1, 1),
+        settled(0),
+        { layers: 1_024, resident: 1 },
+        FRESH_SESSION,
+        HEALTHY_EXIT,
+      );
+      expect(oneCard.status).toBe("insufficient");
+      const folded = foldCriteria([{ slug: "segovia", criterion: oneCard }]);
+      expect(folded?.status).toBe(oneCard.status);
+
+      // What the row scores is unchanged: `one-card-world` asserts W4 per measure, and the measure
+      // that is defined at n = 1 still reads GREEN through the fold.
+      expect(
+        checkControlRow([folded!], {
+          criterion: "W4",
+          measure: "artFraction",
+          expect: "GREEN",
+        }).ok,
+      ).toBe(true);
+
+      // The control: the rule is "any scored measure out of domain *over the roster*", not "any
+      // plane out of domain". Beside a world that is in the term's domain the folded term is real,
+      // and the criterion passes.
+      const large = evaluateW4(
+        frameOf(200, 100, 100),
+        settled(0),
+        { layers: 1_024, resident: 1_024 },
+        FRESH_SESSION,
+        HEALTHY_EXIT,
+      );
+      const both = foldCriteria([
+        { slug: "segovia", criterion: oneCard },
+        { slug: "large", criterion: large },
+      ]);
+      expect(both?.measures.find((m) => m.key === "artCellsShowing")?.status).toBe("pass");
+      expect(both?.status).toBe("pass");
     });
 
     it("takes its domain from the frame's geometry, never from the want set", () => {
@@ -2327,9 +2698,9 @@ describe("W4 — art resolves without exhausting", () => {
         const fraction = w4.measures.find((m) => m.key === "artFraction");
         const absolute = w4.measures.find((m) => m.key === "artCellsShowing");
 
-        // `artFraction` sits at its ceiling — the pool has room for every cell that asked — and the
-        // absolute count sits at less than half the floor on the same frame. That disagreement is
-        // the row's whole argument. `a-ratio-is-blind-to-its-own-denominator`.
+        // `artFraction` sits at its ceiling — no turnover under the freeze: all 14 that asked have
+        // drawn — and the absolute count sits at less than half the floor on the same frame. That
+        // disagreement is the row's whole argument. `a-ratio-is-blind-to-its-own-denominator`.
         expect(fraction?.value).toBe(1);
         expect(fraction?.status).toBe("pass");
         expect(absolute?.value).toBe(14);
@@ -2351,7 +2722,7 @@ describe("W4 — art resolves without exhausting", () => {
         expect(w4.belowShippedPool).toBe(true);
       });
 
-      it("reds artFraction on the settled frame, with room in the pool", () => {
+      it("reds artFraction on the moving held frame, with room in the pool", () => {
         // **The moving arm, pinned here because the gate row no longer takes it.** The held sweep
         // (DEC-896): 16 wanted and 14 drawn on 23 of 24 draws across capacities 16…31, 3 draws
         // each. The ratio reads 0.875 because of turnover over the hold: the scene turns and two
@@ -3365,7 +3736,12 @@ describe("W4 — art resolves without exhausting", () => {
         overshooting("amonkhet"),
       ]);
 
-      expect(folded?.status).toBe("pass");
+      // Not `fail`: the overshoot is reported and cannot red the fold. It reads `insufficient`, not
+      // `pass`, because a 128-layer pool is outside the eviction half's domain — which is what each
+      // plane already said. This line asserted `pass` until DEC-861 item 6 made the fold read the
+      // per-plane rule; it was pinning the disagreement, not the subject of this row.
+      expect(folded?.status).toBe("insufficient");
+      expect(folded?.status).toBe(overshooting("alara").criterion.status);
       // ...and it is still *present* in the fold, carrying its worst-plane value, because
       // `reported_only` means reported.
       const demand = folded?.measures.find(
@@ -4072,6 +4448,25 @@ describe("the negative-control matrix", () => {
       measure: "minMedianCellHeightPx",
       expect: "GREEN",
     },
+    // **The one-card row's pixel witness and its control (DEC-861 item 4).** Until these, every
+    // measure the n = 1 row scored was computed before a fragment was shaded, so a world that stopped
+    // drawing read the same as a healthy one. The GREEN is the healthy reading; the RED is the same
+    // world with the cell program blanked, where the height and art fraction stay GREEN and only
+    // this measure moves.
+    {
+      row: "W1 · one-card world (pixel witness)",
+      id: "one-card-world",
+      criterion: "W1",
+      measure: "centreContrastDeltaE",
+      expect: "GREEN",
+    },
+    {
+      row: "W1 · one-card world, cell draw blanked",
+      id: "one-card-no-cell-draw",
+      criterion: "W1",
+      measure: "centreContrastDeltaE",
+      expect: "RED",
+    },
     {
       // **The gate's one-card row asserts the neighbour-ΔE half, and this entry used to name the
       // lightness one.** Nothing caught it: the mirror was checked against nothing but itself
@@ -4204,7 +4599,8 @@ describe("the negative-control matrix", () => {
       "no-seams": 4,
       "w3-floor-shipped": 1,
       "w3-floor-control": 1,
-      "one-card-world": 5,
+      "one-card-world": 6,
+      "one-card-no-cell-draw": 3,
       "w5-narrow": 1,
       "w5-wide": 1,
     };
@@ -4217,13 +4613,15 @@ describe("the negative-control matrix", () => {
     ).toEqual(CENSUS);
   });
 
-  it("has eight expected-RED rows, ten expected-GREEN and six expected-N/A", () => {
+  it("has nine expected-RED rows, eleven expected-GREEN and six expected-N/A", () => {
     // The RED count is unchanged across DEC-882 and DEC-890 and that is a coincidence worth naming,
     // because it is the one number a reader might use to conclude nothing moved: DEC-882 retired the
     // reduced-motion RED and DEC-890 added `?layers=24` in its place. The row-level assertion below
     // is what actually pins which RED the absolute term has. `a-total-is-invariant-under-misrouting`.
-    expect(MATRIX.filter((r) => r.expect === "RED")).toHaveLength(8);
-    expect(MATRIX.filter((r) => r.expect === "GREEN")).toHaveLength(10);
+    // DEC-861 added one RED and one GREEN: the one-card row's pixel witness and the draw-blank
+    // control that falsifies it.
+    expect(MATRIX.filter((r) => r.expect === "RED")).toHaveLength(9);
+    expect(MATRIX.filter((r) => r.expect === "GREEN")).toHaveLength(11);
     expect(MATRIX.filter((r) => r.expect === "N/A")).toHaveLength(6);
   });
 
@@ -4253,7 +4651,7 @@ describe("the negative-control matrix", () => {
     // Three GREEN partners, and none is a duplicate of another: the unmodified build; kamigawa, the
     // term saying a page rendered at all so the `N/A` beside it is a reading; and
     // `layers-128-reduced`, the one DEC-882 turned from the RED into a partner. (`?layers=128`, the
-    // term at its tightest on a healthy build at 75–82 against 32, is mirrored by its folded W4
+    // term at its tightest on a healthy build at 75–77 drawn against 32, is mirrored by its folded W4
     // colour and so is not among these.) Counted rather than named because a rename must not
     // silently drop one.
     expect(cells.filter((r) => r.expect === "GREEN")).toHaveLength(3);
@@ -4292,10 +4690,20 @@ describe("the negative-control matrix", () => {
       "demandFitsCapacity",
       "homeLabels",
       "worldsNeverLabelled",
+      "centreContrastDeltaE",
     ]);
     for (const row of MATRIX) {
       if ("measure" in row) expect(EMITTED.has(row.measure)).toBe(true);
     }
+    // The pixel witness is emitted only by a swept visit, so the list above is not evidence that it
+    // is emitted at all. This is: W1 carries it exactly when a plane brings a witness reading.
+    const keys = (planes: Parameters<typeof evaluateW1>[0]) =>
+      evaluateW1(planes).measures.map((m) => m.key);
+    const cell = { height: 30, frontFacing: true };
+    expect(keys([{ slug: "a", cells: [cell], contrastDeltaE: 50 }])).toContain(
+      "centreContrastDeltaE",
+    );
+    expect(keys([{ slug: "a", cells: [cell] }])).not.toContain("centreContrastDeltaE");
   });
 
   it("closes W5's coverage gap with a control the harness already owns", () => {
@@ -4506,6 +4914,84 @@ describe("the negative-control matrix", () => {
       expect(unfolded.ok).toBe(true);
       expect(unfolded.detail).not.toContain("in domain");
     });
+  });
+});
+
+describe("the roster fold counts a failure that carries no value (DEC-861 item 5)", () => {
+  // **Hand-built planes, because no evaluator produces this shape today** — which is the point of
+  // pinning it now. `measure()` scores a missing value as `fail`, not `insufficient` (W1's
+  // "should have been measured and was not"), and the fold used to key its domain filter on the
+  // value, so such a plane was dropped with the out-of-domain ones. The reviewer's reproduction on
+  // DEC-856: `[pass 100, fail null]` folded to `pass`, `[fail null]` to `insufficient`.
+  const plane = (
+    status: "pass" | "fail" | "insufficient",
+    value: number | null,
+    fold: "worst" | "mean" = "worst",
+    label = "fixture",
+  ): Criterion => ({
+    id: "W1",
+    title: "fixture",
+    status,
+    pass: status === "pass",
+    measures: [
+      {
+        key: "fixtureMeasure",
+        label,
+        value,
+        bound: 50,
+        direction: "min",
+        status,
+        pass: status === "pass",
+        insufficientReason: status === "insufficient" ? "fixture: out of domain" : null,
+        scored: true,
+        fold,
+      } satisfies Measure,
+    ],
+  });
+  const folded = (...planes: [string, Criterion][]) =>
+    foldCriteria(planes.map(([slug, criterion]) => ({ slug, criterion })));
+
+  it("reds a roster holding one, however good the others are", () => {
+    const f = folded(
+      ["good", plane("pass", 100, "worst", "the good world's reading")],
+      ["missing", plane("fail", null, "worst", "the missing world's reading")],
+    );
+    const m = f?.measures[0];
+    expect(f?.status).toBe("fail");
+    expect(m?.status).toBe("fail");
+    expect(m?.worstPlane).toBe("missing");
+    // The folded measure describes the plane that failed, not the first plane in the roster.
+    expect(m?.label).toBe("the missing world's reading");
+    expect(m?.failingPlanes).toEqual(["missing"]);
+    // Counted as scored, because it was — as a failure. Reporting it out of domain is the defect.
+    expect(m?.scoredPlanes).toBe(2);
+    expect(m?.insufficientPlanes).toBe(0);
+  });
+
+  it("reds it alone, rather than calling a failure out of domain", () => {
+    const f = folded(["missing", plane("fail", null)]);
+    expect(f?.status).toBe("fail");
+    expect(f?.measures[0]?.status).toBe("fail");
+  });
+
+  it("still steps over a plane that is genuinely out of domain", () => {
+    // The control: the fix must not widen into "any null is a failure". An `insufficient` plane
+    // also carries no value, and it stays out of the verdict and in the count.
+    const f = folded(["good", plane("pass", 100)], ["away", plane("insufficient", null)]);
+    expect(f?.status).toBe("pass");
+    expect(f?.measures[0]?.insufficientPlanes).toBe(1);
+    expect(f?.measures[0]?.scoredPlanes).toBe(1);
+  });
+
+  it("is checked before a mean-folded measure is dispatched", () => {
+    // A mean cannot be taken over a value that is not there, and taking it over the planes that
+    // remain would pass the roster on the survivors — the same silent pass, through W3's fold.
+    const f = folded(
+      ["good", plane("pass", 100, "mean")],
+      ["missing", plane("fail", null, "mean")],
+    );
+    expect(f?.measures[0]?.status).toBe("fail");
+    expect(f?.status).toBe("fail");
   });
 });
 
