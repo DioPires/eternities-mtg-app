@@ -1398,13 +1398,16 @@ export const MATRIX = [
       // other half of W4 exists to forbid. The bound is derived at 1,024 and is scored there alone.
       { criterion: 'W4', measure: 'evictionsPerSecond', expect: 'N/A' },
       // The tier-4 rung is where the absolute term is closest to binding on a *healthy* build among
-      // the live rows — **124** cells of art against a floor of 32, 3.9× above — so this is the row
-      // that says the floor leaves the smallest shipped pool room to pass. **This row's RED partner
-      // is now live and it is one row down**: `layers-128-reduced` is this same pool with the OS
-      // reduced-motion preference emulated, and it reads 14 against the same floor on the same seam.
-      // The pair differs in one harness parameter, which is what makes the 124 here mean something
-      // (DEC-843; this comment used to say the witness was unreachable, which was true only of
-      // *query* seams).
+      // the live rows, so this is the row that says the floor leaves the smallest shipped pool room
+      // to pass. It read **124** at the 63.13° arrival pose, and **that figure is expired**: #85
+      // moved the pose to 59.91°, the 64-bucket quantile collapsed the want set, and this read
+      // **17**, below the floor — the DEC-876 RED. Re-measured at 256 buckets (DEC-882): **76**
+      // cells against a floor of 32, 2.4× above, over a matrix draw and five step-1 draws reading
+      // 76–82, and **75** on both of DEC-899's draws after the merge with `c49315c`. Quote 75–82.
+      //
+      // **Its RED partner one row down no longer reds.** `layers-128-reduced` is this same pool with
+      // the OS reduced-motion preference emulated; it read 14 and now reads 78. See that row for why
+      // the pair no longer separates the ratio from the absolute count, and what is owed instead.
       //
       // **124 is this row's number and not the build's, which is why it moved** (DEC-845, rider 1 of
       // the DEC-844 review). This comment said `~127` and that reading was taken before the
@@ -1418,25 +1421,34 @@ export const MATRIX = [
       // **The overshoot the reachable bar forgives, asserted so it cannot go quiet.** Ruling
       // `demand_measure_scored` is `reported_only`, so this measure cannot colour the row — which
       // makes it exactly the kind of number that stops being read. Naming it here keeps it
-      // falsifiable: the policy admits **207–209** cells into a 128-layer pool, **1.617–1.633×**
-      // capacity, and the day it stops doing that this row goes red and someone has to look.
+      // falsifiable: it read RED at ~205 cells into a 128-layer pool, 1.60× capacity, and said the
+      // day the policy stopped doing that this row would go red and someone would have to look.
       //
-      // **Draws disagree — so this one is a range and not a figure** (DEC-847, re-measured
-      // post-cutover; it read ~205 / 1.60× before). The want set is the adaptive threshold's output
-      // and it lands a couple of cells apart run to run: 207, 209, 208 and 207 across the four
-      // post-cutover draws on this harness (1.617×, 1.633×, 1.625×, 1.617×). `artCellsShowing`
-      // above moves far less but it does move — **123–124**, 124 on the first three draws and 123
-      // on the fix leg's — so neither is a constant and neither is quoted as one. Quote the range;
-      // a single value here would be one draw wearing the authority of a constant.
+      // **Dated history, not the live expectation.** DEC-847 re-drew the RED post-cutover as a
+      // range: **207–209** cells into 128, **1.617–1.633×** (207, 209, 208, 207 across four draws),
+      // with `artCellsShowing` above at **123–124**. Every one of those figures was drawn on `main`
+      // at or before `7dfea1d`, on the 64-bucket grid, and none of them is what this row reads now.
       //
-      // **Every figure above was drawn on `main` at or before `7dfea1d`, and `main` has since moved
-      // out from under them — see DEC-876.** PR #85 (DEC-774, spin about the plane-local disc
-      // normal) collapses this rung's want set to 16 cells and its drawn count to 14, so both
-      // expectations below invert and the row goes RED on `a0eec54` and on anything merged with it.
-      // The readings are left as taken rather than refitted: the row is the control and the tree is
-      // what changed, and a control refitted to the reading it was built to catch stops being one.
-      // Re-derive these ranges only once DEC-876 rules the new want set intended.
-      { criterion: 'W4', measure: 'demandFitsCapacity', expect: 'RED' },
+      // **That day came, and this is someone looking (DEC-882).** The expectation is now GREEN, and
+      // it is a *deliberate* flip, not a re-fit — the bound is still 1 and no floor moved. DEC-847
+      // left its ranges as taken until DEC-876 ruled the new want set intended; DEC-882 is that
+      // ruling. Two separate things retired the RED, and only the second is this leg's doing:
+      //
+      // 1. **It was already failing on `main`.** At `a0eec54` this row reads **0.1328** (17 cells
+      //    into 128) and the matrix records `expected RED but went GREEN`. PR #85 moved the arrival
+      //    colatitude 63.13° → 59.91°, the tallest cells crossed a 64-bucket edge, and demand
+      //    collapsed. The measure went green because the policy had stopped admitting *anything*,
+      //    which is the opposite of the health this expectation was written to deny.
+      // 2. **It is green for the right reason now.** At 256 buckets the quantile can land inside the
+      //    pool, so this reads **0.6016** — 77 cells wanted of 128, measured — and `artCellsShowing`
+      //    above reads 75–76 against its floor of 32 on the same frame (76 at DEC-882, 75 on both of
+      //    DEC-899's draws, 0.6016 on all three). Demand fitting capacity *while
+      //    the pool is well used* is the state §1.6 is written to produce.
+      //
+      // So the RED's premise expired with the mechanism it described. What replaces it as a tripwire
+      // is the pair: if the policy ever goes back to overshooting, this reads above 1 and reds, and
+      // if it starves instead, `artCellsShowing` reds. Neither failure mode is unwatched.
+      { criterion: 'W4', measure: 'demandFitsCapacity', expect: 'GREEN' },
     ],
   },
   {
@@ -1454,11 +1466,13 @@ export const MATRIX = [
     //
     // **kamigawa, and the subject is chosen for margin rather than for tightness.** 917 cards, a
     // high-water mark of 265 of 1,024 — 26% of capacity — so it is nowhere near the boundary it is
-    // asserted to sit below, and it still presents **202–203** front-facing on-screen cells, which
-    // puts it inside `artCellsShowing`'s 128-cell domain. Ranged for the same reason the row above
-    // ranges 207–209 (DEC-869 R-b): 202 on three draws, 203 on DEC-869's, and a value that moves
-    // between draws quoted as a constant is one draw wearing that authority. The margin to 128
-    // swallows the spread either way. The tightest subject available (ravnica, 606) would be the
+    // asserted to sit below, and it still presents **201–203** front-facing on-screen cells, which
+    // puts it inside `artCellsShowing`'s 128-cell domain. Ranged because the count moves between
+    // draws and a value that moves quoted as a constant is one draw wearing that authority (DEC-869
+    // R-b): 202 on three draws and 203 on DEC-869's before PR #88 merged, then 201 on the PR #88
+    // reviewer's two draws after a `main` merge and 201 on both of DEC-899's (the DEC-882 tree
+    // merged with `c49315c`, 194 of them drawing art). The margin to 128 swallows the spread either
+    // way. The tightest subject available (ravnica, 606) would be the
     // flakiest, and a control that flickers is not a control.
     //
     // **The two GREEN expectations are not decoration**: an `N/A`-only row cannot tell a working
@@ -1513,7 +1527,28 @@ export const MATRIX = [
     reducedMotion: true,
     subject: 'dominaria',
     expect: [
-      { criterion: 'W4', measure: 'artCellsShowing', expect: 'RED' },
+      // **This read RED — 14 cells against the floor of 32 — and DEC-882 took its witness away.**
+      //
+      // The row's argument needs a frame where `artFraction` sits at its ceiling while the absolute
+      // count sits under the floor, because that disagreement is what proves a ratio cannot see its
+      // own denominator being chosen by the policy it grades. The 14 came from the 64-bucket grid
+      // having no edge to place inside a 128-layer pool at this pose: it admitted 14–17 cells or
+      // ~291, nothing between. At 256 buckets it admits **78** here, measured, so the want set is no
+      // longer collapsed and the two halves of W4 agree.
+      //
+      // **The expectation is therefore GREEN, and the row is no longer a falsifier for the floor.**
+      // Left at RED it would fail on every healthy build; flipped to GREEN it still pins the
+      // *domain* (dominaria presents ~1,388 ≥ 128, so the measure is scored rather than `N/A`) and
+      // still reds if the reduced-motion path ever starves the want set again. What it no longer
+      // does is demonstrate the ratio's blindness on a live frame, and nothing else in the matrix
+      // does that either — `one-card-world` pins the domain rule, not the disagreement.
+      //
+      // **That gap is real and is not closed here.** It wants a row that starves the want set by a
+      // mechanism the quantile's resolution cannot undo, which is a different measurement from this
+      // leg's, and the person whose change removed the last falsifier should not be the only one to
+      // design its replacement. Routed to the board at the DEC-882 hand-back.
+      // `a-corpus-change-can-retire-a-sibling-control`.
+      { criterion: 'W4', measure: 'artCellsShowing', expect: 'GREEN' },
       // **GREEN, and this is the expectation that carries the row's argument.** A reader who expects
       // a starved frame to red W4 outright will read this as a mistake; it is the finding. The ratio
       // is satisfied *because* the denominator collapsed with the numerator, which is precisely the

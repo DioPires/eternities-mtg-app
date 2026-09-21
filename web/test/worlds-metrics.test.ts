@@ -2170,16 +2170,16 @@ describe("W4 — art resolves without exhausting", () => {
 
     it("stays green on the healthy frames at both ends of the ladder", () => {
       // A term that reds a correct build is a tripwire, not a control. The two live readings it has
-      // to clear: the shipped 1,024-layer baseline at ~942 cells of art, and the tier-4 rung at 124
+      // to clear: the shipped 1,024-layer baseline at ~942 cells of art, and the tier-4 rung at 75
       // — the smallest shipped pool, where the floor is closest to binding on a healthy build.
-      // (The rung read ~126–127 until DEC-843 attached a 3 s read-back to that gate row; the frame
-      // is now taken after the hold and the adaptive threshold has kept rising through it. DEC-845
-      // re-measured on the shipping harness: 124, two draws.)
       //
-      // The want set beside it is the figure that moved: 209 cells on the post-cutover tree against
-      // the 205 this fixture carried, and the two DEC-847 draws read 207 and 209 while the 124 held
-      // across both. The drawn count is what this row asserts, so the want set is here only to make
-      // the frame a real one — but it is a measured reading and is kept re-measured (DEC-847).
+      // The rung's history, dated, because every figure in it was a live reading once: ~126–127
+      // until DEC-843 attached a 3 s read-back to that gate row; 124 on DEC-845's two draws after
+      // it, with the want set at 207 and 209 on DEC-847's post-cutover draws — all on the 64-bucket
+      // grid. DEC-882's 256-bucket quantile lands inside the pool instead of overshooting it, and
+      // DEC-899's two draws on that tree merged with `c49315c` read **77 wanted, 75 drawn**, both
+      // times. The drawn count is what this row asserts, so the want set is here only to make the
+      // frame a real one — but it is a measured reading and is kept re-measured.
       const baseline = evaluateW4(
         frameOf(2_000, 945, 942),
         churningAt(18.4),
@@ -2188,7 +2188,7 @@ describe("W4 — art resolves without exhausting", () => {
         HEALTHY_EXIT,
       );
       const tier4 = evaluateW4(
-        frameOf(2_000, 209, 124),
+        frameOf(2_000, 77, 75),
         settled(0, 128),
         { layers: 128, resident: 128 },
         FRESH_SESSION,
@@ -2201,12 +2201,12 @@ describe("W4 — art resolves without exhausting", () => {
         );
       }
       // Named from every side so the margins are on the record rather than implied, and all four
-      // are measured readings: 14 is DEC-834's witness, 124 the live `?layers=128` row as the gate
-      // now measures it (DEC-845), 146 the worst in-domain world of the 45-world acceptance tour
+      // are measured readings: 14 is DEC-834's witness, 75 the live `?layers=128` row as the gate
+      // now measures it (DEC-899), 146 the worst in-domain world of the 45-world acceptance tour
       // (forgotten-realms), 941 dominaria at the shipped pool.
-      expect(tier4.measures.find((m) => m.key === "artCellsShowing")!.value!).toBe(124);
+      expect(tier4.measures.find((m) => m.key === "artCellsShowing")!.value!).toBe(75);
       expect(32 / 14).toBeGreaterThan(2.2);
-      expect(124 / 32).toBeGreaterThan(3.8);
+      expect(75 / 32).toBeGreaterThan(2.3);
       expect(146 / 32).toBeGreaterThan(4.5);
     });
 
@@ -3146,15 +3146,20 @@ describe("W4 — art resolves without exhausting", () => {
    */
   describe("demand against capacity", () => {
     it("greens the tier-4 row on artFraction while reporting the overshoot that would red it", () => {
-      // The row the split was raised for, at its measured numbers: the policy raised its threshold
-      // 24 → 35.06 px, cut demand 945 → 205, and still admitted 205 into a 128-layer pool. 125 of
-      // them draw art — 0.610 against a ceiling of 0.624.
+      // The row the split was raised for, at the numbers measured when it was raised: the policy
+      // took its threshold 24 → 35.06 px, cut demand 945 → 205, and still admitted 205 into a
+      // 128-layer pool. 125 of them draw art — 0.610 against a ceiling of 0.624.
       //
-      // **Those are the DEC-752-era readings of that row and they stay as they were taken.** The
-      // live row has since moved — 207 and 209 cells wanting art across DEC-847's two post-cutover
-      // draws, 124 drawn — and this fixture is a worked example of the arithmetic, not a mirror of
-      // the current gate. The figure that tracks the live row is the `frameOf(2_000, 209, 124)`
-      // rung above.
+      // **Those are the DEC-752-era readings of one era's pose and grid, kept as they were taken;
+      // the constructed pair below is what the row actually tests.** The live row moved twice
+      // since. Post-cutover on the 64-bucket grid, DEC-847's two draws read 207 and 209 cells
+      // wanting art, 124 drawn. Re-measured off the gate at DEC-882, at 256 buckets: the same seam
+      // takes the threshold 24 → **37.11 px**, demand 1,383 → **76**, admits 76 into the 128-layer
+      // pool, and 75 of them draw art — `artFraction` **0.9870**. The overshoot the split exists to
+      // report is gone at this pose, which is DEC-882's whole point, so this fixture stays the
+      // worked example of an *overshooting* frame rather than a mirror of the current gate.
+      // `evaluateW4` is fed constructed counts either way. The figure that tracks the live row is
+      // the `frameOf(2_000, 77, 75)` rung above.
       const tier4 = evaluateW4(
         cells(205, 125),
         settled(0),
@@ -3793,19 +3798,21 @@ describe("the negative-control matrix", () => {
       measure: "artCellsShowing",
       expect: "N/A",
     },
-    // **The absolute term's live RED (DEC-843), and this row is why the count above moved.** It used
-    // to say the term's witness — a want set collapsed under reduced motion — was unreachable
-    // because `?motion=0` is inert on the shell. True of that seam, and the matrix is not restricted
-    // to query seams: `layers-128-reduced` emulates the OS preference before `goto`, exactly as
-    // `worlds-evict-longrun.mjs` does, and reads 14 cells against the floor of 32 on a frame
-    // presenting 1,388. Its read-back is asserted in both directions against the unseamed
-    // `?layers=128` sibling — `a-control-that-agrees-is-not-a-control-that-took`.
+    // **The absolute term's live RED from DEC-843 to DEC-882, and GREEN since.** It used to say the
+    // term's witness — a want set collapsed under reduced motion — was unreachable because
+    // `?motion=0` is inert on the shell. True of that seam, and the matrix is not restricted to
+    // query seams: `layers-128-reduced` emulates the OS preference before `goto`, exactly as
+    // `worlds-evict-longrun.mjs` does, and read 14 cells against the floor of 32 on a frame
+    // presenting 1,388. DEC-882's 256-bucket quantile no longer collapses that want set: 78 cells
+    // on the same frame, so the gate row expects GREEN and the term has no live RED (DEC-890). Its
+    // read-back is still asserted in both directions against the unseamed `?layers=128` sibling —
+    // `a-control-that-agrees-is-not-a-control-that-took`.
     {
       row: "W4 · prefers-reduced-motion at ?layers=128",
       id: "layers-128-reduced",
       criterion: "W4",
       measure: "artCellsShowing",
-      expect: "RED",
+      expect: "GREEN",
     },
     {
       row: "W4 · the unmodified build (absolute art term)",
@@ -4018,27 +4025,34 @@ describe("the negative-control matrix", () => {
     ).toEqual(CENSUS);
   });
 
-  it("has eight expected-RED rows, seven expected-GREEN and five expected-N/A", () => {
-    expect(MATRIX.filter((r) => r.expect === "RED")).toHaveLength(8);
-    expect(MATRIX.filter((r) => r.expect === "GREEN")).toHaveLength(7);
+  it("has seven expected-RED rows, eight expected-GREEN and five expected-N/A", () => {
+    // Eight and seven until DEC-882: `layers-128-reduced` was the eighth RED and is now GREEN. See
+    // the absolute-term row below for what that costs.
+    expect(MATRIX.filter((r) => r.expect === "RED")).toHaveLength(7);
+    expect(MATRIX.filter((r) => r.expect === "GREEN")).toHaveLength(8);
     expect(MATRIX.filter((r) => r.expect === "N/A")).toHaveLength(5);
   });
 
-  it("leaves W4's absolute art term a live RED row and a live GREEN partner", () => {
-    // DEC-843 closed a gap this file had recorded as permanent. A count alone would not have said
-    // which row moved, and an eighth RED could be any criterion's; this pins that the eighth is the
-    // one measure that had no live falsifier, and that it still has its healthy partner — a RED row
-    // on its own scores an always-red instrument exactly as well as a working one.
-    // `negative-controls-distinguish-guard-from-rubble`.
+  it("records that W4's absolute art term has no live RED row since DEC-882", () => {
+    // DEC-843 closed a gap this file had recorded as permanent, and DEC-882 reopened it. The live
+    // RED was `layers-128-reduced`: 14 cells against the floor of 32, because the 64-bucket grid
+    // had no edge to place inside a 128-layer pool at that pose. At 256 buckets the same frame
+    // reads 78 and the row expects GREEN, so the term's falsifier is gone and this row says so
+    // rather than letting the RED count drop silently. A replacement that starves the want set by
+    // a mechanism the quantile's resolution cannot undo is owed (DEC-890); the row that lands it
+    // flips this back to one. `a-corpus-change-can-retire-a-sibling-control`.
     const cells = MATRIX.filter(
       (r) => "measure" in r && r.measure === "artCellsShowing",
     );
-    expect(cells.filter((r) => r.expect === "RED")).toHaveLength(1);
-    // Two GREEN partners since DEC-845 mirrored `unsaturated-pool`, and the second one is not a
-    // duplicate of the first: `?layers=128` is the term at its tightest on a healthy build (124
+    expect(cells.map((r) => r.expect)).not.toContain("RED");
+    expect(
+      cells.find((r) => "id" in r && r.id === "layers-128-reduced")?.expect,
+    ).toBe("GREEN");
+    // Three GREEN rows: the unmodified build, and two partners that are not duplicates of each
+    // other: `?layers=128` is the term at its tightest on a healthy build (75
     // against 32), kamigawa is the term saying a page rendered at all so the `N/A` beside it is a
     // reading. Counted rather than named because a rename must not silently drop one.
-    expect(cells.filter((r) => r.expect === "GREEN")).toHaveLength(2);
+    expect(cells.filter((r) => r.expect === "GREEN")).toHaveLength(3);
     expect(cells.filter((r) => r.expect === "N/A")).toHaveLength(1);
   });
 
