@@ -686,6 +686,73 @@ describe('§1.6 lands near capacity at every phase of the grid (DEC-882)', () =>
   })
 
   /**
+   * **The row above scores the raw quantile; the product runs one memory frame to frame (DEC-895).**
+   * Each factor above gets a fresh {@link ThresholdMemory}, so the hysteresis never holds anything.
+   * This row drives one `AdaptiveThreshold` and one shared memory outward — heights shrinking by
+   * {@link OUTWARD_STEP} per frame from factor 1 for {@link OUTWARD_FRAMES} frames, the camera
+   * pulling away — which is the direction the one-sided hold acts in.
+   *
+   * **The band does not hold on this path, and this row does not assert it.** Measured at 0.45% per
+   * frame: 40 of 90 frames read under 0.40, and the minimum is **1 admitted of 128** on a frame
+   * where the raw quantile admits 63. That is the hold doing its job — a ring one cell too small
+   * rather than a flickering one — and what bounds it is asserted instead: the held threshold is
+   * never below the raw one, a hold lasts at most {@link HOLD_LIMIT_FRAMES} consecutive frames at
+   * this step, the frame never asks for more than capacity, and it never admits nothing while the
+   * raw quantile admits something.
+   *
+   * **What the pin measures.** On this path every hold ends by the admit-nothing escape after about
+   * one bucket of drift (1.91%), so {@link HOLD_LIMIT_FRAMES} is the bucket width over the step: 6
+   * frames at 0.30%, 4 at 0.45%, 3 at 0.60%. The row stays green at `HOLD_BUCKETS` 1 to 64. It pins
+   * the escape and the bucket width; `expect(HOLD_BUCKETS).toBe(4)` below is what guards the hold's
+   * width.
+   *
+   * **The mutant.** Delete the admit-nothing escape in `applyHysteresis`
+   * (`countAtOrAbove(previous) === 0`) and this row reds: the longest hold becomes **17** frames and
+   * **52** of the 90 admit 0 of 128.
+   */
+  const OUTWARD_STEP = 0.0045
+  const OUTWARD_FRAMES = 90
+  /** Measured, then pinned: the longest run of held frames at {@link OUTWARD_STEP}. */
+  const HOLD_LIMIT_FRAMES = 4
+
+  it('bounds the hold when one memory walks the sweep outward', () => {
+    const threshold = new AdaptiveThreshold()
+    const memory = new ThresholdMemory()
+    const belowRaw: string[] = []
+    const overCapacity: string[] = []
+    const idle: string[] = []
+    let run = 0
+    let longestHold = 0
+    let lowest = Infinity
+    for (let frame = 0; frame < OUTWARD_FRAMES; frame += 1) {
+      const factor = Math.pow(1 - OUTWARD_STEP, frame)
+      threshold.begin()
+      for (const height of TIER4_HEIGHTS_PX) threshold.offer(height * factor)
+      const held = threshold.end(CAPACITY, memory)
+      const raw = new AdaptiveThreshold()
+      raw.begin()
+      for (const height of TIER4_HEIGHTS_PX) raw.offer(height * factor)
+      const fresh = raw.end(CAPACITY, new ThresholdMemory())
+
+      const at = `frame ${frame} (${factor.toFixed(4)})`
+      if (held.effectiveThresholdPx < fresh.effectiveThresholdPx) belowRaw.push(at)
+      if (held.admitted > CAPACITY) overCapacity.push(`${at} -> ${held.admitted}`)
+      if (fresh.admitted > 0 && held.admitted === 0) idle.push(at)
+      run = held.effectiveThresholdPx > fresh.effectiveThresholdPx ? run + 1 : 0
+      longestHold = Math.max(longestHold, run)
+      lowest = Math.min(lowest, held.admitted)
+    }
+    expect(belowRaw, 'held threshold below the raw quantile').toEqual([])
+    expect(overCapacity, 'frames asking for more than the pool').toEqual([])
+    expect(idle, 'frames admitting nothing while the raw quantile admits something').toEqual([])
+    // Pinned exactly, so the row is not vacuous: a sweep that never held would read 0 and red.
+    expect(longestHold).toBe(HOLD_LIMIT_FRAMES)
+    // A domain guard, not a hold assertion: it reds if the sweep leaves the span where the raw
+    // quantile admits something (0.60% per frame does).
+    expect(lowest).toBeGreaterThanOrEqual(1)
+  })
+
+  /**
    * **The mutant, and the row's whole reason for existing.** Put `BUCKETS` back to 64 in
    * `adaptiveThreshold.ts` and the row above reds at **57 of these 80 factors** — every factor in
    * 1.0000–1.0096 and in 1.0332–1.0788, reading as low as **0.023** (3 cells of 128) and as high as
