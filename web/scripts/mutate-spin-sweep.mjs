@@ -82,6 +82,12 @@ const MUTANTS = [
     to: '  const w4Frame = frames[picked.w4Phase] ?? frame;',
   },
   {
+    name: 'DEC-921: a W1 phase outside the frames is scored as if its frame were present',
+    file: METRICS,
+    from: '  if (frame === undefined || w4Frame === undefined) {',
+    to: '  if (w4Frame === undefined) {',
+  },
+  {
     name: 'item 4: the witness counts the leading edge, like rule 3 in reverse',
     file: METRICS,
     from: '  const drawPhase = witnessed && !unreadable ? lowest(counted, "contrastDeltaE") : null;',

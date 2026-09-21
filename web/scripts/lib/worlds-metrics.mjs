@@ -1300,9 +1300,11 @@ export function selectSpinPhases(
  * rows read `artFraction` 1 at every counted phase, so W1's frame and W4's score the same.
  *
  * **An index outside `frames` is `no-settled-phase`, never a fallback to the other frame** (DEC-919).
- * `w4Frame ?? frame` in the driver once scored a missing W4 frame on W1's, and the row still read
+ * `w4Frame ?? frame` in the driver would score a missing W4 frame on W1's, and the row would read
  * GREEN — the silent pass DEC-861 item 3 was written to remove. The phase a criterion was owed
- * could not be scored, which is the harness defect that reason already names.
+ * could not be scored, which is the harness defect that reason already names. On the live matrix
+ * it cannot fire: the driver pushes one frame per phase, so `frames.length === phases.length` by
+ * construction, and the unit rows are its only witness.
  *
  * Returns `{ ok: false, reason, detail }`, or `{ ok: true, frame, w4Frame }` with both frames present.
  */

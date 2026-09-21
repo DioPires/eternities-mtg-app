@@ -600,6 +600,14 @@ describe("the one-card sweep picks each criterion's phase (DEC-861 items 1–3)"
       const swept = sweepFrames(frames, { w1Phase: 2, w4Phase: 3 });
       expect(swept).toMatchObject({ ok: false, reason: "no-settled-phase" });
       expect(swept).not.toHaveProperty("w4Frame");
+      expect(!swept.ok && swept.detail).toContain("3 frames");
+    });
+
+    it("refuses a W1 phase outside the frames as no-settled-phase too (DEC-921)", () => {
+      const frames = [{ phase: 0 }, { phase: 1 }, { phase: 2 }];
+      const swept = sweepFrames(frames, { w1Phase: 5, w4Phase: 1 });
+      expect(swept).toMatchObject({ ok: false, reason: "no-settled-phase" });
+      expect(swept).not.toHaveProperty("frame");
     });
 
     it("steps over a counted phase where nothing wants art, and falls back to W1's phase when every one is", () => {
