@@ -10,8 +10,8 @@
  * sheet showed the card and the scene showed no ring. Measured live on a real GPU: `card` null for
  * 45 s at `focus: 'card'` (DEC-857 R5, comment `a600281a` item 4). PRD 6.2.2's back button is not
  * in that list: its focus is parsed from the URL, which carries no `starIndex` by design, so an
- * in-session popstate resolves no star for this derivation to read. Its own defect, tracked
- * separately; a fresh load of the same URL is the deep link this file drives.
+ * in-session popstate used to resolve no star for this derivation to read. Its own defect
+ * (DEC-887), and its own row at the end of this file.
  *
  * So the subject is the **composition**: `SceneView` mounted for real over a real {@link SceneHost},
  * driven through the product's own route-to-navigation adapter, asserted through the same
@@ -27,6 +27,7 @@ import { act, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { WebGLRenderer } from 'three'
 
+import { boot } from '../src/app/boot'
 import { ServicesProvider, createNavStore, type Services } from '../src/app/services'
 import { decodeSets, decodeStars } from '../src/data/decode'
 import { createNavigationHost, type NavigationHost } from '../src/navigation'
@@ -36,6 +37,7 @@ import { SceneView } from '../src/scene/EternitiesScene'
 import { SceneHost } from '../src/scene/renderer/sceneHost'
 import { createStarData } from '../src/scene/starfield/starData'
 import type { SceneDataState } from '../src/scene/useSceneData'
+import { useStore } from '../src/store/store'
 
 import { fixturePath, loadFixturePlanes } from './fixtures'
 
@@ -237,9 +239,10 @@ describe('§1.10 the printing ring follows the route, not only the pointer (DEC-
   /**
    * The subject. Nothing clicks; the focus arrives the way `app/boot.ts` delivers a deep link.
    *
-   * Two product calls and no third: `navigateTo` is the route-to-contract adapter both arms of
-   * `createRouterBinding` use (boot's first stage and the back button alike), and `resolveCard` is
-   * what boot calls when `sets.bin` turns the URL's `oracle_id` into a star index (PRD 8.7.5). The
+   * Two product calls and no third: `navigateTo` is the route-to-contract adapter
+   * `createRouterBinding`'s popstate arm uses (boot's own first stage is `nav.playIntro`), and
+   * `resolveCard` is what boot calls when `sets.bin` turns the URL's `oracle_id` into a star index
+   * (PRD 8.7.5). The
    * intro is deliberately absent — PRD 6.8.2's fly-to moves the camera and never touches which star
    * is focused, so a row that needed it would be asserting about the camera instead of the ring.
    */
@@ -319,5 +322,110 @@ describe('§1.10 the printing ring follows the route, not only the pointer (DEC-
     const left = window.__eternitiesProbe!.state()
     expect(left.focus, 'PRD 6.1.3: Esc goes up a level').toBe('plane')
     expect(left.card, 'the ring must not outlive the card focus').toBeNull()
+  })
+})
+
+/**
+ * PRD 6.2.2's back button, in session (DEC-887, DEC-866 rider R1).
+ *
+ * "Browser back behaves like Esc and browser forward replays the fly-to." A replay lands on the
+ * focus the original fly-to landed on, and the original — a click — carried a `starIndex`. The URL
+ * does not (`route.ts` leaves it out by design), so `createRouterBinding`'s popstate arm used to
+ * dispatch a card focus with no star, and the derivation `EternitiesScene` reads the ring from had
+ * nothing to read. `boot`'s deep-link resolution latches after the first load, so nothing filled it
+ * in later either.
+ *
+ * The subject is the real `boot()` — the one place that hands the binding its resolver — driven by
+ * the real `window.history`, so the popstate is jsdom's and not a call this file makes itself.
+ */
+describe('§1.10 the printing ring survives back and forward (DEC-887, PRD 6.2.2)', () => {
+  let scene: SceneHost
+  let nav: NavigationHost
+  let restoreResizeObserver: () => void
+  let restoreFetch: () => void
+  let dataMeta: HTMLMetaElement | null = null
+  let unboot: (() => void) | null = null
+
+  beforeEach(() => {
+    const meta = document.createElement('meta')
+    meta.setAttribute('name', 'eternities:data')
+    meta.setAttribute('content', DATA_ROOT)
+    document.head.appendChild(meta)
+    dataMeta = meta
+    restoreResizeObserver = installResizeObserver()
+    restoreFetch = stubFetch()
+    scene = new SceneHost({ createRenderer: fakeRenderer })
+    nav = createNavigationHost()
+    // What the scene's loader would have put there by the time a user can click a card: `boot`
+    // resolves through the store, never through the scene's own copy.
+    useStore.setState({ planes: PLANES, sets: SETS })
+  })
+
+  afterEach(() => {
+    unboot?.()
+    unboot = null
+    useStore.setState({ planes: null, sets: null })
+    dataMeta?.remove()
+    dataMeta = null
+    nav.dispose()
+    scene.dispose()
+    restoreFetch()
+    restoreResizeObserver()
+    delete window.__eternitiesProbe
+    window.history.replaceState({}, '', '/')
+  })
+
+  /** jsdom queues `popstate` as a task, so a traversal has to be awaited like the shard fetch. */
+  async function traverse(step: () => void): Promise<void> {
+    act(step)
+    await settle()
+  }
+
+  it('back and forward onto a card URL both rebuild the ring around the same star', async () => {
+    window.history.replaceState({}, '', `/plane/${PLANE_SLUG}?probe=shell`)
+    mount(scene, nav)
+    act(() => {
+      unboot = boot(nav, new Router(browserHost()))
+    })
+    act(() => {
+      nav.flyToPlane(PLANE_SLUG, { reason: 'user' })
+    })
+    await settle()
+
+    // 1. A click pushes the card URL; the ring is up — the control, same as the first file's.
+    const star = window.__eternitiesProbe!.focusCard()
+    expect(star, 'a loaded card to click').toBeGreaterThanOrEqual(0)
+    await settle(2)
+    const cardPath = `/plane/${PLANE_SLUG}/card/${SETS.oracleId(star)}`
+    expect(window.location.pathname, 'the click must have pushed the card route').toBe(cardPath)
+    expect(window.__eternitiesProbe!.state().card?.starIndex).toBe(star)
+
+    // 2. Leave the card through the route, so a history entry sits on either side of it.
+    act(() => {
+      nav.flyToMultiverse({ reason: 'user' })
+    })
+    await settle(2)
+    expect(window.location.pathname).toBe('/')
+    expect(window.__eternitiesProbe!.state().card).toBeNull()
+
+    // 3. Back onto the card.
+    await traverse(() => window.history.back())
+    expect(window.location.pathname, 'back restores the card URL').toBe(cardPath)
+    const back = window.__eternitiesProbe!.state()
+    expect(back.focus).toBe('card')
+    expect(back.card, 'PRD 6.2.2: back onto a card must rebuild the ring').not.toBeNull()
+    expect(back.card!.starIndex).toBe(star)
+
+    // 4. Back again to the plane — the ring comes down — then forward replays the fly-to.
+    await traverse(() => window.history.back())
+    expect(window.__eternitiesProbe!.state().focus).toBe('plane')
+    expect(window.__eternitiesProbe!.state().card).toBeNull()
+    await traverse(() => window.history.forward())
+    expect(window.location.pathname, 'forward restores the card URL').toBe(cardPath)
+    const forward = window.__eternitiesProbe!.state()
+    expect(forward.card, 'PRD 6.2.2: forward replays the fly-to, ring included').not.toBeNull()
+    expect(forward.card!.starIndex).toBe(star)
+    // Replayed, not merely similar: the focus is the one the click produced, `starIndex` and all.
+    expect(nav.snapshot().focus).toMatchObject({ kind: 'card', planeSlug: PLANE_SLUG, starIndex: star })
   })
 })
