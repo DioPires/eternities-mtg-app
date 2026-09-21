@@ -3298,8 +3298,9 @@ describe("W4 — art resolves without exhausting", () => {
       // the constructed pair below is what the row actually tests.** The live row moved twice
       // since. Post-cutover on the 64-bucket grid, DEC-847's two draws read 207 and 209 cells
       // wanting art, 124 drawn. Re-measured off the gate at DEC-882, at 256 buckets: the same seam
-      // takes the threshold 24 → **37.11 px**, demand 1,383 → **76**, admits 76 into the 128-layer
-      // pool, and 75 of them draw art — `artFraction` **0.9870**. The overshoot the split exists to
+      // takes the threshold 24 → **37.11 px**, demand 1,383 → **77**, admits 77 into the 128-layer
+      // pool, and **76** of them draw art — `artFraction` **0.9870** (DEC-882's draw; 76 / 75 /
+      // 0.9868 on others). The overshoot the split exists to
       // report is gone at this pose, which is DEC-882's whole point, so this fixture stays the
       // worked example of an *overshooting* frame rather than a mirror of the current gate.
       // `evaluateW4` is fed constructed counts either way. The figure that tracks the live row is
