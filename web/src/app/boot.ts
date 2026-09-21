@@ -45,6 +45,25 @@ export function planeOfStarIndex(
 }
 
 /**
+ * PRD 6.2.2's back and forward, onto a card URL: the star the URL's `oracle_id` names, from the
+ * same sidecar `resolveDeepLink` reads (DEC-887).
+ *
+ * `undefined` before `sets.bin` lands. The deep link itself is still resolved when the data
+ * arrives, by `resolveDeepLink`; a card the user clicked before then and returns to by history
+ * before then stays unresolved, and that window is the first seconds of a cold load. Also
+ * `undefined` when the star sits on another plane than the URL names: that is PRD 6.7.1's
+ * moved-card correction, which belongs to a load, and an in-session entry was written by this
+ * document after any correction ran.
+ */
+function resolveStarInSession(focus: Extract<Focus, { kind: 'card' }>): number | undefined {
+  const { sets, planes } = useStore.getState()
+  if (sets === null || planes === null) return undefined
+  const starIndex = sets.starIndexOf(focus.oracleId)
+  if (starIndex < 0) return undefined
+  return planeOfStarIndex(planes.planes, starIndex)?.slug === focus.planeSlug ? starIndex : undefined
+}
+
+/**
  * Takes the warnings rather than the router on purpose. Every `RouteWarning` kind implies a URL
  * rewrite by construction, so the canonicalising `replace` below destroys the evidence: it clears
  * the router's cache (`router.ts:105`) and the next snapshot re-parses a route that no longer has
@@ -66,7 +85,7 @@ export function boot(nav: NavigationApi, router: Router): () => void {
 
   // 1. Bind focus to the address bar in both directions before anything can change focus — the
   //    intro below is a focus change, and an unbound intro would leave the URL behind.
-  const unbind = createRouterBinding(nav, router)
+  const unbind = createRouterBinding(nav, router, resolveStarInSession)
   // Canonicalise. `parseRoute` may have dropped an unknown filter value or fallen back from an
   // unparseable path; `replace` is a no-op when the URL already agrees.
   router.replace(initial.focus, initial.filters)

@@ -328,10 +328,9 @@ export function SceneView({
    * showed the card; the scene showed nothing. Measured live on a real GPU: `card` null for 45 s
    * at `focus: 'card'` (DEC-857 R5).
    *
-   * PRD 6.2.2's back button is *not* one of those routes, and this derivation does not reach it:
-   * `createRouterBinding`'s popstate arm navigates to a focus parsed from the URL, and `route.ts`
-   * leaves `starIndex` out of a URL deliberately. A fresh load of that same URL does fill it,
-   * through `boot`. The in-session popstate gap is its own defect, tracked separately.
+   * PRD 6.2.2's back button reaches it too, though the URL it restores carries no `starIndex`
+   * (`route.ts` leaves it out deliberately): `createRouterBinding`'s popstate arm resolves the star
+   * through the resolver `boot` hands it before it navigates (DEC-887).
    *
    * A derivation rather than a second writer, and the reviewer's "one call through the existing
    * `focusStar` path" is exactly what it must not be: `focusStar` flies. Called for a focus the
