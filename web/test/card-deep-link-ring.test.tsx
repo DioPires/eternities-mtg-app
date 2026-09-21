@@ -239,9 +239,10 @@ describe('§1.10 the printing ring follows the route, not only the pointer (DEC-
   /**
    * The subject. Nothing clicks; the focus arrives the way `app/boot.ts` delivers a deep link.
    *
-   * Two product calls and no third: `navigateTo` is the route-to-contract adapter both arms of
-   * `createRouterBinding` use (boot's first stage and the back button alike), and `resolveCard` is
-   * what boot calls when `sets.bin` turns the URL's `oracle_id` into a star index (PRD 8.7.5). The
+   * Two product calls and no third: `navigateTo` is the route-to-contract adapter
+   * `createRouterBinding`'s popstate arm uses (boot's own first stage is `nav.playIntro`), and
+   * `resolveCard` is what boot calls when `sets.bin` turns the URL's `oracle_id` into a star index
+   * (PRD 8.7.5). The
    * intro is deliberately absent — PRD 6.8.2's fly-to moves the camera and never touches which star
    * is focused, so a row that needed it would be asserting about the camera instead of the ring.
    */

@@ -369,8 +369,8 @@ export function SceneView({
 
   useEffect(() => {
     scene3d.setCards(cards)
-    // `cardVersion` moves when a shard lands and fills the same `cards` object, so it is a real
-    // dependency even though `cards` is identical across it.
+    // `usePlaneDetail` re-memoises `cards` on `cardVersion`, so a landed shard already arrives
+    // here as a new `cards` object; listing `cardVersion` as well is redundant, not load-bearing.
   }, [scene3d, cards, cardVersion])
 
   useEffect(() => {
