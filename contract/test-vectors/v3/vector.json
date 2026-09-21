@@ -727,5 +727,15 @@
       "localIndex": 4001,
       "shard": 2
     }
-  ]
+  ],
+  "cameraLaw": {
+    "homeElevationRad": 0.5235987755982988,
+    "homeDistanceFactor": 1.9,
+    "fovDegrees": 55.0,
+    "referenceViewportHeightPx": 1080.0,
+    "referenceFocalPx": 1037.3303485644296,
+    "pickProxyMargin": 1.15,
+    "pickFloorDiameterPx": 24.0,
+    "driftVerticalRatio": 0.35
+  }
 }

@@ -593,6 +593,33 @@ def vector_summary() -> dict[str, Any]:
             {"localIndex": 2000, "shard": 1},
             {"localIndex": 4001, "shard": 2},
         ],
+        # The `home`-law camera constants, so the hand mirror in `fixtures/layout.py` has a
+        # two-sided guard (DEC-884). Every value is *read from* `layout`, never restated here: a
+        # summary that transcribed them would pin its own transcription and let the law drift.
+        #
+        # This is the same freeze point as everything above it. Move a constant on the Python side
+        # and `test_summary_matches_committed_vector_json` reds against the committed file; move it
+        # on the TypeScript side and `web/test/test-vector.test.ts` reds against the same file;
+        # regenerate the vector after a Python-side move and the TypeScript half reds, which is the
+        # case the old one-way mirror could not see at all.
+        #
+        # Spelled in the units each side *owns*, not in a compromise: the pick floor is published
+        # as a **diameter** because that is what `scenePicker.ts` declares, while `layout` keeps it
+        # as a radius; the fov and the reference viewport height are published separately rather
+        # than pre-multiplied into a focal length, because a focal length cannot say which of the
+        # two moved and the renderer has no focal-length constant to compare against. The polar
+        # angle is not published either — `framing.ts` stores `pi/2 - elevation` and the web test
+        # does that subtraction itself, so the conversion is visible in the assertion.
+        "cameraLaw": {
+            "homeElevationRad": layout.HOME_ELEVATION_RAD,
+            "homeDistanceFactor": layout.HOME_DISTANCE_FACTOR,
+            "fovDegrees": layout.REFERENCE_FOV_DEG,
+            "referenceViewportHeightPx": layout.REFERENCE_VIEWPORT_HEIGHT_PX,
+            "referenceFocalPx": layout.REFERENCE_FOCAL_PX,
+            "pickProxyMargin": layout.PICK_PROXY_MARGIN,
+            "pickFloorDiameterPx": layout.PICK_FLOOR_PX * 2.0,
+            "driftVerticalRatio": layout.DRIFT_VERTICAL_RATIO,
+        },
     }
 
 

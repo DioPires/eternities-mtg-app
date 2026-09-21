@@ -251,9 +251,17 @@ export const FLOORS = {
    * | reading | value | vs 32 |
    * |---|---|---|
    * | the witness that must RED (want set collapsed to 14) | 14 | **2.3× below** |
-   * | healthy tier-4 rung, `?layers=128` | 124 | 3.9× above |
+   * | healthy tier-4 rung, `?layers=128` † | 124 | 3.9× above |
    * | worst in-domain world of the 45-world tour (forgotten-realms) | 146 | **4.6× above** |
    * | shipped 1,024-layer baseline, dominaria | 941 | 29× above |
+   *
+   * † **The 124 belongs to that row's harness configuration and not to the build** — the frame is
+   * taken after DEC-843's 3 s `reducedMotion: false` read-back hold and the adaptive threshold goes
+   * on rising through it: 128 with the hold removed, 127 on the tree that had no read-back at all,
+   * the renderer identical in all three. Re-measure through the harness that will quote it rather
+   * than carrying the figure across a harness change. Within that one harness it is **123–124**
+   * across four post-cutover draws (124, 124, 124, 123) — draw noise, not a harness difference, and
+   * an order of magnitude clear of the 32 either way.
    */
   artCellsAbsolute: 32,
 };
@@ -1227,10 +1235,20 @@ export function evictionRate(samples, windowS = W4_EVICTION_WINDOW_S) {
  *
  * **`saturated` is a NECESSARY condition, never a sufficient one — it says the reading *could* have
  * moved, not that it should have.** `claimLayer` runs only on an admission, so a full pool with no
- * new key to admit evicts nothing. Measured, not argued: at `?layers=128` the adaptive threshold
- * rises to 37.82 px, demand collapses to 14 cells that are already resident, and the pool sits at
- * **128/128 with `evictions` flat at 0 for 150 s**. Reading `saturated` as "should have churned"
- * would score that row backwards.
+ * new key to admit evicts nothing.
+ *
+ * **The example this used to give has expired twice over, and the rule it illustrates has not.** It
+ * read: at `?layers=128` the threshold rises to 37.82 px, demand collapses to 14 cells already
+ * resident, and the pool sits at 128/128 with `evictions` flat at 0 for 150 s. Both halves are now
+ * false. PR #85 moved the arrival pose and the world turns under the camera, so cells rotate through
+ * the admitted ring and the 128-layer pool churns — DEC-877 measured **2.41/s** there on `a0eec54`,
+ * and 5 draws at 256 buckets read `evictions` 0 → 15 → 31 → 51 → 67 over ~12 s, about **5.3/s**.
+ * DEC-882 then raised the quantile's resolution, so the same pose admits **76** cells at **37.11 px**
+ * rather than 14 at 37.82. A frame that admits more of what it can see churns more, not less.
+ *
+ * The rule stands on its own mechanism rather than on that frame: `claimLayer` is reached only by an
+ * admission, so a pool holding exactly the keys this frame wants evicts nothing however full it is.
+ * `unsaturated-pool` is the live row that pins the domain, and it pins it from the other side.
  *
  * **It is a lower bound, deliberately, and that is why it is reported and not scored.** Occupancy is
  * `resident + reserved`; `?probe=` publishes only `resident`, so a pool sitting at `layers` with a
@@ -1770,6 +1788,17 @@ export function evaluateW4(cells, evictionTimeline, pool, entryStream, exitStrea
           // one, so "it filled and did not churn" cannot be told from "it filled and churn stopped"
           // without `pool.reserved` and an admission counter on the probe. Reported, not scored, and
           // named here so the gap is a decision rather than an oversight.
+          //
+          // **The rule can only remove passes and can never hide a failure, which is what makes it
+          // safe to add to a scored half.** Its second conjunct reads `evictionsObserved === 0` off
+          // the *same tail* the rate is taken from, and {@link evictionRate} over that tail is
+          // `(end.evictions - start.evictions) / span` across the same two samples — so
+          // `evictionsObserved === 0` gives `rate === 0` identically, a reading that clears a `max`
+          // bound of 21/s by construction. Every reading this branch converts to `insufficient` was
+          // therefore never a **fail** before the rule existed — a short or unsettled tail was
+          // already `insufficient` through `tail.why`, so on those rows this re-labels rather than
+          // demotes. No failing rate is reachable through it, and a rule that can only subtract
+          // passes cannot hide a red.
           tail.saturated === false && tail.evictionsObserved === 0
           ? `the pool never had a free layer to lose: it peaked at ${tail.peakResident} of ` +
             `${pool.layers} resident layers and the counter did not move once across the window. ` +
@@ -1847,8 +1876,9 @@ export function evaluateW4(cells, evictionTimeline, pool, entryStream, exitStrea
         "max",
         {
           // **Reported, not scored** — ruling `demand_measure_scored` = `reported_only`. This is the
-          // measure that sees what `reachableBar` forgives: at tier 4 the policy admitted 205 cells
-          // into a 128-layer pool, a 1.60× overshoot, and `artFraction` against its reachable bar
+          // measure that sees what `reachableBar` forgives: at tier 4 the policy admits 207–209 cells
+          // into a 128-layer pool, a 1.62–1.63× overshoot (DEC-847, two draws post-cutover; ~205 and
+          // 1.60× on the tree this was written against), and `artFraction` against its reachable bar
           // cannot say so. Scored, it would have kept `?layers=128` red and the split would not have
           // fixed the row it was raised for; unreported, the overshoot would be invisible in both
           // halves at once.

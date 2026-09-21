@@ -1256,13 +1256,28 @@ describe('§1.6 on the shipped roster (DEC-768 F1, F2)', () => {
     return readings
   }
 
+  /**
+   * One sweep per capacity for the whole block. A sweep is a pure function of its capacity — a
+   * fresh rig on the fixed roster — and each costs ~0.5 s locally, 2.6-3.5x that on a hosted
+   * runner, so the rows below share their readings rather than re-drawing them.
+   */
+  const swept = new Map<number, PoseReading[]>()
+  function readingsAt(capacity: number): PoseReading[] {
+    let readings = swept.get(capacity)
+    if (!readings) {
+      readings = sweep(capacity)
+      swept.set(capacity, readings)
+    }
+    return readings
+  }
+
   it('never leaves the pool idle in front of a world that wants art — F1', () => {
     // 128 is tier 4, §1.12's smallest rung and the one this is reachable at today through R1's own
     // `?layers=` seam. Before the crossing-bucket branch, `dominaria` admitted **0 of 128** at both
     // poses — 961 and 922 wanting cells, every layer idle — which is strictly worse than the
     // `fixed24` prototype §1.6 replaces, and puts W4's `artFraction` at zero for a reason that is
     // not the renderer running out of pool, the one thing W4 exists to distinguish.
-    const readings = sweep(128)
+    const readings = readingsAt(128)
 
     // The denominator, always: "no idle poses" and "I measured no poses" must not print the same.
     expect(readings).toHaveLength(WORLDS.length * POSES.length)
@@ -1273,26 +1288,39 @@ describe('§1.6 on the shipped roster (DEC-768 F1, F2)', () => {
     expect(idle.map((r) => `${r.slug}@${r.radii}r (${r.wanting} wanting)`)).toEqual([])
   })
 
-  it('bounds the overshoot at one bucket, and says where it binds', () => {
+  it('bounds the overshoot, and says where it still binds after DEC-882', () => {
     // The branch admits a bucket that does not fit, so the row above is only half the claim: the
     // other half is that the overshoot is small and rare rather than the exhaustion §1.6 removes.
     // `ArtPool` absorbs it without churn — a key wanted this frame is not an eviction candidate, so
     // the excess requests simply fail to reserve rather than evicting cells that are on screen.
     const over = (capacity: number) =>
-      sweep(capacity)
+      readingsAt(capacity)
         .filter((r) => r.admitted > capacity)
         .map((r) => `${r.slug}@${r.radii}r ${r.admitted}/${capacity}`)
 
-    // Tier 4, where it binds: two poses of ninety, and neither asks for more than 1.6 pools.
-    const tier4 = over(128)
-    expect(tier4).toHaveLength(2)
-    expect(tier4.every((row) => row.startsWith('dominaria@'))).toBe(true)
-    for (const reading of sweep(128)) expect(reading.admitted).toBeLessThan(2 * 128)
-
-    // The control, and the reason the row above is a measurement of the dataset rather than of the
-    // branch: at the capacity tiers 0-3 actually run at, no pose overshoots at all.
+    // **This expectation moved at DEC-882, and it moved because the defect did.** On the 64-bucket
+    // grid this read "two poses of ninety, both dominaria, neither over 1.6 pools" at tier 4 —
+    // `dominaria@1.8r 194/128` and `dominaria@2.2r 158/128`. Raising the resolution to 256 gives
+    // the quantile an edge to land on inside the pool, so at every capacity the product actually
+    // ships — tier 4's 128 and up — **no pose overshoots at all** any more. The same sweep on
+    // `a0eec54` reds this row, which is the point.
+    expect(over(128)).toEqual([])
     expect(over(SPEC_MINIMUM.maxArrayTextureLayers - 32)).toEqual([])
-  })
+    expect(over(64)).toEqual([])
+
+    // **F1 is not thereby retired, and this is the row that says so.** Below every shipped rung the
+    // pool is small enough that a single bucket still crosses it, the branch still fires, and the
+    // overshoot it trades for a non-idle pool is still bounded. Four poses of ninety at 16 layers,
+    // against fifteen on the old grid, and the worst falls from 12.1 pools to 2.6.
+    const tiny = over(16)
+    expect(tiny).toHaveLength(4)
+    expect(tiny.filter((row) => row.startsWith('dominaria@'))).toHaveLength(2)
+    for (const reading of readingsAt(16)) expect(reading.admitted).toBeLessThan(3 * 16)
+    // Three fresh sweeps (four when run alone): ~1.5 s locally, ~2.1 s alone. Before the shared
+    // readings it drew five and timed out at 5 s on hosted CI — 6,449 ms and 8,733 ms, run
+    // 35514847108 attempts 2 and 3, against ~2.47 s locally — so the hosted ratio alone can carry
+    // the cut row past the default. The limit is this row's, not the suite's.
+  }, 15_000)
 
   /**
    * Zendikar between 2.18 and 2.20 world-radii at 224 layers: the raw quantile alternates between
