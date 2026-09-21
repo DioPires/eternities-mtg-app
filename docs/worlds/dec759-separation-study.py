@@ -12,8 +12,12 @@ that block reports. The default run of that file — no environment at all — i
 acceptance measurement and is what CI scores; this script exists because the *study* around it
 spans layouts the tree does not otherwise contain.
 
-Four arms isolate the two levers, all at today's constants and on the roster the production
-dataset carries:
+Four arms isolate the two levers, all at today's constants and on the roster of the dataset the
+study ran against, `c9468f1125bcddff` — read from git at :data:`OLD_DATASET_AT`, not from the tree.
+That dataset shipped the pre-DEC-759 homes, which is what makes the `old` arm's `shipped` draw a
+control: it must reproduce them. Production has carried the law since the DEC-885 refresh, and its
+`planes.json` differs from the recorded one only in `home`, so the roster is the same either way;
+reading the tree would leave the control comparing the old law against the new homes.
 
     old      PRD 8.6.1 as it was: the disc has thickness, no separation rule.
     flat     the thickness removed, still no separation rule.
@@ -38,7 +42,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from eternities.cli import DATASETS_FILE, REPO_ROOT, WEB_DATA_ROOT
+from eternities.cli import REPO_ROOT
 from eternities.fixtures import layout, rng
 
 Homes = dict[str, tuple[float, float, float]]
@@ -51,10 +55,20 @@ reviewer has to trust my transcription of is not a control. Pinned to the commit
 from, so the arm keeps meaning "the law before this change" after it merges."""
 
 
+OLD_DATASET_AT = "0be35f1:web/public/data/c9468f1125bcddff/planes.json"
+"""The roster and the pre-law homes the study measured, pinned to the same commit as
+:data:`OLD_LAYOUT_AT`. The DEC-885 refresh deleted that directory from the tree."""
+
+
 def roster() -> tuple[float, list[dict[str, Any]]]:
-    registry = json.loads(DATASETS_FILE.read_text(encoding="utf-8"))
     planes = json.loads(
-        (WEB_DATA_ROOT / str(registry["production"]) / "planes.json").read_text(encoding="utf-8")
+        subprocess.run(
+            ["git", "show", OLD_DATASET_AT],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=REPO_ROOT,
+        ).stdout
     )
     named = [p for p in planes["planes"] if p["slug"] != "blind-eternities"]
     return float(planes["multiverseRadius"]), named
@@ -168,10 +182,10 @@ def main(out_dir: Path) -> int:
 
     for name, fn in real.items():
         setattr(rng, name, fn)
-    # The `shipped` draw of the `old` arm must BE the shipped dataset, or the control is not one.
+    # The `shipped` draw of the `old` arm must BE the recorded homes, or the control is not one.
     control = json.loads((out_dir / "homes-old-shipped.json").read_text(encoding="utf-8"))
     drift_max = max(math.dist(control[p["slug"]], p["home"]) for p in named)
-    print(f"control vs the published homes: {drift_max:.2e} (rounding only, or the control is bad)")
+    print(f"control vs the recorded homes: {drift_max:.2e} (rounding only, or the control is bad)")
     return 0
 
 

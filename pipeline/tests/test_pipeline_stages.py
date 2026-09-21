@@ -22,6 +22,7 @@ from eternities.pipeline.records import (
 from eternities.pipeline.stages import (
     CardExclusionResult,
     OverrideDriftError,
+    UNRELEASED_RULE,
     PrintingFilterResult,
     UnmappedSetError,
     assign_planes,
@@ -228,11 +229,25 @@ def test_universes_within_is_exempt_from_the_secret_lair_rule():
 
 def test_unreleased_sets_are_kept_out_and_reported():
     result = _filter(
-        [printing(set_code="trk")],
+        [printing(set_code="trk", released_at="2026-11-13")],
         sets={"trk": scry_set("trk", released_at="2026-11-13")},
     )
-    assert result.dropped_by_rule["4.3.8 set unreleased on the run date"] == 1
-    assert result.unreleased_sets == ["trk"]
+    assert result.dropped_by_rule[UNRELEASED_RULE] == 1
+    assert result.unreleased_by_set == {"trk": 1}
+
+
+def test_an_unreleased_printing_in_a_released_set_is_kept_out():
+    """PRD 4.3.8 as amended: the printing's own date decides, not the set's.
+
+    The `fdc` shape: Scryfall dates the set 2024-11-15 but dates most of its printings after the run
+    date. Reading the set date keeps both printings here; reading the printing's keeps one.
+    """
+    shipped = printing(oracle_id="shipped", set_code="fdc", released_at="2024-11-15")
+    preview = printing(oracle_id="preview", set_code="fdc", released_at="2026-10-02")
+    result = _filter([shipped, preview], sets={"fdc": scry_set("fdc", released_at="2024-11-15")})
+    assert [p.oracle_id for p in result.kept] == ["shipped"]
+    assert result.dropped_by_rule[UNRELEASED_RULE] == 1
+    assert result.unreleased_by_set == {"fdc": 1}
 
 
 def test_a_set_released_on_the_run_date_is_in():
