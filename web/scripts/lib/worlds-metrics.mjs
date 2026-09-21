@@ -227,7 +227,7 @@ export const FLOORS = {
    * read 14 against 32 RED with `artFraction` at 1.00 on the same frame, but the 14 was the 64-bucket
    * grid's, and at 256 buckets the row reads **78** and is expected GREEN. The term's live RED is now
    * `layers-24` (DEC-890): a pool below the floor, so `showing ≤ pool.layers` keeps the measure under
-   * it — **14 against 32** on the settled frame. See {@link W4_STARVED_POOL_LAYERS}.
+   * it — **14 against 32** on the settled, frozen frame. See {@link W4_STARVED_POOL_LAYERS}.
    *
    * ## Why 32, and why it is a constant rather than a function of the pool
    *
@@ -251,7 +251,7 @@ export const FLOORS = {
    *
    * | reading | value | vs 32 |
    * |---|---|---|
-   * | the live witness that must RED, `?layers=24` (DEC-890), settled frame | 14 | **2.3× below** |
+   * | the live witness that must RED, `?layers=24` (DEC-890), settled frozen frame | 14 | **2.3× below** |
    * | the witness the floor was derived against (want set collapsed to 14) | 14 | **2.3× below** |
    * | healthy tier-4 rung, `?layers=128` (75–82 across four instruments) | 76 | 2.3–2.6× above |
    * | worst in-domain world of the 45-world tour (forgotten-realms) | **141** | **4.4× above** |
@@ -1371,6 +1371,16 @@ export const W4_STARVATION_DOMAIN_CELLS = SMALLEST_SHIPPED_POOL_LAYERS;
  * want set of at least 20, every one of them drawn, to reach two. The want set is 14–16 here at every
  * capacity the inequality allows.
  *
+ * **So the row is scored frozen (DEC-896 ruling).** `layers-24` emulates `prefers-reduced-motion:
+ * reduce` and holds 3 s like its siblings, so the frame is settled *and* still: **14 wanted, 14
+ * drawn, `artFraction` 1.0000, `artCellsShowing` 14, on 10 of 10 draws**. The margin is one cell —
+ * `14 − 0.9 × 14 = 1.4` — which is the most any want set of 14–16 can carry; a margin of more was
+ * asked for while the lost cells were unexplained, and the turnover above explains them. The cost is
+ * stated rather than cleared: **a freeze that stabilises also hides**, and this row cannot see
+ * turnover. The moving reading (16 / 14 / 0.875) is therefore pinned as a unit row. The freeze fails
+ * loud: `motionReadBack` requires `multiverseAngle` bit-identical across the hold, and a row whose
+ * freeze did not take is a `setupFailure` that reds the gate before any cell is scored.
+ *
  * The unheld sweep this replaces (PR #94 as first pushed) read 1.0000 on nearly every draw because
  * its frames were taken ~3 s before its siblings'. At `?layers=16` it read **0.8667 — a miss** of
  * the 0.900 bar, the one reading in that sweep that already showed the ratio falling with room in
@@ -1383,9 +1393,9 @@ export const W4_STARVATION_DOMAIN_CELLS = SMALLEST_SHIPPED_POOL_LAYERS;
  * not score it as coverage for §1.6. The policy direction is covered by `layers-128`, the tightest
  * healthy rung, which reds the moment the quantile starves a shipped pool again.
  *
- * Nor does it pin the floor's **value**. It pins "the floor is above 16" — the highest settled
- * reading — and any floor in 17…32 leaves it RED on every draw; at 16 or below, a draw that reads 16
- * greens. The distance to 32 is not something this row testifies to.
+ * Nor does it pin the floor's **value**. Frozen, it pins "the floor is above 14" — the highest
+ * reading, 10 of 10 — and any floor in 15…32 leaves it RED (a floor of 16 does, measured); at 14 or
+ * below it greens. The distance to 32 is not something this row testifies to.
  *
  * **And after DEC-882 that split is forced rather than chosen.** The quantile now tracks capacity to
  * within a bucket, so on any rung the renderer actually ships — 128 at the smallest — it admits of

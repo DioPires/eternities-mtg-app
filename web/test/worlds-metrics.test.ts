@@ -2307,9 +2307,9 @@ describe("W4 — art resolves without exhausting", () => {
         );
 
       it("separates the two measures on one frame, as the row is asserted to", () => {
-        // The frozen arm (`reducedMotion: true`, DEC-896, 3 of 3 draws): 14 cells wanted art at the
-        // 37.82 px quantile edge and all 14 got it. The row as shipped does not take this frame —
-        // see the next test for the one it does.
+        // The row's frame: the frozen arm (`reducedMotion: true`, DEC-896, 10 of 10 draws). 14 cells
+        // wanted art at the 37.82 px quantile edge and all 14 got it. The margin is one cell: 13/14
+        // = 0.9286 still clears 0.900, 12/14 does not.
         const w4 = starvedPool(14, 14);
         const fraction = w4.measures.find((m) => m.key === "artFraction");
         const absolute = w4.measures.find((m) => m.key === "artCellsShowing");
@@ -2339,10 +2339,13 @@ describe("W4 — art resolves without exhausting", () => {
       });
 
       it("reds artFraction on the settled frame, with room in the pool", () => {
-        // The held sweep (DEC-896): 16 wanted and 14 drawn on 23 of 24 draws across capacities
-        // 16…31, 3 draws each. The scene turns during the hold and two cells cross the threshold
-        // that have not drawn yet. `demandFitsCapacity` is green on the same frame — the pool has
-        // room — and the ratio misses the bar anyway: room in the pool does not protect it.
+        // **The moving arm, pinned here because the gate row no longer takes it.** The held sweep
+        // (DEC-896): 16 wanted and 14 drawn on 23 of 24 draws across capacities 16…31, 3 draws
+        // each. The ratio reads 0.875 because of turnover over the hold: the scene turns and two
+        // cells cross the threshold that have not drawn yet. The gate row is frozen to remove that
+        // turnover, and a freeze that stabilises also hides — this row is where the moving reading
+        // stays visible. At the 128 pool the same turnover is 76 of 77 (0.9870) and clears the bar.
+        // `demandFitsCapacity` is green on the same frame: room in the pool does not protect it.
         const w4 = starvedPool(16, 14);
         expect(w4.measures.find((m) => m.key === "artFraction")?.value).toBe(0.875);
         expect(w4.measures.find((m) => m.key === "artFraction")?.status).toBe("fail");
@@ -2404,8 +2407,9 @@ describe("W4 — art resolves without exhausting", () => {
         // measure is RED by construction:
         expect(W4_STARVED_POOL_LAYERS).toBeLessThan(FLOORS.artCellsAbsolute);
         // ...and above the want set the quantile admits at the row's pose, so every cell that asked
-        // fits the pool. Measured 16 on 24 of 24 settled draws (DEC-896); 16 is pinned here because
-        // that is the reading the margin is claimed against.
+        // fits the pool. The moving arm wants 16 on 24 of 24 held draws and the frozen row 14 on 10
+        // of 10 (DEC-896); 16 is pinned here because it is the larger, and the margin is claimed
+        // against it.
         expect(W4_STARVED_POOL_LAYERS).toBeGreaterThanOrEqual(16);
         expect(FLOORS.artCellsAbsolute - W4_STARVED_POOL_LAYERS).toBe(8);
         expect(W4_STARVED_POOL_LAYERS - 16).toBe(8);
@@ -3944,9 +3948,9 @@ describe("the negative-control matrix", () => {
     // set the pool to 24, below the floor of 32, and the measure cannot reach it however the
     // quantile is resolved. That is what the row above could not promise. Four entries, one per
     // expectation the gate row and §3.1 carry: the RED is the claim; the GREEN `artFraction` is the
-    // disagreement the row was built for, and is pending a ruling since the settled frame reads it at
-    // 0.875 (DEC-896); the `N/A` keeps a pool too small to churn from being recorded as good eviction
-    // behaviour; and `demandFitsCapacity` GREEN says the want set fits the pool.
+    // disagreement the row was built for, read on the frozen frame (14 of 14, DEC-896) because the
+    // moving one loses two cells to turnover; the `N/A` keeps a pool too small to churn from being
+    // recorded as good eviction behaviour; and `demandFitsCapacity` GREEN says the want set fits.
     {
       row: "W4 · ?layers=24 (absolute art term)",
       criterion: "W4",
