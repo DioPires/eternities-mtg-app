@@ -38,6 +38,7 @@ import {
   FLOORS,
   W2_CONTROL_SUBJECT_MIN_RING,
   W3_DOMAIN_SIZE,
+  W4_STARVED_POOL_LAYERS,
   W5_MIN_AZIMUTHS,
   azimuthSpacingFault,
   checkControlRow,
@@ -199,7 +200,9 @@ const TAIL_LIMIT = 4000
 async function startPreview(dataset) {
   const child = spawn('pnpm', ['exec', 'vite', 'preview', '--port', '0', '--strictPort', 'false'], {
     cwd: WEB_ROOT,
-    env: { ...process.env, ETERNITIES_DATASET: dataset },
+    // NO_COLOR: hosted runners set `CI`, which turns vite's colours on even into a pipe, and the
+    // port then arrives wrapped in bold escapes (`localhost:\e[1m4173\e[22m`) the URL match misses.
+    env: { ...process.env, ETERNITIES_DATASET: dataset, NO_COLOR: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   let tail = ''
@@ -1178,7 +1181,7 @@ export const MATRIX = [
       // the floor's first value.** With floor and domain cut-off both at 64 the tour read 65 against
       // 64 — a 1.5% margin on a correct renderer, because a domain opening *at* the floor pins its
       // own worst reading just above it. At 32 against a 128-cell domain the worst in-domain world
-      // (forgotten-realms, 146) clears by 4.6x. A term must be green on a healthy build with room,
+      // (forgotten-realms, 141) clears by 4.4x. A term must be green on a healthy build with room,
       // or it is not a control but a tripwire.
       { criterion: 'W4', measure: 'artCellsShowing', expect: 'GREEN' },
     ],
@@ -1342,7 +1345,8 @@ export const MATRIX = [
       // moved the pose to 59.91°, the 64-bucket quantile collapsed the want set, and this read
       // **17**, below the floor — the DEC-876 RED. Re-measured at 256 buckets (DEC-882): **76**
       // cells against a floor of 32, 2.4× above, over a matrix draw and five step-1 draws reading
-      // 76–82, and **75** on both of DEC-899's draws after the merge with `c49315c`. Quote 75–82.
+      // 76–82, and **75** on both of DEC-899's draws after the merge with `c49315c`. Quote it as
+      // wanted 76–77, drawn 75–76, admitted 76–84 over all eight live draws.
       //
       // **Its RED partner one row down no longer reds.** `layers-128-reduced` is this same pool with
       // the OS reduced-motion preference emulated; it read 14 and now reads 78. See that row for why
@@ -1501,6 +1505,75 @@ export const MATRIX = [
       // asking is a pool that stops churning, and a green rate here would be the comfortable wrong
       // answer this whole half of W4 exists to refuse.
       { criterion: 'W4', measure: 'evictionsPerSecond', expect: 'N/A' },
+    ],
+  },
+  {
+    // **The absolute no-starvation term's live falsifier, after DEC-882 retired the last one
+    // (DEC-890).** `layers-128-reduced` one row up used to be this row: it read 14 cells against the
+    // floor of 32 with `artFraction` at 1.00 on the same frame. The 14 was a property of the
+    // 64-bucket grid rather than of the policy — at this pose the old resolution could admit ~14–17
+    // cells or ~291 and nothing between — so raising the grid to 256 took the witness away and left
+    // `FLOORS.artCellsAbsolute` with no row in `--negative-controls` that could fail.
+    //
+    // **The mechanism here is an inequality, which is what makes it survivable.** A cell shows art by
+    // holding a layer, so `showing ≤ pool.layers` on every frame of every build; a pool below the
+    // floor cannot reach it however the quantile is resolved, posed or held. See
+    // {@link W4_STARVED_POOL_LAYERS} for why the capacity is 24 and for the held-frame sweep across
+    // 16…31 that shows the capacity does not move the settled reading at all.
+    //
+    // **The frame is the settled one, and it is frozen (DEC-896).** The row declares a motion
+    // preference, so it holds the page 3 s for the read-back before the frame is taken, as both
+    // tier-4 siblings above do. Unheld, it was scored ~3 s earlier than its neighbours — a hidden
+    // parameter, the trap the `layers-128` comment documents. `a-harness-default-is-a-hidden-parameter`.
+    //
+    // **Why frozen, in plain words.** With the scene moving, the held frame reads `artFraction`
+    // 0.875 — 16 want art, 14 draw it — because of turnover over the hold: the rotation carries two
+    // cells over the threshold that have not drawn yet. The frozen arm is chosen to remove that
+    // turnover: 14 want art, 14 draw it, 1.0000, on 10 of 10 draws, and the disagreement with
+    // `artCellsShowing` holds on one settled frame. At the 128 pool the same turnover is 76 of 77
+    // (0.9870) and clears the bar; a denominator of 16 cannot absorb it. The frozen row cannot see
+    // turnover — a freeze that stabilises also hides — so the moving reading stays pinned as a unit
+    // row. **The freeze fails loud**: `motionReadBack` requires `multiverseAngle` bit-identical
+    // across the hold, and a freeze that did not take is a `setupFailure` that reds the gate before
+    // any cell is scored. See the constant for the sweep and the margin arithmetic.
+    //
+    // **What it does not cover is stated on the constant and is repeated here because a matrix is
+    // read row by row:** this falsifies the *measure*, not the *policy*. No threshold regression can
+    // green it. `layers-128` is the policy's live row and reds if the quantile starves a shipped
+    // pool again; after DEC-882 no shipped rung can starve this term at all, which is why the
+    // falsifier has to sit below the smallest shipped pool. `belowShippedPool` rides the W4 record
+    // so the reading cannot be mistaken for a claim about a browser a user could be in.
+    id: 'layers-24',
+    label:
+      '?layers=24 — a pool below the absolute floor, so the count of cells showing art cannot reach it',
+    seams: { layersRequested: W4_STARVED_POOL_LAYERS },
+    reducedMotion: true,
+    subject: 'dominaria',
+    expect: [
+      // **The falsifier.** 14 against 32 on 10 of 10 frozen draws, 2.3× below, on a frame presenting
+      // ~1,388. Mutating `FLOORS.artCellsAbsolute` to 0 turns this cell green and reds the gate,
+      // which is the check that says the row is tied to this floor and not to a neighbouring term.
+      // **It pins "the floor is above 14", not "the floor is 32"**: any floor in 15…32 leaves this
+      // cell RED (16 does, measured), so the distance to the floor is not something this row
+      // testifies to.
+      { criterion: 'W4', measure: 'artCellsShowing', expect: 'RED' },
+      // **The disagreement.** 1.0000 — 14 wanted, 14 drawn — on 10 of 10 frozen draws, on the frame
+      // the absolute count reds: the want set collapsed *with* its numerator, so the ratio is
+      // satisfied. The margin is one cell (13 of 14 still clears 0.900), the most a want set this
+      // small can carry. Moving, the same row reads 0.875 (turnover; see above and the unit row).
+      { criterion: 'W4', measure: 'artFraction', expect: 'GREEN' },
+      // Out of the bound's capacity domain at 24 layers, exactly as `?layers=128` is. Asserted so a
+      // pool too small to churn cannot be recorded as good eviction behaviour — a pool that refuses
+      // the wants it cannot hold evicts nothing, and that zero is structural.
+      { criterion: 'W4', measure: 'evictionsPerSecond', expect: 'N/A' },
+      // **The second of the two inequalities the row rests on, asserted rather than assumed.**
+      // `demandFitsCapacity` is `wanting / pool.layers`, and it going green is exactly the condition
+      // that the want set fits the pool. Frozen it reads 0.5833 — 14 cells into 24 layers — on 10 of
+      // 10 draws (0.6667 moving). **It does not keep `artFraction` at its ceiling**: the moving
+      // sweep reads this GREEN and the ratio at 0.875 on the same frames, because the two undrawn
+      // cells are turnover, not a pool without room. What it does do is red first, and name the
+      // reason, if a future pose or grid pushes the want set past the pool.
+      { criterion: 'W4', measure: 'demandFitsCapacity', expect: 'GREEN' },
     ],
   },
   {
