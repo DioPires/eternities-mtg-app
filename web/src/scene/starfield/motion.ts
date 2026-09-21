@@ -31,6 +31,7 @@ import {
   DUST_CURL_SPEED,
   SHEAR_RADIAL_PHASE,
 } from '../tuning'
+import { APPLY_PLANE_TILT } from '../worlds/spin'
 import { valueNoise3 } from './noise'
 
 /** RGBA texels per plane row of the PRD 8.5.2 `DataTexture`. */
@@ -171,7 +172,9 @@ const driftScratch: MutableVec3 = { x: 0, y: 0, z: 0 }
  *
  * PRD 8.5.3's order: rotate about the plane's axis by the accumulated angle plus the bounded
  * shear, apply the tilt, scale to the plane's radius, add the drift offset, translate to the
- * plane's position, then apply the multiverse rotation.
+ * plane's position, then apply the multiverse rotation — with the two amendments the worlds law
+ * makes (DEC-873): the tilt is gated on `APPLY_PLANE_TILT`, and the multiverse rotation moves the
+ * plane's centre but not the offset from it, except on the dust plane.
  *
  * `local` is the plane-local position straight out of the star record (PRD 8.6.2, inside the frame
  * radius of 1.2). Allocates nothing.
@@ -218,34 +221,44 @@ export function starWorldPosition(
     px = rx
   }
 
-  // Tilt: rotate by the plane's quaternion (PRD 8.6.2's seeded disc tilt).
-  const qx = table[base + PT_TILT]!
-  const qy = table[base + PT_TILT + 1]!
-  const qz = table[base + PT_TILT + 2]!
-  const qw = table[base + PT_TILT + 3]!
-  const tx = 2 * (qy * pz - qz * py)
-  const ty = 2 * (qz * px - qx * pz)
-  const tz = 2 * (qx * py - qy * px)
-  px += qw * tx + qy * tz - qz * ty
-  py += qw * ty + qz * tx - qx * tz
-  pz += qw * tz + qx * ty - qy * tx
+  // Tilt: rotate by the plane's quaternion (PRD 8.6.2's seeded disc tilt) — only when the drawn
+  // world is tilted too. The table carries the raw quaternion; the gate is `worlds/spin.ts`'s, so
+  // a star record, which on v3 is a cell centre (§2.1), lands on the globe `planeOrientation`
+  // draws (DEC-873).
+  if (APPLY_PLANE_TILT) {
+    const qx = table[base + PT_TILT]!
+    const qy = table[base + PT_TILT + 1]!
+    const qz = table[base + PT_TILT + 2]!
+    const qw = table[base + PT_TILT + 3]!
+    const tx = 2 * (qy * pz - qz * py)
+    const ty = 2 * (qz * px - qx * pz)
+    const tz = 2 * (qx * py - qy * px)
+    px += qw * tx + qy * tz - qz * ty
+    py += qw * ty + qz * tx - qx * tz
+    pz += qw * tz + qx * ty - qy * tx
+  }
 
   const radius = table[base + PT_RADIUS]!
   px *= radius
   py *= radius
   pz *= radius
 
-  driftOffset(table, row, time, driftScratch)
-  px += table[base + PT_HOME]! + driftScratch.x * motion
-  py += table[base + PT_HOME + 1]! + driftScratch.y * motion
-  pz += table[base + PT_HOME + 2]! + driftScratch.z * motion
-
-  // PRD 5.3.13: the whole multiverse turns about its vertical axis.
-  const mc = Math.cos(multiverseAngle)
-  const ms = Math.sin(multiverseAngle)
-  out.x = px * mc + pz * ms
-  out.y = py
-  out.z = -px * ms + pz * mc
+  // PRD 5.3.13: the whole multiverse turns about its vertical axis — applied to the plane's
+  // *centre*, which is how `WorldSurface` draws a world: its orientation carries the spin and
+  // nothing of the multiverse angle (DEC-873). The dust plane is the exception, because its drawn
+  // twin is §1.8's belt and DEC-814 turns the belt as one object, offsets and all.
+  planeWorldPosition(table, row, time, multiverseAngle, motion, out)
+  if (table[base + PT_KIND] === PlaneKindCode.Dust) {
+    const mc = Math.cos(multiverseAngle)
+    const ms = Math.sin(multiverseAngle)
+    out.x += px * mc + pz * ms
+    out.y += py
+    out.z += -px * ms + pz * mc
+    return out
+  }
+  out.x += px
+  out.y += py
+  out.z += pz
   return out
 }
 

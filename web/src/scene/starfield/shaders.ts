@@ -32,6 +32,7 @@ import {
   PlaneKindCode,
 } from './motion'
 import { glslFloat } from '../glsl'
+import { APPLY_PLANE_TILT } from '../worlds/spin'
 
 
 const DEFINES = [
@@ -46,6 +47,8 @@ const DEFINES = [
   ['FILTER_DIM', FILTER_DIM],
   ['HOVER_GAIN', HOVER_GAIN],
   ['GLOW_MIN_ASPECT', GLOW_MIN_ASPECT],
+  // `worlds/spin.ts`'s gate, as an integer so the chunk can `#if` on it (DEC-873).
+  ['APPLY_PLANE_TILT', APPLY_PLANE_TILT ? 1 : 0],
   ['KIND_DUST', PlaneKindCode.Dust],
   ['KIND_EMPTY', PlaneKindCode.Empty],
   ['PT_HOME_TEXEL', PT_HOME / 4],
@@ -59,7 +62,9 @@ const DEFINES = [
 export const DEFINE_BLOCK = DEFINES.map(
   ([name, value]) =>
     `#define ${name} ${
-      name.endsWith('_TEXEL') || name.startsWith('KIND_') ? String(value) : glslFloat(value)
+      name.endsWith('_TEXEL') || name.startsWith('KIND_') || name === 'APPLY_PLANE_TILT'
+        ? String(value)
+        : glslFloat(value)
     }`,
 ).join('\n')
 
@@ -187,8 +192,9 @@ vec3 curlNoise(vec3 p) {
 
 /**
  * PRD 8.5.3, in order: rotate about the plane's axis by the accumulated angle plus the bounded
- * shear, apply the tilt, scale to the plane's radius, add the drift offset, translate to the
- * plane's position, then apply the multiverse rotation.
+ * shear, apply the tilt (gated, DEC-873), scale to the plane's radius, add the drift offset,
+ * translate to the plane's position, then apply the multiverse rotation — to the centre only,
+ * except on the dust plane.
  */
 vec3 starWorldPosition(int row, vec3 local) {
   vec4 home = planeTexel(row, PT_HOME_TEXEL);
@@ -209,9 +215,15 @@ vec3 starWorldPosition(int row, vec3 local) {
     p = vec3(p.x * c + p.z * s, p.y, -p.x * s + p.z * c);
   }
 
-  p = quatRotate(tilt, p) * home.w;
-  p += home.xyz + driftOffset(drift, uTime) * uMotion;
-  return rotateY(p, uMultiverseAngle);
+#if APPLY_PLANE_TILT
+  p = quatRotate(tilt, p);
+#endif
+  p *= home.w;
+  // The multiverse rotation moves the centre, not the offset — except on the dust plane, whose
+  // drawn twin (the belt) turns as one object. The JS twin's step, step for step (DEC-873).
+  vec3 centre = home.xyz + driftOffset(drift, uTime) * uMotion;
+  if (int(shear.w) == KIND_DUST) return rotateY(centre + p, uMultiverseAngle);
+  return rotateY(centre, uMultiverseAngle) + p;
 }
 
 /** Where a plane's centre is: {@link starWorldPosition} with the local position dropped. */
