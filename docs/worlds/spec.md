@@ -1297,7 +1297,7 @@ tick positions, not with a capture. See §5, Q5.
   > and `web/test/pick-target-separation.test.ts` measured both arms so the shipped one stayed the
   > control.
   >
-  > **Carried by the DEC-885 refresh** (`c9468f1125bcddff` → `ef2ad991f81dfddf`, 2026-09-21), which
+  > **Carried by the DEC-885 refresh** (`c9468f1125bcddff` → `f2be4a22ce639774`, 2026-09-21), which
   > retired all three. Re-measured on the shipped homes, not carried over — `home` moves on every
   > refresh, and this one happens to equal the vendored candidate because the roster did not
   > change: at 1920×1080 and 36 azimuths, **32** worlds lifted, **0** under 24 px, **0**

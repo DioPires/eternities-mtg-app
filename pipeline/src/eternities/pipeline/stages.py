@@ -45,6 +45,7 @@ UNIVERSES_BEYOND_STAMP: Final = "triangle"
 
 OWN_ROW_RULE: Final = "4.3.1 Appendix B universes_beyond or excluded"
 PARENT_ROW_RULE: Final = "4.3.1 Appendix B universes_beyond or excluded (inherited from a parent)"
+UNRELEASED_RULE: Final = "4.3.8 printing unreleased on the run date"
 
 
 def governing_set_row(
@@ -84,8 +85,11 @@ def governing_set_row(
 class PrintingFilterResult:
     kept: list[RawPrinting]
     dropped_by_rule: Counter[str]
-    unreleased_sets: list[str]
-    """PRD 4.9.2: sets excluded because they had not shipped on the run date."""
+    unreleased_by_set: dict[str, int]
+    """PRD 4.9.2: set code -> printings excluded because they had not shipped on the run date.
+
+    Keyed by set, counted by printing: since the 4.3.8 amendment the date is the printing's own, so
+    a set that shipped long ago can still hold unreleased printings (`fdc`)."""
     dropped_via_parent: dict[str, str] = field(default_factory=dict)
     """Set code -> the ancestor whose Appendix B row dropped it (PRD 4.3.1, read through 4.6.3).
 
@@ -110,7 +114,7 @@ def filter_printings(
     """PRD 4.3. A printing survives only if no rule fires."""
     by_code = appendices.by_code()
     dropped: Counter[str] = Counter()
-    unreleased: set[str] = set()
+    unreleased: Counter[str] = Counter()
     via_parent: dict[str, str] = {}
     parent_only: Counter[str] = Counter()
     kept: list[RawPrinting] = []
@@ -127,8 +131,8 @@ def filter_printings(
             kept.append(printing)
             continue
         dropped[rule] += 1
-        if rule == "4.3.8 set unreleased on the run date":
-            unreleased.add(printing.set_code)
+        if rule == UNRELEASED_RULE:
+            unreleased[printing.set_code] += 1
         if rule == PARENT_ROW_RULE and resolved is not None:
             via_parent[printing.set_code] = resolved[1]
             # Re-run 4.3 with the inherited row withheld: whatever comes back is what would have
@@ -139,7 +143,7 @@ def filter_printings(
     return PrintingFilterResult(
         kept=kept,
         dropped_by_rule=dropped,
-        unreleased_sets=sorted(unreleased),
+        unreleased_by_set=dict(sorted(unreleased.items())),
         dropped_via_parent=dict(sorted(via_parent.items())),
         parent_rule_only=dict(sorted(parent_only.items())),
     )
@@ -186,8 +190,13 @@ def _printing_exclusion_rule(
         # a data surprise, not a rule; 4.6.4 will fail on it if it survives to be a first
         # printing, so record it here rather than dropping it silently.
         return None
-    if scry_set.released_at > as_of:
-        return "4.3.8 set unreleased on the run date"
+    # PRD 4.3.8 as amended: the printing's own date, not the set's. Scryfall dates `fdc`
+    # (Foundations Commander) 2024-11-15 but dates 316 of its printings 2026-10-02, and The List
+    # keeps its 2020 set date while adding printings dated months ahead; reading the set date let
+    # those preview printings in. The two dates agree for every ordinary set. Same shape as 4.5.1's
+    # amendment in `first_printing_sort_key`.
+    if printing.released_at > as_of:
+        return UNRELEASED_RULE
     return None
 
 

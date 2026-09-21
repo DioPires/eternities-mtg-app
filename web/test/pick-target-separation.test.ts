@@ -32,13 +32,16 @@
  * projection is not affine and the rule cannot see that. This file, not the rule, is what says the
  * target is there.
  *
- * `DEC759_HOMES` (a homes file from that study) overlays other homes on the shipped roster,
- * `DEC759_VIEWPORT` and `DEC759_AZIMUTHS` move the sweep, and `DEC759_OUT` collects the numbers.
- * With `DEC759_HOMES` set, the exact test steps aside — an ablation arm is expected to fall short,
- * that is what it is for. The other three still run and an ablation arm will fail them, so a study
- * sweep is read from `DEC759_OUT` rather than from the exit code; `DEC759_VIEWPORT=1280x720` on the
- * shipped homes fails them too, for the reason in the limits above. No environment at all is the
- * committed measurement, and is what CI scores.
+ * `DEC759_HOMES` (a homes file from that study) overlays other homes on the shipped roster. The
+ * study reads its roster from the recorded pre-refresh dataset (`c9468f1125bcddff`, from git), whose
+ * `planes.json` differs from the shipped one only in `home`, so the overlay measures the same roster;
+ * its `new-shipped` arm reproduces the shipped homes to 1e-6. `DEC759_VIEWPORT` and
+ * `DEC759_AZIMUTHS` move the sweep, and `DEC759_OUT` collects the numbers. With `DEC759_HOMES`
+ * set, the exact test steps aside — an ablation arm is expected to fall short, that is what it is
+ * for. The other three still run and an ablation arm will fail them, so a study sweep is read from
+ * `DEC759_OUT` rather than from the exit code; `DEC759_VIEWPORT=1280x720` on the shipped homes fails
+ * them too, for the reason in the limits above. No environment at all is the committed measurement,
+ * and is what CI scores.
  */
 
 import { appendFileSync, readFileSync } from 'node:fs'
