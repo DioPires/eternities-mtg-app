@@ -261,9 +261,8 @@ export function SceneView({
     scene3d.setWorldData(worldData)
   }, [scene3d, worldData])
 
-  // PRD 5.8's dimming, for the worlds path (spec §1.11). The star field's half is `App`'s
-  // `useFilterMask`; this is the same evaluation reaching the cell sheets, where a filtered cell
-  // drops to its swatch and is never admitted to the art pool at all.
+  // PRD 5.8's dimming (spec §1.11): `App`'s filter evaluation reaching the cell sheets, where a
+  // filtered cell drops to its swatch and is never admitted to the art pool at all.
   useWorldsFilterMask(scene3d.worlds)
 
   useEffect(() => {

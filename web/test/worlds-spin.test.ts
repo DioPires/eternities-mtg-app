@@ -37,6 +37,7 @@ import { planeWorldPosition, starWorldPosition } from '../src/scene/starfield/mo
 import { PlaneTable } from '../src/scene/starfield/planeTable'
 import { FrameLoop } from '../src/scene/renderer/frameLoop'
 import { attachWorlds } from '../src/scene/worlds/attachWorlds'
+import { DEFINE_BLOCK } from '../src/scene/starfield/shaders'
 import {
   APPLY_PLANE_TILT,
   NO_SPIN,
@@ -315,12 +316,10 @@ describe('the local-frame substitution is exact, not approximate (DEC-750)', () 
  * where the cell is actually drawn, `worldOrientation` above. So this compares the mirror with
  * that, and the negative row below fails on the axis the three of them used to share.
  *
- * **Identity tilt and a stopped multiverse, deliberately.** Two further differences between the
- * mirror and the renderer survive this leg and are not this row's subject: the mirror always
- * applies `tilt` where `planeOrientation` gates it on {@link APPLY_PLANE_TILT} (an owner decision,
- * see `spin.ts`), and the mirror carries PRD 5.3.13's multiverse rotation into the *local* offset
- * where `WorldSurface` applies it only to the centre. Pinning either here would freeze a defect as
- * an expectation. Reported on DEC-774's hand-back instead; the axis is what this row binds.
+ * **Identity tilt and a stopped multiverse, deliberately.** The axis is what these rows bind. The
+ * two further differences DEC-774 reported — the tilt gate and the multiverse rotation in the
+ * local offset — are bound on their own, on real tilts and a turned multiverse, in the DEC-873
+ * block below.
  */
 describe('the CPU motion mirror spins about the pole axis too (DEC-774)', () => {
   /** A real roster row, stripped to the one motion under test. */
@@ -616,6 +615,159 @@ describe('the CPU motion mirror spins about the pole axis too (DEC-774)', () => 
       expect(back.y).toBeCloseTo(local.y, 7)
       expect(back.z).toBeCloseTo(local.z, 7)
     }
+  })
+})
+
+/**
+ * The mirror places a cell where the globe is drawn — tilt gate and multiverse included (DEC-873).
+ *
+ * The rows above state the axis on an untilted plane at a stopped multiverse, because two further
+ * differences between the mirror and the renderer were still open. They are closed here, and each
+ * has its own row, stated against the drawn law rather than against another copy of the mirror:
+ *
+ * - **Tilt.** `planeOrientation` gates `plane.tilt` on {@link APPLY_PLANE_TILT}; the mirror used to
+ *   apply it unconditionally, which put the focused card up to 0.86 radii off its cell.
+ * - **Multiverse rotation.** `WorldSurface` rotates a world's *centre* by PRD 5.3.13's angle and
+ *   gives its orientation none of it; the mirror used to rotate the offset from the centre as
+ *   well, which carried the card round the globe — two radii at the half turn.
+ * - **Dust keeps it.** The dust plane's drawn twin is §1.8's belt, which DEC-814 turns as one
+ *   object, offsets and all; so there the rotation stays in the offset, and the spin — which the
+ *   dust never had — stays out of the anchor transforms too.
+ *
+ * This matters because on a v3 dataset a star record *is* a cell centre (§2.1), so every point
+ * the mirror computes — the focused card, its tether, the fly-to target — is meant to sit on the
+ * drawn globe. The drawn law is spelled from `planeOrientation` and `planeWorldPosition`, so the
+ * rows follow `APPLY_PLANE_TILT` whichever way the owner sets it.
+ */
+describe('the CPU motion mirror places a cell on the drawn globe (DEC-873)', () => {
+  /** Every world with cells, as it ships: real tilt, real home, real drift — shear aside. */
+  function rosterRow(source: PlaneRecord): PlaneRecord {
+    return { ...source, index: 0, shearAmplitude: 0 }
+  }
+
+  /** The table and the camera mirror, on the one clock, at a chosen multiverse angle. */
+  function rigAt(plane: PlaneRecord, multiverseAngle: number) {
+    const table = new PlaneTable([plane], 130)
+    for (let frame = 0; frame < 17 * 60; frame += 1) table.advance(1 / 60, 1)
+    const motion = new SceneMotion({
+      contractVersion: 3,
+      shardSize: 2000,
+      multiverseRadius: 130,
+      planes: [plane],
+    })
+    motion.syncClock(table.time, multiverseAngle)
+    motion.syncSpin(0, table.planes[0]!.spinAngle)
+    return { table, motion, spin: table.planes[0]!.spinAngle }
+  }
+
+  /** Where the renderer draws the cell at `dir`: the rotated centre, plus the drawn orientation. */
+  function drawnCell(
+    plane: PlaneRecord,
+    table: PlaneTable,
+    spin: number,
+    multiverseAngle: number,
+    dir: Vector3,
+  ): Vector3 {
+    const centre = { x: 0, y: 0, z: 0 }
+    planeWorldPosition(table.raw, 0, table.time, multiverseAngle, 1, centre)
+    const orientation = planeOrientation(plane, () => spin, new Quaternion())
+    return dir
+      .clone()
+      .multiplyScalar(Math.fround(plane.radius))
+      .applyQuaternion(orientation)
+      .add(new Vector3(centre.x, centre.y, centre.z))
+  }
+
+  /** The worst mirror-to-drawn gap over a cell sweep, in each world's own radii, both mirrors. */
+  function worstGap(multiverseAngle: number): { field: number; camera: number; worlds: number } {
+    const golden = Math.PI * (3 - Math.sqrt(5))
+    let field = 0
+    let camera = 0
+    for (const source of WORLDS) {
+      const plane = rosterRow(source)
+      const { table, motion, spin } = rigAt(plane, multiverseAngle)
+      const out = { x: 0, y: 0, z: 0 }
+      for (let i = 0; i < 16; i += 1) {
+        const y = 1 - (2 * (i + 0.5)) / 16
+        const ring = Math.sqrt(1 - y * y)
+        const dir = new Vector3(Math.cos(golden * i) * ring, y, Math.sin(golden * i) * ring)
+        const drawn = drawnCell(plane, table, spin, multiverseAngle, dir)
+        starWorldPosition(table.raw, 0, dir.x, dir.y, dir.z, table.time, multiverseAngle, 1, out)
+        field = Math.max(field, drawn.distanceTo(new Vector3(out.x, out.y, out.z)) / plane.radius)
+        motion.starPosition(out, plane, dir.x, dir.y, dir.z)
+        camera = Math.max(camera, drawn.distanceTo(new Vector3(out.x, out.y, out.z)) / plane.radius)
+      }
+    }
+    return { field, camera, worlds: WORLDS.length }
+  }
+
+  it('applies the tilt only where the drawn world is tilted', () => {
+    // The fixture has to be able to see a tilt: at identity every row here is the same row. On the
+    // shipped dataset 44 of the 45 worlds lean past 0.9° and the largest by 50.5°; most is the bound.
+    const tilted = WORLDS.filter((world) => Math.abs(world.tilt[3]) < 0.99997)
+    expect(tilted.length).toBeGreaterThan(WORLDS.length / 2)
+
+    const gap = worstGap(0)
+    expect(gap.field).toBeLessThan(1e-5)
+    expect(gap.camera).toBeLessThan(1e-5)
+
+    // The GLSL twin compiles nowhere today (see `starfield/motion.ts`), so what can be bound is
+    // that its gate is the same flag, spelled as the integer its `#if` needs.
+    expect(DEFINE_BLOCK).toContain(`#define APPLY_PLANE_TILT ${APPLY_PLANE_TILT ? 1 : 0}`)
+  })
+
+  it('turns the centre with the multiverse and leaves the offset in the world\'s own frame', () => {
+    // The half turn, where the old offset rotation was worst: two radii, the far side of the globe.
+    const gap = worstGap(Math.PI)
+    expect(gap.field).toBeLessThan(1e-5)
+    expect(gap.camera).toBeLessThan(1e-5)
+    // And a turn that is nobody's symmetry, so a rotation by the angle's reflection cannot pass.
+    const odd = worstGap(1.1)
+    expect(odd.field).toBeLessThan(1e-5)
+    expect(odd.camera).toBeLessThan(1e-5)
+  })
+
+  it('turns the dust anchor with the belt, offsets and all', () => {
+    const dust = PLANES.planes.find((plane) => plane.kind === 'dust')!
+    const plane: PlaneRecord = { ...dust, index: 0 }
+    const angle = 1.1
+    const { motion } = rigAt(plane, angle)
+    // The belt draws a dust record at `xyz · R`, turned whole by the multiverse angle
+    // (`worlds/belt.ts`, `worlds/centre.ts`). The curl is switched off to compare placement alone.
+    motion.setReducedMotion(true)
+    const local = { x: 0.3, y: 0.02, z: -0.4 }
+    const belt = new Vector3(local.x, local.y, local.z)
+      .multiplyScalar(plane.radius)
+      .add(new Vector3(...plane.home))
+      .applyAxisAngle(WORLD_POLE_AXIS, angle)
+    const world = { x: 0, y: 0, z: 0 }
+    motion.planeLocalToWorld(world, plane, local)
+    expect(new Vector3(world.x, world.y, world.z).distanceTo(belt)).toBeLessThan(1e-9)
+    const back = { x: 0, y: 0, z: 0 }
+    motion.worldToPlaneLocal(back, plane, world)
+    expect(back.x).toBeCloseTo(local.x, 9)
+    expect(back.y).toBeCloseTo(local.y, 9)
+    expect(back.z).toBeCloseTo(local.z, 9)
+  })
+
+  it('never spins a dust anchor, whatever spin angle the table hands it', () => {
+    // `starPosition` never spun the dust; the anchor transforms did, and agreed only because
+    // `blind-eternities` has `spinPeriodS: 0`. Hand the mirror a spin the dust must ignore.
+    const dust = PLANES.planes.find((plane) => plane.kind === 'dust')!
+    const plane: PlaneRecord = { ...dust, index: 0 }
+    const { motion } = rigAt(plane, 0.4)
+    const local = { x: 0.3, y: 0.02, z: -0.4 }
+    const still = { x: 0, y: 0, z: 0 }
+    motion.planeLocalToWorld(still, plane, local)
+    motion.syncSpin(0, 0.9)
+    const spun = { x: 0, y: 0, z: 0 }
+    motion.planeLocalToWorld(spun, plane, local)
+    expect(spun).toEqual(still)
+    const back = { x: 0, y: 0, z: 0 }
+    motion.worldToPlaneLocal(back, plane, still)
+    expect(back.x).toBeCloseTo(local.x, 9)
+    expect(back.y).toBeCloseTo(local.y, 9)
+    expect(back.z).toBeCloseTo(local.z, 9)
   })
 })
 

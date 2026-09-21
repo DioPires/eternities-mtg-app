@@ -37,7 +37,6 @@ import { useEffect, type ReactElement } from 'react'
 
 import { boot } from './app/boot'
 import { useMirrorSceneData, useSceneErrorToasts } from './app/dataset'
-import { useFilterMask } from './app/filterMask'
 import {
   useAttractMode,
   useFilterEvaluation,
@@ -106,14 +105,11 @@ export function App(): ReactElement {
   useKeyboardMap()
   usePanelAutoOpen()
   useResetActivePrintingOnFocus()
-  // Publishes the dimming mask Phase 2a's shader reads, and the exact count PRD 6.3.2 shows. This
-  // is the only call site — `FilterChips` and `Drawer` read the result from the store, so the
-  // record is scanned once per filter change and the mask buffer is reused.
+  // Publishes the dimming mask and the exact count PRD 6.3.2 shows. This is the only call site —
+  // `FilterChips` and `Drawer` read the result from the store, and `EternitiesScene`'s
+  // `useWorldsFilterMask` carries the mask to the cell sheets, so the record is scanned once per
+  // filter change and the mask buffer is reused.
   useFilterEvaluation()
-  // ...and PRD 5.8's other half: that mask, uploaded to the star geometry. Producer above,
-  // consumer here, both in the one component the PRD's "exactly once" applies to. The two used to
-  // exist without each other, which is how the dimming came to be computed and never shown.
-  useFilterMask(data.resources?.geometry ?? null)
 
   return (
     <div

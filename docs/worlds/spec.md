@@ -1953,13 +1953,13 @@ in §1 rather than being a gate-side patch.
 
 > **Normative — `?layers=N` pins the art pool and nothing else; it is not `?quality=N` (DEC-751).**
 > The two are easy to conflate because §1.12 makes the pool a rung of the same ladder, and one of
-> them already exists: W4.1 ships **`?quality=N`** (`web/src/scene/quality/adaptiveQuality.ts:360`)
+> them already exists: W4.1 ships **`?quality=N`** (`pinnedQualityTier` in `web/src/scene/quality/adaptiveQuality.ts`)
 > and there is no `?layers=` anywhere on `dec739-platform-layer` — this seam is genuinely new
 > surface R1 builds.
 >
 > They must not be aliased. `?quality=4` selects a whole rung of `QUALITY_TIERS`, which moves
-> **five** quantities at once — `pixelRatioCap` 1.0, `bloomScale` 0.25, `bloomLevels` REDUCED,
-> `thumbnailCapacity` 256 and `glow: 'cheap'` — where `?layers=128` must move the pool alone. The
+> **four** quantities at once — `pixelRatioCap` 1.0, `bloomScale` 0.25, `bloomLevels` REDUCED
+> and `glow: 'cheap'` — where `?layers=128` must move the pool alone. The
 > matrix row below is "`?layers=128` — tier 4's pool, **unmodified policy**", and it is one of only
 > two expected-GREEN rows. Routed through the tier it would also be measuring dpr, bloom and glow,
 > and would stop asserting what the paragraph under the matrix says it asserts.
