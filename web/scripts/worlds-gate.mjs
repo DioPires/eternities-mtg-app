@@ -1440,10 +1440,12 @@ export const MATRIX = [
       //    collapsed. The measure went green because the policy had stopped admitting *anything*,
       //    which is the opposite of the health this expectation was written to deny.
       // 2. **It is green for the right reason now.** At 256 buckets the quantile can land inside the
-      //    pool, so this reads **0.6016** — 77 cells wanted of 128, measured — and `artCellsShowing`
-      //    above reads 75–76 against its floor of 32 on the same frame (76 at DEC-882, 75 on both of
-      //    DEC-899's draws, 0.6016 on all three). Demand fitting capacity *while
-      //    the pool is well used* is the state §1.6 is written to produce.
+      //    pool, so this reads **0.594–0.602** — **76–77 cells wanted** of 128 — and
+      //    `artCellsShowing` above, the *drawn* count, reads **75–76** against its floor of 32 on
+      //    the same frames. Per draw: DEC-882 read 77 wanted / 76 drawn, and its logs hold 0.594
+      //    twice; DEC-899 drew 75 twice; DEC-901's three re-reads read 76 / 75 (0.59375), then
+      //    77 / 76 (0.6015625) twice. Demand fitting capacity *while the pool is well used* is the
+      //    state §1.6 is written to produce.
       //
       // So the RED's premise expired with the mechanism it described. What replaces it as a tripwire
       // is the pair: if the policy ever goes back to overshooting, this reads above 1 and reds, and
