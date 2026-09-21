@@ -92,11 +92,13 @@ class RawPrinting:
     card_name: str
     set_code: str
     released_at: str
-    """The printing's own release date, which both 4.4.3 and 4.5 order by.
+    """The printing's own release date, which 4.3.8, 4.4.3, 4.5 and 5.6.7 all order by.
 
     4.5.1's literal wording says the *set*'s date; the pipeline deviates and uses this field
     instead, because rolling products such as The List keep adding printings for years under a
-    single set date. See :func:`~eternities.pipeline.stages.first_printing_sort_key`.
+    single set date. See :func:`~eternities.pipeline.stages.first_printing_sort_key` — which
+    :func:`~eternities.pipeline.assemble.printing_order` now sorts the planet order by too, so
+    the whole pipeline reads one date (DEC-885, DEC-913).
     """
     rarity: str
     layout: str

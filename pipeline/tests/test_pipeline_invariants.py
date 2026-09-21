@@ -49,7 +49,9 @@ from eternities.pipeline.assemble import (
     AssemblyStats,
     CardInput,
     build_dataset,
+    printing_order,
 )
+from eternities.pipeline.stages import choose_first_printings
 from eternities.pipeline.records import CardDetail, FaceDetail, ScrySet
 
 PLANES = ["blind-eternities", "dominaria", "ravnica", "segovia", "kylem"]
@@ -869,3 +871,134 @@ def test_the_assignment_report_reads_n_exact_zero_zero():
         assert row.displaced == 0, f"{row.slug}: {row.displaced} displaced"
         assert row.bare == 0, f"{row.slug}: {row.bare} bare"
         assert row.exact == row.cards
+
+
+# --------------------------------------------------------------------------------------------
+# PRD 5.6.7's planet order is 4.5.1's key (DEC-913)
+# --------------------------------------------------------------------------------------------
+
+_PLANET_ORDER_CASES: Final = [
+    pytest.param(
+        {
+            "mh2": scry_set("mh2", released_at="2021-06-18"),
+            "plst": scry_set("plst", released_at="2020-09-26", set_type="masters"),
+        },
+        [
+            printing(set_code="plst", released_at="2023-09-08", collector_number="1111"),
+            printing(set_code="mh2", released_at="2021-06-18", collector_number="147"),
+        ],
+        "mh2",
+        id="rolling-product",
+    ),
+    pytest.param(
+        {"fdn": scry_set("fdn", released_at="2024-11-15")},
+        [
+            printing(set_code="fdn", released_at="2026-04-24", collector_number="732"),
+            printing(set_code="fdn", released_at="2024-11-15", collector_number="9"),
+        ],
+        "9",
+        id="later-dated-printing-inside-one-set",
+    ),
+    pytest.param(
+        {
+            "lci": scry_set("lci", released_at="2023-11-17"),
+            "lcc": scry_set("lcc", released_at="2023-11-17", set_type="commander"),
+        },
+        [
+            printing(set_code="lcc", released_at="2023-11-17", collector_number="106"),
+            printing(set_code="lci", released_at="2023-11-17", collector_number="249"),
+        ],
+        "lci",
+        id="set-type-priority-on-the-same-day",
+    ),
+]
+
+
+@pytest.mark.parametrize(("sets", "rows", "expected"), _PLANET_ORDER_CASES)
+def test_planet_order_agrees_with_the_first_printing(
+    sets: dict[str, ScrySet], rows: list, expected: str
+) -> None:
+    """PRD 5.6.7 as amended: ``p[0]`` is 4.5's first printing, chosen by the same key.
+
+    Two sorts used to answer "which printing is first" and they disagreed. 4.5.1 (amended
+    2026-09-04) reads the *printing's* ``released_at``; ``printing_order`` read the printing's
+    *set* date, so the planet at 12 o'clock — the one §2.3 draws and credits — was a different
+    printing for 458 cards of ``f2be4a22ce639774``. Each row here is one of the three mechanisms
+    that measurement turned up, and each reds on its own if the key goes back to the set date:
+
+    * ``rolling-product`` — The List's single 2020-09-26 set date over years of printings (451 of
+      the 458). Set date puts ``plst`` first; printing date puts ``mh2`` first.
+    * ``later-dated-printing-inside-one-set`` — both printings share a set date, so the old key
+      fell through to the collector number, compared as a **string**: ``"732" < "9"``. This is
+      Dazzling Angel in ``fdn``.
+    * ``set-type-priority-on-the-same-day`` — the old key had no set-type term at all and fell
+      through to the set code, ``"lcc" < "lci"``; 4.5.1 puts the expansion ahead of its Commander
+      deck. This is Chimil, the Inner Sun.
+
+    The assertion is the *agreement*, not a hard-coded winner: ``choose_first_printings`` picks
+    the expectation, so a future change to either sort that reopens the gap fails here whichever
+    side it moves. ``expected`` pins which printing that is, so the row cannot pass by having both
+    sorts break the same way.
+    """
+    ordered = printing_order(
+        CardInput(
+            oracle_id="card-1",
+            plane_slug="dominaria",
+            first_printing=rows[0],
+            printings=list(rows),
+            detail=_detail("card-1", 0),
+        ),
+        sets,
+    )
+    first = choose_first_printings(list(rows), {"card-1"}, sets)["card-1"]
+    assert ordered[0].id == first.id, (
+        f"p[0] is {ordered[0].set_code}/{ordered[0].collector_number} but 4.5 names "
+        f"{first.set_code}/{first.collector_number}"
+    )
+    assert expected in (ordered[0].set_code, ordered[0].collector_number)
+
+
+def test_planet_order_is_total_and_independent_of_input_order() -> None:
+    """PRD 8.9.1: the key ends in the printing id, so no two printings can tie.
+
+    Shuffling the input must not move a planet. Dropping the id (or the collector number) from
+    :func:`first_printing_sort_key` leaves a sort that is stable-but-input-dependent, which a
+    single-order test cannot see.
+
+    The last two rows deliberately share a collector number — Scryfall's are unique within a set,
+    so this fixture is degenerate on purpose. It has to be: with four distinct collector numbers
+    the id term is never reached, and deleting it from the key leaves this test green. The claim
+    under test is that the order is *total*, and the only term that makes it so is the id.
+    """
+    sets = {"fdn": scry_set("fdn", released_at="2024-11-15")}
+    rows = [
+        printing(set_code="fdn", released_at="2024-11-15", collector_number=str(n))
+        for n in (9, 732, 10)
+    ]
+    rows += [
+        printing(
+            set_code="fdn",
+            released_at="2024-11-15",
+            collector_number="100",
+            printing_id=f"fdn-100-{suffix}",
+        )
+        for suffix in ("a", "b")
+    ]
+    card = CardInput(
+        oracle_id="card-1",
+        plane_slug="dominaria",
+        first_printing=rows[0],
+        printings=list(rows),
+        detail=_detail("card-1", 0),
+    )
+    expected = [p.id for p in printing_order(card, sets)]
+    assert len(set(expected)) == len(rows), "the fixture must hold five distinct printings"
+    for permutation in itertools.permutations(rows):
+        shuffled = CardInput(
+            oracle_id="card-1",
+            plane_slug="dominaria",
+            first_printing=permutation[0],
+            printings=list(permutation),
+            detail=_detail("card-1", 0),
+        )
+        assert [p.id for p in printing_order(shuffled, sets)] == expected

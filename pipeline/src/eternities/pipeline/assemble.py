@@ -36,6 +36,7 @@ from ..contract.models import (
 from ..fixtures import layout, surface
 from .appendices import Appendices
 from .records import CardDetail, MeldResult, RawPrinting, ScrySet
+from .stages import first_printing_sort_key
 from .swatches import MissingSwatchError, SwatchCache
 
 BRIGHTNESS_PERCENTILE: Final = 0.98
@@ -50,7 +51,12 @@ class CardInput:
     plane_slug: str
     first_printing: RawPrinting
     printings: list[RawPrinting]
-    """Included printings, release-ordered — the planet order of PRD 5.6.7."""
+    """This card's included printings, in the order the bulk file yielded them.
+
+    PRD 5.6.7's planet order is imposed by :func:`printing_order`, not held here: every reader
+    that needs it calls that function, so there is one sort and ``p[0]`` cannot disagree with the
+    swatch taken for the same cell.
+    """
     detail: CardDetail
 
 
@@ -459,24 +465,26 @@ def _chronology_bands(
 def printing_order(row: CardInput, sets: dict[str, ScrySet]) -> list[RawPrinting]:
     """A card's printings in the order they appear as ``p`` in a shard — PRD 5.6.7's planet order.
 
-    By the *printing's set release date*, which is not the same thing as the card's debut: a promo
-    or a list reprint whose set shipped earlier sorts ahead of the set the card first appeared in.
-    ``p[0]`` is therefore the earliest-released printing, and §2.3 makes it the one whose art a cell
-    shows and whose artist the cell credits.
+    Ordered by :func:`~eternities.pipeline.stages.first_printing_sort_key`, the same key PRD 4.5.1
+    picks the first printing with, so ``p[0]`` *is* the card's first printing by construction —
+    and §2.3 makes ``p[0]`` the printing whose art a cell shows and whose artist it credits.
+
+    This used to sort on the printing's **set** release date, and the two readings disagree. A
+    rolling product carries one set date for printings it keeps adding for years: The List
+    (``plst``, set date 2020-09-26) took ``p[0]`` from 451 cards that had plainly been printed
+    elsewhere first, so hundreds of cells drew a List reprint's art and credited its artist while
+    4.5.1 had already named a different printing. The same gap opens inside a single set whenever
+    it carries printings of its own dated later than its set date — ``fdn/732`` (2026-04-24) beat
+    ``fdn/9`` (2024-11-15) on a string compare of the collector number once the dates tied — and
+    across two same-day sets, where 4.5.1's set-type priority (absent from the old key) puts the
+    expansion ahead of its Commander deck. Measured on ``f2be4a22ce639774``: 458 cards, from
+    ``plst`` 451, ``med`` 4, ``lcc`` / ``one`` / ``fdn`` 1 each (DEC-913).
 
     Lifted out of :func:`_contract_card` because the swatch stage needs exactly this element and
     must not re-derive it: a swatch taken from a different printing than the cell draws is a
     mismatch nothing in the artefacts could detect.
     """
-    return sorted(
-        row.printings,
-        key=lambda p: (
-            sets[p.set_code].released_at if p.set_code in sets else UNRELEASED_DATE,
-            p.set_code,
-            p.collector_number,
-            p.id,
-        ),
-    )
+    return sorted(row.printings, key=lambda p: first_printing_sort_key(p, sets))
 
 
 def _contract_card(

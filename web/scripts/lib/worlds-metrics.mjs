@@ -549,6 +549,20 @@ export const W3_MIN_BAND_SHARE = 0.05;
  *   qualify on their cards and present one band. Same roster, same card-to-plane assignment (report
  *   9.2.3: 0 moved), so the unchanged pair is expected — but it was read off the tour, not copied
  *   from the row above. The intermediate hash `ef2ad991f81dfddf` never shipped and has no row.
+ * - **`a5846bec28d1447e` — `scored` 28 of 45, `byShares` 30 of 45.** DEC-913 (2026-09-21), which
+ *   re-sorted each card's printing list onto 4.5.1's key so `p[0]` is the first printing. One
+ *   `--only baseline --no-captures` tour on the new hash, run while another leg's gate held the
+ *   GPU: 28 readings in the fold, `qualifyingPlanes` 30, and `shenmeng` and `zhalfir` are the two
+ *   that qualify on their cards and present a single band — the same pair as the two rows above.
+ *   **The pair being unchanged is predicted here, and that is the reason to distrust it, so it was
+ *   read off the tour rather than copied.** The prediction: this change re-orders `p` and touches
+ *   nothing a band is made of. A chronology band is a position in the plane's set list keyed on
+ *   the card's *first printing* (5.4.2), which this change does not move — `stars.bin` and
+ *   `planes.json` came out byte-identical to `f2be4a22ce639774`, and the report's 9.2.3 count is
+ *   0 — so the band shares `w3QualifiesByShares` reads are the same numbers, and `byShares` could
+ *   not have moved without something being wrong. `scored` is the one that could: it depends on
+ *   which bands turn up in the sampled cells, and this change alters the *art* in 458 of them.
+ *   It did not move either. W3 itself read 4.6890 against the 3.1 floor.
  *
  * A constant cannot testify to its own provenance, so neither of these is left alone with itself.
  * `scored` catches a tour that visited too few worlds, or a world that lost a band at the pose —
@@ -563,6 +577,7 @@ export const W3_MIN_BAND_SHARE = 0.05;
 export const W3_DOMAIN_SIZE = Object.freeze({
   c9468f1125bcddff: Object.freeze({ scored: 28, byShares: 30 }),
   f2be4a22ce639774: Object.freeze({ scored: 28, byShares: 30 }),
+  a5846bec28d1447e: Object.freeze({ scored: 28, byShares: 30 }),
 });
 
 /**
