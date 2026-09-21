@@ -144,10 +144,13 @@ def build_dataset(
     # PRD 5.3.3: the gap must survive drift. Every plane drifts by layout.DRIFT_FACTOR x mean
     # spacing and a pair can drift toward each other, so the margin clears several times that.
     margin = layout.PLANE_MARGIN_FACTOR * mean_spacing
-    positions = layout.place_planes(
-        [(s, radii[s], len(by_plane[s]) == 0) for s in named], MULTIVERSE_RADIUS, margin
-    )
     motions = {s: layout.plane_motion(s, mean_spacing) for s in ordered_slugs}
+    positions = layout.place_planes(
+        [(s, radii[s], len(by_plane[s]) == 0) for s in named],
+        MULTIVERSE_RADIUS,
+        margin,
+        layout.DRIFT_FACTOR * mean_spacing,
+    )
 
     planes: list[Plane] = []
     stars: list[StarRecord] = []
