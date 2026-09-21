@@ -746,7 +746,6 @@ describe('§1.6s art stream, asked by the shipped composition (DEC-772)', () => 
 
     poseAtWorld(scene, 'dominaria', 2.2)
     await settleUntil(() => artRequests.length > 0, 'the art stream must reach the network')
-
     const payload = probe.worlds()!
     const surface = scene.worlds.surfaces.find((s) => s.planeSlug === 'dominaria')!
     const admitted = payload.cells.filter(
@@ -780,12 +779,22 @@ describe('§1.6s art stream, asked by the shipped composition (DEC-772)', () => 
     // cells and any honest floor on it would be vacuous. The stream's own `requested` counts every
     // `request()` that issued, and DEC-778 published it, so it is readable from here now.
     //
-    // What binds it is the pool, not the admitted set: 64 layers against far more admitted cells,
-    // so the stream asks for exactly `layers` and records the rest as `declinedExhausted`. That
-    // equality is stronger than a fraction — it says the stream asked for every layer it could get.
+    // **What the floor is tied to moved at DEC-882.** This used to read `requested === pool.layers`
+    // with `declinedExhausted > 0`: on the 64-bucket grid this pose admitted **158** cells into 64
+    // layers, so one frame overflowed the pool and "the stream asked for every layer it could get"
+    // was the strongest available statement. At 256 buckets the quantile lands near capacity rather
+    // than 2.5x past it — this pose now admits **27** — so the frame's whole admitted set fits, and
+    // the old equality would be asserting the stream asked for layers it had no cell for.
+    //
+    // The floor is tied to the admitted set instead, which is what DEC-777 N2 was actually about:
+    // every cell the policy admits is asked for, one request each. That is *stronger* than filling
+    // the pool — a `cell % 8 === 0` regression drops 87.5% of the requests and reds it.
     const stream = payload.stream!
-    expect(stream.requested).toBe(payload.pool.layers)
-    expect(stream.declinedExhausted).toBeGreaterThan(0)
+    expect(admitted.length).toBeLessThanOrEqual(payload.pool.layers)
+    expect(stream.requested).toBe(admitted.length)
+    // The pool ceasing to bind here is the same finding from the other end, and is asserted so that
+    // a policy going back to overflowing it reds this row too.
+    expect(stream.declinedExhausted).toBe(0)
     expect(stream.declinedFailedBefore).toBe(0)
     // Not the budget: 64 bodies is far under 64 MiB, and a row where the budget bound here would be
     // scoring §1.6's byte rule where it means to score the wiring (DEC-780).
@@ -798,12 +807,15 @@ describe('§1.6s art stream, asked by the shipped composition (DEC-772)', () => 
     // construction and deleting `if (this.inFlight.has(key)) return layer` from `artStream.ts` left
     // this row green. Ticking again, with the same cells admitted and their requests still in
     // flight, is the state that guard exists for.
+    const requestedBeforeSecondFrame = stream.requested
     poseAtWorld(scene, 'dominaria', 2.2)
     const afterSecondFrame = artRequests.map(printingIdOf)
     expect(new Set(afterSecondFrame).size).toBe(afterSecondFrame.length)
     // And the second frame must not have re-asked: `requested` counts keys, so a per-frame re-ask
-    // inflates it past the pool that bounds it.
-    expect(probe.worlds()!.stream!.requested).toBe(payload.pool.layers)
+    // inflates it. Compared against the count this row already read rather than against
+    // `pool.layers` — those were the same number only while the pose overflowed the pool, which
+    // DEC-882 stopped it doing, and the pool was never what this claim is about.
+    expect(probe.worlds()!.stream!.requested).toBe(requestedBeforeSecondFrame)
 
     // **The assertion above has to be able to fail.** A card with a single printing satisfies
     // "index 0" under every index rule, so if every requested card were single-printing the p[0]
