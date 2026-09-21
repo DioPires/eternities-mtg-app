@@ -34,14 +34,15 @@ export interface ProbeState {
   /**
    * The multiverse's accumulated spin angle this frame, in radians (spec §3.1's W5; DEC-785 F2).
    *
-   * `PlaneTable.multiverseAngle`, which `PlaneTable.advance` integrates and `starScene` mirrors into
-   * the background — the **renderer's own** azimuth, not one derived from a clock. W5 sweeps at
+   * `PlaneTable.multiverseAngle`, which `PlaneTable.advance` integrates and `sceneFrame.ts` mirrors
+   * into the background (`advanceBackground`) — the **renderer's own** azimuth, not one derived
+   * from a clock. W5 sweeps at
    * least 12 azimuths and `azimuthSpacingFault` checks they are evenly spaced around the turn; a
    * gate that computed the angle from elapsed time would be checking its own arithmetic against
    * itself and would pass by construction on a sweep the renderer never took.
    *
-   * **Frozen is a real reading, and it is published as one.** `starScene` advances the table with
-   * `motion` 0 under reduced motion, so this stays put; that is the truth the gate's `frozen` setup
+   * **Frozen is a real reading, and it is published as one.** `sceneFrame.ts` advances the table
+   * with `motion` 0 under reduced motion, so this stays put; that is the truth the gate's `frozen` setup
    * failure exists to catch, and synthesising advancement here would turn §3.1's named degeneracy —
    * twelve samples of one frame, reported as a sweep — into a green matrix reading as the stronger
    * claim. Nothing smooths it, defaults it, or wraps it beyond the table's own `% TAU`.
@@ -49,14 +50,6 @@ export interface ProbeState {
   readonly multiverseAngle: number
   /** Cards of the focused plane whose shards have landed. */
   readonly cardsLoaded: number
-  readonly thumbnails: {
-    readonly drawn: number
-    readonly cells: number
-    readonly capacity: number
-    readonly requested: number
-    readonly loaded: number
-    readonly failed: number
-  }
   readonly images: {
     readonly inFlight: number
     readonly waiting: number
@@ -65,7 +58,6 @@ export interface ProbeState {
     readonly peakInFlight: number
   }
   readonly gpu: {
-    readonly atlasBytes: number
     readonly cardBytes: number
     readonly totalBytes: number
     readonly targetBytes: number
@@ -120,7 +112,16 @@ export interface ProbeState {
      * do not own says which of the two pictures it measured.
      */
     readonly bloomFloatTargets: boolean
-    /** The atlas's live capacity, after `CardTier.setCapacity`. */
+    /**
+     * **A retirement pin, not a live reading: 0 at every rung** since the thumbnail tier retired at
+     * the cutover (DEC-752). It was the atlas's capacity after `CardTier.setCapacity`.
+     *
+     * Kept, where the other thumbnail keys were dropped (DEC-861 item 9, ruling (b)), because a
+     * test asserts it stays 0: `every rung of the quality ladder lands, and only its own rung` in
+     * `e2e/quality.spec.ts` pins it at all five rungs (DEC-864, DEC-867). A structural 0 that is
+     * asserted to stay 0 is distinguishable from a live one — a capacity that came back to life
+     * reds that test. Unrelated to the quality tier's own `thumbnailCapacity`.
+     */
     readonly thumbnailCapacity: number
     readonly starsDrawn: number
     /** The `uMotion` uniform the star shader reads. */
@@ -178,11 +179,13 @@ export interface ProbeState {
     readonly halfFloatProbeOk: boolean
     readonly halfFloatProbeMs: number
     /**
-     * The largest sprite the star shader will ask for, in device pixels, after the clamp.
+     * **A retirement pin, not a live reading: always -1** since the star points whose sprite it
+     * clamped retired at the cutover (DEC-752). It was `uMaxPixels` off the star material, the app's
+     * side of a `gl_PointSize` clamp a driver applies silently.
      *
-     * The clamp is unobservable from outside — a driver silently clamps `gl_PointSize` and says
-     * nothing — so the *app's* side of it is reported instead: this is `uMaxPixels` read off the
-     * live material, and it must never exceed {@link pointSizeMax}.
+     * Kept because a test asserts it stays -1: `the platform layer asks the GPU and the app acts on
+     * the answer` in `e2e/quality.spec.ts` (DEC-861 item 9, ruling (b)). A sprite ceiling that came
+     * back without its clamp being re-checked against {@link pointSizeMax} reds there.
      */
     readonly starMaxPixels: number
   }
@@ -257,8 +260,6 @@ export interface Probe {
   focusCard: (options?: { dfc?: boolean; nth?: number }) => number
   flip: () => boolean
   activatePrinting: (index: number) => boolean
-  /** Star indices the thumbnail tier is currently drawing. */
-  thumbnailStars: () => number[]
   /**
    * Where a planet of the focused card is, as a fraction of the viewport. `null` if there is no
    * such planet or it is behind the camera.
@@ -317,8 +318,9 @@ declare global {
  * shell the scene alone is no longer that. The alternative was to drive the shell entirely through
  * its own chrome, which reaches the checkpoints but cannot measure them: the shell mounts
  * `SceneView` with `chrome: false`, so there is no readout panel on it, and 9.3's thumbnail
- * cross-fade criterion is a question about `thumbnails.drawn` crossing PRD 5.5.1's 24 px band —
- * a number that exists nowhere else. `SceneView` installs the seam wherever it is mounted; only
+ * cross-fade criterion was a question about `thumbnails.drawn` crossing PRD 5.5.1's 24 px band —
+ * a number that existed nowhere else. (The tier and the key retired with the galaxy: DEC-752 and
+ * DEC-861 item 9.) `SceneView` installs the seam wherever it is mounted; only
  * the routing in `App.tsx` decided which page that was.
  */
 export type ProbeTarget = 'scene' | 'shell'

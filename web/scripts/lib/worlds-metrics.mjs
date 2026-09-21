@@ -251,11 +251,11 @@ export const FLOORS = {
    *
    * | reading | value | vs 32 |
    * |---|---|---|
-   * | the live witness that must RED, `?layers=24` (DEC-890), settled frozen frame | 14 | **2.3× below** |
+   * | the live witness that must RED, `?layers=24` (DEC-890), settled frozen frame, 10 of 10 draws | 14 | **2.3× below** |
    * | the witness the floor was derived against (want set collapsed to 14) | 14 | **2.3× below** |
-   * | healthy tier-4 rung, `?layers=128` (75–82 across four instruments) † | 76 | 2.3–2.6× above |
+   * | healthy tier-4 rung, `?layers=128` (wanted 76–77, drawn 75–77, admitted 76–84 over the live draws after DEC-882) † | 75–77 drawn | 2.3–2.4× above |
    * | worst in-domain world of the 45-world tour (forgotten-realms) | **141** | **4.4× above** |
-   * | shipped 1,024-layer baseline, dominaria | 941 | 29× above |
+   * | shipped 1,024-layer baseline, dominaria (n = 1, DEC-837, before PR #85's pose and DEC-882's grid) | 941 | 29× above |
    *
    * † **The row read 124 before PR #85's pose and DEC-882's grid, and that 124 belonged to the
    * row's harness configuration and not to the build** — the frame is taken after DEC-843's 3 s
@@ -267,6 +267,31 @@ export const FLOORS = {
    * clear of the 32 either way.
    */
   artCellsAbsolute: 32,
+  /**
+   * W1's pixel witness on a swept row: ΔE76 between a cell's centre pixel and the sky just outside
+   * its screen rect, at the worst counted phase (DEC-861 item 4). See {@link centreContrastDeltaE}.
+   *
+   * **Derived, not chosen: the geometric mean of the two arms' scored readings, three draws each**
+   * (DEC-861, segovia at its settle, dataset `c9468f1125bcddff`). The statistic is the worst counted
+   * phase, so that is what is tabled; the control's *best* counted phase is tabled too, because it
+   * is the reading a looser rule would have scored:
+   *
+   * | arm | draw 1 | draw 2 | draw 3 | vs 28 |
+   * |---|---|---|---|---|
+   * | `one-card-world` — shipped, worst counted phase | 58.36 | 58.11 | 58.25 | 2.08× above |
+   * | `one-card-no-cell-draw` — `WorldCell` blanked, worst counted phase | 13.20 | 13.49 | 12.81 | 2.08× below |
+   * | the same control's *best* counted phase (not scored) | 43.19 | 43.77 | 43.55 | above |
+   *
+   * `√(58.11 × 13.49) = 28.0`. The shipped arm barely moves (58.11–58.63 over every counted phase of
+   * every draw) because the cell's projected centre always lands on the same texel of segovia's art.
+   * The blanked arm spans 13–44 across one pass because what shows through is the world's
+   * atmosphere, brighter towards the limb — which is why the witness must score its **worst**
+   * counted phase: a control draw would green only if all six of its counted phases sat above 28,
+   * and no draw came near. Two limits: the floor is a property of segovia's card art, so a refresh
+   * that changes that card expires it; and it answers "is the cell drawn at all", not "is it drawn
+   * correctly" — a cell drawn dim or in the wrong colour is not its subject.
+   */
+  cellDrawnDeltaE: 28,
 };
 
 /**
@@ -916,13 +941,70 @@ function scoredMeasures(measures) {
  * unmeasured criterion has not passed. Anything deciding the *run's* verdict must read `status`.
  */
 function criterion(id, title, measures, extra = {}) {
+  const status = criterionStatus(measures);
+  return { id, title, measures, status, pass: status === "pass", ...extra };
+}
+
+/**
+ * A criterion's verdict from its measures: any scored `fail` fails it, and otherwise any scored
+ * `insufficient` leaves it `insufficient`.
+ *
+ * **One spelling for the per-plane criterion and the roster fold (DEC-861 item 6).** The fold used
+ * to have its own: `pass` unless *every* scored measure was `insufficient`, so a world whose
+ * `artFraction` passed and whose `artCellsShowing` was out of domain read `insufficient` per plane
+ * and `pass` once folded — the same measures, two verdicts. The per-plane rule is the one kept,
+ * because it is the one this module argues for everywhere else: a measure that was not taken is
+ * not a measure that passed, and a criterion carrying one has not been shown to hold.
+ *
+ * Nothing decided a run on the folded criterion-level status when the two were made to agree — the
+ * matrix scores every folded criterion per measure, and its one criterion-level expectation
+ * (`baseline`'s W1) reads {@link evaluateW1}, which never went through the fold — so no row changed
+ * colour. `worlds-metrics.test.ts` pins the shared rule on both paths.
+ */
+function criterionStatus(measures) {
   const scored = scoredMeasures(measures);
-  const status = scored.some((m) => m.status === "fail")
+  return scored.some((m) => m.status === "fail")
     ? "fail"
     : scored.some((m) => m.status === "insufficient")
       ? "insufficient"
       : "pass";
-  return { id, title, measures, status, pass: status === "pass", ...extra };
+}
+
+/**
+ * W1's pixel witness, folded over the planes that carry one: the worst `contrastDeltaE`, or `null`
+ * when no plane was swept (DEC-861 item 4).
+ *
+ * **Only a swept row carries the field, and only there does W1 grow a second measure.** Everywhere
+ * else the criterion is exactly what it was — the baseline's criterion-level `W1 GREEN` is scored on
+ * one measure, and a measure that was `insufficient` on every unswept row would have turned it
+ * `insufficient` (see `criterionStatus`). A cell that is not drawn is not resolvable at any
+ * distance, so the witness belongs to W1 rather than to a criterion of its own.
+ *
+ * A plane that was swept and whose witness could not be read carries `null`, which folds to a
+ * `fail` with no value — the witness looked and had nothing to compare, on a cell the sweep says
+ * was presenting.
+ */
+function w1DrawWitness(planes) {
+  const witnessed = planes.filter((p) => p.contrastDeltaE !== undefined);
+  if (witnessed.length === 0) return null;
+  const unreadable = witnessed.filter((p) => p.contrastDeltaE === null);
+  if (unreadable.length > 0) {
+    return measure(
+      "centreContrastDeltaE",
+      `cell centre against its surround — unreadable on ${unreadable.map((p) => p.slug).join(", ")}`,
+      null,
+      FLOORS.cellDrawnDeltaE,
+      "min",
+    );
+  }
+  const worst = witnessed.reduce((a, b) => (b.contrastDeltaE < a.contrastDeltaE ? b : a));
+  return measure(
+    "centreContrastDeltaE",
+    `cell centre against its surround, ΔE76 at the worst swept phase (${worst.slug})`,
+    worst.contrastDeltaE,
+    FLOORS.cellDrawnDeltaE,
+    "min",
+  );
 }
 
 /**
@@ -965,6 +1047,7 @@ function criterion(id, title, measures, extra = {}) {
  * failure and not a product verdict.
  */
 export function evaluateW1(planes) {
+  const witnessMeasure = w1DrawWitness(planes);
   const perPlane = planes.map(({ slug, cells }) => ({
     slug,
     medianHeightPx: median(
@@ -1004,6 +1087,7 @@ export function evaluateW1(planes) {
               : null,
         },
       ),
+      ...(witnessMeasure === null ? [] : [witnessMeasure]),
     ],
     {
       perPlane,
@@ -1014,6 +1098,209 @@ export function evaluateW1(planes) {
       undefinedPlanes,
     },
   );
+}
+
+// ---------------------------------------------------------------------------------------------
+// The one-card sweep — which phase of a turning world each criterion scores (DEC-861 items 1–3)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * The least the cell's projected centre must travel across a spin sweep before the sweep is
+ * believed, in CSS px.
+ *
+ * **This is the whole difference between a family and a frozen frame, and on a one-cell world there
+ * is nothing else to check.** A world with many cells has a front-facing *set* whose turnover
+ * witnesses the rotation; a world with one cell has no set, so "the cell never faced the camera"
+ * and "the scene never moved" produce byte-identical readings. Segovia's cell swept 680 px over a
+ * 260 s hold, so 50 is two orders inside the live reading and still refuses a still frame.
+ */
+export const SPIN_SWEEP_MIN_TRAVEL_PX = 50;
+
+/**
+ * W4's `artFraction` on one frame's cells: of the cells front-facing, on screen and above the
+ * effective threshold, the share showing art — or `null` when no cell wants art.
+ *
+ * The one spelling of the ratio, read by {@link evaluateW4} for its measure and by
+ * {@link selectSpinPhases} to find W4's worst phase, so the phase the sweep picks for W4 is worst
+ * by the same arithmetic W4 then scores it with.
+ */
+export function artFractionOf(cells) {
+  const wanting = cellsWantingArt(cells);
+  return wanting.length === 0
+    ? null
+    : wanting.filter((c) => c.showingArt).length / wanting.length;
+}
+
+/**
+ * The pixel witness's statistic: the median ΔE76 from a cell's centre pixel to each point of the
+ * ring just outside its rect (`cellContrastSamples` in `worlds-probe-read.mjs` takes them), or
+ * `null` when there is nothing to compare.
+ *
+ * **What it answers is narrow on purpose: is the centre of the cell a different colour from the
+ * space around it.** A cell that is drawn shows its card there; a cell whose fragments stopped
+ * being shaded shows whatever is behind it, which on a one-card world at its settle is the world's
+ * own atmosphere against the sky — close to the ring, not equal to it, and that gap is why the
+ * floor is measured rather than set at zero. See {@link FLOORS}`.cellDrawnDeltaE`.
+ *
+ * The median, not the minimum: one ring point landing on a star or a tether would otherwise decide
+ * the reading.
+ */
+export function centreContrastDeltaE(samples) {
+  if (samples === null || samples.surround.length === 0) return null;
+  const centre = srgbToLab(samples.centre);
+  return median(samples.surround.map((rgb) => deltaE76(centre, srgbToLab(rgb))));
+}
+
+/**
+ * Pick the phase each criterion scores from a sweep across one full turn of a world's spin.
+ *
+ * > **Normative — a criterion defined on a cell that turns is a family, not a frame (DEC-752, F3).**
+ *
+ * `phases` is one entry per sample, in sweep order: `{ t, presented, x, medianHeightPx,
+ * artFraction, contrastDeltaE }` — how many cells were front-facing, the first cell's projected
+ * centre, W1's median over the front-facing cells (`null` when none), {@link artFractionOf} on the
+ * frame, and the pixel witness ({@link centreContrastDeltaE}, `null` when unreadable). The
+ * driver takes the frames; every rule that decides which of them counts lives here, where the suite
+ * can drive it (it lived in `worlds-gate.mjs` until DEC-861, untested).
+ *
+ * Four rules, each of which the obvious implementation gets wrong:
+ *
+ * 1. **No travel is `spin-sweep-frozen`, checked first.** On a one-cell world the projected centre is
+ *    the only witness the mosaic turned at all; see {@link SPIN_SWEEP_MIN_TRAVEL_PX}. Without it, a
+ *    frozen scene and a cell that never faced the camera read the same.
+ * 2. **Zero presenting phases is `never-presented`, a failure — never `N/A`.** If a one-card world's
+ *    only cell never faces the camera across a full turn, its card is unreachable, and that is the
+ *    renderer defect the sweep was built to rule out. Filing it under the word the domain rules use
+ *    would hide it.
+ * 3. **A phase counts only if its predecessor presented too.** The leading edge of a presenting run
+ *    is mid cross-fade — `ART_SHOWN_AT` is the fade *landing*, so `showingArt` is false for a beat
+ *    after admission, by §1.6's design. Measured on segovia: of 18 presenting phases exactly one had
+ *    `wantsArt` without `showingArt`, and it was the first of its run. So the first sample can never
+ *    count (it has no predecessor), and a sweep with presenting phases but none counting is
+ *    `no-settled-phase` — the comb is too coarse, a harness defect, reported as one.
+ * 4. **Each criterion scores its own worst counted phase — never the first, never the best.** A loop
+ *    that stopped at the first presenting frame would select on the statistic it then scores: the
+ *    cell is tallest face-on, so a favourable phase greens a floor by choosing its own sample. W1
+ *    reads the phase with the lowest median height and **W4 the phase with the lowest
+ *    `artFraction`**, independently (DEC-861 item 3). W4 used to be read on W1's frame, which is the
+ *    worst phase for *legibility* and says nothing about art: a sweep whose only art-less counted
+ *    phase was not W1's worst would have scored W4 on a phase that showed art. Phases where no cell
+ *    wants art carry no W4 reading and are stepped over; if no counted phase carries one, W4 is read
+ *    on W1's phase, where it reports its own `insufficient` rather than this function inventing one.
+ *    The pixel witness is scored the same way — its own lowest reading over the counted phases —
+ *    with one difference: a counted phase whose pixels could not be read makes the witness `null`,
+ *    not a phase to step over. The cell was presenting there, so the witness had something to see.
+ *
+ * Returns `{ ok: false, reason, detail, travelPx }`, or `{ ok: true, w1Phase, w4Phase, sweep }` with
+ * the two indices into `phases` and the sweep's record — both ends of each family, so the margin a
+ * verdict had is on the record rather than being the one number the row happened to score.
+ */
+export function selectSpinPhases(
+  phases,
+  { periodS, minTravelPx = SPIN_SWEEP_MIN_TRAVEL_PX },
+) {
+  const xs = phases.map((p) => p.x).filter((x) => typeof x === "number");
+  const travelPx = xs.length < 2 ? 0 : Math.max(...xs) - Math.min(...xs);
+  if (travelPx < minTravelPx) {
+    return {
+      ok: false,
+      reason: "spin-sweep-frozen",
+      travelPx,
+      detail:
+        `the cell's projected centre moved ${travelPx.toFixed(1)} px over ${periodS.toFixed(1)} s, ` +
+        `below ${minTravelPx} — the sweep sampled one phase ${phases.length} times, so a verdict ` +
+        "here would be a reading of the harness rather than of the world",
+    };
+  }
+
+  const presenting = phases
+    .map((_, i) => i)
+    .filter((i) => phases[i].presented > 0 && phases[i].medianHeightPx !== null);
+  if (presenting.length === 0) {
+    return {
+      ok: false,
+      reason: "never-presented",
+      travelPx,
+      detail:
+        `no front-facing cell at any of ${phases.length} phases across a full ` +
+        `${periodS.toFixed(1)} s spin, on a scene the travel check proves was turning — the world ` +
+        "never shows its cards",
+    };
+  }
+
+  const counted = presenting.filter((i) => i > 0 && phases[i - 1].presented > 0);
+  if (counted.length === 0) {
+    return {
+      ok: false,
+      reason: "no-settled-phase",
+      travelPx,
+      detail:
+        `the cell presented at ${presenting.length} of ${phases.length} phases but never at two ` +
+        "consecutive ones, so every presenting frame is mid cross-fade — raise SPIN_SWEEP_SAMPLES " +
+        `above ${phases.length} for a ${periodS.toFixed(1)} s period`,
+    };
+  }
+
+  const lowest = (indices, key) =>
+    indices.reduce((a, b) => (phases[b][key] < phases[a][key] ? b : a));
+  const highest = (indices, key) => Math.max(...indices.map((i) => phases[i][key]));
+
+  const w1Phase = lowest(counted, "medianHeightPx");
+  const withArt = counted.filter((i) => phases[i].artFraction !== null);
+  const w4Phase = withArt.length === 0 ? w1Phase : lowest(withArt, "artFraction");
+  const witnessed = counted.some((i) => phases[i].contrastDeltaE !== undefined);
+  // On a witnessed sweep a counted phase with no reading — `null`, or a field left off — is
+  // unreadable, never skipped: comparisons against either coerce, and would pick it or lose it.
+  const unreadable =
+    witnessed && counted.some((i) => typeof phases[i].contrastDeltaE !== "number");
+  const drawPhase = witnessed && !unreadable ? lowest(counted, "contrastDeltaE") : null;
+  return {
+    ok: true,
+    w1Phase,
+    w4Phase,
+    sweep: {
+      periodS,
+      samples: phases.length,
+      // Reachability and scorability are reported apart on purpose: the gap between them is the
+      // cross-fade's width in samples, and a run where it grows is worth seeing.
+      presented: presenting.length,
+      scorable: counted.length,
+      travelPx,
+      atWorstPhaseS: phases[w1Phase].t,
+      medianHeightPx: {
+        worst: phases[w1Phase].medianHeightPx,
+        best: highest(counted, "medianHeightPx"),
+      },
+      artFraction: {
+        atWorstPhaseS: phases[w4Phase].t,
+        worst: phases[w4Phase].artFraction,
+        best: withArt.length === 0 ? null : highest(withArt, "artFraction"),
+      },
+      // Absent on a sweep that took no pixel witness, never a zero-filled object: a sweep that did
+      // not look and a sweep that saw nothing are different facts.
+      ...(witnessed
+        ? {
+            contrastDeltaE: {
+              atWorstPhaseS: drawPhase === null ? null : phases[drawPhase].t,
+              worst: drawPhase === null ? null : phases[drawPhase].contrastDeltaE,
+              best: unreadable ? null : highest(counted, "contrastDeltaE"),
+            },
+          }
+        : {}),
+    },
+  };
+}
+
+/**
+ * The frames a sweep's criteria are scored on: W1's on `w1Phase`, W4's on `w4Phase`. `frames` runs
+ * parallel to the `phases` given to {@link selectSpinPhases}, and `picked` is its `ok` result.
+ *
+ * Lifted out of `sweepSpinPhase` in `worlds-gate.mjs` so the one index that routes W4 to its own
+ * phase has a unit row and a mutant (DEC-912 F4). On the live matrix it cannot fail: both sweeping
+ * rows read `artFraction` 1 at every counted phase, so W1's frame and W4's score the same.
+ */
+export function sweepFrames(frames, picked) {
+  return { frame: frames[picked.w1Phase], w4Frame: frames[picked.w4Phase] };
 }
 
 /**
@@ -1767,6 +2054,31 @@ export function cellsWantingArt(cells) {
 }
 
 /**
+ * The eviction rate's own tail drift, carried on the measure so the row prints it (DEC-861 item 10).
+ *
+ * **The gate reported the drift and did not bound it, and this does not bound it either — it makes
+ * the rate unquotable without it.** `evictionTail` already refuses a tail whose drift exceeds
+ * {@link W4_EVICTION_TAIL_CONVERGENCE}: that draw reads `N/A`, which is the "bound the drift"
+ * option, and it has been since DEC-837. What it cannot do is make two *converged* draws
+ * comparable. A converged draw can carry a drift up to that tolerance, and `drift` reads only about
+ * a quarter of the end-to-end slide it summarises (see the tolerance's docblock), so the band it
+ * prints, `value × drift`, is a **lower bound** on the draw's own uncertainty: two draws closer than
+ * the sum of their bands are the tail, not the renderer, and two draws farther apart are not
+ * thereby shown to differ. Tightening the
+ * tolerance would move a board-ruled constant, which DEC-861 may not; so the row's line carries the
+ * draw's drift and the band it implies, and §3.1 states the rule for comparing two of them.
+ *
+ * Only on a scored rate. Keyed on the measure's verdict and not on the tail: a 128-layer pool's tail
+ * converges and carries a rate, and the capacity rule still makes the measure `insufficient` — a
+ * band printed beside an `N/A` would be a precision claim about a reading that was not taken.
+ */
+function withTailDrift(tail, measured) {
+  return measured.status === "insufficient" || measured.value === null
+    ? measured
+    : { ...measured, drift: tail.drift };
+}
+
+/**
  * `entryStream` is the stream report read **before** the visit began — see
  * {@link budgetBoundAtEntry}. `exitStream` is the one read **after** it — see
  * {@link budgetBoundAtExit}. Both are required positionals for the same reason `pool` is:
@@ -1941,26 +2253,29 @@ export function evaluateW4(cells, evictionTimeline, pool, entryStream, exitStrea
       measure(
         "artFraction",
         `cells above the effective threshold showing art (${showing.length}/${wanting.length})`,
-        wanting.length === 0 ? null : showing.length / wanting.length,
+        artFractionOf(cells),
         reachableBar(ceiling),
         "min",
         why === null ? {} : { insufficient: true, why },
       ),
-      measure(
-        "evictionsPerSecond",
-        tail.rate === null
-          ? "evictions/s on the fill-excluded tail"
-          : `evictions/s over the ${tail.spanS.toFixed(1)} s tail after the pool plateaued at ` +
-            `${tail.peakResident} resident layers (${tail.tailSamples} samples, second half ` +
-            `${tail.halfRate.toFixed(2)}/s)`,
-        tail.rate,
-        FLOORS.evictionsPerSecond,
-        "max",
-        // **The empty denominator is not carried over to this half, and the asymmetry is the
-        // point.** No demand says nothing about whether the pool churns: a world presenting no
-        // front-facing cell can still be evicting the layers a neighbour's demand bought, and that
-        // rate is a real reading of the policy. Only the no-admission cases force this zero.
-        evictionWhy === null ? {} : { insufficient: true, why: evictionWhy },
+      withTailDrift(
+        tail,
+        measure(
+          "evictionsPerSecond",
+          tail.rate === null
+            ? "evictions/s on the fill-excluded tail"
+            : `evictions/s over the ${tail.spanS.toFixed(1)} s tail after the pool plateaued at ` +
+              `${tail.peakResident} resident layers (${tail.tailSamples} samples, second half ` +
+              `${tail.halfRate.toFixed(2)}/s)`,
+          tail.rate,
+          FLOORS.evictionsPerSecond,
+          "max",
+          // **The empty denominator is not carried over to this half, and the asymmetry is the
+          // point.** No demand says nothing about whether the pool churns: a world presenting no
+          // front-facing cell can still be evicting the layers a neighbour's demand bought, and that
+          // rate is a real reading of the policy. Only the no-admission cases force this zero.
+          evictionWhy === null ? {} : { insufficient: true, why: evictionWhy },
+        ),
       ),
       measure(
         "artCellsShowing",
@@ -2683,6 +2998,35 @@ export function foldCriteria(perPlane, { rosterDomain = null } = {}) {
         entry.measure.status !== "insufficient" && entry.measure.value !== null,
     );
     const template = all[0].measure;
+    // **A `fail` with no value is a failing plane, not an absent one (DEC-861 item 5).** It is how
+    // `measure()` spells "this should have been measured and was not" — W1 scores a missing median
+    // exactly that way — and the `real` filter above, which keys on the value, used to drop it with
+    // the out-of-domain planes: `[pass 100, fail null]` folded to `pass` and `[fail null]` to
+    // `insufficient`. No path produced one when this landed; it is closed because the shape it
+    // produces is a silent pass. Checked before the mean fold is dispatched as well, because a mean
+    // cannot be taken over a value that is not there and must not be taken over the planes left.
+    const failedWithoutValue = all.filter(
+      (entry) => entry.measure.status === "fail" && entry.measure.value === null,
+    );
+    if (failedWithoutValue.length > 0) {
+      const failed = [
+        ...failedWithoutValue,
+        ...real.filter((entry) => entry.measure.status === "fail"),
+      ];
+      // The failing plane's own measure, not `template` (the first plane's): its label, and any
+      // `drift` it carries, must describe the reading that failed.
+      return {
+        ...failedWithoutValue[0].measure,
+        value: null,
+        status: "fail",
+        pass: false,
+        insufficientReason: null,
+        worstPlane: failedWithoutValue[0].slug,
+        failingPlanes: failed.map((entry) => entry.slug),
+        insufficientPlanes: all.filter((entry) => entry.measure.status === "insufficient").length,
+        scoredPlanes: real.length + failedWithoutValue.length,
+      };
+    }
     if (real.length === 0) {
       return {
         ...template,
@@ -2721,13 +3065,9 @@ export function foldCriteria(perPlane, { rosterDomain = null } = {}) {
   });
   // Reported-only measures are folded and printed like any other — their value over the worst plane
   // is the number the ruling asked to see — but they are held out of the roster verdict by the same
-  // predicate the per-plane rows use, so the fold cannot contradict them.
-  const scored = scoredMeasures(measures);
-  const status = scored.some((m) => m.status === "fail")
-    ? "fail"
-    : scored.every((m) => m.status === "insufficient")
-      ? "insufficient"
-      : "pass";
+  // predicate the per-plane rows use, so the fold cannot contradict them. The verdict itself is the
+  // per-plane rule too: see `criterionStatus`.
+  const status = criterionStatus(measures);
   return {
     id: first.id,
     title: first.title,
@@ -2776,12 +3116,21 @@ export function checkControlRow(
         : "RED";
   const ok = went === expect;
   const what = key === undefined ? id : `${id}.${key}`;
+  // **A rate prints its tail drift and the band it implies (DEC-861 item 10).** Two acceptance
+  // draws once read 18.26/s and 17.84/s at drifts of 3.8% and 0.5%, and the 0.42/s between them was
+  // inside the first draw's own ±0.69/s — a gap in the tail, printed as though it were a reading.
+  // The band is a lower bound (see `withTailDrift`), so the rule it supports is one-sided.
+  const drift =
+    typeof subject.drift === "number" && typeof subject.value === "number"
+      ? `, tail drift ${(subject.drift * 100).toFixed(1)}% = ±${(subject.value * subject.drift).toFixed(2)}` +
+        " — compare draws only beyond both bands"
+      : "";
   const value =
     went === "N/A"
       ? ` (${subject.insufficientReason ?? "out of domain"})`
       : key === undefined
         ? ""
-        : ` (value ${subject.value}, bound ${subject.bound})`;
+        : ` (value ${subject.value}, bound ${subject.bound}${drift})`;
 
   // **The denominator of a folded verdict, printed next to it (DEC-816).** A multi-world measure is
   // the worst of the worlds *in domain*, and after R3's ring domain W2's lightness half is in domain

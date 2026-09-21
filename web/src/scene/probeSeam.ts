@@ -105,8 +105,8 @@ export function useProbeSeam(deps: ProbeSeamDeps): void {
           source && source.width > 0 ? { width: source.width, height: source.height } : null,
         bloomLevels: chain.bloomLevels,
         bloomFloatTargets: chain.floatTargets,
-        // 0 since the thumbnail tier retired (DEC-752). The field stays: `ProbeState` publishes
-        // it and e2e reads the contract.
+        // 0 since the thumbnail tier retired (DEC-752) — a retirement pin that `quality.spec.ts`
+        // asserts at every rung, which is why it outlived the other thumbnail keys (DEC-861 item 9).
         thumbnailCapacity: 0,
         starsDrawn: geometry.drawCount,
         // The factor the plane table's clock advances with, off the live frame. Was the star
@@ -139,7 +139,7 @@ export function useProbeSeam(deps: ProbeSeamDeps): void {
         halfFloatProbeOk: capabilities?.halfFloatProbe.ok ?? false,
         halfFloatProbeMs: capabilities?.halfFloatProbe.durationMs ?? 0,
         // -1, structurally: the star points whose sprite this clamped retired at the cutover
-        // (DEC-752). The key stays because `ProbeState` publishes it.
+        // (DEC-752). A retirement pin that `quality.spec.ts` asserts, which is why it stays.
         starMaxPixels: -1,
       }
     }
@@ -174,10 +174,6 @@ export function useProbeSeam(deps: ProbeSeamDeps): void {
         // not, which is what makes the direct read honest rather than lucky.
         multiverseAngle: resources.table.multiverseAngle,
         cardsLoaded: deps.cardsRef.current.size,
-        // All zero since the thumbnail tier retired at the cutover (DEC-752). The BLOCK stays
-        // because `ProbeState` publishes it and e2e reads the contract; reporting real zeros is
-        // honest where dropping the keys would be a probe-surface change no criterion asked for.
-        thumbnails: { drawn: 0, cells: 0, capacity: 0, requested: 0, loaded: 0, failed: 0 },
         images: handle?.imageStats ?? {
           inFlight: 0,
           waiting: 0,
@@ -186,7 +182,6 @@ export function useProbeSeam(deps: ProbeSeamDeps): void {
           peakInFlight: 0,
         },
         gpu: {
-          atlasBytes: memoryNow.atlasBytes,
           cardBytes: memoryNow.cardBytes,
           totalBytes: memoryNow.totalBytes,
           targetBytes: memoryNow.targetBytes,
@@ -257,9 +252,6 @@ export function useProbeSeam(deps: ProbeSeamDeps): void {
         handle.setActivePrinting(index)
         return handle.activePrinting === index
       },
-      // Empty since the thumbnail tier retired (DEC-752); the seam stays for the same reason
-      // `thumbnailCapacity` does.
-      thumbnailStars: () => [],
       // `undefined`, never an empty payload: leg G scores a missing seam as a setup failure and an
       // empty one as a world that drew no cells. See `worldsProbeOf`.
       //

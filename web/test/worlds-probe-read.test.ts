@@ -12,20 +12,26 @@
  * field has a row that breaks it and is caught by name.
  */
 
+import { runInNewContext } from 'node:vm'
+
 import { describe, expect, it } from 'vitest'
 
 import type { DecodedPng } from '../scripts/lib/png-sample.d.mts'
 import type { ArtStreamReport } from '../src/scene/worlds/artStream'
 import type { WorldsProbe, WorldsProbeCell } from '../src/scene/worlds/worldsProbe'
 import {
+  BLANK_CELL_DRAW_PROGRAM,
   FIXED24_PX,
   artCells,
+  blankCellDrawScript,
   cellCardinality,
+  cellContrastSamples,
   cellSamples,
   readWorldsProbe,
   seamEvidence,
 } from '../scripts/lib/worlds-probe-read.mjs'
-import { evaluateW4 } from '../scripts/lib/worlds-metrics.mjs'
+import { centreContrastDeltaE, evaluateW4 } from '../scripts/lib/worlds-metrics.mjs'
+import { SHADER_NAMES, SHADER_NAME_WORLD_CELL } from '../src/scene/shaderNames'
 
 /**
  * A cell that passes every check.
@@ -787,6 +793,121 @@ describe('cellSamples', () => {
     paint(img, 20, 20, [1, 2, 3])
     const at2x = probe({ cells: [cell(0, { x: 10, y: 10 })], viewport: { width: 64, height: 64 } })
     expect(cellSamples(at2x, img, { scale: 2 }).samples[0]?.rgb).toEqual([1, 2, 3])
+  })
+})
+
+describe('cellContrastSamples — the one-card row\'s pixel witness (DEC-861)', () => {
+  // A cell centred at (60, 60) with a 40×40 rect: the ring sits 6 px outside it (15% of 40).
+  const one = cell(0, { x: 60, y: 60, rect: { x: 40, y: 40, width: 40, height: 40 } })
+
+  it('reads the centre and a ring outside the rect, not inside it', () => {
+    const img = image(200, 200, [5, 5, 10])
+    paint(img, 60, 60, [150, 140, 137])
+    // A pixel just *inside* the rect edge, where a ring drawn on the rect rather than outside it
+    // would land. It must not be read.
+    paint(img, 41, 60, [150, 140, 137])
+    const samples = cellContrastSamples(one, img)
+    expect(samples?.centre).toEqual([150, 140, 137])
+    expect(samples?.surround).toHaveLength(8)
+    expect(samples?.surround.every((rgb) => rgb[0] === 5)).toBe(true)
+  })
+
+  it('drops ring points outside the capture instead of clamping them to the border', () => {
+    // The rect's left edge sits at x = 2, so the left column of the ring is off the frame. A clamp
+    // would read column 0 — painted here, so a clamping spelling cannot pass.
+    const img = image(200, 200, [5, 5, 10])
+    for (let y = 0; y < 200; y += 1) paint(img, 0, y, [250, 0, 0])
+    const edge = cell(0, { x: 22, y: 60, rect: { x: 2, y: 40, width: 40, height: 40 } })
+    const samples = cellContrastSamples(edge, img)
+    expect(samples?.surround).toHaveLength(5)
+    expect(samples?.surround.some((rgb) => rgb[0] === 250)).toBe(false)
+  })
+
+  it('is null when the centre is off the capture, rather than inventing a colour', () => {
+    const img = image(50, 50, [5, 5, 10])
+    expect(cellContrastSamples(one, img)).toBeNull()
+  })
+
+  it('separates a drawn centre from one that shows the sky, through the statistic the row scores', () => {
+    // The two arms of the live control at their measured colours: segovia's card centre, and the
+    // atmosphere behind it once the cell program is blanked, each against the sky.
+    const drawn = image(200, 200, [4, 5, 8])
+    paint(drawn, 60, 60, [150, 141, 137])
+    const blanked = image(200, 200, [4, 5, 8])
+    paint(blanked, 60, 60, [41, 63, 81])
+    const shipped = centreContrastDeltaE(cellContrastSamples(one, drawn))
+    const control = centreContrastDeltaE(cellContrastSamples(one, blanked))
+    expect(shipped).toBeGreaterThan(50)
+    expect(control).toBeLessThan(35)
+    expect(centreContrastDeltaE(null)).toBeNull()
+  })
+})
+
+describe('blankCellDrawScript — the draw-blank control (DEC-861)', () => {
+  it('suppresses the program the renderer actually names the cell shader', () => {
+    // Across a process boundary a rename is not a type error: if `cellMaterial.ts` renamed its
+    // program, the control would match nothing and the row would score the unmodified build. The
+    // row refuses a control that suppressed zero draws, and this is the same fact caught earlier.
+    expect(BLANK_CELL_DRAW_PROGRAM).toBe(SHADER_NAME_WORLD_CELL)
+    expect(SHADER_NAMES).toContain(BLANK_CELL_DRAW_PROGRAM)
+  })
+
+  /**
+   * The script run against a stub context, the way the page runs it: `window` and
+   * `WebGL2RenderingContext` are free identifiers in it, so they are the context's globals.
+   */
+  function installed() {
+    const passed: string[] = []
+    const proto: Record<string, (...args: unknown[]) => unknown> = {
+      shaderSource: () => undefined,
+      attachShader: () => undefined,
+      useProgram: () => undefined,
+    }
+    for (const name of [
+      'drawArrays',
+      'drawElements',
+      'drawArraysInstanced',
+      'drawElementsInstanced',
+      'drawRangeElements',
+    ]) {
+      proto[name] = () => passed.push(name)
+    }
+    const page: { __blankedCellDraws?: number } = {}
+    runInNewContext(blankCellDrawScript(), {
+      window: page,
+      WebGL2RenderingContext: { prototype: proto },
+    })
+    const program = (source: string) => {
+      const shader = {}
+      const linked = {}
+      proto.shaderSource!(shader, source)
+      proto.attachShader!(linked, shader)
+      return linked
+    }
+    return { proto, page, passed, program }
+  }
+
+  it('suppresses the cell program\'s draws, and counts them where the row reads them back', () => {
+    const { proto, page, passed, program } = installed()
+    const cell = program('#version 300 es\n#define SHADER_NAME WorldCell\nvoid main() {}')
+    proto.useProgram!(cell)
+    for (const draw of ['drawArrays', 'drawElements', 'drawArraysInstanced', 'drawElementsInstanced', 'drawRangeElements']) {
+      proto[draw]!()
+    }
+    expect(passed).toEqual([])
+    expect(page.__blankedCellDraws).toBe(5)
+  })
+
+  it('leaves every other program drawing — including the picking one whose name it prefixes', () => {
+    // `WorldCellPick` starts with `WorldCell`; an unanchored pattern would take it too, and the next
+    // rename would widen the control silently. `WorldSystem` stands for everything else on screen.
+    const { proto, page, passed, program } = installed()
+    for (const name of ['WorldCellPick', 'WorldSystem']) {
+      proto.useProgram!(program(`#define SHADER_NAME ${name}\nvoid main() {}`))
+      proto.drawElements!()
+    }
+    expect(passed).toEqual(['drawElements', 'drawElements'])
+    expect(page.__blankedCellDraws).toBe(0)
   })
 })
 

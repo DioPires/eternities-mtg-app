@@ -76,9 +76,10 @@ export function gpuMemoryReport(atlasBytes: number, cardBytes: number): GpuMemor
  *
  * > **The atlas term is 0 because the atlas no longer exists (DEC-752).** PRD 7.2 was written
  * > against a 64 MB thumbnail atlas that dominated the budget; the cutover deleted it with the rest
- * > of the thumbnail tier. The **field** is kept rather than removed because `ProbeState` publishes
- * > `atlasBytes` and the gate and e2e read that contract — reporting a real 0 is honest, where
- * > dropping the key would be a probe-surface change no criterion asked for.
+ * > of the thumbnail tier. The **field** is kept because `SceneReadout` still prints the split
+ * > (`FrameStats.atlasBytes`, a structural 0) and `cards.test.ts` / `worlds-budget.test.ts` read
+ * > this report. `ProbeState` no longer publishes an atlas term: DEC-861 dropped its
+ * > `gpu.atlasBytes`, which nothing read.
  */
 export function worstCaseReport(): GpuMemoryReport {
   return gpuMemoryReport(0, worstCaseCardBytes())
