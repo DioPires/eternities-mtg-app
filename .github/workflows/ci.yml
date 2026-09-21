@@ -4,9 +4,17 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Re-runs the full set, including the two jobs that come off the push path below, against
+  # whatever ref you pick. This is the hand-crank for a commit that reached `main` without a PR:
+  # branch protection does not enforce admins, so a direct push is possible and does not get the
+  # browser smoke or the payload budget on its own (DEC-881).
+  workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # A hand-cranked run gets a group of its own. It is started to score a tree that reached `main`
+  # without a PR, and sharing `CI-<ref>` with pushes means the next push to `main` cancels it in
+  # exactly the case it exists for. `push` and `pull_request` keep the group they had (DEC-881).
+  group: ${{ github.workflow }}-${{ github.ref }}${{ github.event_name == 'workflow_dispatch' && format('-dispatch-{0}', github.run_id) || '' }}
   cancel-in-progress: true
 
 env:
@@ -121,10 +129,22 @@ jobs:
           done
         working-directory: pipeline
 
+  # Not on the push-to-main path (DEC-881). `main` is a strict-mode protected branch, so a PR can
+  # only merge while its head is up to date with `main` — which makes the tree this job measured on
+  # `refs/pull/N/merge` the same tree the merge lands. Re-measuring it on the push is a second
+  # reading of bytes that have not changed.
+  #
+  # Two gaps in that argument, and the common one is not the one it is tempting to name. This job
+  # is not a required context, so nothing holds the merge button for it: across the September window
+  # the three required checks finish at about t+91 s while this job reports at about t+152 s
+  # (medians, n=173 PR runs), so every PR has about a minute in which a merge can land a tree this
+  # job has not scored. The rare gap is a commit that reaches `main` with no PR at all —
+  # `enforce_admins` is false, so that is possible. `workflow_dispatch` is the hand-crank for both.
   budget:
     name: payload budget (PRD 7.2 + amendment A1)
     runs-on: ubuntu-latest
     needs: web
+    if: github.event_name != 'push'
     defaults:
       run:
         working-directory: web
@@ -144,13 +164,44 @@ jobs:
           path: web/dist
       # Measures encoded transferred size, not disk size: a .bin may not be edge-compressed and
       # the check must see what the browser sees (implementation-plan.md §2 Phase 0).
-      - name: fixture-scale
-        run: node scripts/check-budget.mjs --dataset scale
-      - name: fixture-small
-        run: node scripts/check-budget.mjs --dataset small
-      # The real dataset is what ships. The fixtures approximate it; only this row is binding.
-      - name: production
-        run: node scripts/check-budget.mjs --dataset "$(node -p "require('./datasets.json').production")"
+      #
+      # The three rows are independent readings of the same `dist/`, and each one is brotli -q11
+      # over its own data directory — CPU, not I/O. Run one after another they measured 28 + 2 + 28
+      # seconds (medians, n=242 jobs) inside a job whose median is 73 s: two billed minutes for 73
+      # seconds of work. Run together on the runner's two cores the rows cost what the longest one
+      # costs, which lands the job at about 43 s — 17 s inside the billed minute, p90 48 s. Replaying
+      # every measured job on that basis puts 224 of 226 in the one-minute bucket (DEC-881). Nothing
+      # about what is measured changes: same script, same arguments, same bytes. Each row's output is
+      # held back and replayed in its own group so a failure still reads as that row's failure, and
+      # the step exits non-zero if any row did.
+      #
+      # `production` is the binding row — the real dataset is what ships, and the fixtures only
+      # approximate it. Its `--dataset` value is read out of datasets.json, and `set -e` below is
+      # what makes a failed read fail the job: `check-budget.mjs` treats an empty `--dataset` as
+      # "use the default dataset" and exits 0, so without errexit the binding row would go green
+      # having measured something else.
+      - name: fixture-scale, fixture-small and production
+        run: |
+          set -euo pipefail
+          production=$(node -p "require('./datasets.json').production")
+          node scripts/check-budget.mjs --dataset scale > "$RUNNER_TEMP/scale.log" 2>&1 &
+          scale_pid=$!
+          node scripts/check-budget.mjs --dataset small > "$RUNNER_TEMP/small.log" 2>&1 &
+          small_pid=$!
+          node scripts/check-budget.mjs --dataset "$production" > "$RUNNER_TEMP/production.log" 2>&1 &
+          production_pid=$!
+          status=0
+          for row in "fixture-scale:$scale_pid:scale" "fixture-small:$small_pid:small" "production:$production_pid:production"; do
+            name=${row%%:*}
+            rest=${row#*:}
+            pid=${rest%%:*}
+            log=${rest#*:}
+            wait "$pid" || status=1
+            echo "::group::$name"
+            cat "$RUNNER_TEMP/$log.log"
+            echo "::endgroup::"
+          done
+          exit $status
 
   # PRD 8.9.2's route smoke, PRD 9.1.2's bench smoke and PRD 9.1.4's forced-degradation check, in a
   # real browser.
@@ -163,10 +214,20 @@ jobs:
   # launched onto SwiftShader deliberately (`playwright.config.ts`) so WebGL2 exists at all, and
   # nothing in `e2e/` asserts a frame budget. PRD 7.2's ceilings are enforced by `pnpm bench` on the
   # reference machine; `web/bench/baseline-2026-09-05.json` is that record.
+  #
+  # Not on the push-to-main path, for the reason spelled out on `budget` above: under strict mode
+  # the `refs/pull/N/merge` tree this ran against is the tree that lands, and this is the most
+  # expensive job in the workflow by a factor of two (DEC-881). A red is seen by the PR author, on
+  # the PR — but this is not a required context and it is the slowest job here, so it does not hold
+  # the merge button. The three required checks finish at about t+91 s and this job reports at about
+  # t+336 s (medians, n=173 PR runs): about four minutes on every PR in which a merge can land a
+  # tree this job has not scored. That window, not the direct push, is the usual way an unscored
+  # tree reaches `main`.
   smoke:
     name: route + bench + quality smoke (PRD 8.9.2, 9.1.2, 9.1.4)
     runs-on: ubuntu-latest
     needs: web
+    if: github.event_name != 'push'
     defaults:
       run:
         working-directory: web

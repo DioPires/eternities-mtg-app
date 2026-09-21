@@ -41,6 +41,8 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { USAGE_EXIT, UsageError, parseArgs } from './lib/budget-args.mjs'
+
 const WEB_ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const KB = 1024
 const MB = 1024 * 1024
@@ -90,15 +92,6 @@ function encodedSize(path) {
 
 function human(bytes) {
   return bytes >= MB ? `${(bytes / MB).toFixed(2)} MB` : `${(bytes / KB).toFixed(1)} KB`
-}
-
-function parseArgs(argv) {
-  const args = { dataset: process.env.ETERNITIES_DATASET ?? null, dist: 'dist' }
-  for (let i = 0; i < argv.length; i += 1) {
-    if (argv[i] === '--dataset') args.dataset = argv[++i]
-    else if (argv[i] === '--dist') args.dist = argv[++i]
-  }
-  return args
 }
 
 function resolveDataDir(dataset) {
@@ -204,7 +197,16 @@ function shellSize(distDir) {
 }
 
 function main() {
-  const args = parseArgs(process.argv.slice(2))
+  let args
+  try {
+    args = parseArgs(process.argv.slice(2))
+  } catch (error) {
+    // A malformed command line is not a measurement failure, so it gets its own exit code and no
+    // stack: the message names the flag, which is the whole of what the caller can act on.
+    if (!(error instanceof UsageError)) throw error
+    console.error(error.message)
+    process.exit(USAGE_EXIT)
+  }
   const { hash, dir } = resolveDataDir(args.dataset)
   const distDir = resolve(WEB_ROOT, args.dist)
 
