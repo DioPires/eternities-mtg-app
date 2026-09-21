@@ -52,7 +52,7 @@ from eternities.pipeline.assemble import (
     printing_order,
 )
 from eternities.pipeline.stages import choose_first_printings
-from eternities.pipeline.records import CardDetail, FaceDetail, ScrySet
+from eternities.pipeline.records import CardDetail, FaceDetail, RawPrinting, ScrySet
 
 PLANES = ["blind-eternities", "dominaria", "ravnica", "segovia", "kylem"]
 SETS = {
@@ -916,7 +916,7 @@ _PLANET_ORDER_CASES: Final = [
 
 @pytest.mark.parametrize(("sets", "rows", "expected"), _PLANET_ORDER_CASES)
 def test_planet_order_agrees_with_the_first_printing(
-    sets: dict[str, ScrySet], rows: list, expected: str
+    sets: dict[str, ScrySet], rows: list[RawPrinting], expected: str
 ) -> None:
     """PRD 5.6.7 as amended: ``p[0]`` is 4.5's first printing, chosen by the same key.
 
