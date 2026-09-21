@@ -2170,6 +2170,24 @@ an assertion there.
 > where drift is 0.9% and the value is 17.9 against 21, near neither boundary; the alternative is
 > burning the 45 s cap on every world, ~24 minutes a tour, to re-confirm settled zeros.
 >
+> **Normative — a rate is quoted with its drift, and two rates are compared only beyond both bands
+> (DEC-861, from DEC-863).** The tolerance above decides whether a draw has a rate at all; it does
+> not make two converged draws comparable. A converged draw can carry a drift up to 10%, and since
+> `drift` reads about a quarter of the slide it summarises, the band it implies is a **lower bound**
+> on the draw's own uncertainty. DEC-863's two acceptance draws of PR #85, one per
+> tree, read **18.26/s at drift 3.8%** and **17.84/s at 0.5%**: the 0.42/s between them is inside the
+> first draw's own ±0.69/s, so it was the tail and not the trees. The gate's matrix line now prints
+> each rate as `value …, tail drift d% = ±band`, where the band is `value × drift`, and the rule for
+> reading two lines is: **a difference smaller than the sum of the two bands is not a finding.** The
+> rule is one-sided, because the band is a floor: a difference larger than both bands is not
+> thereby a finding either — it still has to clear the ~4× wider slide the drift under-reads.
+> Bounding the drift instead — a draw above some figure reads `N/A` — is what the 10% tolerance
+> already does, and tightening it would move a board-ruled constant; so the band is printed and the
+> constant stays. Re-measured on DEC-861's branch, three
+> `baseline --tour-limit 9` draws reaching dominaria: **18.31/s at 3.6% (±0.67), 18.46/s at 2.3%
+> (±0.42), 18.44/s at 2.3% (±0.43)** — a 0.15/s spread, well inside every band, taken while two
+> other legs' gate runs shared the machine.
+>
 > ### Amendment — a pool that never filled is `insufficient`, not a passing 0 (DEC-842)
 >
 > Rider 1 of the DEC-841 review of PR #77, and it is the same argument as the capacity domain above
@@ -2577,6 +2595,8 @@ events; the focused card's tilt feels physical; and, new, **the tether reads as 
 | W2        | both measures                          | `?art=off` **alone** — the sibling the composed rows are read against, not the bare build                                                                                   | **GREEN** |
 | W3        | `minAdjacentBandDeltaE`                | `?art=off` **over the full tour** (`w3-floor-shipped`) — the shipped side of the same derivation, differing in the one seam                                                  | **GREEN** |
 | W4        | `artFraction`                          | `?artThreshold=fixed24&layers=128` — §1.6's seam against a tier-4 pool: **a fixed threshold against a pool too small for it**, which is what Appendix A captured. 0.1342 against a bar of 0.5, a 7.39× overshoot. The **bare** `fixed24` row this replaces is retired — see the note | **RED**   |
+| W4        | `demandFitsCapacity`                   | `?artThreshold=fixed24&layers=128`, same row — the overshoot itself, dominaria's full want set against 128 layers (7.39×). **Reported, not scored** (ruling `demand_measure_scored` = `reported_only`), so it cannot red a row on its own; the row asserts it so the overshoot the bar forgives stays falsifiable (DEC-861, from DEC-856) | **RED**   |
+| W4        | `artCellsShowing`                      | `?artThreshold=fixed24&layers=128`, same row — the absolute term stays green on the frame `artFraction` reds: the fixed threshold keeps the want set full, so the pool is short of *layers*, not of wanting cells. The RED above is the fraction's alone, which is what makes it a reading of the pool and not of a page that drew nothing (DEC-861) | **GREEN** |
 | W4        | `evictionsPerSecond`                   | **the bound has no live row.** Exceeding want-set turnover at the 1,024-layer pool needs a faster spin or a bigger roster; `spinPeriodS` is dataset data, so a live row means a fixture corpus. Falsified by unit row *"still reds the same row when turnover climbs past the new bound"*. **Its two domain rules do have live rows** — `?layers=128` for the capacity one and `unsaturated-pool` below for the occupancy one | **n/a**   |
 | W4        | `evictionsPerSecond`                   | **`unsaturated-pool`** — kamigawa (917 cards) at the shipped pool, no seams: a world whose whole demand fits, high-water **265 of 1,024**, so `claimLayer` never reaches its victim search and the rate is a structural 0. The 45-world tour runs this rule on 44 worlds and cannot falsify it — the fold is a worst-of and dominaria saturates, so `baseline` passes with the rule and without it | **N/A**   |
 | W4        | `artFraction`, `artCellsShowing`       | **`unsaturated-pool`**, same row, the half that says it rendered: an `N/A`-only row cannot tell a working domain rule from a page that failed to draw, and both report the same `n/a`. The art half going green on that frame is what makes the `N/A` above a reading | **GREEN** |
@@ -2587,7 +2607,11 @@ events; the focused card's tilt feels physical; and, new, **the tether reads as 
 | W5        | `homeLabels`                           | labels forced on for empty planes — suppression regressed; **66 – 77 over the sweep, _above_ the unmodified build's 33 – 42; see the note**                                 | **RED**   |
 | W5        | `worldsNeverLabelled`                  | **viewport 800×600** — collision pressure raised by the harness, not by a renderer seam; `thunder-junction` is labelled at **none** of 360 azimuths                         | **RED**   |
 | W1, W4    | `minMedianCellHeightPx`, `artFraction` | a **one-card world** (`?plane=segovia`) at its own settle — the n = 1 extreme, never rendered in any tracked dataset before v3. **Does not assert its label**; see the note. Its `artCellsShowing` asserts **N/A**: a frame presenting one cell is far below the 128 that term needs before an absolute count means anything, and that is domain, not failure | **GREEN** |
+| W1        | `centreContrastDeltaE`                 | the **one-card world**, same row — the pixel witness: its cell's centre against the sky around it, at the worst counted phase. The row's only pixel reading; every other measure it scores is computed before a fragment is shaded (DEC-861) | **GREEN** |
+| W1        | `centreContrastDeltaE`                 | **`one-card-no-cell-draw`** — the same row with the `WorldCell` program's draws suppressed by a harness init script, refused if it suppressed none. Reads **12.8–13.5** against 28, three draws, while the shipped row reads 58.1–58.4 | **RED**   |
+| W1, W4    | `minMedianCellHeightPx`, `artFraction` | **`one-card-no-cell-draw`**, same row — the blind spot as a live reading: the payload is the unmodified build's, so the height and the art fraction stay green on a frame with no cell on it | **GREEN** |
 | W4        | `artFraction`, `artCellsShowing`       | `?layers=128` — tier 4's pool, unmodified policy. **`evictionsPerSecond` is N/A here, not GREEN** (ruling `bd5c9aad`): 6.73/s is inside 21 only because the pool refuses ~4,670 wants/s, and recording that as a pass would certify the starvation the art half forbids | **GREEN** |
+| W4        | `demandFitsCapacity`                   | `?layers=128`, same row — the healthy tier-4 want set **fits** its pool since DEC-882's 256-bucket threshold: 76–77 cells wanting art against 128 layers. It read RED (207–209 against 128) until then, and DEC-861's brief, written at `de677cc`, still said RED; the live matrix is the authority and says GREEN. Reported, not scored | **GREEN** |
 | W5        | `worldsNeverLabelled`                  | **viewport 1920×1080** — the non-binding partner to the row above, differing in that one parameter                                                                          | **GREEN** |
 | all       | all                                    | the unmodified build on the v3 production dataset                                                                                                                           | **GREEN** |
 
@@ -2892,10 +2916,12 @@ events; the focused card's tilt feels physical; and, new, **the tether reads as 
 > would have passed on another draw. The width of the family, not the renderer, was the finding.
 >
 > The repair is the one W5 took two criteria over, and for the same reason: what is invariant under
-> a rotation is **reachability**, never the instantaneous value. `sweepSpinPhase` samples a full
-> period and scores the **worst presenting phase** — never the first, and never the best, because a
-> loop that stopped when the cell appeared would select on the statistic it then scores and green a
-> floor by choosing its own sample. Three rules make that a measurement rather than a search:
+> a rotation is **reachability**, never the instantaneous value. The gate's `sweepSpinPhase` samples
+> a full period and `selectSpinPhases` (`lib/worlds-metrics.mjs`, moved out of the driver and
+> unit-tested by DEC-861, one mutant per rule) scores the **worst counted phase** — never the first,
+> and never the best, because a loop that stopped when the cell appeared would select on the
+> statistic it then scores and green a floor by choosing its own sample. Three rules make that a
+> measurement rather than a search, and a fourth says whose worst phase it is:
 >
 > 1. **A phase is scorable only if the previous phase was presenting too.** The leading edge of a
 >    presenting run is mid cross-fade — `ART_SHOWN_AT` is the fade's *landing* — so `showingArt` is
@@ -2911,11 +2937,45 @@ events; the focused card's tilt feels physical; and, new, **the tether reads as 
 >    scene never moved" are the same reading. The cell's own projected centre is the witness — it
 >    travelled 680 px on segovia — and below `SPIN_SWEEP_MIN_TRAVEL_PX` the row reports a harness
 >    fault rather than a verdict.
+> 4. **Each criterion scores its own worst counted phase (DEC-861).** W1 reads the phase with the
+>    lowest median height; **W4 reads the phase with the lowest `artFraction`**, not W1's. W1's
+>    worst phase is the worst for *legibility* and says nothing about art — on segovia the two
+>    readings are nearly flat, but a sweep whose one art-less counted phase was not W1's worst would
+>    have scored W4 on a phase that showed art. Counted phases where nothing wants art carry no W4
+>    reading and are stepped over; if none carries one, W4 is read on W1's phase and reports its own
+>    `insufficient`. The pixel witness below takes its own worst phase the same way.
 >
 > The margin this buys is not marginal: at the worst *presenting* phase the cell measures **684.95
 > px** against W1's 24 px floor, and the height varies by under 1 px across the whole family. The
 > row was never close to failing W1 on the merits — it was failing on whether the frame contained
 > the cell at all.
+>
+> **Normative — the row reads one pixel, and a control proves it can see a cell that is not drawn
+> (DEC-861, from DEC-856).** At n = 1 the criteria that read pixels — W2 and W3 — are out of domain,
+> so every measure this row scored was computed before a fragment was shaded: W1's height is a CPU
+> projection and W4 is the art pool's account. The row went red on a world that stopped composing,
+> turning, presenting or admitting art, and **stayed green on one that stopped drawing**. W1 now
+> carries a second measure on a swept row, `centreContrastDeltaE`: the median ΔE76 from the cell's
+> centre pixel to eight points just outside its screen rect, read off each counted phase's capture
+> and scored at its own worst phase against `FLOORS.cellDrawnDeltaE`. It is W1's because a cell that
+> is not drawn is not resolvable at any distance, and it rides only a swept visit, so W1 is still
+> one measure everywhere else and `baseline`'s criterion-level `W1 GREEN` is unchanged.
+>
+> Its control is **`one-card-no-cell-draw`**: the same row with the `WorldCell` program's draw calls
+> suppressed by an init script (`blankCellDrawScript`), a harness seam in the class of the
+> reduced-motion row's media emulation — it perturbs what the GPU is asked to draw and nothing the
+> row reads, so the payload still describes a healthy world. The row expects the witness **RED** and
+> the height and art fraction **GREEN** on the same frame; the GREENs are the blind spot, stated as
+> a live reading. It refuses to score a control that suppressed zero draws.
+>
+> The floor, **28**, is derived and not chosen: the geometric mean of the shipped arm's lowest
+> scored reading and the control's highest, three draws each — shipped **58.36 / 58.11 / 58.25**,
+> blanked **13.20 / 13.49 / 12.81**, so 2.08× either side (the control's read-backs: 18,571,
+> 18,632 and 18,568 cell draw calls suppressed). The control's *best* counted phase reads 43.2–43.8, because the atmosphere shows
+> through brighter towards the limb, and that is the reason the witness scores its worst phase: the
+> control could green only if every counted phase sat above 28. The floor belongs to segovia's card
+> art, so a refresh that changes that card expires it, and it asks whether the cell is drawn at all,
+> not whether it is drawn right. The table is in `FLOORS.cellDrawnDeltaE`.
 >
 > **This row does not assert that its world carries a label**, and that is deliberate. DEC-751
 > measured the six one-card worlds across azimuth: `muraganda` is labelled at 10 of 24, `shandalar`
@@ -3155,6 +3215,12 @@ The galaxy ships until **all four** of these hold:
 3. the W0.1 Windows field reports confirm concept B's cost class on the Iris Xe and the 780M — or the
    owner explicitly waives the hardware gate. This is the outstanding item the W2.3 record names, and
    concept B's "A far / B near" is still an estimate from a Mac;
+
+   > **Met by waiver (board ruling `hardware_gate` = `waive`, interaction `6d9da980`, DEC-752).**
+   > The board took the second branch, and the record is `docs/decisions/w23-concept-and-stack.md`.
+   > **A waiver is a decision to ship without the evidence, not evidence**: no Iris Xe or 780M has
+   > run the worlds build, "A far / B near" is still the Mac estimate, and the field reports are
+   > still owed. Do not cite this condition as confirming the cost class.
 4. the worlds build reaches feature parity on the shipped surfaces: search, filters, deep links,
    plane index, card focus, printing ring, attract mode, reduced motion, a11y.
 
@@ -3228,6 +3294,16 @@ the tree is read as maintained tooling by the next person.
 
 > **Landed (DEC-752).** `galaxy-cutover` tags `107fdf8` — leg G at main `c91666c`, the last commit
 > with the galaxy scene and `visual-gate.mjs` both in the tree — and the cutover commit deletes both.
+>
+> **The tag is the retrieval point for the files, not a tree on which the archived gate passes
+> (DEC-861, from DEC-856).** Leg G moved the card-sheet tier out before the cutover
+> (`split_cardtier`): at `107fdf8`, `visual-gate.mjs` and `scene/starScene.ts` are present and
+> `scene/cards/cardTier.ts` and `thumbnailTier.ts` are not. `visual-gate.mjs`'s criterion 6 — the
+> star → thumbnail cross-fade, PRD 5.5.1 — reads `state.thumbnails.*`, which on that tree has no
+> tier behind it, so the criterion cannot pass there. **The last coherent galaxy-plus-gate pair is
+> main `c91666c`** (an ancestor of the tag), where all four files exist. Check out `c91666c` to re-run
+> the galaxy's gate; check out `galaxy-cutover` to read the scripts as they stood when they were
+> deleted.
 > What it had to *move* first, because the module graph named for the galaxy was also hosting the
 > worlds build, is recorded in `docs/worlds/cutover-inventory.md`: the printing ring's host
 > (`split_cardtier`, `cards/focusedCardHost.ts`), the input layer and the star data layer (DEC-852),
