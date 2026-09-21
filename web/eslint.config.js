@@ -34,33 +34,25 @@ import tseslint from 'typescript-eslint'
  * identically to a boundary violation otherwise). DEC-763's evidence comment records the 23-row
  * run; its load-bearing rows are the four asserting the harness boundary still fires *inside*
  * `ui/` and `app/`, and `npx eslint --print-config src/ui/<file>` is the one-line check that the
- * resolved rule still lists all four pattern groups.
+ * resolved rule still lists all three pattern groups (bench/harness, three, @react-three — the
+ * `selfCheck` group was dropped with DEC-847 R4 once no such module survived on `main`).
  */
 
-/** The harness boundary, static spelling. `src/**` minus `bench/` and `harness/` themselves. */
+/**
+ * The harness boundary, static spelling. `src/**` minus `bench/` and `harness/` themselves.
+ *
+ * **Both spellings carried a second rule against `scene/selfCheck`, and DEC-752 deleted that module**
+ * — 993 lines of galaxy GPU read-back, gone with the starfield it inspected. A rule naming a file
+ * nothing can resolve is not a weaker guard, it is a claim about a boundary that no longer has two
+ * sides, and it reads as coverage this config does not have. Removed by DEC-847 (R4, DEC-857 item
+ * 7); the `bench/` and `harness/` rules below are the live boundary and are untouched.
+ */
 const HARNESS_IMPORT_PATTERNS = [
   {
     group: ['**/bench/*', '**/harness/*'],
     allowTypeImports: true,
     message:
       'The product entry must not import the harness (review §3.6 phase 3, item 4). A lazy() is not a boundary — rollup follows dynamic imports, so this would put the bench back in the product build. Invert it: take what you need as a prop, the way SceneView takes bench.renderRunner.',
-  },
-  {
-    /*
-     * `scene/selfCheck.ts` is the one harness module that does not live in a harness directory —
-     * it sits in `src/scene/` beside the field it inspects, so the pattern above walks straight
-     * past it. Found by mutation: an injected `import { runSelfCheck } from './selfCheck'` in
-     * `starScene.ts` was not caught by the rule as first written, which is the exact 993-line
-     * regression item 4 removed.
-     *
-     * `selfCheck.url` and `selfCheck.register` are deliberately *not* matched. Both exist to be
-     * imported from the product side — the first is the free URL test, the second is the seam the
-     * harness registers through — and both are a few lines that reach nothing.
-     */
-    group: ['**/selfCheck', './selfCheck'],
-    allowTypeImports: true,
-    message:
-      'The product entry must not import scene/selfCheck (review §3.6 phase 3, item 4) — 993 lines of GPU read-back that only ?selfcheck=1 can reach, and a dynamic import() still emits them from this entry. Go through scene/selfCheck.register instead; the harness entry registers the loader.',
   },
 ]
 
@@ -70,11 +62,6 @@ const HARNESS_SYNTAX_RULES = [
     selector: String.raw`ImportExpression[source.value=/(^|\/)(bench|harness)\//]`,
     message:
       'The product entry must not import() the harness (review §3.6 phase 3, item 4). Rollup follows dynamic imports, so this emits the bench from the product entry — the exact thing lazy() failed to prevent. Invert it: take the runner as a prop, the way SceneView takes bench.renderRunner.',
-  },
-  {
-    selector: String.raw`ImportExpression[source.value=/(^|\/)selfCheck$/]`,
-    message:
-      'The product entry must not import() scene/selfCheck (review §3.6 phase 3, item 4). This is the exact line the item removed from starScene: a dynamic import still puts 993 lines of GPU read-back in the product build. Go through scene/selfCheck.register; the harness entry registers the loader.',
   },
 ]
 
