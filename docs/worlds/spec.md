@@ -2246,7 +2246,7 @@ an assertion there.
 > | worst in-domain world of the 45-world tour (forgotten-realms) | **141** | **4.4× above** |
 > | shipped 1,024-layer baseline, dominaria | 941 | 29× above |
 >
-> The tier-4 rung read **124** at the arrival pose PR #85 replaced and **76** at the pose and grid
+> The tier-4 rung read **124** † at the arrival pose PR #85 replaced and **76** at the pose and grid
 > shipped now: 76–82 over five draws (DEC-882), 75 (DEC-889), 76 (DEC-894) and 76 on 3 of 3 held
 > draws (DEC-896). Quote it as 75–82. Both are readings
 > of a healthy build and the floor clears both; quoted here with their eras because the row is the
@@ -2257,6 +2257,11 @@ an assertion there.
 > raised the grid. The `--negative-controls` tour on DEC-890's head reads **141**, same world
 > (forgotten-realms), same worst-of-13 fold — 4.4× the floor rather than 4.6×.
 > `remeasure-before-repeating-a-recorded-number`.
+>
+> † **That 124 also belonged to the row's harness configuration and not to the build** — the frame
+> is taken after DEC-843's 3 s `reducedMotion: false` read-back hold, and the adaptive threshold goes
+> on rising through it: 128 with the hold removed, 127 on the tree that had no read-back at all, the
+> renderer identical in all three. The full statement is at the matrix row itself.
 >
 > ### What this costs the matrix, stated rather than left to be discovered
 >

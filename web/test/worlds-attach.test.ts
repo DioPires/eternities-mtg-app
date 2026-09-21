@@ -1256,13 +1256,28 @@ describe('§1.6 on the shipped roster (DEC-768 F1, F2)', () => {
     return readings
   }
 
+  /**
+   * One sweep per capacity for the whole block. A sweep is a pure function of its capacity — a
+   * fresh rig on the fixed roster — and each costs ~0.5 s locally, 2.6-3.5x that on a hosted
+   * runner, so the rows below share their readings rather than re-drawing them.
+   */
+  const swept = new Map<number, PoseReading[]>()
+  function readingsAt(capacity: number): PoseReading[] {
+    let readings = swept.get(capacity)
+    if (!readings) {
+      readings = sweep(capacity)
+      swept.set(capacity, readings)
+    }
+    return readings
+  }
+
   it('never leaves the pool idle in front of a world that wants art — F1', () => {
     // 128 is tier 4, §1.12's smallest rung and the one this is reachable at today through R1's own
     // `?layers=` seam. Before the crossing-bucket branch, `dominaria` admitted **0 of 128** at both
     // poses — 961 and 922 wanting cells, every layer idle — which is strictly worse than the
     // `fixed24` prototype §1.6 replaces, and puts W4's `artFraction` at zero for a reason that is
     // not the renderer running out of pool, the one thing W4 exists to distinguish.
-    const readings = sweep(128)
+    const readings = readingsAt(128)
 
     // The denominator, always: "no idle poses" and "I measured no poses" must not print the same.
     expect(readings).toHaveLength(WORLDS.length * POSES.length)
@@ -1279,7 +1294,7 @@ describe('§1.6 on the shipped roster (DEC-768 F1, F2)', () => {
     // `ArtPool` absorbs it without churn — a key wanted this frame is not an eviction candidate, so
     // the excess requests simply fail to reserve rather than evicting cells that are on screen.
     const over = (capacity: number) =>
-      sweep(capacity)
+      readingsAt(capacity)
         .filter((r) => r.admitted > capacity)
         .map((r) => `${r.slug}@${r.radii}r ${r.admitted}/${capacity}`)
 
@@ -1300,8 +1315,12 @@ describe('§1.6 on the shipped roster (DEC-768 F1, F2)', () => {
     const tiny = over(16)
     expect(tiny).toHaveLength(4)
     expect(tiny.filter((row) => row.startsWith('dominaria@'))).toHaveLength(2)
-    for (const reading of sweep(16)) expect(reading.admitted).toBeLessThan(3 * 16)
-  })
+    for (const reading of readingsAt(16)) expect(reading.admitted).toBeLessThan(3 * 16)
+    // Three fresh sweeps (four when run alone): ~1.5 s locally, ~2.1 s alone. Before the shared
+    // readings it drew five and timed out at 5 s on hosted CI — 6,449 ms and 8,733 ms, run
+    // 35514847108 attempts 2 and 3, against ~2.47 s locally — so the hosted ratio alone can carry
+    // the cut row past the default. The limit is this row's, not the suite's.
+  }, 15_000)
 
   /**
    * Zendikar between 2.18 and 2.20 world-radii at 224 layers: the raw quantile alternates between
