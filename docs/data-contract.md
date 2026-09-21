@@ -172,7 +172,7 @@ Header kind `3`, `recordCount` = star count. One record per card, **in star orde
 
 RGB565 is `(r & 0xF8) << 8 | (g & 0xFC) << 3 | b >> 3`; green is the six-bit field, which is the one an RGB555 packing gets wrong. The samples are **averaged in linear light** and re-encoded to sRGB — a byte-space average darkens every mixed quadrant, and a mosaic of tens of thousands of cells is where a systematic darkening reads as a bug rather than as art. The quadrant split is `width // 2` / `height // 2`, so an odd dimension gives the extra pixel to the right and bottom halves; arbitrary, but fixed, because a content hash needs *a* rule.
 
-The source is Scryfall's `art_crop` of **printing index 0** — the card's earliest-released printing, which is the one a cell draws and credits (§9). `small` would be the whole card, frame included, and a 2×2 of that is dominated by frame colour, which *is* the colour identity, which is `hueClass` again.
+The source is Scryfall's `art_crop` of **printing index 0** — the card's first printing (PRD 4.5), which is the one a cell draws and credits (§9). `small` would be the whole card, frame included, and a 2×2 of that is dominated by frame colour, which *is* the colour identity, which is `hueClass` again.
 
 It is its own file and deliberately **not** a fourth section of `sets.bin`: PRD 7.2 budgets `search.json` + `sets.bin` together at 700 KB and that pair is at 96% of it, which is the project's one genuinely tight row. Fetched with `stars.bin` instead, on the before-intro row, which has 3 MB (§8).
 
@@ -367,7 +367,7 @@ A printing is a fixed tuple `[id, setId, rarityChar, imageTs, collectorNumber, a
 
 It is in the contract because concept B shows tens of thousands of `art_crop`s with no card in sight. Scryfall's terms ask that an art crop be shown with the artist and copyright in the same interface *or* the full card alongside; the focused-card planets satisfy the alternative clause today and a mosaic of cells does not. **Printing index 0** is the one a cell draws (§5.1) and `p[0][5]` is therefore the credit.
 
-**Ordering, and a trap.** `p` is sorted by the *printing's* set release date, so `p[0]` is the earliest-released printing and is **not** necessarily the card's debut printing — a promo or a list reprint whose set shipped earlier sorts ahead of the set the card first appeared in. The swatch stage and the shard writer share one function so the art and the credit cannot disagree.
+**Ordering.** `p` is sorted by `first_printing_sort_key` — the *printing's own* release date, then PRD 4.5.1's set-type priority, then set code, collector number and printing id. That is the same key PRD 4.5 picks a card's first printing with, so `p[0]` **is** the card's first printing by construction (DEC-913). It used to be sorted on the printing's *set* release date, and the two readings disagree wherever a rolling product carries one set date for printings it keeps adding for years: The List (`plst`, set date 2020-09-26) took `p[0]` from 451 cards that had plainly been printed elsewhere first. The swatch stage and the shard writer share one function so the art and the credit cannot disagree.
 
 `imageTs` moves on Scryfall's schedule rather than the product's, so a refresh that changes nothing
 a user could see still rewrites the shards that contain those cards. That churn was measured and

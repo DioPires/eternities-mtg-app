@@ -378,3 +378,95 @@ def test_load_shards_returns_the_slug(tmp_path: Path) -> None:
     slug, loaded_card = loaded["card-1"]
     assert slug == "alara"
     assert loaded_card["n"] == "Test Card"
+
+
+# --------------------------------------------------------------------------------------------
+# DEC-913: a re-ordered `p` is a reorder, not 4 printings "changing"
+# --------------------------------------------------------------------------------------------
+
+_P1 = ["printing-1", 7, "c", 1783903215, "1", "Artist A"]
+_P2 = ["printing-2", 9, "r", 1783903216, "2", "Artist B"]
+_P3 = ["printing-3", 9, "u", 1783903217, "3", "Artist C"]
+
+
+def test_a_reordered_printing_list_is_not_a_printing_change(tmp_path: Path, capsys: Any) -> None:
+    """DEC-913. The tuples are paired by id, so a permutation reports as a permutation.
+
+    Zipped positionally — which is what this script did until DEC-913 re-sorted `p` — every
+    tuple that moved index reads as "the printing at slot k changed", and the real refresh put
+    5,493 rows under `printing changed otherwise`, the loudest bucket here and the one the
+    runbook tells the operator to read line by line. Nothing was wrong with any of them. A
+    bucket a routine reorder can fill is a bucket that stops being read.
+    """
+    old = write_dataset(tmp_path / "old", {"alara": [card(p=[_P1, _P2, _P3])]})
+    new = write_dataset(tmp_path / "new", {"alara": [card(p=[_P2, _P3, _P1])]})
+
+    found, out = buckets(capsys, old, new)
+
+    assert found["printing_other"] == 0, "a permutation is not a printing change"
+    assert found["changed"] == 1, "it is still a change — the shard bytes moved"
+    assert [
+        found[k] for k in ("added", "removed", "cache_buster", "printing_count", "field", "plane")
+    ] == [0, 0, 0, 0, 0, 0]
+    assert re.search(r"planet order changed:\s+1 card\(s\), 1 of them at p\[0\]", out)
+    # p[0] went printing-1 -> printing-2, so the card is listed: this is the art a cell draws.
+    assert "cards whose first printing changed (1 of 1 reordered)" in out
+    assert "Test Card" in out.split("cards whose first printing changed")[1]
+
+
+def test_a_reorder_below_p0_is_counted_but_not_listed(tmp_path: Path, capsys: Any) -> None:
+    """Only p[0] decides what a cell draws and credits, so only p[0] rows are listed.
+
+    The real refresh reordered 1,481 cards and moved p[0] on 458 of them; listing all 1,481
+    would bury the 458 that actually change the multiverse.
+    """
+    old = write_dataset(tmp_path / "old", {"alara": [card(p=[_P1, _P2, _P3])]})
+    new = write_dataset(tmp_path / "new", {"alara": [card(p=[_P1, _P3, _P2])]})
+
+    found, out = buckets(capsys, old, new)
+
+    assert found["printing_other"] == 0
+    assert re.search(r"planet order changed:\s+1 card\(s\), 0 of them at p\[0\]", out)
+    assert "cards whose first printing changed" not in out
+
+
+def test_a_real_printing_swap_still_reaches_the_loud_bucket(tmp_path: Path, capsys: Any) -> None:
+    """The negative control for the two rows above, and the reason they are not just a mute.
+
+    Same list length, but one printing id is gone and another has arrived — the id sets differ,
+    so the pairing falls back to the positional read and both sides of the swap are reported.
+
+    What this row guards *alone* is that positional fallback: emptying it in the script
+    (``pairs = list(zip(pa, pb, strict=True))`` -> ``pairs = []``) reds this row and no other.
+    It is not what guards the `printing changed otherwise` bucket itself — deleting that bucket
+    with this row disabled still reds `plane_move_does_not_hide_a_printing_change`,
+    `field_change_does_not_hide_a_printing_change` and
+    `cache_buster_bucket_excludes_a_card_with_a_printing_anomaly` (DEC-918 M4b/M5).
+    """
+    swapped = ["printing-4", 9, "r", 1783903218, "4", "Artist D"]
+    old = write_dataset(tmp_path / "old", {"alara": [card(p=[_P1, _P2])]})
+    new = write_dataset(tmp_path / "new", {"alara": [card(p=[_P1, swapped])]})
+
+    found, out = buckets(capsys, old, new)
+
+    assert found["printing_other"] == 1, "a substituted printing is still the loud row"
+    assert re.search(r"planet order changed:\s+0 card\(s\)", out)
+    assert "printings that changed beyond the cache-buster (1)" in out
+
+
+def test_a_cache_buster_survives_a_reorder(tmp_path: Path, capsys: Any) -> None:
+    """Pairing by id is what keeps the quiet bucket working across a reorder.
+
+    Positionally, a re-stamped image on a printing that also moved index compares against a
+    different printing entirely and lands in the loud bucket. Paired by id it stays what it is:
+    Scryfall re-scanned the card. This is the DEC-668 blind spot restated for DEC-913's change.
+    """
+    restamped = [_P1[0], _P1[1], _P1[2], 1799999999, _P1[4], _P1[5]]
+    old = write_dataset(tmp_path / "old", {"alara": [card(p=[_P1, _P2])]})
+    new = write_dataset(tmp_path / "new", {"alara": [card(p=[_P2, restamped])]})
+
+    found, out = buckets(capsys, old, new)
+
+    assert found["printing_other"] == 0
+    assert found["cache_buster"] == 1, "the re-stamp is still seen through the reorder"
+    assert re.search(r"image cache-buster only:\s+1 card\(s\), 1 printing tuple", out)

@@ -113,6 +113,8 @@ def classify(old: Path, new: Path) -> int:
     printing_counts: list[tuple[str, int, int]] = []
     field_changes: list[tuple[str, list[str]]] = []
     printing_oddities: list[tuple[str, list, list]] = []
+    order_changes: list[tuple[str, list[str], list[str]]] = []
+    first_printing_changes: list[tuple[str, list, list]] = []
     plane_moves: list[tuple[str, str, str]] = []
     changed_fields: Counter[str] = Counter()
     changed_cards: set[str] = set()
@@ -150,9 +152,35 @@ def classify(old: Path, new: Path) -> int:
             printing_counts.append((name, len(pa), len(pb)))
             continue
 
+        # Pair the printings by **id**, not by position. A card's `p` is an ordered list (PRD
+        # 5.6.7's planet order), and re-ordering it moves every tuple from some index to some
+        # other index without changing a single printing. Zipped positionally that reads as every
+        # one of them "changing", which is how DEC-913 — a pure re-sort of `p`, 0 printings added
+        # or removed — produced 5,493 `printing changed otherwise` rows telling the operator to
+        # read a list in which nothing was wrong. The loudest bucket in this script must not be
+        # reachable by a reorder, or the one refresh where it means something is the one nobody
+        # reads. Order is a real change and gets its own, quieter row.
+        ids_a = [x[PRINTING_ID] for x in pa]
+        ids_b = [y[PRINTING_ID] for y in pb]
+        by_id_a = dict(zip(ids_a, pa, strict=True))
+        by_id_b = dict(zip(ids_b, pb, strict=True))
+        pairable = len(by_id_a) == len(pa) and len(by_id_b) == len(pb) and set(ids_a) == set(ids_b)
+        if pairable:
+            if ids_a != ids_b:
+                order_changes.append((name, ids_a, ids_b))
+                if ids_a[0] != ids_b[0]:
+                    # p[0] is the printing §2.3 draws and credits, so this subset is the one that
+                    # changes what the multiverse looks like. The rest only re-orders planets.
+                    first_printing_changes.append((name, by_id_a[ids_a[0]], by_id_b[ids_b[0]]))
+            pairs = [(by_id_a[i], by_id_b[i]) for i in ids_a]
+        else:
+            # Same length, different ids: a printing really was swapped for another one. Fall back
+            # to the positional read, which reports both sides of the swap as an oddity.
+            pairs = list(zip(pa, pb, strict=True))
+
         only_stamp = True
         stamp_printings = 0
-        for x, y in zip(pa, pb, strict=True):
+        for x, y in pairs:
             if x == y:
                 continue
             same_identity = x[PRINTING_ID] == y[PRINTING_ID] and [
@@ -184,8 +212,18 @@ def classify(old: Path, new: Path) -> int:
         f"{image_ts_printings} printing tuple(s)"
     )
     print(f"  printing added or removed:    {len(printing_counts):>5} card(s)")
+    print(
+        f"  planet order changed:         {len(order_changes):>5} card(s), "
+        f"{len(first_printing_changes)} of them at p[0]"
+    )
     print(f"  non-printing field changed:   {len(field_changes):>5} card(s)")
-    print(f"  printing changed otherwise:   {len(printing_oddities):>5} card(s)  <-- read these")
+    # `printing_oddities` holds one entry per differing tuple, so its length is a count of
+    # tuples and was printed as `card(s)` until DEC-913. Both numbers are useful — the tuple
+    # count is the size of the list below — so both are printed, each named for what it is.
+    print(
+        f"  printing changed otherwise:   {len({n for n, _, _ in printing_oddities}):>5} card(s), "
+        f"{len(printing_oddities)} printing tuple(s)  <-- read these"
+    )
     print(f"  card changed plane:           {len(plane_moves):>5} card(s)  <-- read these")
 
     if added:
@@ -213,6 +251,19 @@ def classify(old: Path, new: Path) -> int:
         )
         for name, fields in field_changes[:40]:
             print(f"  {name}: {', '.join(fields)}")
+    if first_printing_changes:
+        # Only the p[0] rows are listed. A reorder further down the list moves planets around the
+        # ring and nothing else; p[0] is the art the cell draws and the artist it credits, so it
+        # is the subset a reviewer has to look at, and printing every reordered card would bury
+        # it (DEC-913 moved 1,481 cards and only 458 of them at p[0]).
+        print(
+            f"\ncards whose first printing changed ({len(first_printing_changes)} of "
+            f"{len(order_changes)} reordered):"
+        )
+        for name, was, now in first_printing_changes[:40]:
+            print(f"  {name}\n    old {was}\n    new {now}")
+        if len(first_printing_changes) > 40:
+            print(f"  ... and {len(first_printing_changes) - 40} more")
     if printing_oddities:
         print(f"\nprintings that changed beyond the cache-buster ({len(printing_oddities)}):")
         for name, was, now in printing_oddities[:40]:
