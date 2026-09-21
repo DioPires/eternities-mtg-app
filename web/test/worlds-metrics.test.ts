@@ -2513,7 +2513,7 @@ describe("W4 — art resolves without exhausting", () => {
       // Named from every side so the margins are on the record rather than implied, and all four
       // are measured readings: 14 is DEC-834's witness; 75 the live `?layers=128` row as the gate
       // now measures it (DEC-899) — wanted 76–77, drawn 75–77, admitted 76–84 over the live draws
-      // since DEC-882 (DEC-882/889/894/896/868/907/912) — it read 124 at the DEC-845 arrival pose,
+      // after DEC-882 (DEC-889/894/896/868/907/912) — it read 124 at the DEC-845 arrival pose,
       // before PR #85 and DEC-882;
       // 141 the worst in-domain world of the 45-world acceptance tour (forgotten-realms, 146 on
       // DEC-837's tour and 141 on DEC-890's); 941 dominaria at the shipped pool (n = 1, DEC-837).

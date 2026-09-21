@@ -253,7 +253,7 @@ export const FLOORS = {
    * |---|---|---|
    * | the live witness that must RED, `?layers=24` (DEC-890), settled frozen frame, 10 of 10 draws | 14 | **2.3× below** |
    * | the witness the floor was derived against (want set collapsed to 14) | 14 | **2.3× below** |
-   * | healthy tier-4 rung, `?layers=128` (wanted 76–77, drawn 75–77, admitted 76–84 over the live draws since DEC-882) † | 75–77 drawn | 2.3–2.4× above |
+   * | healthy tier-4 rung, `?layers=128` (wanted 76–77, drawn 75–77, admitted 76–84 over the live draws after DEC-882) † | 75–77 drawn | 2.3–2.4× above |
    * | worst in-domain world of the 45-world tour (forgotten-realms) | **141** | **4.4× above** |
    * | shipped 1,024-layer baseline, dominaria (n = 1, DEC-837, before PR #85's pose and DEC-882's grid) | 941 | 29× above |
    *

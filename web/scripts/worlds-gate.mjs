@@ -1342,7 +1342,7 @@ export const MATRIX = [
       // **17**, below the floor — the DEC-876 RED. Re-measured at 256 buckets (DEC-882): **76**
       // cells against a floor of 32, 2.4× above, over a matrix draw and five step-1 draws reading
       // 76–82, and **75** on both of DEC-899's draws after the merge with `c49315c`. Quote it as
-      // wanted 76–77, drawn 75–77, admitted 76–84 over the live draws since DEC-882.
+      // wanted 76–77, drawn 75–77, admitted 76–84 over the live draws after DEC-882.
       //
       // **Its RED partner one row down no longer reds.** `layers-128-reduced` is this same pool with
       // the OS reduced-motion preference emulated; it read 14 and now reads 78. See that row for why
