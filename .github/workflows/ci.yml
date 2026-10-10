@@ -338,9 +338,11 @@ jobs:
 
   # Opens the project in the pinned editor and quits. That imports every asset and compiles every
   # assembly, tests and editor scripts included; a compiler error ends batchmode with a non-zero
-  # exit. Then the tree has to be exactly as committed: an editor that had to write a .meta, or
-  # rewrite the package lock or a settings file, was given a project that is not what the next
-  # clone will open.
+  # exit. An import that only logged errors does not: a shader that fails to parse exits 0. So the
+  # editor runs `ConsoleCheck` before it quits, which exits 1 if its Console holds an error. The
+  # Console has every import error because the import is from cold (the checkout note below). Then
+  # the tree has to be exactly as committed: an editor that had to write a .meta, or rewrite the
+  # package lock or a settings file, was given a project that is not what the next clone will open.
   unity-compile:
     needs: unity-changes
     if: ${{ !cancelled() && needs.unity-changes.outputs.unity != 'false' }}
@@ -359,8 +361,8 @@ jobs:
         with:
           path: unity-compile
           lfs: true
-      - name: Import and compile
-        run: unity/Eternities/batchmode.sh -quit
+      - name: Import, compile, no console errors
+        run: unity/Eternities/batchmode.sh -quit -executeMethod Eternities.EditorTools.ConsoleCheck.Run
       - name: The import left the tree as committed
         run: |
           changed=$(git status --porcelain -- unity)
@@ -388,13 +390,15 @@ jobs:
       - name: EditMode tests
         run: unity/Eternities/batchmode.sh -runTests -testPlatform EditMode -testResults "$RUNNER_TEMP/editmode.xml"
       # Exit 0 is also what a run that found no tests returns. A suite that is not discovered must
-      # not read as a suite that passed.
-      - name: At least one test ran and passed
+      # not read as a suite that passed. Counted in our namespace: the run includes a test that a
+      # package brings (Addressables' `TestStub`), which passes whether or not ours were found.
+      - name: At least one of our tests ran and passed
         run: |
           set -euo pipefail
-          passed=$(xmllint --xpath 'string(/test-run/@passed)' "$RUNNER_TEMP/editmode.xml")
-          total=$(xmllint --xpath 'string(/test-run/@total)' "$RUNNER_TEMP/editmode.xml")
-          echo "EditMode: $passed of $total passed"
+          ours='//test-case[starts-with(@fullname, "Eternities.Tests.")]'
+          passed=$(xmllint --xpath "count(${ours}[@result = 'Passed'])" "$RUNNER_TEMP/editmode.xml")
+          total=$(xmllint --xpath "count($ours)" "$RUNNER_TEMP/editmode.xml")
+          echo "EditMode: $passed of $total passed in Eternities.Tests"
           [ "$passed" -ge 1 ]
       - uses: actions/upload-artifact@v4
         if: failure()
@@ -421,12 +425,13 @@ jobs:
           lfs: true
       - name: PlayMode tests
         run: unity/Eternities/batchmode.sh -runTests -testPlatform PlayMode -testResults "$RUNNER_TEMP/playmode.xml"
-      - name: At least one test ran and passed
+      - name: At least one of our tests ran and passed
         run: |
           set -euo pipefail
-          passed=$(xmllint --xpath 'string(/test-run/@passed)' "$RUNNER_TEMP/playmode.xml")
-          total=$(xmllint --xpath 'string(/test-run/@total)' "$RUNNER_TEMP/playmode.xml")
-          echo "PlayMode: $passed of $total passed"
+          ours='//test-case[starts-with(@fullname, "Eternities.Tests.")]'
+          passed=$(xmllint --xpath "count(${ours}[@result = 'Passed'])" "$RUNNER_TEMP/playmode.xml")
+          total=$(xmllint --xpath "count($ours)" "$RUNNER_TEMP/playmode.xml")
+          echo "PlayMode: $passed of $total passed in Eternities.Tests"
           [ "$passed" -ge 1 ]
       - uses: actions/upload-artifact@v4
         if: failure()

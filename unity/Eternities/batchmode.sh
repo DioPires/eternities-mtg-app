@@ -10,4 +10,13 @@ if [ ! -x "$unity" ]; then
     echo "Unity $version is not installed at $unity (docs/ci-runner.md)" >&2
     exit 1
 fi
+# The editor's script compiler listens on a Unix socket under $TMPDIR, and a socket path holds 104
+# bytes. With a longer TMPDIR (an agent run's scratch directory is one) every compile ends in "is of
+# an invalid length for use with domain sockets" and "Scripts have compiler errors". The account's
+# own temporary directory is short, and is what a launchd agent, so the CI runner, has anyway.
+tmp=${TMPDIR:-}
+if [ "${#tmp}" -gt 64 ]; then
+    TMPDIR=$(getconf DARWIN_USER_TEMP_DIR)
+    export TMPDIR
+fi
 exec "$unity" -batchmode -projectPath "$project" -logFile - "$@"

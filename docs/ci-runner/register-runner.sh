@@ -48,6 +48,13 @@ esac
 
 PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 plist="$HOME/Library/LaunchAgents/$AGENT.plist"
+# The licence probe below starts the editor, whose script compiler needs a short TMPDIR
+# (unity/Eternities/batchmode.sh has the reason). An agent's shell has a long one.
+tmp=${TMPDIR:-}
+if [ "${#tmp}" -gt 64 ]; then
+    TMPDIR=$(getconf DARWIN_USER_TEMP_DIR)
+    export TMPDIR
+fi
 
 # The repository is public. A pull request from a fork runs the workflow file from the fork, so
 # this setting is the only thing between a stranger's pull request and this account. Checked on

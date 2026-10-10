@@ -49,7 +49,7 @@ repository's Actions settings, so an agent can do them.
    is pinned to, which is the first line of `unity/Eternities/ProjectSettings/ProjectVersion.txt`:
 
    ```sh
-   open "unityhub://6000.3.26f1/de8167e7440c"
+   open "unityhub://6000.6.5f1/3ff58d469c8a"
    ```
 
    The Hub opens on that version's install dialog. Tick **Mac Build Support (IL2CPP)**, untick
@@ -57,7 +57,7 @@ repository's Actions settings, so an agent can do them.
    module's licence agreement):
 
    ```sh
-   ~/.unity/bin/unity install 6000.3.26f1 --module mac-il2cpp --yes --accept-eula
+   ~/.unity/bin/unity install 6000.6.5f1 --module mac-il2cpp --yes --accept-eula
    ```
 
    Either way the editor lands in `/Applications/Unity/Hub/Editor/<version>/`, which is where
