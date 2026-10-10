@@ -688,3 +688,18 @@ The first is unusable: the thin innermost band binds the whole world (Alpha's 48
 **Execution condition.** The slice is cut from `prd_v4.md` **draft 5**, the amended document, not from draft 4. The owner's confirmation is requested on this plan revision, which records the gate as passed.
 
 **What the gate cost and bought.** Four Codex passes, about 15 minutes of model time, 61 findings (19 + 18 + 5 + the 5 re-checked), all accepted, none declined. The board's directive was that the PRD and the plan pass through Codex before building; they have, and the record of every finding and its disposition is in this section and the review files beside it.
+
+### 12.10 After acceptance: the owner's operational answers (2026-10-10 18:03Z and 18:06Z)
+
+The owner accepted plan revision 7 at 17:48Z (PRD v4 draft 5 is the product contract; the Dominaria slice is authorised). PR #106 put `prd_v4.md` and this document on `main` at `65c581b`, and the tag `web-edition-v1` marks `c1d6ef7`. Three child issues carry the slice: DEC-951 (project skeleton, hosted compile job, self-hosted runner), DEC-952 (temperate kit sources with credits; Scryfall desktop-client re-verification) and DEC-953 (the slice, blocked on both).
+
+The owner then answered the operational questions and one recommendation, and `prd_v4.md` Amendment 1 records the results:
+
+| Question | Owner's answer | Effect |
+|---|---|---|
+| Unity on the reference machine | Installed and signed in | DEC-951 starts the Unity-dependent parts. |
+| Runner account | "Any problem with using my own user session?" | None. The agents already run pull request code as the owner's user, so a dedicated account isolates nothing. PRD 8.8.6 amended: the runner runs in the owner's session; a dedicated account is optional hardening; the agents create the registration token through the repository's Actions API. |
+| Editor days | As sketched in PRD 9.5 | Recorded on DEC-953; calendar dates confirmed at kick-off. |
+| Distribution host (PRD 7.7.2 rider) | Asked for a recommendation; accepted it | The repository has been public since 2026-09-21, so its own Releases are public downloads. PRD 7.7.2, 8.9.1 and 11.7 amended: binaries are published as GitHub Releases on this repository, one per tag with the data hash in the notes; itch.io is an optional landing page. |
+
+The Fan Content Policy classification (PRD 11.1) stays the owner's gate before any distribution, friends included. It does not block the slice.
