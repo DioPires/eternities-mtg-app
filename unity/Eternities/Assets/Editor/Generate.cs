@@ -109,6 +109,24 @@ namespace Eternities.EditorTools
             changed |= Set(Lit("portal-frame", new Color(0.12f, 0.11f, 0.10f), 0.6f, 0.5f), app.PortalFrameMaterial, m => app.PortalFrameMaterial = m);
             changed |= Set(Unlit("portal-surface", new Color(0.35f, 0.75f, 1f, 1f), transparent: false), app.PortalSurfaceMaterial, m => app.PortalSurfaceMaterial = m);
             changed |= Set(Unlit("veil", new Color(0, 0, 0, 1), transparent: true), app.VeilMaterial, m => app.VeilMaterial = m);
+            changed |= Set(Unlit("image-surface", Color.white, transparent: false), app.ImageSurfaceMaterial, m => app.ImageSurfaceMaterial = m);
+            foreach ((string name, Shader held, System.Action<Shader> assign) in new (string, Shader, System.Action<Shader>)[]
+            {
+                ("Hidden/Eternities/Exhibit", app.ExhibitShader, shader => app.ExhibitShader = shader),
+                ("Hidden/Eternities/ExhibitComposite", app.ExhibitCompositeShader, shader => app.ExhibitCompositeShader = shader),
+            })
+            {
+                Shader shader = Shader.Find(name);
+                if (shader == null)
+                {
+                    throw new InvalidDataException($"the shader {name} is not in the project");
+                }
+                if (shader != held)
+                {
+                    assign(shader);
+                    changed = true;
+                }
+            }
 
             // The kit's terrain layers are the owner's (DEC-953, day 1). Until all three are
             // committed the ground is painted in plain colours.

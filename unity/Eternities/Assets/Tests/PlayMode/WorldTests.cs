@@ -112,7 +112,7 @@ namespace Eternities.Tests
             LayoutStand stand = app.World.Layout.Stands[0];
             Vector3 at = StandField.Ground(stand.Position);
             Assert.That(Physics.Raycast(at + 10 * Vector3.up, Vector3.down, out RaycastHit hit, 20));
-            Assert.That(hit.point.y, Is.EqualTo(StandField.PlinthHeight + StandField.SurfaceHeight).Within(0.01f));
+            Assert.That(hit.point.y, Is.EqualTo(StandField.SlabTop).Within(0.005f));
             Vector3 apron = at + StandField.Facing(stand) * Vector3.forward;
             Assert.That(Physics.Raycast(apron + 10 * Vector3.up, Vector3.down, out hit, 20));
             Assert.That(hit.point.y, Is.EqualTo(0).Within(0.01f));

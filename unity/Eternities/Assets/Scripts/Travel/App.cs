@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using Eternities.Avatar;
+using Eternities.CardView;
 using Eternities.Data;
 using Eternities.Kits;
 using UnityEngine;
@@ -39,6 +40,8 @@ namespace Eternities.Travel
         [SerializeField] Material[] standMaterials = new Material[0];
         [SerializeField] Material avatarMaterial, hubGroundMaterial, portalFrameMaterial, portalSurfaceMaterial, veilMaterial;
         [SerializeField] TerrainLayer[] terrainLayers = new TerrainLayer[0];
+        [SerializeField] Material imageSurfaceMaterial;
+        [SerializeField] Shader exhibitShader, exhibitCompositeShader;
 
         public static App Instance { get; private set; }
 
@@ -49,6 +52,9 @@ namespace Eternities.Travel
         public Material PortalSurfaceMaterial { get => portalSurfaceMaterial; set => portalSurfaceMaterial = value; }
         public Material VeilMaterial { get => veilMaterial; set => veilMaterial = value; }
         public TerrainLayer[] TerrainLayers { get => terrainLayers; set => terrainLayers = value; }
+        public Material ImageSurfaceMaterial { get => imageSurfaceMaterial; set => imageSurfaceMaterial = value; }
+        public Shader ExhibitShader { get => exhibitShader; set => exhibitShader = value; }
+        public Shader ExhibitCompositeShader { get => exhibitCompositeShader; set => exhibitCompositeShader = value; }
 
         public Pack Pack { get; private set; }
         public AvatarController Avatar { get; private set; }
@@ -57,6 +63,9 @@ namespace Eternities.Travel
         public Portal ReturnPortal { get; private set; }
         public WorldData World { get; private set; }
         public StandField Stands { get; private set; }
+        public StandImages Images { get; private set; }
+        public Exhibit Exhibit { get; private set; }
+        public IImageSource ImageSource;    // where stand images come from; set before a world loads
         public Terrain Ground { get; private set; }
         public GroundPlan GroundPlan => plan;
 
@@ -159,6 +168,7 @@ namespace Eternities.Travel
             Avatar.Keep = KeepInHub;
             Camera view = Camera.main;
             View = FollowCamera.Create(view, Avatar);
+            Exhibit = Exhibit.Create(view, exhibitShader, exhibitCompositeShader);
 
             // The veil: what a portal's surface becomes as it fills the view. A quad just past the
             // near plane, black, its opacity set by the transition.
@@ -293,6 +303,11 @@ namespace Eternities.Travel
 
             Stands = StandField.Create(worldRoot.transform);
             yield return Stands.Fill(World, standMaterials, LoadBudgetMs);
+            Images = StandImages.Create(worldRoot.transform);
+            yield return Images.Fill(World, imageSurfaceMaterial, LoadBudgetMs);
+            Images.Source = ImageSource;
+            Images.Viewer = Avatar.transform;
+            Exhibit.SetImages(Images.Array);
 
             // The return portal, 8 m south of the centre and facing it (PRD v4 5.4.5).
             ReturnPortal = Portal.Build("Return portal", portalFrameMaterial, portalSurfaceMaterial, worldRoot.transform,
@@ -324,6 +339,7 @@ namespace Eternities.Travel
             worldOwned.Clear();
             World = null;
             Stands = null;
+            Images = null;
             Ground = null;
             ReturnPortal = null;
             WorldLoaded = false;

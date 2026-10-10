@@ -7,7 +7,10 @@
         "Eternities.Layout",
         "Eternities.Kits",
         "Eternities.Travel",
-        "Eternities.Avatar"
+        "Eternities.Avatar",
+        "Eternities.CardView",
+        "Unity.RenderPipelines.Core.Runtime",
+        "Unity.RenderPipelines.HighDefinition.Runtime"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

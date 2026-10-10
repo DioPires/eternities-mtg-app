@@ -6,7 +6,8 @@
         "Eternities.Layout",
         "Eternities.Kits",
         "Eternities.Travel",
-        "Eternities.Avatar"
+        "Eternities.Avatar",
+        "Eternities.CardView"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

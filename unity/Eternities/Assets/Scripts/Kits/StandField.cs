@@ -8,13 +8,16 @@ using UnityEngine.Rendering;
 namespace Eternities.Kits
 {
     // Every stand of a world as geometry (PRD v4 5.5): a plinth 1.1 m tall on the stand's footprint
-    // and, upright on it, the slab that carries the image surface, 0.63 by 0.88 m, facing the apron.
+    // and, upright on it, the slab that carries the image surface, facing the apron.
     // One mesh and one collider a site, so the engine culls and streams by site and nothing is one
     // object a card. The plinth's material is the card's rarity; the image surface is drawn by the
     // isolated path (PRD v4 8.4.4) and is not part of this mesh.
     public sealed class StandField : MonoBehaviour
     {
-        public const float PlinthHeight = 1.1f, SurfaceWidth = 0.63f, SurfaceHeight = 0.88f, SlabDepth = 0.02f;
+        public const float PlinthHeight = 1.1f, SurfaceHeight = 0.88f, SlabDepth = 0.02f;
+        // The slab frames the image surface by a centimetre on every side. The surface takes the
+        // image's pixel aspect, 488 by 680 (PRD v4 4.15.5), so it is 0.6315 m wide.
+        public const float SlabWidth = SurfaceHeight * 488 / 680 + 0.02f, SlabHeight = SurfaceHeight + 0.02f, SlabTop = PlinthHeight + SurfaceHeight + 0.01f;
         public const int Rarities = 4, SlabMaterial = 4;
 
         public int Stands { get; private set; }
@@ -94,7 +97,7 @@ namespace Eternities.Kits
                     Box(vertices, normals, triangles[Mathf.Clamp(world.Cards[stand.Card].Rarity, 0, Rarities - 1)],
                         at + new Vector3(0, PlinthHeight / 2, 0), facing, new Vector3(footprintHalfWidth, PlinthHeight / 2, footprintHalfDepth));
                     Box(vertices, normals, triangles[SlabMaterial],
-                        at + new Vector3(0, PlinthHeight + SurfaceHeight / 2, 0), facing, new Vector3(SurfaceWidth / 2, SurfaceHeight / 2, SlabDepth / 2));
+                        at + new Vector3(0, PlinthHeight + SurfaceHeight / 2, 0), facing, new Vector3(SlabWidth / 2, SlabHeight / 2, SlabDepth / 2));
                 }
 
                 var mesh = new Mesh { name = $"stands {world.Layout.Input.SetCodes[site.Set]} {ColourClasses.SeedNames[(int)site.Class]}" };
