@@ -1,7 +1,10 @@
 {
     "name": "Eternities.Editor",
     "rootNamespace": "Eternities.EditorTools",
-    "references": [],
+    "references": [
+        "Eternities.Data",
+        "Eternities.Layout"
+    ],
     "includePlatforms": [
         "Editor"
     ],

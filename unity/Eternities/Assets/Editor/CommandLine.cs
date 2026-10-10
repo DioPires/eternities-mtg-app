@@ -8,13 +8,14 @@ namespace Eternities.EditorTools
     {
         public static string Require(string name)
         {
+            return Optional(name) ?? throw new ArgumentException($"{name} <value> is required");
+        }
+
+        public static string Optional(string name)
+        {
             string[] args = Environment.GetCommandLineArgs();
             int at = Array.IndexOf(args, name);
-            if (at < 0 || at + 1 >= args.Length)
-            {
-                throw new ArgumentException($"{name} <value> is required");
-            }
-            return args[at + 1];
+            return at < 0 || at + 1 >= args.Length ? null : args[at + 1];
         }
     }
 }

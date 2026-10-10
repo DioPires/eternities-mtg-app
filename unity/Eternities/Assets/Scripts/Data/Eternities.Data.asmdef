@@ -1,7 +1,9 @@
 {
     "name": "Eternities.Data",
     "rootNamespace": "Eternities.Data",
-    "references": [],
+    "references": [
+        "Eternities.Layout"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

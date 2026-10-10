@@ -92,7 +92,7 @@ builds for Windows.
 | `Assets/Tests/EditMode/`, `Assets/Tests/PlayMode/` | The two test assemblies, namespace `Eternities.Tests`. CI requires a passed test in that namespace, because a package's own test also runs. |
 | `Assets/Settings/` | The HDRP assets: one per quality level, the global settings and the default volume profiles. |
 | `Assets/Kits/temperate/` | The `temperate` kit's slice subset. `Terrain/`, `Props/` and `Audio/` hold the 24 files `sources.yaml` pins, in Git LFS, with a `CREDITS.md` row each; `fetch.sh` verifies them and fails on an unlisted file in those three folders, so what is made from them lives beside them. `Assets/Editor/KitMaskImport.cs` repacks each `_arm_` texture into HDRP's mask map layout as it is imported. |
-| `Assets/StreamingAssets/data/manifest.json` | Names the pinned pack hash. The pack itself is `data/<hash>/` beside it. |
+| `Assets/StreamingAssets/data/manifest.json` | Names the pinned pack hash. The pack itself is `data/<hash>/` beside it: written by the generation entry point, not committed. |
 | `batchmode.sh` | Starts the pinned editor on this project in batchmode, logging to stdout, and passes its arguments through. It replaces a `TMPDIR` too long for the compiler's socket. |
 
 ## Batchmode commands
@@ -102,10 +102,20 @@ fails if that editor is not installed. The editor opens a project once: close it
 before running any of these on the same clone. Output paths must be absolute, because the editor
 changes its working directory to the project.
 
-Scene generation entry point (PRD v4 8.2.5). The skeleton logs the pack hash it was given:
+Scene generation entry point (PRD v4 8.2.5). It writes what a world needs and git does not hold,
+under `Assets/StreamingAssets/data/<hash>/`:
+
+- the files of the pack that the slice reads, copied from `web/public/data/<hash>/` and checked
+  against the pack's manifest: `manifest.json`, `planes.json`, Dominaria's shards and `swatches.bin`;
+- `layout/dominaria.txt`, Dominaria's layout from the C# allocator (PRD v4 5.4), written only if the
+  independent checker passes it. The slice has no contract v4 pack, so this file stands where the
+  pack's positions will.
+
+It logs the world's figures (PRD v4 5.4.14), and writes them to `-reportOut` if that is given:
 
 ```sh
-unity/Eternities/batchmode.sh -quit -executeMethod Eternities.EditorTools.Generate.Run -packHash a5846bec28d1447e
+unity/Eternities/batchmode.sh -quit -executeMethod Eternities.EditorTools.Generate.Run \
+  -packHash a5846bec28d1447e -reportOut "$PWD/dominaria-layout.txt"
 ```
 
 Bench runner (PRD v4 8.8.4). The skeleton writes an empty JSON object to the path:
@@ -114,7 +124,9 @@ Bench runner (PRD v4 8.8.4). The skeleton writes an empty JSON object to the pat
 unity/Eternities/batchmode.sh -quit -executeMethod Eternities.EditorTools.Bench.Run -benchOut "$PWD/bench.json"
 ```
 
-Both exit 0 on success and 1 if their argument is missing.
+Both exit 0 on success and 1 if a required argument is missing. The generation entry point also
+exits 1 if a pack file does not match the manifest, if the allocator fails (PRD v4 5.4.11) or if the
+checker finds a violation.
 
 Tests, as CI runs them. No `-quit`: with `-runTests` the editor exits when the run ends, 0 only if
 every test passed.

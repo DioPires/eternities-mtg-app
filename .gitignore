@@ -51,3 +51,7 @@ pipeline/scryfall-cache/
 /unity/Eternities/obj/
 /unity/Eternities/*.csproj
 /unity/Eternities/*.sln
+# What the generation entry point writes (unity/Eternities/README.md): the pack's files, copied from
+# web/public/data/<hash>/, and each world's layout. `manifest.json` beside them is committed.
+/unity/Eternities/Assets/StreamingAssets/data/*/
+/unity/Eternities/Assets/StreamingAssets/data/????????????????.meta
