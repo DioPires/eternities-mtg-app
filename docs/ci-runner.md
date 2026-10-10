@@ -128,7 +128,8 @@ repository's Actions settings, so an agent can do them.
 
    The last command must print four rows, `unity-compile`, `unity-editmode`, `unity-playmode` and
    `unity-bench-smoke`, each with `"conclusion": "success"`. A run that exits 0 without them, or
-   with one of them `skipped`, has verified nothing. Record the run in section 6.
+   with one of them `skipped`, has verified nothing. Record the run in section 6. Each job imports
+   the project from cold and takes a little over a minute; they run one after another.
 
 ## 3. What the jobs rely on
 
@@ -167,6 +168,8 @@ workflow has to change with it.
   After a restart, log in; the agent starts by itself.
 - A sleeping machine runs nothing. Jobs queue and start when it wakes.
 - Agent logs: `~/Library/Logs/actions-runner/`. Runner diagnostics: `~/actions-runner/_diag/`.
+- Disk: a job's workspace keeps its `Library/` (2.1 GB for the skeleton) until that job's next
+  checkout removes it, so the four workspaces hold about 9 GB under `~/actions-work` between runs.
 - State of the agent: `launchctl print gui/$(id -u)/com.eternities.actions-runner`.
 
 ## 5. Re-verifying after an update
@@ -186,7 +189,15 @@ workflow has to change with it.
 
 | Date | Editor | Runner | Run | By |
 |---|---|---|---|---|
-| not yet applied | | | | |
+| 2026-10-10 | `6000.6.5f1` | `2.338.0` | [38080691046](https://github.com/DioPires/eternities-mtg-app/actions/runs/38080691046), pull request #111: the four jobs `success`, 63 to 67 s each | Interactive Tools Engineer (agent), first registration |
+
+Controls run the same day, each on a branch made for it and deleted afterwards:
+
+| Control | Run | Result |
+|---|---|---|
+| A compile error | [38081132592](https://github.com/DioPires/eternities-mtg-app/actions/runs/38081132592) | `unity-compile` fails with `error CS1525`; the other three fail with it |
+| A shader that does not parse, and `-nographics` on PlayMode | [38081134299](https://github.com/DioPires/eternities-mtg-app/actions/runs/38081134299) | `unity-compile` fails on `ConsoleCheck: 1 errors`; `unity-playmode` fails; `unity-editmode` and `unity-bench-smoke` pass |
+| The run cancelled while `unity-changes` is in progress | [38081091826](https://github.com/DioPires/eternities-mtg-app/actions/runs/38081091826) | the four jobs end `cancelled`, not `skipped`, so a cancelled run does not read as passed |
 
 ## 7. Removing the runner
 

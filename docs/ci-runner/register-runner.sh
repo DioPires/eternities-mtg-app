@@ -140,5 +140,6 @@ if launchctl print "gui/$(id -u)/$AGENT" > /dev/null 2>&1; then
     done
 fi
 launchctl bootstrap "gui/$(id -u)" "$plist"
-launchctl print "gui/$(id -u)/$AGENT" | grep -E '^[[:space:]]*(state|pid) = '
+# One tab: the agent's own lines. Deeper ones belong to its endpoints.
+launchctl print "gui/$(id -u)/$AGENT" | grep -E '^	(state|pid) = '
 echo "register-runner: done. Verify with docs/ci-runner.md step 5."
