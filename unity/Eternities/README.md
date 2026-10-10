@@ -91,6 +91,7 @@ builds for Windows.
 | `Assets/Editor/` | `Eternities.Editor`, editor only: the batchmode entry points below. |
 | `Assets/Tests/EditMode/`, `Assets/Tests/PlayMode/` | The two test assemblies, namespace `Eternities.Tests`. CI requires a passed test in that namespace, because a package's own test also runs. |
 | `Assets/Settings/` | The HDRP assets: one per quality level, the global settings and the default volume profiles. |
+| `Assets/Kits/temperate/` | The `temperate` kit's slice subset. `Terrain/`, `Props/` and `Audio/` hold the 24 files `sources.yaml` pins, in Git LFS, with a `CREDITS.md` row each; `fetch.sh` verifies them and fails on an unlisted file in those three folders, so what is made from them lives beside them. `Assets/Editor/KitMaskImport.cs` repacks each `_arm_` texture into HDRP's mask map layout as it is imported. |
 | `Assets/StreamingAssets/data/manifest.json` | Names the pinned pack hash. The pack itself is `data/<hash>/` beside it. |
 | `batchmode.sh` | Starts the pinned editor on this project in batchmode, logging to stdout, and passes its arguments through. It replaces a `TMPDIR` too long for the compiler's socket. |
 

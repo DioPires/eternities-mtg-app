@@ -3,10 +3,11 @@
 Every binary asset of the `temperate` kit's slice subset (PRD v4 5.6, 8.12, 9.5), one row each. All
 are CC0 1.0. `sources.yaml` carries the same rows with each file's download URL and SHA-256.
 
-The binaries are not committed in this folder. `./fetch.sh` downloads them here and verifies each
-against `sources.yaml`. That run fails if a row here differs from its `sources.yaml` entry or if an
-asset folder holds a file without one (PRD 8.12.2: an asset without a row blocks the merge). Until
-the binaries are committed, the upstream URLs are the only copy of these exact bytes.
+The binaries are committed in this folder through Git LFS. `./fetch.sh` verifies each against
+`sources.yaml` and downloads any that is missing. That run fails if a row here differs from its
+`sources.yaml` entry or if an asset folder holds a file without one, Unity's `.meta` files aside
+(PRD 8.12.2: an asset without a row blocks the merge). So whatever is made from these files (terrain
+layers, materials, prefabs) lives beside `Terrain/`, `Props/` and `Audio/`, not inside them.
 
 ## Terrain layers (2K JPG, 2048 × 2048)
 
@@ -54,10 +55,11 @@ the binaries are committed, the upstream URLs are the only copy of these exact b
   `fetch.sh` enforces all three. The cooked size against PRD 7.2 is the build's check (PRD 8.7.2),
   not this one.
 - **Textures are JPG.** At 2K only Poly Haven's JPG stays under 8 MB per texture (the PNG albedo is
-  23 MB, the EXR normal 11 MB). PRD 8.2.3's Git LFS list has no `*.jpg`, so the LFS attributes need
-  that pattern before these are committed. `nor_gl` is the OpenGL normal convention, which Unity
-  uses. `arm` packs ambient occlusion, roughness and metalness; the HDRP mask map is repacked from
-  it on import (smoothness is one minus roughness).
+  23 MB, the EXR normal 11 MB). PRD 8.2.3's Git LFS list has no `*.jpg`; `.gitattributes` carries
+  the pattern for `unity/`. `nor_gl` is the OpenGL normal convention, which Unity uses. `arm` packs
+  ambient occlusion, roughness and metalness; `Assets/Editor/KitMaskImport.cs` repacks it into the
+  HDRP mask map as it is imported (smoothness is one minus roughness), so an `arm` texture is
+  assigned as a mask map as it is.
 - **Props are the FBX members** of Kenney's Nature Kit 2.1 archive, not their GLB twins: Unity
   imports FBX without a package, and glTF needs one that PRD 9.5's pinned list does not carry. They
   are ASCII FBX 7.3 with flat colour materials and no textures, modelled in kit units (the trees are
