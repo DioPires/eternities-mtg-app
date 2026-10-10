@@ -1,0 +1,5 @@
+# Fetched by ./fetch.sh. The binaries are not committed until the Git LFS attributes are on main
+# (PRD v4 8.2.3, DEC-952).
+Terrain/
+Props/
+Audio/
