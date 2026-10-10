@@ -46,9 +46,10 @@ lock's word for a package that ships inside the editor install and is versioned 
 | Input System | `com.unity.inputsystem` | `1.20.0` | registry |
 | Addressables | `com.unity.addressables` | `2.11.2` | registry |
 
-The template's other four are pinned in the manifest too: `com.unity.ugui` `2.6.0` (builtin),
-`com.unity.collab-proxy` `2.13.6`, `com.unity.ide.rider` `3.0.40` and `com.unity.ide.visualstudio`
-`2.0.28` (registry). To print every direct pin from the lock:
+The template's two IDE packages are pinned in the manifest too: `com.unity.ide.rider` `3.0.40` and
+`com.unity.ide.visualstudio` `2.0.28` (registry). Its other two are removed: `com.unity.collab-proxy`
+is Unity Version Control and the project uses Git, and `com.unity.ugui` has no user, because UI
+Toolkit carries every overlay (PRD v4 8.1.2). To print every direct pin from the lock:
 
 ```sh
 jq -r '.dependencies | to_entries[]
@@ -78,8 +79,9 @@ HDRP asset per level.
 Standalone, for macOS on Apple Silicon and Windows x64 (PRD v4 7.1.4). The graphics APIs are the
 template's: Metal on macOS, Direct3D 12 then 11 on Windows. The architecture of a build is not a
 committed setting; the build script chooses it (PRD v4 8.9.1). The installed editor has Mac Build
-Support (IL2CPP) only. Windows Build Support (Mono) is added with the first Windows build; nothing
-in the skeleton or its CI jobs builds for Windows.
+Support (IL2CPP), Web Build Support and the Documentation module; no job uses the last two. Windows
+Build Support (Mono) is added with the first Windows build; nothing in the project or its CI jobs
+builds for Windows.
 
 ## Layout
 
