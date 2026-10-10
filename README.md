@@ -13,12 +13,16 @@ In order of authority. Read the first two before changing anything.
 
 | Document | What it is |
 |---|---|
-| [`prd_v3.md`](prd_v3.md) | The product contract, as amended by A1 and A2 (implementation-plan.md §8). |
-| [`implementation-plan.md`](implementation-plan.md) | Board-approved plan, v2. Read your phase section fully before you start. |
-| [`docs/data-contract.md`](docs/data-contract.md) | The pipeline ↔ web artefact formats. **Frozen.** |
-| [`docs/navigation-contract.md`](docs/navigation-contract.md) | The UI ↔ scene navigation API. **Frozen.** |
+| [`prd_v4.md`](prd_v4.md) | The product contract. Its Status line lists the amendments in force. |
+| [`prd_v3.md`](prd_v3.md) | Sections 3 and 4 and Appendices A and B stay in force, as amended by `prd_v4.md` sections 3 and 4. Sections 5 to 9 are superseded. |
+| [`pipeline/data/appendix_a.json`](pipeline/data/appendix_a.json), [`pipeline/data/appendix_b.json`](pipeline/data/appendix_b.json) | The canonical form of Appendices A and B. The print in `prd_v3.md` is stale. |
+| [`docs/decisions/dec950-overhaul-deep-dive.md`](docs/decisions/dec950-overhaul-deep-dive.md) | The plan behind `prd_v4.md` (DEC-950): the deep dive, the owner's decisions and the review record. |
+| [`docs/data-contract.md`](docs/data-contract.md) | The pipeline ↔ web artefact formats. **Frozen**, for the web edition. |
+| [`docs/navigation-contract.md`](docs/navigation-contract.md) | The UI ↔ scene navigation API. **Frozen**, for the web edition. |
+| [`docs/ci-runner.md`](docs/ci-runner.md) | The self-hosted runner on the reference machine: how it is built and re-verified. |
+| [`docs/scryfall-policy.md`](docs/scryfall-policy.md) | Scryfall CORS and terms verification. Verdict: PASS. Section 11 is the desktop client re-verification. |
+| [`implementation-plan.md`](implementation-plan.md) | The web edition's plan, v2. Closed at tag `web-edition-v1`. |
 | [`docs/camera-and-labels.md`](docs/camera-and-labels.md) | The Phase 2b camera rig, labels and plane-detail loading. |
-| [`docs/scryfall-policy.md`](docs/scryfall-policy.md) | Scryfall CORS and terms verification. Verdict: PASS. |
 | [`docs/deployment.md`](docs/deployment.md) | Vercel setup and the headers. |
 | [`docs/app-shell.md`](docs/app-shell.md) | The Phase 4 UI shell: where state lives, the seams for 2a/2b/3/5, and the calls the PRD left open. |
 | [`docs/design-system.md`](docs/design-system.md) | The Phase 5 visual system, the contrast proof, and the accessibility checklist. |
@@ -68,8 +72,11 @@ web/                      Vite 8, React 19, TypeScript strict, three.js, Zustand
                           `docs/cross-browser.md` to restore one.
   e2e/                    Playwright: PRD 8.9.2's route smoke and 9.1.2's bench smoke, in CI.
 contract/test-vectors/v2/ The shared byte-level test vector. Both languages assert against it.
+unity/Eternities/         The native edition's Unity project (PRD v4 8.2). Its README has the pins.
 docs/                     The contract and policy documents above.
 docs/archive/             Superseded PRDs and their reviews. Nothing current.
+docs/kits/                Per kit: asset sources, credits and the fetch script (PRD v4 8.12).
+docs/boards/              Reference boards: a link list per kit or hero plane. Nothing there ships.
 ```
 
 ## Getting started
