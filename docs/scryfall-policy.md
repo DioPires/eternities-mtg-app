@@ -468,7 +468,7 @@ requires an artist credit in text only beside an `art_crop`.
 - **CSP (§3).** A browser mechanism with no counterpart in a native process. Its job, bounding where
   the application may connect, passes to the loader's host allowlist and the 9.1.6 lint.
   `web/security-headers.mjs` and `web/e2e/a11y.spec.ts` 9f go on binding the web edition only.
-- **"If you are accessing the API via on-page web browser JavaScript, keep the browser's
+- **"If you are accessing the API via on-page web browser JavaScript, keep the browser’s
   `User-Agent` intact."** The native client sets its own (§11.4).
 - **The browser's HTTP cache (§2).** Replaced by the on-disk cache of §11.3.
 
