@@ -464,12 +464,29 @@ jobs:
             pgrep -lx Unity
             exit 1
           fi
+      # The editor host of the bench (unity/Eternities/README.md): play mode, off screen at the
+      # reference display's native size. No `-quit`: the run ends the editor itself, with exit code 0
+      # only if the path completed. Its figures prove the path runs; they fill no row of PRD v4 9.5.
       - name: Bench runner
-        run: unity/Eternities/batchmode.sh -quit -executeMethod Eternities.EditorTools.Bench.Run -benchOut "$RUNNER_TEMP/bench.json"
-      - name: The result is JSON
-        run: python3 -m json.tool "$RUNNER_TEMP/bench.json"
+        run: |
+          unity/Eternities/batchmode.sh -executeMethod Eternities.EditorTools.Bench.Run \
+            -bench warm -benchSize 3456x2234 -benchCommit "$(git rev-parse HEAD)" \
+            -benchOut "$RUNNER_TEMP/bench.json" -benchCaptures "$RUNNER_TEMP/captures"
+      - name: The result is JSON and the path completed
+        run: |
+          python3 -m json.tool "$RUNNER_TEMP/bench.json"
+          python3 -c 'import json, sys; run = json.load(open(sys.argv[1]))["run"]; sys.exit(None if run["complete"] else "the path did not complete: %s" % run["failure"])' "$RUNNER_TEMP/bench.json"
       - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
         with:
           name: unity-bench-smoke
           path: ${{ runner.temp }}/bench.json
           retention-days: 90
+      # The slice's checkpoints (PRD v4 9.3), as the run saw them: how an engineer without the
+      # editor open sees the work (DEC-953).
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: unity-bench-captures
+          path: ${{ runner.temp }}/captures
+          retention-days: 14

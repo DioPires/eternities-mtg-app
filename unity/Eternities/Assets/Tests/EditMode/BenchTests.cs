@@ -1,0 +1,68 @@
+using System.IO;
+using System.Text.RegularExpressions;
+using Eternities.Bench;
+using NUnit.Framework;
+using UnityEngine;
+
+namespace Eternities.Tests
+{
+    public class BenchTests
+    {
+        // The bench design on DEC-953, section 5: nearest rank, each frame counted once.
+        [Test]
+        public void PercentilesAreByNearestRank()
+        {
+            var frames = new FrameSeries(16);
+            Assert.That(frames.Percentile(90), Is.EqualTo(0));
+            for (int i = 10; i >= 1; i--)
+            {
+                frames.Add(i, atSeconds: 10 - i, segment: i == 10 ? "first" : "rest");
+            }
+            Assert.That(frames.Count, Is.EqualTo(10));
+            Assert.That(frames.Percentile(50), Is.EqualTo(5));      // rank ceil(0.5 x 10) = 5
+            Assert.That(frames.Percentile(90), Is.EqualTo(9));
+            Assert.That(frames.Percentile(99), Is.EqualTo(10));     // rank ceil(9.9) = 10
+            Assert.That(frames.LongestMs, Is.EqualTo(10));
+            Assert.That(frames.LongestSegment, Is.EqualTo("first"));
+            Assert.That(frames.Seconds, Is.EqualTo(0.055).Within(1e-9));
+            frames.Add(100, 11, "late");
+            Assert.That(frames.Percentile(90), Is.EqualTo(10));     // rank ceil(0.9 x 11) = 10
+        }
+
+        [Test]
+        public void AFullBufferDropsFramesAndSaysSo()
+        {
+            var frames = new FrameSeries(2);
+            frames.Add(1, 0, "a");
+            frames.Add(2, 0, "a");
+            frames.Add(50, 0, "a");
+            Assert.That(frames.Count, Is.EqualTo(2));
+            Assert.That(frames.Dropped, Is.EqualTo(1));
+            Assert.That(frames.LongestMs, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void TheCommandLineIsRead()
+        {
+            BenchArgs none = BenchArgs.Parse(new[] { "Unity", "-batchmode" });
+            Assert.That(none.Present, Is.False);
+            BenchArgs args = BenchArgs.Parse(new[] { "Eternities", "-bench", "cold", "-benchQuality", "low", "-benchScale", "0.75", "-benchOut", "/tmp/b.json", "-benchSize", "3456x2234" });
+            Assert.That(args.Mode, Is.EqualTo("cold"));
+            Assert.That(args.Quality, Is.EqualTo("low"));
+            Assert.That(args.Scale, Is.EqualTo(0.75f));
+            Assert.That((args.Width, args.Height), Is.EqualTo((3456, 2234)));
+            Assert.That(args.Captures, Is.Null);
+            Assert.Throws<System.ArgumentException>(() => BenchArgs.Parse(new[] { "-bench", "tepid", "-benchOut", "x" }));
+            Assert.Throws<System.ArgumentException>(() => BenchArgs.Parse(new[] { "-bench", "warm" }));
+        }
+
+        // The JSON names the HDRP version; the lock is where it is pinned.
+        [Test]
+        public void TheHdrpVersionInTheJsonIsTheLocks()
+        {
+            string packages = File.ReadAllText(Path.Combine(Application.dataPath, "..", "Packages", "packages-lock.json"));
+            Match hdrp = Regex.Match(packages, "\"com\\.unity\\.render-pipelines\\.high-definition\"\\s*:\\s*\\{\\s*\"version\"\\s*:\\s*\"([^\"]+)\"");
+            Assert.That(hdrp.Groups[1].Value, Is.EqualTo(BenchRunner.HdrpVersion));
+        }
+    }
+}

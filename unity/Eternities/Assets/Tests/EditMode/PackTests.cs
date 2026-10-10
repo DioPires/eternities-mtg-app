@@ -22,6 +22,12 @@ namespace Eternities.Tests
             Assert.That(Json.Object(a[6]), Is.Empty);
             Assert.That(Json.Array(a[7]), Is.Empty);
             Assert.That(Json.Text(Json.Object(value["b"])["c"]), Is.EqualTo(""));
+            // Written and read again, it is the same text.
+            string written = Json.Write(value);
+            Assert.That(Json.Write(Json.Parse(written)), Is.EqualTo(written));
+            StringAssert.Contains("\"x\\n\u00e9\\\"\"", written);
+            Assert.That(Json.Write(new Dictionary<string, object> { ["p90Ms"] = 16.5f, ["count"] = 3, ["bytes"] = 6_000_000_000L }),
+                Is.EqualTo("{\n  \"p90Ms\": 16.5,\n  \"count\": 3,\n  \"bytes\": 6000000000\n}\n"));
             Assert.Throws<System.FormatException>(() => Json.Parse("{\"a\": 1,}"));
             Assert.Throws<System.FormatException>(() => Json.Parse("[1] 2"));
         }

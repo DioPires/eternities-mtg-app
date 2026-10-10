@@ -3,7 +3,12 @@
     "rootNamespace": "Eternities.EditorTools",
     "references": [
         "Eternities.Data",
-        "Eternities.Layout"
+        "Eternities.Layout",
+        "Eternities.Kits",
+        "Eternities.Travel",
+        "Eternities.Bench",
+        "Unity.RenderPipelines.Core.Runtime",
+        "Unity.RenderPipelines.HighDefinition.Runtime"
     ],
     "includePlatforms": [
         "Editor"

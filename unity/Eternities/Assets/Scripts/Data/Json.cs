@@ -29,6 +29,95 @@ namespace Eternities.Data
         public static int Int(object value) => checked((int)(double)value);
         public static long Long(object value) => checked((long)(double)value);
 
+        // The same values as text: an object's members in the order they were added, two spaces a
+        // level. A number is written the shortest way that reads back as itself.
+        public static string Write(object value)
+        {
+            var text = new StringBuilder();
+            Write(text, value, 0);
+            return text.Append('\n').ToString();
+        }
+
+        static void Write(StringBuilder text, object value, int depth)
+        {
+            switch (value)
+            {
+                case null:
+                    text.Append("null");
+                    break;
+                case string s:
+                    Quote(text, s);
+                    break;
+                case bool b:
+                    text.Append(b ? "true" : "false");
+                    break;
+                case Dictionary<string, object> members:
+                {
+                    text.Append('{');
+                    int n = 0;
+                    foreach (KeyValuePair<string, object> member in members)
+                    {
+                        text.Append(n++ == 0 ? "\n" : ",\n").Append(' ', 2 * depth + 2);
+                        Quote(text, member.Key);
+                        text.Append(": ");
+                        Write(text, member.Value, depth + 1);
+                    }
+                    text.Append(n == 0 ? "}" : "\n" + new string(' ', 2 * depth) + "}");
+                    break;
+                }
+                case System.Collections.IEnumerable items:
+                {
+                    text.Append('[');
+                    int n = 0;
+                    foreach (object item in items)
+                    {
+                        text.Append(n++ == 0 ? "\n" : ",\n").Append(' ', 2 * depth + 2);
+                        Write(text, item, depth + 1);
+                    }
+                    text.Append(n == 0 ? "]" : "\n" + new string(' ', 2 * depth) + "]");
+                    break;
+                }
+                case float f:
+                    text.Append(float.IsNaN(f) || float.IsInfinity(f) ? "null" : ((double)(decimal)f).ToString("R", CultureInfo.InvariantCulture));
+                    break;
+                case double d:
+                    text.Append(double.IsNaN(d) || double.IsInfinity(d) ? "null" : d.ToString("R", CultureInfo.InvariantCulture));
+                    break;
+                case IFormattable number:
+                    text.Append(number.ToString(null, CultureInfo.InvariantCulture));
+                    break;
+                default:
+                    throw new ArgumentException($"JSON: a {value.GetType().Name} is not a value");
+            }
+        }
+
+        static void Quote(StringBuilder text, string s)
+        {
+            text.Append('"');
+            foreach (char c in s)
+            {
+                switch (c)
+                {
+                    case '"': text.Append("\\\""); break;
+                    case '\\': text.Append("\\\\"); break;
+                    case '\n': text.Append("\\n"); break;
+                    case '\r': text.Append("\\r"); break;
+                    case '\t': text.Append("\\t"); break;
+                    default:
+                        if (c < ' ')
+                        {
+                            text.Append("\\u").Append(((int)c).ToString("x4", CultureInfo.InvariantCulture));
+                        }
+                        else
+                        {
+                            text.Append(c);
+                        }
+                        break;
+                }
+            }
+            text.Append('"');
+        }
+
         static object Value(string s, ref int at)
         {
             Blank(s, ref at);

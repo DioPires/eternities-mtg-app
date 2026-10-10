@@ -8,7 +8,8 @@
         "Unity.RenderPipelines.Core.Runtime",
         "Unity.RenderPipelines.HighDefinition.Runtime",
         "Eternities.Data",
-        "Eternities.Layout"
+        "Eternities.Layout",
+        "Eternities.Bench"
     ],
     "includePlatforms": [
         "Editor"

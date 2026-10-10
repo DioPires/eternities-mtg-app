@@ -407,6 +407,56 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1400825460
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1400825462}
+  - component: {fileID: 1400825461}
+  m_Layer: 0
+  m_Name: Eternities
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1400825461
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1400825460}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 83d70e8d3892e4c408f542c86a3b0541, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Eternities.Travel::Eternities.Travel.App
+  standMaterials:
+  - {fileID: 2100000, guid: 14ad29eedba15411b8032315477f48d2, type: 2}
+  - {fileID: 2100000, guid: 7053654fd1b0f4fab8861fe5ea5d7e16, type: 2}
+  - {fileID: 2100000, guid: 821ddc8bf1ec9474abbe097efb8e7bbf, type: 2}
+  - {fileID: 2100000, guid: 53db4b658905d4babb8a5f73caa62c45, type: 2}
+  - {fileID: 2100000, guid: 6f5b30dec87ba41ebaaf7a92d723f146, type: 2}
+--- !u!4 &1400825462
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1400825460}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1823688464
 GameObject:
   m_ObjectHideFlags: 0
@@ -696,3 +746,4 @@ SceneRoots:
   - {fileID: 157207114}
   - {fileID: 432432461}
   - {fileID: 2013410475}
+  - {fileID: 1400825462}

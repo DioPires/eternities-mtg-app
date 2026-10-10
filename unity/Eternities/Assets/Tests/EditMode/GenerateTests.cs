@@ -13,7 +13,7 @@ namespace Eternities.Tests
         [Test]
         public void TheEntryPointWritesDominariaWithEveryStand()
         {
-            Generate.World world = Generate.Build(TestPack.Hash, "dominaria");
+            WorldFiles.Result world = Generate.Build(TestPack.Hash, "dominaria");
             Assert.That(world.Check.Passed);
             StringAssert.Contains("checker: passed", world.Report);
 
@@ -29,6 +29,12 @@ namespace Eternities.Tests
             Assert.That(cards.Length, Is.EqualTo(6271));
             Assert.That(cards[layout.Stands[0].Card].OracleId, Is.EqualTo(layout.Input.Cards[layout.Stands[0].Card].OracleId));
             Assert.That(copy.Swatches().Length, Is.EqualTo(Pack.SwatchHeader + 28603 * Pack.SwatchRecord));
+
+            // And the engine's own loader takes the two together.
+            WorldData loaded = WorldData.Load(Generate.ProjectPack(TestPack.Hash), "dominaria");
+            Assert.That(loaded.Layout.Stands.Count, Is.EqualTo(6271));
+            loaded.Swatch(0, 0, out byte r, out byte g, out byte b);
+            Assert.That(r + g + b, Is.GreaterThan(0));
         }
     }
 }

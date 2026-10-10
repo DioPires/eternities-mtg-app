@@ -1,7 +1,12 @@
 {
     "name": "Eternities.Bench",
     "rootNamespace": "Eternities.Bench",
-    "references": [],
+    "references": [
+        "Eternities.Data",
+        "Eternities.Layout",
+        "Eternities.Kits",
+        "Eternities.Travel"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

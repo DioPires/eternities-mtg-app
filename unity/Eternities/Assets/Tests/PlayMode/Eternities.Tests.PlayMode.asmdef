@@ -2,7 +2,11 @@
     "name": "Eternities.Tests.PlayMode",
     "rootNamespace": "Eternities.Tests",
     "references": [
-        "UnityEngine.TestRunner"
+        "UnityEngine.TestRunner",
+        "Eternities.Data",
+        "Eternities.Layout",
+        "Eternities.Kits",
+        "Eternities.Travel"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

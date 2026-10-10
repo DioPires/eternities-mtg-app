@@ -1,7 +1,10 @@
 {
     "name": "Eternities.Kits",
     "rootNamespace": "Eternities.Kits",
-    "references": [],
+    "references": [
+        "Eternities.Data",
+        "Eternities.Layout"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
