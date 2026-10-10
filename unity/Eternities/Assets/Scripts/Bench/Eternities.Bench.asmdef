@@ -5,7 +5,8 @@
         "Eternities.Data",
         "Eternities.Layout",
         "Eternities.Kits",
-        "Eternities.Travel"
+        "Eternities.Travel",
+        "Eternities.Avatar"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

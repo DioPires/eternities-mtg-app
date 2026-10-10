@@ -93,7 +93,7 @@ builds for Windows.
 | `Assets/Tests/EditMode/`, `Assets/Tests/PlayMode/` | The two test assemblies, namespace `Eternities.Tests`. CI requires a passed test in that namespace, because a package's own test also runs. |
 | `Assets/Settings/` | The HDRP assets: one per quality level, the global settings and the default volume profiles. |
 | `Assets/Scenes/Hub.unity` | The persistent scene (PRD v4 8.4.1): the template's camera, sun and sky, and the `Eternities` object. Kit worlds have no scene; they are built at run time from the pack and the layout. |
-| `Assets/Kits/core/` | What every world shares. `Materials/` holds the stand materials, made by the generation entry point. |
+| `Assets/Kits/core/` | What every world shares. `Materials/` holds the slice's plain materials (plinths by rarity, the mannequin, the hub, the portal), made by the generation entry point. |
 | `Assets/Kits/temperate/` | The `temperate` kit's slice subset. `Terrain/`, `Props/` and `Audio/` hold the 24 files `sources.yaml` pins, in Git LFS, with a `CREDITS.md` row each; `fetch.sh` verifies them and fails on an unlisted file in those three folders, so what is made from them lives beside them. `Assets/Editor/KitMaskImport.cs` repacks each `_arm_` texture into HDRP's mask map layout as it is imported. |
 | `Assets/StreamingAssets/data/manifest.json` | Names the pinned pack hash. The pack itself is `data/<hash>/` beside it: written by the generation entry point, not committed. |
 | `batchmode.sh` | Starts the pinned editor on this project in batchmode, logging to stdout, and passes its arguments through. It replaces a `TMPDIR` too long for the compiler's socket. |
@@ -114,9 +114,15 @@ under `Assets/StreamingAssets/data/<hash>/`:
   independent checker passes it. The slice has no contract v4 pack, so this file stands where the
   pack's positions will.
 
-It also completes what is committed, and changes nothing there on a second run: the stand materials
-under `Assets/Kits/core/Materials/`, and in `Assets/Scenes/Hub.unity` the one object, `Eternities`,
-that builds the world at run time. Generated assets are not edited by hand.
+It also completes what is committed, and changes nothing there on a second run: the slice's plain
+materials under `Assets/Kits/core/Materials/`, and in `Assets/Scenes/Hub.unity` the one object,
+`Eternities`, that builds the hub and the world at run time. It assigns the kit's terrain layers to
+that object once `Assets/Kits/temperate/TerrainLayers/` holds `meadow`, `path` and `gravel`; until
+then the ground is painted in plain colours. Generated assets are not edited by hand.
+
+With the project open in the editor, the menu item Eternities > Generate does the same. To walk the
+world, generate, open `Assets/Scenes/Hub.unity` and press Play: WASD walks, Shift runs, the right
+mouse button orbits the camera, the wheel zooms, and Esc in a world returns to the hub.
 
 It logs the world's figures (PRD v4 5.4.14), and writes them to `-reportOut` if that is given:
 
@@ -129,7 +135,8 @@ Bench runner (PRD v4 8.8.4), the editor host, as CI runs it. It makes the world'
 `Assets/Scenes/Hub.unity`, enters play mode and renders off screen at `-benchSize`. No `-quit`: the
 run ends the editor itself, with exit code 0 only if the path completed, and a watchdog ends it
 with 1 after fifteen minutes. It writes `eternities.bench.v1` JSON to `-benchOut` and, if
-`-benchCaptures` is given, the checkpoints as PNG files into that directory:
+`-benchCaptures` is given, the checkpoints as PNG files into that directory. The path so far: the
+hub, the walk into Dominaria's portal, the arrival, and Esc back to the hub:
 
 ```sh
 unity/Eternities/batchmode.sh -executeMethod Eternities.EditorTools.Bench.Run \

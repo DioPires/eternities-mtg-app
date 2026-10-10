@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using Eternities.Avatar;
 using Eternities.Data;
 using Eternities.Travel;
 using Unity.Collections;
@@ -17,8 +18,8 @@ namespace Eternities.Bench
     // given `-bench`, walks the path, writes `eternities.bench.v1` to `-benchOut` and ends the
     // process: exit 0 only if the path completed.
     //
-    // Day 1 of the slice has the skeleton: the world loads, the run stands at the arrival point and
-    // measures, and capture 3 is taken. The other steps of the path come with what they exercise.
+    // The path so far: the hub (capture 2), the walk into Dominaria's portal, the arrival (capture
+    // 3) and the return to the hub. The other steps come with what they exercise.
     public sealed class BenchRunner : MonoBehaviour
     {
         public const string Schema = "eternities.bench.v1";
@@ -46,10 +47,20 @@ namespace Eternities.Bench
         sealed class Segment
         {
             public string Id;
-            public bool Hub;
+            public FrameSeries Block;       // the block of `frames` its frames count in, or null
             public FrameSeries Frames = new FrameSeries(1 << 16);
             public float Metres;
         }
+
+        readonly ScriptedInputSource hands = new ScriptedInputSource();
+        readonly Dictionary<string, object> timings = new Dictionary<string, object>
+        {
+            ["hubReadyMs"] = null, ["portalToWorldReadyMs"] = null, ["holdMs"] = null, ["cardViewEnterMs"] = null, ["cardViewLeaveMs"] = null,
+            ["travelMenuToCardViewMs"] = null, ["portalOutMs"] = null,
+        };
+        Dictionary<string, object> worldSeen;
+        string packHash;
+        Vector3 lastPosition;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Boot()
@@ -91,19 +102,57 @@ namespace Eternities.Bench
                 Camera.main.targetTexture = target;
             }
 
-            yield return Step("load", 120, () => App.Instance != null && (App.Instance.WorldReady || App.Instance.Failure != null));
-            if (failure == null && App.Instance.Failure != null)
+            yield return Step("hub", 60, () => App.Instance != null && (App.Instance.HubReady || App.Instance.Failure != null));
+            App app = App.Instance;
+            if (failure == null && app.Failure == null)
             {
-                failure = $"the world did not load: {App.Instance.Failure}";
+                timings["hubReadyMs"] = Math.Round(Time.realtimeSinceStartupAsDouble * 1000);
+                packHash = app.Pack.Hash;
+                app.Avatar.Source = hands;
+                lastPosition = app.Avatar.transform.position;
+
+                // Step 1: in the hub at the arrival pose, facing Dominaria's portal.
+                Begin("hub", hub);
+                yield return Wait(2);
+                yield return Capture(2, "checkpoint-2-hub.png");
+
+                // Step 2: walk into the portal. It ends when the world is ready and the transition done.
+                Begin("portal-in", hub);
+                Vector3 toPortal = app.HubPortal.transform.position - app.Avatar.transform.position;
+                toPortal.y = 0;
+                hands.WorldMove = toPortal.normalized;
+                yield return Step("portal-in", 120, () => (app.Place == Place.World && !app.InTransition) || app.Failure != null);
+                hands.WorldMove = Vector3.zero;
             }
-            if (failure == null)
+            if (failure == null && app.Failure == null)
             {
-                // Step 3 of the path: stand at the arrival point, facing north.
-                Begin("arrival", hub: false);
+                timings["portalToWorldReadyMs"] = Math.Round(app.LastTravelSeconds * 1000);
+                timings["holdMs"] = Math.Round(app.LastHoldSeconds * 1000);
+                worldSeen = new Dictionary<string, object>
+                {
+                    ["slug"] = app.World.Plane.Slug, ["stands"] = app.World.Layout.Stands.Count, ["sites"] = app.World.Layout.Sites.Count,
+                    ["diameterMm"] = 2 * app.World.Layout.WorldRadius,
+                };
+
+                // Step 3: stand at the arrival point, facing north.
+                Begin("arrival", dominaria);
                 excludeUntil = Now + AfterArrival;
                 yield return Wait(3);
                 yield return Capture(3, "checkpoint-3-arrival.png");
                 yield return Wait(2);
+
+                // Step 10: Esc in explore returns to the hub through the return portal.
+                Begin("portal-out", null);
+                hands.Back = true;
+                yield return Step("portal-out", 60, () => (app.Place == Place.Hub && !app.InTransition) || app.Failure != null);
+            }
+            if (failure == null && app.Failure == null)
+            {
+                timings["portalOutMs"] = Math.Round(app.LastTravelSeconds * 1000);
+            }
+            if (failure == null && app != null && app.Failure != null)
+            {
+                failure = $"the application failed: {app.Failure}";
             }
             Finish(failure);
         }
@@ -141,6 +190,15 @@ namespace Eternities.Bench
                 return;
             }
             double at = now - started;
+            if (App.Instance != null && App.Instance.Avatar != null)
+            {
+                // Metres walked, not moved: an arrival is a jump and is not counted.
+                Vector3 position = App.Instance.Avatar.transform.position;
+                Vector3 moved = position - lastPosition;
+                moved.y = 0;
+                segment.Metres += moved.magnitude < 5 ? moved.magnitude : 0;
+                lastPosition = position;
+            }
             segment.Frames.Add(milliseconds, at, segment.Id);
             if (excludingCapture)
             {
@@ -153,13 +211,13 @@ namespace Eternities.Bench
             }
             else
             {
-                (segment.Hub ? hub : dominaria).Add(milliseconds, at, segment.Id);
+                segment.Block?.Add(milliseconds, at, segment.Id);
             }
         }
 
-        void Begin(string id, bool hub)
+        void Begin(string id, FrameSeries block)
         {
-            segment = new Segment { Id = id, Hub = hub };
+            segment = new Segment { Id = id, Block = block };
             segments.Add(segment);
             sampling = true;
         }
@@ -268,15 +326,13 @@ namespace Eternities.Bench
 
         Dictionary<string, object> Report(string why)
         {
-            App app = App.Instance;
-            WorldData world = app != null ? app.World : null;
             Resolution display = Screen.currentResolution;
             int width = target != null ? target.width : Screen.width, height = target != null ? target.height : Screen.height;
             var segmentList = new List<object>();
             foreach (Segment s in segments)
             {
                 Dictionary<string, object> entry = s.Frames.ToJson();
-                var ordered = new Dictionary<string, object> { ["id"] = s.Id, ["seconds"] = entry["seconds"], ["metres"] = s.Metres };
+                var ordered = new Dictionary<string, object> { ["id"] = s.Id, ["seconds"] = entry["seconds"], ["metres"] = Math.Round(s.Metres, 2) };
                 foreach (string key in new[] { "count", "p50Ms", "p90Ms", "p99Ms", "longestMs" })
                 {
                     ordered[key] = entry[key];
@@ -292,7 +348,7 @@ namespace Eternities.Bench
                     ["host"] = Application.isEditor ? "editor" : "player",
                     ["startedAt"] = DateTime.UtcNow.AddSeconds(-(Now - started)).ToString("yyyy-MM-ddTHH:mm:ssZ"),
                     ["commit"] = run.Commit, ["dirty"] = null,
-                    ["packHash"] = world?.Pack.Hash,
+                    ["packHash"] = packHash,
                     ["unity"] = Application.unityVersion, ["hdrp"] = HdrpVersion,
 #if ENABLE_IL2CPP
                     ["scriptingBackend"] = "il2cpp",
@@ -317,22 +373,14 @@ namespace Eternities.Bench
                     ["otherUnityProcesses"] = null,
                     ["complete"] = why == null, ["failure"] = why,
                 },
-                ["world"] = new Dictionary<string, object>
-                {
-                    ["slug"] = world?.Plane.Slug, ["stands"] = world?.Layout.Stands.Count ?? 0, ["sites"] = world?.Layout.Sites.Count ?? 0,
-                    ["diameterMm"] = 2 * (world?.Layout.WorldRadius ?? 0),
-                },
+                ["world"] = worldSeen ?? new Dictionary<string, object> { ["slug"] = null, ["stands"] = 0, ["sites"] = 0, ["diameterMm"] = 0 },
                 ["frames"] = new Dictionary<string, object>
                 {
                     ["dominaria"] = Block(dominaria), ["hub"] = Block(hub),
                     ["excluded"] = new Dictionary<string, object> { ["afterPortal"] = excludedAfterPortal, ["capture"] = excludedCapture },
                 },
                 ["segments"] = segmentList,
-                ["timings"] = new Dictionary<string, object>
-                {
-                    ["hubReadyMs"] = null, ["portalToWorldReadyMs"] = null, ["holdMs"] = null, ["cardViewEnterMs"] = null, ["cardViewLeaveMs"] = null,
-                    ["travelMenuToCardViewMs"] = null, ["portalOutMs"] = null,
-                },
+                ["timings"] = timings,
                 ["memory"] = new Dictionary<string, object>
                 {
                     ["gpuPeakBytes"] = gpuPeak, ["gpuSource"] = "ProfilerRecorder: Gfx Used Memory",

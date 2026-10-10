@@ -1,7 +1,10 @@
 {
     "name": "Eternities.Avatar",
     "rootNamespace": "Eternities.Avatar",
-    "references": [],
+    "references": [
+        "Unity.InputSystem",
+        "Unity.Cinemachine"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

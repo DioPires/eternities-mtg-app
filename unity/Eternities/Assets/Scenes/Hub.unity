@@ -442,6 +442,14 @@ MonoBehaviour:
   - {fileID: 2100000, guid: 821ddc8bf1ec9474abbe097efb8e7bbf, type: 2}
   - {fileID: 2100000, guid: 53db4b658905d4babb8a5f73caa62c45, type: 2}
   - {fileID: 2100000, guid: 6f5b30dec87ba41ebaaf7a92d723f146, type: 2}
+  avatarMaterial: {fileID: 2100000, guid: a2208cb8282974c91be7e299efae27ac, type: 2}
+  hubGroundMaterial: {fileID: 2100000, guid: 249cdfd2f5a68430c9b9e7fe2cfba5da, type: 2}
+  portalFrameMaterial: {fileID: 2100000, guid: cef28231c077c4efdb83355e73c7c6d5, type: 2}
+  portalSurfaceMaterial: {fileID: 2100000, guid: 3ac64b140919a4fd2b741d5c7a89b88e, type: 2}
+  veilMaterial: {fileID: 2100000, guid: 9761b144ce2ba446e9d0f9ddf2ad5aba, type: 2}
+  terrainLayers: []
+  ReducedMotion: 0
+  LoadDelayForTests: 0
 --- !u!4 &1400825462
 Transform:
   m_ObjectHideFlags: 0

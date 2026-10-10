@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using Eternities.Data;
 using Eternities.Layout;
@@ -19,6 +20,17 @@ namespace Eternities.Kits
         public int Stands { get; private set; }
         public int Sites { get; private set; }
 
+        readonly List<Mesh> meshes = new List<Mesh>();
+
+        // A mesh made in code belongs to no object, so it leaves with the field that made it.
+        void OnDestroy()
+        {
+            foreach (Mesh mesh in meshes)
+            {
+                Destroy(mesh);
+            }
+        }
+
         public static Vector3 Ground(P2 millimetres) => new Vector3(millimetres.X / 1000f, 0, millimetres.Z / 1000f);
 
         // The way a stand's image surface faces: its yaw is clockwise from north, which is a turn
@@ -28,10 +40,25 @@ namespace Eternities.Kits
         // `materials`: the four plinth materials by rarity, then the slab's.
         public static StandField Build(WorldData world, Material[] materials, Transform parent)
         {
+            StandField field = Create(parent);
+            IEnumerator fill = field.Fill(world, materials, float.PositiveInfinity);
+            while (fill.MoveNext())
+            {
+            }
+            return field;
+        }
+
+        public static StandField Create(Transform parent)
+        {
             var root = new GameObject("Stands");
             root.transform.SetParent(parent, false);
-            var field = root.AddComponent<StandField>();
+            return root.AddComponent<StandField>();
+        }
 
+        // Builds the sites one after another, and yields whenever a frame has spent `budget`
+        // milliseconds on them, so a world loads behind a portal without stopping the frame.
+        public IEnumerator Fill(WorldData world, Material[] materials, float budget)
+        {
             var bySite = new List<LayoutStand>[world.Layout.Sites.Count];
             foreach (LayoutStand stand in world.Layout.Stands)
             {
@@ -44,6 +71,7 @@ namespace Eternities.Kits
             {
                 triangles[m] = new List<int>();
             }
+            double sliceStarted = Time.realtimeSinceStartupAsDouble;
             foreach (LayoutSite site in world.Layout.Sites)
             {
                 if (bySite[site.Index] == null)
@@ -78,19 +106,25 @@ namespace Eternities.Kits
                     mesh.SetTriangles(triangles[m], m);
                 }
                 mesh.RecalculateBounds();
+                meshes.Add(mesh);
 
                 var siteObject = new GameObject(mesh.name);
-                siteObject.transform.SetParent(root.transform, false);
+                siteObject.transform.SetParent(transform, false);
                 siteObject.transform.localPosition = origin;
                 siteObject.AddComponent<MeshFilter>().sharedMesh = mesh;
                 var renderer = siteObject.AddComponent<MeshRenderer>();
                 renderer.sharedMaterials = materials;
                 renderer.shadowCastingMode = ShadowCastingMode.On;
                 siteObject.AddComponent<MeshCollider>().sharedMesh = mesh;
-                field.Sites++;
-                field.Stands += bySite[site.Index].Count;
+                Sites++;
+                Stands += bySite[site.Index].Count;
+
+                if ((Time.realtimeSinceStartupAsDouble - sliceStarted) * 1000 > budget)
+                {
+                    yield return null;
+                    sliceStarted = Time.realtimeSinceStartupAsDouble;
+                }
             }
-            return field;
         }
 
         static readonly Vector3[] Faces = { Vector3.forward, Vector3.back, Vector3.right, Vector3.left, Vector3.up, Vector3.down };

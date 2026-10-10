@@ -18,6 +18,7 @@ namespace Eternities.Data
         public int Index;
         public string Slug, DisplayName;
         public int CardCount, StarOffset, ShardCount;
+        public int FirstYear;   // the year of its first card; 0 for a plane with none
         public PackSet[] Sets;  // the sets with a card first printed on this plane, in release order
     }
 
@@ -90,7 +91,7 @@ namespace Eternities.Data
                 {
                     Index = Json.Int(plane["index"]), Slug = Json.Text(plane["slug"]), DisplayName = Json.Text(plane["displayName"]),
                     CardCount = Json.Int(plane["cardCount"]), StarOffset = Json.Int(plane["starOffset"]), ShardCount = Json.Int(plane["shardCount"]),
-                    Sets = sets.ToArray(),
+                    Sets = sets.ToArray(), FirstYear = plane.TryGetValue("firstYear", out object year) && year != null ? Json.Int(year) : 0,
                 });
             }
             Planes = planes.ToArray();

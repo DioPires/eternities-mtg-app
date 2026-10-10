@@ -4,7 +4,9 @@
     "references": [
         "Eternities.Data",
         "Eternities.Layout",
-        "Eternities.Kits"
+        "Eternities.Kits",
+        "Eternities.Avatar",
+        "Unity.Cinemachine"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
