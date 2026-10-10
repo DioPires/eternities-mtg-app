@@ -10,20 +10,62 @@ namespace Eternities.Kits
     public sealed class GroundPlan
     {
         public const int Meadow = 0, Path = 1, Gravel = 2, Layers = 3;
-        public const float Margin = 60;
+        public const float Margin = 120;
+        // The ground level of everything the allocator placed is 0. The terrain's own floor lies
+        // this far below it, so the kit can carve a river bed, and its ceiling as far above.
+        public const float Floor = 50, Height = 100;
+        // The relief keeps this far from anything flat, then rises to full height over the falloff.
+        public const float FlatApron = 1.5f, Falloff = 10;
+        // The bed is at its full depth within the half width or the radius, and rises to the ground
+        // level over the bank beyond it.
+        public const float WaterLevel = -0.6f, RiverDepth = 1.6f, RiverHalfWidth = 3.5f, LakeDepth = 3.5f, LakeRadius = 45, Bank = 5;
 
         public float Radius, Side;      // metres
         public int HeightResolution, AlphaResolution;
+        public float[,] Heights;        // [z, x], metres above the ground level
+        public float[,] Normalised;     // the same as Unity Terrain takes them: 0 at its floor, 1 at its ceiling
         public float[,,] Alphas;        // [z, x, layer], as Unity Terrain takes them
+        // The slice's water (PRD v4 9.5): one river and one lake, in the margin beyond the ring,
+        // because inside the world the 3 m water buffer around paths, aprons and corridors leaves
+        // no zone (PRD v4 8.4.2). The river runs west to east past the end of the north radial path
+        // and into the lake.
+        public Vector2 RiverFrom, RiverTo, LakeCentre;
+
+        // How deep below the ground level the water's bed is at a point: 0 away from the water.
+        public float Bed(float x, float z)
+        {
+            Vector2 p = new Vector2(x, z), along = RiverTo - RiverFrom;
+            float t = Mathf.Clamp01(Vector2.Dot(p - RiverFrom, along) / along.sqrMagnitude);
+            float river = RiverDepth * Mathf.SmoothStep(1, 0, (Vector2.Distance(p, RiverFrom + along * t) - RiverHalfWidth) / Bank);
+            float lake = LakeDepth * Mathf.SmoothStep(1, 0, (Vector2.Distance(p, LakeCentre) - LakeRadius) / Bank);
+            return Mathf.Max(river, lake);
+        }
+
+        // The height of the ground at a point, from the nearest sample.
+        public float HeightAt(float x, float z)
+        {
+            float texel = Side / AlphaResolution;
+            int column = Mathf.Clamp(Mathf.RoundToInt((x + Side / 2) / texel), 0, HeightResolution - 1);
+            int row = Mathf.Clamp(Mathf.RoundToInt((z + Side / 2) / texel), 0, HeightResolution - 1);
+            return Heights[row, column];
+        }
+
+        // Is a point in the water or on its bank? The avatar is kept out of it.
+        public bool Wet(float x, float z) => Bed(x, z) > -WaterLevel * 0.5f;
 
         // PRD v4 8.4.5: 513 for worlds under 100 m of radius, 1,025 to 260 m, 2,049 beyond.
         public static int HeightmapResolution(float worldRadius) => worldRadius < 100 ? 513 : worldRadius <= 260 ? 1025 : 2049;
 
         // The plaza, the ring paths, the radial paths, the spurs and the pads are painted as path;
         // everything else is meadow (PRD v4 9.5: the paths are visible as ground).
-        public static GroundPlan Compute(WorldLayout layout)
+        // `hillHeight` and `hillWidth` are the kit's relief in metres: how high a hill stands over a
+        // hollow, and how far apart hills are.
+        public static GroundPlan Compute(WorldLayout layout, float hillHeight = 3, float hillWidth = 60)
         {
             var plan = new GroundPlan { Radius = layout.WorldRadius / 1000f };
+            plan.RiverFrom = new Vector2(-240, plan.Radius + 20);
+            plan.RiverTo = new Vector2(110, plan.Radius + 20);
+            plan.LakeCentre = new Vector2(120, plan.Radius + 62);
             plan.Side = 2 * (plan.Radius + Margin);
             plan.HeightResolution = HeightmapResolution(plan.Radius);
             int n = plan.AlphaResolution = plan.HeightResolution - 1;
@@ -88,15 +130,124 @@ namespace Eternities.Kits
                 plan.Mark(path, box, (x, z) => (x - c.X / 1000.0) * (x - c.X / 1000.0) + (z - c.Z / 1000.0) * (z - c.Z / 1000.0) <= radius / 1000.0 * (radius / 1000.0));
             }
 
+            // Flat too, though not painted: every stand's footprint, apron and corridor (PRD v4 8.4.5).
+            var flat = (bool[,])path.Clone();
+            foreach (LayoutStand stand in layout.Stands)
+            {
+                double yaw = stand.Yaw / 1e6 * Math.PI / 180, fx = Math.Sin(yaw), fz = Math.Cos(yaw);
+                double length = ((stand.PathPoint.X - stand.Position.X) * fx + (stand.PathPoint.Z - stand.Position.Z) * fz) / 1000.0;
+                double back = -LayoutConstants.FootprintHalfDepth / 1000.0, side = LayoutConstants.CorridorHalfWidth / 1000.0;
+                P2 Corner(double a, double c) => new P2(
+                    (long)(stand.Position.X + (fx * a + fz * c) * 1000), (long)(stand.Position.Z + (fz * a - fx * c) * 1000));
+                P2[] strip = { Corner(back, -side), Corner(back, side), Corner(length, side), Corner(length, -side) };
+                plan.Mark(flat, strip, (x, z) => Inside(strip, x, z));
+            }
+
             plan.Alphas = new float[n, n, Layers];
+            for (int row = 0; row < n; row++)
+            {
+                float z = (float)(-plan.Side / 2 + (row + 0.5) * texel);
+                for (int column = 0; column < n; column++)
+                {
+                    float x = (float)(-plan.Side / 2 + (column + 0.5) * texel);
+                    // The river's bed and banks and the lake's shore are gravel. The hills stay off
+                    // them as they stay off a path, so the water lies in the low ground.
+                    float bed = plan.Bed(x, z);
+                    flat[row, column] |= bed > 0;
+                    plan.Alphas[row, column, path[row, column] ? Path : bed > 0.05f ? Gravel : Meadow] = 1;
+                }
+            }
+            plan.Relief(flat, hillHeight, hillWidth, layout.Input.PlaneSlug);
+            return plan;
+        }
+
+        // The heights: the kit's noise, held to zero on everything flat and for a step around it,
+        // rising to full height over the falloff, and carved for the water.
+        void Relief(bool[,] flat, float hillHeight, float hillWidth, string slug)
+        {
+            int n = AlphaResolution, size = HeightResolution;
+            float texel = Side / n;
+            // The distance to the nearest flat texel, by a two-pass chamfer over the texel grid.
+            var distance = new float[n, n];
+            const float Straight = 1, Diagonal = 1.41421356f, Far = 1e9f;
             for (int row = 0; row < n; row++)
             {
                 for (int column = 0; column < n; column++)
                 {
-                    plan.Alphas[row, column, path[row, column] ? Path : Meadow] = 1;
+                    float d = flat[row, column] ? 0 : Far;
+                    if (d > 0 && row > 0)
+                    {
+                        d = Math.Min(d, distance[row - 1, column] + Straight);
+                        d = column > 0 ? Math.Min(d, distance[row - 1, column - 1] + Diagonal) : d;
+                        d = column < n - 1 ? Math.Min(d, distance[row - 1, column + 1] + Diagonal) : d;
+                    }
+                    distance[row, column] = d > 0 && column > 0 ? Math.Min(d, distance[row, column - 1] + Straight) : d;
                 }
             }
-            return plan;
+            for (int row = n - 1; row >= 0; row--)
+            {
+                for (int column = n - 1; column >= 0; column--)
+                {
+                    float d = distance[row, column];
+                    if (d > 0 && row < n - 1)
+                    {
+                        d = Math.Min(d, distance[row + 1, column] + Straight);
+                        d = column > 0 ? Math.Min(d, distance[row + 1, column - 1] + Diagonal) : d;
+                        d = column < n - 1 ? Math.Min(d, distance[row + 1, column + 1] + Diagonal) : d;
+                    }
+                    distance[row, column] = d > 0 && column < n - 1 ? Math.Min(d, distance[row, column + 1] + Straight) : d;
+                }
+            }
+
+            uint seed = (uint)SplitMix64.Fnv1a64($"eternities-v4|terrain|{slug}");
+            Heights = new float[size, size];
+            Normalised = new float[size, size];
+            for (int row = 0; row < size; row++)
+            {
+                float z = -Side / 2 + row * texel;
+                for (int column = 0; column < size; column++)
+                {
+                    float x = -Side / 2 + column * texel;
+                    // A height sample is a corner of up to four texels: it is as near to flat as the nearest of them.
+                    float d = Far;
+                    for (int r = Math.Max(row - 1, 0); r <= Math.Min(row, n - 1); r++)
+                    {
+                        for (int c = Math.Max(column - 1, 0); c <= Math.Min(column, n - 1); c++)
+                        {
+                            d = Math.Min(d, distance[r, c]);
+                        }
+                    }
+                    float rise = Mathf.SmoothStep(0, 1, (d * texel - FlatApron) / Falloff);
+                    float hills = (Noise(x / hillWidth, z / hillWidth, seed) * 0.75f + Noise(x / hillWidth * 2.7f, z / hillWidth * 2.7f, seed + 1) * 0.25f) * hillHeight;
+                    Heights[row, column] = hills * rise - Bed(x, z);
+                    Normalised[row, column] = (Heights[row, column] + Floor) / Height;
+                }
+            }
+        }
+
+        // Value noise from 0 to 1 on an integer hash, the same on every machine.
+        static float Noise(float x, float z, uint seed)
+        {
+            int x0 = Mathf.FloorToInt(x), z0 = Mathf.FloorToInt(z);
+            float tx = x - x0, tz = z - z0;
+            tx = tx * tx * (3 - 2 * tx);
+            tz = tz * tz * (3 - 2 * tz);
+            float a = Hash(x0, z0, seed), b = Hash(x0 + 1, z0, seed), c = Hash(x0, z0 + 1, seed), d = Hash(x0 + 1, z0 + 1, seed);
+            return Mathf.Lerp(Mathf.Lerp(a, b, tx), Mathf.Lerp(c, d, tx), tz);
+        }
+
+        static float Hash(int x, int z, uint seed)
+        {
+            unchecked
+            {
+                uint h = (uint)x * 0x85EBCA6Bu ^ (uint)z * 0xC2B2AE35u ^ seed * 0x27D4EB2Fu;
+                h ^= h >> 15;
+                h *= 0x2C1B3C6Du;
+                h ^= h >> 12;
+                h *= 0x297A2D39u;
+                h ^= h >> 15;
+                return (h & 0xFFFFFF) / (float)0x1000000;
+            }
         }
 
         // Marks the texels of a shape's bounding box whose centres the shape holds.
@@ -139,11 +290,9 @@ namespace Eternities.Kits
     }
 
     // A world's ground: one Unity Terrain (PRD v4 8.4.5), square, centred on the arrival point, as
-    // wide as the world and a margin, with the kit's layers painted from the plan. It is flat so
-    // far: the kit's noise and the flattening under paths come with the owner's hill figures.
+    // wide as the world and a margin, with the plan's heights and the kit's layers painted from it.
     public static class WorldGround
     {
-        public const float Height = 100;
 
         // The kit's layers, or plain colours in their place while the kit has none.
         public static TerrainLayer[] Layers(TerrainLayer[] kit)
@@ -169,14 +318,15 @@ namespace Eternities.Kits
         public static Terrain Build(GroundPlan plan, TerrainLayer[] layers, string name, Transform parent)
         {
             var data = new TerrainData { name = name, heightmapResolution = plan.HeightResolution, alphamapResolution = plan.AlphaResolution };
-            data.size = new Vector3(plan.Side, Height, plan.Side);      // after the resolution, which resets it
+            data.size = new Vector3(plan.Side, GroundPlan.Height, plan.Side);      // after the resolution, which resets it
+            data.SetHeights(0, 0, plan.Normalised);
             data.terrainLayers = layers;
             data.SetAlphamaps(0, 0, plan.Alphas);
 
             GameObject ground = Terrain.CreateTerrainGameObject(data);
             ground.name = "Ground";
             ground.transform.SetParent(parent, false);
-            ground.transform.localPosition = new Vector3(-plan.Side / 2, 0, -plan.Side / 2);
+            ground.transform.localPosition = new Vector3(-plan.Side / 2, -GroundPlan.Floor, -plan.Side / 2);
             var terrain = ground.GetComponent<Terrain>();
             terrain.materialTemplate = GraphicsSettings.currentRenderPipeline.defaultTerrainMaterial;
             return terrain;

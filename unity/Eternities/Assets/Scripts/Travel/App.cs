@@ -58,6 +58,7 @@ namespace Eternities.Travel
         public WorldData World { get; private set; }
         public StandField Stands { get; private set; }
         public Terrain Ground { get; private set; }
+        public GroundPlan GroundPlan => plan;
 
         public Place Place { get; private set; }
         public bool HubReady { get; private set; }
@@ -208,10 +209,18 @@ namespace Eternities.Travel
         // stops where the ground's margin begins.
         Vector3 KeepInWorld(Vector3 position)
         {
-            float limit = World.Layout.WorldRadius / 1000f + GroundPlan.Margin / 2;
+            float limit = World.Layout.WorldRadius / 1000f + GroundPlan.Margin - 20;
             var flat = new Vector3(position.x, 0, position.z);
-            return flat.magnitude <= limit ? position : flat.normalized * limit + Vector3.up * position.y;
+            if (flat.magnitude > limit)
+            {
+                return flat.normalized * limit + Vector3.up * position.y;
+            }
+            // The water is an edge too: a step that would end in it is not taken.
+            return plan.Wet(position.x, position.z) && !plan.Wet(lastDry.x, lastDry.z) ? lastDry : (lastDry = position);
         }
+
+        GroundPlan plan;
+        Vector3 lastDry;
 
         void Veil(float opacity)
         {
@@ -265,8 +274,7 @@ namespace Eternities.Travel
                 Debug.LogException(read.Exception);
                 yield break;
             }
-            (WorldData data, GroundPlan plan) = read.Result;
-            World = data;
+            (World, plan) = read.Result;
             worldRoot = new GameObject(World.Plane.DisplayName);
             yield return null;
 
@@ -363,7 +371,7 @@ namespace Eternities.Travel
                 if (destination == Place.World)
                 {
                     // The arrival point, facing north (PRD v4 5.4.5).
-                    Avatar.Place(StandField.Ground(World.Layout.Arrival), Quaternion.identity);
+                    Avatar.Place(lastDry = StandField.Ground(World.Layout.Arrival), Quaternion.identity);
                     Avatar.Keep = KeepInWorld;
                 }
                 else

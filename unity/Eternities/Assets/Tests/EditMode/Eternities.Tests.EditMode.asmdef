@@ -9,7 +9,8 @@
         "Unity.RenderPipelines.HighDefinition.Runtime",
         "Eternities.Data",
         "Eternities.Layout",
-        "Eternities.Bench"
+        "Eternities.Bench",
+        "Eternities.Kits"
     ],
     "includePlatforms": [
         "Editor"
