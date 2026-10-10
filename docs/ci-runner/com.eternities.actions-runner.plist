@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The GitHub Actions runner on the reference machine, as a launchd agent of the `eternities-ci`
+  account (docs/ci-runner.md). launchd does not expand `~` or `$HOME`, so the paths are absolute and
+  the account name is fixed by the recipe. `register-runner.sh` installs this file.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.eternities.actions-runner</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/eternities-ci/actions-runner/run.sh</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/eternities-ci/actions-runner</string>
+    <!-- Only inside the account's GUI login session: that is where the window server and the GPU
+         are. For the same reason there is no SessionCreate key, which the runner's own `svc.sh`
+         agent sets: it would start the runner in a new audit session instead of the login session. -->
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
+    <!-- The resource limits of an application, which is none. launchd throttles the CPU and I/O of
+         an agent with no process type (launchd.plist(5)), and a bench measured under that throttle
+         would not be a figure for the reference machine. -->
+    <key>ProcessType</key>
+    <string>Interactive</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <!-- Always restarted. `run.sh` exits 0 whenever the listener stops for a reason it does not
+         retry itself, a crash included, so a restart conditional on the exit code would leave the
+         runner offline until the next login. `launchctl bootout` is how it is stopped. -->
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>60</integer>
+    <!-- launchd starts agents with /usr/bin:/bin:/usr/sbin:/sbin. Homebrew's bin is where git-lfs is. -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/Users/eternities-ci/Library/Logs/actions-runner/stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/eternities-ci/Library/Logs/actions-runner/stderr.log</string>
+</dict>
+</plist>
