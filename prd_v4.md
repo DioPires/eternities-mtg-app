@@ -481,7 +481,7 @@ Standard 3D audio sources with distance curves and reverb zones per kit, an ambi
 
 1. **Pipeline:** v3 tests plus Appendix C tests, allocator unit tests (angle allocation including n = 0, 1, 2 and 6; band sizing; arc sizing; widening; termination bounds), the 5.4.13 fixtures, the independent invariant checker on every fixture and every production run, and v4 contract test vectors.
 2. **Unity EditMode tests:** decoder against test vectors including the malformed-join rejection; allocator against fixtures; theme row to kit parameter mapping; roster decode; scene generation entry point produces a world with the expected stand count.
-3. **Unity PlayMode tests (batchmode with graphics, on the self-hosted runner):** hub loads and lists 88 portals in the specified order; a world loads and places the pack's stands; search fixtures including a parent-mapped set (`mul`) resolving to its site; filters swap the right stands to swatches; a filtered card found through search clears the excluding facets; travel portal performs the automatic walk and arrives on the apron; card view shows the right printings and the artist text; the isolated image path tests (a) to (e) of 8.4.4; reduced motion disables the listed effects; a world with one card and a pocket load; offline mode with a cached and an uncached card.
+3. **Unity PlayMode tests (batchmode with graphics, on the self-hosted runner):** hub loads and lists 88 portals in the specified order; a world loads and places the pack's stands; search fixtures including a parent-mapped set (`mul`) resolving to its site; filters swap the right stands to swatches; a filtered card found through search clears the excluding facets; travel portal performs the automatic walk and arrives on the apron; card view shows the right printings and the artist text; the isolated image path tests (a) to (f) of 8.4.4; reduced motion disables the listed effects; a world with one card and a pocket load; offline mode with a cached and an uncached card.
 4. **Bench:** a scripted path per world class (hub, Dominaria, a mid-sized world, a one-set world, a pocket): arrive, walk from the plaza to the rim along one wedge on the radial path, cross one band on the ring path, enter and leave card view, open the travel menu and travel to a named card in this world (timed), travel to a named card in another world (timed), open and close the map, portal out. Logs p50, p90, p99 and longest frame, GPU and process memory, resident images, streaming hitches, and both travel times as JSON, for a warm run and a cold run.
 5. **CI matrix (one, authoritative).**
 
@@ -582,7 +582,7 @@ Before Wave 5 is cut, a slice on Dominaria proves the engine and the design. It 
 - The allocator in C# for Dominaria with the invariant checker; a report of the actual figures (5.4.14).
 - Dominaria terrain on a `temperate` kit subset with one river and one lake in the kit's water zones, flattened under the allocator's paths; plaza, radial and ring paths visible as ground.
 - The mannequin avatar with the own controller and the Cinemachine follow rig.
-- Stands for all 6,271 Dominaria cards with the image stream, the texture array, swatches, and the isolated image path with its five tests.
+- Stands for all 6,271 Dominaria cards with the image stream, the texture array, swatches, and the isolated image path with its six tests.
 - Card view with the printings panel from the shard data.
 - A plain hub with Dominaria's portal and the return portal, with the hold rule.
 - A travel menu with this world's sites and a card list, so the travel row of 7.2 can be timed; search, filters, the map and waystone travel are out of scope.
@@ -593,7 +593,7 @@ Before Wave 5 is cut, a slice on Dominaria proves the engine and the design. It 
 **Schedule sketch (five working days, one agent engineer; the owner at most two days in the editor):**
 - Day 1: project opens from the skeleton; the v3 pack reads; the C# allocator places Dominaria's stands as plinths and the checker passes; bench harness skeleton. Owner: half a day setting HDRP quality levels and the terrain.
 - Day 2: controller, follow camera, hub, portal, hold rule; terrain generation flattened under paths. Owner: half a day on the river and the lake with the HDRP water system.
-- Day 3: image stream, texture array, isolated image path and its five tests.
+- Day 3: image stream, texture array, isolated image path and its six tests.
 - Day 4: card view and the printings panel; the slice travel menu; ambient bed and river sound; reviewer captures.
 - Day 5: bench runs warm and cold on the reference machine; the owner runs the light Mac; fixes; the reviewer's verdict. Owner: up to one day across days 3 to 5 for judgement and the light Mac runs.
 
@@ -628,7 +628,7 @@ Before Wave 5 is cut, a slice on Dominaria proves the engine and the design. It 
 | 5 | **HDRP on Apple Silicon** underperforms or has artefacts, or HDRP low cannot carry the light Mac. | Medium | High | The acceptance matrix (9.5) with bottleneck attribution before any engine decision; the URP build variant as a costed Wave 5 option (8.1.1). |
 | 6 | **Unity licence or pricing changes** (as in 2023). | Low | Medium | Personal licence at zero revenue; Godot 4 named; the data layer and the allocator are engine-independent. |
 | 7 | **Memory and image streaming.** Thousands of card images on open terrain. | Medium | Medium | 8.4.3's uncompressed array with a hard slot bound and mips; site streaming (7.3.3); the resident image ceiling (7.2); compression held in reserve (11.14). |
-| 8 | **The isolated image path.** Mixing jittered, render-resolution main-camera buffers with exact image pixels has documented pitfalls. | Medium | Medium | The exhibit-camera design with its own unjittered, output-resolution occluder depth and coverage (8.4.4), a costed custom-pass alternative, five tests; matrix row I stops the slice on a double miss; verified before anything is built on it. |
+| 8 | **The isolated image path.** Mixing jittered, render-resolution main-camera buffers with exact image pixels has documented pitfalls. | Medium | Medium | The exhibit-camera design with its own unjittered, output-resolution occluder depth and coverage (8.4.4), a costed custom-pass alternative, six tests; matrix row I stops the slice on a double miss; verified before anything is built on it. |
 | 9 | **Scryfall terms for a desktop client.** | Low | High | 4.15 (CDN only, one concurrency limit, HTTP-aware backoff, identifying headers); verified for a desktop client on 2026-10-10 (DEC-952, Amendment 2). |
 | 10 | **Content provenance.** A kit asset or sound turns out not to be CC0. | Medium | Medium | Per-kit `CREDITS.md` checked in review (8.12.2); named CC0 sources; prefer owner-made assets. |
 | 11 | **CI for Unity.** The self-hosted runner is one machine and is down when the owner's Mac is off. | High | Low | PRs touching `unity/` wait; no bypass (8.8.5); the reviewer's local bench is required in addition, never instead. |
@@ -682,6 +682,7 @@ Owner decisions on DEC-950, 2026-10-10, that this document implements:
 | Runner account (after acceptance) | The runner runs in the owner's own user session | 8.8.6, Amendment 1 |
 | Distribution host (after acceptance) | This repository's own GitHub Releases | 7.7.2, 8.9.1, 11.7, Amendment 1 |
 | Scryfall on a native client (after acceptance) | CEO ruling on DEC-952's re-verification, no owner choice needed: two image hostnames, the cache fill rule, a pause on 429 and 403 that covers every request. Erratum after the DEC-954 review: 400 joins the pause, and a URL dropped by a network failure returns once any request succeeds. Erratum 2 after the DEC-955 review: while any such URL is left and nothing is in flight, the loader retries one every 30 s, so a visitor who stands still recovers without doing anything. The owner may overrule on DEC-950 | 4.15, Amendment 2 and its errata |
+| Erratum, six image-path tests, 2026-10-10, DEC-959 | No choice was needed: 8.4.4 and matrix row I have counted six tests, (a) to (f), since draft 5. Four lines still said five and now say six | 8.8.3; 9.5, the scope bullet on stands and the day 3 line; risk 8 |
 
 What carries over from v3 unchanged: sections 3 and 4 (as amended here), Appendices A and B in their committed form, the pipeline, the first-printing rule, the plane assignment rules, the colour and time laws (re-expressed as wedges and bands), the search and filter semantics, the reduced-motion commitment, the privacy stance, the Fan Content Policy and Scryfall compliance rules, and the measurement discipline (reviewer draws, figures in the verdict, ceilings enforced on real hardware).
 
