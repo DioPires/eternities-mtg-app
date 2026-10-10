@@ -10,7 +10,8 @@
         "Eternities.Data",
         "Eternities.Layout",
         "Eternities.Bench",
-        "Eternities.Kits"
+        "Eternities.Kits",
+        "Eternities.CardView"
     ],
     "includePlatforms": [
         "Editor"

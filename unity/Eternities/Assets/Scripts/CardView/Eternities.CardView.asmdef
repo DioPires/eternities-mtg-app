@@ -1,7 +1,10 @@
 {
     "name": "Eternities.CardView",
     "rootNamespace": "Eternities.CardView",
-    "references": [],
+    "references": [
+        "Eternities.Data",
+        "Eternities.Layout"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
