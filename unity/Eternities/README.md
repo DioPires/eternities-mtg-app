@@ -22,7 +22,8 @@ restates both and changes in the same pull request as either.
 | Addressables | `com.unity.addressables` | `4.1.1` | Unity registry |
 | Animation Rigging | `com.unity.animation.rigging` | `1.4.1` | Unity registry |
 
-Editor modules: Mac Build Support (IL2CPP) and Windows Build Support (Mono).
+Editor modules: Mac Build Support (IL2CPP). Windows Build Support (Mono) is added with the first
+Windows build (PRD v4 8.9.1); nothing in the skeleton or its CI jobs builds for Windows.
 
 ## Quality levels
 
@@ -80,4 +81,6 @@ unity/Eternities/batchmode.sh -quit
 
 `.github/workflows/ci.yml`, jobs `unity-compile`, `unity-editmode`, `unity-playmode` and
 `unity-bench-smoke`, on the self-hosted runner on the reference machine. They run on every pull
-request that touches `unity/`. `docs/ci-runner.md` is how that runner is built and re-verified.
+request that touches `unity/`, `.github/workflows/ci.yml`, `.gitattributes`, `.gitignore` or
+`.lfsconfig`.
+`docs/ci-runner.md` is how that runner is built and re-verified.

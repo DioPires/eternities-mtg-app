@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  The GitHub Actions runner on the reference machine, as a launchd agent of the `eternities-ci`
-  account (docs/ci-runner.md). launchd does not expand `~` or `$HOME`, so the paths are absolute and
-  the account name is fixed by the recipe. `register-runner.sh` installs this file.
+  The GitHub Actions runner on the reference machine, as a launchd agent of the account that
+  registers it (docs/ci-runner.md). This file is a template: launchd does not expand `~` or
+  `$HOME`, so `register-runner.sh` writes the account's home directory over the placeholder in the
+  paths below and installs the result. Do not copy it into `~/Library/LaunchAgents/` by hand.
 -->
 <plist version="1.0">
 <dict>
@@ -11,10 +12,10 @@
     <string>com.eternities.actions-runner</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/eternities-ci/actions-runner/run.sh</string>
+        <string>__HOME__/actions-runner/run.sh</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>/Users/eternities-ci/actions-runner</string>
+    <string>__HOME__/actions-runner</string>
     <!-- Only inside the account's GUI login session: that is where the window server and the GPU
          are. For the same reason there is no SessionCreate key, which the runner's own `svc.sh`
          agent sets: it would start the runner in a new audit session instead of the login session. -->
@@ -41,8 +42,8 @@
         <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
     </dict>
     <key>StandardOutPath</key>
-    <string>/Users/eternities-ci/Library/Logs/actions-runner/stdout.log</string>
+    <string>__HOME__/Library/Logs/actions-runner/stdout.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/eternities-ci/Library/Logs/actions-runner/stderr.log</string>
+    <string>__HOME__/Library/Logs/actions-runner/stderr.log</string>
 </dict>
 </plist>
