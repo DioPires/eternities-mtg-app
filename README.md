@@ -1,8 +1,9 @@
 # Eternities
 
-A 3D visualisation of every plane of the *Magic: The Gathering* multiverse. Each plane is a galaxy,
-each unique card a star, each printing a planet. One continuous scene from the multiverse down to a
-single card.
+Eternities shows the planes of the *Magic: The Gathering* multiverse and their cards, in two
+editions. The native edition is a Unity desktop application under `unity/Eternities/`; section 1 of
+[`prd_v4.md`](prd_v4.md) says what it is. The web edition, under `web/`, is frozen at tag
+`web-edition-v1`; section 8.11 of the same document says what may still change there.
 
 Free and non-commercial, under the Wizards of the Coast Fan Content Policy. Card data and images
 come from [Scryfall](https://scryfall.com).
@@ -71,7 +72,7 @@ web/                      Vite 8, React 19, TypeScript strict, three.js, Zustand
                           verification scripts were archived by DEC-708; see
                           `docs/cross-browser.md` to restore one.
   e2e/                    Playwright: PRD 8.9.2's route smoke and 9.1.2's bench smoke, in CI.
-contract/test-vectors/v2/ The shared byte-level test vector. Both languages assert against it.
+contract/test-vectors/v3/ The shared byte-level test vector. Both languages assert against it.
 unity/Eternities/         The native edition's Unity project (PRD v4 8.2). Its README has the pins.
 docs/                     The contract and policy documents above.
 docs/archive/             Superseded PRDs and their reviews. Nothing current.
@@ -80,6 +81,9 @@ docs/boards/              Reference boards: a link list per kit or hero plane. N
 ```
 
 ## Getting started
+
+For the Unity project, start at [`unity/Eternities/README.md`](unity/Eternities/README.md): the pins
+and the batchmode commands are there.
 
 ```sh
 # Pipeline
@@ -173,6 +177,9 @@ this one followed (`previousRun`), so the committed report stays reproducible af
 directory is deleted.
 
 ## Where things stand
+
+This section describes the web edition, frozen at tag `web-edition-v1` ([`prd_v4.md`](prd_v4.md)
+8.11).
 
 Phases 0 (scaffold and contracts), 1 (data pipeline), 2a (star field), 2b (camera, navigation,
 labels), 3 (card tier), 4 (app shell and UI) and 5 (design polish) are complete. The navigation
