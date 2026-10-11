@@ -3,11 +3,15 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
+using Eternities.Audio;
 using Eternities.Avatar;
 using Eternities.CardView;
 using Eternities.Data;
 using Eternities.Kits;
+using Eternities.Layout;
+using Eternities.UI;
 using UnityEngine;
+using UnityEngine.UIElements;
 
 namespace Eternities.Travel
 {
@@ -42,6 +46,8 @@ namespace Eternities.Travel
         [SerializeField] TerrainLayer[] terrainLayers = new TerrainLayer[0];
         [SerializeField] Material imageSurfaceMaterial;
         [SerializeField] Shader exhibitShader, exhibitCompositeShader;
+        [SerializeField] AudioClip ambientBed, riverLoop;
+        [SerializeField] PanelSettings panelSettings;
 
         public static App Instance { get; private set; }
 
@@ -55,6 +61,9 @@ namespace Eternities.Travel
         public Material ImageSurfaceMaterial { get => imageSurfaceMaterial; set => imageSurfaceMaterial = value; }
         public Shader ExhibitShader { get => exhibitShader; set => exhibitShader = value; }
         public Shader ExhibitCompositeShader { get => exhibitCompositeShader; set => exhibitCompositeShader = value; }
+        public AudioClip AmbientBed { get => ambientBed; set => ambientBed = value; }
+        public AudioClip RiverLoop { get => riverLoop; set => riverLoop = value; }
+        public PanelSettings PanelSettings { get => panelSettings; set => panelSettings = value; }
 
         public Pack Pack { get; private set; }
         public AvatarController Avatar { get; private set; }
@@ -65,6 +74,13 @@ namespace Eternities.Travel
         public StandField Stands { get; private set; }
         public StandImages Images { get; private set; }
         public Exhibit Exhibit { get; private set; }
+        public WorldSound Sound { get; private set; }
+        public Hud Hud { get; private set; }
+        public CardViewer CardView { get; private set; }
+        public int HoveredStand { get; private set; } = -1;
+        public readonly List<int> RecentlyVisited = new List<int>();     // the last 50 stands entered in card view (PRD v4 6.6.4)
+        public const float InteractDistance = 3;                         // PRD v4 5.5.3
+        public const float TravelPortalDistance = 2, TravelWalkSeconds = 1;  // PRD v4 5.9.4
         public IImageSource ImageSource;    // where stand images come from; set before a world loads
         // Tests name a source of their own here, so that no test run reaches Scryfall.
         public static Func<IImageSource> ImageSourceForTests;
@@ -173,6 +189,10 @@ namespace Eternities.Travel
             Camera view = Camera.main;
             View = FollowCamera.Create(view, Avatar);
             Exhibit = Exhibit.Create(view, exhibitShader, exhibitCompositeShader);
+            CardView = CardViewer.Create(view);
+            CardView.BodyMaterial = standMaterials[standMaterials.Length - 1];
+            CardView.Changed += CardChanged;
+            Hud = Hud.Create(panelSettings, transform);
 
             // The veil: what a portal's surface becomes as it fills the view. A quad just past the
             // near plane, black, its opacity set by the transition.
@@ -249,6 +269,10 @@ namespace Eternities.Travel
                 return;
             }
             Vector3 at = Avatar.transform.position;
+            if (Place == Place.World && Explore(at))
+            {
+                return;
+            }
             if (Place == Place.Hub)
             {
                 // PRD v4 5.3.3: the world whose pad the avatar is near begins to load.
@@ -266,6 +290,158 @@ namespace Eternities.Travel
                 // PRD v4 5.3.5: Esc from any world returns to the hub through the return portal.
                 StartCoroutine(Through(ReturnPortal, Place.Hub));
             }
+        }
+
+        // Explore, card view and the travel menu (PRD v4 6.2). True when the frame's input was used.
+        bool Explore(Vector3 at)
+        {
+            AvatarInput input = Avatar.Input;
+            CardView.ReducedMotion = ReducedMotion;
+            if (CardView.Active)
+            {
+                // Esc, the back control or walking leaves card view (PRD v4 5.10.4).
+                if (input.Back || input.Move != Vector2.zero || input.WorldMove != Vector3.zero)
+                {
+                    CardView.Leave();
+                }
+                else if (input.Interact && CardView.Card.HasBackImage)
+                {
+                    CardView.Flip();
+                }
+                return true;
+            }
+            if (Hud.TravelOpen)
+            {
+                if (input.Back || input.TravelMenu)
+                {
+                    Hud.HideTravel();
+                }
+                return true;
+            }
+            if (input.TravelMenu)
+            {
+                OpenTravel();
+                return true;
+            }
+
+            // The stand within reach shows its label, and interacting with it enters card view.
+            HoveredStand = Images != null ? Images.Nearest(at, InteractDistance) : -1;
+            if (HoveredStand >= 0)
+            {
+                LayoutStand stand = World.Layout.Stands[HoveredStand];
+                Vector3 top = StandField.Ground(stand.Position) + Vector3.up * StandField.SlabTop;
+                Vector3 screen = Camera.main.WorldToScreenPoint(top);
+                Hud.Hover(screen.z > 0 ? CardViewer.Label(World, HoveredStand) : null, screen);
+                if (input.Interact)
+                {
+                    CardView.Enter(HoveredStand);
+                    return true;
+                }
+            }
+            else
+            {
+                Hud.Hover(null, default);
+            }
+            return false;
+        }
+
+        void CardChanged()
+        {
+            Avatar.Shown = !CardView.Active;
+            if (!CardView.Active)
+            {
+                Hud.HideCard();
+                return;
+            }
+            Hud.Hover(null, default);
+            if (RecentlyVisited.Count == 0 || RecentlyVisited[RecentlyVisited.Count - 1] != CardView.Stand)
+            {
+                RecentlyVisited.Remove(CardView.Stand);
+                RecentlyVisited.Add(CardView.Stand);
+                if (RecentlyVisited.Count > 50)
+                {
+                    RecentlyVisited.RemoveAt(0);
+                }
+            }
+            Hud.ShowCard(CardView.Sheet(), CardView.Show, CardView.Flip, () => Application.OpenURL(CardView.PageUrl()), CardView.Leave);
+        }
+
+        // The slice's travel menu: this world's sites, and the cards of the one chosen.
+        void OpenTravel()
+        {
+            var sites = new List<string>();
+            foreach (LayoutSite site in World.Layout.Sites)
+            {
+                PackSet set = World.Plane.Sets[site.Set];
+                string wedge = new[] { "White", "Blue", "Black", "Red", "Green", "Gold", "Colourless" }[(int)site.Class];
+                sites.Add($"{set.Name}, {set.Year} · {wedge} · {site.Stands}");
+            }
+            Hud.Hover(null, default);
+            Hud.ShowTravel(World.Plane.DisplayName, sites, site => StandsOf(site).ConvertAll(stand => World.Cards[World.Layout.Stands[stand].Card].Name),
+                (site, card) => TravelTo(StandsOf(site)[card]), Hud.HideTravel);
+        }
+
+        // A site's stands, by the name of their card.
+        public List<int> StandsOf(int site)
+        {
+            var stands = new List<int>();
+            for (int stand = 0; stand < World.Layout.Stands.Count; stand++)
+            {
+                if (World.Layout.Stands[stand].Site == site)
+                {
+                    stands.Add(stand);
+                }
+            }
+            stands.Sort((a, b) => string.CompareOrdinal(World.Cards[World.Layout.Stands[a].Card].Name, World.Cards[World.Layout.Stands[b].Card].Name));
+            return stands;
+        }
+
+        // Travel within the world (PRD v4 5.9.4): a portal opens 2 m in front of the avatar, facing
+        // it; the avatar walks into it over a second, with no steering by the visitor, and arrives
+        // on the stand's apron, facing the stand. The portal closes behind it.
+        public void TravelTo(int stand)
+        {
+            if (Place == Place.World && !InTransition)
+            {
+                Hud.HideTravel();
+                StartCoroutine(Travel(stand));
+            }
+        }
+
+        IEnumerator Travel(int stand)
+        {
+            InTransition = true;
+            double entered = Now;
+            Avatar.Locked = true;
+            Vector3 ahead = Avatar.transform.forward;
+            Portal portal = Portal.Build("Travel portal", portalFrameMaterial, portalSurfaceMaterial, worldRoot.transform,
+                Avatar.transform.position + ahead * TravelPortalDistance, Quaternion.LookRotation(-ahead));
+            Avatar.Walk = ahead * (TravelPortalDistance / TravelWalkSeconds);
+            float fade = ReducedMotion ? ReducedFadeSeconds : TravelWalkSeconds;
+            for (double began = Now; Now - began < TravelWalkSeconds;)
+            {
+                Veil(Mathf.Clamp01((float)((Now - began - (TravelWalkSeconds - fade)) / fade)));
+                yield return null;
+            }
+            Veil(1);
+            Avatar.Walk = Vector3.zero;
+
+            LayoutStand placed = World.Layout.Stands[stand];
+            Quaternion facing = StandField.Facing(placed);
+            Vector3 apron = StandField.Ground(placed.Position) + facing * Vector3.forward * ((LayoutConstants.FootprintHalfDepth + LayoutConstants.ApronDepth / 2) / 1000f);
+            Avatar.Place(lastDry = apron, facing * Quaternion.Euler(0, 180, 0));
+            View.Behind();
+            Destroy(portal.gameObject);
+            yield return null;
+            LastTravelSeconds = Now - entered;
+            for (double began = Now; Now - began < ArrivalFadeSeconds;)
+            {
+                Veil(1 - Mathf.Clamp01((float)((Now - began) / ArrivalFadeSeconds)));
+                yield return null;
+            }
+            Veil(0);
+            Avatar.Locked = false;
+            InTransition = false;
         }
 
         // A world, built whole while the visitor is elsewhere: the pack's shards and the layout are
@@ -312,6 +488,12 @@ namespace Eternities.Travel
             Images.Source = ImageSource;
             Images.Viewer = Avatar.transform;
             Exhibit.SetImages(Images.Array);
+            CardView.Bind(World, Images, ImageSource);
+
+            // The ambient bed and the river (PRD v4 5.12). The river's source follows the listener
+            // along the water, at the water's level.
+            Sound = WorldSound.Create(worldRoot.transform, ambientBed, riverLoop,
+                new Vector3(plan.RiverFrom.x, GroundPlan.WaterLevel, plan.RiverFrom.y), new Vector3(plan.RiverTo.x, GroundPlan.WaterLevel, plan.RiverTo.y), Camera.main.transform);
 
             // The return portal, 8 m south of the centre and facing it (PRD v4 5.4.5).
             ReturnPortal = Portal.Build("Return portal", portalFrameMaterial, portalSurfaceMaterial, worldRoot.transform,
@@ -332,6 +514,11 @@ namespace Eternities.Travel
                 StopCoroutine(loading);
                 loading = null;
             }
+            CardView.Bind(null, null, null);
+            Hud.HideTravel();
+            Hud.Hover(null, default);
+            HoveredStand = -1;
+            RecentlyVisited.Clear();
             if (worldRoot != null)
             {
                 Destroy(worldRoot);
@@ -344,6 +531,7 @@ namespace Eternities.Travel
             World = null;
             Stands = null;
             Images = null;
+            Sound = null;
             Ground = null;
             ReturnPortal = null;
             WorldLoaded = false;

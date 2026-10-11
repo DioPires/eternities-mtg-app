@@ -122,6 +122,18 @@ namespace Eternities.CardView
             context.Submit();
         }
 
+        // Blends one texture over another by its alpha, at once: how a capture puts the overlays,
+        // which are drawn into a texture of their own when there is no screen, over the frame.
+        public void Over(Texture source, RenderTexture destination, bool flip)
+        {
+            blit.Clear();
+            blit.SetGlobalTexture(BufferId, source);
+            blit.SetGlobalFloat(FlipId, flip ? 1 : 0);
+            blit.SetRenderTarget(destination);
+            blit.DrawProcedural(Matrix4x4.identity, composite, 0, MeshTopology.Triangles, 3);
+            Graphics.ExecuteCommandBuffer(blit);
+        }
+
         void OnDestroy()
         {
             RenderPipelineManager.endCameraRendering -= Composite;

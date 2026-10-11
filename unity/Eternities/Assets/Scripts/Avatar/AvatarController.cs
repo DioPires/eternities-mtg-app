@@ -45,6 +45,18 @@ namespace Eternities.Avatar
             body = GetComponent<CharacterController>();
         }
 
+        // In card view the avatar steps out of the frame (PRD v4 5.10.1): it is not drawn.
+        public bool Shown
+        {
+            set
+            {
+                foreach (Renderer part in GetComponentsInChildren<Renderer>(includeInactive: true))
+                {
+                    part.enabled = value;
+                }
+            }
+        }
+
         // Puts the avatar somewhere without walking it there: an arrival.
         public void Place(Vector3 position, Quaternion facing)
         {

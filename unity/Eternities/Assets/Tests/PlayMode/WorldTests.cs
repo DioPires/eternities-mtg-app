@@ -37,9 +37,9 @@ namespace Eternities.Tests
         // These tests are about the world, not its images: every stand stays its swatch.
         public sealed class NoImages : Eternities.CardView.IImageSource
         {
-            public void Request(PackCard card, float distance, Action<Texture2D> done) => done(null);
+            public void Request(string url, float distance, Action<Texture2D> done) => done(null);
 
-            public void Cancel(PackCard card)
+            public void Cancel(string url)
             {
             }
         }
@@ -143,6 +143,21 @@ namespace Eternities.Tests
             int n = app.Ground.terrainData.alphamapResolution;
             float[,,] meadow = app.Ground.terrainData.GetAlphamaps((int)(behind.x / size.x * n), (int)(behind.z / size.z * n), 1, 1);
             Assert.That(meadow[0, 0, GroundPlan.Meadow], Is.EqualTo(1));
+
+            // PRD v4 5.12: one ambient bed, and the river as a positional source that is heard before
+            // it is seen. From the plaza it is silent; at the rim it is at the water, north of the
+            // avatar, and within earshot.
+            Assert.That(app.Sound.Bed.clip, Is.Not.Null);
+            Assert.That(app.Sound.Bed.spatialBlend, Is.EqualTo(0));
+            Assert.That(app.Sound.River.clip, Is.Not.Null);
+            Assert.That(app.Sound.River.spatialBlend, Is.EqualTo(1));
+            float rim = app.World.Layout.WorldRadius / 1000f;
+            Assert.That(Vector3.Distance(app.Sound.NearestOnRiver(Vector3.zero), Vector3.zero), Is.GreaterThan(Eternities.Audio.WorldSound.RiverFar), "the river is out of earshot of the plaza");
+            Vector3 atTheRim = new Vector3(0, 0, rim);
+            Vector3 nearest = app.Sound.NearestOnRiver(atTheRim);
+            Assert.That(nearest.z, Is.GreaterThan(rim));
+            Assert.That(Vector3.Distance(nearest, atTheRim), Is.LessThan(Eternities.Audio.WorldSound.RiverFar / 4), "at the rim the river is close");
+            Assert.That(Vector3.Distance(app.Sound.NearestOnRiver(new Vector3(0, 0, rim - 100)), new Vector3(0, 0, rim - 100)), Is.LessThan(Eternities.Audio.WorldSound.RiverFar), "100 m short of the rim it is already heard");
 
             hands.Back = true;
             yield return Until(() => app.Place == Place.Hub && !app.InTransition, 30, "the return to the hub");

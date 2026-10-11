@@ -3,7 +3,8 @@
 // override material from the exhibit pass, never on a renderer. A vertex carries the image's
 // coordinates in its second set, and in its third the slot of the array and the coverage, which is
 // the 200 ms fade of an arriving image; a surface without a slot draws nothing here and stays the
-// swatch the main camera drew.
+// swatch the main camera drew. The card of card view is drawn by the same pass from two textures of
+// its own.
 Shader "Hidden/Eternities/Exhibit"
 {
     SubShader
@@ -30,6 +31,8 @@ Shader "Hidden/Eternities/Exhibit"
             #include "Packages/com.unity.render-pipelines.high-definition/Runtime/ShaderLibrary/ShaderVariables.hlsl"
 
             TEXTURE2D_ARRAY(_ExhibitImages);
+            TEXTURE2D(_ExhibitCardFront);
+            TEXTURE2D(_ExhibitCardBack);
             SamplerState exhibit_trilinear_clamp_sampler;
 
             struct Attributes
@@ -59,8 +62,23 @@ Shader "Hidden/Eternities/Exhibit"
 
             float4 Frag(Varyings input) : SV_Target
             {
-                clip(input.slot.x + 0.5);
-                float3 colour = SAMPLE_TEXTURE2D_ARRAY(_ExhibitImages, exhibit_trilinear_clamp_sampler, input.image, round(input.slot.x)).rgb;
+                // A slot of the array from 0 up; -1 for no image; -2 and -3 for the front and the back
+                // of the card in card view, which are textures of their own (PRD v4 5.10.2).
+                float slot = round(input.slot.x);
+                clip(abs(slot + 1) - 0.5);
+                float3 colour;
+                if (slot >= 0)
+                {
+                    colour = SAMPLE_TEXTURE2D_ARRAY(_ExhibitImages, exhibit_trilinear_clamp_sampler, input.image, slot).rgb;
+                }
+                else if (slot > -2.5)
+                {
+                    colour = SAMPLE_TEXTURE2D(_ExhibitCardFront, exhibit_trilinear_clamp_sampler, input.image).rgb;
+                }
+                else
+                {
+                    colour = SAMPLE_TEXTURE2D(_ExhibitCardBack, exhibit_trilinear_clamp_sampler, input.image).rgb;
+                }
                 return float4(colour, input.slot.y);
             }
             ENDHLSL

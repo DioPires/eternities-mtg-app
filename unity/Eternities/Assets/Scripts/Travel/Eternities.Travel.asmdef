@@ -7,7 +7,9 @@
         "Eternities.Kits",
         "Eternities.Avatar",
         "Unity.Cinemachine",
-        "Eternities.CardView"
+        "Eternities.CardView",
+        "Eternities.Audio",
+        "Eternities.UI"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

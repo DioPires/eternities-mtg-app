@@ -44,11 +44,11 @@ namespace Eternities.Tests
                 return new Color32((byte)(h & 0x7F), (byte)(96 + ((h >> 8) & 0x7F)), (byte)((h >> 16) & 0x7F), 255);
             }
 
-            public string Without;      // the card that has no image
+            public string Without;      // the image that does not exist
 
-            public void Request(PackCard card, float distance, Action<Texture2D> done)
+            public void Request(string url, float distance, Action<Texture2D> done)
             {
-                if (card.OracleId == Without)
+                if (url == Without)
                 {
                     done(null);
                     return;
@@ -67,7 +67,7 @@ namespace Eternities.Tests
                 done(texture);
             }
 
-            public void Cancel(PackCard card)
+            public void Cancel(string url)
             {
             }
         }
@@ -147,7 +147,7 @@ namespace Eternities.Tests
                 yield return Until(() => App.Instance.WorldReady, 90, "the arrival");
                 hands.WorldMove = Vector3.zero;
                 ((Behaviour)Camera.main.GetComponent("CinemachineBrain")).enabled = false;
-                Images.Without = App.Instance.World.Cards[App.Instance.World.Layout.Stands[StandWithoutAnImage].Card].OracleId;
+                Images.Without = ImageUrls.Front(App.Instance.World.Cards[App.Instance.World.Layout.Stands[StandWithoutAnImage].Card], ImageSize.Normal);
             }
             App app = App.Instance;
             Camera view = Camera.main;

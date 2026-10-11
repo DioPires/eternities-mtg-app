@@ -93,7 +93,7 @@ builds for Windows.
 | `Assets/Tests/EditMode/`, `Assets/Tests/PlayMode/` | The two test assemblies, namespace `Eternities.Tests`. CI requires a passed test in that namespace, because a package's own test also runs. |
 | `Assets/Settings/` | The HDRP assets: one per quality level, the global settings and the default volume profiles. |
 | `Assets/Scenes/Hub.unity` | The persistent scene (PRD v4 8.4.1): the template's camera, sun and sky, and the `Eternities` object. Kit worlds have no scene; they are built at run time from the pack and the layout. |
-| `Assets/Kits/core/` | What every world shares. `Materials/` holds the slice's plain materials (plinths by rarity, the mannequin, the hub, the portal), made by the generation entry point. |
+| `Assets/Kits/core/` | What every world shares. `Materials/` holds the slice's plain materials (plinths by rarity, the mannequin, the hub, the portal, the image surface), and `UI/` the overlays' panel settings and theme; both are made by the generation entry point. `Shaders/` holds the two shaders of the isolated image path (PRD v4 8.4.4), written by hand. |
 | `Assets/Kits/temperate/` | The `temperate` kit's slice subset. `Terrain/`, `Props/` and `Audio/` hold the 24 files `sources.yaml` pins, in Git LFS, with a `CREDITS.md` row each; `fetch.sh` verifies them and fails on an unlisted file in those three folders, so what is made from them lives beside them. `Assets/Editor/KitMaskImport.cs` repacks each `_arm_` texture into HDRP's mask map layout as it is imported. |
 | `Assets/StreamingAssets/data/manifest.json` | Names the pinned pack hash. The pack itself is `data/<hash>/` beside it: written by the generation entry point, not committed. |
 | `batchmode.sh` | Starts the pinned editor on this project in batchmode, logging to stdout, and passes its arguments through. It replaces a `TMPDIR` too long for the compiler's socket. |
@@ -109,7 +109,8 @@ Scene generation entry point (PRD v4 8.2.5). It writes what a world needs and gi
 under `Assets/StreamingAssets/data/<hash>/`:
 
 - the files of the pack that the slice reads, copied from `web/public/data/<hash>/` and checked
-  against the pack's manifest: `manifest.json`, `planes.json`, Dominaria's shards and `swatches.bin`;
+  against the pack's manifest: `manifest.json`, `planes.json`, Dominaria's shards, `swatches.bin`
+  and `search.json`, which holds the set dictionary;
 - `layout/dominaria.txt`, Dominaria's layout from the C# allocator (PRD v4 5.4), written only if the
   independent checker passes it. The slice has no contract v4 pack, so this file stands where the
   pack's positions will.
@@ -122,7 +123,9 @@ then the ground is painted in plain colours. Generated assets are not edited by 
 
 With the project open in the editor, the menu item Eternities > Generate does the same. To walk the
 world, generate, open `Assets/Scenes/Hub.unity` and press Play: WASD walks, Shift runs, the right
-mouse button orbits the camera, the wheel zooms, and Esc in a world returns to the hub.
+mouse button orbits the camera, the wheel zooms. Within 3 m of a stand its label shows and E enters
+card view; E there flips a card that has a back image, and Esc or walking leaves. T opens the travel
+menu. Esc in a world, outside card view, returns to the hub.
 
 It logs the world's figures (PRD v4 5.4.14), and writes them to `-reportOut` if that is given:
 
@@ -137,8 +140,9 @@ run ends the editor itself, with exit code 0 only if the path completed, and a w
 with 1 after fifteen minutes. It writes `eternities.bench.v1` JSON to `-benchOut` and, if
 `-benchCaptures` is given, the checkpoints as PNG files into that directory. The path so far: the
 hub, the walk into Dominaria's portal, the arrival, the north radial path to the rim, 150 m of the
-outermost ring path at a run, the nearest stand's apron, and Esc back to the hub; about four and a
-half minutes. A warm run visits the world once before it measures; a cold run empties the image
+outermost ring path at a run, the nearest stand's apron and its card view, travel by the menu to
+Invasion of Dominaria and its card view with the card flipped, Esc back to the hub, and the same
+arrival with reduced motion; about five minutes. A warm run visits the world once before it measures; a cold run empties the image
 cache first. The stands along the path ask Scryfall for their images, once: they are kept in the
 image cache under the application-support directory (PRD v4 4.15.3):
 

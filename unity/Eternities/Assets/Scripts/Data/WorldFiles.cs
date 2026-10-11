@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 using Eternities.Layout;
 
@@ -55,6 +56,7 @@ namespace Eternities.Data
         public Pack Pack;
         public PackPlane Plane;
         public PackCard[] Cards;
+        public Dictionary<int, PackSet> Sets;
         public WorldLayout Layout;
         byte[] swatches;
 
@@ -64,7 +66,7 @@ namespace Eternities.Data
             PackPlane plane = pack.Plane(slug);
             var world = new WorldData
             {
-                Pack = pack, Plane = plane, Cards = pack.Cards(plane), swatches = pack.Swatches(),
+                Pack = pack, Plane = plane, Cards = pack.Cards(plane), Sets = pack.Sets(), swatches = pack.Swatches(),
                 Layout = LayoutFile.Read(File.ReadAllText(WorldFiles.LayoutPath(packDirectory, slug))),
             };
             if (world.Layout.Stands.Count != world.Cards.Length)

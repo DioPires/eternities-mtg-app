@@ -6,7 +6,10 @@
         "Eternities.Layout",
         "Unity.RenderPipelines.Core.Runtime",
         "Unity.RenderPipelines.HighDefinition.Runtime",
-        "Eternities.Kits"
+        "Eternities.Kits",
+        "Eternities.UI",
+        "Unity.Cinemachine",
+        "Unity.InputSystem"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

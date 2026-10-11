@@ -10,13 +10,13 @@ using UnityEngine.Rendering;
 
 namespace Eternities.CardView
 {
-    // Where a stand's image comes from. `Request` asks for the `normal` image of the card's first
-    // printing; `done` is called on the main thread, once, with a texture the caller then owns, or
-    // with null when there is none to show and the stand stays its swatch.
+    // Where an image comes from. `Request` asks for the image at one of `ImageUrls`' addresses;
+    // `done` is called on the main thread, once, with a texture the caller then owns, or with null
+    // when there is none to show. The nearest is served first: `distance` is how far its view is.
     public interface IImageSource
     {
-        void Request(PackCard card, float distance, Action<Texture2D> done);
-        void Cancel(PackCard card);
+        void Request(string url, float distance, Action<Texture2D> done);
+        void Cancel(string url);
     }
 
     // A world's stand images (PRD v4 5.5, 8.4.3): every image surface as a quad, one mesh a site,
@@ -261,6 +261,55 @@ namespace Eternities.CardView
             site.SwatchDirty = true;
         }
 
+        // The `normal` image of the first printing of a stand's card (PRD v4 5.5.1).
+        public string UrlOf(int stand) => ImageUrls.Front(world.Cards[world.Layout.Stands[stand].Card], ImageSize.Normal);
+
+        // The stand nearest a point on the ground and no farther than `within` metres, or -1.
+        public int Nearest(Vector3 position, float within)
+        {
+            int best = -1;
+            float bestDistance = within * within;
+            int cx = Mathf.FloorToInt(position.x / Cell), cz = Mathf.FloorToInt(position.z / Cell);
+            for (int x = cx - 1; x <= cx + 1; x++)
+            {
+                for (int z = cz - 1; z <= cz + 1; z++)
+                {
+                    if (!grid.TryGetValue((long)x * 1_000_003 + z, out List<int> cell))
+                    {
+                        continue;
+                    }
+                    foreach (int stand in cell)
+                    {
+                        float dx = positions[stand].x - position.x, dz = positions[stand].z - position.z;
+                        if (dx * dx + dz * dz <= bestDistance)
+                        {
+                            bestDistance = dx * dx + dz * dz;
+                            best = stand;
+                        }
+                    }
+                }
+            }
+            return best;
+        }
+
+        // A corner of a stand's swatch block, in the order a surface's corners are made: bottom
+        // left, top left, top right, bottom right.
+        public Vector2 SwatchCorner(int stand, int corner)
+        {
+            SwatchOf(stand, out float u, out float v, out float du, out float dv);
+            return new Vector2(u + (corner >= 2 ? du : 0), v + (corner == 1 || corner == 2 ? dv : 0));
+        }
+
+        // Where the main camera's material reads nothing: a surface with these coordinates is cut out.
+        public Vector2 CutOut
+        {
+            get
+            {
+                SwatchOf(world.Layout.Stands.Count, out float u, out float v, out _, out _);
+                return new Vector2(u, v);
+            }
+        }
+
         static long Key(Vector3 position) => (long)Mathf.FloorToInt(position.x / Cell) * 1_000_003 + Mathf.FloorToInt(position.z / Cell);
 
         void Update()
@@ -351,7 +400,7 @@ namespace Eternities.CardView
                 if (requested[stand])
                 {
                     requested[stand] = false;
-                    Source?.Cancel(world.Cards[world.Layout.Stands[stand].Card]);
+                    Source?.Cancel(UrlOf(stand));
                 }
                 if (slotOfStand[stand] >= 0 && !fading.Contains(stand))
                 {
@@ -370,7 +419,7 @@ namespace Eternities.CardView
                 {
                     requested[stand] = true;
                     int asked = stand;
-                    Source.Request(world.Cards[world.Layout.Stands[stand].Card], distance, texture => Arrived(asked, texture));
+                    Source.Request(UrlOf(stand), distance, texture => Arrived(asked, texture));
                 }
             }
         }

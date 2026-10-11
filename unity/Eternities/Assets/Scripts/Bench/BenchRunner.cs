@@ -23,8 +23,10 @@ namespace Eternities.Bench
     //
     // The path so far: the hub (capture 2), the walk into Dominaria's portal, the arrival (capture
     // 3), the walk along the north radial path to the rim, the run along the outermost ring path,
-    // the nearest stand's apron (capture 4) and the return to the hub. A warm run first visits the
-    // world once; a cold run first empties the image cache. Card view and travel come with them.
+    // the nearest stand's apron (capture 4), card view there, travel by the menu to a named card and
+    // its card view, the card flipped to its back (capture 5), the return to the hub, and the same
+    // arrival with reduced motion (capture 9). A warm run first visits the world once; a cold run
+    // first empties the image cache.
     public sealed class BenchRunner : MonoBehaviour
     {
         public const string Schema = "eternities.bench.v1";
@@ -75,7 +77,8 @@ namespace Eternities.Bench
         };
         readonly Dictionary<string, object> pathSeen = new Dictionary<string, object>
         {
-            ["radialPathId"] = null, ["radialMetres"] = 0, ["ringMetres"] = 0, ["siteCard"] = null, ["siteImageShown"] = false, ["travelCard"] = null,
+            ["radialPathId"] = null, ["radialMetres"] = 0, ["ringMetres"] = 0, ["siteCard"] = null, ["siteImageShown"] = false,
+            ["travelCard"] = null, ["travelCardBackShown"] = false,
         };
         Dictionary<string, object> worldSeen;
         string packHash;
@@ -83,6 +86,9 @@ namespace Eternities.Bench
         App app;
         ScryfallImages scryfall;
         const float RingArc = 150;
+        const string TravelCard = "Invasion of Dominaria";     // one printing, and a back image: Serra Faithkeeper
+        bool reducedMotion;
+        RenderTexture overlays;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Boot()
@@ -133,6 +139,15 @@ namespace Eternities.Bench
                 app.Avatar.Source = hands;
                 Vector3 hubArrival = lastPosition = app.Avatar.transform.position;
                 scryfall = app.ImageSource as ScryfallImages;
+                if (target != null)
+                {
+                    // With no screen the overlays have nowhere to be drawn: they go into a texture of
+                    // their own, which a capture lays over the frame.
+                    overlays = new RenderTexture(target.width, target.height, 24, GraphicsFormat.R8G8B8A8_SRGB) { name = "bench overlays" };
+                    app.Hud.Settings.targetTexture = overlays;
+                    app.Hud.Settings.clearColor = true;
+                    app.Hud.Settings.colorClearValue = new Color(0, 0, 0, 0);
+                }
                 if (run.Mode == "cold" && scryfall != null)
                 {
                     scryfall.Cache.Clear();     // a cold run starts with no image on disk (PRD v4 7.2)
@@ -241,6 +256,54 @@ namespace Eternities.Bench
                     hands.Look = new Vector2(40, 0);
                     yield return Wait(1);
                     yield return Capture(4, "checkpoint-4-site.png");
+
+                    // Step 7: interact, hold 2 s, leave.
+                    Begin("card-view", dominaria);
+                    yield return CardView("cardViewEnterMs", index);
+                    yield return Wait(2);
+                    if (Ok)
+                    {
+                        double left = Now;
+                        hands.Back = true;
+                        yield return Step("card-view", 10, () => (!app.CardView.Active && app.CardView.Settled) || app.Failure != null);
+                        timings["cardViewLeaveMs"] = Math.Round((Now - left) * 1000);
+                    }
+                }
+
+                // Step 8: open the travel menu and choose a card of this world; the travel portal, the
+                // automatic walk, the arrival on its apron, and card view. Timed from the input that
+                // opens the menu; the script chooses on the next frame, so the figure holds no human time.
+                if (Ok)
+                {
+                    Begin("travel", dominaria);
+                    int target = app.World.Layout.Stands.FindIndex(stand => app.World.Cards[stand.Card].Name == TravelCard);
+                    PackCard card = app.World.Cards[app.World.Layout.Stands[target].Card];
+                    pathSeen["travelCard"] = new Dictionary<string, object> { ["name"] = card.Name, ["oracleId"] = card.OracleId };
+                    double opened = Now;
+                    hands.TravelMenu = true;
+                    yield return Step("travel", 10, () => app.Hud.TravelOpen || app.Failure != null);
+                    app.TravelTo(target);
+                    yield return Step("travel", 20, () => (!app.InTransition && app.HoveredStand == target) || app.Failure != null);
+                    excludeUntil = Now + AfterArrival;
+                    yield return CardView(null, target);
+                    timings["travelMenuToCardViewMs"] = Math.Round((Now - opened) * 1000);
+                }
+
+                // Step 9: flip the card to its back, hold 2 s, leave.
+                if (Ok)
+                {
+                    Begin("card-view-2", dominaria);
+                    hands.Interact = true;
+                    yield return Step("card-view-2", 10, () => app.CardView.ShowingBack || app.Failure != null);
+                    for (double until = Now + 8; Now < until && !(app.CardView.FrontShown && app.CardView.BackShown);)
+                    {
+                        yield return null;
+                    }
+                    pathSeen["travelCardBackShown"] = app.CardView.BackShown;
+                    yield return Wait(2);
+                    yield return Capture(5, "checkpoint-5-card-view.png");
+                    hands.Back = true;
+                    yield return Step("card-view-2", 10, () => (!app.CardView.Active && app.CardView.Settled) || app.Failure != null);
                 }
             }
             if (Ok)
@@ -254,6 +317,18 @@ namespace Eternities.Bench
             if (Ok)
             {
                 timings["portalOutMs"] = Math.Round(app.LastTravelSeconds * 1000);
+
+                // Step 11: reduced motion on, and into the portal again: the same arrival.
+                app.ReducedMotion = true;
+                reducedMotion = true;
+                Begin("reduced", null);
+                yield return IntoThePortal("reduced");
+                if (Ok)
+                {
+                    yield return Wait(1);
+                    yield return Settle(5);
+                    yield return Capture(9, "checkpoint-9-reduced-motion.png");
+                }
             }
             if (failure == null && app != null && app.Failure != null)
             {
@@ -263,6 +338,19 @@ namespace Eternities.Bench
         }
 
         bool Ok => failure == null && app != null && app.Failure == null;
+
+        // Interacts with the stand the avatar stands before, and waits for the card view camera to
+        // settle. `timing` names the figure the wait is written to, or is null.
+        IEnumerator CardView(string timing, int stand)
+        {
+            double began = Now;
+            hands.Interact = true;
+            yield return Step("card-view", 10, () => (app.CardView.Active && app.CardView.Stand == stand && app.CardView.Settled) || app.Failure != null);
+            if (timing != null && Ok)
+            {
+                timings[timing] = Math.Round((Now - began) * 1000);
+            }
+        }
 
         IEnumerator IntoThePortal(string step)
         {
@@ -420,7 +508,14 @@ namespace Eternities.Bench
             double at = Now - started;
             RenderTexture source = target;
             RenderTexture screen = null;
-            if (source == null)
+            if (source != null && overlays != null)
+            {
+                screen = RenderTexture.GetTemporary(source.width, source.height, 0, GraphicsFormat.R8G8B8A8_SRGB);
+                Graphics.Blit(source, screen);
+                app.Exhibit.Over(overlays, screen, flip: false);
+                source = screen;
+            }
+            else if (source == null)
             {
                 yield return new WaitForEndOfFrame();
                 screen = RenderTexture.GetTemporary(Screen.width, Screen.height, 0, GraphicsFormat.R8G8B8A8_SRGB);
@@ -538,7 +633,7 @@ namespace Eternities.Bench
                     ["output"] = new Dictionary<string, object> { ["width"] = width, ["height"] = height },
                     ["render"] = new Dictionary<string, object> { ["width"] = Mathf.RoundToInt(width * run.Scale), ["height"] = Mathf.RoundToInt(height * run.Scale) },
                     ["vsync"] = QualitySettings.vSyncCount, ["frameCap"] = Math.Max(0, Application.targetFrameRate),
-                    ["reducedMotion"] = false, ["captures"] = run.Captures != null,
+                    ["reducedMotion"] = reducedMotion, ["captures"] = run.Captures != null,
                     ["otherUnityProcesses"] = null,
                     ["complete"] = why == null, ["failure"] = why,
                 },

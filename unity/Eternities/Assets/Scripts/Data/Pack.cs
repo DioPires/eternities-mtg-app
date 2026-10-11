@@ -118,6 +118,7 @@ namespace Eternities.Data
                 yield return $"planes/{plane.Slug}.{shard}.json";
             }
             yield return "swatches.bin";
+            yield return "search.json";     // the set dictionary: a printing's set may be one no card of the plane was first printed in
         }
 
         // A file of the pack, checked against the size and the SHA-256 the manifest lists for it.
@@ -194,6 +195,19 @@ namespace Eternities.Data
                 throw new InvalidDataException($"the shards of {plane.Slug} hold {cards.Count} cards, and planes.json lists {plane.CardCount}");
             }
             return cards.ToArray();
+        }
+
+        // Every set by its id, reprint-only sets included (docs/data-contract.md, section 7): a
+        // printing names its set by this id.
+        public Dictionary<int, PackSet> Sets()
+        {
+            var sets = new Dictionary<int, PackSet>();
+            foreach (object entry in Json.Array(Json.Object(Json.Parse(ReadText("search.json")))["sets"]))
+            {
+                var set = Json.Object(entry);
+                sets[Json.Int(set["id"])] = new PackSet { Id = Json.Int(set["id"]), Code = Json.Text(set["code"]), Name = Json.Text(set["name"]), Year = Json.Int(set["year"]) };
+            }
+            return sets;
         }
 
         // `swatches.bin` whole (docs/data-contract.md, section 5.1): a 16-byte header, then four

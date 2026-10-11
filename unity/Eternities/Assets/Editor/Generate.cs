@@ -8,6 +8,7 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.Rendering.HighDefinition;
 using UnityEngine.SceneManagement;
+using UnityEngine.UIElements;
 
 namespace Eternities.EditorTools
 {
@@ -124,6 +125,51 @@ namespace Eternities.EditorTools
                 if (shader != held)
                 {
                     assign(shader);
+                    changed = true;
+                }
+            }
+
+            // The overlays' panel settings and the theme they name (PRD v4 8.1.2): two small assets,
+            // made once. Everything else of the overlays is code.
+            const string uiFolder = "Assets/Kits/core/UI";
+            Directory.CreateDirectory(uiFolder);
+            if (!File.Exists($"{uiFolder}/Runtime.tss"))
+            {
+                File.WriteAllText($"{uiFolder}/Runtime.tss", "@import url(\"unity-theme://default\");\n");
+                AssetDatabase.ImportAsset($"{uiFolder}/Runtime.tss");
+            }
+            var panel = AssetDatabase.LoadAssetAtPath<PanelSettings>($"{uiFolder}/Panel.asset");
+            if (panel == null)
+            {
+                panel = ScriptableObject.CreateInstance<PanelSettings>();
+                panel.themeStyleSheet = AssetDatabase.LoadAssetAtPath<ThemeStyleSheet>($"{uiFolder}/Runtime.tss");
+                panel.scaleMode = PanelScaleMode.ScaleWithScreenSize;
+                panel.referenceResolution = new Vector2Int(1920, 1080);
+                panel.match = 1;    // by height, so text is the same size on a wide display
+                AssetDatabase.CreateAsset(panel, $"{uiFolder}/Panel.asset");
+                AssetDatabase.SaveAssets();
+            }
+            if (panel != app.PanelSettings)
+            {
+                app.PanelSettings = panel;
+                changed = true;
+            }
+
+            // The kit's two loops (PRD v4 5.12): the ambient bed and the river.
+            foreach ((string file, AudioClip held, System.Action<AudioClip> assign) in new (string, AudioClip, System.Action<AudioClip>)[]
+            {
+                ("meadow_songbirds_loop", app.AmbientBed, clip => app.AmbientBed = clip),
+                ("river_splashy_loop", app.RiverLoop, clip => app.RiverLoop = clip),
+            })
+            {
+                var clip = AssetDatabase.LoadAssetAtPath<AudioClip>($"Assets/Kits/temperate/Audio/{file}.ogg");
+                if (clip == null)
+                {
+                    throw new InvalidDataException($"the kit's loop {file}.ogg is not in the project: run Assets/Kits/temperate/fetch.sh and git lfs pull");
+                }
+                if (clip != held)
+                {
+                    assign(clip);
                     changed = true;
                 }
             }

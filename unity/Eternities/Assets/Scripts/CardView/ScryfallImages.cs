@@ -3,14 +3,13 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Threading.Tasks;
-using Eternities.Data;
 using UnityEngine;
 using UnityEngine.Networking;
 
 namespace Eternities.CardView
 {
-    // The stand images from Scryfall's image hosts (PRD v4 4.15): the `normal` image of a card's
-    // first printing, from the disk cache when it is there and fresh, from the network otherwise,
+    // Card images from Scryfall's image hosts (PRD v4 4.15): `normal` for a stand and `large` for
+    // card view, from the disk cache when the image is there and fresh, from the network otherwise,
     // under the request policy of 4.15.4. A view asks; nothing here fetches ahead of one.
     public sealed class ScryfallImages : MonoBehaviour, IImageSource
     {
@@ -44,9 +43,12 @@ namespace Eternities.CardView
             return source;
         }
 
-        public void Request(PackCard card, float distance, Action<Texture2D> done)
+        public void Request(string url, float distance, Action<Texture2D> done)
         {
-            string url = ImageUrls.Front(card, ImageSize.Normal);
+            if (!ImageUrls.Allowed(url))
+            {
+                throw new ArgumentException($"'{url}' is not on Scryfall's image hosts");
+            }
             string file = cache.Find(url, Now);
             if (file == null && (policy.Stopped || policy.IsFinal(url)))
             {
@@ -64,9 +66,8 @@ namespace Eternities.CardView
             }
         }
 
-        public void Cancel(PackCard card)
+        public void Cancel(string url)
         {
-            string url = ImageUrls.Front(card, ImageSize.Normal);
             waiting.Remove(url);
             policy.Unwant(url);
         }

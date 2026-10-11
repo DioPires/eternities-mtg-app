@@ -27,18 +27,18 @@ namespace Eternities.Tests
         {
             public int Requests;
 
-            public static Color32 ColourOf(PackCard card)
+            public static Color32 ColourOf(string url)
             {
-                int hash = card.OracleId.GetHashCode();
+                int hash = (int)Eternities.Layout.SplitMix64.Fnv1a64(url);
                 return new Color32((byte)(40 + (hash & 0x7F)), (byte)(200 - ((hash >> 8) & 0x3F)), (byte)(30 + ((hash >> 16) & 0x1F)), 255);
             }
 
-            public void Request(PackCard card, float distance, Action<Texture2D> done)
+            public void Request(string url, float distance, Action<Texture2D> done)
             {
                 Requests++;
                 var texture = new Texture2D(488, 680, TextureFormat.RGBA32, mipChain: false);
                 var pixels = new Color32[488 * 680];
-                Color32 colour = ColourOf(card);
+                Color32 colour = ColourOf(url);
                 for (int i = 0; i < pixels.Length; i++)
                 {
                     pixels[i] = colour;
@@ -48,7 +48,7 @@ namespace Eternities.Tests
                 done(texture);
             }
 
-            public void Cancel(PackCard card)
+            public void Cancel(string url)
             {
             }
         }
@@ -174,7 +174,7 @@ namespace Eternities.Tests
             App app = App.Instance;
             int stand = 100;
             LookAt(stand, 2);
-            PackCard card = app.World.Cards[app.World.Layout.Stands[stand].Card];
+            string card = app.Images.UrlOf(stand);
             yield return Until(() => app.Images.SlotOf(stand) >= 0 && app.Images.CoverageOf(stand) >= 1, 30, "the stand's image");
             // Every stand within 25 m is asked for once and uploaded once, two a frame.
             yield return Until(() => app.Images.Idle, 30, "the last upload");

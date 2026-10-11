@@ -103,11 +103,8 @@ namespace Eternities.Tests
         ScryfallImages images;
         string cacheDirectory;
 
-        static PackCard Card(int n) => new PackCard
-        {
-            OracleId = $"00000000-0000-4000-8000-{n:x12}", Name = $"Card {n}", Layout = "normal",
-            Printings = new[] { new PackPrinting { Id = $"aaaaaaaa-0000-4000-8000-{n:x12}", ImageTs = 1783948714 } },
-        };
+        // The `normal` image of a printing: the address a stand asks for.
+        static string Card(int n) => ImageUrls.Face($"aaaaaaaa-0000-4000-8000-{n:x12}", 1783948714, ImageSize.Normal);
 
         [SetUp]
         public void Begin()
@@ -162,7 +159,7 @@ namespace Eternities.Tests
             Assert.That(accept, Is.EqualTo("image/*"));
 
             // The second time the image comes from the disk, and the server hears nothing.
-            string url = ImageUrls.Front(Card(1), ImageSize.Normal);
+            string url = Card(1);
             yield return Until(() => images.Cache.Count == 1, 10, "the cache entry");
             Assert.That(File.ReadAllBytes(images.Cache.Find(url, DateTimeOffset.UtcNow.ToUnixTimeSeconds())), Is.EqualTo(server.Image));
             answered = false;
@@ -186,7 +183,7 @@ namespace Eternities.Tests
             Assert.That(first, Is.Null);
             Assert.That(second, Is.Null);
             Assert.That(server.Count, Is.EqualTo(2), "neither is asked for again");
-            Assert.That(images.Policy.IsFinal(ImageUrls.Front(Card(1), ImageSize.Normal)));
+            Assert.That(images.Policy.IsFinal(Card(1)));
             Assert.That(images.Policy.Paused, Is.False, "a 404 is about one image, not about the client");
             // Asked for again, each answers at once with no image and no request.
             images.Request(Card(1), 1, texture => answers++);
@@ -234,7 +231,7 @@ namespace Eternities.Tests
             UnityEngine.Object.Destroy(got);
             yield return new WaitForSecondsRealtime(2.5f);
             Assert.That(uncachedAnswered, Is.False, "the uncached image is still wanted: its stand shows its swatch meanwhile");
-            Assert.That(images.Policy.IsFinal(ImageUrls.Front(Card(2), ImageSize.Normal)), Is.False, "a network failure is not final");
+            Assert.That(images.Policy.IsFinal(Card(2)), Is.False, "a network failure is not final");
             Assert.That(images.Policy.Paused, Is.False);
         }
     }
