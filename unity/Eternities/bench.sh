@@ -1,6 +1,7 @@
 #!/bin/sh
 # Starts a bench run of the built player and answers its one question (README.md, Batchmode
-# commands). A player that is not a development build cannot count its own GPU memory, and cannot
+# commands). It needs the player and nothing else: no checkout, no editor. The player names the
+# commit it was built from. A player that is not a development build cannot count its own GPU memory, and cannot
 # start a process to ask: before it leaves the world it writes its process id to
 # `<benchOut>.footprint-request`, and this script answers with the output of `footprint`, which
 # the run then reads into its JSON. Everything else is the player's.
@@ -29,7 +30,7 @@ if pgrep -x Unity > /dev/null; then
     exit 2
 fi
 rm -f "$out.footprint-request" "$out.footprint"
-"$app/Contents/MacOS/Eternities" "$@" -benchCommit "$(git -C "$(dirname "$0")" rev-parse HEAD 2> /dev/null || echo unknown)" &
+"$app/Contents/MacOS/Eternities" "$@" &
 player=$!
 while kill -0 "$player" 2> /dev/null; do
     if [ -f "$out.footprint-request" ] && [ ! -f "$out.footprint" ]; then

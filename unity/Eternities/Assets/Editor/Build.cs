@@ -1,4 +1,5 @@
 using System.IO;
+using Eternities.Bench;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
@@ -15,12 +16,50 @@ namespace Eternities.EditorTools
     //
     // The player's identity (company, product, bundle identifier, minimum macOS) is in
     // ProjectSettings. The architecture is not a committed setting; it is chosen here.
+    //
+    // The player carries the commit it was built from and whether the tree held uncommitted
+    // changes (`BuildStamp`), read from git before anything here writes: the stamp is in
+    // StreamingAssets for the length of the build and is not committed.
     public static class Build
     {
         public static void Run()
         {
             string output = CommandLine.Require("-buildOut");
+            string repository = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "..", ".."));
+            string commit = Git(repository, "rev-parse HEAD").Trim();
+            bool dirty = Git(repository, "status --porcelain").Trim().Length > 0;
+            if (commit.Length != 40)
+            {
+                throw new BuildFailedException($"git names no commit for {repository}: '{commit}'");
+            }
             Generate.Everything(Generate.ManifestHash());
+            string stamp = Path.Combine(Application.streamingAssetsPath, BuildStamp.FileName);
+            File.WriteAllText(stamp, BuildStamp.Text(commit, dirty));
+            try
+            {
+                Player(output);
+            }
+            finally
+            {
+                File.Delete(stamp);
+                File.Delete(stamp + ".meta");
+            }
+            Debug.Log($"Build: from {commit}{(dirty ? ", with uncommitted changes" : "")}");
+        }
+
+        static string Git(string repository, string arguments)
+        {
+            var git = new System.Diagnostics.ProcessStartInfo("git", $"-C \"{repository}\" {arguments}") { RedirectStandardOutput = true, UseShellExecute = false };
+            using (System.Diagnostics.Process process = System.Diagnostics.Process.Start(git))
+            {
+                string output = process.StandardOutput.ReadToEnd();
+                process.WaitForExit();
+                return process.ExitCode == 0 ? output : "";
+            }
+        }
+
+        static void Player(string output)
+        {
 
             UnityEditor.OSXStandalone.UserBuildSettings.architecture = OSArchitecture.ARM64;
             var options = new BuildPlayerOptions

@@ -86,6 +86,7 @@ namespace Eternities.Bench
         readonly Dictionary<string, object> exhibit = new Dictionary<string, object> { ["withP50Ms"] = null, ["withoutP50Ms"] = null, ["costMs"] = null };
         Dictionary<string, object> worldSeen;
         string packHash;
+        bool? dirty;        // null: the run does not know (the editor host)
         Vector3 lastPosition;
         App app;
         ScryfallImages scryfall;
@@ -111,6 +112,13 @@ namespace Eternities.Bench
         {
             run = args;
             started = lastFrame = Now;
+            // A player names the commit it was built from, whatever its command line says.
+            string stamp = Path.Combine(Application.streamingAssetsPath, BuildStamp.FileName);
+            if (!Application.isEditor && File.Exists(stamp) && BuildStamp.TryRead(File.ReadAllText(stamp), out string builtFrom, out bool builtDirty))
+            {
+                run.Commit = builtFrom;
+                dirty = builtDirty;
+            }
             QualitySettings.vSyncCount = 0;
             Application.targetFrameRate = -1;
             Application.runInBackground = true;     // a run does not stop when its window loses the focus
@@ -675,7 +683,7 @@ namespace Eternities.Bench
                     ["mode"] = run.Mode,
                     ["host"] = Application.isEditor ? "editor" : "player",
                     ["startedAt"] = DateTime.UtcNow.AddSeconds(-(Now - started)).ToString("yyyy-MM-ddTHH:mm:ssZ"),
-                    ["commit"] = run.Commit, ["dirty"] = null,
+                    ["commit"] = run.Commit, ["dirty"] = dirty,
                     ["packHash"] = packHash,
                     ["unity"] = Application.unityVersion, ["hdrp"] = HdrpVersion,
 #if ENABLE_IL2CPP

@@ -55,3 +55,7 @@ pipeline/scryfall-cache/
 # web/public/data/<hash>/, and each world's layout. `manifest.json` beside them is committed.
 /unity/Eternities/Assets/StreamingAssets/data/*/
 /unity/Eternities/Assets/StreamingAssets/data/????????????????.meta
+
+# The build stamp (BuildStamp) is in StreamingAssets only while a build runs.
+/unity/Eternities/Assets/StreamingAssets/build.txt
+/unity/Eternities/Assets/StreamingAssets/build.txt.meta

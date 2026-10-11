@@ -29,6 +29,21 @@ namespace Eternities.Tests
             Assert.That(frames.Percentile(90), Is.EqualTo(10));     // rank ceil(0.9 x 11) = 10
         }
 
+        // A built player names its own commit (DEC-953): what the build writes, a run reads back.
+        [Test]
+        public void ABuildsStampIsReadBack()
+        {
+            const string head = "00089afbe8a16be423fa83e409024ca99eb72f96";
+            Assert.That(BuildStamp.TryRead(BuildStamp.Text(head, dirty: false), out string commit, out bool dirty));
+            Assert.That(commit, Is.EqualTo(head));
+            Assert.That(dirty, Is.False);
+            Assert.That(BuildStamp.TryRead(BuildStamp.Text(head, dirty: true), out _, out dirty));
+            Assert.That(dirty, Is.True);
+            Assert.That(BuildStamp.TryRead("", out _, out _), Is.False);
+            Assert.That(BuildStamp.TryRead($"commit {head}\n", out _, out _), Is.False, "a stamp that does not say whether the tree was clean is no stamp");
+            Assert.That(BuildStamp.TryRead("dirty false\n", out _, out _), Is.False);
+        }
+
         [Test]
         public void AFullBufferDropsFramesAndSaysSo()
         {

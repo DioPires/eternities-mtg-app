@@ -168,8 +168,10 @@ unity/Eternities/bench.sh "$PWD/unity/Eternities/Build/Eternities.app" -bench wa
 unity/Eternities/bench.sh "$PWD/unity/Eternities/Build/Eternities.app" -bench cold -benchQuality high -benchScale 1 -benchOut "$PWD/bench-cold.json"
 ```
 
-`bench.sh` starts the player with those arguments and the commit it was built from, refuses to
-start while a Unity editor runs on the machine, and exits with the player's exit code. It also
+`bench.sh` starts the player with those arguments, refuses to start while a Unity editor runs on
+the machine, and exits with the player's exit code. It needs the player and nothing else, so it
+runs on a machine with no checkout: the build writes the commit it was built from, and whether the
+tree held uncommitted changes, into the player, and the run's JSON carries both. It also
 answers the run's one question. A player that is not a development build has no counter for GPU
 memory and cannot start a process, so before it leaves the world the run asks for its own
 `footprint(1)`: the script runs the tool and the run writes the process's footprint, and the part
