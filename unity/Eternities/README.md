@@ -164,8 +164,10 @@ A figure from the editor host fills no row of the acceptance matrix (PRD v4 9.5)
 chain an off-screen frame time can read short. The figures of record come from a player build
 started with the same `-bench` arguments, full screen at the display's native resolution, with no
 Unity editor alive on the machine. `-benchQuality high|medium|low` and `-benchScale 1|0.75` choose
-the row; `-benchSize` is not given, unless the row names a resolution that is not the display's own
-(PRD v4 7.1.2 allows the light Mac 1440 x 900); a run of record is made without `-benchCaptures`:
+the row; a run of record is made without `-benchCaptures`. A player takes `-benchSize` too, and
+ends at once, saying so, if the display does not take that size: a full-screen window on macOS
+renders at the desktop's resolution, and on the reference machine 1920 x 1080 was not taken. So a
+player's figure is at the display's own resolution, or at a scale of it by `-benchScale`:
 
 ```sh
 unity/Eternities/batchmode.sh -quit -executeMethod Eternities.EditorTools.Build.Run -buildOut "$PWD/unity/Eternities/Build"
@@ -188,7 +190,7 @@ machine it runs on. A run started with `-bench prices` walks into the world and,
 point and on the apron of Invasion of Dominaria, draws the same view with one thing switched off
 at a time: each kind of the world's content (props, stands, image surfaces, the isolated image
 path, the ground, the water), each HDRP feature that is on, the anti-aliasing, and three quarters
-of the width and height. It writes the rows as `prices` in the JSON. A feature is switched on the
+of the width and height where the display takes that size. It writes the rows as `prices` in the JSON. A feature is switched on the
 camera alone, so no settings file is written; the list says what a level is spending and fills
 no row. About four minutes:
 

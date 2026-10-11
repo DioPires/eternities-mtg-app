@@ -128,11 +128,23 @@ namespace Eternities.Bench
             if (!Application.isEditor)
             {
                 // A figure of record is taken full screen at the display's native resolution (PRD v4
-                // 7.1). `-benchSize` names another: the light Mac's row may be taken at 1440 x 900.
+                // 7.1). `-benchSize` asks for another, which a display may refuse: see below.
                 bool sized = run.Width > 0;
                 Screen.SetResolution(sized ? run.Width : Display.main.systemWidth, sized ? run.Height : Display.main.systemHeight, FullScreenMode.FullScreenWindow);
                 yield return null;
                 yield return null;
+                // A display may not take a size that is not its own. A run that does not render
+                // at the size it was asked for says so and is not a figure.
+                for (double until = Now + 3; sized && Now < until && (Screen.width != run.Width || Screen.height != run.Height);)
+                {
+                    yield return null;
+                }
+                Debug.Log($"Bench: the view is {Screen.width} x {Screen.height}");
+                if (sized && (Screen.width != run.Width || Screen.height != run.Height))
+                {
+                    Finish($"the display did not take {run.Width} x {run.Height}: the view is {Screen.width} x {Screen.height}");
+                    yield break;
+                }
             }
             if (run.Quality != null)
             {

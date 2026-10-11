@@ -141,13 +141,33 @@ namespace Eternities.Bench
 
             // Three quarters of the width and of the height: 56% of the pixels. A frame that gets
             // cheaper by nearly as much is spent on pixels, not on objects or on the CPU.
+            // The row names the size the pipeline rendered at, read from it: a display may not take
+            // the smaller size, and then there is no price.
             if (!Application.isEditor)
             {
                 int width = Screen.width, height = Screen.height;
-                yield return Price(rows, "pixels", $"{width} x {height} against {width * 3 / 4} x {height * 3 / 4}",
-                    () => Screen.SetResolution(width * 3 / 4, height * 3 / 4, FullScreenMode.FullScreenWindow),
-                    () => Screen.SetResolution(width, height, FullScreenMode.FullScreenWindow));
-                yield return Wait(PriceSettle);
+                yield return Median();
+                double with = priceMedian;
+                Screen.SetResolution(width * 3 / 4, height * 3 / 4, FullScreenMode.FullScreenWindow);
+                yield return Wait(1);
+                yield return Median();
+                double without = priceMedian;
+                HDCamera rendering = HDCamera.GetOrCreate(view);
+                int smallerWidth = rendering.actualWidth, smallerHeight = rendering.actualHeight;
+                Screen.SetResolution(width, height, FullScreenMode.FullScreenWindow);
+                yield return Wait(1);
+                if (smallerWidth < width)
+                {
+                    rows.Add(new Dictionary<string, object>
+                    {
+                        ["kind"] = "pixels", ["name"] = $"{width} x {height} against {smallerWidth} x {smallerHeight}", ["state"] = "on",
+                        ["withP50Ms"] = Math.Round(with, 3), ["withoutP50Ms"] = Math.Round(without, 3), ["priceMs"] = Math.Round(with - without, 3),
+                    });
+                }
+                else
+                {
+                    rows.Add(Unpriced("pixels", $"{width} x {height} against {width * 3 / 4} x {height * 3 / 4}", $"the display did not take the smaller size: the pipeline still rendered at {smallerWidth} x {smallerHeight}"));
+                }
             }
             else
             {
