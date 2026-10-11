@@ -39,3 +39,15 @@ pipeline/scryfall-cache/
 .vercel/
 .env
 .env.local
+
+# Unity (PRD v4 8.2.3). Everything here is rebuilt by the editor from the committed project.
+# `*.csproj` and `*.sln` are the IDE projects the editor writes into the project root. Anchored to
+# the project so a `Build/` or an `obj/` elsewhere in the repository is not swallowed.
+/unity/Eternities/Library/
+/unity/Eternities/Temp/
+/unity/Eternities/Logs/
+/unity/Eternities/Build/
+/unity/Eternities/UserSettings/
+/unity/Eternities/obj/
+/unity/Eternities/*.csproj
+/unity/Eternities/*.sln

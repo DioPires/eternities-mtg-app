@@ -1,0 +1,39 @@
+# Unity text assets (PRD v4 7.6.4, 8.2.3). The project serialises as Force Text, so scenes, prefabs,
+# materials, ScriptableObjects and .meta files are YAML an engineer reads and reviews. `eol=lf` pins
+# the bytes in the working tree to the bytes in the repository on every platform, so a Windows
+# checkout does not hand the editor a CRLF copy of a file it wrote with LF.
+#
+# `*.asset` is `text=auto`, not `text`: lighting data, NavMesh data and TerrainData carry that
+# extension and stay binary under Force Text, and a forced `text` would strip every CR LF pair out
+# of them at `git add`. With `auto`, Git normalises the ones that are text and leaves the rest.
+*.unity       text eol=lf
+*.prefab      text eol=lf
+*.asset       text=auto eol=lf
+*.mat         text eol=lf
+*.meta        text eol=lf
+*.asmdef      text eol=lf
+*.shadergraph text eol=lf
+*.cs          text eol=lf
+
+# Binary content goes through Git LFS (PRD v4 8.2.3, 8.12). Scoped to `unity/` on purpose: `web/` is
+# deployed from a clone that does not fetch LFS objects, so an image added there under an unscoped
+# rule would ship as a pointer file. JPG is not in 8.2.3's list; the temperate kit's textures are JPG
+# (DEC-952). The patterns match case only where Git ignores it, which is not Linux: keep asset
+# extensions lower case.
+unity/**/*.fbx filter=lfs diff=lfs merge=lfs -text
+unity/**/*.glb filter=lfs diff=lfs merge=lfs -text
+unity/**/*.png filter=lfs diff=lfs merge=lfs -text
+unity/**/*.jpg filter=lfs diff=lfs merge=lfs -text
+unity/**/*.jpeg filter=lfs diff=lfs merge=lfs -text
+unity/**/*.exr filter=lfs diff=lfs merge=lfs -text
+unity/**/*.hdr filter=lfs diff=lfs merge=lfs -text
+unity/**/*.tif filter=lfs diff=lfs merge=lfs -text
+unity/**/*.psd filter=lfs diff=lfs merge=lfs -text
+unity/**/*.ogg filter=lfs diff=lfs merge=lfs -text
+unity/**/*.wav filter=lfs diff=lfs merge=lfs -text
+
+# Terrain data: the TerrainData assets and raw heightmaps kept in a `Terrain/` directory. Limited to
+# those two extensions so that a script or a .meta in a directory of that name stays text. It has to
+# come after `*.asset` above, which it overrides.
+unity/Eternities/Assets/**/Terrain/**/*.asset filter=lfs diff=lfs merge=lfs -text !eol
+unity/Eternities/Assets/**/Terrain/**/*.raw   filter=lfs diff=lfs merge=lfs -text

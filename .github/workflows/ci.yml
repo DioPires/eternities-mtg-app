@@ -5,15 +5,17 @@ on:
     branches: [main]
   pull_request:
   # Re-runs the full set, including the two jobs that come off the push path below, against
-  # whatever ref you pick. This is the hand-crank for a commit that reached `main` without a PR:
-  # branch protection does not enforce admins, so a direct push is possible and does not get the
-  # browser smoke or the payload budget on its own (DEC-881).
+  # whatever ref you pick. This is the hand-crank for the common gap named on `budget` below: a
+  # tree on `main` that `budget` or `smoke` has not scored, because the merge landed before those
+  # two jobs reported (DEC-881). The no-PR route is closed: `enforce_admins` has been on since
+  # 2026-10-11 (DEC-966), so the required checks reject a direct push to `main`.
   workflow_dispatch:
 
 concurrency:
-  # A hand-cranked run gets a group of its own. It is started to score a tree that reached `main`
-  # without a PR, and sharing `CI-<ref>` with pushes means the next push to `main` cancels it in
-  # exactly the case it exists for. `push` and `pull_request` keep the group they had (DEC-881).
+  # A hand-cranked run gets a group of its own. It is started for the common gap, a tree on `main`
+  # that `budget` or `smoke` has not scored, and sharing `CI-<ref>` with pushes means the next push
+  # to `main` cancels it in exactly the case it exists for. `push` and `pull_request` keep the
+  # group they had (DEC-881).
   group: ${{ github.workflow }}-${{ github.ref }}${{ github.event_name == 'workflow_dispatch' && format('-dispatch-{0}', github.run_id) || '' }}
   cancel-in-progress: true
 
@@ -139,7 +141,9 @@ jobs:
   # the three required checks finish at about t+91 s while this job reports at about t+152 s
   # (medians, n=173 PR runs), so every PR has about a minute in which a merge can land a tree this
   # job has not scored. The rare gap is a commit that reaches `main` with no PR at all —
-  # `enforce_admins` is false, so that is possible. `workflow_dispatch` is the hand-crank for both.
+  # `enforce_admins` has been on since 2026-10-11 (DEC-966), so the required checks reject a direct
+  # push to `main` for administrators too, and that gap is closed. `workflow_dispatch` is the
+  # hand-crank for the common gap.
   budget:
     name: payload budget (PRD 7.2 + amendment A1)
     runs-on: ubuntu-latest
@@ -221,8 +225,9 @@ jobs:
   # the PR — but this is not a required context and it is the slowest job here, so it does not hold
   # the merge button. The three required checks finish at about t+91 s and this job reports at about
   # t+336 s (medians, n=173 PR runs): about four minutes on every PR in which a merge can land a
-  # tree this job has not scored. That window, not the direct push, is the usual way an unscored
-  # tree reaches `main`.
+  # tree this job has not scored. That window is the common gap named on `budget` above, and it is
+  # the way an unscored tree reaches `main`. `enforce_admins` closed the direct push on 2026-10-11
+  # (DEC-966).
   smoke:
     name: route + bench + quality smoke (PRD 8.9.2, 9.1.2, 9.1.4)
     runs-on: ubuntu-latest
@@ -261,3 +266,215 @@ jobs:
             web/playwright-report
             web/test-results
           retention-days: 7
+
+  # ---------------------------------------------------------------------------------------------
+  # Unity (PRD v4 8.8.5). Four jobs on the self-hosted runner on the reference machine, behind one
+  # hosted job that decides whether this run has to score the Unity project at all.
+  #
+  # The four are meant to be required contexts, so their ids are the contexts: none of them carries
+  # a `name:`, and renaming one silently un-requires it until branch protection is edited to match.
+  #
+  # `unity-compile` is on the self-hosted runner too, which is not what 8.8.5 asked for. It asked
+  # for a hosted `dotnet build` with no Unity install. That needs reference assemblies for
+  # UnityEngine, UnityEditor, the test framework and every package, and Unity publishes none of
+  # them: nuget.org has no Unity 6 assemblies, HDRP, VFX Graph and the test framework at the pinned
+  # versions ship only inside the editor install, and a checked-in reference set is Unity's own
+  # binaries committed to a public repository (DEC-951).
+  #
+  # The runner is one machine with one runner on it, so these jobs run one at a time, in whatever
+  # order they were queued, and a pull request that touches `unity/` or this file waits for a
+  # machine that is asleep or logged out. There is no bypass and none should be added:
+  # docs/ci-runner.md.
+  # ---------------------------------------------------------------------------------------------
+
+  # A job that is skipped by an `if:` reports success to branch protection, which is what lets the
+  # four jobs below be required on every pull request while only running on the ones that touch
+  # `unity/` or one of the files that decide what these jobs are and what they check out: this
+  # workflow (a job whose definition changed and did not run is unverified), `.gitattributes` and
+  # `.lfsconfig` (what Git LFS holds and where it fetches from; only these jobs check out with
+  # LFS) and `.gitignore` (what `unity-compile`'s clean-tree check can see). The same rule is the
+  # hazard: anything that skips them for the wrong reason is a bypass. So the output is read
+  # fail-closed below (`!= 'false'`, not `== 'true'`): if this job fails or is never reached, the
+  # Unity jobs run.
+  #
+  # Not on the push-to-main path, for the reason spelled out on `budget` above: under strict mode
+  # the `refs/pull/N/merge` tree these ran against is the tree that lands. `workflow_dispatch`
+  # always runs them; it is the hand-crank, and docs/ci-runner.md uses it to verify the runner.
+  unity-changes:
+    name: unity changes (path filter for the self-hosted jobs)
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      unity: ${{ steps.detect.outputs.unity }}
+    steps:
+      - id: detect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          case "$GITHUB_EVENT_NAME" in
+            push)
+              unity=false
+              ;;
+            pull_request)
+              # Both ends of a rename, so moving a file out of `unity/` counts as touching it.
+              files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" \
+                --jq '.[] | .filename, (.previous_filename // empty)')
+              # "No" takes two things. The list is complete: the endpoint stops listing at 3,000
+              # files, and a list that long may be truncated. And a grep that ran found nothing,
+              # which is exit 1 and no other. Any case counts: the reference machine's file system
+              # folds it, so `Unity/` in a pull request is `unity/` in the checkout.
+              unity=true
+              if [ "$(wc -l <<< "$files")" -lt 3000 ]; then
+                found=0
+                grep -qiE '^(unity/|\.github/workflows/ci\.yml$|\.gitattributes$|\.gitignore$|\.lfsconfig$)' <<< "$files" || found=$?
+                if [ "$found" -eq 1 ]; then
+                  unity=false
+                fi
+              fi
+              ;;
+            *)
+              unity=true
+              ;;
+          esac
+          echo "unity=$unity" | tee -a "$GITHUB_OUTPUT"
+
+  # Opens the project in the pinned editor and quits. That imports every asset and compiles every
+  # assembly, tests and editor scripts included; a compiler error ends batchmode with a non-zero
+  # exit. An import that only logged errors does not: a shader that fails to parse exits 0. So the
+  # editor runs `ConsoleCheck` before it quits, which exits 1 if its Console holds an error. The
+  # Console has every import error because the import is from cold (the checkout note below). Then
+  # the tree has to be exactly as committed: an editor that had to write a .meta, or rewrite the
+  # package lock or a settings file, was given a project that is not what the next clone will open.
+  unity-compile:
+    needs: unity-changes
+    if: ${{ !cancelled() && needs.unity-changes.outputs.unity != 'false' }}
+    runs-on: [self-hosted, macOS, reference-machine]
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: unity-compile
+    steps:
+      # One workspace per job (PRD v4 8.8.6): `path` puts each job's clone, and so its `Library/`,
+      # in a directory of its own under the runner's work directory. The checkout cleans ignored
+      # files too, so `Library/` does not survive a run and every job imports from cold. That is
+      # the choice with no stale state in it; keeping `Library/` is a decision for measured import
+      # times, not a default (DEC-951).
+      - uses: actions/checkout@v4
+        with:
+          path: unity-compile
+          lfs: true
+      - name: Import, compile, no console errors
+        run: unity/Eternities/batchmode.sh -quit -executeMethod Eternities.EditorTools.ConsoleCheck.Run
+      - name: The import left the tree as committed
+        run: |
+          changed=$(git status --porcelain -- unity)
+          if [ -n "$changed" ]; then
+            echo "::error::Opening the project changed or created files. Commit them (a missing .meta is the usual one)."
+            echo "$changed"
+            exit 1
+          fi
+
+  unity-editmode:
+    needs: unity-changes
+    if: ${{ !cancelled() && needs.unity-changes.outputs.unity != 'false' }}
+    runs-on: [self-hosted, macOS, reference-machine]
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: unity-editmode
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: unity-editmode
+          lfs: true
+      # No `-quit`: with `-runTests` the editor exits by itself when the run ends, 0 only if every
+      # test passed.
+      - name: EditMode tests
+        run: unity/Eternities/batchmode.sh -runTests -testPlatform EditMode -testResults "$RUNNER_TEMP/editmode.xml"
+      # Exit 0 is also what a run that found no tests returns. A suite that is not discovered must
+      # not read as a suite that passed. Counted in our namespace: the run includes a test that a
+      # package brings (Addressables' `TestStub`), which passes whether or not ours were found.
+      - name: At least one of our tests ran and passed
+        run: |
+          set -euo pipefail
+          ours='//test-case[starts-with(@fullname, "Eternities.Tests.")]'
+          passed=$(xmllint --xpath "count(${ours}[@result = 'Passed'])" "$RUNNER_TEMP/editmode.xml")
+          total=$(xmllint --xpath "count($ours)" "$RUNNER_TEMP/editmode.xml")
+          echo "EditMode: $passed of $total passed in Eternities.Tests"
+          [ "$passed" -ge 1 ]
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: unity-editmode-results
+          path: ${{ runner.temp }}/editmode.xml
+          retention-days: 7
+
+  # With graphics (PRD v4 8.8.3): `batchmode.sh` never passes `-nographics`, and the runner is a
+  # launchd agent in a GUI session so there is a window server to give the editor a device. The
+  # suite's own first test asserts the device is not Null rather than taking that on trust.
+  unity-playmode:
+    needs: unity-changes
+    if: ${{ !cancelled() && needs.unity-changes.outputs.unity != 'false' }}
+    runs-on: [self-hosted, macOS, reference-machine]
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: unity-playmode
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: unity-playmode
+          lfs: true
+      - name: PlayMode tests
+        run: unity/Eternities/batchmode.sh -runTests -testPlatform PlayMode -testResults "$RUNNER_TEMP/playmode.xml"
+      - name: At least one of our tests ran and passed
+        run: |
+          set -euo pipefail
+          ours='//test-case[starts-with(@fullname, "Eternities.Tests.")]'
+          passed=$(xmllint --xpath "count(${ours}[@result = 'Passed'])" "$RUNNER_TEMP/playmode.xml")
+          total=$(xmllint --xpath "count($ours)" "$RUNNER_TEMP/playmode.xml")
+          echo "PlayMode: $passed of $total passed in Eternities.Tests"
+          [ "$passed" -ge 1 ]
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: unity-playmode-results
+          path: ${{ runner.temp }}/playmode.xml
+          retention-days: 7
+
+  # Runs the batchmode bench runner and archives what it wrote. The runner is a stub until the
+  # slice agrees the JSON schema (PRD v4 9.5), so this proves the plumbing, not a frame time.
+  unity-bench-smoke:
+    needs: unity-changes
+    if: ${{ !cancelled() && needs.unity-changes.outputs.unity != 'false' }}
+    runs-on: [self-hosted, macOS, reference-machine]
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: unity-bench-smoke
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: unity-bench-smoke
+          lfs: true
+      # PRD v4 8.8.6: a bench that shares the GPU with another editor is not a figure for this
+      # machine. `pgrep` sees every account's processes, so an editor the owner left open counts.
+      - name: No other Unity process is running
+        run: |
+          if pgrep -x Unity > /dev/null; then
+            echo "::error::Another Unity process is running on the reference machine. Close it and re-run this job."
+            pgrep -lx Unity
+            exit 1
+          fi
+      - name: Bench runner
+        run: unity/Eternities/batchmode.sh -quit -executeMethod Eternities.EditorTools.Bench.Run -benchOut "$RUNNER_TEMP/bench.json"
+      - name: The result is JSON
+        run: python3 -m json.tool "$RUNNER_TEMP/bench.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unity-bench-smoke
+          path: ${{ runner.temp }}/bench.json
+          retention-days: 90
