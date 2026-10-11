@@ -176,6 +176,16 @@ memory and cannot start a process, so before it leaves the world the run asks fo
 of it the graphics driver holds, into the JSON's `memory` block. A player started without the
 script completes the path all the same and says in the JSON that nothing answered.
 
+A build rewrites five settings files in the working tree: the three `Assets/Settings/HDRP *.asset`
+files, `Assets/Settings/HDRPDefaultResources/HDRenderPipelineGlobalSettings.asset` and
+`ProjectSettings/QualitySettings.asset`. It saves them in the editor's current serialisation and
+writes its own results into them. Do not commit that rewrite: the compile job fails on it, because
+a cold import writes the global settings back. Discard it after a build:
+
+```sh
+git checkout -- unity/Eternities/Assets/Settings unity/Eternities/ProjectSettings/QualitySettings.asset
+```
+
 The build is the macOS player for Apple Silicon, IL2CPP, not a development build, with the pinned
 pack and the world's files inside it. Its identity is in `ProjectSettings/ProjectSettings.asset`:
 company `DioPires`, product `Eternities`, bundle identifier `com.diopires.eternities`, minimum macOS
