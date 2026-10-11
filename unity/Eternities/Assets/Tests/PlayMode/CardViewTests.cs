@@ -146,24 +146,25 @@ namespace Eternities.Tests
                 Assert.That(Screen.height, Is.Not.EqualTo(view.height), "the test's view is not the screen's size");
                 // The view has just changed under a running camera and a laid-out panel, which the
                 // product never does: the frames that follow are the pipeline's and the panel's to
-                // settle in, however long each takes on the machine. The label is where it belongs
-                // within ten seconds of them, or it is not going to be.
+                // settle in. They are counted, not timed: on a machine whose shader cache is cold,
+                // as the CI runner's is on every run, the first frame into a texture took more than
+                // ten seconds. The label is where it belongs after ten frames, or within a minute
+                // of more, or it is not going to be.
                 Vector2 over = default;
                 Rect label = default, panel = default;
+                float began = Time.realtimeSinceStartup;
                 int frames = 0;
-                for (float until = Time.realtimeSinceStartup + 10; Time.realtimeSinceStartup < until; frames++)
+                for (bool there = false; frames < 10 || (!there && Time.realtimeSinceStartup - began < 60); frames++)
                 {
                     yield return null;
                     Vector3 top = Camera.main.WorldToScreenPoint(StandField.Ground(placed.Position) + Vector3.up * StandField.SlabTop);
                     over = app.Hud.ViewToPanel(new Vector2(top.x, view.height - top.y));
                     label = app.Hud.HoverBounds;
                     panel = app.Hud.PanelBounds;
-                    if (frames >= 10 && Mathf.Abs(label.center.x - over.x) <= 3 && Mathf.Abs(label.yMax - (over.y - 8)) <= 3)
-                    {
-                        break;
-                    }
+                    there = Mathf.Abs(label.center.x - over.x) <= 3 && Mathf.Abs(label.yMax - (over.y - 8)) <= 3;
                 }
-                string seen = $"after {frames} frames the label is {label} in the panel {panel}, the stand's top at {over}; the screen is {Screen.width} x {Screen.height}";
+                string seen = $"after {frames} frames and {Time.realtimeSinceStartup - began:F1} s the label is {label} in the panel {panel}, the stand's top at {over}; the screen is {Screen.width} x {Screen.height}";
+                Debug.Log($"CardViewTests: {seen}");
                 Assert.That(label.center.x, Is.EqualTo(over.x).Within(3), $"the label is centred over the stand: {seen}");
                 Assert.That(label.yMax, Is.EqualTo(over.y - 8).Within(3), $"and stands just above its top: {seen}");
                 Assert.That(panel.Contains(label.min) && panel.Contains(label.max), $"the label is inside the panel: {seen}");
