@@ -135,6 +135,34 @@ namespace Eternities.Tests
             StringAssert.Contains(first.Year.ToString(), app.Hud.HoverText);
             StringAssert.Contains(card.Printings[0].Artist, app.Hud.HoverText);
 
+            // The label stands over the stand in the view, whatever the view is drawn into: here a
+            // texture of another size than the screen, as in a bench run without one.
+            var view = new RenderTexture(1600, 900, 24, UnityEngine.Experimental.Rendering.GraphicsFormat.R8G8B8A8_SRGB);
+            var overlays = new RenderTexture(1600, 900, 24, UnityEngine.Experimental.Rendering.GraphicsFormat.R8G8B8A8_SRGB);
+            Camera.main.targetTexture = view;
+            app.Hud.Settings.targetTexture = overlays;
+            try
+            {
+                for (float until = Time.realtimeSinceStartup + 1.5f; Time.realtimeSinceStartup < until;)
+                {
+                    yield return null;      // the camera comes to rest behind the avatar
+                }
+                Assert.That(Screen.height, Is.Not.EqualTo(view.height), "the test's view is not the screen's size");
+                Vector3 top = Camera.main.WorldToScreenPoint(StandField.Ground(placed.Position) + Vector3.up * StandField.SlabTop);
+                Vector2 over = app.Hud.ViewToPanel(new Vector2(top.x, view.height - top.y));
+                Rect label = app.Hud.HoverBounds, panel = app.Hud.PanelBounds;
+                Assert.That(label.center.x, Is.EqualTo(over.x).Within(3), "the label is centred over the stand");
+                Assert.That(label.yMax, Is.EqualTo(over.y - 8).Within(3), "and stands just above its top");
+                Assert.That(panel.Contains(label.min) && panel.Contains(label.max), $"the label {label} is inside the panel {panel}");
+            }
+            finally
+            {
+                Camera.main.targetTexture = null;
+                app.Hud.Settings.targetTexture = null;
+                UnityEngine.Object.Destroy(view);
+                UnityEngine.Object.Destroy(overlays);
+            }
+
             // PRD v4 5.10: interacting enters card view; the camera comes inside the apron.
             hands.Interact = true;
             yield return Until(() => app.CardView.Active && app.CardView.Settled, 10, "card view");

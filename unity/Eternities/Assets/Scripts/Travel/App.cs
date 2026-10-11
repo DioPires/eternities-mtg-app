@@ -342,8 +342,9 @@ namespace Eternities.Travel
             {
                 LayoutStand stand = World.Layout.Stands[HoveredStand];
                 Vector3 top = StandField.Ground(stand.Position) + Vector3.up * StandField.SlabTop;
-                Vector3 screen = Camera.main.WorldToScreenPoint(top);
-                Hud.Hover(screen.z > 0 ? CardViewer.Label(World, HoveredStand) : null, screen);
+                Camera view = Camera.main;
+                Vector3 screen = view.WorldToScreenPoint(top);
+                Hud.Hover(screen.z > 0 ? CardViewer.Label(World, HoveredStand) : null, new Vector2(screen.x, view.pixelHeight - screen.y));
                 if (input.Interact)
                 {
                     CardView.Enter(HoveredStand);

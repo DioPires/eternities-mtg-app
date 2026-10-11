@@ -33,6 +33,9 @@ namespace Eternities.UI
         public bool CardShown => panel.style.display == DisplayStyle.Flex;
         public bool TravelOpen => travel.style.display == DisplayStyle.Flex;
         public string HoverText => hover.style.display == DisplayStyle.Flex ? hover.text : null;
+        public Rect HoverBounds => hover.worldBound;        // in the panel's units
+        public Rect PanelBounds => document.rootVisualElement.worldBound;
+        public Vector2 ViewToPanel(Vector2 viewPoint) => RuntimePanelUtils.ScreenToPanel(hover.panel, viewPoint);
         public CardSheet Sheet { get; private set; }
 
         public static Hud Create(PanelSettings settings, Transform parent)
@@ -50,6 +53,8 @@ namespace Eternities.UI
 
             hud.hover = Text("", 18, Ink);
             hud.hover.style.position = Position.Absolute;
+            // The theme gives a label a margin, which would stand it off the point it is placed over.
+            hud.hover.style.marginLeft = hud.hover.style.marginRight = hud.hover.style.marginTop = hud.hover.style.marginBottom = 0;
             hud.hover.style.backgroundColor = Paper;
             Pad(hud.hover, 6, 12);
             hud.hover.style.display = DisplayStyle.None;
@@ -143,9 +148,10 @@ namespace Eternities.UI
             return button;
         }
 
-        // The hover label of a stand within reach (PRD v4 5.5.3), above a point of the screen given
-        // in pixels from its bottom left. Null hides it.
-        public void Hover(string text, Vector2 screenPoint)
+        // The hover label of a stand within reach (PRD v4 5.5.3), above a point of the view given in
+        // pixels from its top left. Null hides it. The view is the camera's, not the screen's: a
+        // run without a screen draws into a texture of another size.
+        public void Hover(string text, Vector2 viewPoint)
         {
             if (text == null)
             {
@@ -154,7 +160,7 @@ namespace Eternities.UI
             }
             hover.text = text;
             hover.style.display = DisplayStyle.Flex;
-            Vector2 at = RuntimePanelUtils.ScreenToPanel(hover.panel, new Vector2(screenPoint.x, Screen.height - screenPoint.y));
+            Vector2 at = RuntimePanelUtils.ScreenToPanel(hover.panel, viewPoint);
             hover.style.left = at.x - hover.resolvedStyle.width / 2;
             hover.style.top = at.y - hover.resolvedStyle.height - 8;
         }
