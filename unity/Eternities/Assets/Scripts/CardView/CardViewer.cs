@@ -22,7 +22,10 @@ namespace Eternities.CardView
     {
         public const float BlendSeconds = 0.6f, ReducedBlendSeconds = 0.3f;
         public const float CardFraction = 0.6f, PanelFraction = 0.34f, TiltDegrees = 12, FlipSeconds = 0.35f;
-        public const float CardHeight = StandImages.SurfaceHeight, CardWidth = CardHeight * 672 / 936, Thickness = 0.006f, Lift = 0.05f;
+        public const float CardHeight = StandImages.SurfaceHeight, CardWidth = CardHeight * 672 / 936, Thickness = 0.006f;
+        // How far in front of the stand's slab the card hangs. Tilted the whole 12 degrees both ways
+        // a corner of it comes back by 16 cm, and at 5 cm that corner was inside the slab and cut off.
+        public const float Lift = 0.18f;
         // The card's corner is a stand's: the solid's shape is what leaves the image file's white
         // corners out.
         public const float CornerFraction = StandImages.CornerFraction, Edge = 0.003f;
@@ -61,6 +64,8 @@ namespace Eternities.CardView
         public bool BackShown => back != null;
         public PackCard Card => world.Cards[world.Layout.Stands[Stand].Card];
         public Transform CardTransform => card != null ? card.transform : null;
+        // A run without a pointer has none to tilt the card with: a test says where one is.
+        public Vector2? PointerForTests;
         public event Action Changed;
 
         // The camera has arrived, at the card or back at the avatar.
@@ -388,10 +393,20 @@ namespace Eternities.CardView
             // the pointer leaves the window (PRD v4 5.10.2). Reduced motion keeps it still.
             Vector2 want = Vector2.zero;
             UnityEngine.InputSystem.Mouse mouse = UnityEngine.InputSystem.Mouse.current;
-            Vector2 pointer = mouse != null && !ReducedMotion && Application.isFocused ? mouse.position.ReadValue() : new Vector2(-1, -1);
-            if (pointer.x >= 0 && pointer.y >= 0 && pointer.x <= Screen.width && pointer.y <= Screen.height)
+            // Where the pointer is, as a part of the view from its bottom left corner.
+            Vector2 pointer = new Vector2(-1, -1);
+            if (PointerForTests.HasValue)
             {
-                want = new Vector2((pointer.x / Screen.width - 0.5f) * 2, (pointer.y / Screen.height - 0.5f) * 2) * TiltDegrees;
+                pointer = PointerForTests.Value;
+            }
+            else if (mouse != null && Application.isFocused)
+            {
+                Vector2 at = mouse.position.ReadValue();
+                pointer = new Vector2(at.x / Screen.width, at.y / Screen.height);
+            }
+            if (!ReducedMotion && pointer.x >= 0 && pointer.y >= 0 && pointer.x <= 1 && pointer.y <= 1)
+            {
+                want = (pointer - new Vector2(0.5f, 0.5f)) * 2 * TiltDegrees;
             }
             tilt = Vector2.SmoothDamp(tilt, want, ref tiltVelocity, 0.15f);
             turned = ReducedMotion ? turn : Mathf.SmoothDamp(turned, turn, ref turnVelocity, FlipSeconds / 3);

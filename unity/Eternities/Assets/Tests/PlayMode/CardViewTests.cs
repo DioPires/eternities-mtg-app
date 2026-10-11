@@ -220,6 +220,28 @@ namespace Eternities.Tests
             Assert.That(Vector3.Angle(Camera.main.transform.forward, facing * Vector3.back), Is.LessThan(1));
             Assert.That(app.Avatar.GetComponentInChildren<Renderer>().enabled, Is.False, "the avatar is out of the frame");
 
+            // PRD v4 5.10.2: the card tilts toward the pointer, 12 degrees each way. Tilted all the
+            // way toward each corner of the view, the whole card is still in front of its stand's
+            // slab: a card that leans back into the slab is cut off where it enters it, and the
+            // first card view a build drew with a pointer on the screen had lost a corner so.
+            Transform solid = app.CardView.CardTransform.Find("Solid");
+            Vector3[] body = solid.GetComponent<MeshFilter>().sharedMesh.vertices;
+            Vector3 slabFront = StandField.Ground(placed.Position) + facing * Vector3.forward * (StandField.SlabDepth / 2 + StandImages.Proud);
+            foreach (Vector2 pointer in new[] { new Vector2(0, 0), new Vector2(0, 1), new Vector2(1, 1), new Vector2(1, 0) })
+            {
+                app.CardView.PointerForTests = pointer;
+                yield return new WaitForSeconds(1.5f);
+                Assert.That(Quaternion.Angle(app.CardView.CardTransform.rotation, facing), Is.GreaterThan(CardViewer.TiltDegrees), $"the card tilts toward {pointer}");
+                float nearest = float.PositiveInfinity;
+                foreach (Vector3 vertex in body)
+                {
+                    nearest = Mathf.Min(nearest, Vector3.Dot(solid.TransformPoint(vertex) - slabFront, facing * Vector3.forward));
+                }
+                Assert.That(nearest, Is.GreaterThan(0.005f), $"tilted toward {pointer}, the card's nearest point to the slab is in front of it");
+            }
+            app.CardView.PointerForTests = null;
+            yield return new WaitForSeconds(1);
+
             // The panel: the card as text, every printing by release date, the artist of the image shown.
             UI.CardSheet sheet = app.Hud.Sheet;
             Assert.That(sheet.Name, Is.EqualTo(card.Name));
