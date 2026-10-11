@@ -109,7 +109,7 @@ namespace Eternities.EditorTools
             changed |= Set(Lit("portal-frame", new Color(0.12f, 0.11f, 0.10f), 0.6f, 0.5f), app.PortalFrameMaterial, m => app.PortalFrameMaterial = m);
             changed |= Set(Unlit("portal-surface", new Color(0.35f, 0.75f, 1f, 1f), transparent: false), app.PortalSurfaceMaterial, m => app.PortalSurfaceMaterial = m);
             changed |= Set(Unlit("veil", new Color(0, 0, 0, 1), transparent: true), app.VeilMaterial, m => app.VeilMaterial = m);
-            changed |= Set(Unlit("image-surface", Color.white, transparent: false), app.ImageSurfaceMaterial, m => app.ImageSurfaceMaterial = m);
+            changed |= Set(Unlit("image-surface-cutout", Color.white, transparent: false, cutout: true), app.ImageSurfaceMaterial, m => app.ImageSurfaceMaterial = m);
             foreach ((string name, Shader held, System.Action<Shader> assign) in new (string, Shader, System.Action<Shader>)[]
             {
                 ("Hidden/Eternities/Exhibit", app.ExhibitShader, shader => app.ExhibitShader = shader),
@@ -175,12 +175,15 @@ namespace Eternities.EditorTools
             });
         }
 
-        static Material Unlit(string name, Color colour, bool transparent)
+        // `cutout`: the material draws nothing where its colour map's alpha is under a half.
+        static Material Unlit(string name, Color colour, bool transparent, bool cutout = false)
         {
             return Made(name, "HDRP/Unlit", material =>
             {
                 material.SetColor("_UnlitColor", colour);
                 material.SetFloat("_SurfaceType", transparent ? 1 : 0);
+                material.SetFloat("_AlphaCutoffEnable", cutout ? 1 : 0);
+                material.SetFloat("_AlphaCutoff", 0.5f);
             });
         }
 

@@ -33,14 +33,15 @@ namespace Eternities.CardView
         public const int UploadsPerFrame = 2;
         // The surface takes the image's pixel aspect (PRD v4 4.15.5): 488 x 680, 0.88 m tall.
         public const float SurfaceHeight = StandField.SurfaceHeight, SurfaceWidth = SurfaceHeight * 488 / 680, Proud = 0.002f;
-        const int AtlasBlocks = 256;
+        public const int AtlasBlocks = 256;     // the swatch texture holds this many stands a row, 2 x 2 texels each
         const float Cell = 25;
 
         sealed class Site
         {
             public Mesh Mesh;
             public readonly List<Vector2> Slot = new List<Vector2>();      // x the slot or -1, y the coverage
-            public bool Dirty;
+            public readonly List<Vector2> Swatch = new List<Vector2>();    // where the main camera reads the surface's colour
+            public bool Dirty, SwatchDirty;
         }
 
         WorldData world;
@@ -55,7 +56,7 @@ namespace Eternities.CardView
 
         int[] slotOfStand, standOfSlot;
         float[] coverage;           // per stand: how much of its image shows, 0 to 1
-        bool[] requested, isWanted;
+        bool[] requested, isWanted, swatchHidden;
         Vector3 wantedFrom = new Vector3(float.NaN, 0, 0);
         float wantedAt;
         readonly List<int> wanted = new List<int>(), fading = new List<int>();
@@ -66,6 +67,7 @@ namespace Eternities.CardView
         public IImageSource Source;
         public Transform Viewer;
         public Texture2DArray Array => array;
+        public Material SurfaceMaterial => placeholder;     // what the main camera draws the surfaces with
         public int SlotsInUse { get; private set; }
         public int Uploads { get; private set; }
         public int Evictions { get; private set; }
@@ -90,6 +92,7 @@ namespace Eternities.CardView
             coverage = new float[count];
             requested = new bool[count];
             isWanted = new bool[count];
+            swatchHidden = new bool[count];
             distanceOfStand = new float[count];
             siteOfStand = new int[count];
             firstVertexOfStand = new int[count];
@@ -106,7 +109,9 @@ namespace Eternities.CardView
 
             // The swatches: each stand's four samples as a 2 x 2 block of one texture, which the
             // main camera's material reads between the block's texel centres.
-            int rows = (count + AtlasBlocks - 1) / AtlasBlocks;
+            // One block more than there are stands, the last, is transparent: a surface that reads it
+            // is cut out of the main camera's frame (see Shown).
+            int rows = (count + 1 + AtlasBlocks - 1) / AtlasBlocks;
             atlas = new Texture2D(2 * AtlasBlocks, 2 * rows, TextureFormat.RGBA32, mipChain: false) { name = "swatches", filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
             var pixels = new Color32[atlas.width * atlas.height];
             for (int stand = 0; stand < count; stand++)
@@ -144,7 +149,6 @@ namespace Eternities.CardView
             }
             sites = new Site[bySite.Length];
             var vertices = new List<Vector3>();
-            var swatch = new List<Vector2>();
             var image = new List<Vector2>();
             var triangles = new List<int>();
             double sliceStarted = Time.realtimeSinceStartupAsDouble;
@@ -156,7 +160,6 @@ namespace Eternities.CardView
                 }
                 var site = sites[layoutSite.Index] = new Site();
                 vertices.Clear();
-                swatch.Clear();
                 image.Clear();
                 triangles.Clear();
                 Vector3 origin = StandField.Ground(layoutSite.Centre);
@@ -169,18 +172,17 @@ namespace Eternities.CardView
                     siteOfStand[stand] = layoutSite.Index;
                     firstVertexOfStand[stand] = vertices.Count;
                     int first = vertices.Count;
-                    float u = (2 * (stand % AtlasBlocks) + 0.5f) / atlas.width, v = (2 * (stand / AtlasBlocks) + 0.5f) / atlas.height;
-                    float du = 1f / atlas.width, dv = 1f / atlas.height;
+                    SwatchOf(stand, out float u, out float v, out float du, out float dv);
                     // Seen from the apron: bottom left, top left, top right, bottom right. The
                     // viewer's left is the stand's right.
                     vertices.Add(centre + right - up);
                     vertices.Add(centre + right + up);
                     vertices.Add(centre - right + up);
                     vertices.Add(centre - right - up);
-                    swatch.Add(new Vector2(u, v));
-                    swatch.Add(new Vector2(u, v + dv));
-                    swatch.Add(new Vector2(u + du, v + dv));
-                    swatch.Add(new Vector2(u + du, v));
+                    site.Swatch.Add(new Vector2(u, v));
+                    site.Swatch.Add(new Vector2(u, v + dv));
+                    site.Swatch.Add(new Vector2(u + du, v + dv));
+                    site.Swatch.Add(new Vector2(u + du, v));
                     image.Add(new Vector2(0, 0));
                     image.Add(new Vector2(0, 1));
                     image.Add(new Vector2(1, 1));
@@ -199,7 +201,7 @@ namespace Eternities.CardView
                 site.Mesh = new Mesh { name = $"image surfaces {world.Layout.Input.SetCodes[layoutSite.Set]} {ColourClasses.SeedNames[(int)layoutSite.Class]}" };
                 site.Mesh.MarkDynamic();
                 site.Mesh.SetVertices(vertices);
-                site.Mesh.SetUVs(0, swatch);
+                site.Mesh.SetUVs(0, site.Swatch);
                 site.Mesh.SetUVs(1, image);
                 site.Mesh.SetUVs(2, site.Slot);
                 site.Mesh.SetTriangles(triangles, 0);
@@ -220,6 +222,40 @@ namespace Eternities.CardView
                     sliceStarted = Time.realtimeSinceStartupAsDouble;
                 }
             }
+        }
+
+        // The corner of a stand's block of the swatch texture, at its first texel's centre, and the
+        // step to the centre of the next: between them the four samples blend and no neighbour does.
+        void SwatchOf(int block, out float u, out float v, out float du, out float dv)
+        {
+            u = (2 * (block % AtlasBlocks) + 0.5f) / atlas.width;
+            v = (2 * (block / AtlasBlocks) + 0.5f) / atlas.height;
+            du = 1f / atlas.width;
+            dv = 1f / atlas.height;
+        }
+
+        // Whether the main camera draws a stand's surface in its swatch. Under an image that is
+        // wholly shown it does not: the surface is cut out of the main camera's frame and the slab
+        // behind it, 2 mm away and a centimetre larger all round, is the solid thing that the
+        // world's depth, fog and depth of field see. Otherwise the swatch's edge, softened by
+        // anti-aliasing and spread by a resolution scale under 1, shows as a rim around the
+        // composited card: at scale 0.75 it was 903 pixels around a card of 244 x 340 (PRD v4
+        // 8.4.4, test f).
+        void Shown(int stand, bool swatchShown)
+        {
+            if (swatchHidden[stand] == !swatchShown)
+            {
+                return;
+            }
+            swatchHidden[stand] = !swatchShown;
+            Site site = sites[siteOfStand[stand]];
+            SwatchOf(swatchShown ? stand : world.Layout.Stands.Count, out float u, out float v, out float du, out float dv);
+            int first = firstVertexOfStand[stand];
+            site.Swatch[first] = new Vector2(u, v);
+            site.Swatch[first + 1] = new Vector2(u, v + dv);
+            site.Swatch[first + 2] = new Vector2(u + du, v + dv);
+            site.Swatch[first + 3] = new Vector2(u + du, v);
+            site.SwatchDirty = true;
         }
 
         static long Key(Vector3 position) => (long)Mathf.FloorToInt(position.x / Cell) * 1_000_003 + Mathf.FloorToInt(position.z / Cell);
@@ -246,6 +282,11 @@ namespace Eternities.CardView
                 {
                     site.Mesh.SetUVs(2, site.Slot);
                     site.Dirty = false;
+                }
+                if (site != null && site.SwatchDirty)
+                {
+                    site.Mesh.SetUVs(0, site.Swatch);
+                    site.SwatchDirty = false;
                 }
             }
             LongestUpdateMs = Math.Max(LongestUpdateMs, (Time.realtimeSinceStartupAsDouble - began) * 1000);
@@ -397,6 +438,7 @@ namespace Eternities.CardView
             slotOfStand[evicted] = -1;
             coverage[evicted] = 0;
             Mark(evicted, -1, 0);
+            Shown(evicted, true);
             Evictions++;
             return farthest;
         }
@@ -418,6 +460,7 @@ namespace Eternities.CardView
                 float target = isWanted[stand] ? 1 : 0;
                 coverage[stand] = Mathf.MoveTowards(coverage[stand], target, step);
                 Mark(stand, slotOfStand[stand], coverage[stand]);
+                Shown(stand, coverage[stand] < 1);
                 if (coverage[stand] == target)
                 {
                     fading.RemoveAt(i);

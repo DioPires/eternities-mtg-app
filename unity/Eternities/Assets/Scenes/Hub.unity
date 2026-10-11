@@ -448,7 +448,7 @@ MonoBehaviour:
   portalSurfaceMaterial: {fileID: 2100000, guid: 3ac64b140919a4fd2b741d5c7a89b88e, type: 2}
   veilMaterial: {fileID: 2100000, guid: 9761b144ce2ba446e9d0f9ddf2ad5aba, type: 2}
   terrainLayers: []
-  imageSurfaceMaterial: {fileID: 2100000, guid: e53b0f124da8a496383d49d94b524f7e, type: 2}
+  imageSurfaceMaterial: {fileID: 2100000, guid: 661f99cb7f37246db87cae12a10065d3, type: 2}
   exhibitShader: {fileID: 4800000, guid: 27a27fb24fe28425288c18f8b252446f, type: 3}
   exhibitCompositeShader: {fileID: 4800000, guid: 7cdaaff17e1854398bef627e4adf056e, type: 3}
   ReducedMotion: 0
