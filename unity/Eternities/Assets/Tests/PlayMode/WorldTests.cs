@@ -330,6 +330,55 @@ namespace Eternities.Tests
             Assert.That(river.transform.localScale.z, Is.GreaterThan(100));
         }
 
+        // PRD v4 9.3: the avatar's footing is physical, with no sliding. While a foot of the
+        // mannequin is on the ground it stays where it was put, walking and running, and the legs
+        // come back under the body when it stops.
+        [UnityTest]
+        public IEnumerator AFootOnTheGroundStaysWhereItWasPut()
+        {
+            yield return Hub();
+            App app = App.Instance;
+            var gait = app.Avatar.GetComponentInChildren<Gait>();
+            Assert.That(Mathf.Abs(gait.LegDegrees(0)) + Mathf.Abs(gait.LegDegrees(1)), Is.LessThan(0.5f), "standing, both legs are under the body");
+            foreach (bool run in new[] { false, true })
+            {
+                hands.Run = run;
+                hands.WorldMove = Vector3.right;    // along the hub's ground, away from the portal
+                yield return Until(() => gait.Walking, 5, "the gait");
+                int step = -1, steps = 0;
+                Vector3 put = default;
+                float slid = 0, carried = 0, widest = 0;
+                Vector3 from = app.Avatar.transform.position;
+                for (float until = Time.time + 3; Time.time < until;)
+                {
+                    yield return null;
+                    widest = Mathf.Max(widest, Mathf.Abs(gait.LegDegrees(0) - gait.LegDegrees(1)));
+                    if (!gait.Grounded)
+                    {
+                        continue;
+                    }
+                    if (gait.Step != step)
+                    {
+                        step = gait.Step;
+                        put = gait.StanceFoot;
+                        from = app.Avatar.transform.position;
+                        steps++;
+                    }
+                    slid = Mathf.Max(slid, Vector3.Distance(gait.StanceFoot, put));
+                    carried = Mathf.Max(carried, Vector3.Distance(app.Avatar.transform.position, from));
+                }
+                string pace = run ? "running" : "walking";
+                Assert.That(steps, Is.GreaterThanOrEqualTo(4), $"{pace}: steps in three seconds");
+                Assert.That(carried, Is.GreaterThan(0.5f), $"{pace}: the body passes over the foot");
+                Assert.That(slid, Is.LessThan(0.01f), $"{pace}: the foot on the ground stays where it was put");
+                Assert.That(widest, Is.GreaterThan(30), $"{pace}: the legs open into a stride");
+                hands.WorldMove = Vector3.zero;
+                hands.Run = false;
+                yield return new WaitForSeconds(0.5f);
+                Assert.That(Mathf.Abs(gait.LegDegrees(0)) + Mathf.Abs(gait.LegDegrees(1)), Is.LessThan(0.5f), $"{pace}: stopped, both legs are under the body again");
+            }
+        }
+
         // PRD v4 5.9.2: a portal whose world is not ready holds, with input locked, and never cuts
         // to an unready world.
         [UnityTest]

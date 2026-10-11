@@ -113,27 +113,46 @@ namespace Eternities.Avatar
     }
 
     // The slice's placeholder avatar (PRD v4 5.8.4): a mannequin of capsules and a sphere, 1.8 m tall.
+    // Each leg hangs from a pivot at the hip and each arm from one at the shoulder, and everything
+    // above the hips from a pivot of its own, which is what `Gait` turns.
     public static class Mannequin
     {
+        public const float Hip = 0.9f, Shoulder = 1.45f;
+
         public static GameObject Build(Material material)
         {
             var root = new GameObject("Mannequin");
-            Part(root, PrimitiveType.Capsule, material, new Vector3(0, 1.2f, 0), new Vector3(0.36f, 0.33f, 0.24f));         // torso
-            Part(root, PrimitiveType.Sphere, material, new Vector3(0, 1.68f, 0), new Vector3(0.22f, 0.24f, 0.22f));         // head
-            foreach (float side in new[] { -1f, 1f })
+            Transform upper = Pivot(root.transform, "Upper", new Vector3(0, Hip, 0));
+            Part(upper, PrimitiveType.Capsule, material, new Vector3(0, 1.2f - Hip, 0), new Vector3(0.36f, 0.33f, 0.24f));     // torso
+            Part(upper, PrimitiveType.Sphere, material, new Vector3(0, 1.68f - Hip, 0), new Vector3(0.22f, 0.24f, 0.22f));     // head
+            var legs = new Transform[2];
+            var arms = new Transform[2];
+            for (int side = 0; side < 2; side++)
             {
-                Part(root, PrimitiveType.Capsule, material, new Vector3(side * 0.1f, 0.45f, 0), new Vector3(0.15f, 0.45f, 0.15f));     // leg
-                Part(root, PrimitiveType.Capsule, material, new Vector3(side * 0.25f, 1.15f, 0), new Vector3(0.1f, 0.33f, 0.1f));      // arm
+                float x = side == 0 ? -1 : 1;
+                legs[side] = Pivot(root.transform, side == 0 ? "Left leg" : "Right leg", new Vector3(x * 0.1f, Hip, 0));
+                Part(legs[side], PrimitiveType.Capsule, material, new Vector3(0, -Hip / 2, 0), new Vector3(0.15f, Hip / 2, 0.15f));
+                arms[side] = Pivot(upper, side == 0 ? "Left arm" : "Right arm", new Vector3(x * 0.25f, Shoulder - Hip, 0));
+                Part(arms[side], PrimitiveType.Capsule, material, new Vector3(0, 1.15f - Shoulder, 0), new Vector3(0.1f, 0.33f, 0.1f));
             }
+            root.AddComponent<Gait>().Bind(upper, legs, arms);
             return root;
         }
 
-        static void Part(GameObject root, PrimitiveType shape, Material material, Vector3 at, Vector3 scale)
+        static Transform Pivot(Transform parent, string name, Vector3 at)
+        {
+            var pivot = new GameObject(name) { layer = 2 };
+            pivot.transform.SetParent(parent, false);
+            pivot.transform.localPosition = at;
+            return pivot.transform;
+        }
+
+        static void Part(Transform parent, PrimitiveType shape, Material material, Vector3 at, Vector3 scale)
         {
             GameObject part = GameObject.CreatePrimitive(shape);
             UnityEngine.Object.Destroy(part.GetComponent<Collider>());
             part.layer = 2;
-            part.transform.SetParent(root.transform, false);
+            part.transform.SetParent(parent, false);
             part.transform.localPosition = at;
             part.transform.localScale = scale;
             part.GetComponent<MeshRenderer>().sharedMaterial = material;
