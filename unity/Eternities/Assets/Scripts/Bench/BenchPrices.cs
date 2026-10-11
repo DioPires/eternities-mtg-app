@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.Rendering.HighDefinition;
 
 namespace Eternities.Bench
@@ -11,7 +12,8 @@ namespace Eternities.Bench
     // the world and, at two standing views, draws the same view with one thing switched off at a
     // time: each kind of the world's content, then each HDRP feature that is on, then the
     // anti-aliasing, then a quarter of the pixels' width and height. A price is the median frame
-    // with the thing, measured just before, less the median without it.
+    // with the thing, measured just before, less the median without it. The volumetric fog, which
+    // PRD v4 8.1.1 keeps on at every level, is also priced at each of its quality levels.
     //
     // Features are switched on the camera, through its own frame settings: no asset is written,
     // and the quality level's HDRP asset stays as the owner set it. The list says what a level is
@@ -59,6 +61,51 @@ namespace Eternities.Bench
                 ["kind"] = kind, ["name"] = name, ["state"] = "on", ["withP50Ms"] = Math.Round(with, 3), ["withoutP50Ms"] = Math.Round(without, 3),
                 ["priceMs"] = Math.Round(with - without, 3),
             });
+        }
+
+        // The volumetric fog at each quality level the HDRP asset defines (its budget and depth
+        // ratio by level), set on a volume of the run's own above every other: what the fog costs
+        // at that level is the frame with it less the frame with no volumetric fog at all.
+        IEnumerator FogQualities(List<Dictionary<string, object>> rows, Camera view, HDAdditionalCameraData data)
+        {
+            Fog inForce = VolumeManager.instance.stack.GetComponent<Fog>();
+            if (inForce == null || !inForce.enabled.value || !inForce.enableVolumetricFog.value || !HDCamera.GetOrCreate(view).frameSettings.IsEnabled(FrameSettingsField.Volumetrics))
+            {
+                rows.Add(Unpriced("fog quality", "low, medium, high", "off: there is no volumetric fog in this view"));
+                yield break;
+            }
+            int levelInForce = inForce.quality.value;
+
+            bool custom = data.customRenderingSettings;
+            data.customRenderingSettings = true;
+            data.renderingPathCustomFrameSettingsOverrideMask.mask[(uint)FrameSettingsField.Volumetrics] = true;
+            data.renderingPathCustomFrameSettings.SetEnabled(FrameSettingsField.Volumetrics, false);
+            yield return Median();
+            double without = priceMedian;
+            data.renderingPathCustomFrameSettingsOverrideMask.mask[(uint)FrameSettingsField.Volumetrics] = false;
+            data.customRenderingSettings = custom;
+
+            var holder = new GameObject("Bench fog quality");
+            var volume = holder.AddComponent<Volume>();
+            var profile = ScriptableObject.CreateInstance<VolumeProfile>();
+            volume.isGlobal = true;
+            volume.priority = 1000;
+            volume.sharedProfile = profile;
+            Fog fog = profile.Add<Fog>();
+            string[] names = { "low", "medium", "high" };
+            for (int level = 0; level < names.Length; level++)
+            {
+                fog.quality.levelAndOverride = (level, false);
+                fog.quality.overrideState = true;
+                yield return Median();
+                rows.Add(new Dictionary<string, object>
+                {
+                    ["kind"] = "fog quality", ["name"] = names[level], ["state"] = level == levelInForce ? "the level in force" : "on",
+                    ["withP50Ms"] = Math.Round(priceMedian, 3), ["withoutP50Ms"] = Math.Round(without, 3), ["priceMs"] = Math.Round(priceMedian - without, 3),
+                });
+            }
+            Destroy(holder);
+            Destroy(profile);
         }
 
         static Dictionary<string, object> Unpriced(string kind, string name, string state) => new Dictionary<string, object>
@@ -127,6 +174,8 @@ namespace Eternities.Bench
                     () => data.renderingPathCustomFrameSettingsOverrideMask.mask[(uint)field] = false);
             }
             data.customRenderingSettings = custom;
+
+            yield return FogQualities(rows, view, data);
 
             HDAdditionalCameraData.AntialiasingMode antialiasing = data.antialiasing;
             if (antialiasing != HDAdditionalCameraData.AntialiasingMode.None)
