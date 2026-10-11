@@ -542,10 +542,7 @@ namespace Eternities.Tests
 
         IEnumerator AtThreeQuarterScale()
         {
-            if (!DynamicResolutionIsOn)
-            {
-                Assert.Ignore("dynamic resolution is off in the HDRP asset of this quality level, so no test can run at scale 0.75 (DEC-953: the four fixed switches)");
-            }
+            Assert.That(DynamicResolutionIsOn, Is.True, "dynamic resolution is on in the HDRP asset of this quality level (PRD v4 8.1.1)");
             Camera.main.GetComponent<HDAdditionalCameraData>().allowDynamicResolution = true;
             DynamicResolutionHandler.SetDynamicResScaler(() => 75, DynamicResScalePolicyType.ReturnsPercentage);
             for (int i = 0; i < 10; i++)

@@ -203,11 +203,8 @@ namespace Eternities.Tests
             TowardThePortal();
             yield return Until(() => app.WorldReady, 60, "the arrival");
             hands.WorldMove = Vector3.zero;
-            if (!WorldWater.Supported)
-            {
-                Assert.That(app.Water, Is.Null);
-                Assert.Ignore("water is off in the HDRP asset of this quality level, so there is no water surface to see (DEC-953: the four fixed switches)");
-            }
+            Assert.That(WorldWater.Supported, Is.True, "water is on in the HDRP asset of this quality level (PRD v4 8.1.1)");
+            Assert.That(app.Water, Is.Not.Null);
 
             const int width = 1280, height = 720;
             var target = new RenderTexture(width, height, 24, UnityEngine.Experimental.Rendering.GraphicsFormat.R8G8B8A8_SRGB);

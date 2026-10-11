@@ -71,9 +71,23 @@ light Mac's (PRD v4 7.1); `medium` is the first fallback of the slice's acceptan
 | `medium` | `Assets/Settings/HDRP medium.asset` | Balanced |
 | `low` | `Assets/Settings/HDRP low.asset` | Performant |
 
-Only the names are ours. What each level sets is still what the template set; the slice tunes them
-against the budgets (PRD v4 8.1.1, 7.2). `RenderPipelineTests` holds the names, the order and one
-HDRP asset per level.
+The names are ours, and so are the four things PRD v4 8.1.1 and 5.7.1 fix about a level. The rest
+of what a level sets is still what the template set, and is the owner's to tune by eye against the
+budgets (PRD v4 7.2): shadows, reflections, and the quality of the fog, the clouds and the water.
+
+| Fixed at each level | `high` | `medium` | `low` | Where |
+|---|---|---|---|---|
+| Water | on | on | on | `supportWater` in the HDRP asset |
+| Clouds | volumetric | volumetric | a cloud layer | `supportVolumetricClouds` in the HDRP asset, and the kind of cloud in the level's volume profile |
+| Volumetric fog | on | on | on, at the lowest quality | `supportVolumetrics` in the HDRP asset; in the low asset every fog tier has the budget of the lowest, 0.125 |
+| Dynamic resolution | enabled | enabled | enabled | in the HDRP asset: not forced, from 75% to 100% |
+
+A level renders at full resolution until something asks for less; the bench asks with
+`-benchScale 0.75`. Each HDRP asset names a volume profile of its own, `Assets/Settings/HDRP <level>
+volume.asset`, which HDRP lays over the project's defaults and under every volume of a scene. It
+holds what a level sets that is a volume setting and not a switch of the asset; today that is the
+kind of cloud. The generation entry point makes a missing one, and never writes one again.
+`RenderPipelineTests` holds the names, the order, one HDRP asset per level and the four rows above.
 
 ## Target platforms
 
@@ -91,7 +105,7 @@ builds for Windows.
 | `Assets/Scripts/<Area>/` | One assembly per area, `Eternities.<Area>`: Data, Layout, Kits, Avatar, CardView, Travel, Audio, UI, Bench. The namespace follows the assembly, so inside any `Eternities.*` namespace the bare name `Avatar` is that namespace: write `UnityEngine.Avatar` for the type. |
 | `Assets/Editor/` | `Eternities.Editor`, editor only: the batchmode entry points below. |
 | `Assets/Tests/EditMode/`, `Assets/Tests/PlayMode/` | The two test assemblies, namespace `Eternities.Tests`. CI requires a passed test in that namespace, because a package's own test also runs. |
-| `Assets/Settings/` | The HDRP assets: one per quality level, the global settings and the default volume profiles. |
+| `Assets/Settings/` | The HDRP assets: one per quality level with that level's volume profile, the global settings and the default volume profiles. |
 | `Assets/Scenes/Hub.unity` | The persistent scene (PRD v4 8.4.1): the template's camera, sun and sky, and the `Eternities` object. Kit worlds have no scene; they are built at run time from the pack and the layout. |
 | `Assets/Kits/core/` | What every world shares. `Materials/` holds the slice's plain materials (plinths by rarity, the mannequin, the hub, the portal, the image surface), and `UI/` the overlays' panel settings and theme; both are made by the generation entry point. `Shaders/` holds the two shaders of the isolated image path (PRD v4 8.4.4), written by hand. |
 | `Assets/Kits/temperate/` | The `temperate` kit's slice subset. `Terrain/`, `Props/` and `Audio/` hold the 24 files `sources.yaml` pins, in Git LFS, with a `CREDITS.md` row each; `fetch.sh` verifies them and fails on an unlisted file in those three folders, so what is made from them lives beside them: `Materials/` holds the kit's plain materials for its props and `Water/` its two water prefabs, all made by the generation entry point. `Assets/Editor/KitMaskImport.cs` repacks each `_arm_` texture into HDRP's mask map layout as it is imported. |
@@ -127,8 +141,9 @@ that object once `Assets/Kits/temperate/TerrainLayers/` holds `meadow`, `path` a
 then the ground is painted in plain colours. It also makes the kit's two water prefabs,
 `Assets/Kits/temperate/Water/River.prefab` and `Lake.prefab`, once, with the water system's
 defaults; those two are the owner's to tune and it never writes them again. Other generated assets
-are not edited by hand. The world has its river and its lake only where water is on in the HDRP
-asset of the quality level in force.
+are not edited by hand. It makes each quality level's volume profile the same way (Quality levels,
+above). The world has its river and its lake only where water is on in the HDRP asset of the quality
+level in force, which it is at all three.
 
 With the project open in the editor, the menu item Eternities > Generate does the same. To walk the
 world, generate, open `Assets/Scenes/Hub.unity` and press Play: WASD walks, Shift runs, the right

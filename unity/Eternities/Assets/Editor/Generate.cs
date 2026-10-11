@@ -7,6 +7,7 @@ using Eternities.Travel;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.Rendering.HighDefinition;
 using UnityEngine.SceneManagement;
 using UnityEngine.UIElements;
@@ -21,7 +22,8 @@ namespace Eternities.EditorTools
     //   to `StreamingAssets/data/<hash>/` with every file checked against the pack's manifest, and
     //   each world's layout beside it, `layout/<slug>.txt` (`WorldFiles.Generate`);
     // - committed: the slice's plain materials under `Assets/Kits/core/Materials/` and
-    //   `Assets/Kits/temperate/Materials/`, and the persistent scene, `Assets/Scenes/Hub.unity`.
+    //   `Assets/Kits/temperate/Materials/`, the persistent scene, `Assets/Scenes/Hub.unity`, and
+    //   each quality level's volume profile under `Assets/Settings/`.
     //
     // A missing argument or a failure throws, and the editor turns an exception in an
     // `-executeMethod` target into exit code 1.
@@ -56,8 +58,9 @@ namespace Eternities.EditorTools
             }
         }
 
-        // Everything the entry point makes: each world's files, the slice's materials and the
-        // persistent scene. Run again on a tree it has already filled, it changes nothing.
+        // Everything the entry point makes: each world's files, the slice's materials, the
+        // persistent scene and the levels' volume profiles. Run again on a tree it has already
+        // filled, it changes nothing.
         public static List<WorldFiles.Result> Everything(string packHash)
         {
             if (packHash != ManifestHash())
@@ -70,7 +73,51 @@ namespace Eternities.EditorTools
                 worlds.Add(Build(packHash, slug));
             }
             PersistentScene();
+            LevelProfiles();
             return worlds;
+        }
+
+        // Where a quality level's volume profile is, beside its HDRP asset.
+        public static string LevelProfile(string level) => $"Assets/Settings/HDRP {level} volume.asset";
+
+        // The clouds of each quality level (PRD v4 5.7.1, 8.1.1): volumetric clouds at high and
+        // medium, a cloud layer at low. That is a volume setting and not a switch of the HDRP
+        // asset, so each level's HDRP asset names a volume profile of its own, which HDRP lays
+        // over the project's defaults and under every volume of a scene. A profile is made once
+        // with that one choice in it, and then is the owner's to tune. The HDRP assets name the
+        // profiles in their own text, which `RenderPipelineTests` holds: saving an HDRP asset
+        // from here would rewrite the whole file.
+        public static void LevelProfiles()
+        {
+            foreach (string level in QualitySettings.names)
+            {
+                string path = LevelProfile(level);
+                if (AssetDatabase.LoadAssetAtPath<VolumeProfile>(path) != null)
+                {
+                    continue;
+                }
+                var profile = ScriptableObject.CreateInstance<VolumeProfile>();
+                AssetDatabase.CreateAsset(profile, path);
+                if (level == "low")
+                {
+                    Override<VisualEnvironment>(profile).cloudType.Override((int)CloudType.CloudLayer);
+                }
+                else
+                {
+                    Override<VolumetricClouds>(profile).enable.Override(true);
+                }
+                EditorUtility.SetDirty(profile);
+                AssetDatabase.SaveAssets();
+            }
+        }
+
+        // A profile's override lives in the profile's own file, as the editor's inspector makes it.
+        static T Override<T>(VolumeProfile profile) where T : VolumeComponent
+        {
+            T component = profile.Add<T>();
+            component.hideFlags = HideFlags.HideInInspector | HideFlags.HideInHierarchy;
+            AssetDatabase.AddObjectToAsset(component, profile);
+            return component;
         }
 
         // The hash `StreamingAssets/data/manifest.json` names (PRD v4 8.3.1).
