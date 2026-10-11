@@ -55,6 +55,10 @@ namespace Eternities.UI
             hud.hover.style.position = Position.Absolute;
             // The theme gives a label a margin, which would stand it off the point it is placed over.
             hud.hover.style.marginLeft = hud.hover.style.marginRight = hud.hover.style.marginTop = hud.hover.style.marginBottom = 0;
+            // Its place is the middle of its bottom edge, by its own size as the layout has it now:
+            // a place worked out from its size in the last frame's layout is wrong whenever the
+            // text or the panel's scale has just changed.
+            hud.hover.style.translate = new Translate(Length.Percent(-50), Length.Percent(-100));
             hud.hover.style.backgroundColor = Paper;
             Pad(hud.hover, 6, 12);
             hud.hover.style.display = DisplayStyle.None;
@@ -161,8 +165,8 @@ namespace Eternities.UI
             hover.text = text;
             hover.style.display = DisplayStyle.Flex;
             Vector2 at = RuntimePanelUtils.ScreenToPanel(hover.panel, viewPoint);
-            hover.style.left = at.x - hover.resolvedStyle.width / 2;
-            hover.style.top = at.y - hover.resolvedStyle.height - 8;
+            hover.style.left = at.x;
+            hover.style.top = at.y - 8;
         }
 
         // The printings panel (PRD v4 5.10.3). `choose` is told the row that was clicked.

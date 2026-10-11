@@ -151,9 +151,10 @@ namespace Eternities.Tests
                 Vector3 top = Camera.main.WorldToScreenPoint(StandField.Ground(placed.Position) + Vector3.up * StandField.SlabTop);
                 Vector2 over = app.Hud.ViewToPanel(new Vector2(top.x, view.height - top.y));
                 Rect label = app.Hud.HoverBounds, panel = app.Hud.PanelBounds;
-                Assert.That(label.center.x, Is.EqualTo(over.x).Within(3), "the label is centred over the stand");
-                Assert.That(label.yMax, Is.EqualTo(over.y - 8).Within(3), "and stands just above its top");
-                Assert.That(panel.Contains(label.min) && panel.Contains(label.max), $"the label {label} is inside the panel {panel}");
+                string seen = $"the label is {label} in the panel {panel}, the stand's top at {over}; the screen is {Screen.width} x {Screen.height}";
+                Assert.That(label.center.x, Is.EqualTo(over.x).Within(3), $"the label is centred over the stand: {seen}");
+                Assert.That(label.yMax, Is.EqualTo(over.y - 8).Within(3), $"and stands just above its top: {seen}");
+                Assert.That(panel.Contains(label.min) && panel.Contains(label.max), $"the label is inside the panel: {seen}");
             }
             finally
             {
