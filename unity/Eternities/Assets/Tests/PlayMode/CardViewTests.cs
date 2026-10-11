@@ -82,10 +82,12 @@ namespace Eternities.Tests
             hands.Run = false;
         }
 
+        // The first stand whose card fits, among those well away from the arrival point: a stand
+        // within 25 m of the avatar is already being given its image.
         static int StandOf(Predicate<PackCard> card)
         {
             App app = App.Instance;
-            return app.World.Layout.Stands.FindIndex(stand => card(app.World.Cards[stand.Card]));
+            return app.World.Layout.Stands.FindIndex(stand => StandField.Ground(stand.Position).magnitude > 100 && card(app.World.Cards[stand.Card]));
         }
 
         IEnumerator TravelTo(int stand)

@@ -64,6 +64,12 @@ namespace Eternities.Avatar
             return follow;
         }
 
+        // With reduced motion the camera's smoothing is off (PRD v4 5.11.2): it is where the avatar is.
+        public bool ReducedMotion
+        {
+            set => orbit.TrackerSettings.PositionDamping = value ? Vector3.zero : new Vector3(0.1f, 0.1f, 0.1f);
+        }
+
         // Puts the camera behind the avatar at once: after an arrival, where nothing may swing.
         public void Behind()
         {

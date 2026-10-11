@@ -20,8 +20,8 @@ unity projects new Eternities --editor-version 6000.6.5f1 --template com.unity.t
 Everything else under `Assets/Settings/`, `Assets/InputSystem_Actions.inputactions` and
 `ProjectSettings/` is as template 17.2.5 wrote it. So is `Assets/Scenes/Hub.unity`, the template's
 `SampleScene.unity` renamed, but for the one object the generation entry point adds to it.
-That includes the player settings no build has needed yet: the company name, the bundle identifier
-and the minimum macOS version are the template's, not decisions.
+The player's identity (company, bundle identifier, minimum macOS) and the IL2CPP backend for
+Standalone are ours, set with the first build (Batchmode commands, below).
 
 ## Pins
 
@@ -153,7 +153,20 @@ unity/Eternities/batchmode.sh -executeMethod Eternities.EditorTools.Bench.Run \
 
 A figure from the editor host fills no row of the acceptance matrix (PRD v4 9.5): with no swap
 chain an off-screen frame time can read short. The figures of record come from a player build
-started with the same `-bench` arguments; the build command arrives with the first build.
+started with the same `-bench` arguments, full screen at the display's native resolution, with no
+Unity editor alive on the machine. `-benchQuality high|medium|low` and `-benchScale 1|0.75` choose
+the row; a run of record is made without `-benchCaptures`:
+
+```sh
+unity/Eternities/batchmode.sh -quit -executeMethod Eternities.EditorTools.Build.Run -buildOut "$PWD/Build"
+Build/Eternities.app/Contents/MacOS/Eternities -bench warm -benchQuality high -benchScale 1 -benchOut "$PWD/bench-warm.json"
+Build/Eternities.app/Contents/MacOS/Eternities -bench cold -benchQuality high -benchScale 1 -benchOut "$PWD/bench-cold.json"
+```
+
+The build is the macOS player for Apple Silicon, IL2CPP, not a development build, with the pinned
+pack and the world's files inside it. Its identity is in `ProjectSettings/ProjectSettings.asset`:
+company `DioPires`, product `Eternities`, bundle identifier `com.diopires.eternities`, minimum macOS
+14.0 (DEC-953). The image cache is under `~/Library/Application Support/DioPires/Eternities/images`.
 
 Both exit 1 if a required argument is missing. The generation entry point also exits 1 if a pack
 file does not match the manifest, if the allocator fails (PRD v4 5.4.11) or if the checker finds a

@@ -297,6 +297,7 @@ namespace Eternities.Travel
         {
             AvatarInput input = Avatar.Input;
             CardView.ReducedMotion = ReducedMotion;
+            View.ReducedMotion = ReducedMotion;
             if (CardView.Active)
             {
                 // Esc, the back control or walking leaves card view (PRD v4 5.10.4).

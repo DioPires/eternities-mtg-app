@@ -80,6 +80,9 @@ namespace Eternities.Bench
             ["radialPathId"] = null, ["radialMetres"] = 0, ["ringMetres"] = 0, ["siteCard"] = null, ["siteImageShown"] = false,
             ["travelCard"] = null, ["travelCardBackShown"] = false,
         };
+        // The exhibit pass and its composite on and off at the arrival point: an addition to the
+        // schema as confirmed, for row I's limit on the prepass.
+        readonly Dictionary<string, object> exhibit = new Dictionary<string, object> { ["withP50Ms"] = null, ["withoutP50Ms"] = null, ["costMs"] = null };
         Dictionary<string, object> worldSeen;
         string packHash;
         Vector3 lastPosition;
@@ -109,6 +112,14 @@ namespace Eternities.Bench
             started = lastFrame = Now;
             QualitySettings.vSyncCount = 0;
             Application.targetFrameRate = -1;
+            Application.runInBackground = true;     // a run does not stop when its window loses the focus
+            if (!Application.isEditor)
+            {
+                // A figure of record is taken full screen at the display's native resolution (PRD v4 7.1).
+                Screen.SetResolution(Display.main.systemWidth, Display.main.systemHeight, FullScreenMode.FullScreenWindow);
+                yield return null;
+                yield return null;
+            }
             if (run.Quality != null)
             {
                 int level = Array.IndexOf(QualitySettings.names, run.Quality);
@@ -196,6 +207,26 @@ namespace Eternities.Bench
                 yield return Wait(1);
                 yield return Settle(5);
                 yield return Capture(3, "checkpoint-3-arrival.png");
+
+                // What the isolated image path costs (PRD v4 8.4.4, row I): the same view for three
+                // seconds with the exhibit pass and its composite, and three without. Outside the
+                // blocks: half of it is not what the product draws.
+                var with = new FrameSeries(1 << 14);
+                var without = new FrameSeries(1 << 14);
+                Begin("exhibit-cost", null);
+                yield return Wait(0.5);
+                segment.Block = with;
+                yield return Wait(3);
+                segment.Block = null;
+                app.Exhibit.PassEnabled = false;
+                yield return Wait(0.5);
+                segment.Block = without;
+                yield return Wait(3);
+                segment.Block = null;
+                app.Exhibit.PassEnabled = true;
+                exhibit["withP50Ms"] = with.Percentile(50);
+                exhibit["withoutP50Ms"] = without.Percentile(50);
+                exhibit["costMs"] = Math.Round(with.Percentile(50) - without.Percentile(50), 3);
 
                 // Step 4: walk north along the radial path at 0 degrees, from the plaza to where it
                 // meets the outermost ring path.
@@ -647,6 +678,7 @@ namespace Eternities.Bench
                 ["timings"] = timings,
                 ["memory"] = Memory(),
                 ["streaming"] = streaming,
+                ["exhibit"] = exhibit,
                 ["path"] = pathSeen,
                 ["captures"] = captures,
             };

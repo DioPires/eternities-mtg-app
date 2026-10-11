@@ -34,6 +34,7 @@ namespace Eternities.CardView
         bool rendered;
 
         public bool CompositeEnabled = true;        // a test turns it off to see the main camera's own pixels
+        public bool PassEnabled = true;             // the bench turns the whole path off to measure what it costs
         public RTHandle Buffer => colour;
         public static readonly ProfilingSampler OccluderSampler = new ProfilingSampler("Exhibit occluder depth"), SurfaceSampler = new ProfilingSampler("Exhibit surfaces");
 
@@ -43,7 +44,7 @@ namespace Eternities.CardView
 
             protected override void Execute(CustomPassContext ctx)
             {
-                if (ctx.hdCamera.camera == Owner.main)
+                if (ctx.hdCamera.camera == Owner.main && Owner.PassEnabled)
                 {
                     Owner.Render(ctx);
                 }
