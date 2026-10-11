@@ -220,6 +220,16 @@ memory and cannot start a process, so before it leaves the world the run asks fo
 of it the graphics driver holds, into the JSON's `memory` block. A player started without the
 script completes the path all the same and says in the JSON that nothing answered.
 
+Beside the JSON the script writes `<benchOut>.others`: every process other than the player that
+used half a core or more during the run, and the system's video encoder and decoder whenever they
+ran at all, sampled every 5 s, each with the seconds at which it was first and last seen and its
+highest %CPU, or the one word `none`. Read it before quoting a run. A locked, idle Mac is when
+macOS does work of its own, and its media analysis decodes video on the GPU: a run it crossed
+part-way had a p90 of 40 ms where the run before had 28, with the same median (DEC-953). Processor
+use is what a script can read without privileges, so the file is a sign that a run had company and
+not a measure of what the company cost. The other sign is in the JSON itself: `segments` whose p90
+rises part-way through the run while the p50 holds.
+
 The price list: what each thing in the frame is worth in milliseconds, at a quality level, on the
 machine it runs on. A run started with `-bench prices` walks into the world and, at the arrival
 point and on the apron of Invasion of Dominaria, draws the same view with one thing switched off
