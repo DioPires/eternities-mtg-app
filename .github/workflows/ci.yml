@@ -5,15 +5,17 @@ on:
     branches: [main]
   pull_request:
   # Re-runs the full set, including the two jobs that come off the push path below, against
-  # whatever ref you pick. This is the hand-crank for a commit that reached `main` without a PR:
-  # branch protection does not enforce admins, so a direct push is possible and does not get the
-  # browser smoke or the payload budget on its own (DEC-881).
+  # whatever ref you pick. This is the hand-crank for the common gap named on `budget` below: a
+  # tree on `main` that `budget` or `smoke` has not scored, because the merge landed before those
+  # two jobs reported (DEC-881). The no-PR route is closed: `enforce_admins` has been on since
+  # 2026-10-11 (DEC-966), so the required checks reject a direct push to `main`.
   workflow_dispatch:
 
 concurrency:
-  # A hand-cranked run gets a group of its own. It is started to score a tree that reached `main`
-  # without a PR, and sharing `CI-<ref>` with pushes means the next push to `main` cancels it in
-  # exactly the case it exists for. `push` and `pull_request` keep the group they had (DEC-881).
+  # A hand-cranked run gets a group of its own. It is started for the common gap, a tree on `main`
+  # that `budget` or `smoke` has not scored, and sharing `CI-<ref>` with pushes means the next push
+  # to `main` cancels it in exactly the case it exists for. `push` and `pull_request` keep the
+  # group they had (DEC-881).
   group: ${{ github.workflow }}-${{ github.ref }}${{ github.event_name == 'workflow_dispatch' && format('-dispatch-{0}', github.run_id) || '' }}
   cancel-in-progress: true
 
@@ -139,7 +141,9 @@ jobs:
   # the three required checks finish at about t+91 s while this job reports at about t+152 s
   # (medians, n=173 PR runs), so every PR has about a minute in which a merge can land a tree this
   # job has not scored. The rare gap is a commit that reaches `main` with no PR at all —
-  # `enforce_admins` is false, so that is possible. `workflow_dispatch` is the hand-crank for both.
+  # `enforce_admins` has been on since 2026-10-11 (DEC-966), so the required checks reject a direct
+  # push to `main` for administrators too, and that gap is closed. `workflow_dispatch` is the
+  # hand-crank for the common gap.
   budget:
     name: payload budget (PRD 7.2 + amendment A1)
     runs-on: ubuntu-latest
@@ -221,8 +225,9 @@ jobs:
   # the PR — but this is not a required context and it is the slowest job here, so it does not hold
   # the merge button. The three required checks finish at about t+91 s and this job reports at about
   # t+336 s (medians, n=173 PR runs): about four minutes on every PR in which a merge can land a
-  # tree this job has not scored. That window, not the direct push, is the usual way an unscored
-  # tree reaches `main`.
+  # tree this job has not scored. That window is the common gap named on `budget` above, and it is
+  # the way an unscored tree reaches `main`. `enforce_admins` closed the direct push on 2026-10-11
+  # (DEC-966).
   smoke:
     name: route + bench + quality smoke (PRD 8.9.2, 9.1.2, 9.1.4)
     runs-on: ubuntu-latest
