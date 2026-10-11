@@ -111,6 +111,33 @@ namespace Eternities.Bench
 
         double Now => Time.realtimeSinceStartupAsDouble;
 
+        // A frame time is a figure only if nothing paces the frames: no vsync and no frame cap.
+        static void Unpaced()
+        {
+            QualitySettings.vSyncCount = 0;
+            Application.targetFrameRate = -1;
+        }
+
+        // Puts a run's quality level in force; null is the level the project starts at. A level
+        // carries a vsync count of its own, and the switch puts that in force too, so the run's
+        // pacing is set again after it. Without that, a run at any level but the one the player
+        // starts at was paced by the display, and on a locked screen, where no frame is ever
+        // presented, it waited for its first frame for ever.
+        public static bool EnterLevel(string quality)
+        {
+            if (quality != null)
+            {
+                int level = Array.IndexOf(QualitySettings.names, quality);
+                if (level < 0)
+                {
+                    return false;
+                }
+                QualitySettings.SetQualityLevel(level, applyExpensiveChanges: true);
+            }
+            Unpaced();
+            return true;
+        }
+
         IEnumerator Start()
         {
             run = args;
@@ -122,8 +149,7 @@ namespace Eternities.Bench
                 run.Commit = builtFrom;
                 dirty = builtDirty;
             }
-            QualitySettings.vSyncCount = 0;
-            Application.targetFrameRate = -1;
+            Unpaced();
             Application.runInBackground = true;     // a run does not stop when its window loses the focus
             if (!Application.isEditor)
             {
@@ -146,15 +172,10 @@ namespace Eternities.Bench
                     yield break;
                 }
             }
-            if (run.Quality != null)
+            if (!EnterLevel(run.Quality))
             {
-                int level = Array.IndexOf(QualitySettings.names, run.Quality);
-                if (level < 0)
-                {
-                    Finish($"no quality level is named '{run.Quality}'");
-                    yield break;
-                }
-                QualitySettings.SetQualityLevel(level, applyExpensiveChanges: true);
+                Finish($"no quality level is named '{run.Quality}'");
+                yield break;
             }
             if (run.Scale < 1)
             {

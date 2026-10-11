@@ -12,7 +12,8 @@
         "Unity.RenderPipelines.Core.Runtime",
         "Unity.RenderPipelines.HighDefinition.Runtime",
         "Eternities.Audio",
-        "Eternities.UI"
+        "Eternities.UI",
+        "Eternities.Bench"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
