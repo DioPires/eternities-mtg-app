@@ -68,8 +68,10 @@ namespace Eternities.Bench
         // at that level is the frame with it less the frame with no volumetric fog at all.
         IEnumerator FogQualities(List<Dictionary<string, object>> rows, Camera view, HDAdditionalCameraData data)
         {
-            Fog inForce = VolumeManager.instance.stack.GetComponent<Fog>();
-            if (inForce == null || !inForce.enabled.value || !inForce.enableVolumetricFog.value || !HDCamera.GetOrCreate(view).frameSettings.IsEnabled(FrameSettingsField.Volumetrics))
+            // The camera's own stack: the manager's is not the one this camera was last drawn with.
+            HDCamera rendering = HDCamera.GetOrCreate(view);
+            Fog inForce = rendering.volumeStack.GetComponent<Fog>();
+            if (inForce == null || !inForce.enabled.value || !inForce.enableVolumetricFog.value || !rendering.frameSettings.IsEnabled(FrameSettingsField.Volumetrics))
             {
                 rows.Add(Unpriced("fog quality", "low, medium, high", "off: there is no volumetric fog in this view"));
                 yield break;
