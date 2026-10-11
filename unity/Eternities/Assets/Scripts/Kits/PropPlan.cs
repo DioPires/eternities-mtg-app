@@ -41,6 +41,16 @@ namespace Eternities.Kits
     // says which colour a visitor is among. The numbers are a first setting for the owner's eye.
     public static class Temperate
     {
+        // Dominaria's sun, from its row of Appendix C: "35° warm". The slice has one world and no
+        // theme table (PRD v4 9.5), so the row is written here. Where the sun stands is not in the
+        // row: the south-west, so the visitor who arrives facing north is lit from the side and
+        // the stands and trees throw their shadows across the paths.
+        public const float SunElevation = 35, SunAzimuth = 240, SunKelvin = 5000;
+
+        // A sun at an elevation above the horizon and an azimuth clockwise from north, both in
+        // degrees, as the rotation of a directional light, which looks the way its light travels.
+        public static Quaternion Sun(float elevation, float azimuth) => Quaternion.Euler(elevation, azimuth + 180, 0);
+
         public const int Oak = 0, Birch = 1, Pine = 2, Bush = 3, BushLarge = 4, Boulder = 5, Rock = 6, FlatStone = 7, StandingStone = 8, Reeds = 9;
 
         public static readonly PropKind[] Kinds =

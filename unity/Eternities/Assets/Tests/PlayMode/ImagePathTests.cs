@@ -87,6 +87,7 @@ namespace Eternities.Tests
         Volume conditions;
         Vector3 cameraHome;
         GameObject box;
+        Material boxColour;
 
         // The source image at half size: each pixel the mean of its 2 x 2 block in linear light.
         static Color32[] Half()
@@ -244,6 +245,7 @@ namespace Eternities.Tests
             if (box != null)
             {
                 UnityEngine.Object.Destroy(box);
+                UnityEngine.Object.Destroy(boxColour);
             }
             DynamicResolutionHandler.SetDynamicResScaler(() => 100, DynamicResScalePolicyType.ReturnsPercentage);
         }
@@ -448,7 +450,12 @@ namespace Eternities.Tests
         [UnityTest]
         public IEnumerator B_Occlusion()
         {
-            // The main camera's own frame of the card, before the box and with it.
+            // The main camera's own frame of the card, before the box and with it. What changes
+            // the slab beside the box, where the box hides nothing, is off: the shading taken from
+            // the screen's own depth, and the bloom, which spreads the box's colour past its edge.
+            Condition<ContactShadows>().enable.Override(false);
+            Condition<ScreenSpaceAmbientOcclusion>().intensity.Override(0);
+            Condition<Bloom>().intensity.Override(0);
             Camera view = Camera.main;
             Color32[] before = null;
             App.Instance.Exhibit.CompositeEnabled = false;
@@ -456,6 +463,15 @@ namespace Eternities.Tests
             box = GameObject.CreatePrimitive(PrimitiveType.Cube);
             box.transform.SetPositionAndRotation(view.transform.position + view.transform.forward * 1.2f + view.transform.right * 0.11f + view.transform.up * 0.07f, view.transform.rotation * Quaternion.Euler(0, 0, 20));
             box.transform.localScale = new Vector3(0.12f, 0.2f, 0.05f);
+            // The test reads what the box hides from what it changes in the main camera's frame, so
+            // the box changes nothing but the pixels it covers: it is a colour of its own whatever
+            // the light, and it throws no shadow. Under Dominaria's low sun its shadow fell on the
+            // slab, and 5,000 pixels of the card that nothing hid read as hidden.
+            boxColour = new Material(Shader.Find("HDRP/Unlit"));
+            boxColour.SetColor("_UnlitColor", new Color(1f, 0.85f, 0.1f));
+            var boxRenderer = box.GetComponent<Renderer>();
+            boxRenderer.sharedMaterial = boxColour;
+            boxRenderer.shadowCastingMode = ShadowCastingMode.Off;
 
             Color32[] main = null, composited = null;
             yield return Read(pixels => main = pixels);

@@ -99,6 +99,9 @@ namespace Eternities.Tests
             Assert.That(app.WorldLoaded, Is.False, "no world loads until the avatar nears a portal's pad");
         }
 
+        // How high the sun stands, in degrees above the horizon.
+        static float Elevation(Light sun) => 90 - Vector3.Angle(-sun.transform.forward, Vector3.up);
+
         // PRD v4 8.8.3: a world loads and places the pack's stands. And PRD v4 5.9: the portal leads
         // there, the walk is at the avatar's speed, and Esc leads back and unloads the world.
         [UnityTest]
@@ -120,6 +123,10 @@ namespace Eternities.Tests
             Assert.That(app.Stands.Stands, Is.EqualTo(6271));
             Assert.That(app.Stands.Sites, Is.EqualTo(233));
             Assert.That(app.Ground.terrainData.heightmapResolution, Is.EqualTo(2049));
+            // Dominaria's sun (PRD v4 Appendix C): 35 degrees up, warm, and to the visitor's left.
+            Assert.That(Elevation(app.Sun), Is.EqualTo(35).Within(0.01f));
+            Assert.That(app.Sun.colorTemperature, Is.LessThan(5600), "a warm sun");
+            Assert.That(Vector3.Dot(-app.Sun.transform.forward, Vector3.left), Is.GreaterThan(0.5f), "the sun stands to the west");
             // The ground wears the kit's three textures, not the plain colours that stand in for them.
             Assert.That(System.Array.ConvertAll(app.Ground.terrainData.terrainLayers, layer => layer.diffuseTexture.name),
                 Is.EqualTo(new[] { "leafy_grass_diff_2k", "dirt_floor_diff_2k", "ganges_river_pebbles_diff_2k" }));
@@ -197,6 +204,8 @@ namespace Eternities.Tests
             Assert.That(app.World, Is.Null);
             Assert.That(app.WorldLoaded, Is.False);
             Assert.That(Vector3.Distance(app.Avatar.transform.position, app.HubPortal.Pad), Is.LessThan(0.5f));
+            Assert.That(Elevation(app.Sun), Is.EqualTo(45).Within(0.01f), "the hub has the scene's own sun again");
+            Assert.That(app.Sun.colorTemperature, Is.EqualTo(6500));
         }
 
         // PRD v4 9.5: the river is seen from the rim, where the north radial path ends: the frame

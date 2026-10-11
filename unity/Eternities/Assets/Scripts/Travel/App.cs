@@ -58,6 +58,10 @@ namespace Eternities.Travel
 
         public static App Instance { get; private set; }
 
+        public Light Sun { get; private set; }
+        Quaternion hubSun;
+        float hubSunKelvin;
+
         public Material[] StandMaterials { get => standMaterials; set => standMaterials = value; }
         public Material AvatarMaterial { get => avatarMaterial; set => avatarMaterial = value; }
         public Material HubGroundMaterial { get => hubGroundMaterial; set => hubGroundMaterial = value; }
@@ -231,8 +235,31 @@ namespace Eternities.Travel
             veil.material = veilMaterial;
             Veil(0);
 
+            // The scene's sun is the hub's as it stands. A world sets it to its own (PRD v4 5.7.1).
+            foreach (Light light in FindObjectsByType<Light>(FindObjectsSortMode.None))
+            {
+                if (light.type == LightType.Directional)
+                {
+                    Sun = light;
+                    hubSun = light.transform.rotation;
+                    hubSunKelvin = light.colorTemperature;
+                }
+            }
+
             Place = Place.Hub;
             HubReady = true;
+        }
+
+        // The sun of the place the visitor is in: the world's own row, or the scene's for the hub.
+        void Sunlight(Place place)
+        {
+            if (Sun == null)
+            {
+                return;
+            }
+            Sun.useColorTemperature = true;
+            Sun.transform.rotation = place == Place.World ? Temperate.Sun(Temperate.SunElevation, Temperate.SunAzimuth) : hubSun;
+            Sun.colorTemperature = place == Place.World ? Temperate.SunKelvin : hubSunKelvin;
         }
 
         static Mesh GroundDisc(float radius, int around)
@@ -697,6 +724,7 @@ namespace Eternities.Travel
                     Unload();
                 }
                 Place = destination;
+                Sunlight(destination);
                 View.Behind();
                 yield return null;      // one frame at the destination behind the veil
             }
