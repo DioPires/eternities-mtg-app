@@ -63,6 +63,13 @@ namespace Eternities.Tests
             string packDirectory = App.PackDirectory();
             string source = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "..", "..", "web", "public", "data", Path.GetFileName(packDirectory)));
             WorldFiles.Generate(source, packDirectory, App.HomeWorld);
+            App.ImageSourceForTests = () => new WorldTests.NoImages();
+        }
+
+        [OneTimeTearDown]
+        public void LeaveTheSourceAlone()
+        {
+            App.ImageSourceForTests = null;
         }
 
         [TearDown]

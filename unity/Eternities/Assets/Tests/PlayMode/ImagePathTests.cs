@@ -115,6 +115,7 @@ namespace Eternities.Tests
             string packDirectory = App.PackDirectory();
             string source = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "..", "..", "web", "public", "data", Path.GetFileName(packDirectory)));
             WorldFiles.Generate(source, packDirectory, App.HomeWorld);
+            App.ImageSourceForTests = () => new WorldTests.NoImages();
             expected = Half();
         }
 
@@ -208,6 +209,12 @@ namespace Eternities.Tests
             view.transform.SetPositionAndRotation(cameraHome, facing * Quaternion.Euler(0, 180, 0));
             Vector3 behind = StandField.Ground(placed.Position) + facing * Vector3.forward * (distance + 3);
             app.Avatar.Place(new Vector3(behind.x, 0, behind.z), facing * Quaternion.Euler(0, 180, 0));
+        }
+
+        [OneTimeTearDown]
+        public void LeaveTheSourceAlone()
+        {
+            App.ImageSourceForTests = null;
         }
 
         [TearDown]

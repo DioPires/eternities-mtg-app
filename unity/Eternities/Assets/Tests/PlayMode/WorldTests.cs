@@ -25,6 +25,23 @@ namespace Eternities.Tests
             string target = App.PackDirectory();
             string source = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "..", "..", "web", "public", "data", Path.GetFileName(target)));
             WorldFiles.Generate(source, target, App.HomeWorld);
+            App.ImageSourceForTests = () => new NoImages();
+        }
+
+        [OneTimeTearDown]
+        public void LeaveTheSourceAlone()
+        {
+            App.ImageSourceForTests = null;
+        }
+
+        // These tests are about the world, not its images: every stand stays its swatch.
+        public sealed class NoImages : Eternities.CardView.IImageSource
+        {
+            public void Request(PackCard card, float distance, Action<Texture2D> done) => done(null);
+
+            public void Cancel(PackCard card)
+            {
+            }
         }
 
         static IEnumerator Until(Func<bool> done, float seconds, string what)

@@ -66,6 +66,8 @@ namespace Eternities.Travel
         public StandImages Images { get; private set; }
         public Exhibit Exhibit { get; private set; }
         public IImageSource ImageSource;    // where stand images come from; set before a world loads
+        // Tests name a source of their own here, so that no test run reaches Scryfall.
+        public static Func<IImageSource> ImageSourceForTests;
         public Terrain Ground { get; private set; }
         public GroundPlan GroundPlan => plan;
 
@@ -128,6 +130,8 @@ namespace Eternities.Travel
             try
             {
                 Pack = new Pack(PackDirectory());
+                // The image cache lives under the application-support directory (PRD v4 4.15.3, 7.4.4).
+                ImageSource = ImageSourceForTests != null ? ImageSourceForTests() : ScryfallImages.Create(Path.Combine(Application.persistentDataPath, "images"), transform);
                 BuildHub();
             }
             catch (Exception e)
