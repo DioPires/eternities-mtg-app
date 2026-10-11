@@ -166,7 +166,10 @@ Bench runner (PRD v4 8.8.4), the editor host, as CI runs it. It makes the world'
 `Assets/Scenes/Hub.unity`, enters play mode and renders off screen at `-benchSize`. No `-quit`: the
 run ends the editor itself, with exit code 0 only if the path completed, and a watchdog ends it
 with 1 after fifteen minutes. It writes `eternities.bench.v1` JSON to `-benchOut` and, if
-`-benchCaptures` is given, the checkpoints as PNG files into that directory. The path so far: the
+`-benchCaptures` is given, the checkpoints as PNG files into that directory: 2, 3, 4, 5 and 9 of
+PRD v4 9.3, and 6, the river from the end of the north radial path, with what the listener hears
+there as `checkpoint-6-river.wav` (six seconds: the river ahead, then to one side, then to the
+other) and each ear's level in the JSON's `sound`. The path so far: the
 hub, the walk into Dominaria's portal, the arrival, the north radial path to the rim, 150 m of the
 outermost ring path at a run, the nearest stand's apron and its card view, travel by the menu to
 Invasion of Dominaria and its card view with the card flipped, Esc back to the hub, and the same

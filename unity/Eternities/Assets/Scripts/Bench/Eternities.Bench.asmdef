@@ -9,6 +9,7 @@
         "Eternities.Avatar",
         "Eternities.CardView",
         "Eternities.UI",
+        "Eternities.Audio",
         "Unity.RenderPipelines.Core.Runtime",
         "Unity.RenderPipelines.HighDefinition.Runtime"
     ],

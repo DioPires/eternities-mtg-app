@@ -23,7 +23,8 @@ namespace Eternities.Bench
     // process: exit 0 only if the path completed.
     //
     // The path so far: the hub (capture 2), the walk into Dominaria's portal, the arrival (capture
-    // 3), the walk along the north radial path to the rim, the run along the outermost ring path,
+    // 3), the walk along the north radial path to the rim, where the river crosses just beyond the
+    // path's end (capture 6, and what the listener hears there), the run along the outermost ring path,
     // the nearest stand's apron (capture 4), card view there, travel by the menu to a named card and
     // its card view, the card flipped to its back (capture 5), the return to the hub, and the same
     // arrival with reduced motion (capture 9). A warm run first visits the world once; a cold run
@@ -36,6 +37,7 @@ namespace Eternities.Bench
         const float HitchThresholdMs = 4;
         const double Watchdog = 600;
         const double AfterArrival = 1.0, AfterCapture = 0.5;
+        const double SoundSeconds = 2, SoundTurnSeconds = 1;
 
         static BenchArgs args;
 
@@ -44,6 +46,7 @@ namespace Eternities.Bench
         readonly FrameSeries dominaria = new FrameSeries(1 << 18), hub = new FrameSeries(1 << 16);
         readonly List<Segment> segments = new List<Segment>();
         readonly List<Dictionary<string, object>> captures = new List<Dictionary<string, object>>();
+        Dictionary<string, object> sound;       // what the listener heard at the river, or null
         Segment segment;
         double started, lastFrame, excludeUntil;
         int excludedAfterPortal, excludedCapture;
@@ -323,6 +326,14 @@ namespace Eternities.Bench
                 Begin("radial", dominaria);
                 yield return Walk("radial", new Vector3(0, 0, ringRadius), ringRadius / AvatarController.WalkSpeed + 30, run: false);
                 pathSeen["radialMetres"] = Math.Round(segment.Metres, 2);
+
+                // Checkpoint 6 of PRD v4 9.3, a water body with its sound: at the path's end the
+                // river is ahead. Only a run with captures stops for it.
+                if (Ok && run.Captures != null)
+                {
+                    yield return Capture(6, "checkpoint-6-river.png");
+                    yield return RiverSound("checkpoint-6-river.wav");
+                }
 
                 // Step 5: turn clockwise and run along that ring path, across the wedge, for 150 m
                 // of arc or to the next radial path.
@@ -694,6 +705,54 @@ namespace Eternities.Bench
             excludingCapture = false;
         }
 
+        // What the listener hears at the river, as a sound file beside the captures and as levels
+        // in the JSON: with the river ahead, and with the view turned a quarter to either side of
+        // it. The river's sound comes from where the river is (PRD v4 9.3) if the ear that is
+        // towards the water hears it louder. Outside the statistics, as a capture is.
+        IEnumerator RiverSound(string file)
+        {
+            Camera view = Camera.main;
+            AudioListener listener = view.GetComponent<AudioListener>();
+            if (listener == null || app.Sound == null || !app.Sound.River.isPlaying)
+            {
+                yield break;
+            }
+            excludingCapture = true;
+            SoundClip clip = SoundClip.On(listener, 3 * SoundSeconds + 1);
+            var parts = new List<Dictionary<string, object>>();
+            foreach (float turn in new[] { 0f, 90f, -180f })
+            {
+                hands.Look = new Vector2(turn, 0);
+                yield return Wait(SoundTurnSeconds);
+                Vector3 ahead = Vector3.ProjectOnPlane(view.transform.forward, Vector3.up);
+                Vector3 toRiver = Vector3.ProjectOnPlane(app.Sound.River.transform.position - view.transform.position, Vector3.up);
+                int from = clip.Frames;
+                clip.Taking = true;
+                yield return Wait(SoundSeconds);
+                clip.Taking = false;
+                yield return null;      // a buffer that was being handed over is in
+                int to = clip.Frames;
+                parts.Add(new Dictionary<string, object>
+                {
+                    // Degrees from straight ahead to the river's nearest water: negative is to the left.
+                    ["riverBearingDegrees"] = Math.Round(Vector3.SignedAngle(ahead, toRiver, Vector3.up), 1),
+                    ["riverMetres"] = Math.Round(toRiver.magnitude, 1),
+                    ["fromSeconds"] = Math.Round((double)from / clip.SampleRate, 3), ["seconds"] = Math.Round((double)(to - from) / clip.SampleRate, 3),
+                    ["leftLevel"] = Math.Round(clip.Level(from, to, 0), 5), ["rightLevel"] = Math.Round(clip.Level(from, to, clip.Channels > 1 ? 1 : 0), 5),
+                });
+            }
+            hands.Look = new Vector2(90, 0);    // the view is as the walk left it
+            yield return Wait(SoundTurnSeconds);
+            Directory.CreateDirectory(run.Captures);
+            clip.Write(Path.Combine(run.Captures, file));
+            sound = new Dictionary<string, object>
+            {
+                ["checkpoint"] = 6, ["file"] = file, ["sampleRate"] = clip.SampleRate, ["channels"] = clip.Channels, ["parts"] = parts,
+            };
+            Destroy(clip);
+            excludingCapture = false;
+        }
+
         void Finish(string why)
         {
             if (finished)
@@ -800,6 +859,7 @@ namespace Eternities.Bench
                 ["prices"] = prices,
                 ["path"] = pathSeen,
                 ["captures"] = captures,
+                ["sound"] = sound,
             };
         }
     }
