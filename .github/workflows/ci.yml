@@ -139,7 +139,9 @@ jobs:
   # the three required checks finish at about t+91 s while this job reports at about t+152 s
   # (medians, n=173 PR runs), so every PR has about a minute in which a merge can land a tree this
   # job has not scored. The rare gap is a commit that reaches `main` with no PR at all —
-  # `enforce_admins` is false, so that is possible. `workflow_dispatch` is the hand-crank for both.
+  # `enforce_admins` has been on since 2026-10-11 (DEC-966), so the required checks reject a direct
+  # push to `main` for administrators too, and that gap is closed. `workflow_dispatch` is the
+  # hand-crank for the common gap.
   budget:
     name: payload budget (PRD 7.2 + amendment A1)
     runs-on: ubuntu-latest
