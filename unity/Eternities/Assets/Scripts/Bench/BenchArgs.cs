@@ -15,6 +15,39 @@ namespace Eternities.Bench
 
         public bool Present => Mode != null;
 
+        // The total and the graphics part of a process's footprint, in bytes, from the text
+        // `footprint -p <pid>` prints: its header's "Footprint: 187 MB", and the dirty column of
+        // every category marked "(graphics)" and of IOSurface.
+        public static (long Total, long Graphics) ParseFootprint(string output)
+        {
+            long Bytes(string number, string unit)
+            {
+                double value = double.Parse(number, CultureInfo.InvariantCulture);
+                switch (unit)
+                {
+                    case "KB": return (long)(value * 1024);
+                    case "MB": return (long)(value * 1024 * 1024);
+                    case "GB": return (long)(value * 1024 * 1024 * 1024);
+                    default: return (long)value;
+                }
+            }
+            long total = 0, graphics = 0;
+            foreach (string line in output.Split('\n'))
+            {
+                string[] words = line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                int at = Array.IndexOf(words, "Footprint:");
+                if (at >= 0 && at + 2 < words.Length && total == 0)
+                {
+                    total = Bytes(words[at + 1], words[at + 2]);
+                }
+                else if (words.Length >= 8 && (line.Contains("(graphics)") || line.TrimEnd().EndsWith("IOSurface")) && (words[1] == "B" || words[1].EndsWith("B")))
+                {
+                    graphics += Bytes(words[0], words[1]);
+                }
+            }
+            return (total, graphics);
+        }
+
         public static BenchArgs Parse(string[] args)
         {
             var parsed = new BenchArgs();

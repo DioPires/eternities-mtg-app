@@ -26,8 +26,9 @@ namespace Eternities.Travel
     // them. The slice's hub is plain (PRD v4 9.5): the ground, the home plane's portal where the
     // ring of 88 will have it, and nothing else.
     //
-    // The hub stands 2 km above the world's ground, so a world is built in place, whole, while the
-    // visitor is still in the hub, and the cut of a portal is a move of the avatar.
+    // The hub stands 4 km to the east of the world's centre, out of sight of it, so a world is built
+    // in place, whole, while the visitor is still in the hub, and the cut of a portal is a move of
+    // the avatar.
     public sealed class App : MonoBehaviour
     {
         public const string HomeWorld = "dominaria";
@@ -37,7 +38,8 @@ namespace Eternities.Travel
         public const float PortalRingRadius = 56, HubRadius = 64;   // PRD v4 5.3.2
         public const float ReturnPortalSouth = 8;                   // PRD v4 5.4.5
         public const float LoadBudgetMs = 4;
-        static readonly Vector3 HubOrigin = new Vector3(0, 2000, 0);
+        static readonly Vector3 HubOrigin = new Vector3(4000, 0, 0);
+        static bool warmed;
 
         // Assigned by the generation entry point. The stand materials are the four plinths by
         // rarity, then the slab. The terrain layers are the kit's meadow, path and gravel, or empty.
@@ -313,6 +315,11 @@ namespace Eternities.Travel
                 {
                     CardView.Flip();
                 }
+                else if (input.Step != 0)
+                {
+                    // The keyboard's way through the printings: [ and ], or Page Up and Page Down.
+                    CardView.Show(Mathf.Clamp(CardView.Printing + input.Step, 0, CardView.Card.Printings.Length - 1));
+                }
                 return true;
             }
             if (Hud.TravelOpen)
@@ -581,6 +588,21 @@ namespace Eternities.Travel
                 Holding = true;
                 HoldIndicator = Now - held > HoldIndicatorAfter;
                 yield return null;
+            }
+            // The first time, what card view and the overlays will need is made ready here, behind
+            // the surface: the first use of depth of field and of each size of text otherwise stops
+            // a frame for most of a second, in the middle of the world.
+            if (destination == Place.World && Failure == null && !warmed)
+            {
+                warmed = true;
+                CardView.Warm(true);
+                Hud.Warm(true);
+                for (int frame = 0; frame < 4; frame++)
+                {
+                    yield return null;
+                }
+                CardView.Warm(false);
+                Hud.Warm(false);
             }
             Holding = HoldIndicator = false;
             LastHoldSeconds = Now - held;

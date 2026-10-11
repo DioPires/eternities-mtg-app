@@ -73,6 +73,7 @@ namespace Eternities.Bench
         readonly Dictionary<string, object> memory = new Dictionary<string, object>
         {
             ["gpuPeakBytes"] = 0L, ["gpuSource"] = "ProfilerRecorder: Gfx Used Memory", ["rssPeakBytes"] = 0L, ["rssSource"] = "ProfilerRecorder: System Used Memory",
+            ["footprintBytes"] = null, ["graphicsFootprintBytes"] = null, ["footprintSource"] = null,
             ["residentImagesPeakBytes"] = 0L, ["imageSlots"] = StandImages.Slots, ["imageSlotsInUsePeak"] = 0,
         };
         readonly Dictionary<string, object> pathSeen = new Dictionary<string, object>
@@ -341,6 +342,7 @@ namespace Eternities.Bench
             {
                 // Step 10: Esc in explore returns to the hub through the return portal.
                 Images();
+                Footprint();
                 Begin("portal-out", null);
                 hands.Back = true;
                 yield return Step("portal-out", 60, () => (app.Place == Place.Hub && !app.InTransition) || app.Failure != null);
@@ -436,6 +438,37 @@ namespace Eternities.Bench
             memory["imageSlotsInUsePeak"] = app.Images.SlotsInUsePeak;
             // RGBA8 with a full mip chain: four thirds of the top level.
             memory["residentImagesPeakBytes"] = (long)app.Images.SlotsInUsePeak * StandImages.Width * StandImages.Height * 4 * 4 / 3;
+        }
+
+        // The process as the system counts it, read before the world is left: `footprint` gives its
+        // physical footprint, and what of it the graphics driver holds, which on Apple Silicon is
+        // the GPU's memory. A player that is not a development build has no engine counter for it.
+        void Footprint()
+        {
+            if (Application.platform != RuntimePlatform.OSXPlayer && Application.platform != RuntimePlatform.OSXEditor)
+            {
+                return;
+            }
+            try
+            {
+                var start = new System.Diagnostics.ProcessStartInfo("/usr/bin/footprint", $"-p {System.Diagnostics.Process.GetCurrentProcess().Id}")
+                {
+                    RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true,
+                };
+                using (System.Diagnostics.Process tool = System.Diagnostics.Process.Start(start))
+                {
+                    string output = tool.StandardOutput.ReadToEnd();
+                    tool.WaitForExit(10_000);
+                    (long total, long graphics) = BenchArgs.ParseFootprint(output);
+                    memory["footprintBytes"] = total;
+                    memory["graphicsFootprintBytes"] = graphics;
+                    memory["footprintSource"] = "footprint(1) before leaving the world: the process's footprint, and its categories marked graphics with IOSurface";
+                }
+            }
+            catch (Exception e)
+            {
+                memory["footprintSource"] = $"footprint(1) could not be read: {e.Message}";
+            }
         }
 
         void Rendered(ScriptableRenderContext context, List<Camera> cameras)

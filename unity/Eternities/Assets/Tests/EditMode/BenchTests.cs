@@ -56,6 +56,25 @@ namespace Eternities.Tests
             Assert.Throws<System.ArgumentException>(() => BenchArgs.Parse(new[] { "-bench", "warm" }));
         }
 
+        [Test]
+        public void AFootprintIsItsTotalAndItsGraphicsCategories()
+        {
+            const string output =
+                "======================================================================\n" +
+                "Eternities [761]: 64-bit    Footprint: 3.5 GB (16384 bytes per page)\n" +
+                "======================================================================\n\n" +
+                "  Dirty      Clean  Reclaimable    Regions    Category\n" +
+                "    ---        ---          ---        ---    ---\n" +
+                " 127 MB        0 B          0 B        171    MALLOC_SMALL\n" +
+                "2928 KB        0 B          0 B         33    Owned physical footprint (unmapped) (graphics)\n" +
+                " 1.5 GB        0 B          0 B         48    IOAccelerator (graphics)\n" +
+                " 464 KB        0 B          0 B         35    IOSurface\n" +
+                "  64 KB        0 B          0 B          2    IOAccelerator\n";
+            (long total, long graphics) = BenchArgs.ParseFootprint(output);
+            Assert.That(total, Is.EqualTo((long)(3.5 * 1024 * 1024 * 1024)));
+            Assert.That(graphics, Is.EqualTo(2928L * 1024 + (long)(1.5 * 1024 * 1024 * 1024) + 464L * 1024));
+        }
+
         // The JSON names the HDRP version; the lock is where it is pinned.
         [Test]
         public void TheHdrpVersionInTheJsonIsTheLocks()

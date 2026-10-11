@@ -85,6 +85,15 @@ namespace Eternities.CardView
             return viewer;
         }
 
+        // Depth of field for a few frames with nothing to show: the pipeline readies it once, and the
+        // caller does this where no one sees.
+        public void Warm(bool on)
+        {
+            warming = on;
+        }
+
+        bool warming;
+
         // The world whose stands this views. Called when a world is loaded, and with nulls when it is left.
         public void Bind(WorldData data, StandImages standImages, IImageSource imageSource)
         {
@@ -327,7 +336,7 @@ namespace Eternities.CardView
         void Update()
         {
             float blend = ReducedMotion ? ReducedBlendSeconds : BlendSeconds;
-            focus.weight = Mathf.MoveTowards(focus.weight, Active ? 1 : 0, Time.deltaTime / blend);
+            focus.weight = warming ? 1 : Mathf.MoveTowards(focus.weight, Active ? 1 : 0, Time.deltaTime / blend);
             if (!Active)
             {
                 return;

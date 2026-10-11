@@ -128,8 +128,8 @@ asset of the quality level in force.
 With the project open in the editor, the menu item Eternities > Generate does the same. To walk the
 world, generate, open `Assets/Scenes/Hub.unity` and press Play: WASD walks, Shift runs, the right
 mouse button orbits the camera, the wheel zooms. Within 3 m of a stand its label shows and E enters
-card view; E there flips a card that has a back image, and Esc or walking leaves. T opens the travel
-menu. Esc in a world, outside card view, returns to the hub.
+card view; E there flips a card that has a back image, `[` and `]` step through its printings, and
+Esc or walking leaves. T opens the travel menu. Esc in a world, outside card view, returns to the hub.
 
 It logs the world's figures (PRD v4 5.4.14), and writes them to `-reportOut` if that is given:
 
@@ -162,9 +162,9 @@ Unity editor alive on the machine. `-benchQuality high|medium|low` and `-benchSc
 the row; a run of record is made without `-benchCaptures`:
 
 ```sh
-unity/Eternities/batchmode.sh -quit -executeMethod Eternities.EditorTools.Build.Run -buildOut "$PWD/Build"
-Build/Eternities.app/Contents/MacOS/Eternities -bench warm -benchQuality high -benchScale 1 -benchOut "$PWD/bench-warm.json"
-Build/Eternities.app/Contents/MacOS/Eternities -bench cold -benchQuality high -benchScale 1 -benchOut "$PWD/bench-cold.json"
+unity/Eternities/batchmode.sh -quit -executeMethod Eternities.EditorTools.Build.Run -buildOut "$PWD/unity/Eternities/Build"
+unity/Eternities/Build/Eternities.app/Contents/MacOS/Eternities -bench warm -benchQuality high -benchScale 1 -benchOut "$PWD/bench-warm.json"
+unity/Eternities/Build/Eternities.app/Contents/MacOS/Eternities -bench cold -benchQuality high -benchScale 1 -benchOut "$PWD/bench-cold.json"
 ```
 
 The build is the macOS player for Apple Silicon, IL2CPP, not a development build, with the pinned

@@ -63,6 +63,38 @@ namespace Eternities.UI
             return hud;
         }
 
+        // Every size of text the overlays use, with every character a card is likely to carry, laid
+        // out once where it cannot be seen: the font's atlas is made then, and not when the first
+        // label or panel appears.
+        public void Warm(bool on)
+        {
+            if (!on)
+            {
+                warm?.RemoveFromHierarchy();
+                warm = null;
+                return;
+            }
+            warm = new VisualElement();
+            warm.style.position = Position.Absolute;
+            warm.style.opacity = 0;
+            warm.pickingMode = PickingMode.Ignore;
+            var characters = new System.Text.StringBuilder();
+            for (char c = ' '; c <= '~'; c++)
+            {
+                characters.Append(c);
+            }
+            characters.Append("·—–’“”…éáíóúâêôûäöüñç{}/");
+            foreach (int size in new[] { 28, 24, 20, 18, 16, 15, 14 })
+            {
+                warm.Add(Text(characters.ToString(), size, Ink));
+            }
+            warm.Add(Action("Flip", () => { }));
+            warm.Add(new ScrollView());
+            document.rootVisualElement.Add(warm);
+        }
+
+        VisualElement warm;
+
         void OnDestroy()
         {
             Destroy(Settings);
