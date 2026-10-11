@@ -8,7 +8,7 @@
 |---|---|
 | Python encoder | `pipeline/src/eternities/contract/` |
 | TypeScript decoder | `web/src/data/` |
-| Shared byte-level test vector | `contract/test-vectors/v2/` |
+| Shared byte-level test vector | `contract/test-vectors/v3/` |
 
 The test vector is the arbiter. `pipeline/tests/test_test_vector.py` and `web/test/test-vector.test.ts` both assert against the same committed bytes, so a one-sided change fails CI.
 
