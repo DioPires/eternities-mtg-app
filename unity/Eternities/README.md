@@ -175,8 +175,11 @@ other) and each ear's level in the JSON's `sound`. The path so far: the
 hub, the walk into Dominaria's portal, the arrival, the north radial path to the rim, 150 m of the
 outermost ring path at a run, the nearest stand's apron and its card view, travel by the menu to
 Invasion of Dominaria and its card view with the card flipped, Esc back to the hub, and the same
-arrival with reduced motion; about five minutes. A warm run visits the world once before it measures; a cold run empties the image
-cache first. The stands along the path ask Scryfall for their images, once: they are kept in the
+arrival with reduced motion; about five minutes. A warm run visits the world once before it measures,
+and walks back to the hub's arrival point so that it stands there as a visitor arrives, facing the
+portal; a cold run empties the image cache first. A run ends at its first step, saying so, if the
+portal's ring is not in the middle of the view: the hub's capture of every warm run once looked the
+other way. The stands along the path ask Scryfall for their images, once: they are kept in the
 image cache under the application-support directory (PRD v4 4.15.3):
 
 ```sh

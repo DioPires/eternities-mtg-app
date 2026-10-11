@@ -97,6 +97,9 @@ namespace Eternities.Bench
         App app;
         ScryfallImages scryfall;
         const float RingArc = 150;
+        // How far past the hub's arrival point a warm run goes before it turns back to it: at a
+        // walk the way back takes the camera's half turn behind the avatar, and a second more.
+        const float TurnBack = 12;
         const string TravelCard = "Invasion of Dominaria";     // one printing, and a back image: Serra Faithkeeper
         bool reducedMotion;
         RenderTexture overlays;
@@ -239,10 +242,19 @@ namespace Eternities.Bench
                         hands.Back = true;
                         yield return Step("warm-up", 60, () => (app.Place == Place.Hub && !app.InTransition) || app.Failure != null);
                     }
-                    // Back to where a visitor arrives in the hub, as a run starts.
+                    // Back to where a visitor arrives in the hub, and as a visitor arrives there:
+                    // facing the portal. The avatar comes from the portal, so it runs on past the
+                    // arrival point and walks back to it, and the camera comes round behind it on
+                    // the way. Without the turn a warm run's step 1 looked away from the portal.
                     if (Ok)
                     {
-                        yield return Walk("warm-up", hubArrival, 60, run: true);
+                        Vector3 away = hubArrival - app.HubPortal.transform.position;
+                        away.y = 0;
+                        yield return Walk("warm-up", hubArrival + away.normalized * TurnBack, 60, run: true);
+                    }
+                    if (Ok)
+                    {
+                        yield return Walk("warm-up", hubArrival, 60, run: false);
                     }
                 }
             }
@@ -251,6 +263,14 @@ namespace Eternities.Bench
                 // Step 1: in the hub, facing Dominaria's portal.
                 Begin("hub", hub);
                 yield return Wait(2);
+                Vector3 ring = Camera.main.WorldToViewportPoint(app.HubPortal.transform.position + Vector3.up * (Portal.RingRadius + Portal.Tube));
+                if (ring.z <= 0 || Mathf.Abs(ring.x - 0.5f) > 0.25f || Mathf.Abs(ring.y - 0.5f) > 0.4f)
+                {
+                    failure = $"step 1: the hub's portal is not in the middle of the view (viewport {ring.x:F2}, {ring.y:F2}, depth {ring.z:F1} m)";
+                }
+            }
+            if (Ok)
+            {
                 yield return Capture(2, "checkpoint-2-hub.png");
 
                 // Step 2: walk into the portal. It ends when the world is ready and the transition done.
