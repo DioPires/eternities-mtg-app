@@ -249,14 +249,18 @@ namespace Eternities.EditorTools
                 }
             }
 
-            // The kit's terrain layers are the owner's (DEC-953, day 1). Until all three are
-            // committed the ground is painted in plain colours.
-            TerrainLayer[] layers = new[] { "meadow", "path", "gravel" }
-                .Select(name => AssetDatabase.LoadAssetAtPath<TerrainLayer>($"Assets/Kits/temperate/TerrainLayers/{name}.terrainlayer")).ToArray();
-            if (layers.Any(layer => layer == null))
+            // The kit's three terrain layers (PRD v4 8.4.5), in the order `GroundPlan` paints them:
+            // each made once from the kit's textures and then tuned in its own file. A second run
+            // leaves them as they are. A tile is as wide as the ground its photograph shows, which
+            // its source states. The tints are Dominaria's (PRD v4 Appendix C): the meadow's
+            // texture is half leaf litter and reads as bare ground until it is pulled to green, and
+            // the path's is an orange that reads as sand.
+            TerrainLayer[] layers =
             {
-                layers = new TerrainLayer[0];
-            }
+                KitLayer("meadow", "leafy_grass", 2f, new Color(0.72f, 1f, 0.55f)),
+                KitLayer("path", "dirt_floor", 2.07f, new Color(0.75f, 0.78f, 0.85f)),
+                KitLayer("gravel", "ganges_river_pebbles", 2.16f, Color.white),
+            };
             if (app.TerrainLayers == null || !layers.SequenceEqual(app.TerrainLayers))
             {
                 app.TerrainLayers = layers;
@@ -317,6 +321,45 @@ namespace Eternities.EditorTools
                 return Lit($"temperate-{ours.name}", ours.colour, 0f, 0.15f, "Assets/Kits/temperate/Materials");
             }).ToArray();
             return new KitProp { Mesh = filter.sharedMesh, Materials = materials };
+        }
+
+        public const string LayerFolder = "Assets/Kits/temperate/TerrainLayers";
+
+        // A terrain layer of the temperate kit: one texture's colour, normal and mask maps. The mask
+        // is the kit's `arm` file as `KitMaskImport` repacks it, so the layer's smoothness and
+        // occlusion are the texture's own.
+        static TerrainLayer KitLayer(string name, string texture, float metres, Color tint)
+        {
+            string path = $"{LayerFolder}/{name}.terrainlayer";
+            var layer = AssetDatabase.LoadAssetAtPath<TerrainLayer>(path);
+            if (layer == null)
+            {
+                Texture2D Map(string kind)
+                {
+                    string file = $"Assets/Kits/temperate/Terrain/{texture}_{kind}_2k.jpg";
+                    var map = AssetDatabase.LoadAssetAtPath<Texture2D>(file);
+                    if (map == null)
+                    {
+                        throw new InvalidDataException($"the kit's texture {file} is not in the project: run Assets/Kits/temperate/fetch.sh and git lfs pull");
+                    }
+                    return map;
+                }
+                if (!AssetDatabase.IsValidFolder(LayerFolder))
+                {
+                    AssetDatabase.CreateFolder(Path.GetDirectoryName(LayerFolder), Path.GetFileName(LayerFolder));
+                }
+                layer = new TerrainLayer
+                {
+                    diffuseTexture = Map("diff"),
+                    normalMapTexture = Map("nor_gl"),
+                    maskMapTexture = Map("arm"),
+                    tileSize = new Vector2(metres, metres),
+                    diffuseRemapMax = new Vector4(tint.r, tint.g, tint.b, 1),      // HDRP's terrain shader reads the tint here
+                };
+                AssetDatabase.CreateAsset(layer, path);
+                AssetDatabase.SaveAssets();
+            }
+            return layer;
         }
 
         static GameObject WaterPrefab(string name, WaterSurfaceType type)

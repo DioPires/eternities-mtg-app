@@ -136,9 +136,11 @@ materials under `Assets/Kits/core/Materials/` and `Assets/Kits/temperate/Materia
 time. It names the mesh and the materials of each of the kit's props on that object: the world's
 prop scatter (PRD v4 8.4.2) is worked out at load from the layout, seeded by the plane, and the
 quality level in force sets how much of it is drawn (high all of it, medium 60%, low 35%; the
-table of what grows in which wedge is `Temperate` in `Assets/Scripts/Kits/PropPlan.cs`). It assigns the kit's terrain layers to
-that object once `Assets/Kits/temperate/TerrainLayers/` holds `meadow`, `path` and `gravel`; until
-then the ground is painted in plain colours. It also makes the kit's two water prefabs,
+table of what grows in which wedge is `Temperate` in `Assets/Scripts/Kits/PropPlan.cs`). It makes
+the kit's three terrain layers, `meadow`, `path` and `gravel` under
+`Assets/Kits/temperate/TerrainLayers/`, once: each has its texture's colour, normal and mask maps and
+a first tile size, and is tuned in its own file from then on. It names them on that object, and a
+ground without all three is painted in plain colours. It also makes the kit's two water prefabs,
 `Assets/Kits/temperate/Water/River.prefab` and `Lake.prefab`, once, from the water system's own
 presets: its river, running along the bed at 1.5 km/h, and its open sea calmed to a lake's light
 breeze, without foam. Those two are the owner's to tune and it never writes them again. They are

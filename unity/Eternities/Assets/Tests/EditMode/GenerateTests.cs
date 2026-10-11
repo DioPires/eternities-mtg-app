@@ -66,6 +66,31 @@ namespace Eternities.Tests
             }
         }
 
+        // The ground's three layers are the kit's (PRD v4 8.4.5): each has its texture's colour,
+        // normal and mask maps, and the persistent scene names the three in the order the ground is
+        // painted in. A ground without them is plain colours, which is what the owner first saw.
+        [Test]
+        public void TheGroundHasTheKitsThreeLayers()
+        {
+            string scene = File.ReadAllText("Assets/Scenes/Hub.unity");
+            (string name, string texture)[] wanted = { ("meadow", "leafy_grass"), ("path", "dirt_floor"), ("gravel", "ganges_river_pebbles") };
+            int last = -1;
+            foreach ((string name, string texture) in wanted)
+            {
+                string path = $"{Generate.LayerFolder}/{name}.terrainlayer";
+                var layer = AssetDatabase.LoadAssetAtPath<TerrainLayer>(path);
+                Assert.That(layer, Is.Not.Null, path);
+                Assert.That(AssetDatabase.GetAssetPath(layer.diffuseTexture), Is.EqualTo($"Assets/Kits/temperate/Terrain/{texture}_diff_2k.jpg"), path);
+                Assert.That(AssetDatabase.GetAssetPath(layer.normalMapTexture), Is.EqualTo($"Assets/Kits/temperate/Terrain/{texture}_nor_gl_2k.jpg"), path);
+                Assert.That(AssetDatabase.GetAssetPath(layer.maskMapTexture), Is.EqualTo($"Assets/Kits/temperate/Terrain/{texture}_arm_2k.jpg"), path);
+                Assert.That(layer.tileSize.x, Is.InRange(0.5f, 20f), $"{path}: a tile is some metres wide");
+                Assert.That(layer.tileSize.y, Is.EqualTo(layer.tileSize.x), $"{path}: a tile is square");
+                int at = scene.IndexOf(AssetDatabase.AssetPathToGUID(path), System.StringComparison.Ordinal);
+                Assert.That(at, Is.GreaterThan(last), $"the persistent scene names {path}, after the layer painted before it");
+                last = at;
+            }
+        }
+
         // The pipeline's default materials are the editor's: in a player each is null. What draws
         // with one is there in the editor and in every test, and is not there in a build.
         [Test]

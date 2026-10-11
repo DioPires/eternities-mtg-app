@@ -120,6 +120,9 @@ namespace Eternities.Tests
             Assert.That(app.Stands.Stands, Is.EqualTo(6271));
             Assert.That(app.Stands.Sites, Is.EqualTo(233));
             Assert.That(app.Ground.terrainData.heightmapResolution, Is.EqualTo(2049));
+            // The ground wears the kit's three textures, not the plain colours that stand in for them.
+            Assert.That(System.Array.ConvertAll(app.Ground.terrainData.terrainLayers, layer => layer.diffuseTexture.name),
+                Is.EqualTo(new[] { "leafy_grass_diff_2k", "dirt_floor_diff_2k", "ganges_river_pebbles_diff_2k" }));
             Assert.That(app.Ground.terrainData.size.x, Is.GreaterThanOrEqualTo(2 * app.World.Layout.WorldRadius / 1000f));
             // The arrival point, facing north, on the ground.
             yield return new WaitForFixedUpdate();

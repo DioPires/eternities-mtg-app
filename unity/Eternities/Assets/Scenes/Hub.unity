@@ -447,7 +447,10 @@ MonoBehaviour:
   portalFrameMaterial: {fileID: 2100000, guid: cef28231c077c4efdb83355e73c7c6d5, type: 2}
   portalSurfaceMaterial: {fileID: 2100000, guid: 3ac64b140919a4fd2b741d5c7a89b88e, type: 2}
   veilMaterial: {fileID: 2100000, guid: 9761b144ce2ba446e9d0f9ddf2ad5aba, type: 2}
-  terrainLayers: []
+  terrainLayers:
+  - {fileID: 8574412962073106934, guid: c70d145a87fa24dab9804c0248dfcdb0, type: 2}
+  - {fileID: 8574412962073106934, guid: 3b11dbd7283f24c0389751150ff91c9c, type: 2}
+  - {fileID: 8574412962073106934, guid: 50217ed11a6d54fcb92e8214b646bbbb, type: 2}
   groundMaterials:
   - {fileID: 2100000, guid: 44ee17779d2134bc29cfa5d203faccdf, type: 2}
   - {fileID: 2100000, guid: 675438985587b40b981bcae599ca968c, type: 2}
