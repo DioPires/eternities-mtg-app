@@ -8,7 +8,9 @@
         "Eternities.Travel",
         "Eternities.Avatar",
         "Eternities.CardView",
-        "Eternities.UI"
+        "Eternities.UI",
+        "Unity.RenderPipelines.Core.Runtime",
+        "Unity.RenderPipelines.HighDefinition.Runtime"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

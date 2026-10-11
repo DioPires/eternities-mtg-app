@@ -13,6 +13,7 @@ using Unity.Profiling;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.HighDefinition;
 
 namespace Eternities.Bench
 {
@@ -87,6 +88,7 @@ namespace Eternities.Bench
         Dictionary<string, object> worldSeen;
         string packHash;
         bool? dirty;        // null: the run does not know (the editor host)
+        int renderWidth, renderHeight;
         Vector3 lastPosition;
         App app;
         ScryfallImages scryfall;
@@ -138,6 +140,23 @@ namespace Eternities.Bench
                     yield break;
                 }
                 QualitySettings.SetQualityLevel(level, applyExpensiveChanges: true);
+            }
+            if (run.Scale < 1)
+            {
+                // The resolution scale of PRD v4 9.5, row R3, is HDRP's dynamic resolution held at
+                // one value. It can only be held where the level's HDRP asset has it enabled; a run
+                // that cannot render at the scale it was asked for says so and is not a figure.
+                yield return null;      // the level's HDRP asset is in force from the next frame
+                var asset = GraphicsSettings.currentRenderPipeline as HDRenderPipelineAsset;
+                var view = Camera.main != null ? Camera.main.GetComponent<HDAdditionalCameraData>() : null;
+                if (asset == null || view == null || !asset.currentPlatformRenderPipelineSettings.dynamicResolutionSettings.enabled)
+                {
+                    Finish($"a run at scale {run.Scale} needs dynamic resolution, and it is off in the HDRP asset of the quality level '{QualitySettings.names[QualitySettings.GetQualityLevel()]}'");
+                    yield break;
+                }
+                float percentage = run.Scale * 100;
+                view.allowDynamicResolution = true;
+                DynamicResolutionHandler.SetDynamicResScaler(() => percentage, DynamicResScalePolicyType.ReturnsPercentage);
             }
             gpuMemory = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "Gfx Used Memory");
             systemMemory = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "System Used Memory");
@@ -204,6 +223,10 @@ namespace Eternities.Bench
                 timings["portalToWorldReadyMs"] = Math.Round(app.LastTravelSeconds * 1000);
                 timings["holdMs"] = Math.Round(app.LastHoldSeconds * 1000);
                 WorldLayout layout = app.World.Layout;
+                // What the main camera renders at, read from the pipeline and not worked out.
+                HDCamera rendering = HDCamera.GetOrCreate(Camera.main);
+                renderWidth = rendering.actualWidth;
+                renderHeight = rendering.actualHeight;
                 worldSeen = new Dictionary<string, object>
                 {
                     ["slug"] = app.World.Plane.Slug, ["stands"] = layout.Stands.Count, ["sites"] = layout.Sites.Count,
@@ -703,7 +726,7 @@ namespace Eternities.Bench
                     },
                     ["quality"] = QualitySettings.names[QualitySettings.GetQualityLevel()], ["resolutionScale"] = run.Scale,
                     ["output"] = new Dictionary<string, object> { ["width"] = width, ["height"] = height },
-                    ["render"] = new Dictionary<string, object> { ["width"] = Mathf.RoundToInt(width * run.Scale), ["height"] = Mathf.RoundToInt(height * run.Scale) },
+                    ["render"] = new Dictionary<string, object> { ["width"] = renderWidth, ["height"] = renderHeight },
                     ["vsync"] = QualitySettings.vSyncCount, ["frameCap"] = Math.Max(0, Application.targetFrameRate),
                     ["reducedMotion"] = reducedMotion, ["captures"] = run.Captures != null,
                     ["otherUnityProcesses"] = null,
