@@ -106,7 +106,8 @@ namespace Eternities.EditorTools
                 changed = true;
             }
             changed |= Set(Lit("mannequin", new Color(0.78f, 0.76f, 0.72f), 0f, 0.4f), app.AvatarMaterial, m => app.AvatarMaterial = m);
-            changed |= Set(Lit("hub-ground", new Color(0.09f, 0.09f, 0.12f), 0f, 0.5f), app.HubGroundMaterial, m => app.HubGroundMaterial = m);
+            // Matt: on a ground this wide a smooth one is paid for in screen-space reflections, 5 ms a frame.
+            changed |= Set(Lit("hub-floor", new Color(0.09f, 0.09f, 0.12f), 0f, 0.05f), app.HubGroundMaterial, m => app.HubGroundMaterial = m);
             changed |= Set(Lit("portal-frame", new Color(0.12f, 0.11f, 0.10f), 0.6f, 0.5f), app.PortalFrameMaterial, m => app.PortalFrameMaterial = m);
             changed |= Set(Unlit("portal-surface", new Color(0.35f, 0.75f, 1f, 1f), transparent: false), app.PortalSurfaceMaterial, m => app.PortalSurfaceMaterial = m);
             changed |= Set(Unlit("veil", new Color(0, 0, 0, 1), transparent: true), app.VeilMaterial, m => app.VeilMaterial = m);

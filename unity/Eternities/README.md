@@ -96,6 +96,7 @@ builds for Windows.
 | `Assets/Kits/core/` | What every world shares. `Materials/` holds the slice's plain materials (plinths by rarity, the mannequin, the hub, the portal, the image surface), and `UI/` the overlays' panel settings and theme; both are made by the generation entry point. `Shaders/` holds the two shaders of the isolated image path (PRD v4 8.4.4), written by hand. |
 | `Assets/Kits/temperate/` | The `temperate` kit's slice subset. `Terrain/`, `Props/` and `Audio/` hold the 24 files `sources.yaml` pins, in Git LFS, with a `CREDITS.md` row each; `fetch.sh` verifies them and fails on an unlisted file in those three folders, so what is made from them lives beside them. `Assets/Editor/KitMaskImport.cs` repacks each `_arm_` texture into HDRP's mask map layout as it is imported. |
 | `Assets/StreamingAssets/data/manifest.json` | Names the pinned pack hash. The pack itself is `data/<hash>/` beside it: written by the generation entry point, not committed. |
+| `bench.sh` | Starts a bench run of the built player (Batchmode commands, below). |
 | `batchmode.sh` | Starts the pinned editor on this project in batchmode, logging to stdout, and passes its arguments through. It replaces a `TMPDIR` too long for the compiler's socket. |
 
 ## Batchmode commands
@@ -163,9 +164,17 @@ the row; a run of record is made without `-benchCaptures`:
 
 ```sh
 unity/Eternities/batchmode.sh -quit -executeMethod Eternities.EditorTools.Build.Run -buildOut "$PWD/unity/Eternities/Build"
-unity/Eternities/Build/Eternities.app/Contents/MacOS/Eternities -bench warm -benchQuality high -benchScale 1 -benchOut "$PWD/bench-warm.json"
-unity/Eternities/Build/Eternities.app/Contents/MacOS/Eternities -bench cold -benchQuality high -benchScale 1 -benchOut "$PWD/bench-cold.json"
+unity/Eternities/bench.sh "$PWD/unity/Eternities/Build/Eternities.app" -bench warm -benchQuality high -benchScale 1 -benchOut "$PWD/bench-warm.json"
+unity/Eternities/bench.sh "$PWD/unity/Eternities/Build/Eternities.app" -bench cold -benchQuality high -benchScale 1 -benchOut "$PWD/bench-cold.json"
 ```
+
+`bench.sh` starts the player with those arguments and the commit it was built from, refuses to
+start while a Unity editor runs on the machine, and exits with the player's exit code. It also
+answers the run's one question. A player that is not a development build has no counter for GPU
+memory and cannot start a process, so before it leaves the world the run asks for its own
+`footprint(1)`: the script runs the tool and the run writes the process's footprint, and the part
+of it the graphics driver holds, into the JSON's `memory` block. A player started without the
+script completes the path all the same and says in the JSON that nothing answered.
 
 The build is the macOS player for Apple Silicon, IL2CPP, not a development build, with the pinned
 pack and the world's files inside it. Its identity is in `ProjectSettings/ProjectSettings.asset`:

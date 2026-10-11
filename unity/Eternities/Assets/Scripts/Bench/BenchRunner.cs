@@ -342,7 +342,8 @@ namespace Eternities.Bench
             {
                 // Step 10: Esc in explore returns to the hub through the return portal.
                 Images();
-                Footprint();
+                Begin("footprint", null);
+                yield return Footprint();
                 Begin("portal-out", null);
                 hands.Back = true;
                 yield return Step("portal-out", 60, () => (app.Place == Place.Hub && !app.InTransition) || app.Failure != null);
@@ -442,33 +443,32 @@ namespace Eternities.Bench
 
         // The process as the system counts it, read before the world is left: `footprint` gives its
         // physical footprint, and what of it the graphics driver holds, which on Apple Silicon is
-        // the GPU's memory. A player that is not a development build has no engine counter for it.
-        void Footprint()
+        // the GPU's memory. A player that is not a development build has no engine counter for it,
+        // and an IL2CPP player cannot start a process. So the run asks whoever started it: it
+        // writes its process id beside the JSON and waits a few seconds for `bench.sh` to answer
+        // with the tool's output. Outside the blocks: the tool may hold the process while it reads.
+        IEnumerator Footprint()
         {
-            if (Application.platform != RuntimePlatform.OSXPlayer && Application.platform != RuntimePlatform.OSXEditor)
+            string request = run.Out + ".footprint-request", answer = run.Out + ".footprint";
+            File.Delete(answer);
+            File.WriteAllText(request, System.Diagnostics.Process.GetCurrentProcess().Id.ToString());
+            for (double until = Now + 8; Now < until && !File.Exists(answer);)
             {
-                return;
+                yield return null;
             }
-            try
+            if (File.Exists(answer))
             {
-                var start = new System.Diagnostics.ProcessStartInfo("/usr/bin/footprint", $"-p {System.Diagnostics.Process.GetCurrentProcess().Id}")
-                {
-                    RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true,
-                };
-                using (System.Diagnostics.Process tool = System.Diagnostics.Process.Start(start))
-                {
-                    string output = tool.StandardOutput.ReadToEnd();
-                    tool.WaitForExit(10_000);
-                    (long total, long graphics) = BenchArgs.ParseFootprint(output);
-                    memory["footprintBytes"] = total;
-                    memory["graphicsFootprintBytes"] = graphics;
-                    memory["footprintSource"] = "footprint(1) before leaving the world: the process's footprint, and its categories marked graphics with IOSurface";
-                }
+                (long total, long graphics) = BenchArgs.ParseFootprint(File.ReadAllText(answer));
+                memory["footprintBytes"] = total;
+                memory["graphicsFootprintBytes"] = graphics;
+                memory["footprintSource"] = "footprint(1), run by bench.sh before the run left the world: the process's footprint, and its categories marked graphics with IOSurface";
+                File.Delete(answer);
             }
-            catch (Exception e)
+            else
             {
-                memory["footprintSource"] = $"footprint(1) could not be read: {e.Message}";
+                memory["footprintSource"] = "no answer: start the run with unity/Eternities/bench.sh to have the process's footprint read";
             }
+            File.Delete(request);
         }
 
         void Rendered(ScriptableRenderContext context, List<Camera> cameras)
