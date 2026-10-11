@@ -34,6 +34,8 @@ signature is a reviewed contract change, not an ordinary commit.
 
 ## Layout
 
+Bare `PRD x.y` citations in this file use `prd_v3.md` numbering, the web edition's contract; citations to `prd_v4.md` say `PRD v4` or name the file.
+
 ```
 pipeline/                 Python 3.13, uv. Scryfall bulk data to artefacts.
   src/eternities/
@@ -207,7 +209,7 @@ archived under the `galaxy-cutover` tag, and `?selfcheck` now opens the product 
 Two browser checks, with different jobs.
 
 `pnpm test:e2e` is the CI gate, on every pull request: PRD 8.9.2's five route kinds, PRD 9.1.2's
-`/bench` run, PRD 9.1.4's quality ladder, and Phase 5's accessibility checklist with the CSP/HSTS
+`/bench` run, PRD 8.5.11's quality ladder, and Phase 5's accessibility checklist with the CSP/HSTS
 self-check (`e2e/a11y.spec.ts`). It is narrower than a real-GPU run on purpose — a cloud runner has
 no representative GPU, so it renders through SwiftShader and asserts nothing about frame time. PRD
 7.2's ceilings are enforced by `pnpm bench` on the reference machine.
