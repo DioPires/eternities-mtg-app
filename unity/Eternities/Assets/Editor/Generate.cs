@@ -204,8 +204,9 @@ namespace Eternities.EditorTools
                 changed = true;
             }
 
-            // The kit's two water prefabs (PRD v4 9.5): made once with the water system's defaults, and
-            // then the owner's to tune. A second run leaves them as they are.
+            // The kit's two water prefabs (PRD v4 9.5): made once from the water system's own preset
+            // for a river and for a lake, and then the owner's to tune. A second run leaves them as
+            // they are.
             changed |= SetObject(WaterPrefab("River", WaterSurfaceType.River), app.RiverPrefab, prefab => app.RiverPrefab = prefab);
             changed |= SetObject(WaterPrefab("Lake", WaterSurfaceType.OceanSeaLake), app.LakePrefab, prefab => app.LakePrefab = prefab);
 
@@ -318,12 +319,43 @@ namespace Eternities.EditorTools
             {
                 var made = new GameObject(name);
                 var surface = made.AddComponent<WaterSurface>();
-                surface.surfaceType = type;
+                if (type == WaterSurfaceType.River)
+                {
+                    Preset(surface, "ApplyWaterRiverPreset");
+                    // The water runs along the quad's long side, which is its own z (`WorldWater`),
+                    // and the surface counts its angles from its own x.
+                    surface.largeOrientationValue = 90;
+                }
+                else
+                {
+                    // The preset is an open sea's. For a lake 90 m across: a light breeze instead
+                    // of 30 km/h, no foam, and nothing that reads the water's height from a script.
+                    Preset(surface, "ApplyWaterOceanPreset");
+                    surface.largeWindSpeed = 8;
+                    surface.foam = false;
+                    surface.scriptInteractions = false;
+                }
                 surface.geometryType = WaterGeometryType.Quad;
                 prefab = PrefabUtility.SaveAsPrefabAsset(made, path);
                 Object.DestroyImmediate(made);
             }
             return prefab;
+        }
+
+        // HDRP's own starting point for a kind of water surface: the preset its GameObject menu
+        // applies, which is internal to the package. A component added from code gets none of it.
+        // Its fields are then the class's initial values, which are an open sea's with no
+        // current: a river made that way does not flow.
+        static void Preset(WaterSurface surface, string preset)
+        {
+            System.Reflection.MethodInfo apply = typeof(WaterSurface).Assembly
+                .GetType("UnityEngine.Rendering.HighDefinition.WaterSurfacePresets")
+                ?.GetMethod(preset, System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+            if (apply == null)
+            {
+                throw new InvalidDataException($"this version of HDRP has no water preset named {preset}");
+            }
+            apply.Invoke(null, new object[] { surface });
         }
 
         static bool Set(Material wanted, Material held, System.Action<Material> assign)

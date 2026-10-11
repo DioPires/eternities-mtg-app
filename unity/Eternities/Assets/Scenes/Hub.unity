@@ -454,8 +454,8 @@ MonoBehaviour:
   ambientBed: {fileID: 8300000, guid: 550139b1c29d04db997df50dd8f47b06, type: 3}
   riverLoop: {fileID: 8300000, guid: 3595309811f474d529cf705eda7542b8, type: 3}
   panelSettings: {fileID: 11400000, guid: f11efc74aefe243c480b474245bf521e, type: 2}
-  riverPrefab: {fileID: 6679533928212432290, guid: 9a9c1350645954487942233b4087e702, type: 3}
-  lakePrefab: {fileID: 2050707748354499376, guid: b1904c702f18f49e095a86dae7edc7cf, type: 3}
+  riverPrefab: {fileID: 6655493297650805520, guid: 9a9c1350645954487942233b4087e702, type: 3}
+  lakePrefab: {fileID: 3796178000003209078, guid: b1904c702f18f49e095a86dae7edc7cf, type: 3}
   props:
   - Mesh: {fileID: 7116689091534007176, guid: 809c8f9cea4b8407dbfab7bf826a5f18, type: 3}
     Materials:

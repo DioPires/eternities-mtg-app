@@ -193,8 +193,8 @@ namespace Eternities.Tests
             Assert.That(Vector3.Distance(app.Avatar.transform.position, app.HubPortal.Pad), Is.LessThan(0.5f));
         }
 
-        // PRD v4 9.5: the river is seen from the rim, where the north radial path ends. With water
-        // on in the HDRP asset in force, the frame from there changes when the water is taken away.
+        // PRD v4 9.5: the river is seen from the rim, where the north radial path ends: the frame
+        // from there changes when the water is taken away, by more than it changes by itself.
         [UnityTest]
         public IEnumerator TheRiverIsSeenFromTheRim()
         {
@@ -215,43 +215,83 @@ namespace Eternities.Tests
             app.Avatar.Place(new Vector3(0, 0, rim - 6), Quaternion.identity);
             view.transform.SetPositionAndRotation(new Vector3(0, 1.6f, rim), Quaternion.Euler(8, 0, 0));
 
-            Color32[] Frame(UnityEngine.Rendering.AsyncGPUReadbackRequest request) => request.GetData<Color32>().ToArray();
-            Color32[] withWater = null, without = null;
-            for (int pass = 0; pass < 2; pass++)
+            Color32[] read = null;
+            IEnumerator Read(double seconds)
             {
-                app.Water.SetActive(pass == 0);
-                for (int i = 0; i < 12; i++)
+                double until = Time.realtimeSinceStartupAsDouble + seconds;
+                for (int i = 0; i < 12 || Time.realtimeSinceStartupAsDouble < until; i++)
                 {
                     yield return null;
                 }
                 var request = UnityEngine.Rendering.AsyncGPUReadback.Request(target, 0, UnityEngine.Experimental.Rendering.GraphicsFormat.R8G8B8A8_SRGB);
                 yield return Until(() => request.done, 20, "the readback");
-                if (pass == 0)
+                read = request.GetData<Color32>().ToArray();
+            }
+            int Changed(Color32[] a, Color32[] b)
+            {
+                int count = 0;
+                for (int i = 0; i < a.Length; i++)
                 {
-                    withWater = Frame(request);
-                    string dump = Environment.GetEnvironmentVariable("ETERNITIES_TEST_DUMP");
-                    if (!string.IsNullOrEmpty(dump))
-                    {
-                        Directory.CreateDirectory(dump);
-                        File.WriteAllBytes(Path.Combine(dump, "river.png"), ImageConversion.EncodeArrayToPNG(withWater, UnityEngine.Experimental.Rendering.GraphicsFormat.R8G8B8A8_SRGB, width, height));
-                    }
+                    count += Math.Abs(a[i].r - b[i].r) + Math.Abs(a[i].g - b[i].g) + Math.Abs(a[i].b - b[i].b) > 24 ? 1 : 0;
                 }
-                else
+                return count;
+            }
+            void Dump(string file)
+            {
+                string dump = Environment.GetEnvironmentVariable("ETERNITIES_TEST_DUMP");
+                if (!string.IsNullOrEmpty(dump))
                 {
-                    without = Frame(request);
+                    Directory.CreateDirectory(dump);
+                    File.WriteAllBytes(Path.Combine(dump, file), ImageConversion.EncodeArrayToPNG(read, UnityEngine.Experimental.Rendering.GraphicsFormat.R8G8B8A8_SRGB, width, height));
                 }
             }
+
+            // The view has just come from the hub, which is dark, and the exposure takes a second
+            // or two to come down to daylight. A frame read meanwhile differs from the next one
+            // in every pixel, whatever is in it, so the view is first left to settle, without the
+            // water. Settled, it still changes a little between two reads: the clouds move.
+            app.Water.SetActive(false);
+            Color32[] without = null;
+            var drift = new System.Collections.Generic.List<int>();
+            for (int tries = 0; ; tries++)
+            {
+                yield return Read(0.5);
+                if (without != null)
+                {
+                    drift.Add(Changed(without, read));
+                    if (drift[drift.Count - 1] < width * height / 100)
+                    {
+                        break;
+                    }
+                }
+                Assert.That(tries, Is.LessThan(40), $"the view from the rim settles; pixels changed between reads half a second apart: {string.Join(", ", drift)}");
+                without = read;
+            }
+            without = read;
             app.Water.SetActive(true);
+            yield return Read(0.5);
+            Color32[] withWater = read;
+            Dump("river.png");
+            int changed = Changed(withWater, without);
+
+            // For whoever looks at the frames: the lake from its south-western shore.
+            if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ETERNITIES_TEST_DUMP")))
+            {
+                Vector2 lake = app.GroundPlan.LakeCentre;
+                Vector2 shore = lake + new Vector2(-0.82f, -0.57f) * (GroundPlan.LakeRadius + GroundPlan.Bank + 4);
+                var eye = new Vector3(shore.x, 0, shore.y);
+                eye.y = app.Ground.SampleHeight(eye) + app.Ground.transform.position.y + 1.6f;
+                view.transform.SetPositionAndRotation(eye, Quaternion.LookRotation(new Vector3(lake.x, 0.5f, lake.y) - eye));
+                yield return Read(2);
+                Dump("lake.png");
+            }
             view.targetTexture = null;
             target.Release();
             UnityEngine.Object.Destroy(target);
 
-            int changed = 0;
-            for (int i = 0; i < withWater.Length; i++)
-            {
-                changed += Math.Abs(withWater[i].r - without[i].r) + Math.Abs(withWater[i].g - without[i].g) + Math.Abs(withWater[i].b - without[i].b) > 24 ? 1 : 0;
-            }
-            Assert.That(changed, Is.GreaterThan(width * height / 100), "the water is at least a hundredth of the view from the rim");
+            int still = drift[drift.Count - 1];
+            Debug.Log($"TheRiverIsSeenFromTheRim: {changed} pixels of {width * height} change with the water, {still} with nothing changed; before the view settled: {string.Join(", ", drift)}");
+            Assert.That(changed - still, Is.GreaterThan(width * height / 100), "the water is at least a hundredth of the view from the rim, beyond what changes there by itself");
         }
 
         // PRD v4 5.9.2: a portal whose world is not ready holds, with input locked, and never cuts

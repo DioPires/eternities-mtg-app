@@ -139,8 +139,9 @@ quality level in force sets how much of it is drawn (high all of it, medium 60%,
 table of what grows in which wedge is `Temperate` in `Assets/Scripts/Kits/PropPlan.cs`). It assigns the kit's terrain layers to
 that object once `Assets/Kits/temperate/TerrainLayers/` holds `meadow`, `path` and `gravel`; until
 then the ground is painted in plain colours. It also makes the kit's two water prefabs,
-`Assets/Kits/temperate/Water/River.prefab` and `Lake.prefab`, once, with the water system's
-defaults; those two are the owner's to tune and it never writes them again. Other generated assets
+`Assets/Kits/temperate/Water/River.prefab` and `Lake.prefab`, once, from the water system's own
+presets: its river, running along the bed at 1.5 km/h, and its open sea calmed to a lake's light
+breeze, without foam. Those two are the owner's to tune and it never writes them again. Other generated assets
 are not edited by hand. It makes each quality level's volume profile the same way (Quality levels,
 above). The world has its river and its lake only where water is on in the HDRP asset of the quality
 level in force, which it is at all three.
