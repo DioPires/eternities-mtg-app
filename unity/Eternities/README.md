@@ -188,6 +188,13 @@ unity/Eternities/batchmode.sh -executeMethod Eternities.EditorTools.Bench.Run \
   -bench warm -benchSize 3456x2234 -benchOut "$PWD/bench.json" -benchCaptures "$PWD/captures"
 ```
 
+The JSON's `frames.long` lists every sampled frame of 50 ms or more, the first 64 of a run: when it
+ended, how long it was, in which step, whether it counts in the statistics, whether a capture was
+being taken, how often the collector ran in it, what a load was making as it began and as it ended,
+and whether a portal's transition or hold was on. It is there so that a long frame can be named
+from the run that had it. A capture stalls a frame for 200 to 350 ms, so a run with captures lists
+one for each.
+
 A figure from the editor host fills no row of the acceptance matrix (PRD v4 9.5): with no swap
 chain an off-screen frame time can read short. The figures of record come from a player build
 started with the same `-bench` arguments, full screen at the display's native resolution, with no

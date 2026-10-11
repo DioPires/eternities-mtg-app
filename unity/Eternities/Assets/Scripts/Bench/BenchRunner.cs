@@ -97,6 +97,13 @@ namespace Eternities.Bench
         App app;
         ScryfallImages scryfall;
         const float RingArc = 150;
+        // Every sampled frame this long is listed in the JSON with what the application was doing,
+        // so "what was that frame" has an answer without another build. The first 64 of a run.
+        const float LongFrameMs = 50;
+        const int LongFrames = 64;
+        readonly List<object> longFrames = new List<object>();
+        int collections;
+        string loadStage;
         // How far past the hub's arrival point a warm run goes before it turns back to it: at a
         // walk the way back takes the camera's half turn behind the avatar, and a second more.
         const float TurnBack = 12;
@@ -615,11 +622,31 @@ namespace Eternities.Bench
             {
                 systemPeak = Math.Max(systemPeak, systemMemory.LastValue);
             }
+            // What the frame that has just ended ran through: the collector, and a load's stage as
+            // it began and as it ended.
+            int collected = GC.CollectionCount(0) - collections;
+            collections += collected;
+            string stageBefore = loadStage;
+            loadStage = App.Instance != null ? App.Instance.LoadStage : null;
             if (!sampling || segment == null)
             {
                 return;
             }
             double at = now - started;
+            if (milliseconds >= LongFrameMs && longFrames.Count < LongFrames)
+            {
+                App seen = App.Instance;
+                longFrames.Add(new Dictionary<string, object>
+                {
+                    ["atSeconds"] = Math.Round(at, 3), ["ms"] = Math.Round(milliseconds, 1), ["segment"] = segment.Id,
+                    ["inStatistics"] = segment.Block != null && !excludingCapture && frameStart >= excludeUntil,
+                    ["capture"] = excludingCapture,
+                    ["collections"] = collected,
+                    ["loading"] = stageBefore == loadStage ? loadStage : $"{stageBefore ?? "nothing"}, then {loadStage ?? "nothing"}",
+                    ["place"] = seen != null ? seen.Place.ToString() : null,
+                    ["transition"] = seen != null && seen.InTransition, ["holding"] = seen != null && seen.Holding,
+                });
+            }
             if (App.Instance != null && App.Instance.Avatar != null)
             {
                 // Metres walked, not moved: an arrival is a jump and is not counted.
@@ -879,6 +906,7 @@ namespace Eternities.Bench
                 {
                     ["dominaria"] = Block(dominaria), ["hub"] = Block(hub),
                     ["excluded"] = new Dictionary<string, object> { ["afterPortal"] = excludedAfterPortal, ["capture"] = excludedCapture },
+                    ["long"] = new Dictionary<string, object> { ["fromMs"] = LongFrameMs, ["listed"] = longFrames.Count, ["atMost"] = LongFrames, ["frames"] = longFrames },
                 },
                 ["segments"] = segmentList,
                 ["timings"] = timings,

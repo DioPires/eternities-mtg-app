@@ -111,6 +111,7 @@ namespace Eternities.Travel
         public bool WorldReady => WorldLoaded && Place == Place.World && !InTransition;
         public bool InTransition { get; private set; }
         public bool Holding { get; private set; }           // a portal is waiting for its world (PRD v4 5.9.2)
+        public string LoadStage { get; private set; }       // what a load is making, for whoever times a frame; null when none runs
         public bool HoldIndicator { get; private set; }
         public bool ReducedMotion;                          // PRD v4 5.11.2
         public float LoadDelayForTests;                     // seconds a load waits before it ends, so a test can see the hold
@@ -535,6 +536,7 @@ namespace Eternities.Travel
         // read and the ground planned on another thread, and the main thread builds in slices.
         IEnumerator Load(string slug)
         {
+            LoadStage = "reading";
             string directory = PackDirectory();
             float density = Temperate.Density(QualitySettings.names[QualitySettings.GetQualityLevel()]);
             Task<(WorldData, GroundPlan, PropPlan)> read = Task.Run(() =>
@@ -555,6 +557,7 @@ namespace Eternities.Travel
             (World, plan, PropPlan) = read.Result;
             worldRoot = new GameObject(World.Plane.DisplayName);
             yield return null;
+            LoadStage = "ground";
 
             TerrainLayer[] layers = WorldGround.Layers(terrainLayers);
             Material groundMaterial = groundMaterials.Length > 0 ? groundMaterials[0] : null;
@@ -574,8 +577,10 @@ namespace Eternities.Travel
             yield return WorldGround.Build(plan, layers, groundMaterial, World.Plane.Slug, worldRoot.transform, LoadBudgetMs, worldOwned, terrain => Ground = terrain);
             yield return null;
 
+            LoadStage = "stands";
             Stands = StandField.Create(worldRoot.transform);
             yield return Stands.Fill(World, standMaterials, LoadBudgetMs);
+            LoadStage = "image surfaces";
             Images = StandImages.Create(worldRoot.transform);
             yield return Images.Fill(World, imageSurfaceMaterial, LoadBudgetMs);
             Images.Source = ImageSource;
@@ -586,10 +591,12 @@ namespace Eternities.Travel
             // The kit's props (PRD v4 8.4.2), where the scene names a model for every kind.
             if (props.Length == Temperate.Kinds.Length)
             {
+                LoadStage = "props";
                 Props = PropField.Create(worldRoot.transform);
                 yield return Props.Fill(PropPlan, props, LoadBudgetMs);
             }
 
+            LoadStage = "water, sound and the return portal";
             if (WorldWater.Supported && riverPrefab != null && lakePrefab != null)
             {
                 Water = WorldWater.Build(plan, riverPrefab, lakePrefab, worldRoot.transform, worldOwned);
@@ -610,6 +617,7 @@ namespace Eternities.Travel
             }
             WorldLoaded = true;
             loading = null;
+            LoadStage = null;
         }
 
         void Unload()
@@ -619,6 +627,7 @@ namespace Eternities.Travel
                 StopCoroutine(loading);
                 loading = null;
             }
+            LoadStage = null;
             CardView.Bind(null, null, null);
             Hud.HideTravel();
             Hud.Hover(null, default);
