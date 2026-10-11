@@ -26,6 +26,11 @@ namespace Eternities.Tests
     // on screen has one texel of the half-size image it must equal. That stand's swatch is made
     // magenta for the tests, a colour nothing else in the frame has, so a pixel of the placeholder
     // that survives the composite is found wherever it is.
+    //
+    // The surface has a printed card's rounded corners (PRD v4 5.5.1; DEC-953, accepted 2026-10-11),
+    // so the card on screen is the rectangle less its four corner cuts, where the frame is the slab
+    // behind the surface. The tests hold the card to its texels up to that outline and the cuts to
+    // not being the card.
     public class ImagePathTests
     {
         const int Width = 1280, Height = 720, CardWidth = 244, CardHeight = 340;
@@ -277,7 +282,30 @@ namespace Eternities.Tests
             return Apart(frame[y * Width + x], expected[(y - Bottom) * CardWidth + (x - Left - shift)]) <= tolerance;
         }
 
-        // The card's pixels: every pixel of the rectangle, less `inset` at its edge, is its texel.
+        // How far a pixel's centre is outside the card's outline, in pixels, and inside it when
+        // negative. `x` and `y` are counted from the rectangle's bottom left pixel.
+        static float Outside(int x, int y)
+        {
+            float radius = CardWidth * StandImages.CornerFraction;
+            float qx = Mathf.Abs(x + 0.5f - CardWidth / 2f) - (CardWidth / 2f - radius), qy = Mathf.Abs(y + 0.5f - CardHeight / 2f) - (CardHeight / 2f - radius);
+            return new Vector2(Mathf.Max(qx, 0), Mathf.Max(qy, 0)).magnitude + Mathf.Min(Mathf.Max(qx, qy), 0) - radius;
+        }
+
+        // Is a pixel of the rectangle a pixel of the card, `inset` pixels in from its outline? On a
+        // straight edge the outline is a pixel edge. In a corner it is an arc, which the surface
+        // draws as chords, so there the pixel's centre is asked to be half a pixel further in.
+        static bool OfTheCard(int x, int y, int inset)
+        {
+            if (x < inset || y < inset || x >= CardWidth - inset || y >= CardHeight - inset)
+            {
+                return false;
+            }
+            float radius = CardWidth * StandImages.CornerFraction;
+            bool inACorner = Mathf.Abs(x + 0.5f - CardWidth / 2f) > CardWidth / 2f - radius && Mathf.Abs(y + 0.5f - CardHeight / 2f) > CardHeight / 2f - radius;
+            return !inACorner || Outside(x, y) <= -(inset + 0.5f);
+        }
+
+        // The card's pixels: every pixel of the card, less `inset` at its outline, is its texel.
         static void AssertCard(Color32[] frame, int tolerance, int inset, string when, int shift = 0)
         {
             int wrong = 0, worst = 0;
@@ -285,6 +313,10 @@ namespace Eternities.Tests
             {
                 for (int x = Left + shift + inset; x < Left + shift + CardWidth - inset; x++)
                 {
+                    if (!OfTheCard(x - Left - shift, y - Bottom, inset))
+                    {
+                        continue;
+                    }
                     int apart = Apart(frame[y * Width + x], expected[(y - Bottom) * CardWidth + (x - Left - shift)]);
                     wrong += apart > tolerance ? 1 : 0;
                     worst = Math.Max(worst, apart);
@@ -294,7 +326,7 @@ namespace Eternities.Tests
         }
 
         // No pixel of the placeholder survives: nothing magenta anywhere but within one pixel of the
-        // card's exact edge.
+        // card's exact outline, which is its two pixels inside the outline and the one outside it.
         static void AssertNoPlaceholder(Color32[] frame, string when, int shift = 0)
         {
             int survivors = 0;
@@ -302,14 +334,32 @@ namespace Eternities.Tests
             {
                 for (int x = 0; x < Width; x++)
                 {
-                    int dx = Math.Min(Math.Abs(x - (Left + shift)), Math.Abs(x - (Left + shift + CardWidth - 1)));
-                    int dy = Math.Min(Math.Abs(y - Bottom), Math.Abs(y - (Bottom + CardHeight - 1)));
-                    bool insideX = x >= Left + shift - 1 && x <= Left + shift + CardWidth, insideY = y >= Bottom - 1 && y <= Bottom + CardHeight;
-                    bool onEdge = (insideX && insideY) && (dx <= 1 || dy <= 1 || x == Left + shift - 1 || x == Left + shift + CardWidth || y == Bottom - 1 || y == Bottom + CardHeight);
+                    float outside = Outside(x - Left - shift, y - Bottom);
+                    bool onEdge = outside > -2 && outside < 1;
                     survivors += !onEdge && Magenta(frame[y * Width + x]) ? 1 : 0;
                 }
             }
             Assert.That(survivors, Is.EqualTo(0), $"{when}: {survivors} pixels of the placeholder survive the composite");
+        }
+
+        // A printed card's corners are not there: beyond the arc, no pixel of the rectangle is the
+        // image's texel. An image file has a white corner there.
+        static void AssertCornersCut(Color32[] frame, string when)
+        {
+            int corners = 0, kept = 0;
+            for (int y = 0; y < CardHeight; y++)
+            {
+                for (int x = 0; x < CardWidth; x++)
+                {
+                    if (Outside(x, y) > 1)
+                    {
+                        corners++;
+                        kept += IsCard(frame, Left + x, Bottom + y, 0, 1) ? 1 : 0;
+                    }
+                }
+            }
+            Assert.That(corners, Is.GreaterThan(40), "the four corner cuts have pixels to look at");
+            Assert.That(kept, Is.EqualTo(0), $"{when}: {kept} of the {corners} pixels beyond the card's rounded corners are the image's");
         }
 
         T Condition<T>() where T : VolumeComponent
@@ -368,6 +418,7 @@ namespace Eternities.Tests
             float bright = SkyBrightness(frame);
             AssertCard(frame, 1, 0, "under a bright sky");
             AssertNoPlaceholder(frame, "under a bright sky");
+            AssertCornersCut(frame, "under a bright sky");
 
             exposure.fixedExposure.Override(19);
             yield return Read(pixels => frame = pixels);
@@ -420,6 +471,11 @@ namespace Eternities.Tests
             {
                 for (int x = 0; x < CardWidth; x++)
                 {
+                    // Beyond the card's rounded corners there is no card to hide.
+                    if (!OfTheCard(x, y, 0))
+                    {
+                        continue;
+                    }
                     hiddenMain[y * CardWidth + x] = Apart(main[(Bottom + y) * Width + Left + x], before[(Bottom + y) * Width + Left + x]) > 12;
                     hiddenExhibit[y * CardWidth + x] = !IsCard(composited, Left + x, Bottom + y, 0, 1);
                     hidden += hiddenExhibit[y * CardWidth + x] ? 1 : 0;
@@ -529,15 +585,26 @@ namespace Eternities.Tests
             Assert.That(app.Images.SlotOf(StandWithoutAnImage), Is.EqualTo(-1));
             Color32[] frame = null;
             yield return Read(pixels => frame = pixels);
-            int swatch = 0;
-            for (int y = Bottom + 2; y < Bottom + CardHeight - 2; y++)
+            int surface = 0, swatch = 0, beyond = 0;
+            for (int y = 0; y < CardHeight; y++)
             {
-                for (int x = Left + 2; x < Left + CardWidth - 2; x++)
+                for (int x = 0; x < CardWidth; x++)
                 {
-                    swatch += Magenta(frame[y * Width + x]) ? 1 : 0;
+                    bool magenta = Magenta(frame[(Bottom + y) * Width + Left + x]);
+                    if (OfTheCard(x, y, 2))
+                    {
+                        surface++;
+                        swatch += magenta ? 1 : 0;
+                    }
+                    else if (Outside(x, y) > 1.5f)
+                    {
+                        beyond += magenta ? 1 : 0;
+                    }
                 }
             }
-            Assert.That(swatch, Is.EqualTo((CardWidth - 4) * (CardHeight - 4)), "the whole surface is the swatch");
+            Assert.That(surface, Is.GreaterThan((CardWidth - 4) * (CardHeight - 4) - 400));
+            Assert.That(swatch, Is.EqualTo(surface), "the whole surface is the swatch");
+            Assert.That(beyond, Is.EqualTo(0), "the swatch has the card's rounded corners");
         }
 
         static bool DynamicResolutionIsOn => ((HDRenderPipelineAsset)GraphicsSettings.currentRenderPipeline).currentPlatformRenderPipelineSettings.dynamicResolutionSettings.enabled;

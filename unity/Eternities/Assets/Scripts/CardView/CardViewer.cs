@@ -23,9 +23,9 @@ namespace Eternities.CardView
         public const float BlendSeconds = 0.6f, ReducedBlendSeconds = 0.3f;
         public const float CardFraction = 0.6f, PanelFraction = 0.34f, TiltDegrees = 12, FlipSeconds = 0.35f;
         public const float CardHeight = StandImages.SurfaceHeight, CardWidth = CardHeight * 672 / 936, Thickness = 0.006f, Lift = 0.05f;
-        // A printed card's corner, as a part of its width: 3 mm on 63 mm. An image file is a whole
-        // rectangle, white outside the card's corner, and the solid's shape is what leaves that out.
-        public const float CornerFraction = 0.0475f, Edge = 0.003f;
+        // The card's corner is a stand's: the solid's shape is what leaves the image file's white
+        // corners out.
+        public const float CornerFraction = StandImages.CornerFraction, Edge = 0.003f;
         const int CornerSteps = 6;
         // PRD v4 7.4.3: one line when the printing's image is not to be had, by what the face shows instead.
         public const string NoImage = "This printing's image could not be loaded. The card's swatch is shown.";
@@ -205,20 +205,7 @@ namespace Eternities.CardView
 
         // The outline of a rounded rectangle about the origin, in the card's own plane. It runs
         // anticlockwise with x to the right and y up, which is the card seen from behind.
-        static List<Vector2> Outline(float halfWidth, float halfHeight, float radius)
-        {
-            var outline = new List<Vector2>();
-            for (int corner = 0; corner < 4; corner++)
-            {
-                var centre = new Vector2((corner == 0 || corner == 3 ? 1 : -1) * (halfWidth - radius), (corner < 2 ? 1 : -1) * (halfHeight - radius));
-                for (int step = 0; step <= CornerSteps; step++)
-                {
-                    float angle = (corner + (float)step / CornerSteps) * Mathf.PI / 2;
-                    outline.Add(centre + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius);
-                }
-            }
-            return outline;
-        }
+        static List<Vector2> Outline(float halfWidth, float halfHeight, float radius) => StandImages.Outline(halfWidth, halfHeight, radius, CornerSteps);
 
         // The solid, in the world's own frame so the main camera sees a card there, and the two
         // faces on the exhibit layer. Both are rounded rectangles (PRD v4 5.10.2): the solid is

@@ -23,8 +23,8 @@ namespace Eternities.CardView
         bool Failing(string url);
     }
 
-    // A world's stand images (PRD v4 5.5, 8.4.3): every image surface as a quad, one mesh a site,
-    // and one texture array of 384 slots at 244 x 340, RGBA8 with a full mip chain.
+    // A world's stand images (PRD v4 5.5, 8.4.3): every image surface as a rounded rectangle, one
+    // mesh a site, and one texture array of 384 slots at 244 x 340, RGBA8 with a full mip chain.
     //
     // The main camera draws a surface in its stand's swatch, the card's art at 2 x 2 (PRD v4 8.4.4).
     // The nearest stands within 25 m of the avatar get a slot each and their image, half-size, with
@@ -37,6 +37,15 @@ namespace Eternities.CardView
         public const int UploadsPerFrame = 2;
         // The surface takes the image's pixel aspect (PRD v4 4.15.5): 488 x 680, 0.88 m tall.
         public const float SurfaceHeight = StandField.SurfaceHeight, SurfaceWidth = SurfaceHeight * 488 / 680, Proud = 0.002f;
+        // A printed card's corner, as a part of its width: 3 mm on 63 mm. An image file is a whole
+        // rectangle, white outside the card's corner, and the surface's shape is what leaves that
+        // out, in the main camera and in the exhibit camera alike.
+        public const float CornerFraction = 0.0475f;
+        const int CornerSteps = 4;
+        // A surface's vertices: its middle, then its outline.
+        public const int VerticesPerStand = 1 + 4 * (CornerSteps + 1);
+        // Where each of them is on the image, from its bottom left corner.
+        static readonly Vector2[] OnImage = MakeOnImage();
         public const int AtlasBlocks = 256;     // the swatch texture holds this many stands a row, 2 x 2 texels each
         const float Cell = 25;
 
@@ -180,32 +189,26 @@ namespace Eternities.CardView
                     firstVertexOfStand[stand] = vertices.Count;
                     int first = vertices.Count;
                     SwatchOf(stand, out float u, out float v, out float du, out float dv);
-                    // Seen from the apron: bottom left, top left, top right, bottom right. The
-                    // viewer's left is the stand's right.
-                    vertices.Add(centre + right - up);
-                    vertices.Add(centre + right + up);
-                    vertices.Add(centre - right + up);
-                    vertices.Add(centre - right - up);
-                    site.Swatch.Add(new Vector2(u, v));
-                    site.Swatch.Add(new Vector2(u, v + dv));
-                    site.Swatch.Add(new Vector2(u + du, v + dv));
-                    site.Swatch.Add(new Vector2(u + du, v));
-                    image.Add(new Vector2(0, 0));
-                    image.Add(new Vector2(0, 1));
-                    image.Add(new Vector2(1, 1));
-                    image.Add(new Vector2(1, 0));
-                    for (int corner = 0; corner < 4; corner++)
+                    // Seen from the apron, the image's left is the viewer's left, which is the
+                    // stand's right.
+                    foreach (Vector2 at in OnImage)
                     {
+                        vertices.Add(centre + right * (1 - 2 * at.x) + up * (2 * at.y - 1));
+                        site.Swatch.Add(new Vector2(u + du * at.x, v + dv * at.y));
+                        image.Add(at);
                         site.Slot.Add(new Vector2(-1, 0));
                     }
-                    triangles.Add(first);
-                    triangles.Add(first + 1);
-                    triangles.Add(first + 2);
-                    triangles.Add(first);
-                    triangles.Add(first + 2);
-                    triangles.Add(first + 3);
+                    // The outline runs anticlockwise on the image, and a triangle faces the viewer
+                    // who sees it clockwise.
+                    for (int i = 1; i < VerticesPerStand; i++)
+                    {
+                        triangles.Add(first);
+                        triangles.Add(first + (i == VerticesPerStand - 1 ? 1 : i + 1));
+                        triangles.Add(first + i);
+                    }
                 }
                 site.Mesh = new Mesh { name = $"image surfaces {world.Layout.Input.SetCodes[layoutSite.Set]} {ColourClasses.SeedNames[(int)layoutSite.Class]}" };
+                site.Mesh.indexFormat = vertices.Count > ushort.MaxValue ? IndexFormat.UInt32 : IndexFormat.UInt16;
                 site.Mesh.MarkDynamic();
                 site.Mesh.SetVertices(vertices);
                 site.Mesh.SetUVs(0, site.Swatch);
@@ -229,6 +232,33 @@ namespace Eternities.CardView
                     sliceStarted = Time.realtimeSinceStartupAsDouble;
                 }
             }
+        }
+
+        // A rounded rectangle's outline about its middle, anticlockwise from the right end of its
+        // top edge: `steps` chords to a corner.
+        public static List<Vector2> Outline(float halfWidth, float halfHeight, float radius, int steps)
+        {
+            var outline = new List<Vector2>();
+            for (int corner = 0; corner < 4; corner++)
+            {
+                var centre = new Vector2((corner == 0 || corner == 3 ? 1 : -1) * (halfWidth - radius), (corner < 2 ? 1 : -1) * (halfHeight - radius));
+                for (int step = 0; step <= steps; step++)
+                {
+                    float angle = (corner + (float)step / steps) * Mathf.PI / 2;
+                    outline.Add(centre + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius);
+                }
+            }
+            return outline;
+        }
+
+        static Vector2[] MakeOnImage()
+        {
+            var onImage = new List<Vector2> { new Vector2(0.5f, 0.5f) };
+            foreach (Vector2 point in Outline(SurfaceWidth / 2, SurfaceHeight / 2, SurfaceWidth * CornerFraction, CornerSteps))
+            {
+                onImage.Add(new Vector2(0.5f + point.x / SurfaceWidth, 0.5f + point.y / SurfaceHeight));
+            }
+            return onImage.ToArray();
         }
 
         // The corner of a stand's block of the swatch texture, at its first texel's centre, and the
@@ -258,10 +288,10 @@ namespace Eternities.CardView
             Site site = sites[siteOfStand[stand]];
             SwatchOf(swatchShown ? stand : world.Layout.Stands.Count, out float u, out float v, out float du, out float dv);
             int first = firstVertexOfStand[stand];
-            site.Swatch[first] = new Vector2(u, v);
-            site.Swatch[first + 1] = new Vector2(u, v + dv);
-            site.Swatch[first + 2] = new Vector2(u + du, v + dv);
-            site.Swatch[first + 3] = new Vector2(u + du, v);
+            for (int i = 0; i < VerticesPerStand; i++)
+            {
+                site.Swatch[first + i] = new Vector2(u + du * OnImage[i].x, v + dv * OnImage[i].y);
+            }
             site.SwatchDirty = true;
         }
 
@@ -296,8 +326,7 @@ namespace Eternities.CardView
             return best;
         }
 
-        // A corner of a stand's swatch block, in the order a surface's corners are made: bottom
-        // left, top left, top right, bottom right.
+        // A corner of a stand's swatch block: bottom left, top left, top right, bottom right.
         public Vector2 SwatchCorner(int stand, int corner)
         {
             SwatchOf(stand, out float u, out float v, out float du, out float dv);
@@ -530,9 +559,9 @@ namespace Eternities.CardView
         void Mark(int stand, int slot, float shown)
         {
             Site site = sites[siteOfStand[stand]];
-            for (int corner = 0; corner < 4; corner++)
+            for (int i = 0; i < VerticesPerStand; i++)
             {
-                site.Slot[firstVertexOfStand[stand] + corner] = new Vector2(slot, shown);
+                site.Slot[firstVertexOfStand[stand] + i] = new Vector2(slot, shown);
             }
             site.Dirty = true;
         }
