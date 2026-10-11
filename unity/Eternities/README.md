@@ -197,6 +197,17 @@ unity/Eternities/bench.sh "$PWD/unity/Eternities/Build/Eternities.app" -bench wa
 unity/Eternities/bench.sh "$PWD/unity/Eternities/Build/Eternities.app" -bench cold -benchQuality high -benchScale 1 -benchOut "$PWD/bench-cold.json"
 ```
 
+Two rules for an agent's runs on the reference machine (DEC-953):
+
+- **Start every run with `--locked-only`**, before the player's path:
+  `unity/Eternities/bench.sh --locked-only "$PWD/unity/Eternities/Build/Eternities.app" -bench warm ...`.
+  A run takes the whole screen for minutes, and the owner allows it on the locked screen while the
+  machine is idle. With the switch the script starts nothing on an unlocked screen, and ends the
+  player with exit code 3 the moment the screen is unlocked. The owner's own runs do not need it.
+- **Before a run of record, make one run with `-benchCaptures` and look at its pictures.** CI's
+  captures are the editor's and say nothing about what a player draws: the first builds of the
+  slice drew no ground, and no figure showed it.
+
 `bench.sh` starts the player with those arguments, refuses to start while a Unity editor runs on
 the machine, and exits with the player's exit code. It needs the player and nothing else, so it
 runs on a machine with no checkout: the build writes the commit it was built from, and whether the
