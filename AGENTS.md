@@ -31,6 +31,7 @@ The table "The contract documents" in `README.md` has the same order, with a lin
 - The CI matrix and its no-bypass rule: PRD v4 8.8.5. The jobs as built: `.github/workflows/ci.yml`.
 - The runner: whose session it runs in, and what the bench job does while another Unity process runs: PRD v4 8.8.6 and `docs/ci-runner.md`.
 - The review rule: who runs the bench, on which tree, and what the verdict must quote: PRD v4 8.8.7. The command that builds that tree, and when: plan 12.11, finding 13.
+- Worktrees: one per leg, who removes it and when: `docs/worktrees.md`.
 - When a feature is done: PRD v4 9.4.
 - Content supply and credits: PRD v4 8.12.
 - The reference boards and their format: `docs/boards/README.md`.
