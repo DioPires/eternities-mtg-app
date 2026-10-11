@@ -94,7 +94,7 @@ builds for Windows.
 | `Assets/Settings/` | The HDRP assets: one per quality level, the global settings and the default volume profiles. |
 | `Assets/Scenes/Hub.unity` | The persistent scene (PRD v4 8.4.1): the template's camera, sun and sky, and the `Eternities` object. Kit worlds have no scene; they are built at run time from the pack and the layout. |
 | `Assets/Kits/core/` | What every world shares. `Materials/` holds the slice's plain materials (plinths by rarity, the mannequin, the hub, the portal, the image surface), and `UI/` the overlays' panel settings and theme; both are made by the generation entry point. `Shaders/` holds the two shaders of the isolated image path (PRD v4 8.4.4), written by hand. |
-| `Assets/Kits/temperate/` | The `temperate` kit's slice subset. `Terrain/`, `Props/` and `Audio/` hold the 24 files `sources.yaml` pins, in Git LFS, with a `CREDITS.md` row each; `fetch.sh` verifies them and fails on an unlisted file in those three folders, so what is made from them lives beside them. `Assets/Editor/KitMaskImport.cs` repacks each `_arm_` texture into HDRP's mask map layout as it is imported. |
+| `Assets/Kits/temperate/` | The `temperate` kit's slice subset. `Terrain/`, `Props/` and `Audio/` hold the 24 files `sources.yaml` pins, in Git LFS, with a `CREDITS.md` row each; `fetch.sh` verifies them and fails on an unlisted file in those three folders, so what is made from them lives beside them: `Materials/` holds the kit's plain materials for its props and `Water/` its two water prefabs, all made by the generation entry point. `Assets/Editor/KitMaskImport.cs` repacks each `_arm_` texture into HDRP's mask map layout as it is imported. |
 | `Assets/StreamingAssets/data/manifest.json` | Names the pinned pack hash. The pack itself is `data/<hash>/` beside it: written by the generation entry point, not committed. |
 | `bench.sh` | Starts a bench run of the built player (Batchmode commands, below). |
 | `batchmode.sh` | Starts the pinned editor on this project in batchmode, logging to stdout, and passes its arguments through. It replaces a `TMPDIR` too long for the compiler's socket. |
@@ -117,8 +117,12 @@ under `Assets/StreamingAssets/data/<hash>/`:
   pack's positions will.
 
 It also completes what is committed, and changes nothing there on a second run: the slice's plain
-materials under `Assets/Kits/core/Materials/`, and in `Assets/Scenes/Hub.unity` the one object,
-`Eternities`, that builds the hub and the world at run time. It assigns the kit's terrain layers to
+materials under `Assets/Kits/core/Materials/` and `Assets/Kits/temperate/Materials/`, and in
+`Assets/Scenes/Hub.unity` the one object, `Eternities`, that builds the hub and the world at run
+time. It names the mesh and the materials of each of the kit's props on that object: the world's
+prop scatter (PRD v4 8.4.2) is worked out at load from the layout, seeded by the plane, and the
+quality level in force sets how much of it is drawn (high all of it, medium 60%, low 35%; the
+table of what grows in which wedge is `Temperate` in `Assets/Scripts/Kits/PropPlan.cs`). It assigns the kit's terrain layers to
 that object once `Assets/Kits/temperate/TerrainLayers/` holds `meadow`, `path` and `gravel`; until
 then the ground is painted in plain colours. It also makes the kit's two water prefabs,
 `Assets/Kits/temperate/Water/River.prefab` and `Lake.prefab`, once, with the water system's

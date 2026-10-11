@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Eternities.Data;
+using Eternities.Kits;
 using Eternities.Travel;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -19,8 +20,8 @@ namespace Eternities.EditorTools
     // - not committed: the part of the pack the slice reads, copied from `web/public/data/<hash>/`
     //   to `StreamingAssets/data/<hash>/` with every file checked against the pack's manifest, and
     //   each world's layout beside it, `layout/<slug>.txt` (`WorldFiles.Generate`);
-    // - committed: the slice's plain materials under `Assets/Kits/core/Materials/`, and the
-    //   persistent scene, `Assets/Scenes/Hub.unity`.
+    // - committed: the slice's plain materials under `Assets/Kits/core/Materials/` and
+    //   `Assets/Kits/temperate/Materials/`, and the persistent scene, `Assets/Scenes/Hub.unity`.
     //
     // A missing argument or a failure throws, and the editor turns an exception in an
     // `-executeMethod` target into exit code 1.
@@ -161,6 +162,16 @@ namespace Eternities.EditorTools
             changed |= SetObject(WaterPrefab("River", WaterSurfaceType.River), app.RiverPrefab, prefab => app.RiverPrefab = prefab);
             changed |= SetObject(WaterPrefab("Lake", WaterSurfaceType.OceanSeaLake), app.LakePrefab, prefab => app.LakePrefab = prefab);
 
+            // The kit's props (PRD v4 8.4.2): each kind's mesh from its model, drawn in the kit's own
+            // materials, one for each material name the models use.
+            KitProp[] props = Temperate.Kinds.Select(ModelOf).ToArray();
+            if (app.KitProps == null || app.KitProps.Length != props.Length
+                || !props.Zip(app.KitProps, (wanted, held) => held != null && wanted.Mesh == held.Mesh && held.Materials != null && wanted.Materials.SequenceEqual(held.Materials)).All(same => same))
+            {
+                app.KitProps = props;
+                changed = true;
+            }
+
             // The kit's two loops (PRD v4 5.12): the ambient bed and the river.
             foreach ((string file, AudioClip held, System.Action<AudioClip> assign) in new (string, AudioClip, System.Action<AudioClip>)[]
             {
@@ -214,6 +225,42 @@ namespace Eternities.EditorTools
             return true;
         }
 
+        // The models' material names (Kenney's Nature Kit), and the temperate kit's colour for each:
+        // Dominaria's greens, ochre and slate (PRD v4 Appendix C). The models' own colours are
+        // pastel and are not used.
+        static readonly Dictionary<string, (string name, Color colour)> KitColours = new Dictionary<string, (string, Color)>
+        {
+            ["leafsGreen"] = ("leaf", new Color(0.23f, 0.38f, 0.14f)),
+            ["leafsDark"] = ("leaf-dark", new Color(0.12f, 0.25f, 0.14f)),
+            ["woodBark"] = ("bark", new Color(0.33f, 0.25f, 0.17f)),
+            ["woodBarkDark"] = ("bark-dark", new Color(0.24f, 0.18f, 0.13f)),
+            ["grass"] = ("bush", new Color(0.28f, 0.42f, 0.16f)),
+            ["stone"] = ("stone", new Color(0.47f, 0.49f, 0.51f)),
+            ["dirt"] = ("earth", new Color(0.50f, 0.41f, 0.27f)),
+            ["woodInner"] = ("reed", new Color(0.55f, 0.52f, 0.26f)),
+            ["_defaultMat"] = ("pale", new Color(0.70f, 0.67f, 0.50f)),
+        };
+
+        static KitProp ModelOf(PropKind kind)
+        {
+            string path = $"Assets/Kits/temperate/Props/{kind.Model}.fbx";
+            var model = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            MeshFilter filter = model == null ? null : model.GetComponentInChildren<MeshFilter>();
+            if (filter == null)
+            {
+                throw new InvalidDataException($"the kit's prop {path} is not in the project: run Assets/Kits/temperate/fetch.sh and git lfs pull");
+            }
+            Material[] materials = filter.GetComponent<MeshRenderer>().sharedMaterials.Select(theirs =>
+            {
+                if (!KitColours.TryGetValue(theirs.name, out (string name, Color colour) ours))
+                {
+                    throw new InvalidDataException($"{path} uses the material {theirs.name}, which the kit has no colour for");
+                }
+                return Lit($"temperate-{ours.name}", ours.colour, 0f, 0.15f, "Assets/Kits/temperate/Materials");
+            }).ToArray();
+            return new KitProp { Mesh = filter.sharedMesh, Materials = materials };
+        }
+
         static GameObject WaterPrefab(string name, WaterSurfaceType type)
         {
             const string folder = "Assets/Kits/temperate/Water";
@@ -244,15 +291,16 @@ namespace Eternities.EditorTools
 
         // The slice's materials are plain colours until the kit's art replaces them: the plinth's is
         // the card's rarity in four steps (PRD v4 5.5.1), stone, bronze, silver and gold-veined.
-        // Each is made once, under `Assets/Kits/core/Materials/`, and then left alone.
-        static Material Lit(string name, Color colour, float metallic, float smoothness)
+        // Each is made once, under `Assets/Kits/core/Materials/` or its kit's folder, and then left
+        // alone.
+        static Material Lit(string name, Color colour, float metallic, float smoothness, string folder = MaterialFolder)
         {
             return Made(name, "HDRP/Lit", material =>
             {
                 material.SetColor("_BaseColor", colour);
                 material.SetFloat("_Metallic", metallic);
                 material.SetFloat("_Smoothness", smoothness);
-            });
+            }, folder);
         }
 
         // `cutout`: the material draws nothing where its colour map's alpha is under a half.
@@ -267,10 +315,10 @@ namespace Eternities.EditorTools
             });
         }
 
-        static Material Made(string name, string shader, System.Action<Material> set)
+        static Material Made(string name, string shader, System.Action<Material> set, string folder = MaterialFolder)
         {
-            Directory.CreateDirectory(MaterialFolder);
-            string path = $"{MaterialFolder}/{name}.mat";
+            Directory.CreateDirectory(folder);
+            string path = $"{folder}/{name}.mat";
             var material = AssetDatabase.LoadAssetAtPath<Material>(path);
             if (material == null)
             {

@@ -43,6 +43,7 @@ namespace Eternities.Travel
 
         // Assigned by the generation entry point. The stand materials are the four plinths by
         // rarity, then the slab. The terrain layers are the kit's meadow, path and gravel, or empty.
+        // The props are the kit's kinds, in their order.
         [SerializeField] Material[] standMaterials = new Material[0];
         [SerializeField] Material avatarMaterial, hubGroundMaterial, portalFrameMaterial, portalSurfaceMaterial, veilMaterial;
         [SerializeField] TerrainLayer[] terrainLayers = new TerrainLayer[0];
@@ -51,6 +52,7 @@ namespace Eternities.Travel
         [SerializeField] AudioClip ambientBed, riverLoop;
         [SerializeField] PanelSettings panelSettings;
         [SerializeField] GameObject riverPrefab, lakePrefab;
+        [SerializeField] KitProp[] props = new KitProp[0];
 
         public static App Instance { get; private set; }
 
@@ -69,6 +71,7 @@ namespace Eternities.Travel
         public PanelSettings PanelSettings { get => panelSettings; set => panelSettings = value; }
         public GameObject RiverPrefab { get => riverPrefab; set => riverPrefab = value; }
         public GameObject LakePrefab { get => lakePrefab; set => lakePrefab = value; }
+        public KitProp[] KitProps { get => props; set => props = value; }
 
         public Pack Pack { get; private set; }
         public AvatarController Avatar { get; private set; }
@@ -79,6 +82,8 @@ namespace Eternities.Travel
         public StandField Stands { get; private set; }
         public StandImages Images { get; private set; }
         public Exhibit Exhibit { get; private set; }
+        public PropField Props { get; private set; }
+        public PropPlan PropPlan { get; private set; }
         public WorldSound Sound { get; private set; }
         public GameObject Water { get; private set; }       // null while water is off in the HDRP asset
         public Hud Hud { get; private set; }
@@ -462,10 +467,12 @@ namespace Eternities.Travel
         IEnumerator Load(string slug)
         {
             string directory = PackDirectory();
-            Task<(WorldData, GroundPlan)> read = Task.Run(() =>
+            float density = Temperate.Density(QualitySettings.names[QualitySettings.GetQualityLevel()]);
+            Task<(WorldData, GroundPlan, PropPlan)> read = Task.Run(() =>
             {
                 WorldData world = WorldData.Load(directory, slug);
-                return (world, GroundPlan.Compute(world.Layout));
+                GroundPlan ground = GroundPlan.Compute(world.Layout);
+                return (world, ground, PropPlan.Compute(world.Layout, ground, density));
             });
             while (!read.IsCompleted)
             {
@@ -477,7 +484,7 @@ namespace Eternities.Travel
                 Debug.LogException(read.Exception);
                 yield break;
             }
-            (World, plan) = read.Result;
+            (World, plan, PropPlan) = read.Result;
             worldRoot = new GameObject(World.Plane.DisplayName);
             yield return null;
 
@@ -502,6 +509,13 @@ namespace Eternities.Travel
             Images.Viewer = Avatar.transform;
             Exhibit.SetImages(Images.Array);
             CardView.Bind(World, Images, ImageSource);
+
+            // The kit's props (PRD v4 8.4.2), where the scene names a model for every kind.
+            if (props.Length == Temperate.Kinds.Length)
+            {
+                Props = PropField.Create(worldRoot.transform);
+                yield return Props.Fill(PropPlan, props, LoadBudgetMs);
+            }
 
             if (WorldWater.Supported && riverPrefab != null && lakePrefab != null)
             {
@@ -549,6 +563,8 @@ namespace Eternities.Travel
             World = null;
             Stands = null;
             Images = null;
+            Props = null;
+            PropPlan = null;
             Sound = null;
             Water = null;
             Ground = null;

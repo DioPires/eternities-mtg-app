@@ -207,7 +207,7 @@ namespace Eternities.Bench
                 worldSeen = new Dictionary<string, object>
                 {
                     ["slug"] = app.World.Plane.Slug, ["stands"] = layout.Stands.Count, ["sites"] = layout.Sites.Count,
-                    ["diameterMm"] = 2 * layout.WorldRadius,
+                    ["diameterMm"] = 2 * layout.WorldRadius, ["props"] = app.Props != null ? app.Props.Count : 0,
                 };
 
                 // Step 3: stand at the arrival point, facing north, until the images in reach are in.
@@ -709,7 +709,7 @@ namespace Eternities.Bench
                     ["otherUnityProcesses"] = null,
                     ["complete"] = why == null, ["failure"] = why,
                 },
-                ["world"] = worldSeen ?? new Dictionary<string, object> { ["slug"] = null, ["stands"] = 0, ["sites"] = 0, ["diameterMm"] = 0 },
+                ["world"] = worldSeen ?? new Dictionary<string, object> { ["slug"] = null, ["stands"] = 0, ["sites"] = 0, ["diameterMm"] = 0, ["props"] = 0 },
                 ["frames"] = new Dictionary<string, object>
                 {
                     ["dominaria"] = Block(dominaria), ["hub"] = Block(hub),

@@ -236,7 +236,7 @@ namespace Eternities.Kits
             return Mathf.Lerp(Mathf.Lerp(a, b, tx), Mathf.Lerp(c, d, tx), tz);
         }
 
-        static float Hash(int x, int z, uint seed)
+        internal static float Hash(int x, int z, uint seed)
         {
             unchecked
             {

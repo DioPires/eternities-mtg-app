@@ -144,6 +144,19 @@ namespace Eternities.Tests
             float[,,] meadow = app.Ground.terrainData.GetAlphamaps((int)(behind.x / size.x * n), (int)(behind.z / size.z * n), 1, 1);
             Assert.That(meadow[0, 0, GroundPlan.Meadow], Is.EqualTo(1));
 
+            // PRD v4 8.4.2: the kit's props are in the world, each of them an object of its kind's
+            // mesh on the ground, and a tree stops what walks into its trunk.
+            Assert.That(app.Props.Count, Is.EqualTo(app.PropPlan.Props.Count));
+            Assert.That(app.Props.Count, Is.GreaterThan(3000));
+            Assert.That(app.Props.transform.childCount, Is.EqualTo(app.Props.Count));
+            int oak = app.PropPlan.Props.FindIndex(prop => prop.Kind == Temperate.Oak);
+            Transform tree = app.Props.transform.GetChild(oak);
+            Assert.That(tree.GetComponent<MeshFilter>().sharedMesh.name, Is.EqualTo("tree_oak"));
+            Assert.That(tree.GetComponent<MeshRenderer>().sharedMaterials, Has.All.Not.Null);
+            Assert.That(tree.GetComponent<CapsuleCollider>(), Is.Not.Null);
+            RaycastHit[] met = Physics.RaycastAll(tree.position + new Vector3(2, 1.5f, 0), Vector3.left, 2);
+            Assert.That(Array.Exists(met, at => at.collider.transform == tree), "a ray at chest height meets the trunk");
+
             // PRD v4 9.5: one river and one lake of the HDRP water system, over the bed the ground
             // carries, when water is on in the HDRP asset in force; nothing while it is off.
             Assert.That(app.Water != null, Is.EqualTo(WorldWater.Supported));

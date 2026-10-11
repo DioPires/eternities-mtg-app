@@ -164,6 +164,8 @@ namespace Eternities.Layout
         public const long CorridorHalfWidth = 750;
         public const long PathWidth = 3000;
         public const long PadRadius = 1500;
+        // A kit's props keep this far from paths, corridors, aprons and pads.
+        public const long PropClearance = 1000;
         public const long MinPlaza = 12_000;
         public const long MinBand = 6000, MinRing = 6000, MinArc = 6000;
         public const int MaxWidenings = 20, MaxPasses = 20;
