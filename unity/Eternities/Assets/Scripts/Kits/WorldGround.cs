@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using Eternities.Layout;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -315,20 +316,89 @@ namespace Eternities.Kits
             return plain;
         }
 
-        // `material` is the scene's own, with HDRP's terrain shader. The pipeline's default terrain
-        // material is the editor's and is not in a build: a ground given that one is drawn in the
-        // editor and is not there at all in a player.
-        public static Terrain Build(GroundPlan plan, TerrainLayer[] layers, Material material, string name, Transform parent)
+        // The scene's own material, with HDRP's terrain shader, is one a build can draw. The
+        // pipeline's default terrain material is the editor's and is not in a build: a ground given
+        // that one is drawn in the editor and is not there at all in a player.
+        public static bool Drawable(Material material) => material != null && material.shader != null && material.shader.isSupported;
+
+        // Rows of the plan handed to the terrain in one step.
+        public const int HeightRows = 64, AlphaRows = 512;
+
+        // Builds the ground in steps, and yields whenever a frame has spent `budget` milliseconds
+        // on it, as the stands do (PRD v4 7.3.3). `done` takes the terrain. Handed to the terrain
+        // in one call, a heightmap of 2,049 took 110 ms, and the visitor walking up to the portal
+        // saw one frame of 150 ms (DEC-953). The heights and the layers go in by strips of rows,
+        // and the terrain's object is made last, so nothing draws or collides with a ground that
+        // is half there. Four steps cannot be cut smaller and are longer than a strip: making the
+        // heightmap, making the alphamap, the one pass that works out the terrain's levels of
+        // detail from all the heights, and any call that paints layers, however few rows it holds.
+        // `owned` takes the terrain's data at once: it belongs to no object, and a load that is
+        // stopped half-way must not leave it behind.
+        public static IEnumerator Build(GroundPlan plan, TerrainLayer[] layers, Material material, string name, Transform parent, float budget,
+            System.Collections.Generic.List<UnityEngine.Object> owned, Action<Terrain> done)
         {
-            if (material == null || material.shader == null || !material.shader.isSupported)
+            double sliceStarted = Time.realtimeSinceStartupAsDouble;
+            bool Spent() => (Time.realtimeSinceStartupAsDouble - sliceStarted) * 1000 > budget;
+
+            var data = new TerrainData { name = name, heightmapResolution = plan.HeightResolution };
+            owned.Add(data);
+            if (Spent())
             {
-                throw new InvalidOperationException("the ground has no material this build can draw; run the generation entry point (unity/Eternities/README.md)");
+                yield return null;
+                sliceStarted = Time.realtimeSinceStartupAsDouble;
             }
-            var data = new TerrainData { name = name, heightmapResolution = plan.HeightResolution, alphamapResolution = plan.AlphaResolution };
-            data.size = new Vector3(plan.Side, GroundPlan.Height, plan.Side);      // after the resolution, which resets it
-            data.SetHeights(0, 0, plan.Normalised);
+            data.alphamapResolution = plan.AlphaResolution;
+            data.size = new Vector3(plan.Side, GroundPlan.Height, plan.Side);      // after the resolutions, which reset it
             data.terrainLayers = layers;
-            data.SetAlphamaps(0, 0, plan.Alphas);
+            if (Spent())
+            {
+                yield return null;
+                sliceStarted = Time.realtimeSinceStartupAsDouble;
+            }
+
+            // A strip is copied out of the plan, because the terrain takes an array's own size.
+            int size = plan.HeightResolution;
+            float[,] heights = null;
+            for (int row = 0; row < size; row += HeightRows)
+            {
+                int count = Math.Min(HeightRows, size - row);
+                if (heights == null || heights.GetLength(0) != count)
+                {
+                    heights = new float[count, size];
+                }
+                Buffer.BlockCopy(plan.Normalised, row * size * sizeof(float), heights, 0, count * size * sizeof(float));
+                // Without the levels of detail: worked out after every strip, they cost 9 ms a call.
+                data.SetHeightsDelayLOD(0, row, heights);
+                if (Spent())
+                {
+                    yield return null;
+                    sliceStarted = Time.realtimeSinceStartupAsDouble;
+                }
+            }
+            data.SyncHeightmap();
+            if (Spent())
+            {
+                yield return null;
+                sliceStarted = Time.realtimeSinceStartupAsDouble;
+            }
+
+            int n = plan.AlphaResolution;
+            float[,,] alphas = null;
+            for (int row = 0; row < n; row += AlphaRows)
+            {
+                int count = Math.Min(AlphaRows, n - row);
+                if (alphas == null || alphas.GetLength(0) != count)
+                {
+                    alphas = new float[count, n, GroundPlan.Layers];
+                }
+                Buffer.BlockCopy(plan.Alphas, row * n * GroundPlan.Layers * sizeof(float), alphas, 0, count * n * GroundPlan.Layers * sizeof(float));
+                data.SetAlphamaps(0, row, alphas);
+                if (Spent())
+                {
+                    yield return null;
+                    sliceStarted = Time.realtimeSinceStartupAsDouble;
+                }
+            }
 
             GameObject ground = Terrain.CreateTerrainGameObject(data);
             ground.name = "Ground";
@@ -336,7 +406,7 @@ namespace Eternities.Kits
             ground.transform.localPosition = new Vector3(-plan.Side / 2, -GroundPlan.Floor, -plan.Side / 2);
             var terrain = ground.GetComponent<Terrain>();
             terrain.materialTemplate = material;
-            return terrain;
+            done(terrain);
         }
     }
 }

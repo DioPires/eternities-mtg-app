@@ -1,7 +1,11 @@
+using System.Collections;
+using System.Collections.Generic;
 using Eternities.Data;
+using Eternities.EditorTools;
 using Eternities.Kits;
 using Eternities.Layout;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
 
 namespace Eternities.Tests
@@ -99,6 +103,72 @@ namespace Eternities.Tests
             int Row(float z) => Mathf.FloorToInt((z + plan.Side / 2) / texel);
             Assert.That(plan.Alphas[Row(mid.y), Row(mid.x), GroundPlan.Gravel], Is.EqualTo(1));
             Assert.That(plan.Alphas[Row(0), Row(0), GroundPlan.Path], Is.EqualTo(1));
+        }
+
+        // PRD v4 7.3.3: loads are time-sliced. The ground reaches the terrain in steps, each of
+        // which ends its frame once the frame's budget is spent, and the terrain that comes out
+        // holds the plan: every height, to the 16 bits a heightmap keeps, and every texel's layer.
+        // Handed over in one call, the ground stopped a frame for 150 ms on the way to the portal.
+        [Test]
+        public void BuiltInStepsTheTerrainHoldsThePlan()
+        {
+            var owned = new List<Object>();
+            var parent = new GameObject("GroundTests");
+            try
+            {
+                var material = AssetDatabase.LoadAssetAtPath<Material>("Assets/Kits/core/Materials/ground.mat");
+                TerrainLayer[] layers = System.Array.ConvertAll(new[] { "meadow", "path", "gravel" }, name => AssetDatabase.LoadAssetAtPath<TerrainLayer>($"{Generate.LayerFolder}/{name}.terrainlayer"));
+                Terrain terrain = null;
+                int steps = 1;
+                // A budget of nothing: every step ends its frame.
+                for (IEnumerator build = WorldGround.Build(plan, layers, material, "dominaria", parent.transform, 0, owned, built => terrain = built); build.MoveNext();)
+                {
+                    Assert.That(terrain, Is.Null, "the terrain is handed over whole, not while it is being filled");
+                    steps++;
+                }
+                int size = plan.HeightResolution, n = plan.AlphaResolution;
+                Assert.That(steps, Is.GreaterThanOrEqualTo(size / WorldGround.HeightRows + n / WorldGround.AlphaRows));
+                Assert.That(terrain, Is.Not.Null);
+                Assert.That(terrain.transform.parent, Is.SameAs(parent.transform));
+                Assert.That(terrain.materialTemplate, Is.SameAs(material));
+                TerrainData data = terrain.terrainData;
+                Assert.That(owned, Has.Member(data), "the terrain's data leaves with the world");
+                Assert.That(data.size, Is.EqualTo(new Vector3(plan.Side, GroundPlan.Height, plan.Side)));
+                Assert.That(data.terrainLayers, Is.EqualTo(layers));
+
+                float[,] heights = data.GetHeights(0, 0, size, size);
+                float furthest = 0;
+                for (int row = 0; row < size; row++)
+                {
+                    for (int column = 0; column < size; column++)
+                    {
+                        furthest = Mathf.Max(furthest, Mathf.Abs(heights[row, column] - plan.Normalised[row, column]));
+                    }
+                }
+                Assert.That(furthest * GroundPlan.Height, Is.LessThan(0.002f), "no height is 2 mm from the plan's");
+
+                float[,,] alphas = data.GetAlphamaps(0, 0, n, n);
+                int other = 0;
+                for (int row = 0; row < n; row++)
+                {
+                    for (int column = 0; column < n; column++)
+                    {
+                        for (int layer = 0; layer < GroundPlan.Layers; layer++)
+                        {
+                            other += Mathf.Abs(alphas[row, column, layer] - plan.Alphas[row, column, layer]) > 0.01f ? 1 : 0;
+                        }
+                    }
+                }
+                Assert.That(other, Is.EqualTo(0), "texels painted with another layer than the plan's");
+            }
+            finally
+            {
+                Object.DestroyImmediate(parent);
+                foreach (Object made in owned)
+                {
+                    Object.DestroyImmediate(made);
+                }
+            }
         }
     }
 }

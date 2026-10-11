@@ -557,16 +557,12 @@ namespace Eternities.Travel
             yield return null;
 
             TerrainLayer[] layers = WorldGround.Layers(terrainLayers);
-            try
+            Material groundMaterial = groundMaterials.Length > 0 ? groundMaterials[0] : null;
+            if (!WorldGround.Drawable(groundMaterial))
             {
-                Ground = WorldGround.Build(plan, layers, groundMaterials.Length > 0 ? groundMaterials[0] : null, World.Plane.Slug, worldRoot.transform);
-            }
-            catch (InvalidOperationException e)
-            {
-                Fail(e);
+                Fail(new InvalidOperationException("the ground has no material this build can draw; run the generation entry point (unity/Eternities/README.md)"));
                 yield break;
             }
-            worldOwned.Add(Ground.terrainData);
             if (layers != terrainLayers)
             {
                 foreach (TerrainLayer layer in layers)
@@ -575,6 +571,7 @@ namespace Eternities.Travel
                     worldOwned.Add(layer);
                 }
             }
+            yield return WorldGround.Build(plan, layers, groundMaterial, World.Plane.Slug, worldRoot.transform, LoadBudgetMs, worldOwned, terrain => Ground = terrain);
             yield return null;
 
             Stands = StandField.Create(worldRoot.transform);
