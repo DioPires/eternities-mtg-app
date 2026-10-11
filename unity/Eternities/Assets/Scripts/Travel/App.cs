@@ -126,6 +126,7 @@ namespace Eternities.Travel
         Coroutine loading;
         Renderer veil;
         readonly List<UnityEngine.Object> worldOwned = new List<UnityEngine.Object>();
+        Texture2DArray standImages;     // every world's stand images, made once with the hub (`StandImages.NewArray`)
 
         static double Now => Time.realtimeSinceStartupAsDouble;
 
@@ -192,6 +193,7 @@ namespace Eternities.Travel
             {
                 Instance = null;
             }
+            Destroy(standImages);
         }
 
         void BuildHub()
@@ -211,6 +213,7 @@ namespace Eternities.Travel
             HubPortal = Portal.Build($"Portal to {HomeWorld}", portalFrameMaterial, portalSurfaceMaterial, hubRoot.transform,
                 HubOrigin + toPortal * Vector3.forward * PortalRingRadius, toPortal * Quaternion.Euler(0, 180, 0));
 
+            standImages = StandImages.NewArray();
             Avatar = AvatarController.Create(avatarMaterial);
             Avatar.Source = new PlayerInputSource();
             Avatar.Place(HubOrigin, toPortal);      // the visitor arrives facing the home plane's portal (PRD v4 5.8.5)
@@ -582,7 +585,7 @@ namespace Eternities.Travel
             yield return Stands.Fill(World, standMaterials, LoadBudgetMs);
             LoadStage = "image surfaces";
             Images = StandImages.Create(worldRoot.transform);
-            yield return Images.Fill(World, imageSurfaceMaterial, LoadBudgetMs);
+            yield return Images.Fill(World, imageSurfaceMaterial, standImages, LoadBudgetMs);
             Images.Source = ImageSource;
             Images.Viewer = Avatar.transform;
             Exhibit.SetImages(Images.Array);

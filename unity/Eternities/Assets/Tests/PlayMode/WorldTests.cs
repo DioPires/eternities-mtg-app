@@ -199,6 +199,8 @@ namespace Eternities.Tests
             Assert.That(Vector3.Distance(nearest, atTheRim), Is.LessThan(Eternities.Audio.WorldSound.RiverFar / 4), "at the rim the river is close");
             Assert.That(Vector3.Distance(app.Sound.NearestOnRiver(new Vector3(0, 0, rim - 100)), new Vector3(0, 0, rim - 100)), Is.LessThan(Eternities.Audio.WorldSound.RiverFar), "100 m short of the rim it is already heard");
 
+            Texture2DArray images = app.Images.Array;
+            Assert.That(images.depth, Is.EqualTo(Eternities.CardView.StandImages.Slots));
             hands.Back = true;
             yield return Until(() => app.Place == Place.Hub && !app.InTransition, 30, "the return to the hub");
             Assert.That(app.World, Is.Null);
@@ -206,6 +208,17 @@ namespace Eternities.Tests
             Assert.That(Vector3.Distance(app.Avatar.transform.position, app.HubPortal.Pad), Is.LessThan(0.5f));
             Assert.That(Elevation(app.Sun), Is.EqualTo(45).Within(0.01f), "the hub has the scene's own sun again");
             Assert.That(app.Sun.colorTemperature, Is.EqualTo(6500));
+
+            // The stands' image array is the application's, made once with the hub (DEC-953): made
+            // at each load, its 170 MB stopped a frame for 60 ms. The world that leaves does not
+            // take it, and the world that comes next uses it, with no stand shown from a slot yet.
+            Assert.That(images != null, "the image array outlives the world that used it");
+            TowardThePortal();
+            yield return Until(() => app.WorldReady, 60, "the second arrival");
+            hands.WorldMove = Vector3.zero;
+            Assert.That(app.Images.Array, Is.SameAs(images));
+            Assert.That(app.Images.SlotsInUse, Is.EqualTo(0));
+            Assert.That(app.Stands.Stands, Is.EqualTo(6271));
         }
 
         // PRD v4 9.5: the river is seen from the rim, where the north radial path ends: the frame

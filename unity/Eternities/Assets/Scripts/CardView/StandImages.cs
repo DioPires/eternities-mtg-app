@@ -99,10 +99,23 @@ namespace Eternities.CardView
             return holder.AddComponent<StandImages>();
         }
 
+        // The texture array every stand's image is held in (PRD v4 8.4.3): 384 slots of 244 x 340
+        // with mips, 170 MB. Making it stops a frame for 60 ms, so the application makes it once,
+        // behind its start, and every world it loads uses the same one: a slot is read only by the
+        // stand whose image was last copied into it.
+        public static Texture2DArray NewArray()
+        {
+            var made = new Texture2DArray(Width, Height, Slots, TextureFormat.RGBA32, mipChain: true, linear: false) { name = "stand images", filterMode = FilterMode.Trilinear, wrapMode = TextureWrapMode.Clamp, anisoLevel = 4 };
+            made.Apply(false, makeNoLongerReadable: true);
+            return made;
+        }
+
         // Builds the surfaces site by site, yielding when a frame has spent `budget` milliseconds.
-        public IEnumerator Fill(WorldData data, Material surface, float budget)
+        // `images` is the application's array, which outlives this world.
+        public IEnumerator Fill(WorldData data, Material surface, Texture2DArray images, float budget)
         {
             world = data;
+            array = images;
             int count = world.Layout.Stands.Count;
             slotOfStand = new int[count];
             coverage = new float[count];
@@ -145,8 +158,6 @@ namespace Eternities.CardView
             placeholder = new Material(surface) { name = "image surfaces" };
             placeholder.SetTexture("_UnlitColorMap", atlas);
 
-            array = new Texture2DArray(Width, Height, Slots, TextureFormat.RGBA32, mipChain: true, linear: false) { name = "stand images", filterMode = FilterMode.Trilinear, wrapMode = TextureWrapMode.Clamp, anisoLevel = 4 };
-            array.Apply(false, makeNoLongerReadable: true);
             half = new RenderTexture(Width, Height, 0, GraphicsFormat.R8G8B8A8_SRGB) { name = "stand image, half size", useMipMap = true, autoGenerateMips = false, filterMode = FilterMode.Bilinear };
             half.Create();
 
@@ -584,7 +595,6 @@ namespace Eternities.CardView
             }
             Destroy(atlas);
             Destroy(placeholder);
-            Destroy(array);
             if (half != null)
             {
                 half.Release();
