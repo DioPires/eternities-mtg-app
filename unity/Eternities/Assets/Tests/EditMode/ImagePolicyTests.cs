@@ -251,5 +251,56 @@ namespace Eternities.Tests
             policy.Want(Url(1), 0);
             Assert.That(Started(), Is.Empty);
         }
+
+        // PRD v4 7.4.3: a view is told when its image is failing to load. A network failure is
+        // never final, so the loader's answer never comes: this is the only word a view gets.
+        [Test]
+        public void AnImageIsFailingFromItsFirstFailureUntilItArrives()
+        {
+            Assert.That(policy.Failing(Url(1)), Is.False, "an image nobody asked for is not failing");
+            policy.Want(Url(1), 1);
+            policy.Want(Url(2), 2);
+            Assert.That(policy.Failing(Url(1)), Is.False, "nor is one that is only waiting its turn");
+            Assert.That(Started(), Is.EqualTo(new[] { Url(1), Url(2) }));
+            Assert.That(policy.Failing(Url(1)), Is.False, "nor one that is on its way");
+
+            policy.Failed(Url(1), ImageFailure.Network);
+            Assert.That(policy.Failing(Url(1)), "from the first failure, with every retry still to come");
+            Assert.That(policy.Failing(Url(2)), Is.False, "the failure is that image's alone");
+            foreach (double wait in new double[] { 1, 4, 16 })
+            {
+                now += wait;
+                Assert.That(Started(), Is.EqualTo(new[] { Url(1) }));
+                Assert.That(policy.Failing(Url(1)), "and while a retry is in flight");
+                policy.Failed(Url(1), ImageFailure.Network);
+            }
+            Assert.That(policy.IsFinal(Url(1)), Is.False);
+            Assert.That(policy.Failing(Url(1)), "and once it is left until the network is back");
+
+            // The network is back: the other image arrives, and the lost one starts again from nothing.
+            policy.Succeeded(Url(2));
+            Assert.That(policy.Failing(Url(1)), Is.False);
+            Assert.That(Started(), Is.EqualTo(new[] { Url(1) }));
+            policy.Succeeded(Url(1));
+            Assert.That(policy.Failing(Url(1)), Is.False);
+        }
+
+        [Test]
+        public void EveryWantedImageIsFailingWhileAPauseHoldsItBack()
+        {
+            policy.Want(Url(1), 1);
+            policy.Want(Url(2), 2);
+            Assert.That(Started(), Has.Count.EqualTo(2));
+            policy.Failed(Url(1), ImageFailure.Throttled);
+            Assert.That(policy.Paused);
+            Assert.That(policy.Failing(Url(1)));
+            Assert.That(policy.Failing(Url(2)), "nothing is asked for during a pause, so nothing wanted is coming");
+            Assert.That(policy.Failing(Url(3)), Is.False, "an image nobody asked for is still not failing");
+            policy.Failed(Url(2), ImageFailure.Refused);
+            now += ImagePolicy.Pause;
+            Assert.That(policy.Paused, Is.False);
+            Assert.That(policy.Failing(Url(1)), Is.False, "the pause is over and this image never failed by itself");
+            Assert.That(policy.Failing(Url(2)), "a final answer is a failure for the session");
+        }
     }
 }

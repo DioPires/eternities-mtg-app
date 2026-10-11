@@ -16,7 +16,7 @@ namespace Eternities.Tests
     // what it keeps, and what each answer does. No test reaches Scryfall.
     public class ScryfallImagesTests
     {
-        sealed class Server : IDisposable
+        internal sealed class Server : IDisposable
         {
             readonly HttpListener listener = new HttpListener();
             public readonly List<(string Path, string UserAgent, string Accept)> Requests = new List<(string, string, string)>();

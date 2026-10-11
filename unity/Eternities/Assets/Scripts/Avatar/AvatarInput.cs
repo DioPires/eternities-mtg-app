@@ -14,6 +14,8 @@ namespace Eternities.Avatar
         public Vector2 Look;        // degrees to turn the camera this frame: x about the avatar, y up
         public float Zoom;          // metres to move the camera away this frame
         public bool Interact, Back, TravelMenu;     // pressed this frame
+        public bool Click;          // the pointer was pressed this frame,
+        public Vector2 Pointer;     // here: pixels from the view's bottom left
         public int Step;            // in card view: -1 the printing before, 1 the one after
 
         public void Clear()
@@ -23,7 +25,7 @@ namespace Eternities.Avatar
             Look = default;
             Zoom = 0;
             Step = 0;
-            Run = Interact = Back = TravelMenu = false;
+            Run = Interact = Back = TravelMenu = Click = false;
         }
     }
 
@@ -59,6 +61,8 @@ namespace Eternities.Avatar
             {
                 // The mouse orbits the camera while its right button is held.
                 look = mouse.rightButton.isPressed ? mouse.delta.ReadValue() * MouseDegrees : Vector2.zero;
+                input.Click = mouse.leftButton.wasPressedThisFrame;
+                input.Pointer = mouse.position.ReadValue();
                 float scroll = mouse.scroll.ReadValue().y;
                 input.Zoom -= scroll > 0 ? ScrollMetres : scroll < 0 ? -ScrollMetres : 0;
             }
@@ -85,6 +89,8 @@ namespace Eternities.Avatar
         public bool Run;
         public Vector2 Look;                        // degrees, passed on once
         public bool Interact, Back, TravelMenu;     // each is passed on once, then cleared
+        public bool Click;                          // and so is a press of the pointer,
+        public Vector2 Pointer;                     // here
 
         public void Read(AvatarInput input)
         {
@@ -95,7 +101,9 @@ namespace Eternities.Avatar
             input.Interact = Interact;
             input.Back = Back;
             input.TravelMenu = TravelMenu;
-            Interact = Back = TravelMenu = false;
+            input.Click = Click;
+            input.Pointer = Pointer;
+            Interact = Back = TravelMenu = Click = false;
         }
     }
 }

@@ -17,6 +17,10 @@ namespace Eternities.CardView
     {
         void Request(string url, float distance, Action<Texture2D> done);
         void Cancel(string url);
+        // An image that was asked for and has not come: is it failing to load? `done` is told
+        // nothing while the source still means to try again, and with the network down it always
+        // does, so a view that wants to say so asks here (PRD v4 7.4.3).
+        bool Failing(string url);
     }
 
     // A world's stand images (PRD v4 5.5, 8.4.3): every image surface as a quad, one mesh a site,

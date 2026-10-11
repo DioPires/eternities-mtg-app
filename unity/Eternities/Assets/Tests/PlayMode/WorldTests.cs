@@ -43,6 +43,8 @@ namespace Eternities.Tests
             public void Cancel(string url)
             {
             }
+
+            public bool Failing(string url) => false;
         }
 
         static IEnumerator Until(Func<bool> done, float seconds, string what)
@@ -344,11 +346,29 @@ namespace Eternities.Tests
             Assert.That(app.WorldLoaded, Is.False);
             Assert.That(app.Avatar.Locked);
             Assert.That(app.HoldIndicator, Is.False, "the indicator waits for the 6 s ceiling");
+            Assert.That(app.Hud.Line, Is.Null);
             hands.WorldMove = Vector3.zero;
             yield return Until(() => app.WorldReady, 60, "the arrival");
             Assert.That(app.LastHoldSeconds, Is.GreaterThan(1.0));
             Assert.That(app.Avatar.Locked, Is.False);
             Assert.That(app.Avatar.transform.position.magnitude, Is.LessThan(0.5f), "the avatar arrives at the arrival point, wherever the hold found it");
+        }
+
+        // PRD v4 5.9.2: beyond the 6 s ceiling a loading indicator appears on the held surface.
+        [UnityTest]
+        public IEnumerator AHoldPastTheCeilingSaysItIsLoading()
+        {
+            yield return Hub();
+            App app = App.Instance;
+            app.LoadDelayForTests = 11;
+            TowardThePortal();
+            yield return Until(() => app.HoldIndicator, 40, "the indicator");
+            Assert.That(app.Holding && app.Place == Place.Hub);
+            Assert.That(app.Hud.Line, Is.EqualTo("Loading…"));
+            hands.WorldMove = Vector3.zero;
+            yield return Until(() => app.WorldReady, 60, "the arrival");
+            Assert.That(app.LastHoldSeconds, Is.GreaterThan(App.HoldIndicatorAfter));
+            Assert.That(app.Hud.Line, Is.Null, "the line goes with the hold");
         }
     }
 }

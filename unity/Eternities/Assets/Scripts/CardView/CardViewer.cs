@@ -12,7 +12,8 @@ using UnityEngine.Rendering.HighDefinition;
 namespace Eternities.CardView
 {
     // Card view (PRD v4 5.10). Entering it puts a card in front of its stand: a thin dark solid with
-    // the printing's `large` image on its face and the card back, or the card's other face, behind.
+    // rounded corners, the printing's `large` image on its face and the card back, or the card's
+    // other face, behind.
     // Both faces are drawn on the isolated path, from two textures of their own. The camera moves
     // inside the stand's apron over 0.6 s to where the card is 60% of the view's height, to the
     // left of the middle, which leaves the right for the printings panel. The world behind the card
@@ -22,6 +23,14 @@ namespace Eternities.CardView
         public const float BlendSeconds = 0.6f, ReducedBlendSeconds = 0.3f;
         public const float CardFraction = 0.6f, PanelFraction = 0.34f, TiltDegrees = 12, FlipSeconds = 0.35f;
         public const float CardHeight = StandImages.SurfaceHeight, CardWidth = CardHeight * 672 / 936, Thickness = 0.006f, Lift = 0.05f;
+        // A printed card's corner, as a part of its width: 3 mm on 63 mm. An image file is a whole
+        // rectangle, white outside the card's corner, and the solid's shape is what leaves that out.
+        public const float CornerFraction = 0.0475f, Edge = 0.003f;
+        const int CornerSteps = 6;
+        // PRD v4 7.4.3: one line when the printing's image is not to be had, by what the face shows instead.
+        public const string NoImage = "This printing's image could not be loaded. The card's swatch is shown.";
+        public const string NoLargeImage = "This printing's large image could not be loaded. The stand's image is shown.";
+        public const string NoImageOfThis = "This printing's image could not be loaded. The image shown is another printing's.";
         static readonly int FrontId = Shader.PropertyToID("_ExhibitCardFront"), BackId = Shader.PropertyToID("_ExhibitCardBack");
 
         Camera view;
@@ -33,9 +42,11 @@ namespace Eternities.CardView
         IImageSource source;
         GameObject card;
         Mesh faces, body;
-        readonly List<Vector2> swatchUv = new List<Vector2>(), slotUv = new List<Vector2>();
+        readonly List<Vector2> faceUv = new List<Vector2>(), swatchUv = new List<Vector2>(), slotUv = new List<Vector2>();
         Texture2D front, back;
         string frontUrl, backUrl;
+        int frontPrinting = -1;     // the printing whose `large` image the face holds, or -1
+        bool frontRefused;          // the source has said the wanted image is not coming this session
         float turn, turnVelocity, turned;       // the flip: 0 the front, 180 the back
         Vector2 tilt, tiltVelocity;
         float changedAt;
@@ -46,7 +57,7 @@ namespace Eternities.CardView
         public bool Active => Stand >= 0;
         public bool ReducedMotion;
         public string Notice { get; private set; }      // one line when an image could not be shown
-        public bool FrontShown => front != null;
+        public bool FrontShown => front != null && frontPrinting == Printing;
         public bool BackShown => back != null;
         public PackCard Card => world.Cards[world.Layout.Stands[Stand].Card];
         public Transform CardTransform => card != null ? card.transform : null;
@@ -117,6 +128,8 @@ namespace Eternities.CardView
             ShowingBack = false;
             turn = turned = 0;
             Notice = null;
+            frontPrinting = -1;
+            frontRefused = false;
             LayoutStand placed = world.Layout.Stands[stand];
             Quaternion facing = StandField.Facing(placed);
             Vector3 centre = StandField.Ground(placed.Position) + new Vector3(0, StandField.PlinthHeight + CardHeight / 2, 0) + facing * Vector3.forward * (StandField.SlabDepth / 2 + Lift);
@@ -179,6 +192,7 @@ namespace Eternities.CardView
                 source?.Cancel(backUrl);
             }
             frontUrl = backUrl = null;
+            frontPrinting = -1;
             Destroy(front);
             Destroy(back);
             front = back = null;
@@ -189,26 +203,60 @@ namespace Eternities.CardView
             Stand = -1;
         }
 
+        // The outline of a rounded rectangle about the origin, in the card's own plane. It runs
+        // anticlockwise with x to the right and y up, which is the card seen from behind.
+        static List<Vector2> Outline(float halfWidth, float halfHeight, float radius)
+        {
+            var outline = new List<Vector2>();
+            for (int corner = 0; corner < 4; corner++)
+            {
+                var centre = new Vector2((corner == 0 || corner == 3 ? 1 : -1) * (halfWidth - radius), (corner < 2 ? 1 : -1) * (halfHeight - radius));
+                for (int step = 0; step <= CornerSteps; step++)
+                {
+                    float angle = (corner + (float)step / CornerSteps) * Mathf.PI / 2;
+                    outline.Add(centre + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius);
+                }
+            }
+            return outline;
+        }
+
         // The solid, in the world's own frame so the main camera sees a card there, and the two
-        // faces on the exhibit layer.
+        // faces on the exhibit layer. Both are rounded rectangles (PRD v4 5.10.2): the solid is
+        // the faces' shape and a dark edge more.
         void Build(Vector3 centre, Quaternion facing)
         {
             card = new GameObject("Card");
             card.transform.SetPositionAndRotation(centre, facing);
 
-            float w = CardWidth / 2, h = CardHeight / 2, d = Thickness / 2;
+            float w = CardWidth / 2, h = CardHeight / 2, d = Thickness / 2, radius = CardWidth * CornerFraction;
             body = new Mesh { name = "card" };
             var corners = new List<Vector3>();
             var triangles = new List<int>();
-            foreach (Vector3 face in new[] { Vector3.forward, Vector3.back, Vector3.right, Vector3.left, Vector3.up, Vector3.down })
+            List<Vector2> edge = Outline(w + Edge, h + Edge, radius + Edge);
+            foreach (float side in new[] { 1f, -1f })
             {
-                Vector3 u = face.y != 0 ? Vector3.right : Vector3.up, v = Vector3.Cross(face, u);
-                int first = corners.Count;
-                foreach ((int su, int sv) in new[] { (-1, -1), (1, -1), (1, 1), (-1, 1) })
+                int middle = corners.Count;
+                corners.Add(new Vector3(0, 0, side * d));
+                foreach (Vector2 point in edge)
                 {
-                    corners.Add(Vector3.Scale(face + su * u + sv * v, new Vector3(w + 0.003f, h + 0.003f, d)));
+                    corners.Add(new Vector3(point.x, point.y, side * d));
                 }
-                triangles.AddRange(new[] { first, first + 1, first + 2, first, first + 2, first + 3 });
+                for (int i = 0; i < edge.Count; i++)
+                {
+                    int a = middle + 1 + i, b = middle + 1 + (i + 1) % edge.Count;
+                    triangles.AddRange(side > 0 ? new[] { middle, a, b } : new[] { middle, b, a });
+                }
+            }
+            int strip = corners.Count;
+            foreach (Vector2 point in edge)
+            {
+                corners.Add(new Vector3(point.x, point.y, d));
+                corners.Add(new Vector3(point.x, point.y, -d));
+            }
+            for (int i = 0; i < edge.Count; i++)
+            {
+                int a = strip + 2 * i, b = strip + 2 * ((i + 1) % edge.Count);
+                triangles.AddRange(new[] { a, a + 1, b, b, a + 1, b + 1 });
             }
             body.SetVertices(corners);
             body.SetTriangles(triangles, 0);
@@ -218,22 +266,34 @@ namespace Eternities.CardView
             solid.AddComponent<MeshFilter>().sharedMesh = body;
             solid.AddComponent<MeshRenderer>().sharedMaterial = BodyMaterial;
 
-            // Front: seen from the apron, bottom left, top left, top right, bottom right. The back the
-            // same from behind.
+            // The front, which faces the apron, and then the back. An image's left is the viewer's
+            // left: the card's own +x seen from the front, its -x seen from behind.
             faces = new Mesh { name = "card faces" };
             faces.MarkDynamic();
             float z = d + 0.0005f;
-            faces.SetVertices(new List<Vector3>
+            List<Vector2> outline = Outline(w, h, radius);
+            var points = new List<Vector3>();
+            var faceTriangles = new List<int>();
+            faceUv.Clear();
+            foreach (float side in new[] { 1f, -1f })
             {
-                new Vector3(w, -h, z), new Vector3(w, h, z), new Vector3(-w, h, z), new Vector3(-w, -h, z),
-                new Vector3(-w, -h, -z), new Vector3(-w, h, -z), new Vector3(w, h, -z), new Vector3(w, -h, -z),
-            });
-            faces.SetUVs(1, new List<Vector2>
-            {
-                new Vector2(0, 0), new Vector2(0, 1), new Vector2(1, 1), new Vector2(1, 0),
-                new Vector2(0, 0), new Vector2(0, 1), new Vector2(1, 1), new Vector2(1, 0),
-            });
-            faces.SetTriangles(new List<int> { 0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7 }, 0);
+                int middle = points.Count;
+                points.Add(new Vector3(0, 0, side * z));
+                faceUv.Add(new Vector2(0.5f, 0.5f));
+                foreach (Vector2 point in outline)
+                {
+                    points.Add(new Vector3(point.x, point.y, side * z));
+                    faceUv.Add(new Vector2(0.5f - side * point.x / (2 * w), 0.5f + point.y / (2 * h)));
+                }
+                for (int i = 0; i < outline.Count; i++)
+                {
+                    int a = middle + 1 + i, b = middle + 1 + (i + 1) % outline.Count;
+                    faceTriangles.AddRange(side > 0 ? new[] { middle, a, b } : new[] { middle, b, a });
+                }
+            }
+            faces.SetVertices(points);
+            faces.SetUVs(1, faceUv);
+            faces.SetTriangles(faceTriangles, 0);
             faces.RecalculateBounds();
             Faces();
             var surface = new GameObject("Faces") { layer = Exhibit.Layer };
@@ -254,16 +314,13 @@ namespace Eternities.CardView
             slotUv.Clear();
             int slot = images.SlotOf(Stand);
             Vector2 cut = images.CutOut;
-            for (int corner = 0; corner < 4; corner++)
+            bool swatch = front == null && slot < 0;
+            Vector2 from = images.SwatchCorner(Stand, 0), across = images.SwatchCorner(Stand, 2) - from;
+            for (int vertex = 0; vertex < faceUv.Count; vertex++)
             {
-                bool swatch = front == null && slot < 0;
-                swatchUv.Add(swatch ? images.SwatchCorner(Stand, corner) : cut);
-                slotUv.Add(new Vector2(front != null ? -2 : slot, 1));
-            }
-            for (int corner = 0; corner < 4; corner++)
-            {
-                swatchUv.Add(cut);
-                slotUv.Add(new Vector2(back != null ? -3 : -1, 1));
+                bool isFront = vertex < faceUv.Count / 2;
+                swatchUv.Add(isFront && swatch ? from + Vector2.Scale(across, faceUv[vertex]) : cut);
+                slotUv.Add(new Vector2(isFront ? (front != null ? -2 : slot) : (back != null ? -3 : -1), 1));
             }
             faces.SetUVs(0, swatchUv);
             faces.SetUVs(2, slotUv);
@@ -285,6 +342,7 @@ namespace Eternities.CardView
                     source?.Cancel(frontUrl);
                 }
                 frontUrl = wantFront;
+                frontRefused = false;
                 source?.Request(wantFront, 0, texture => Arrived(stand, wantFront, texture, isFront: true));
             }
             if (wantBack != backUrl)
@@ -307,12 +365,9 @@ namespace Eternities.CardView
             }
             if (texture == null)
             {
-                // PRD v4 7.4.3: an uncached card offline shows its swatch and a one-line notice.
-                if (isFront)
-                {
-                    Notice = "This printing's image could not be loaded. The card's swatch is shown.";
-                    Changed?.Invoke();
-                }
+                // The image is not coming this session. What is on the face stays (PRD v4 7.4.2),
+                // and `Update` says so.
+                frontRefused |= isFront;
                 return;
             }
             texture.filterMode = FilterMode.Trilinear;
@@ -321,6 +376,7 @@ namespace Eternities.CardView
             {
                 Destroy(front);
                 front = texture;
+                frontPrinting = Printing;
                 Shader.SetGlobalTexture(FrontId, front);
             }
             else
@@ -354,6 +410,21 @@ namespace Eternities.CardView
             turned = ReducedMotion ? turn : Mathf.SmoothDamp(turned, turn, ref turnVelocity, FlipSeconds / 3);
             LayoutStand placed = world.Layout.Stands[Stand];
             card.transform.rotation = StandField.Facing(placed) * Quaternion.Euler(tilt.y, turned - tilt.x, 0);
+
+            // PRD v4 7.4.3: while the printing's image is not to be had, one line says so, and says
+            // what the face shows instead. With the network down the source goes on trying and
+            // never answers, so it is asked. The line goes when the image comes.
+            string notice = null;
+            if (frontPrinting != Printing && (frontRefused || (source != null && source.Failing(frontUrl))))
+            {
+                bool standImage = front == null && images.SlotOf(Stand) >= 0;
+                notice = front == null && !standImage ? NoImage : standImage && Printing == 0 ? NoLargeImage : NoImageOfThis;
+            }
+            if (notice != Notice)
+            {
+                Notice = notice;
+                Changed?.Invoke();
+            }
         }
 
         // The card as text and its printings, for the panel (PRD v4 5.10.3).
@@ -365,7 +436,10 @@ namespace Eternities.CardView
                 Name = shown.Name, ManaCost = shown.ManaCost, TypeLine = shown.TypeLine, Text = shown.OracleText,
                 Identity = shown.ColourIdentity.Length == 0 ? "colourless" : shown.ColourIdentity,
                 Rarity = new[] { "common", "uncommon", "rare", "mythic" }[Mathf.Clamp(shown.Rarity, 0, 3)],
-                Active = Printing, Artist = shown.Printings[Printing].Artist, CanFlip = shown.HasBackImage, Notice = Notice,
+                // The credit is of the image on the face (PRD v4 5.10.3): the last `large` image that
+                // came, or the stand's own, which is the first printing's.
+                Active = Printing, Artist = shown.Printings[front != null ? frontPrinting : images.SlotOf(Stand) >= 0 ? 0 : Printing].Artist,
+                CanFlip = shown.HasBackImage, Notice = Notice,
             };
             if (shown.Back != null)
             {

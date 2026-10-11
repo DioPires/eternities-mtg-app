@@ -72,6 +72,8 @@ namespace Eternities.CardView
             policy.Unwant(url);
         }
 
+        public bool Failing(string url) => policy.Failing(url);
+
         void Update()
         {
             for (string url = policy.Next(); url != null; url = policy.Next())

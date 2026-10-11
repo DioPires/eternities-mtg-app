@@ -34,6 +34,8 @@ namespace Eternities.Tests
             public void Cancel(string url)
             {
             }
+
+            public bool Failing(string url) => false;
         }
 
         readonly ScriptedInputSource hands = new ScriptedInputSource();
@@ -177,10 +179,40 @@ namespace Eternities.Tests
                 UnityEngine.Object.Destroy(overlays);
             }
 
+            // PRD v4 6.1.3: a click on the stand enters card view, and a click beside it does not.
+            Vector3 surface = Camera.main.WorldToScreenPoint(StandField.Ground(placed.Position) + Vector3.up * (StandField.PlinthHeight + StandField.SurfaceHeight / 2));
+            hands.Pointer = new Vector2(2, 2);
+            hands.Click = true;
+            yield return null;
+            yield return null;
+            yield return null;
+            Assert.That(app.CardView.Active, Is.False, "a click on the ground is not a click on the stand");
+            hands.Pointer = surface;
+            hands.Click = true;
+            yield return Until(() => app.CardView.Active && app.CardView.Settled, 10, "card view, by a click on the stand");
+            hands.Back = true;
+            yield return Until(() => !app.CardView.Active && app.CardView.Settled, 5, "leaving card view");
+            yield return Until(() => app.HoveredStand == stand, 5, "the hover label again");
+
             // PRD v4 5.10: interacting enters card view; the camera comes inside the apron.
             hands.Interact = true;
             yield return Until(() => app.CardView.Active && app.CardView.Settled, 10, "card view");
             Assert.That(app.CardView.Stand, Is.EqualTo(stand));
+
+            // PRD v4 5.10.2: the card is a rounded rectangle. Its faces reach the card's four edges
+            // and leave its corners out, where an image file is white and a printed card is not there.
+            Mesh faces = app.CardView.CardTransform.Find("Faces").GetComponent<MeshFilter>().sharedMesh;
+            Assert.That(faces.bounds.size.x, Is.EqualTo(CardViewer.CardWidth).Within(1e-4f));
+            Assert.That(faces.bounds.size.y, Is.EqualTo(CardViewer.CardHeight).Within(1e-4f));
+            float corner = CardViewer.CardWidth * CardViewer.CornerFraction;
+            foreach (Vector3 vertex in faces.vertices)
+            {
+                float fromSide = CardViewer.CardWidth / 2 - Mathf.Abs(vertex.x), fromEnd = CardViewer.CardHeight / 2 - Mathf.Abs(vertex.y);
+                if (fromSide < corner && fromEnd < corner)
+                {
+                    Assert.That(new Vector2(corner - fromSide, corner - fromEnd).magnitude, Is.LessThanOrEqualTo(corner + 1e-4f), "no part of a face is in a corner");
+                }
+            }
             Assert.That(app.Hud.CardShown);
             Assert.That(app.Hud.HoverText, Is.Null, "the HUD hides in card view except for the panel");
             Vector3 eye = Camera.main.transform.position - StandField.Ground(placed.Position);

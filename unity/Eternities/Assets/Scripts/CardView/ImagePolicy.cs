@@ -81,6 +81,13 @@ namespace Eternities.CardView
 
         public bool IsFinal(string url) => entries.TryGetValue(url, out Entry entry) && entry.State == State.Final;
 
+        // Is an image that was asked for being kept from its view? True from its first failed
+        // attempt until it arrives, the retries included, and for as long as a pause or the stop
+        // holds every request back. A network failure is never final (the image returns with the
+        // network), so this is the only word a view gets that its image is not coming for now.
+        public bool Failing(string url) => entries.TryGetValue(url, out Entry entry)
+            && (Stopped || Paused || entry.Failures > 0 || entry.State == State.LeftAfterNetwork || entry.State == State.Final);
+
         // The URL to request now, or null. The caller starts the request it is handed.
         public string Next()
         {

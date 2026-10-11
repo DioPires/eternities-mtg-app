@@ -70,6 +70,8 @@ namespace Eternities.Tests
             public void Cancel(string url)
             {
             }
+
+            public bool Failing(string url) => false;
         }
 
         static readonly PatternImages Images = new PatternImages();

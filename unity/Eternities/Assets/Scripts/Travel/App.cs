@@ -154,6 +154,8 @@ namespace Eternities.Travel
 
         void Start()
         {
+            // The overlays come first: they are where a failure to start is said.
+            Hud = Hud.Create(panelSettings, transform);
             try
             {
                 Pack = new Pack(PackDirectory());
@@ -163,9 +165,17 @@ namespace Eternities.Travel
             }
             catch (Exception e)
             {
-                Failure = e.Message;
-                Debug.LogException(e);
+                Fail(e);
             }
+        }
+
+        // PRD v4 7.4.1: a pack file that does not read fails loudly, with a message that can be
+        // read where the visitor is looking, and in the log.
+        void Fail(Exception e)
+        {
+            Failure = e.Message;
+            Debug.LogException(e);
+            Hud.Say($"Eternities has stopped. {Failure}");
         }
 
         void OnDestroy()
@@ -203,7 +213,6 @@ namespace Eternities.Travel
             CardView = CardViewer.Create(view);
             CardView.BodyMaterial = standMaterials[standMaterials.Length - 1];
             CardView.Changed += CardChanged;
-            Hud = Hud.Create(panelSettings, transform);
 
             // The veil: what a portal's surface becomes as it fills the view. A quad just past the
             // near plane, black, its opacity set by the transition.
@@ -341,7 +350,8 @@ namespace Eternities.Travel
                 return true;
             }
 
-            // The stand within reach shows its label, and interacting with it enters card view.
+            // The stand within reach shows its label, and interacting with it enters card view:
+            // E, a face button, or a click on the stand (PRD v4 6.1.3).
             HoveredStand = Images != null ? Images.Nearest(at, InteractDistance) : -1;
             if (HoveredStand >= 0)
             {
@@ -349,8 +359,13 @@ namespace Eternities.Travel
                 Vector3 top = StandField.Ground(stand.Position) + Vector3.up * StandField.SlabTop;
                 Camera view = Camera.main;
                 Vector3 screen = view.WorldToScreenPoint(top);
-                Hud.Hover(screen.z > 0 ? CardViewer.Label(World, HoveredStand) : null, new Vector2(screen.x, view.pixelHeight - screen.y));
-                if (input.Interact)
+                if (labelled != HoveredStand)
+                {
+                    // Made once a stand, not once a frame (PRD v4 7.3.2).
+                    label = CardViewer.Label(World, labelled = HoveredStand);
+                }
+                Hud.Hover(screen.z > 0 ? label : null, new Vector2(screen.x, view.pixelHeight - screen.y));
+                if (input.Interact || (input.Click && Over(stand, view, input.Pointer)))
                 {
                     CardView.Enter(HoveredStand);
                     return true;
@@ -361,6 +376,30 @@ namespace Eternities.Travel
                 Hud.Hover(null, default);
             }
             return false;
+        }
+
+        int labelled = -1;
+        string label;
+
+        // Is a point of the view on a stand, its plinth or its slab, as the camera sees it?
+        static bool Over(LayoutStand stand, Camera view, Vector2 pointer)
+        {
+            Vector3 foot = StandField.Ground(stand.Position);
+            Quaternion facing = StandField.Facing(stand);
+            Vector2 low = new Vector2(float.MaxValue, float.MaxValue), high = -low;
+            for (int corner = 0; corner < 8; corner++)
+            {
+                var local = new Vector3(((corner & 1) == 0 ? -1 : 1) * LayoutConstants.FootprintHalfWidth / 1000f, (corner & 2) == 0 ? 0 : StandField.SlabTop,
+                    ((corner & 4) == 0 ? -1 : 1) * LayoutConstants.FootprintHalfDepth / 1000f);
+                Vector3 seen = view.WorldToScreenPoint(foot + facing * local);
+                if (seen.z <= 0)
+                {
+                    return false;
+                }
+                low = Vector2.Min(low, seen);
+                high = Vector2.Max(high, seen);
+            }
+            return pointer.x >= low.x && pointer.x <= high.x && pointer.y >= low.y && pointer.y <= high.y;
         }
 
         void CardChanged()
@@ -480,8 +519,7 @@ namespace Eternities.Travel
             }
             if (read.IsFaulted)
             {
-                Failure = read.Exception.GetBaseException().Message;
-                Debug.LogException(read.Exception);
+                Fail(read.Exception.GetBaseException());
                 yield break;
             }
             (World, plan, PropPlan) = read.Result;
@@ -549,7 +587,7 @@ namespace Eternities.Travel
             CardView.Bind(null, null, null);
             Hud.HideTravel();
             Hud.Hover(null, default);
-            HoveredStand = -1;
+            HoveredStand = labelled = -1;
             RecentlyVisited.Clear();
             if (worldRoot != null)
             {
@@ -603,7 +641,11 @@ namespace Eternities.Travel
             while (destination == Place.World && !WorldLoaded && Failure == null)
             {
                 Holding = true;
-                HoldIndicator = Now - held > HoldIndicatorAfter;
+                if (!HoldIndicator && Now - held > HoldIndicatorAfter)
+                {
+                    HoldIndicator = true;
+                    Hud.Say("Loading…");
+                }
                 yield return null;
             }
             // The first time, what card view and the overlays will need is made ready here, behind
@@ -620,6 +662,10 @@ namespace Eternities.Travel
                 }
                 CardView.Warm(false);
                 Hud.Warm(false);
+            }
+            if (HoldIndicator && Failure == null)
+            {
+                Hud.Say(null);
             }
             Holding = HoldIndicator = false;
             LastHoldSeconds = Now - held;
@@ -653,15 +699,6 @@ namespace Eternities.Travel
             Veil(0);
             Avatar.Locked = false;
             InTransition = false;
-        }
-
-        void OnGUI()
-        {
-            // The loading indicator of PRD v4 5.9.2, as plain text until the overlays exist.
-            if (HoldIndicator)
-            {
-                GUI.Label(new Rect(Screen.width / 2f - 100, Screen.height / 2f, 200, 30), "Loading…");
-            }
         }
     }
 }

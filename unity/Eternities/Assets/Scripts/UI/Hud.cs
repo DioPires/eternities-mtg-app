@@ -18,7 +18,8 @@ namespace Eternities.UI
     }
 
     // Every overlay of the slice, in UI Toolkit (PRD v4 8.1.2): the stand's hover label, the
-    // printings panel of card view, the travel menu and a one-line notice. It is built in code; the
+    // printings panel of card view, the travel menu, a one-line notice in the panel and one line in
+    // the middle of the view. It is built in code; the
     // only assets are the panel settings and the theme they name.
     public sealed class Hud : MonoBehaviour
     {
@@ -26,13 +27,14 @@ namespace Eternities.UI
         static readonly Color Paper = new Color(0.07f, 0.07f, 0.09f, 0.90f), Accent = new Color(0.30f, 0.50f, 0.72f, 0.55f);
 
         UIDocument document;
-        Label hover;
+        Label hover, line;
         VisualElement panel, travel;
         public PanelSettings Settings { get; private set; }
 
         public bool CardShown => panel.style.display == DisplayStyle.Flex;
         public bool TravelOpen => travel.style.display == DisplayStyle.Flex;
         public string HoverText => hover.style.display == DisplayStyle.Flex ? hover.text : null;
+        public string Line => line.style.display == DisplayStyle.Flex ? line.text : null;
         public Rect HoverBounds => hover.worldBound;        // in the panel's units
         public Rect PanelBounds => document.rootVisualElement.worldBound;
         public Vector2 ViewToPanel(Vector2 viewPoint) => RuntimePanelUtils.ScreenToPanel(hover.panel, viewPoint);
@@ -64,6 +66,21 @@ namespace Eternities.UI
             hud.hover.style.display = DisplayStyle.None;
             hud.hover.pickingMode = PickingMode.Ignore;
             root.Add(hud.hover);
+
+            // The line stands in the middle of the view, as wide as its text.
+            var middle = new VisualElement();
+            middle.style.position = Position.Absolute;
+            middle.style.left = middle.style.right = 0;
+            middle.style.top = Length.Percent(50);
+            middle.style.alignItems = Align.Center;
+            middle.pickingMode = PickingMode.Ignore;
+            hud.line = Text("", 20, Ink);
+            hud.line.style.backgroundColor = Paper;
+            Pad(hud.line, 10, 18);
+            hud.line.style.display = DisplayStyle.None;
+            hud.line.pickingMode = PickingMode.Ignore;
+            middle.Add(hud.line);
+            root.Add(middle);
 
             hud.panel = Side(right: true);
             root.Add(hud.panel);
@@ -150,6 +167,14 @@ namespace Eternities.UI
             button.style.fontSize = 16;
             button.style.marginTop = 10;
             return button;
+        }
+
+        // One line in the middle of the view: a portal still waiting for its world (PRD v4 5.9.2),
+        // or why the application has stopped (PRD v4 7.4.1). Null takes it away.
+        public void Say(string text)
+        {
+            line.text = text ?? "";
+            line.style.display = text != null ? DisplayStyle.Flex : DisplayStyle.None;
         }
 
         // The hover label of a stand within reach (PRD v4 5.5.3), above a point of the view given in
