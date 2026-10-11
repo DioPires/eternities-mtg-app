@@ -257,7 +257,7 @@ namespace Eternities.EditorTools
             // the path's is an orange that reads as sand.
             TerrainLayer[] layers =
             {
-                KitLayer("meadow", "leafy_grass", 2f, new Color(0.72f, 1f, 0.55f)),
+                KitLayer("meadow", "leafy_grass", 2f, new Color(0.6f, 1f, 0.62f)),
                 KitLayer("path", "dirt_floor", 2.07f, new Color(0.75f, 0.78f, 0.85f)),
                 KitLayer("gravel", "ganges_river_pebbles", 2.16f, Color.white),
             };
