@@ -8,6 +8,7 @@ using Eternities.Layout;
 using Eternities.Travel;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.Rendering.HighDefinition;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 
@@ -292,6 +293,39 @@ namespace Eternities.Tests
             int still = drift[drift.Count - 1];
             Debug.Log($"TheRiverIsSeenFromTheRim: {changed} pixels of {width * height} change with the water, {still} with nothing changed; before the view settled: {string.Join(", ", drift)}");
             Assert.That(changed - still, Is.GreaterThan(width * height / 100), "the water is at least a hundredth of the view from the rim, beyond what changes there by itself");
+        }
+
+        // The owner tunes the water by changing its prefab while the game plays (DEC-953): in the
+        // editor the river takes a change of its prefab's without a new arrival. The prefab is
+        // changed in memory only, and put back.
+        [UnityTest]
+        public IEnumerator InTheEditorTheRiverFollowsItsPrefab()
+        {
+            yield return Hub();
+            App app = App.Instance;
+            TowardThePortal();
+            yield return Until(() => app.WorldReady, 60, "the arrival");
+            hands.WorldMove = Vector3.zero;
+            var prefab = app.RiverPrefab.GetComponent<WaterSurface>();
+            var river = app.Water.transform.Find("River").GetComponent<WaterSurface>();
+            Assert.That(river, Is.Not.SameAs(prefab));
+            float speed = prefab.largeCurrentSpeedValue;
+            Color colour = prefab.refractionColor;
+            Assert.That(river.largeCurrentSpeedValue, Is.EqualTo(speed));
+            prefab.largeCurrentSpeedValue = speed + 2;
+            prefab.refractionColor = Color.red;
+            try
+            {
+                yield return Until(() => river.largeCurrentSpeedValue == speed + 2 && river.refractionColor == Color.red, 5, "the river to take its prefab's change");
+            }
+            finally
+            {
+                prefab.largeCurrentSpeedValue = speed;
+                prefab.refractionColor = colour;
+            }
+            yield return Until(() => river.largeCurrentSpeedValue == speed && river.refractionColor == colour, 5, "the river to take the change back");
+            // What places the river is the world's, not the prefab's.
+            Assert.That(river.transform.localScale.z, Is.GreaterThan(100));
         }
 
         // PRD v4 5.9.2: a portal whose world is not ready holds, with input locked, and never cuts

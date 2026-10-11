@@ -141,7 +141,10 @@ that object once `Assets/Kits/temperate/TerrainLayers/` holds `meadow`, `path` a
 then the ground is painted in plain colours. It also makes the kit's two water prefabs,
 `Assets/Kits/temperate/Water/River.prefab` and `Lake.prefab`, once, from the water system's own
 presets: its river, running along the bed at 1.5 km/h, and its open sea calmed to a lake's light
-breeze, without foam. Those two are the owner's to tune and it never writes them again. Other generated assets
+breeze, without foam. Those two are the owner's to tune and it never writes them again. They are
+tuned with the game playing in the editor: select the prefab in the Project window and change its
+Water Surface in the Inspector, and the world's river or lake takes the change within a quarter of
+a second (`WaterTuning`), while the editor saves it in the prefab's file. Other generated assets
 are not edited by hand. It makes each quality level's volume profile the same way (Quality levels,
 above). The world has its river and its lake only where water is on in the HDRP asset of the quality
 level in force, which it is at all three.

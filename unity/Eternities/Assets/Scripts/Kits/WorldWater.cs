@@ -8,6 +8,7 @@ namespace Eternities.Kits
     // over the bed the ground plan carved. Each is an instance of a kit prefab, so what the owner
     // tunes by eye (flow, ripples, foam, colour) lives in two files and nowhere in code; this only
     // puts them where the plan says, at the plan's water level, as wide as the bed and its banks.
+    // In the editor each follows its prefab while the game plays (`WaterTuning`).
     public static class WorldWater
     {
         // Water is one of the switches of the HDRP asset in force. With it off the pipeline draws no
@@ -34,6 +35,7 @@ namespace Eternities.Kits
             river.name = "River";
             river.transform.SetPositionAndRotation(new Vector3(middle.x, GroundPlan.WaterLevel, middle.y), Quaternion.LookRotation(new Vector3(along.x, 0, along.y)));
             river.transform.localScale = new Vector3(2 * (GroundPlan.RiverHalfWidth + GroundPlan.Bank), 1, along.magnitude);
+            WaterTuning.Follow(river, riverPrefab);
 
             // The lake: a quad over the basin. Outside the basin the ground is above it.
             GameObject lake = Object.Instantiate(lakePrefab, root.transform);
@@ -41,6 +43,7 @@ namespace Eternities.Kits
             float side = 2 * (GroundPlan.LakeRadius + GroundPlan.Bank);
             lake.transform.position = new Vector3(plan.LakeCentre.x, GroundPlan.WaterLevel, plan.LakeCentre.y);
             lake.transform.localScale = new Vector3(side, 1, side);
+            WaterTuning.Follow(lake, lakePrefab);
             return root;
         }
     }
