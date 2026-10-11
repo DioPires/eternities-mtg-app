@@ -144,6 +144,20 @@ namespace Eternities.Tests
             float[,,] meadow = app.Ground.terrainData.GetAlphamaps((int)(behind.x / size.x * n), (int)(behind.z / size.z * n), 1, 1);
             Assert.That(meadow[0, 0, GroundPlan.Meadow], Is.EqualTo(1));
 
+            // PRD v4 9.5: one river and one lake of the HDRP water system, over the bed the ground
+            // carries, when water is on in the HDRP asset in force; nothing while it is off.
+            Assert.That(app.Water != null, Is.EqualTo(WorldWater.Supported));
+            if (app.Water != null)
+            {
+                var surfaces = app.Water.GetComponentsInChildren<UnityEngine.Rendering.HighDefinition.WaterSurface>();
+                Assert.That(surfaces.Length, Is.EqualTo(2));
+                foreach (var surface in surfaces)
+                {
+                    Assert.That(surface.transform.position.y, Is.EqualTo(GroundPlan.WaterLevel).Within(1e-4f));
+                    Assert.That(app.GroundPlan.HeightAt(surface.transform.position.x, surface.transform.position.z), Is.LessThan(GroundPlan.WaterLevel), "the bed under the middle of the water is below it");
+                }
+            }
+
             // PRD v4 5.12: one ambient bed, and the river as a positional source that is heard before
             // it is seen. From the plaza it is silent; at the rim it is at the water, north of the
             // avatar, and within earshot.
@@ -164,6 +178,70 @@ namespace Eternities.Tests
             Assert.That(app.World, Is.Null);
             Assert.That(app.WorldLoaded, Is.False);
             Assert.That(Vector3.Distance(app.Avatar.transform.position, app.HubPortal.Pad), Is.LessThan(0.5f));
+        }
+
+        // PRD v4 9.5: the river is seen from the rim, where the north radial path ends. With water
+        // on in the HDRP asset in force, the frame from there changes when the water is taken away.
+        [UnityTest]
+        public IEnumerator TheRiverIsSeenFromTheRim()
+        {
+            yield return Hub();
+            App app = App.Instance;
+            TowardThePortal();
+            yield return Until(() => app.WorldReady, 60, "the arrival");
+            hands.WorldMove = Vector3.zero;
+            if (!WorldWater.Supported)
+            {
+                Assert.That(app.Water, Is.Null);
+                Assert.Ignore("water is off in the HDRP asset of this quality level, so there is no water surface to see (DEC-953: the four fixed switches)");
+            }
+
+            const int width = 1280, height = 720;
+            var target = new RenderTexture(width, height, 24, UnityEngine.Experimental.Rendering.GraphicsFormat.R8G8B8A8_SRGB);
+            Camera view = Camera.main;
+            view.targetTexture = target;
+            ((Behaviour)view.GetComponent("CinemachineBrain")).enabled = false;
+            float rim = app.World.Layout.WorldRadius / 1000f;
+            app.Avatar.Place(new Vector3(0, 0, rim - 6), Quaternion.identity);
+            view.transform.SetPositionAndRotation(new Vector3(0, 1.6f, rim), Quaternion.Euler(8, 0, 0));
+
+            Color32[] Frame(UnityEngine.Rendering.AsyncGPUReadbackRequest request) => request.GetData<Color32>().ToArray();
+            Color32[] withWater = null, without = null;
+            for (int pass = 0; pass < 2; pass++)
+            {
+                app.Water.SetActive(pass == 0);
+                for (int i = 0; i < 12; i++)
+                {
+                    yield return null;
+                }
+                var request = UnityEngine.Rendering.AsyncGPUReadback.Request(target, 0, UnityEngine.Experimental.Rendering.GraphicsFormat.R8G8B8A8_SRGB);
+                yield return Until(() => request.done, 20, "the readback");
+                if (pass == 0)
+                {
+                    withWater = Frame(request);
+                    string dump = Environment.GetEnvironmentVariable("ETERNITIES_TEST_DUMP");
+                    if (!string.IsNullOrEmpty(dump))
+                    {
+                        Directory.CreateDirectory(dump);
+                        File.WriteAllBytes(Path.Combine(dump, "river.png"), ImageConversion.EncodeArrayToPNG(withWater, UnityEngine.Experimental.Rendering.GraphicsFormat.R8G8B8A8_SRGB, width, height));
+                    }
+                }
+                else
+                {
+                    without = Frame(request);
+                }
+            }
+            app.Water.SetActive(true);
+            view.targetTexture = null;
+            target.Release();
+            UnityEngine.Object.Destroy(target);
+
+            int changed = 0;
+            for (int i = 0; i < withWater.Length; i++)
+            {
+                changed += Math.Abs(withWater[i].r - without[i].r) + Math.Abs(withWater[i].g - without[i].g) + Math.Abs(withWater[i].b - without[i].b) > 24 ? 1 : 0;
+            }
+            Assert.That(changed, Is.GreaterThan(width * height / 100), "the water is at least a hundredth of the view from the rim");
         }
 
         // PRD v4 5.9.2: a portal whose world is not ready holds, with input locked, and never cuts

@@ -48,6 +48,7 @@ namespace Eternities.Travel
         [SerializeField] Shader exhibitShader, exhibitCompositeShader;
         [SerializeField] AudioClip ambientBed, riverLoop;
         [SerializeField] PanelSettings panelSettings;
+        [SerializeField] GameObject riverPrefab, lakePrefab;
 
         public static App Instance { get; private set; }
 
@@ -64,6 +65,8 @@ namespace Eternities.Travel
         public AudioClip AmbientBed { get => ambientBed; set => ambientBed = value; }
         public AudioClip RiverLoop { get => riverLoop; set => riverLoop = value; }
         public PanelSettings PanelSettings { get => panelSettings; set => panelSettings = value; }
+        public GameObject RiverPrefab { get => riverPrefab; set => riverPrefab = value; }
+        public GameObject LakePrefab { get => lakePrefab; set => lakePrefab = value; }
 
         public Pack Pack { get; private set; }
         public AvatarController Avatar { get; private set; }
@@ -75,6 +78,7 @@ namespace Eternities.Travel
         public StandImages Images { get; private set; }
         public Exhibit Exhibit { get; private set; }
         public WorldSound Sound { get; private set; }
+        public GameObject Water { get; private set; }       // null while water is off in the HDRP asset
         public Hud Hud { get; private set; }
         public CardViewer CardView { get; private set; }
         public int HoveredStand { get; private set; } = -1;
@@ -491,6 +495,11 @@ namespace Eternities.Travel
             Exhibit.SetImages(Images.Array);
             CardView.Bind(World, Images, ImageSource);
 
+            if (WorldWater.Supported && riverPrefab != null && lakePrefab != null)
+            {
+                Water = WorldWater.Build(plan, riverPrefab, lakePrefab, worldRoot.transform, worldOwned);
+            }
+
             // The ambient bed and the river (PRD v4 5.12). The river's source follows the listener
             // along the water, at the water's level.
             Sound = WorldSound.Create(worldRoot.transform, ambientBed, riverLoop,
@@ -533,6 +542,7 @@ namespace Eternities.Travel
             Stands = null;
             Images = null;
             Sound = null;
+            Water = null;
             Ground = null;
             ReturnPortal = null;
             WorldLoaded = false;

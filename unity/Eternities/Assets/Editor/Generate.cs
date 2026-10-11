@@ -155,6 +155,11 @@ namespace Eternities.EditorTools
                 changed = true;
             }
 
+            // The kit's two water prefabs (PRD v4 9.5): made once with the water system's defaults, and
+            // then the owner's to tune. A second run leaves them as they are.
+            changed |= SetObject(WaterPrefab("River", WaterSurfaceType.River), app.RiverPrefab, prefab => app.RiverPrefab = prefab);
+            changed |= SetObject(WaterPrefab("Lake", WaterSurfaceType.OceanSeaLake), app.LakePrefab, prefab => app.LakePrefab = prefab);
+
             // The kit's two loops (PRD v4 5.12): the ambient bed and the river.
             foreach ((string file, AudioClip held, System.Action<AudioClip> assign) in new (string, AudioClip, System.Action<AudioClip>)[]
             {
@@ -196,6 +201,34 @@ namespace Eternities.EditorTools
                 EditorSceneManager.MarkSceneDirty(scene);
                 EditorSceneManager.SaveScene(scene);
             }
+        }
+
+        static bool SetObject(GameObject wanted, GameObject held, System.Action<GameObject> assign)
+        {
+            if (wanted == held)
+            {
+                return false;
+            }
+            assign(wanted);
+            return true;
+        }
+
+        static GameObject WaterPrefab(string name, WaterSurfaceType type)
+        {
+            const string folder = "Assets/Kits/temperate/Water";
+            Directory.CreateDirectory(folder);
+            string path = $"{folder}/{name}.prefab";
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            if (prefab == null)
+            {
+                var made = new GameObject(name);
+                var surface = made.AddComponent<WaterSurface>();
+                surface.surfaceType = type;
+                surface.geometryType = WaterGeometryType.Quad;
+                prefab = PrefabUtility.SaveAsPrefabAsset(made, path);
+                Object.DestroyImmediate(made);
+            }
+            return prefab;
         }
 
         static bool Set(Material wanted, Material held, System.Action<Material> assign)

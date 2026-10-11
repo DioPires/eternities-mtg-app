@@ -119,7 +119,11 @@ It also completes what is committed, and changes nothing there on a second run: 
 materials under `Assets/Kits/core/Materials/`, and in `Assets/Scenes/Hub.unity` the one object,
 `Eternities`, that builds the hub and the world at run time. It assigns the kit's terrain layers to
 that object once `Assets/Kits/temperate/TerrainLayers/` holds `meadow`, `path` and `gravel`; until
-then the ground is painted in plain colours. Generated assets are not edited by hand.
+then the ground is painted in plain colours. It also makes the kit's two water prefabs,
+`Assets/Kits/temperate/Water/River.prefab` and `Lake.prefab`, once, with the water system's
+defaults; those two are the owner's to tune and it never writes them again. Other generated assets
+are not edited by hand. The world has its river and its lake only where water is on in the HDRP
+asset of the quality level in force.
 
 With the project open in the editor, the menu item Eternities > Generate does the same. To walk the
 world, generate, open `Assets/Scenes/Hub.unity` and press Play: WASD walks, Shift runs, the right

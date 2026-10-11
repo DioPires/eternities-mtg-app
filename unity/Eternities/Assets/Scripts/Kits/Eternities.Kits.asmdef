@@ -3,7 +3,9 @@
     "rootNamespace": "Eternities.Kits",
     "references": [
         "Eternities.Data",
-        "Eternities.Layout"
+        "Eternities.Layout",
+        "Unity.RenderPipelines.Core.Runtime",
+        "Unity.RenderPipelines.HighDefinition.Runtime"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
