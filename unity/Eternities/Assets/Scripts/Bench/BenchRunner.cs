@@ -3,7 +3,10 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using Eternities.Avatar;
+using Eternities.CardView;
 using Eternities.Data;
+using Eternities.Kits;
+using Eternities.Layout;
 using Eternities.Travel;
 using Unity.Collections;
 using Unity.Profiling;
@@ -19,7 +22,9 @@ namespace Eternities.Bench
     // process: exit 0 only if the path completed.
     //
     // The path so far: the hub (capture 2), the walk into Dominaria's portal, the arrival (capture
-    // 3) and the return to the hub. The other steps come with what they exercise.
+    // 3), the walk along the north radial path to the rim, the run along the outermost ring path,
+    // the nearest stand's apron (capture 4) and the return to the hub. A warm run first visits the
+    // world once; a cold run first empties the image cache. Card view and travel come with them.
     public sealed class BenchRunner : MonoBehaviour
     {
         public const string Schema = "eternities.bench.v1";
@@ -58,9 +63,26 @@ namespace Eternities.Bench
             ["hubReadyMs"] = null, ["portalToWorldReadyMs"] = null, ["holdMs"] = null, ["cardViewEnterMs"] = null, ["cardViewLeaveMs"] = null,
             ["travelMenuToCardViewMs"] = null, ["portalOutMs"] = null,
         };
+        readonly Dictionary<string, object> streaming = new Dictionary<string, object>
+        {
+            ["hitchThresholdMs"] = HitchThresholdMs, ["hitches"] = 0, ["worstMs"] = 0,
+            ["imagesFromDisk"] = 0, ["imagesFromNetwork"] = 0, ["imagesFailed"] = 0, ["imageUploads"] = 0, ["evictions"] = 0,
+        };
+        readonly Dictionary<string, object> memory = new Dictionary<string, object>
+        {
+            ["gpuPeakBytes"] = 0L, ["gpuSource"] = "ProfilerRecorder: Gfx Used Memory", ["rssPeakBytes"] = 0L, ["rssSource"] = "ProfilerRecorder: System Used Memory",
+            ["residentImagesPeakBytes"] = 0L, ["imageSlots"] = StandImages.Slots, ["imageSlotsInUsePeak"] = 0,
+        };
+        readonly Dictionary<string, object> pathSeen = new Dictionary<string, object>
+        {
+            ["radialPathId"] = null, ["radialMetres"] = 0, ["ringMetres"] = 0, ["siteCard"] = null, ["siteImageShown"] = false, ["travelCard"] = null,
+        };
         Dictionary<string, object> worldSeen;
         string packHash;
         Vector3 lastPosition;
+        App app;
+        ScryfallImages scryfall;
+        const float RingArc = 150;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Boot()
@@ -103,50 +125,133 @@ namespace Eternities.Bench
             }
 
             yield return Step("hub", 60, () => App.Instance != null && (App.Instance.HubReady || App.Instance.Failure != null));
-            App app = App.Instance;
-            if (failure == null && app.Failure == null)
+            app = App.Instance;
+            if (Ok)
             {
                 timings["hubReadyMs"] = Math.Round(Time.realtimeSinceStartupAsDouble * 1000);
                 packHash = app.Pack.Hash;
                 app.Avatar.Source = hands;
-                lastPosition = app.Avatar.transform.position;
-
-                // Step 1: in the hub at the arrival pose, facing Dominaria's portal.
+                Vector3 hubArrival = lastPosition = app.Avatar.transform.position;
+                scryfall = app.ImageSource as ScryfallImages;
+                if (run.Mode == "cold" && scryfall != null)
+                {
+                    scryfall.Cache.Clear();     // a cold run starts with no image on disk (PRD v4 7.2)
+                }
+                else if (run.Mode == "warm")
+                {
+                    // A warm run has visited the world once in the session: in, and back to the hub.
+                    yield return IntoThePortal("warm-up");
+                    if (Ok)
+                    {
+                        hands.Back = true;
+                        yield return Step("warm-up", 60, () => (app.Place == Place.Hub && !app.InTransition) || app.Failure != null);
+                    }
+                    // Back to where a visitor arrives in the hub, as a run starts.
+                    if (Ok)
+                    {
+                        yield return Walk("warm-up", hubArrival, 60, run: true);
+                    }
+                }
+            }
+            if (Ok)
+            {
+                // Step 1: in the hub, facing Dominaria's portal.
                 Begin("hub", hub);
                 yield return Wait(2);
                 yield return Capture(2, "checkpoint-2-hub.png");
 
                 // Step 2: walk into the portal. It ends when the world is ready and the transition done.
                 Begin("portal-in", hub);
-                Vector3 toPortal = app.HubPortal.transform.position - app.Avatar.transform.position;
-                toPortal.y = 0;
-                hands.WorldMove = toPortal.normalized;
-                yield return Step("portal-in", 120, () => (app.Place == Place.World && !app.InTransition) || app.Failure != null);
-                hands.WorldMove = Vector3.zero;
+                yield return IntoThePortal("portal-in");
             }
-            if (failure == null && app.Failure == null)
+            if (Ok)
             {
                 timings["portalToWorldReadyMs"] = Math.Round(app.LastTravelSeconds * 1000);
                 timings["holdMs"] = Math.Round(app.LastHoldSeconds * 1000);
+                WorldLayout layout = app.World.Layout;
                 worldSeen = new Dictionary<string, object>
                 {
-                    ["slug"] = app.World.Plane.Slug, ["stands"] = app.World.Layout.Stands.Count, ["sites"] = app.World.Layout.Sites.Count,
-                    ["diameterMm"] = 2 * app.World.Layout.WorldRadius,
+                    ["slug"] = app.World.Plane.Slug, ["stands"] = layout.Stands.Count, ["sites"] = layout.Sites.Count,
+                    ["diameterMm"] = 2 * layout.WorldRadius,
                 };
 
-                // Step 3: stand at the arrival point, facing north.
+                // Step 3: stand at the arrival point, facing north, until the images in reach are in.
                 Begin("arrival", dominaria);
                 excludeUntil = Now + AfterArrival;
-                yield return Wait(3);
+                yield return Wait(1);
+                yield return Settle(5);
                 yield return Capture(3, "checkpoint-3-arrival.png");
-                yield return Wait(2);
 
+                // Step 4: walk north along the radial path at 0 degrees, from the plaza to where it
+                // meets the outermost ring path.
+                LayoutPath radial = layout.Paths.Find(p => p.Kind == PathKind.Radial && p.Angle == 0);
+                LayoutPath rim = layout.Paths.FindLast(p => p.Kind == PathKind.Ring);
+                float ringRadius = (rim.Inner + rim.Outer) / 2000f;
+                pathSeen["radialPathId"] = radial?.Id;
+                Begin("radial", dominaria);
+                yield return Walk("radial", new Vector3(0, 0, ringRadius), ringRadius / AvatarController.WalkSpeed + 30, run: false);
+                pathSeen["radialMetres"] = Math.Round(segment.Metres, 2);
+
+                // Step 5: turn clockwise and run along that ring path, across the wedge, for 150 m
+                // of arc or to the next radial path.
+                if (Ok)
+                {
+                    Begin("ring", dominaria);
+                    float arc = Mathf.Min(RingArc, layout.WedgeSpan[0] > 0 ? layout.WedgeSpan[0] / 1e6f * Mathf.Deg2Rad * ringRadius : RingArc);
+                    hands.Run = true;
+                    yield return Step("ring", arc / AvatarController.RunSpeed + 30, () =>
+                    {
+                        Vector3 at = app.Avatar.transform.position;
+                        var outward = new Vector3(at.x, 0, at.z).normalized;
+                        // Along the circle, and back onto its centre line when it drifts off.
+                        hands.WorldMove = (new Vector3(outward.z, 0, -outward.x) + outward * Mathf.Clamp(ringRadius - new Vector2(at.x, at.z).magnitude, -1, 1)).normalized;
+                        return segment.Metres >= arc || app.Failure != null;
+                    });
+                    hands.WorldMove = Vector3.zero;
+                    hands.Run = false;
+                    pathSeen["ringMetres"] = Math.Round(segment.Metres, 2);
+                }
+
+                // Step 6: walk up the corridor of the nearest stand to its apron, and wait for its image.
+                if (Ok)
+                {
+                    Begin("site", dominaria);
+                    Vector3 here = app.Avatar.transform.position;
+                    LayoutStand nearest = null;
+                    foreach (LayoutStand stand in layout.Stands)
+                    {
+                        if (stand.Path == rim.Id && (nearest == null || (StandField.Ground(stand.PathPoint) - here).sqrMagnitude < (StandField.Ground(nearest.PathPoint) - here).sqrMagnitude))
+                        {
+                            nearest = stand;
+                        }
+                    }
+                    PackCard card = app.World.Cards[nearest.Card];
+                    pathSeen["siteCard"] = new Dictionary<string, object> { ["name"] = card.Name, ["oracleId"] = card.OracleId };
+                    Vector3 apron = StandField.Ground(nearest.Position) + StandField.Facing(nearest) * Vector3.forward * (LayoutConstants.FootprintHalfDepth + LayoutConstants.ApronDepth / 2) / 1000f;
+                    yield return Walk("site", StandField.Ground(nearest.PathPoint), 60, run: false);
+                    yield return Walk("site", apron, 30, run: false);
+                    int index = layout.Stands.IndexOf(nearest);
+                    // Scryfall may be out of reach of the machine the bench runs on: the path goes on without the image.
+                    for (double until = Now + 8; Now < until && app.Images.CoverageOf(index) < 1;)
+                    {
+                        yield return null;
+                    }
+                    pathSeen["siteImageShown"] = app.Images.CoverageOf(index) >= 1;
+                    // The camera steps to one side, as a visitor's would, so the avatar is not in front of the card.
+                    hands.Look = new Vector2(40, 0);
+                    yield return Wait(1);
+                    yield return Capture(4, "checkpoint-4-site.png");
+                }
+            }
+            if (Ok)
+            {
                 // Step 10: Esc in explore returns to the hub through the return portal.
+                Images();
                 Begin("portal-out", null);
                 hands.Back = true;
                 yield return Step("portal-out", 60, () => (app.Place == Place.Hub && !app.InTransition) || app.Failure != null);
             }
-            if (failure == null && app.Failure == null)
+            if (Ok)
             {
                 timings["portalOutMs"] = Math.Round(app.LastTravelSeconds * 1000);
             }
@@ -155,6 +260,63 @@ namespace Eternities.Bench
                 failure = $"the application failed: {app.Failure}";
             }
             Finish(failure);
+        }
+
+        bool Ok => failure == null && app != null && app.Failure == null;
+
+        IEnumerator IntoThePortal(string step)
+        {
+            Vector3 toPortal = app.HubPortal.transform.position - app.Avatar.transform.position;
+            toPortal.y = 0;
+            hands.WorldMove = toPortal.normalized;
+            yield return Step(step, 120, () => (app.Place == Place.World && !app.InTransition) || app.Failure != null);
+            hands.WorldMove = Vector3.zero;
+        }
+
+        // Walks or runs straight to a point on the ground, through the avatar's own input.
+        IEnumerator Walk(string step, Vector3 to, double timeout, bool run)
+        {
+            hands.Run = run;
+            yield return Step(step, timeout, () =>
+            {
+                Vector3 toGo = to - app.Avatar.transform.position;
+                toGo.y = 0;
+                hands.WorldMove = toGo.magnitude > 0.2f ? toGo.normalized : Vector3.zero;
+                return toGo.magnitude <= 0.2f || app.Failure != null;
+            });
+            hands.WorldMove = Vector3.zero;
+            hands.Run = false;
+        }
+
+        // Waits until the images in reach are in, for `atMost` seconds.
+        IEnumerator Settle(double atMost)
+        {
+            for (double until = Now + atMost; Now < until && !app.Images.Idle;)
+            {
+                yield return null;
+            }
+        }
+
+        // What the image stream did, read before the world is left.
+        void Images()
+        {
+            if (app.Images == null)
+            {
+                return;
+            }
+            streaming["hitches"] = app.Images.Hitches;
+            streaming["worstMs"] = Math.Round(app.Images.LongestUpdateMs, 3);
+            streaming["imageUploads"] = app.Images.Uploads;
+            streaming["evictions"] = app.Images.Evictions;
+            if (scryfall != null)
+            {
+                streaming["imagesFromDisk"] = scryfall.FromDisk;
+                streaming["imagesFromNetwork"] = scryfall.FromNetwork;
+                streaming["imagesFailed"] = scryfall.Failed;
+            }
+            memory["imageSlotsInUsePeak"] = app.Images.SlotsInUsePeak;
+            // RGBA8 with a full mip chain: four thirds of the top level.
+            memory["residentImagesPeakBytes"] = (long)app.Images.SlotsInUsePeak * StandImages.Width * StandImages.Height * 4 * 4 / 3;
         }
 
         void Rendered(ScriptableRenderContext context, List<Camera> cameras)
@@ -317,6 +479,13 @@ namespace Eternities.Bench
 #endif
         }
 
+        Dictionary<string, object> Memory()
+        {
+            memory["gpuPeakBytes"] = gpuPeak;
+            memory["rssPeakBytes"] = systemPeak;
+            return memory;
+        }
+
         Dictionary<string, object> Block(FrameSeries frames)
         {
             Dictionary<string, object> block = frames.ToJson();
@@ -381,21 +550,9 @@ namespace Eternities.Bench
                 },
                 ["segments"] = segmentList,
                 ["timings"] = timings,
-                ["memory"] = new Dictionary<string, object>
-                {
-                    ["gpuPeakBytes"] = gpuPeak, ["gpuSource"] = "ProfilerRecorder: Gfx Used Memory",
-                    ["rssPeakBytes"] = systemPeak, ["rssSource"] = "ProfilerRecorder: System Used Memory",
-                    ["residentImagesPeakBytes"] = 0, ["imageSlots"] = 384, ["imageSlotsInUsePeak"] = 0,
-                },
-                ["streaming"] = new Dictionary<string, object>
-                {
-                    ["hitchThresholdMs"] = HitchThresholdMs, ["hitches"] = 0, ["worstMs"] = 0, ["worst"] = null,
-                    ["imagesFromDisk"] = 0, ["imagesFromNetwork"] = 0, ["imagesFailed"] = 0, ["imageUploads"] = 0, ["evictions"] = 0,
-                },
-                ["path"] = new Dictionary<string, object>
-                {
-                    ["radialPathId"] = null, ["radialMetres"] = 0, ["ringMetres"] = 0, ["siteCard"] = null, ["travelCard"] = null,
-                },
+                ["memory"] = Memory(),
+                ["streaming"] = streaming,
+                ["path"] = pathSeen,
                 ["captures"] = captures,
             };
         }

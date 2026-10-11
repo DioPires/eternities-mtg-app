@@ -72,6 +72,9 @@ namespace Eternities.CardView
         public int Uploads { get; private set; }
         public int Evictions { get; private set; }
         public double LongestUpdateMs { get; private set; }
+        public int Hitches { get; private set; }        // frames in which this streaming took over 4 ms (PRD v4 7.3.3)
+        public int SlotsInUsePeak { get; private set; }
+        public const double HitchMs = 4;
         public int SlotOf(int stand) => slotOfStand[stand];
         public float CoverageOf(int stand) => coverage[stand];
         public bool Idle => arrived.Count == 0 && fading.Count == 0;
@@ -289,7 +292,10 @@ namespace Eternities.CardView
                     site.SwatchDirty = false;
                 }
             }
-            LongestUpdateMs = Math.Max(LongestUpdateMs, (Time.realtimeSinceStartupAsDouble - began) * 1000);
+            double spent = (Time.realtimeSinceStartupAsDouble - began) * 1000;
+            LongestUpdateMs = Math.Max(LongestUpdateMs, spent);
+            Hitches += spent > HitchMs ? 1 : 0;
+            SlotsInUsePeak = Math.Max(SlotsInUsePeak, SlotsInUse);
         }
 
         // The stands within 25 m, nearest first, as many as there are slots. The loader never asks

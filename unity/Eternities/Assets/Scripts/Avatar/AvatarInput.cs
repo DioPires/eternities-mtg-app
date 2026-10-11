@@ -89,12 +89,15 @@ namespace Eternities.Avatar
     {
         public Vector3 WorldMove;
         public bool Run;
+        public Vector2 Look;                        // degrees, passed on once
         public bool Interact, Back, TravelMenu;     // each is passed on once, then cleared
 
         public void Read(AvatarInput input)
         {
             input.WorldMove = WorldMove;
             input.Run = Run;
+            input.Look = Look;
+            Look = Vector2.zero;
             input.Interact = Interact;
             input.Back = Back;
             input.TravelMenu = TravelMenu;

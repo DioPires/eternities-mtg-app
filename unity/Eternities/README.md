@@ -136,7 +136,11 @@ Bench runner (PRD v4 8.8.4), the editor host, as CI runs it. It makes the world'
 run ends the editor itself, with exit code 0 only if the path completed, and a watchdog ends it
 with 1 after fifteen minutes. It writes `eternities.bench.v1` JSON to `-benchOut` and, if
 `-benchCaptures` is given, the checkpoints as PNG files into that directory. The path so far: the
-hub, the walk into Dominaria's portal, the arrival, and Esc back to the hub:
+hub, the walk into Dominaria's portal, the arrival, the north radial path to the rim, 150 m of the
+outermost ring path at a run, the nearest stand's apron, and Esc back to the hub; about four and a
+half minutes. A warm run visits the world once before it measures; a cold run empties the image
+cache first. The stands along the path ask Scryfall for their images, once: they are kept in the
+image cache under the application-support directory (PRD v4 4.15.3):
 
 ```sh
 unity/Eternities/batchmode.sh -executeMethod Eternities.EditorTools.Bench.Run \
