@@ -47,6 +47,8 @@ namespace Eternities.Travel
         [SerializeField] Material[] standMaterials = new Material[0];
         [SerializeField] Material avatarMaterial, hubGroundMaterial, portalFrameMaterial, portalSurfaceMaterial, veilMaterial;
         [SerializeField] TerrainLayer[] terrainLayers = new TerrainLayer[0];
+        // The ground's material, and with it the variants of the terrain shader a build must hold.
+        [SerializeField] Material[] groundMaterials = new Material[0];
         [SerializeField] Material imageSurfaceMaterial;
         [SerializeField] Shader exhibitShader, exhibitCompositeShader;
         [SerializeField] AudioClip ambientBed, riverLoop;
@@ -63,6 +65,7 @@ namespace Eternities.Travel
         public Material PortalSurfaceMaterial { get => portalSurfaceMaterial; set => portalSurfaceMaterial = value; }
         public Material VeilMaterial { get => veilMaterial; set => veilMaterial = value; }
         public TerrainLayer[] TerrainLayers { get => terrainLayers; set => terrainLayers = value; }
+        public Material[] GroundMaterials { get => groundMaterials; set => groundMaterials = value; }
         public Material ImageSurfaceMaterial { get => imageSurfaceMaterial; set => imageSurfaceMaterial = value; }
         public Shader ExhibitShader { get => exhibitShader; set => exhibitShader = value; }
         public Shader ExhibitCompositeShader { get => exhibitCompositeShader; set => exhibitCompositeShader = value; }
@@ -527,7 +530,15 @@ namespace Eternities.Travel
             yield return null;
 
             TerrainLayer[] layers = WorldGround.Layers(terrainLayers);
-            Ground = WorldGround.Build(plan, layers, World.Plane.Slug, worldRoot.transform);
+            try
+            {
+                Ground = WorldGround.Build(plan, layers, groundMaterials.Length > 0 ? groundMaterials[0] : null, World.Plane.Slug, worldRoot.transform);
+            }
+            catch (InvalidOperationException e)
+            {
+                Fail(e);
+                yield break;
+            }
             worldOwned.Add(Ground.terrainData);
             if (layers != terrainLayers)
             {

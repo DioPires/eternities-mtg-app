@@ -3,6 +3,8 @@ using Eternities.Data;
 using Eternities.EditorTools;
 using Eternities.Layout;
 using NUnit.Framework;
+using UnityEditor;
+using UnityEngine;
 
 namespace Eternities.Tests
 {
@@ -35,6 +37,44 @@ namespace Eternities.Tests
             Assert.That(loaded.Layout.Stands.Count, Is.EqualTo(6271));
             loaded.Swatch(0, 0, out byte r, out byte g, out byte b);
             Assert.That(r + g + b, Is.GreaterThan(0));
+        }
+
+        // The ground's materials are the scene's own, with HDRP's terrain shader, and between them
+        // they name the variants a ground asks for at run time: none, a normal map, a normal map
+        // and a mask map. A build holds a shader, and a variant of it, only if a material in it
+        // says so, and the first built players had no terrain shader at all: their world had no
+        // ground.
+        [Test]
+        public void TheGroundHasMaterialsOfItsOwnThatABuildCarries()
+        {
+            string scene = File.ReadAllText("Assets/Scenes/Hub.unity");
+            (string name, string[] keywords)[] wanted =
+            {
+                ("ground", new string[0]), ("ground-normal", new[] { "_NORMALMAP" }), ("ground-normal-mask", new[] { "_NORMALMAP", "_MASKMAP" }),
+            };
+            foreach ((string name, string[] keywords) in wanted)
+            {
+                string path = $"Assets/Kits/core/Materials/{name}.mat";
+                var material = AssetDatabase.LoadAssetAtPath<Material>(path);
+                Assert.That(material, Is.Not.Null, path);
+                Assert.That(material.shader.name, Is.EqualTo("HDRP/TerrainLit"), path);
+                foreach (string keyword in new[] { "_NORMALMAP", "_MASKMAP" })
+                {
+                    Assert.That(material.IsKeywordEnabled(keyword), Is.EqualTo(System.Array.IndexOf(keywords, keyword) >= 0), $"{path}: {keyword}");
+                }
+                StringAssert.Contains(AssetDatabase.AssetPathToGUID(path), scene, $"the persistent scene names {path}");
+            }
+        }
+
+        // The pipeline's default materials are the editor's: in a player each is null. What draws
+        // with one is there in the editor and in every test, and is not there in a build.
+        [Test]
+        public void NoRuntimeScriptAsksThePipelineForAnEditorDefault()
+        {
+            foreach (string file in Directory.GetFiles("Assets/Scripts", "*.cs", SearchOption.AllDirectories))
+            {
+                StringAssert.DoesNotContain("RenderPipeline.default", File.ReadAllText(file), file);
+            }
         }
     }
 }

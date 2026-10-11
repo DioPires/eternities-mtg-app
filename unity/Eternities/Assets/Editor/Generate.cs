@@ -153,6 +153,16 @@ namespace Eternities.EditorTools
                 app.StandMaterials = stands;
                 changed = true;
             }
+            // The ground's. A terrain's shader takes `_NORMALMAP` and `_MASKMAP` from its layers at
+            // run time, and a build holds only the variants that a material in it names: so there is
+            // one material for layers that are colours only, one for layers with normal maps and
+            // one for layers with normal and mask maps. The first is the one the ground is given.
+            Material[] ground = { Ground("ground"), Ground("ground-normal", "_NORMALMAP"), Ground("ground-normal-mask", "_NORMALMAP", "_MASKMAP") };
+            if (app.GroundMaterials == null || !ground.SequenceEqual(app.GroundMaterials))
+            {
+                app.GroundMaterials = ground;
+                changed = true;
+            }
             changed |= Set(Lit("mannequin", new Color(0.78f, 0.76f, 0.72f), 0f, 0.4f), app.AvatarMaterial, m => app.AvatarMaterial = m);
             // Matt: on a ground this wide a smooth one is paid for in screen-space reflections, 5 ms a frame.
             changed |= Set(Lit("hub-floor", new Color(0.09f, 0.09f, 0.12f), 0f, 0.05f), app.HubGroundMaterial, m => app.HubGroundMaterial = m);
@@ -380,6 +390,21 @@ namespace Eternities.EditorTools
                 material.SetFloat("_Metallic", metallic);
                 material.SetFloat("_Smoothness", smoothness);
             }, folder);
+        }
+
+        static Material Ground(string name, params string[] keywords)
+        {
+            Material ground = Made(name, "HDRP/TerrainLit", material => { });
+            if (!keywords.All(ground.IsKeywordEnabled))
+            {
+                foreach (string keyword in keywords)
+                {
+                    ground.EnableKeyword(keyword);
+                }
+                EditorUtility.SetDirty(ground);
+                AssetDatabase.SaveAssets();
+            }
+            return ground;
         }
 
         // `cutout`: the material draws nothing where its colour map's alpha is under a half.

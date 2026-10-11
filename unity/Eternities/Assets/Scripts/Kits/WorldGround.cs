@@ -315,8 +315,15 @@ namespace Eternities.Kits
             return plain;
         }
 
-        public static Terrain Build(GroundPlan plan, TerrainLayer[] layers, string name, Transform parent)
+        // `material` is the scene's own, with HDRP's terrain shader. The pipeline's default terrain
+        // material is the editor's and is not in a build: a ground given that one is drawn in the
+        // editor and is not there at all in a player.
+        public static Terrain Build(GroundPlan plan, TerrainLayer[] layers, Material material, string name, Transform parent)
         {
+            if (material == null || material.shader == null || !material.shader.isSupported)
+            {
+                throw new InvalidOperationException("the ground has no material this build can draw; run the generation entry point (unity/Eternities/README.md)");
+            }
             var data = new TerrainData { name = name, heightmapResolution = plan.HeightResolution, alphamapResolution = plan.AlphaResolution };
             data.size = new Vector3(plan.Side, GroundPlan.Height, plan.Side);      // after the resolution, which resets it
             data.SetHeights(0, 0, plan.Normalised);
@@ -328,7 +335,7 @@ namespace Eternities.Kits
             ground.transform.SetParent(parent, false);
             ground.transform.localPosition = new Vector3(-plan.Side / 2, -GroundPlan.Floor, -plan.Side / 2);
             var terrain = ground.GetComponent<Terrain>();
-            terrain.materialTemplate = GraphicsSettings.currentRenderPipeline.defaultTerrainMaterial;
+            terrain.materialTemplate = material;
             return terrain;
         }
     }

@@ -680,6 +680,15 @@ namespace Eternities.Bench
                 yield return new WaitForEndOfFrame();
                 screen = RenderTexture.GetTemporary(Screen.width, Screen.height, 0, GraphicsFormat.R8G8B8A8_SRGB);
                 ScreenCapture.CaptureScreenshotIntoRenderTexture(screen);
+                if (SystemInfo.graphicsUVStartsAtTop)
+                {
+                    // The screen comes into a texture bottom row first where a texture's rows start
+                    // at the top, which is Metal: the first player captures were upside down.
+                    RenderTexture upright = RenderTexture.GetTemporary(screen.width, screen.height, 0, GraphicsFormat.R8G8B8A8_SRGB);
+                    Graphics.Blit(screen, upright, new Vector2(1, -1), new Vector2(0, 1));
+                    RenderTexture.ReleaseTemporary(screen);
+                    screen = upright;
+                }
                 source = screen;
             }
             AsyncGPUReadbackRequest request = AsyncGPUReadback.Request(source, 0, GraphicsFormat.R8G8B8A8_SRGB);
