@@ -68,6 +68,7 @@ namespace Eternities.Tests
             Assert.That((args.Width, args.Height), Is.EqualTo((3456, 2234)));
             Assert.That(args.Captures, Is.Null);
             Assert.Throws<System.ArgumentException>(() => BenchArgs.Parse(new[] { "-bench", "tepid", "-benchOut", "x" }));
+            Assert.That(BenchArgs.Parse(new[] { "-bench", "prices", "-benchOut", "x" }).Mode, Is.EqualTo("prices"));
             Assert.Throws<System.ArgumentException>(() => BenchArgs.Parse(new[] { "-bench", "warm" }));
         }
 

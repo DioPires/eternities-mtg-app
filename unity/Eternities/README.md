@@ -164,7 +164,8 @@ A figure from the editor host fills no row of the acceptance matrix (PRD v4 9.5)
 chain an off-screen frame time can read short. The figures of record come from a player build
 started with the same `-bench` arguments, full screen at the display's native resolution, with no
 Unity editor alive on the machine. `-benchQuality high|medium|low` and `-benchScale 1|0.75` choose
-the row; a run of record is made without `-benchCaptures`:
+the row; `-benchSize` is not given, unless the row names a resolution that is not the display's own
+(PRD v4 7.1.2 allows the light Mac 1440 x 900); a run of record is made without `-benchCaptures`:
 
 ```sh
 unity/Eternities/batchmode.sh -quit -executeMethod Eternities.EditorTools.Build.Run -buildOut "$PWD/unity/Eternities/Build"
@@ -181,6 +182,19 @@ memory and cannot start a process, so before it leaves the world the run asks fo
 `footprint(1)`: the script runs the tool and the run writes the process's footprint, and the part
 of it the graphics driver holds, into the JSON's `memory` block. A player started without the
 script completes the path all the same and says in the JSON that nothing answered.
+
+The price list: what each thing in the frame is worth in milliseconds, at a quality level, on the
+machine it runs on. A run started with `-bench prices` walks into the world and, at the arrival
+point and on the apron of Invasion of Dominaria, draws the same view with one thing switched off
+at a time: each kind of the world's content (props, stands, image surfaces, the isolated image
+path, the ground, the water), each HDRP feature that is on, the anti-aliasing, and three quarters
+of the width and height. It writes the rows as `prices` in the JSON. A feature is switched on the
+camera alone, so no settings file is written; the list says what a level is spending and fills
+no row. About four minutes:
+
+```sh
+unity/Eternities/bench.sh "$PWD/unity/Eternities/Build/Eternities.app" -bench prices -benchQuality high -benchOut "$PWD/bench-prices.json"
+```
 
 A build rewrites five settings files in the working tree: the three `Assets/Settings/HDRP *.asset`
 files, `Assets/Settings/HDRPDefaultResources/HDRenderPipelineGlobalSettings.asset` and

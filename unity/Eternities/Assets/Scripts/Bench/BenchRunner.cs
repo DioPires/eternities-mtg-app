@@ -27,8 +27,9 @@ namespace Eternities.Bench
     // the nearest stand's apron (capture 4), card view there, travel by the menu to a named card and
     // its card view, the card flipped to its back (capture 5), the return to the hub, and the same
     // arrival with reduced motion (capture 9). A warm run first visits the world once; a cold run
-    // first empties the image cache.
-    public sealed class BenchRunner : MonoBehaviour
+    // first empties the image cache. A prices run goes no further than the arrival and one travel:
+    // it draws up the price list of `BenchPrices.cs` at both.
+    public sealed partial class BenchRunner : MonoBehaviour
     {
         public const string Schema = "eternities.bench.v1";
         public const string HdrpVersion = "17.6.0";     // held to Packages/packages-lock.json by a test
@@ -126,8 +127,10 @@ namespace Eternities.Bench
             Application.runInBackground = true;     // a run does not stop when its window loses the focus
             if (!Application.isEditor)
             {
-                // A figure of record is taken full screen at the display's native resolution (PRD v4 7.1).
-                Screen.SetResolution(Display.main.systemWidth, Display.main.systemHeight, FullScreenMode.FullScreenWindow);
+                // A figure of record is taken full screen at the display's native resolution (PRD v4
+                // 7.1). `-benchSize` names another: the light Mac's row may be taken at 1440 x 900.
+                bool sized = run.Width > 0;
+                Screen.SetResolution(sized ? run.Width : Display.main.systemWidth, sized ? run.Height : Display.main.systemHeight, FullScreenMode.FullScreenWindow);
                 yield return null;
                 yield return null;
             }
@@ -259,6 +262,24 @@ namespace Eternities.Bench
                 exhibit["withP50Ms"] = with.Percentile(50);
                 exhibit["withoutP50Ms"] = without.Percentile(50);
                 exhibit["costMs"] = Math.Round(with.Percentile(50) - without.Percentile(50), 3);
+
+                if (run.Mode == "prices")
+                {
+                    yield return Prices("the arrival point");
+                    int far = layout.Stands.FindIndex(stand => app.World.Cards[stand.Card].Name == TravelCard);
+                    app.TravelTo(far);
+                    yield return null;
+                    yield return Step("prices", 30, () => !app.InTransition || app.Failure != null);
+                    if (Ok)
+                    {
+                        yield return Wait(1);
+                        yield return Settle(5);
+                        yield return Prices($"the apron of {TravelCard}");
+                        Images();
+                    }
+                    Finish(failure ?? app.Failure);
+                    yield break;
+                }
 
                 // Step 4: walk north along the radial path at 0 degrees, from the plaza to where it
                 // meets the outermost ring path.
@@ -743,6 +764,7 @@ namespace Eternities.Bench
                 ["memory"] = Memory(),
                 ["streaming"] = streaming,
                 ["exhibit"] = exhibit,
+                ["prices"] = prices,
                 ["path"] = pathSeen,
                 ["captures"] = captures,
             };

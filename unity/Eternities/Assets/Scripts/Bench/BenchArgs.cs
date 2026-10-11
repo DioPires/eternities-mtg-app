@@ -7,11 +7,11 @@ namespace Eternities.Bench
     // run in a player build and in the editor's play mode.
     public sealed class BenchArgs
     {
-        public string Mode;             // "warm" or "cold"; null when the process is not a bench run
+        public string Mode;             // "warm", "cold" or "prices"; null when the process is not a bench run
         public string Quality;          // a quality level's name, or null for the project's default
         public float Scale = 1;         // the resolution scale: 1 or 0.75
         public string Out, Captures, Commit;
-        public int Width, Height;       // the editor host's off-screen size; 0 for a player
+        public int Width, Height;       // the editor host's off-screen size; a player's, or 0 for its display's own
 
         public bool Present => Mode != null;
 
@@ -57,9 +57,9 @@ namespace Eternities.Bench
                 switch (args[i])
                 {
                     case "-bench":
-                        if (value != "warm" && value != "cold")
+                        if (value != "warm" && value != "cold" && value != "prices")
                         {
-                            throw new ArgumentException($"-bench is warm or cold, not '{value}'");
+                            throw new ArgumentException($"-bench is warm, cold or prices, not '{value}'");
                         }
                         parsed.Mode = value;
                         break;
