@@ -83,11 +83,12 @@ In every name below, `<N>` is the number of the issue.
 2. Copy the block below.
 3. Write the names of the trees that live runs hold into `live_trees`, with a space between
    names. Write an empty string when no run is live.
-4. Put `echo` in place of `git worktree remove`, then run the block. It prints the path of each
-   tree the sweep would remove, and it removes nothing.
-5. Run the block as written.
-6. Report each `could not remove` line in the merge comment.
-7. Prune the records of trees that are no longer on disk.
+4. Put `echo` in place of `git worktree remove`.
+5. Run the block. It prints the path of each tree the sweep would remove, and it removes nothing.
+6. Put `git worktree remove` back.
+7. Run the block again.
+8. Report each `could not remove` line in the merge comment.
+9. Prune the records of trees that are no longer on disk.
 
    ```sh
    git worktree prune
