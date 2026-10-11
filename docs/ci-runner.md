@@ -159,8 +159,10 @@ workflow has to change with it.
 - **Labels.** The jobs ask for `[self-hosted, macOS, reference-machine]`.
 - **No bypass.** If the runner is offline the jobs stay queued and the pull request waits (PRD v4
   8.8.5). Nothing in the workflow skips them for a pull request that touches `unity/` or one of the
-  files its path filter names (`unity-changes` in `ci.yml`). GitHub fails a job that has waited 24
-  hours for a runner; re-run it once the runner is back.
+  files its path filter names (`unity-changes` in `ci.yml`). The required checks on `main` bind
+  administrators too: `enforce_admins` has been on since 2026-10-11 (DEC-966). A merge with the
+  owner's token waits like any other, and agents merge with that token. GitHub fails a job that
+  has waited 24 hours for a runner; re-run it once the runner is back.
 
 ## 4. Keeping it running
 
