@@ -89,6 +89,9 @@ namespace Eternities.Kits
             beyondRim < MarginWood ? 0.04f + 0.14f * Mathf.SmoothStep(0, 1, beyondRim / 40) : 0.05f;
 
         public const float MarginWood = 70;
+        // Behind the lake, on the side away from the world, a wood this deep and this thick stands
+        // along the shore. Across the water the first build showed the terrain's own edge.
+        public const float LakesideWood = 24, LakesideCover = 0.5f;
         // Reeds stand where the water's bed is this far below the ground: from the bank's foot to
         // ankle deep.
         public const float ReedsFrom = 0.3f, ReedsTo = 0.95f, ReedsCover = 0.5f;
@@ -120,6 +123,11 @@ namespace Eternities.Kits
 
         public readonly List<Prop> Props = new List<Prop>();
         public readonly int[] ByKind = new int[Temperate.Kinds.Length];
+        // Props that found room among what is reserved and then gave way to another prop.
+        public int GaveWay { get; private set; }
+
+        // Every prop that found room, in the order found, with the density from which it stands.
+        readonly List<(Prop Prop, float From)> found = new List<(Prop, float)>();
 
         public static float Clearance(Prop prop) => LayoutConstants.PropClearance / 1000f + Temperate.Kinds[prop.Kind].Footprint * prop.Scale;
 
@@ -142,9 +150,15 @@ namespace Eternities.Kits
                     float x = -reach + (column + Inset + (1 - 2 * Inset) * GroundPlan.Hash(column, row, seed)) * Cell;
                     float z = -reach + (row + Inset + (1 - 2 * Inset) * GroundPlan.Hash(column, row, seed + 1)) * Cell;
                     float r = Mathf.Sqrt(x * x + z * z);
-                    if (r <= plaza || r >= reach - Cell)
+                    // The lake's far shore: beyond the water, on the side away from the world.
+                    Vector2 fromLake = new Vector2(x, z) - ground.LakeCentre;
+                    float shore = fromLake.magnitude - GroundPlan.LakeRadius - GroundPlan.Bank;
+                    bool lakeside = shore > 0 && shore < Temperate.LakesideWood && Vector2.Dot(fromLake, ground.LakeCentre) > 0;
+                    if (r <= plaza || (r >= reach - Cell && !lakeside) || Mathf.Max(Mathf.Abs(x), Mathf.Abs(z)) >= reach - Cell)
                     {
-                        continue;       // the plaza is the hero scene's; the terrain's corners are out of sight
+                        // The plaza is the hero scene's. The terrain's corners are out of sight,
+                        // but for the one the lake lies toward; its last cell is left bare.
+                        continue;
                     }
 
                     Dressing dressing;
@@ -164,7 +178,7 @@ namespace Eternities.Kits
                     else if (r > world)
                     {
                         dressing = Temperate.Margin;
-                        cover = Temperate.MarginCover(r - world);
+                        cover = lakeside ? Temperate.LakesideCover : Temperate.MarginCover(r - world);
                         mix = dressing.Mix;
                     }
                     else
@@ -177,19 +191,97 @@ namespace Eternities.Kits
                         cover = dressing.Cover;
                         mix = dressing.Mix;
                     }
-                    if (GroundPlan.Hash(column, row, seed + 2) >= cover * density)
+                    float asked = GroundPlan.Hash(column, row, seed + 2);
+                    if (asked >= cover * density)
                     {
                         continue;
                     }
-                    plan.Place(ground, bed > 0 ? null : reserved, mix, x, z, column, row, seed);
+                    plan.Place(ground, bed > 0 ? null : reserved, mix, x, z, column, row, seed, asked / cover);
                 }
             }
+            plan.Settle();
             return plan;
         }
 
+        // A tree does not grow out of a rock (DEC-953): where a trunk stands inside a rock's
+        // footprint, one of the two gives way. It is the one that stands only from a higher
+        // density, so a lower level's props are still among a higher level's: whether a prop
+        // stays depends only on props that are drawn whenever it is. Trees may stand close to
+        // trees and rocks lie against rocks, as in a wood and on a scree.
+        void Settle()
+        {
+            const float Bucket = 4;     // no rock and trunk together reach further than this
+            var order = new int[found.Count];
+            for (int i = 0; i < order.Length; i++)
+            {
+                order[i] = i;
+            }
+            Array.Sort(order, (a, b) =>
+            {
+                int by = found[a].From.CompareTo(found[b].From);
+                return by != 0 ? by : a.CompareTo(b);
+            });
+            var kept = new bool[found.Count];
+            var buckets = new Dictionary<(int, int), List<int>>();
+            foreach (int index in order)
+            {
+                Prop prop = found[index].Prop;
+                PropKind kind = Temperate.Kinds[prop.Kind];
+                (int column, int row) = (Mathf.FloorToInt(prop.X / Bucket), Mathf.FloorToInt(prop.Z / Bucket));
+                bool room = true;
+                if (kind.Block || kind.Trunk > 0)
+                {
+                    for (int r = row - 1; r <= row + 1 && room; r++)
+                    {
+                        for (int c = column - 1; c <= column + 1 && room; c++)
+                        {
+                            if (!buckets.TryGetValue((c, r), out List<int> near))
+                            {
+                                continue;
+                            }
+                            foreach (int other in near)
+                            {
+                                Prop there = found[other].Prop;
+                                PropKind its = Temperate.Kinds[there.Kind];
+                                float apart = kind.Block && its.Trunk > 0 ? kind.Footprint * prop.Scale + its.Trunk * there.Scale
+                                    : kind.Trunk > 0 && its.Block ? kind.Trunk * prop.Scale + its.Footprint * there.Scale : 0;
+                                if ((prop.X - there.X) * (prop.X - there.X) + (prop.Z - there.Z) * (prop.Z - there.Z) < apart * apart)
+                                {
+                                    room = false;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                if (!room)
+                {
+                    GaveWay++;
+                    continue;
+                }
+                kept[index] = true;
+                if (kind.Block || kind.Trunk > 0)
+                {
+                    if (!buckets.TryGetValue((column, row), out List<int> here))
+                    {
+                        buckets[(column, row)] = here = new List<int>();
+                    }
+                    here.Add(index);
+                }
+            }
+            for (int i = 0; i < found.Count; i++)
+            {
+                if (kept[i])
+                {
+                    Props.Add(found[i].Prop);
+                    ByKind[found[i].Prop.Kind]++;
+                }
+            }
+        }
+
         // One prop at a point, of the kind, the scale and the turn that the hash of (a, b) gives,
-        // if what is reserved leaves it room.
-        void Place(GroundPlan ground, Reserved reserved, int[] mix, float x, float z, int a, int b, uint seed)
+        // if what is reserved leaves it room. `from` is the density from which it stands.
+        void Place(GroundPlan ground, Reserved reserved, int[] mix, float x, float z, int a, int b, uint seed, float from)
         {
             var prop = new Prop
             {
@@ -203,8 +295,7 @@ namespace Eternities.Kits
                 return;
             }
             prop.Y = ground.HeightAt(x, z);
-            Props.Add(prop);
-            ByKind[prop.Kind]++;
+            found.Add((prop, from));
         }
 
         // PRD v4 5.4.16: a wedge boundary is made natural by a line of what grows on each side of
@@ -226,7 +317,8 @@ namespace Eternities.Kits
                         {
                             // The hash is of the path and its side, and of the band and the place in it.
                             int a = -1 - (2 * path + side), b = 64 * band + i;
-                            if (GroundPlan.Hash(a, b, seed + 2) >= Temperate.AvenueCover * density)
+                            float asked = GroundPlan.Hash(a, b, seed + 2);
+                            if (asked >= Temperate.AvenueCover * density)
                             {
                                 continue;
                             }
@@ -238,7 +330,7 @@ namespace Eternities.Kits
                             float across = (side == 0 ? -1 : 1) * Mathf.Lerp(AvenueFrom, AvenueTo, GroundPlan.Hash(a, b, seed));
                             float x = (float)(along * sine + across * cosine), z = (float)(along * cosine - across * sine);
                             Dressing dressing = Temperate.Wedges[(int)ClassAt(layout, x, z, Mathf.Sqrt(x * x + z * z) > ring)];
-                            Place(ground, reserved, dressing.Avenue, x, z, a, b, seed);
+                            Place(ground, reserved, dressing.Avenue, x, z, a, b, seed, asked / Temperate.AvenueCover);
                         }
                     }
                 }

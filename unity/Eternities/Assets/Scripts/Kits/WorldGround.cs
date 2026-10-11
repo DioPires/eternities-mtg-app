@@ -29,7 +29,8 @@ namespace Eternities.Kits
         // The slice's water (PRD v4 9.5): one river and one lake, in the margin beyond the ring,
         // because inside the world the 3 m water buffer around paths, aprons and corridors leaves
         // no zone (PRD v4 8.4.2). The river runs west to east past the end of the north radial path
-        // and into the lake.
+        // and into the lake. The lake lies as near the rim as the buffer lets it, so that ground
+        // is left behind its far shore for the wood that closes the view across it.
         public Vector2 RiverFrom, RiverTo, LakeCentre;
 
         // How deep below the ground level the water's bed is at a point: 0 away from the water.
@@ -66,7 +67,7 @@ namespace Eternities.Kits
             var plan = new GroundPlan { Radius = layout.WorldRadius / 1000f };
             plan.RiverFrom = new Vector2(-240, plan.Radius + 20);
             plan.RiverTo = new Vector2(110, plan.Radius + 20);
-            plan.LakeCentre = new Vector2(120, plan.Radius + 62);
+            plan.LakeCentre = new Vector2(120, plan.Radius + 47);
             plan.Side = 2 * (plan.Radius + Margin);
             plan.HeightResolution = HeightmapResolution(plan.Radius);
             int n = plan.AlphaResolution = plan.HeightResolution - 1;

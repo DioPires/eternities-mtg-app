@@ -136,7 +136,8 @@ materials under `Assets/Kits/core/Materials/` and `Assets/Kits/temperate/Materia
 time. It names the mesh and the materials of each of the kit's props on that object: the world's
 prop scatter (PRD v4 8.4.2) is worked out at load from the layout, seeded by the plane, and the
 quality level in force sets how much of it is drawn (high all of it, medium 60%, low 35%; the
-table of what grows in which wedge is `Temperate` in `Assets/Scripts/Kits/PropPlan.cs`). It makes
+table of what grows in which wedge is `Temperate` in `Assets/Scripts/Kits/PropPlan.cs`). No tree
+stands inside a rock's footprint: of the two, the one a lower density already draws stays. It makes
 the kit's three terrain layers, `meadow`, `path` and `gravel` under
 `Assets/Kits/temperate/TerrainLayers/`, once: each has its texture's colour, normal and mask maps and
 a first tile size, and is tuned in its own file from then on. It names them on that object, and a

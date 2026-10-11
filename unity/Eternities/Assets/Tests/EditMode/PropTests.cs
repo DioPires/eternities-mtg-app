@@ -120,7 +120,7 @@ namespace Eternities.Tests
                     $"a {kind.Model} at ({prop.X:F2}, {prop.Z:F2}), {kind.Footprint * prop.Scale:F2} m in radius, is {room:F3} m from {nearest}");
                 Assert.That(prop.Scale, Is.InRange(kind.ScaleFrom, kind.ScaleTo));
                 Assert.That(prop.Y, Is.EqualTo(plan.HeightAt(prop.X, prop.Z)), "a prop stands on the ground");
-                Assert.That(new Vector2(prop.X, prop.Z).magnitude, Is.LessThan(plan.Side / 2), "and on the terrain");
+                Assert.That(Mathf.Max(Mathf.Abs(prop.X), Mathf.Abs(prop.Z)), Is.LessThan(plan.Side / 2 - PropPlan.Cell), "and on the terrain, a cell from its edge");
             }
         }
 
@@ -130,6 +130,44 @@ namespace Eternities.Tests
             AssertClear(layout, ground, props, out double tightest);
             Debug.Log($"PropTests: {props.Props.Count} props on Dominaria; the nearest keeps {tightest:F3} m of clearance");
             Assert.That(tightest, Is.LessThan(1.5), "the scatter uses the ground it may: something stands near the limit");
+        }
+
+        // A tree does not grow out of a rock (DEC-953): no trunk stands inside a rock's footprint.
+        // The first scatter had a pine through a boulder beside the stand of the bench's site
+        // capture. Every rock is tried against every tree, with this file's own distances.
+        [Test]
+        public void NoTreeGrowsOutOfARock()
+        {
+            int rocks = 0, trees = 0;
+            double nearest = double.PositiveInfinity;
+            foreach (Prop rock in props.Props)
+            {
+                PropKind stone = Temperate.Kinds[rock.Kind];
+                if (!stone.Block)
+                {
+                    continue;
+                }
+                rocks++;
+                trees = 0;
+                foreach (Prop tree in props.Props)
+                {
+                    PropKind wood = Temperate.Kinds[tree.Kind];
+                    if (wood.Trunk <= 0)
+                    {
+                        continue;
+                    }
+                    trees++;
+                    double apart = Math.Sqrt((rock.X - tree.X) * (double)(rock.X - tree.X) + (rock.Z - tree.Z) * (double)(rock.Z - tree.Z));
+                    double room = apart - stone.Footprint * rock.Scale - wood.Trunk * tree.Scale;
+                    nearest = Math.Min(nearest, room);
+                    Assert.That(room, Is.GreaterThanOrEqualTo(-1e-3),
+                        $"a {wood.Model} at ({tree.X:F2}, {tree.Z:F2}) stands {-room:F2} m inside a {stone.Model} at ({rock.X:F2}, {rock.Z:F2})");
+                }
+            }
+            Debug.Log($"PropTests: {rocks} rocks and {trees} trees; {props.GaveWay} props gave way to another; the nearest trunk is {nearest:F2} m from a rock's footprint");
+            Assert.That(rocks, Is.GreaterThan(500));
+            Assert.That(trees, Is.GreaterThan(2000));
+            Assert.That(props.GaveWay, Is.GreaterThan(0), "somewhere a rock and a tree asked for the same ground, or this test proves nothing");
         }
 
         [Test]
@@ -151,6 +189,39 @@ namespace Eternities.Tests
                 }
             }
             Assert.That(reeds, Is.GreaterThan(20));
+        }
+
+        // PRD v4 5.1.5: the world's edge is natural. Across the lake the first build showed the
+        // terrain's own edge as the horizon: the lake reached to 8 m from it, and the scatter left
+        // that ground bare. A wood now stands behind the far shore, from end to end of it.
+        [Test]
+        public void AWoodStandsBehindTheLakesFarShore()
+        {
+            Vector2 lake = ground.LakeCentre, outward = lake.normalized, along = new Vector2(outward.y, -outward.x);
+            float shoreline = GroundPlan.LakeRadius + GroundPlan.Bank;
+            Assert.That(ground.Side / 2 - (Mathf.Max(Mathf.Abs(lake.x), Mathf.Abs(lake.y)) + shoreline), Is.GreaterThan(Temperate.LakesideWood - PropPlan.Cell),
+                "the ground behind the far shore is as deep as the wood");
+            // The far shore in six sectors of 30 degrees, from one end to the other.
+            var trees = new int[6];
+            int near = 0;
+            foreach (Prop prop in props.Props)
+            {
+                Vector2 from = new Vector2(prop.X, prop.Z) - lake;
+                float shore = from.magnitude - shoreline;
+                if (Temperate.Kinds[prop.Kind].Trunk <= 0 || shore <= 0 || shore >= Temperate.LakesideWood)
+                {
+                    continue;
+                }
+                if (Vector2.Dot(from, outward) <= 0)
+                {
+                    near++;
+                    continue;
+                }
+                float bearing = Mathf.Atan2(Vector2.Dot(from, outward), Vector2.Dot(from, along)) * Mathf.Rad2Deg;      // 0 to 180 along the far shore
+                trees[Mathf.Clamp((int)(bearing / 30), 0, 5)]++;
+            }
+            Debug.Log($"PropTests: trees behind the lake's far shore, by sector: {string.Join(", ", trees)}; on the near side, in the same depth: {near}");
+            Assert.That(trees, Has.All.GreaterThanOrEqualTo(8), "trees in every sector of the far shore");
         }
 
         [Test]

@@ -289,11 +289,12 @@ namespace Eternities.Tests
             Dump("river.png");
             int changed = Changed(withWater, without);
 
-            // For whoever looks at the frames: the lake from its south-western shore.
+            // For whoever looks at the frames: the lake from the shore nearest the world, where a
+            // visitor comes to it, with its far shore across the water.
             if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ETERNITIES_TEST_DUMP")))
             {
                 Vector2 lake = app.GroundPlan.LakeCentre;
-                Vector2 shore = lake + new Vector2(-0.82f, -0.57f) * (GroundPlan.LakeRadius + GroundPlan.Bank + 4);
+                Vector2 shore = lake - lake.normalized * (GroundPlan.LakeRadius + GroundPlan.Bank + 4);
                 var eye = new Vector3(shore.x, 0, shore.y);
                 eye.y = app.Ground.SampleHeight(eye) + app.Ground.transform.position.y + 1.6f;
                 view.transform.SetPositionAndRotation(eye, Quaternion.LookRotation(new Vector3(lake.x, 0.5f, lake.y) - eye));
