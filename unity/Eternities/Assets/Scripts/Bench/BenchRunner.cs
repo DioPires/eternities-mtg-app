@@ -239,6 +239,10 @@ namespace Eternities.Bench
                 if (run.Mode == "cold" && scryfall != null)
                 {
                     scryfall.Cache.Clear();     // a cold run starts with no image on disk (PRD v4 7.2)
+                    // Deleting a cache of 300 images takes a third of a second and is the bench's own
+                    // doing: its frame ends here, before any frame is counted. Counted, it was the
+                    // longest frame of every cold run's hub.
+                    yield return null;
                 }
                 else if (run.Mode == "warm")
                 {
