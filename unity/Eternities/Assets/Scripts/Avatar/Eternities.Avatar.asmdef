@@ -1,7 +1,11 @@
 {
     "name": "Eternities.Avatar",
     "rootNamespace": "Eternities.Avatar",
-    "references": [],
+    "references": [
+        "Unity.InputSystem",
+        "Unity.Cinemachine",
+        "Eternities.UI"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

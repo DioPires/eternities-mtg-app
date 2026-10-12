@@ -1,7 +1,18 @@
 {
     "name": "Eternities.Bench",
     "rootNamespace": "Eternities.Bench",
-    "references": [],
+    "references": [
+        "Eternities.Data",
+        "Eternities.Layout",
+        "Eternities.Kits",
+        "Eternities.Travel",
+        "Eternities.Avatar",
+        "Eternities.CardView",
+        "Eternities.UI",
+        "Eternities.Audio",
+        "Unity.RenderPipelines.Core.Runtime",
+        "Unity.RenderPipelines.HighDefinition.Runtime"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

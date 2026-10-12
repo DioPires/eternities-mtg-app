@@ -227,11 +227,11 @@ MonoBehaviour:
       m_Values: 000000000000000000000000
       m_SchemaId:
         m_Id: With3Levels
-    supportVolumetrics: 0
+    supportVolumetrics: 1
     supportVolumetricClouds: 0
     supportLightLayers: 1
     renderingLayerMaskBuffer: 0
-    supportWater: 0
+    supportWater: 1
     waterSimulationResolution: 128
     supportWaterExclusion: 0
     supportWaterHorizontalDeformation: 0
@@ -368,7 +368,7 @@ MonoBehaviour:
       lutFormat: 48
       bufferFormat: 74
     dynamicResolutionSettings:
-      enabled: 0
+      enabled: 1
       useMipBias: 0
       advancedUpscalersByPriority: 
       advancedUpscalerNames: []
@@ -392,7 +392,7 @@ MonoBehaviour:
       fsrOverrideSharpness: 0
       fsrSharpness: 0.92
       maxPercentage: 100
-      minPercentage: 100
+      minPercentage: 75
       dynResType: 1
       upsampleFilter: 1
       forceResolution: 0
@@ -516,8 +516,8 @@ MonoBehaviour:
       Fog_ControlMode: 000000000000000000000000
       Fog_Budget:
       - 0.125
-      - 0.25
-      - 0.5
+      - 0.125
+      - 0.125
       Fog_DepthRatio:
       - 0.5
       - 0.5
@@ -549,7 +549,7 @@ MonoBehaviour:
   availableMaterialQualityLevels: -1
   m_DefaultMaterialQualityLevel: 4
   diffusionProfileSettings: {fileID: 0}
-  m_VolumeProfile: {fileID: 0}
+  m_VolumeProfile: {fileID: 11400000, guid: 04f3fd44d2c6f4abda883e5ace890f42, type: 2}
   virtualTexturingSettings:
     streamingCpuCacheSizeInMegaBytes: 256
     streamingMipPreloadTexturesPerFrame: 0

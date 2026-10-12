@@ -1,17 +1,494 @@
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using Eternities.Data;
+using Eternities.Kits;
+using Eternities.Travel;
+using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.HighDefinition;
+using UnityEngine.SceneManagement;
+using UnityEngine.UIElements;
 
 namespace Eternities.EditorTools
 {
-    // The batchmode scene generation entry point (PRD v4 8.2.5). It will build the hub scene and any
-    // kit world from the pack and the kit. The skeleton only proves the entry point is reachable from
-    // the command line: it reports the pack hash it was given. A missing argument throws, and the
-    // editor turns an exception in an `-executeMethod` target into exit code 1.
+    // The batchmode scene generation entry point (PRD v4 8.2.5). It makes what the slice needs and an
+    // engineer does not write by hand, from the pinned pack and nothing else, so a reviewer
+    // reproduces the slice's world from the command line:
+    //
+    // - not committed: the part of the pack the slice reads, copied from `web/public/data/<hash>/`
+    //   to `StreamingAssets/data/<hash>/` with every file checked against the pack's manifest, and
+    //   each world's layout beside it, `layout/<slug>.txt` (`WorldFiles.Generate`);
+    // - committed: the slice's plain materials under `Assets/Kits/core/Materials/` and
+    //   `Assets/Kits/temperate/Materials/`, the persistent scene, `Assets/Scenes/Hub.unity`, and
+    //   each quality level's volume profile under `Assets/Settings/`.
+    //
+    // A missing argument or a failure throws, and the editor turns an exception in an
+    // `-executeMethod` target into exit code 1.
     public static class Generate
     {
+        // The slice has one world (PRD v4 9.5).
+        public static readonly string[] Worlds = { "dominaria" };
+
+        public const string HubScene = "Assets/Scenes/Hub.unity";
+        const string MaterialFolder = "Assets/Kits/core/Materials";
+
         public static void Run()
         {
-            string packHash = CommandLine.Require("-packHash");
-            Debug.Log($"Generate: pack hash {packHash}");
+            string reportOut = CommandLine.Optional("-reportOut");
+            foreach (WorldFiles.Result world in Everything(CommandLine.Require("-packHash")))
+            {
+                Debug.Log($"Generate: {world.Layout.Input.PlaneSlug}\n{world.Report}");
+                if (reportOut != null)
+                {
+                    File.WriteAllText(reportOut, world.Report);
+                }
+            }
+        }
+
+        // The same from the editor's menu, for whoever has the project open.
+        [MenuItem("Eternities/Generate")]
+        static void FromTheMenu()
+        {
+            foreach (WorldFiles.Result world in Everything(ManifestHash()))
+            {
+                Debug.Log($"Generate: {world.Layout.Input.PlaneSlug}\n{world.Report}");
+            }
+        }
+
+        // Everything the entry point makes: each world's files, the slice's materials, the
+        // persistent scene and the levels' volume profiles. Run again on a tree it has already
+        // filled, it changes nothing.
+        public static List<WorldFiles.Result> Everything(string packHash)
+        {
+            if (packHash != ManifestHash())
+            {
+                throw new InvalidDataException($"the project is pinned to pack {ManifestHash()}, not {packHash}");
+            }
+            var worlds = new List<WorldFiles.Result>();
+            foreach (string slug in Worlds)
+            {
+                worlds.Add(Build(packHash, slug));
+            }
+            PersistentScene();
+            LevelProfiles();
+            return worlds;
+        }
+
+        // Where a quality level's volume profile is, beside its HDRP asset.
+        public static string LevelProfile(string level) => $"Assets/Settings/HDRP {level} volume.asset";
+
+        // The clouds of each quality level (PRD v4 5.7.1, 8.1.1): volumetric clouds at high and
+        // medium, a cloud layer at low. That is a volume setting and not a switch of the HDRP
+        // asset, so each level's HDRP asset names a volume profile of its own, which HDRP lays
+        // over the project's defaults and under every volume of a scene. A profile is made once
+        // with that one choice in it, and then is the owner's to tune. The HDRP assets name the
+        // profiles in their own text, which `RenderPipelineTests` holds: saving an HDRP asset
+        // from here would rewrite the whole file.
+        public static void LevelProfiles()
+        {
+            foreach (string level in QualitySettings.names)
+            {
+                string path = LevelProfile(level);
+                if (AssetDatabase.LoadAssetAtPath<VolumeProfile>(path) != null)
+                {
+                    continue;
+                }
+                var profile = ScriptableObject.CreateInstance<VolumeProfile>();
+                AssetDatabase.CreateAsset(profile, path);
+                if (level == "low")
+                {
+                    Override<VisualEnvironment>(profile).cloudType.Override((int)CloudType.CloudLayer);
+                }
+                else
+                {
+                    Override<VolumetricClouds>(profile).enable.Override(true);
+                }
+                EditorUtility.SetDirty(profile);
+                AssetDatabase.SaveAssets();
+            }
+        }
+
+        // A profile's override lives in the profile's own file, as the editor's inspector makes it.
+        static T Override<T>(VolumeProfile profile) where T : VolumeComponent
+        {
+            T component = profile.Add<T>();
+            component.hideFlags = HideFlags.HideInInspector | HideFlags.HideInHierarchy;
+            AssetDatabase.AddObjectToAsset(component, profile);
+            return component;
+        }
+
+        // The hash `StreamingAssets/data/manifest.json` names (PRD v4 8.3.1).
+        public static string ManifestHash()
+        {
+            string manifest = File.ReadAllText(Path.Combine(Application.streamingAssetsPath, "data", "manifest.json"));
+            return Json.Text(Json.Object(Json.Parse(manifest))["hash"]);
+        }
+
+        // The persistent scene (PRD v4 8.4.1): the template's camera, sun and sky, and the one object
+        // that builds the rest at run time. The scene is opened and completed, never rebuilt, so the
+        // identifiers the editor gave its objects stay and a second run saves nothing.
+        public static void PersistentScene()
+        {
+            Scene scene = EditorSceneManager.OpenScene(HubScene, OpenSceneMode.Single);
+            bool changed = false;
+            App app = Object.FindAnyObjectByType<App>();
+            if (app == null)
+            {
+                app = new GameObject("Eternities").AddComponent<App>();
+                changed = true;
+            }
+            Material[] stands =
+            {
+                Lit("plinth-common-stone", new Color(0.46f, 0.45f, 0.43f), 0f, 0.25f),
+                Lit("plinth-uncommon-bronze", new Color(0.55f, 0.36f, 0.20f), 0.8f, 0.45f),
+                Lit("plinth-rare-silver", new Color(0.72f, 0.73f, 0.75f), 0.9f, 0.6f),
+                Lit("plinth-mythic-gold", new Color(0.83f, 0.62f, 0.22f), 0.9f, 0.65f),
+                Lit("stand-slab", new Color(0.05f, 0.05f, 0.06f), 0f, 0.3f),
+            };
+            if (app.StandMaterials == null || !stands.SequenceEqual(app.StandMaterials))
+            {
+                app.StandMaterials = stands;
+                changed = true;
+            }
+            // The ground's. A terrain's shader takes `_NORMALMAP` and `_MASKMAP` from its layers at
+            // run time, and a build holds only the variants that a material in it names: so there is
+            // one material for layers that are colours only, one for layers with normal maps and
+            // one for layers with normal and mask maps. The first is the one the ground is given.
+            Material[] ground = { Ground("ground"), Ground("ground-normal", "_NORMALMAP"), Ground("ground-normal-mask", "_NORMALMAP", "_MASKMAP") };
+            if (app.GroundMaterials == null || !ground.SequenceEqual(app.GroundMaterials))
+            {
+                app.GroundMaterials = ground;
+                changed = true;
+            }
+            changed |= Set(Lit("mannequin", new Color(0.78f, 0.76f, 0.72f), 0f, 0.4f), app.AvatarMaterial, m => app.AvatarMaterial = m);
+            // Matt: on a ground this wide a smooth one is paid for in screen-space reflections, 5 ms a frame.
+            changed |= Set(Lit("hub-floor", new Color(0.09f, 0.09f, 0.12f), 0f, 0.05f), app.HubGroundMaterial, m => app.HubGroundMaterial = m);
+            changed |= Set(Lit("portal-frame", new Color(0.12f, 0.11f, 0.10f), 0.6f, 0.5f), app.PortalFrameMaterial, m => app.PortalFrameMaterial = m);
+            changed |= Set(Unlit("portal-surface", new Color(0.35f, 0.75f, 1f, 1f), transparent: false), app.PortalSurfaceMaterial, m => app.PortalSurfaceMaterial = m);
+            changed |= Set(Unlit("veil", new Color(0, 0, 0, 1), transparent: true), app.VeilMaterial, m => app.VeilMaterial = m);
+            changed |= Set(Unlit("image-surface-cutout", Color.white, transparent: false, cutout: true), app.ImageSurfaceMaterial, m => app.ImageSurfaceMaterial = m);
+            foreach ((string name, Shader held, System.Action<Shader> assign) in new (string, Shader, System.Action<Shader>)[]
+            {
+                ("Hidden/Eternities/Exhibit", app.ExhibitShader, shader => app.ExhibitShader = shader),
+                ("Hidden/Eternities/ExhibitComposite", app.ExhibitCompositeShader, shader => app.ExhibitCompositeShader = shader),
+            })
+            {
+                Shader shader = Shader.Find(name);
+                if (shader == null)
+                {
+                    throw new InvalidDataException($"the shader {name} is not in the project");
+                }
+                if (shader != held)
+                {
+                    assign(shader);
+                    changed = true;
+                }
+            }
+
+            // The overlays' panel settings and the theme they name (PRD v4 8.1.2): two small assets,
+            // made once. Everything else of the overlays is code.
+            const string uiFolder = "Assets/Kits/core/UI";
+            Directory.CreateDirectory(uiFolder);
+            if (!File.Exists($"{uiFolder}/Runtime.tss"))
+            {
+                File.WriteAllText($"{uiFolder}/Runtime.tss", "@import url(\"unity-theme://default\");\n");
+                AssetDatabase.ImportAsset($"{uiFolder}/Runtime.tss");
+            }
+            var panel = AssetDatabase.LoadAssetAtPath<PanelSettings>($"{uiFolder}/Panel.asset");
+            if (panel == null)
+            {
+                panel = ScriptableObject.CreateInstance<PanelSettings>();
+                panel.themeStyleSheet = AssetDatabase.LoadAssetAtPath<ThemeStyleSheet>($"{uiFolder}/Runtime.tss");
+                panel.scaleMode = PanelScaleMode.ScaleWithScreenSize;
+                panel.referenceResolution = new Vector2Int(1920, 1080);
+                panel.match = 1;    // by height, so text is the same size on a wide display
+                AssetDatabase.CreateAsset(panel, $"{uiFolder}/Panel.asset");
+                AssetDatabase.SaveAssets();
+            }
+            if (panel != app.PanelSettings)
+            {
+                app.PanelSettings = panel;
+                changed = true;
+            }
+
+            // The kit's two water prefabs (PRD v4 9.5): made once from the water system's own preset
+            // for a river and for a lake, and then the owner's to tune. A second run leaves them as
+            // they are.
+            changed |= SetObject(WaterPrefab("River", WaterSurfaceType.River), app.RiverPrefab, prefab => app.RiverPrefab = prefab);
+            changed |= SetObject(WaterPrefab("Lake", WaterSurfaceType.OceanSeaLake), app.LakePrefab, prefab => app.LakePrefab = prefab);
+
+            // The kit's props (PRD v4 8.4.2): each kind's mesh from its model, drawn in the kit's own
+            // materials, one for each material name the models use.
+            KitProp[] props = Temperate.Kinds.Select(ModelOf).ToArray();
+            if (app.KitProps == null || app.KitProps.Length != props.Length
+                || !props.Zip(app.KitProps, (wanted, held) => held != null && wanted.Mesh == held.Mesh && held.Materials != null && wanted.Materials.SequenceEqual(held.Materials)).All(same => same))
+            {
+                app.KitProps = props;
+                changed = true;
+            }
+
+            // The kit's two loops (PRD v4 5.12): the ambient bed and the river.
+            foreach ((string file, AudioClip held, System.Action<AudioClip> assign) in new (string, AudioClip, System.Action<AudioClip>)[]
+            {
+                ("meadow_songbirds_loop", app.AmbientBed, clip => app.AmbientBed = clip),
+                ("river_splashy_loop", app.RiverLoop, clip => app.RiverLoop = clip),
+            })
+            {
+                var clip = AssetDatabase.LoadAssetAtPath<AudioClip>($"Assets/Kits/temperate/Audio/{file}.ogg");
+                if (clip == null)
+                {
+                    throw new InvalidDataException($"the kit's loop {file}.ogg is not in the project: run Assets/Kits/temperate/fetch.sh and git lfs pull");
+                }
+                if (clip != held)
+                {
+                    assign(clip);
+                    changed = true;
+                }
+            }
+
+            // The kit's three terrain layers (PRD v4 8.4.5), in the order `GroundPlan` paints them:
+            // each made once from the kit's textures and then tuned in its own file. A second run
+            // leaves them as they are. A tile is as wide as the ground its photograph shows, which
+            // its source states. The tints are Dominaria's (PRD v4 Appendix C): the meadow's
+            // texture is half leaf litter and reads as bare ground until it is pulled to green, and
+            // the path's is an orange that reads as sand.
+            TerrainLayer[] layers =
+            {
+                KitLayer("meadow", "leafy_grass", 2f, new Color(0.6f, 1f, 0.62f)),
+                KitLayer("path", "dirt_floor", 2.07f, new Color(0.75f, 0.78f, 0.85f)),
+                KitLayer("gravel", "ganges_river_pebbles", 2.16f, Color.white),
+            };
+            if (app.TerrainLayers == null || !layers.SequenceEqual(app.TerrainLayers))
+            {
+                app.TerrainLayers = layers;
+                changed = true;
+            }
+            if (changed)
+            {
+                EditorUtility.SetDirty(app);
+            }
+            if (changed)
+            {
+                EditorSceneManager.MarkSceneDirty(scene);
+                EditorSceneManager.SaveScene(scene);
+            }
+        }
+
+        static bool SetObject(GameObject wanted, GameObject held, System.Action<GameObject> assign)
+        {
+            if (wanted == held)
+            {
+                return false;
+            }
+            assign(wanted);
+            return true;
+        }
+
+        // The models' material names (Kenney's Nature Kit), and the temperate kit's colour for each:
+        // Dominaria's greens, ochre and slate (PRD v4 Appendix C). The models' own colours are
+        // pastel and are not used.
+        static readonly Dictionary<string, (string name, Color colour)> KitColours = new Dictionary<string, (string, Color)>
+        {
+            ["leafsGreen"] = ("leaf", new Color(0.23f, 0.38f, 0.14f)),
+            ["leafsDark"] = ("leaf-dark", new Color(0.12f, 0.25f, 0.14f)),
+            ["woodBark"] = ("bark", new Color(0.33f, 0.25f, 0.17f)),
+            ["woodBarkDark"] = ("bark-dark", new Color(0.24f, 0.18f, 0.13f)),
+            ["grass"] = ("bush", new Color(0.28f, 0.42f, 0.16f)),
+            ["stone"] = ("stone", new Color(0.47f, 0.49f, 0.51f)),
+            ["dirt"] = ("earth", new Color(0.50f, 0.41f, 0.27f)),
+            ["woodInner"] = ("reed", new Color(0.55f, 0.52f, 0.26f)),
+            ["_defaultMat"] = ("pale", new Color(0.70f, 0.67f, 0.50f)),
+        };
+
+        static KitProp ModelOf(PropKind kind)
+        {
+            string path = $"Assets/Kits/temperate/Props/{kind.Model}.fbx";
+            var model = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            MeshFilter filter = model == null ? null : model.GetComponentInChildren<MeshFilter>();
+            if (filter == null)
+            {
+                throw new InvalidDataException($"the kit's prop {path} is not in the project: run Assets/Kits/temperate/fetch.sh and git lfs pull");
+            }
+            Material[] materials = filter.GetComponent<MeshRenderer>().sharedMaterials.Select(theirs =>
+            {
+                if (!KitColours.TryGetValue(theirs.name, out (string name, Color colour) ours))
+                {
+                    throw new InvalidDataException($"{path} uses the material {theirs.name}, which the kit has no colour for");
+                }
+                return Lit($"temperate-{ours.name}", ours.colour, 0f, 0.15f, "Assets/Kits/temperate/Materials");
+            }).ToArray();
+            return new KitProp { Mesh = filter.sharedMesh, Materials = materials };
+        }
+
+        public const string LayerFolder = "Assets/Kits/temperate/TerrainLayers";
+
+        // A terrain layer of the temperate kit: one texture's colour, normal and mask maps. The mask
+        // is the kit's `arm` file as `KitMaskImport` repacks it, so the layer's smoothness and
+        // occlusion are the texture's own.
+        static TerrainLayer KitLayer(string name, string texture, float metres, Color tint)
+        {
+            string path = $"{LayerFolder}/{name}.terrainlayer";
+            var layer = AssetDatabase.LoadAssetAtPath<TerrainLayer>(path);
+            if (layer == null)
+            {
+                Texture2D Map(string kind)
+                {
+                    string file = $"Assets/Kits/temperate/Terrain/{texture}_{kind}_2k.jpg";
+                    var map = AssetDatabase.LoadAssetAtPath<Texture2D>(file);
+                    if (map == null)
+                    {
+                        throw new InvalidDataException($"the kit's texture {file} is not in the project: run Assets/Kits/temperate/fetch.sh and git lfs pull");
+                    }
+                    return map;
+                }
+                if (!AssetDatabase.IsValidFolder(LayerFolder))
+                {
+                    AssetDatabase.CreateFolder(Path.GetDirectoryName(LayerFolder), Path.GetFileName(LayerFolder));
+                }
+                layer = new TerrainLayer
+                {
+                    diffuseTexture = Map("diff"),
+                    normalMapTexture = Map("nor_gl"),
+                    maskMapTexture = Map("arm"),
+                    tileSize = new Vector2(metres, metres),
+                    diffuseRemapMax = new Vector4(tint.r, tint.g, tint.b, 1),      // HDRP's terrain shader reads the tint here
+                };
+                AssetDatabase.CreateAsset(layer, path);
+                AssetDatabase.SaveAssets();
+            }
+            return layer;
+        }
+
+        static GameObject WaterPrefab(string name, WaterSurfaceType type)
+        {
+            const string folder = "Assets/Kits/temperate/Water";
+            Directory.CreateDirectory(folder);
+            string path = $"{folder}/{name}.prefab";
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            if (prefab == null)
+            {
+                var made = new GameObject(name);
+                var surface = made.AddComponent<WaterSurface>();
+                if (type == WaterSurfaceType.River)
+                {
+                    Preset(surface, "ApplyWaterRiverPreset");
+                    // The water runs along the quad's long side, which is its own z (`WorldWater`),
+                    // and the surface counts its angles from its own x.
+                    surface.largeOrientationValue = 90;
+                }
+                else
+                {
+                    // The preset is an open sea's. For a lake 90 m across: a light breeze instead
+                    // of 30 km/h, no foam, and nothing that reads the water's height from a script.
+                    Preset(surface, "ApplyWaterOceanPreset");
+                    surface.largeWindSpeed = 8;
+                    surface.foam = false;
+                    surface.scriptInteractions = false;
+                }
+                surface.geometryType = WaterGeometryType.Quad;
+                prefab = PrefabUtility.SaveAsPrefabAsset(made, path);
+                Object.DestroyImmediate(made);
+            }
+            return prefab;
+        }
+
+        // HDRP's own starting point for a kind of water surface: the preset its GameObject menu
+        // applies, which is internal to the package. A component added from code gets none of it.
+        // Its fields are then the class's initial values, which are an open sea's with no
+        // current: a river made that way does not flow.
+        static void Preset(WaterSurface surface, string preset)
+        {
+            System.Reflection.MethodInfo apply = typeof(WaterSurface).Assembly
+                .GetType("UnityEngine.Rendering.HighDefinition.WaterSurfacePresets")
+                ?.GetMethod(preset, System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+            if (apply == null)
+            {
+                throw new InvalidDataException($"this version of HDRP has no water preset named {preset}");
+            }
+            apply.Invoke(null, new object[] { surface });
+        }
+
+        static bool Set(Material wanted, Material held, System.Action<Material> assign)
+        {
+            if (wanted == held)
+            {
+                return false;
+            }
+            assign(wanted);
+            return true;
+        }
+
+        // The slice's materials are plain colours until the kit's art replaces them: the plinth's is
+        // the card's rarity in four steps (PRD v4 5.5.1), stone, bronze, silver and gold-veined.
+        // Each is made once, under `Assets/Kits/core/Materials/` or its kit's folder, and then left
+        // alone.
+        static Material Lit(string name, Color colour, float metallic, float smoothness, string folder = MaterialFolder)
+        {
+            return Made(name, "HDRP/Lit", material =>
+            {
+                material.SetColor("_BaseColor", colour);
+                material.SetFloat("_Metallic", metallic);
+                material.SetFloat("_Smoothness", smoothness);
+            }, folder);
+        }
+
+        static Material Ground(string name, params string[] keywords)
+        {
+            Material ground = Made(name, "HDRP/TerrainLit", material => { });
+            if (!keywords.All(ground.IsKeywordEnabled))
+            {
+                foreach (string keyword in keywords)
+                {
+                    ground.EnableKeyword(keyword);
+                }
+                EditorUtility.SetDirty(ground);
+                AssetDatabase.SaveAssets();
+            }
+            return ground;
+        }
+
+        // `cutout`: the material draws nothing where its colour map's alpha is under a half.
+        static Material Unlit(string name, Color colour, bool transparent, bool cutout = false)
+        {
+            return Made(name, "HDRP/Unlit", material =>
+            {
+                material.SetColor("_UnlitColor", colour);
+                material.SetFloat("_SurfaceType", transparent ? 1 : 0);
+                material.SetFloat("_AlphaCutoffEnable", cutout ? 1 : 0);
+                material.SetFloat("_AlphaCutoff", 0.5f);
+            });
+        }
+
+        static Material Made(string name, string shader, System.Action<Material> set, string folder = MaterialFolder)
+        {
+            Directory.CreateDirectory(folder);
+            string path = $"{folder}/{name}.mat";
+            var material = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (material == null)
+            {
+                material = new Material(Shader.Find(shader)) { name = name };
+                set(material);
+                HDMaterial.ValidateMaterial(material);
+                AssetDatabase.CreateAsset(material, path);
+                AssetDatabase.SaveAssets();
+            }
+            return material;
+        }
+
+        // The repository's copy of a pack, which the pipeline commits (PRD v4 8.2.1).
+        public static string RepositoryPack(string packHash) =>
+            Path.GetFullPath(Path.Combine(Application.dataPath, "..", "..", "..", "web", "public", "data", packHash));
+
+        public static string ProjectPack(string packHash) => Path.Combine(Application.streamingAssetsPath, "data", packHash);
+
+        public static WorldFiles.Result Build(string packHash, string slug)
+        {
+            WorldFiles.Result world = WorldFiles.Generate(RepositoryPack(packHash), ProjectPack(packHash), slug);
+            AssetDatabase.Refresh();
+            return world;
         }
     }
 }

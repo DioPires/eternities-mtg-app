@@ -1,7 +1,12 @@
 {
     "name": "Eternities.Kits",
     "rootNamespace": "Eternities.Kits",
-    "references": [],
+    "references": [
+        "Eternities.Data",
+        "Eternities.Layout",
+        "Unity.RenderPipelines.Core.Runtime",
+        "Unity.RenderPipelines.HighDefinition.Runtime"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
