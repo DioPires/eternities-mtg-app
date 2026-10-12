@@ -32,7 +32,8 @@ In every name below, `<N>` is the number of the issue.
    - thirteen detached scaffolds on no ref: `wt-dec866-draw`, `wt-dec894`, `wt-dec903`,
      `wt-dec903-mut`, `wt-dec907`, `wt-dec909`, `wt-dec909-mut`, `wt-dec910`, `wt-dec912`,
      `wt-dec912-b`, `wt-dec914`, `wt-dec917b`, `wt-dec918`;
-   - two probe branches with unpushed commits: `wt-dec878`, `wt-dec883`;
+   - two probe branches with unpushed commits: `wt-dec878` (it also holds untracked output),
+     `wt-dec883`;
    - five trees with uncommitted output: `wt-dec774`, `wt-dec850`, `wt-dec863`, `wt-dec889-mut`,
      `wt-dec914-build`.
 
@@ -85,14 +86,17 @@ In every name below, `<N>` is the number of the issue.
    names. Write an empty string when no run is live.
 4. Put `echo` in place of `git worktree remove`.
 5. Run the block. It prints the path of each tree the sweep would remove, and it removes nothing.
-6. Put `git worktree remove` back.
-7. Run the block again.
-8. Report each `could not remove` line in the merge comment.
-9. Prune the records of trees that are no longer on disk.
+6. Check that no `remove` line names a tree that a live run holds. A name in `live_trees` that
+   matches no tree protects nothing, and the block does not say so.
+7. If a `remove` line names such a tree, correct `live_trees` and go back to step 5.
+8. Put `git worktree remove` back.
+9. Run the block again.
+10. Report each `could not remove` line in the merge comment.
+11. Prune the records of trees that are no longer on disk.
 
-   ```sh
-   git worktree prune
-   ```
+    ```sh
+    git worktree prune
+    ```
 
 The block:
 
@@ -141,7 +145,7 @@ The block:
 )
 ```
 
-What the block does, in the order of item 5:
+What the block does, in the order it runs:
 
 - It has two skip lists. `live_trees` is the list you wrote. `open_pr_branches` is the head branch
   of every open pull request, read from GitHub when the block runs. It prints both lists.
