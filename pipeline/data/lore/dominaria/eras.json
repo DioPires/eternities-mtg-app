@@ -1,0 +1,324 @@
+{
+  "plane": "dominaria",
+  "kind": "lore",
+  "eras": [
+    {
+      "id": "first-ages",
+      "name": "The First Ages",
+      "years": "From about 20,000 to about 5,000 years before the birth of Urza",
+      "region": "shiv",
+      "sets": ["lea", "leb"],
+      "headline": ["Shivan Dragon", "Dragon Whelp", "Benalish Hero", "Llanowar Elves", "Keldon Warlord"],
+      "paragraphs": [
+        [
+          {"text": "Before the Mending, Dominaria was the nexus of the Multiverse, and Serra's angels called it the Wheel because events there reach many other planes.", "source": "https://mtg.wiki/page/Dominaria_(plane)"},
+          {"text": "About twenty thousand years before Urza, the Ur-Dragon passed close to the plane and left behind the elder dragons, the first of all its dragons.", "source": "https://mtg.wiki/page/Dominaria_(plane)"},
+          {"text": "Thousands of years later the Elder Dragon War swept the plane and left only a few of them alive.", "source": "https://mtg.wiki/page/Dominaria_(plane)"},
+          {"text": "After them five primeval dragons held the whole world, until human wizards brought them down and took their power.", "source": "https://mtg.wiki/page/Dominaria_(plane)"},
+          {"text": "One primeval dragon, Rhammidarigaaz, ruled from Shiv and was later imprisoned in a volcano.", "source": "https://mtg.wiki/page/Shiv"},
+          {"text": "The dragons of Shiv are said to enjoy cruelty more than other dragons and to play with their prey before they kill it.", "source": "printing:fefbf149-f988-4f8b-9f53-56f5878116a6#front"}
+        ],
+        [
+          {"text": "The Thran then built an empire on Terisiare, and about five thousand years before Urza its outposts reached from Shiv to Caliman.", "source": "https://mtg.wiki/page/Dominaria_(plane)"},
+          {"text": "Their outpost in Shiv was the Mana Rig, a works for making powerstones that outlasted the empire by ages.", "source": "https://mtg.wiki/page/Shiv"},
+          {"text": "A man named Yawgmoth seized most of the power in that empire, and the wars that followed brought it down.", "source": "https://mtg.wiki/page/Dominaria_(plane)"},
+          {"text": "Yawgmoth escaped to Phyrexia, and Rebbec sealed the portal behind him, which shut him out of Dominaria for thousands of years.", "source": "https://mtg.wiki/page/Dominaria_(plane)"}
+        ]
+      ]
+    },
+    {
+      "id": "brothers-war",
+      "name": "The Brothers' War",
+      "years": "Years 0 to 64 of the Argivian Reckoning, which counts from the brothers' birth",
+      "region": "terisiare",
+      "sets": ["atq", "bro", "brc"],
+      "headline": [],
+      "paragraphs": [
+        [
+          {"text": "Urza and his younger brother Mishra were born in the same year to a noble family of Argive, a coastal kingdom of Terisiare.", "source": "https://mtg.wiki/page/Brothers%27_War"},
+          {"text": "Later historians counted years from that birth; the count is the Argivian Reckoning, written AR.", "source": "https://mtg.wiki/page/Brothers%27_War"},
+          {"text": "As students at Tocasia's dig the brothers learned artifice from Thran ruins and found the Caves of Koilos, where a sealed gateway led to Phyrexia.", "source": "https://mtg.wiki/page/Brothers%27_War"},
+          {"text": "There they broke the gateway's powerstone in two, and each brother's wish for the other half ended their friendship.", "source": "https://mtg.wiki/page/Brothers%27_War"}
+        ],
+        [
+          {"text": "Urza became chief artificer of Yotia, and Mishra rose among the Fallaji once he could command a dragon engine that came out of the sands.", "source": "https://mtg.wiki/page/Brothers%27_War"},
+          {"text": "Their war lasted for decades and laid waste to Terisiare, as each side built more and more elaborate machines.", "source": "https://mtg.wiki/page/Brothers%27_War"},
+          {"text": "At Argoth, Urza saw that Phyrexia had turned his brother into a living machine, and he set off the Golgothian Sylex.", "source": "https://mtg.wiki/page/Brothers%27_War"},
+          {"text": "The blast killed both armies, sank Argoth, woke Urza's planeswalker spark and began the cooling that became the Ice Age.", "source": "https://mtg.wiki/page/Brothers%27_War"}
+        ]
+      ]
+    },
+    {
+      "id": "the-dark",
+      "name": "The Dark",
+      "years": "From the Sylex Blast of 64 AR to about 450 AR",
+      "region": "terisiare",
+      "sets": ["drk"],
+      "headline": ["City of Shadows", "Tivadar's Crusade", "Preacher", "Maze of Ith", "Barl's Cage"],
+      "paragraphs": [
+        [
+          {"text": "The Dark is the name for the almost four centuries between the Sylex Blast and the full onset of the Ice Age.", "source": "https://mtg.wiki/page/Dark_Age"},
+          {"text": "The weather turned on the survivors: the warm season shrank, storms grew, and hunger emptied land that had been fertile.", "source": "https://mtg.wiki/page/Dark_Age"},
+          {"text": "Penregon, the capital of Argive, was lost to frost that crept down from the northern ridges.", "source": "https://mtg.wiki/page/Dark_Age"},
+          {"text": "The Church of Tal rose to power on Terisiare, blamed the artificers' pride for the ruin and sent crusades against what was left of magic.", "source": "https://mtg.wiki/page/Dark_Age"},
+          {"text": "Wizards withdrew to refuges such as the City of Shadows, and Tivadar's Crusade defeated the goblin hordes.", "source": "https://mtg.wiki/page/Dominaria_(plane)"},
+          {"text": "Lord Ith spent twelve years in a cage whose bars grew weak when the power of the pretender Mairsil did.", "source": "printing:6768a307-da2e-435e-8efd-72d82b4d4a2b#front"}
+        ]
+      ]
+    },
+    {
+      "id": "fallen-empires",
+      "name": "The Fall of the Sarpadian Empires",
+      "years": "Around 170 AR, during the Dark",
+      "region": "sarpadia",
+      "sets": ["fem"],
+      "headline": ["Order of the Ebon Hand", "Icatian Town", "Vodalian Knights", "Elvish Farmer", "Dwarven Soldier", "Thallid"],
+      "paragraphs": [
+        [
+          {"text": "Before the fall, five small empires shared Sarpadia: Icatia, Vodalia, the dwarves of the Crimson Peaks, the Order of the Ebon Hand and the elves of Havenwood.", "source": "https://mtg.wiki/page/Fall_of_the_Sarpadian_Empires"},
+          {"text": "After the Brothers' War the cold deepened and food ran short, and the empires turned on each other.", "source": "https://mtg.wiki/page/Fall_of_the_Sarpadian_Empires"},
+          {"text": "Orcs and goblins, driven from their caves by the winters, joined into one horde and overran the dwarves and then Icatia.", "source": "https://mtg.wiki/page/Fall_of_the_Sarpadian_Empires"}
+        ],
+        [
+          {"text": "As the raids grew, Icatia's quiet towns turned into fortified camps.", "source": "printing:cbb7c28d-0366-4d01-84a2-f1bc9f38aa4a#front"},
+          {"text": "The elves of Havenwood had raised thallids as food; the thallids became aware and overran their keepers.", "source": "https://mtg.wiki/page/Fall_of_the_Sarpadian_Empires"},
+          {"text": "The thrulls rebelled against their masters in the Order of the Ebon Hand, destroyed the order and spread over the whole continent.", "source": "https://mtg.wiki/page/Fall_of_the_Sarpadian_Empires"},
+          {"text": "Vodalia fell to the homarids, who went on to rule the seas around Sarpadia.", "source": "https://mtg.wiki/page/Fall_of_the_Sarpadian_Empires"}
+        ]
+      ]
+    },
+    {
+      "id": "ice-age",
+      "name": "The Ice Age",
+      "years": "From 450 AR to the World Spell of 2934 AR",
+      "region": "terisiare",
+      "sets": ["ice", "all", "csp"],
+      "headline": ["Darien, King of Kjeldor", "Lovisa Coldeyes", "Heidar, Rimewind Master", "Márton Stromgald", "Kaysa", "Ice Cauldron"],
+      "paragraphs": [
+        [
+          {"text": "The cold that began with the Sylex Blast held Dominaria for almost twenty-five centuries, and the planeswalkers Leshrac and Tevesh Szat used magic to make it last.", "source": "https://mtg.wiki/page/Ice_Age_(event)"},
+          {"text": "Little of the age was written down, yet in it the later nations of Terisiare were born and magic took its present form.", "source": "https://mtg.wiki/page/Ice_Age_(event)"},
+          {"text": "Kjeldor was founded around 2434 AR by two clans who left the kingdom of Storgard before the ice could bury it.", "source": "https://mtg.wiki/page/Kjeldor"},
+          {"text": "King Darien of Kjeldor made an ally of the Balduvian barbarians, his people's enemies for generations, against the necromancer Lim-Dûl.", "source": "https://mtg.wiki/page/Kjeldor"}
+        ],
+        [
+          {"text": "In 2934 AR the planeswalker Freyalise cast the World Spell, which ended the Ice Age and began the Thaw.", "source": "https://mtg.wiki/page/World_Spell"},
+          {"text": "The spell was as strong as the Sylex Blast, and Jodah spread its force across Terisiare through the safe havens, which were destroyed.", "source": "https://mtg.wiki/page/World_Spell"},
+          {"text": "Heidar later worked to reverse the spell and bring the ice back everywhere.", "source": "https://mtg.wiki/page/World_Spell"}
+        ]
+      ]
+    },
+    {
+      "id": "urzas-academy",
+      "name": "Urza's Academy",
+      "years": "From 3285 AR to the Phyrexian Invasion, more than nine centuries later",
+      "region": "tolaria",
+      "sets": ["usg", "ulg", "uds"],
+      "headline": ["Barrin, Master Wizard", "Karn, Silver Golem", "Tolarian Academy", "Multani, Maro-Sorcerer", "Rayne, Academy Chancellor"],
+      "paragraphs": [
+        [
+          {"text": "In 3285 AR Urza and the wizard Barrin founded an academy on Tolaria, an island far from every other land.", "source": "https://mtg.wiki/page/Tolaria"},
+          {"text": "Urza took only children as students, because Phyrexian sleeper agents never came in the form of a child.", "source": "https://mtg.wiki/page/Tolaria"},
+          {"text": "He built a machine to travel into the past and a golem named Karn to ride it, because no living thing could survive the journey.", "source": "https://mtg.wiki/page/Tolaria"},
+          {"text": "In 3307 AR Karn used the machine to save the student Jhoira; it failed, wrecked the academy and left the island a patchwork of fast and slow time.", "source": "https://mtg.wiki/page/Tolaria"},
+          {"text": "On his card Karn is a silver golem, a legendary artifact creature.", "source": "card:8a7c6391-020a-4d7a-8abb-702631bbee56"}
+        ],
+        [
+          {"text": "The rebuilt school later fought off K'rrik's negators with the help of Jhoira, Teferi and their allies from Shiv.", "source": "https://mtg.wiki/page/Tolaria"},
+          {"text": "For over eight hundred years Urza also ran the Bloodline Project, which bred mortal heroes to carry the Legacy against Yawgmoth.", "source": "https://mtg.wiki/page/Tolaria"},
+          {"text": "During the Phyrexian Invasion the grieving Barrin destroyed the whole island with a single spell.", "source": "https://mtg.wiki/page/Tolaria"}
+        ]
+      ]
+    },
+    {
+      "id": "legends",
+      "name": "Legends of Jamuraa and Madara",
+      "years": "Tales of several ages; Johan's War and Bolas's rule fall between 3334 AR and about 3600 AR",
+      "region": "jamuraa",
+      "sets": ["leg"],
+      "headline": ["Hazezon Tamar", "Jedit Ojanen", "Johan", "Nicol Bolas", "Tetsuo Umezawa", "Ramses Overdark"],
+      "paragraphs": [
+        [
+          {"text": "The legendary figures of this era share no single story, though several have tales of their own.", "source": "https://mtg.wiki/page/Legends"},
+          {"text": "Between 3334 and 3336 AR the tyrant Johan of Tirras made war on the city-state of Bryce, which Hazezon Tamar governed.", "source": "https://mtg.wiki/page/Johan%27s_War"},
+          {"text": "Hazezon defended Bryce with warriors made of sand and with a tiger-man, Jaeger Ojanen, and later drew in Adira Strongheart and her Robaran Mercenaries.", "source": "https://mtg.wiki/page/Johan%27s_War"},
+          {"text": "Jaeger died in the war, and his son Jedit Ojanen followed Johan to learn the truth of it.", "source": "https://mtg.wiki/page/Johan%27s_War"}
+        ],
+        [
+          {"text": "West of Jamuraa, the elder dragon Nicol Bolas killed the warrior queen of Madara in 3455 AR and took her empire.", "source": "https://mtg.wiki/page/Madara"},
+          {"text": "He ruled it for about 150 years through an assassin, a champion and a general, until the former champion Tetsuo Umezawa drove him into exile.", "source": "https://mtg.wiki/page/Madara"}
+        ]
+      ]
+    },
+    {
+      "id": "caliman",
+      "name": "The Five Peoples of Caliman",
+      "years": "Undated; the cards alone tell this story",
+      "region": "caliman",
+      "sets": ["p02"],
+      "headline": ["Alaborn Musketeer", "Talas Warrior", "Goblin General", "Norwood Ranger", "Dakmor Sorceress", "Prowling Nightstalker"],
+      "paragraphs": [
+        [
+          {"text": "Five peoples share the islands of Caliman: the kingdom of Alaborn, the traders and pirates of the Talas, the mountain goblins, the elves of Norwood and the nightstalkers of Dakmor.", "source": "https://mtg.wiki/page/Portal_Second_Age"},
+          {"text": "The nightstalkers, urged on by the sorceress Tojira, raid Alaborn more and more often.", "source": "https://mtg.wiki/page/Portal_Second_Age"},
+          {"text": "Alaborn's soldiers carry firearms, which had not been seen on Dominaria before.", "source": "https://mtg.wiki/page/Portal_Second_Age"},
+          {"text": "The tale has no written ending and is told only through its cards.", "source": "https://mtg.wiki/page/Portal_Second_Age"}
+        ]
+      ]
+    },
+    {
+      "id": "jamuraa-wars",
+      "name": "The Wars of Jamuraa",
+      "years": "From the Mirage War of 4195 AR to the Keldon invasion of 4205 AR",
+      "region": "jamuraa",
+      "sets": ["mir", "vis", "mgb", "pcy"],
+      "headline": ["Sidar Jabari", "Asmira, Holy Avenger", "Rashida Scalebane", "Teferi's Isle", "Mageta the Lion", "Latulla, Keldon Overseer"],
+      "paragraphs": [
+        [
+          {"text": "Jamuraa came through the Brothers' War untouched and used its early mastery of magic to hold off the Ice Age.", "source": "https://mtg.wiki/page/Jamuraa"},
+          {"text": "The wizard Mangara, who came from Corondor, made peace among Femeref, Zhalfir and the Suq'Ata, and within a century the region flourished.", "source": "https://mtg.wiki/page/Jamuraa"},
+          {"text": "The mages Kaervek and Jolrael ambushed Mangara and shut him in an Amber Prison.", "source": "https://mtg.wiki/page/Mirage_War"},
+          {"text": "Kaervek's war on Zhalfir, Femeref and the Suq'Ata ran for more than a year, from 4195 to 4196 AR, while Teferi's isle reappeared after almost two centuries away.", "source": "https://mtg.wiki/page/Mirage_War"},
+          {"text": "Asmira gave her life to break the prison, and the freed Mangara sealed Kaervek inside an Amber Prison in his turn.", "source": "https://mtg.wiki/page/Mirage_War"}
+        ],
+        [
+          {"text": "In 4205 AR Keldon raiders struck Jamuraa's northern coast, persuaded that it had once been Keldon land.", "source": "https://mtg.wiki/page/Prophecy_War"},
+          {"text": "The city-states of the Kipamu League, reorganised by the wizard Barrin at Teferi's request, slowly gained ground.", "source": "https://mtg.wiki/page/Prophecy_War"},
+          {"text": "The Keldon leader Latulla was exiled from Keld for trying to wake its Witch-Kings, and she died in the last battle on Jamuraa.", "source": "https://mtg.wiki/page/Prophecy_War"},
+          {"text": "The League won, but Barrin lost his wife Rayne in that battle, and both he and Teferi lost faith in Urza's plans.", "source": "https://mtg.wiki/page/Prophecy_War"}
+        ]
+      ]
+    },
+    {
+      "id": "invasion",
+      "name": "The Weatherlight and the Invasion",
+      "years": "From 4204 AR to the Phyrexian Invasion of 4205 AR",
+      "region": "urborg",
+      "sets": ["wth", "inv", "pls", "apc"],
+      "headline": ["Gerrard Capashen", "Captain Sisay", "Hanna, Ship's Navigator", "Tsabo Tavoc", "Skyship Weatherlight", "Legacy Weapon"],
+      "paragraphs": [
+        [
+          {"text": "Four thousand years after Urza and Mishra reopened the way to Phyrexia, Yawgmoth stood ready to invade the world that had once been his home.", "source": "https://mtg.wiki/page/Weatherlight"},
+          {"text": "Dominaria's hope was the Legacy, a set of artifacts meant to be joined into one weapon, with the flying ship Weatherlight at its centre.", "source": "https://mtg.wiki/page/Weatherlight"},
+          {"text": "When Captain Sisay was kidnapped, Gerrard Capashen took reluctant command and led the crew to the plane of Rath to bring her back.", "source": "https://mtg.wiki/page/Weatherlight"}
+        ],
+        [
+          {"text": "The invasion began in 4205 AR with strikes on Benalia, and Urborg was soon taken as Phyrexia's staging ground.", "source": "https://mtg.wiki/page/Phyrexian_Invasion_of_Dominaria"},
+          {"text": "In the second stage the plane of Rath merged into Dominaria and brought its Phyrexian legions with it, and its Stronghold came to rest in Urborg.", "source": "https://mtg.wiki/page/Phyrexian_Invasion_of_Dominaria"},
+          {"text": "At the end Yawgmoth came himself as a black cloud of death and raised every dead thing on the plane to fight for him.", "source": "https://mtg.wiki/page/Phyrexian_Invasion_of_Dominaria"},
+          {"text": "Urza, Gerrard and Karn gave themselves to complete the Legacy, and its burst of white mana from the Null Moon destroyed him.", "source": "https://mtg.wiki/page/Phyrexian_Invasion_of_Dominaria"},
+          {"text": "Yawgmoth was beaten in the sky over Urborg, where Freyalise later raised a memorial to the dead of the invasion.", "source": "https://mtg.wiki/page/Urborg"}
+        ]
+      ]
+    },
+    {
+      "id": "mirari",
+      "name": "The Mirari",
+      "years": "About a century after the Phyrexian Invasion",
+      "region": "otaria",
+      "sets": ["ody", "tor", "jud"],
+      "headline": ["Mirari", "Kamahl, Pit Fighter", "Chainer, Dementia Master", "Cabal Patriarch", "Ambassador Laquatus", "Jeska, Warrior Adept"],
+      "paragraphs": [
+        [
+          {"text": "Otaria came through the Phyrexian Invasion almost unharmed, and survivors from the rest of Dominaria sought refuge there.", "source": "https://mtg.wiki/page/Otaria"},
+          {"text": "A century later the Cabal, a sinister order that ran pit fights to entertain the crowds, controlled most of its land and wealth.", "source": "https://mtg.wiki/page/Odyssey"},
+          {"text": "Around it lived the nomads and aven of the Order, the cephalids of an undersea empire, the barbarians and dwarves of the Pardic Mountains and the centaurs and druids of the Krosan Forest.", "source": "https://mtg.wiki/page/Odyssey"}
+        ],
+        [
+          {"text": "The Mirari was an orb that made its bearer's wishes real and then brought disaster on the bearer.", "source": "https://mtg.wiki/page/Mirari"},
+          {"text": "Chainer, a dementia summoner of the Cabal, found the Mirari, rose until he rivalled the Cabal's Patriarch, and fell.", "source": "https://mtg.wiki/page/Torment"},
+          {"text": "Kamahl kept his promise to the dying Chainer and guarded the orb from others and from himself.", "source": "https://mtg.wiki/page/Judgment"},
+          {"text": "In the end the Mirari, fixed to Kamahl's sword, was driven through the body of Laquatus into the Krosan Forest, where beasts and plants grew larger and wilder.", "source": "https://mtg.wiki/page/Judgment"}
+        ]
+      ]
+    },
+    {
+      "id": "karona",
+      "name": "The Coming of Karona",
+      "years": "Soon after the Mirari reached the Krosan Forest, still about a century after the Invasion",
+      "region": "otaria",
+      "sets": ["ons", "lgn", "scg"],
+      "headline": ["Kamahl, Fist of Krosa", "Ixidor, Reality Sculptor", "Phage the Untouchable", "Akroma, Angel of Wrath", "Karona, False God", "Sliver Overlord"],
+      "paragraphs": [
+        [
+          {"text": "Kamahl settled in the Krosan Forest as a druid, and the Mirari he brought began to change the forest and grow some of its creatures to giant size.", "source": "https://mtg.wiki/page/Onslaught"},
+          {"text": "Cabal healing magic turned his sister Jeska into Phage, a pit fighter whose touch killed.", "source": "https://mtg.wiki/page/Onslaught"},
+          {"text": "The illusionist Ixidor learned to sculpt reality and made the angel Akroma.", "source": "https://mtg.wiki/page/Onslaught"}
+        ],
+        [
+          {"text": "Phage and Akroma met in a last battle, and the two of them and Zagorka merged into a single being, Karona.", "source": "https://mtg.wiki/page/Legions"},
+          {"text": "Karona was an avatar formed from all five colours of mana, and Otaria's armed factions each tried to claim her.", "source": "https://mtg.wiki/page/Scourge"},
+          {"text": "Her card names her Karona, False God, a legendary Avatar.", "source": "card:9ea1f10c-5ceb-4ac0-84c6-29046dea649a"},
+          {"text": "The blast that made her also produced the Sliver Overlord, a new ruler of the slivers.", "source": "https://mtg.wiki/page/Scourge"},
+          {"text": "Kamahl freed Jeska from both Karona and Phage, and Karn came back to take her to a plane he had shaped.", "source": "https://mtg.wiki/page/Scourge"}
+        ]
+      ]
+    },
+    {
+      "id": "time-rifts",
+      "name": "The Time Rifts and the Mending",
+      "years": "Around 4500 AR, nearly three centuries after the Phyrexian Invasion",
+      "region": "keld",
+      "sets": ["tsp", "tsb", "plc", "fut"],
+      "headline": ["Teferi, Mage of Zhalfir", "Jhoira of the Ghitu", "Venser, Shaper Savant", "Radha, Heir to Keld"],
+      "paragraphs": [
+        [
+          {"text": "More than two hundred years after the invasion, Dominaria was dying: salt fell from the sky, the plains had dried to salt flats, and the forests were sick with rot.", "source": "https://mtg.wiki/page/Time_Spiral"},
+          {"text": "People, places and things from the plane's past appeared and vanished without warning.", "source": "https://mtg.wiki/page/Time_Spiral"},
+          {"text": "Teferi came home, saw that the bond between land and mana was breaking, and went to Freyalise for help.", "source": "https://mtg.wiki/page/Time_Spiral"},
+          {"text": "In Keld the rifts cut off the red mana the Keldons lived by and let out hordes of Gathans from the country's past.", "source": "https://mtg.wiki/page/Keld"},
+          {"text": "Radha, the last descendant of the hero Astor, fought the Gathans and, with Teferi's help, became a warlord.", "source": "https://mtg.wiki/page/Keld"},
+          {"text": "Freyalise gave her life, and the Skyshroud forest was destroyed, to heal Keld's rift.", "source": "https://mtg.wiki/page/Keld"}
+        ],
+        [
+          {"text": "Teferi, his planeswalker's spark gone, worked on with Jhoira and Venser; the three had already returned Shiv to its place and closed one rift.", "source": "https://mtg.wiki/page/Planar_Chaos"},
+          {"text": "Karn went back through time to seal Tolaria's rift at the moment before Barrin's spell tore it open, and then was lost.", "source": "https://mtg.wiki/page/Future_Sight"},
+          {"text": "In 4500 AR Jeska sealed the last great rift, in Otaria; every other fracture then healed, and mana flowed through Dominaria again.", "source": "https://mtg.wiki/page/Great_Mending"},
+          {"text": "From then on planeswalkers were mortal and far weaker than before.", "source": "https://mtg.wiki/page/Great_Mending"}
+        ]
+      ]
+    },
+    {
+      "id": "renewal",
+      "name": "The Age of Renewal",
+      "years": "About 4560 AR, sixty years after the Mending",
+      "region": "benalia",
+      "sets": ["dom"],
+      "headline": [],
+      "paragraphs": [
+        [
+          {"text": "After the Mending the seven houses of Benalia rebuilt their ruined capital from its own white limestone and called it New Benalia.", "source": "https://mtg.wiki/page/Benalia"},
+          {"text": "Across the plane the old cultures have largely been rebuilt, human and otherwise, from Femeref to the forests of Llanowar and Yavimaya.", "source": "https://magic.wizards.com/en/story/dominaria-plane"},
+          {"text": "Sixty years after the Mending, Benalia was whole again, but the Cabal was spreading through its lands.", "source": "https://mtg.wiki/page/Benalia"}
+        ],
+        [
+          {"text": "The Cabal, in need of a leader, had tried to summon Kuberr and by accident freed the elder demon Belzenlok from the Abyss.", "source": "https://mtg.wiki/page/Belzenlok"},
+          {"text": "Belzenlok set about rewriting history around himself and claimed titles such as King of Urborg and deeds that belonged to others.", "source": "https://mtg.wiki/page/Belzenlok"},
+          {"text": "Gideon and Liliana came to Dominaria to kill him, the last demon who held Liliana's contract.", "source": "https://mtg.wiki/page/Dominaria"},
+          {"text": "The skyship Weatherlight and its crew struck the Cabal's Stronghold, and Liliana killed Belzenlok there with the Blackblade.", "source": "https://mtg.wiki/page/Belzenlok"}
+        ]
+      ]
+    },
+    {
+      "id": "second-invasion",
+      "name": "The Second Phyrexian Invasion",
+      "years": "4562 AR, three and a half centuries after the first invasion",
+      "region": "shiv",
+      "sets": ["dmu", "dmc", "mom"],
+      "headline": [],
+      "paragraphs": [
+        [
+          {"text": "In 4562 AR New Phyrexia came to conquer Dominaria, led by Sheoldred and her sleeper agents.", "source": "https://mtg.wiki/page/Second_Phyrexian_Invasion_of_Dominaria"},
+          {"text": "A new Coalition gathered against her: planeswalkers, Radha of Keld, the Weatherlight's crew and the dragons, viashino, goblins and Ghitu of Shiv.", "source": "https://mtg.wiki/page/Second_Phyrexian_Invasion_of_Dominaria"}
+        ],
+        [
+          {"text": "The largest battle of the invasion was fought at the Mana Rig in Shiv, the Coalition's base and Jhoira's workshop.", "source": "https://mtg.wiki/page/Mana_Rig"},
+          {"text": "Jhoira destroyed the Rig herself rather than let it be captured; Jaya Ballard died there, and Karn was taken to New Phyrexia.", "source": "https://mtg.wiki/page/Second_Phyrexian_Invasion_of_Dominaria"},
+          {"text": "So ended the works the Thran had built in Shiv; dozens of small powerstones were recovered from its wreck.", "source": "https://mtg.wiki/page/Mana_Rig"},
+          {"text": "A month later Sheoldred returned with all of New Phyrexia's strength; she was beaten back a second time, at great cost to the plane.", "source": "https://mtg.wiki/page/Second_Phyrexian_Invasion_of_Dominaria"},
+          {"text": "It was only the first act of a war that soon reached countless other planes.", "source": "https://mtg.wiki/page/Second_Phyrexian_Invasion_of_Dominaria"}
+        ]
+      ]
+    }
+  ]
+}
