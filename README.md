@@ -1,8 +1,9 @@
 # Eternities
 
-A 3D visualisation of every plane of the *Magic: The Gathering* multiverse. Each plane is a galaxy,
-each unique card a star, each printing a planet. One continuous scene from the multiverse down to a
-single card.
+Eternities shows the planes of the *Magic: The Gathering* multiverse and their cards, in two
+editions. The native edition is a Unity desktop application under `unity/Eternities/`; section 1 of
+[`prd_v4.md`](prd_v4.md) says what it is. The web edition, under `web/`, is frozen at tag
+`web-edition-v1`; section 8.11 of the same document says what may still change there.
 
 Free and non-commercial, under the Wizards of the Coast Fan Content Policy. Card data and images
 come from [Scryfall](https://scryfall.com).
@@ -13,12 +14,16 @@ In order of authority. Read the first two before changing anything.
 
 | Document | What it is |
 |---|---|
-| [`prd_v3.md`](prd_v3.md) | The product contract, as amended by A1 and A2 (implementation-plan.md §8). |
-| [`implementation-plan.md`](implementation-plan.md) | Board-approved plan, v2. Read your phase section fully before you start. |
-| [`docs/data-contract.md`](docs/data-contract.md) | The pipeline ↔ web artefact formats. **Frozen.** |
-| [`docs/navigation-contract.md`](docs/navigation-contract.md) | The UI ↔ scene navigation API. **Frozen.** |
+| [`prd_v4.md`](prd_v4.md) | The product contract. Its Status line lists the amendments in force. |
+| [`prd_v3.md`](prd_v3.md) | Sections 3 and 4 and Appendices A and B stay in force, as amended by `prd_v4.md` sections 3 and 4. Sections 5 to 9 are superseded. |
+| [`pipeline/data/appendix_a.json`](pipeline/data/appendix_a.json), [`pipeline/data/appendix_b.json`](pipeline/data/appendix_b.json) | The canonical form of Appendices A and B. The print in `prd_v3.md` is stale. |
+| [`docs/decisions/dec950-overhaul-deep-dive.md`](docs/decisions/dec950-overhaul-deep-dive.md) | The plan behind `prd_v4.md` (DEC-950): the deep dive, the owner's decisions and the review record. |
+| [`docs/data-contract.md`](docs/data-contract.md) | The pipeline ↔ web artefact formats. **Frozen**, for the web edition. |
+| [`docs/navigation-contract.md`](docs/navigation-contract.md) | The UI ↔ scene navigation API. **Frozen**, for the web edition. |
+| [`docs/ci-runner.md`](docs/ci-runner.md) | The self-hosted runner on the reference machine: how it is built and re-verified. |
+| [`docs/scryfall-policy.md`](docs/scryfall-policy.md) | Scryfall CORS and terms verification. Verdict: PASS. Section 11 is the desktop client re-verification. |
+| [`implementation-plan.md`](implementation-plan.md) | The web edition's plan, v2. Closed at tag `web-edition-v1`. |
 | [`docs/camera-and-labels.md`](docs/camera-and-labels.md) | The Phase 2b camera rig, labels and plane-detail loading. |
-| [`docs/scryfall-policy.md`](docs/scryfall-policy.md) | Scryfall CORS and terms verification. Verdict: PASS. |
 | [`docs/deployment.md`](docs/deployment.md) | Vercel setup and the headers. |
 | [`docs/app-shell.md`](docs/app-shell.md) | The Phase 4 UI shell: where state lives, the seams for 2a/2b/3/5, and the calls the PRD left open. |
 | [`docs/design-system.md`](docs/design-system.md) | The Phase 5 visual system, the contrast proof, and the accessibility checklist. |
@@ -28,6 +33,8 @@ Both contracts are freeze points. Changing a byte layout, an enum value, a filen
 signature is a reviewed contract change, not an ordinary commit.
 
 ## Layout
+
+Bare `PRD x.y` citations in this file use `prd_v3.md` numbering, the web edition's contract; citations to `prd_v4.md` say `PRD v4` or name the file.
 
 ```
 pipeline/                 Python 3.13, uv. Scryfall bulk data to artefacts.
@@ -67,12 +74,18 @@ web/                      Vite 8, React 19, TypeScript strict, three.js, Zustand
                           verification scripts were archived by DEC-708; see
                           `docs/cross-browser.md` to restore one.
   e2e/                    Playwright: PRD 8.9.2's route smoke and 9.1.2's bench smoke, in CI.
-contract/test-vectors/v2/ The shared byte-level test vector. Both languages assert against it.
+contract/test-vectors/v3/ The shared byte-level test vector. Both languages assert against it.
+unity/Eternities/         The native edition's Unity project (PRD v4 8.2). Its README has the pins.
 docs/                     The contract and policy documents above.
 docs/archive/             Superseded PRDs and their reviews. Nothing current.
+docs/kits/                Per kit: asset sources, credits and the fetch script (PRD v4 8.12).
+docs/boards/              Reference boards: a link list per kit or hero plane. Nothing there ships.
 ```
 
 ## Getting started
+
+For the Unity project, start at [`unity/Eternities/README.md`](unity/Eternities/README.md): the pins
+and the batchmode commands are there.
 
 ```sh
 # Pipeline
@@ -167,6 +180,9 @@ directory is deleted.
 
 ## Where things stand
 
+This section describes the web edition, frozen at tag `web-edition-v1` ([`prd_v4.md`](prd_v4.md)
+8.11).
+
 Phases 0 (scaffold and contracts), 1 (data pipeline), 2a (star field), 2b (camera, navigation,
 labels), 3 (card tier), 4 (app shell and UI) and 5 (design polish) are complete. The navigation
 contract has a real implementation, and `web/test/navigation.test.ts` runs the same suite over the
@@ -193,7 +209,7 @@ archived under the `galaxy-cutover` tag, and `?selfcheck` now opens the product 
 Two browser checks, with different jobs.
 
 `pnpm test:e2e` is the CI gate, on every pull request: PRD 8.9.2's five route kinds, PRD 9.1.2's
-`/bench` run, PRD 9.1.4's quality ladder, and Phase 5's accessibility checklist with the CSP/HSTS
+`/bench` run, PRD 8.5.11's quality ladder, and Phase 5's accessibility checklist with the CSP/HSTS
 self-check (`e2e/a11y.spec.ts`). It is narrower than a real-GPU run on purpose — a cloud runner has
 no representative GPU, so it renders through SwiftShader and asserts nothing about frame time. PRD
 7.2's ceilings are enforced by `pnpm bench` on the reference machine.
