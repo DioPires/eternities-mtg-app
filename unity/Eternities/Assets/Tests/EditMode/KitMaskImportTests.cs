@@ -1,0 +1,120 @@
+using System.Collections.Generic;
+using System.IO;
+using Eternities.EditorTools;
+using NUnit.Framework;
+using UnityEditor;
+using UnityEngine;
+using UnityEngine.Experimental.Rendering;
+
+namespace Eternities.Tests
+{
+    public class KitMaskImportTests
+    {
+        // The compressed mask map against the source file, as means over the whole texture. The four
+        // channels of a ground texture differ by far more than this, so a channel in the wrong slot
+        // fails; block compression moves a mean by a few levels at most.
+        const float Tolerance = 8f;
+
+        [Test]
+        public void RepackPutsEachChannelInItsMaskMapSlot()
+        {
+            // Ambient occlusion 10, roughness 200, metalness 30.
+            var pixels = new[] { new Color32(10, 200, 30, 255) };
+            KitMaskImport.Repack(pixels);
+            Assert.AreEqual(new Color32(30, 10, KitMaskImport.Height, 55), pixels[0]);
+        }
+
+        [Test]
+        public void OnlyAKitsArmTextureIsAMaskSource()
+        {
+            Assert.IsTrue(KitMaskImport.IsMaskSource("Assets/Kits/temperate/Terrain/leafy_grass_arm_2k.jpg"));
+            Assert.IsFalse(KitMaskImport.IsMaskSource("Assets/Kits/temperate/Terrain/leafy_grass_diff_2k.jpg"));
+            Assert.IsFalse(KitMaskImport.IsMaskSource("Assets/Settings/some_arm_2k.jpg"));
+        }
+
+        static IEnumerable<string> MaskSources()
+        {
+            foreach (string guid in AssetDatabase.FindAssets("t:Texture2D", new[] { "Assets/Kits" }))
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                if (KitMaskImport.IsMaskSource(path))
+                {
+                    yield return path;
+                }
+            }
+        }
+
+        // The temperate kit has three ground textures (CREDITS.md), each with its `_arm_` file.
+        [Test]
+        public void TheTemperateKitHasItsThreeMaskSources()
+        {
+            Assert.AreEqual(3, new List<string>(MaskSources()).Count);
+        }
+
+        [TestCaseSource(nameof(MaskSources))]
+        public void AMaskSourceIsImportedInTheMaskMapLayout(string path)
+        {
+            var imported = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+            Assert.IsNotNull(imported, path);
+            Assert.IsTrue(GraphicsFormatUtility.HasAlphaChannel(imported.graphicsFormat), $"{imported.graphicsFormat} has no alpha");
+            Assert.IsFalse(GraphicsFormatUtility.IsSRGBFormat(imported.graphicsFormat), $"{imported.graphicsFormat} is sRGB");
+
+            var source = new Texture2D(2, 2, TextureFormat.RGB24, false, true);
+            try
+            {
+                Assert.IsTrue(source.LoadImage(File.ReadAllBytes(path)), path);
+                Color32[] expected = source.GetPixels32();
+                KitMaskImport.Repack(expected);
+
+                Vector4 want = Mean(expected);
+                Vector4 got = Mean(Minified(imported));
+                for (int channel = 0; channel < 4; channel++)
+                {
+                    Assert.AreEqual(want[channel], got[channel], Tolerance, $"channel {"RGBA"[channel]} of {path}");
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(source);
+            }
+        }
+
+        // An imported texture is not readable, so it is drawn into a render texture and read from
+        // there. At one thirty-second of the size the draw samples the texture's own mip chain, and
+        // the mean of the result is the mean of the texture.
+        static Color32[] Minified(Texture2D texture)
+        {
+            int width = Mathf.Max(1, texture.width / 32);
+            int height = Mathf.Max(1, texture.height / 32);
+            RenderTexture target = RenderTexture.GetTemporary(width, height, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
+            RenderTexture before = RenderTexture.active;
+            var read = new Texture2D(width, height, TextureFormat.RGBA32, false, true);
+            try
+            {
+                Graphics.Blit(texture, target);
+                RenderTexture.active = target;
+                read.ReadPixels(new Rect(0, 0, width, height), 0, 0);
+                return read.GetPixels32();
+            }
+            finally
+            {
+                RenderTexture.active = before;
+                RenderTexture.ReleaseTemporary(target);
+                Object.DestroyImmediate(read);
+            }
+        }
+
+        static Vector4 Mean(Color32[] pixels)
+        {
+            double r = 0, g = 0, b = 0, a = 0;
+            foreach (Color32 pixel in pixels)
+            {
+                r += pixel.r;
+                g += pixel.g;
+                b += pixel.b;
+                a += pixel.a;
+            }
+            return new Vector4((float)(r / pixels.Length), (float)(g / pixels.Length), (float)(b / pixels.Length), (float)(a / pixels.Length));
+        }
+    }
+}

@@ -2,7 +2,21 @@
     "name": "Eternities.Tests.PlayMode",
     "rootNamespace": "Eternities.Tests",
     "references": [
-        "UnityEngine.TestRunner"
+        "UnityEngine.TestRunner",
+        "Eternities.Data",
+        "Eternities.Layout",
+        "Eternities.Kits",
+        "Eternities.Travel",
+        "Eternities.Avatar",
+        "Eternities.CardView",
+        "Unity.RenderPipelines.Core.Runtime",
+        "Unity.RenderPipelines.HighDefinition.Runtime",
+        "Eternities.Audio",
+        "Eternities.UI",
+        "Eternities.Bench",
+        "Unity.Cinemachine",
+        "Unity.InputSystem",
+        "Unity.InputSystem.TestFramework"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

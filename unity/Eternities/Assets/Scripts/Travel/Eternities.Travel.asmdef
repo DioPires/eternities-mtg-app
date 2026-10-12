@@ -1,7 +1,16 @@
 {
     "name": "Eternities.Travel",
     "rootNamespace": "Eternities.Travel",
-    "references": [],
+    "references": [
+        "Eternities.Data",
+        "Eternities.Layout",
+        "Eternities.Kits",
+        "Eternities.Avatar",
+        "Unity.Cinemachine",
+        "Eternities.CardView",
+        "Eternities.Audio",
+        "Eternities.UI"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
