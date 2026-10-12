@@ -5,9 +5,10 @@ using UnityEngine.Rendering;
 
 namespace Eternities.Kits
 {
-    // A kit prop as its prefab gives it: the mesh, the kit's material for each of its submeshes, and
+    // A kit prop as its prefab gives it: the mesh, the kit's material for each of its submeshes,
     // where the mesh stands in the prefab, whose origin is the prop's base and whose lengths are
-    // metres. Assigned by the generation entry point, in the order of the kit's kinds.
+    // metres, and the level of detail of its mesh it is drawn from. Assigned by the generation
+    // entry point, in the order of the kit's kinds.
     [Serializable]
     public sealed class KitProp
     {
@@ -16,6 +17,24 @@ namespace Eternities.Kits
         public Vector3 Offset;
         public Quaternion Turn = Quaternion.identity;
         public float Scale = 1;
+        public int From;
+
+        // One of it as an object of its own: the prop's base at `position`, turned by `yaw` degrees
+        // and `scale` times its prefab's size.
+        public MeshRenderer Stand(string name, Transform parent, Vector3 position, float yaw, float scale, bool shadow)
+        {
+            var made = new GameObject(name);
+            made.transform.SetParent(parent, false);
+            Quaternion turn = Quaternion.Euler(0, yaw, 0);
+            made.transform.SetLocalPositionAndRotation(position + turn * (Offset * scale), turn * Turn);
+            made.transform.localScale = Vector3.one * (scale * Scale);
+            made.AddComponent<MeshFilter>().sharedMesh = Mesh;
+            var renderer = made.AddComponent<MeshRenderer>();
+            renderer.sharedMaterials = Materials;
+            renderer.shadowCastingMode = shadow ? ShadowCastingMode.On : ShadowCastingMode.Off;
+            renderer.meshLodSelectionBias = From;
+            return renderer;
+        }
     }
 
     // A world's props as objects (PRD v4 8.4.2): one object a prop, and every object of a kind
@@ -43,15 +62,7 @@ namespace Eternities.Kits
             {
                 PropKind kind = Temperate.Kinds[prop.Kind];
                 KitProp model = kit[prop.Kind];
-                var made = new GameObject(kind.Name);
-                made.transform.SetParent(transform, false);
-                Quaternion yaw = Quaternion.Euler(0, prop.Yaw, 0);
-                made.transform.SetLocalPositionAndRotation(new Vector3(prop.X, prop.Y - kind.Sink * prop.Scale, prop.Z) + yaw * (model.Offset * prop.Scale), yaw * model.Turn);
-                made.transform.localScale = Vector3.one * (prop.Scale * model.Scale);
-                made.AddComponent<MeshFilter>().sharedMesh = model.Mesh;
-                var renderer = made.AddComponent<MeshRenderer>();
-                renderer.sharedMaterials = model.Materials;
-                renderer.shadowCastingMode = kind.Shadow ? ShadowCastingMode.On : ShadowCastingMode.Off;
+                GameObject made = model.Stand(kind.Name, transform, new Vector3(prop.X, prop.Y - kind.Sink * prop.Scale, prop.Z), prop.Yaw, prop.Scale, kind.Shadow).gameObject;
                 if (kind.Trunk > 0)
                 {
                     // In the mesh's own lengths. A tree's mesh stands on its own y axis: the

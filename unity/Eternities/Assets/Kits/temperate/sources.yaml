@@ -89,6 +89,212 @@ assets:
     licence_url: https://creativecommons.org/publicdomain/zero/1.0/
     fetched: 2026-10-10
     use: "Gravel terrain layer (river bed, banks and the lake shore); mask source, AO in R, roughness in G, metalness in B"
+  - file: Terrain/forrest_ground_01_diff_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/forrest_ground_01/forrest_ground_01_diff_2k.jpg
+    sha256: e4d557ff61a0b42712a58e8a2e91c6010738977d4e172b7af47abd7d406ae735
+    source: https://polyhaven.com/a/forrest_ground_01
+    author: Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Wood and meadow terrain layer, thin grass over earth with twigs; albedo"
+  - file: Terrain/forrest_ground_01_nor_gl_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/forrest_ground_01/forrest_ground_01_nor_gl_2k.jpg
+    sha256: aa23fa930c6303490f842f7c016c19d838263e8e4538d42508a9332e3fd76b69
+    source: https://polyhaven.com/a/forrest_ground_01
+    author: Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Wood and meadow terrain layer, thin grass over earth with twigs; normal, OpenGL convention"
+  - file: Terrain/forrest_ground_01_arm_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/forrest_ground_01/forrest_ground_01_arm_2k.jpg
+    sha256: abc91717bc60c831f2cd86ad06a5c575ac0e5bd11870b1e7b6dcefc122fc64db
+    source: https://polyhaven.com/a/forrest_ground_01
+    author: Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Wood and meadow terrain layer, thin grass over earth with twigs; mask source, AO in R, roughness in G, metalness in B"
+  - file: Terrain/forest_leaves_03_diff_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/forest_leaves_03/forest_leaves_03_diff_2k.jpg
+    sha256: 638aa3006c508566fae0b78bb0f87ab8a3e7c89dd37d7a25966a4b8dd288c651
+    source: https://polyhaven.com/a/forest_leaves_03
+    author: Dimitrios Savva, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Wood terrain layer, dark leaf litter; albedo"
+  - file: Terrain/forest_leaves_03_nor_gl_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/forest_leaves_03/forest_leaves_03_nor_gl_2k.jpg
+    sha256: d2d3194cacf1b7cc424304626bbf7d05d556633dae92cfeadd73c1f6b8c3d73f
+    source: https://polyhaven.com/a/forest_leaves_03
+    author: Dimitrios Savva, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Wood terrain layer, dark leaf litter; normal, OpenGL convention"
+  - file: Terrain/forest_leaves_03_arm_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/forest_leaves_03/forest_leaves_03_arm_2k.jpg
+    sha256: 0a9141b7cad8a46ad7f56dcdfd351e06ab2f475af44abdd1311c913cff0bc2c3
+    source: https://polyhaven.com/a/forest_leaves_03
+    author: Dimitrios Savva, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Wood terrain layer, dark leaf litter; mask source, AO in R, roughness in G, metalness in B"
+  - file: Terrain/brown_mud_leaves_01_diff_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/brown_mud_leaves_01/brown_mud_leaves_01_diff_2k.jpg
+    sha256: 29c997d77f56e4ea16d3e998a306be0c17fddb28ab4822657c7cd8249040ffda
+    source: https://polyhaven.com/a/brown_mud_leaves_01
+    author: Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Marsh terrain layer, brown mud with leaves and moss; albedo"
+  - file: Terrain/brown_mud_leaves_01_nor_gl_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/brown_mud_leaves_01/brown_mud_leaves_01_nor_gl_2k.jpg
+    sha256: b6ec386e00d9d2a1c3a1da6a98a67066b0dfaa88ddb779341df29700cf081bdf
+    source: https://polyhaven.com/a/brown_mud_leaves_01
+    author: Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Marsh terrain layer, brown mud with leaves and moss; normal, OpenGL convention"
+  - file: Terrain/brown_mud_leaves_01_arm_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/brown_mud_leaves_01/brown_mud_leaves_01_arm_2k.jpg
+    sha256: a80135a30b7ea0f29f093269acae10f83d327dcc0a20bc10083da59843988c15
+    source: https://polyhaven.com/a/brown_mud_leaves_01
+    author: Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Marsh terrain layer, brown mud with leaves and moss; mask source, AO in R, roughness in G, metalness in B"
+  - file: Terrain/mud_forest_diff_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/mud_forest/mud_forest_diff_2k.jpg
+    sha256: 6726cf9ad9b1be9bf284c629dd95d732527b18fc92be06ae9093a96a68f77628
+    source: https://polyhaven.com/a/mud_forest
+    author: eye-candy.xyz
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Marsh terrain layer, dark wet mud; albedo"
+  - file: Terrain/mud_forest_nor_gl_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/mud_forest/mud_forest_nor_gl_2k.jpg
+    sha256: 8d0ad08c4d0df9aabd2fc42ef34e0d34010d9a63eb472eed214be6fad5bc2d4e
+    source: https://polyhaven.com/a/mud_forest
+    author: eye-candy.xyz
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Marsh terrain layer, dark wet mud; normal, OpenGL convention"
+  - file: Terrain/mud_forest_arm_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/mud_forest/mud_forest_arm_2k.jpg
+    sha256: 909f709f75601721689f019afe2e1127d7a2fadb90711bba70fd365037003f94
+    source: https://polyhaven.com/a/mud_forest
+    author: eye-candy.xyz
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Marsh terrain layer, dark wet mud; mask source, AO in R, roughness in G, metalness in B"
+  - file: Terrain/dark_rock_diff_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dark_rock/dark_rock_diff_2k.jpg
+    sha256: 0f01bfec36ec4546e23576a10c52ef073f9eb815826c5fce2a1cdb08cd8188b8
+    source: https://polyhaven.com/a/dark_rock
+    author: Amal Kumar
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Highland terrain layer, dark fissured rock (basalt ground for Shiv); albedo"
+  - file: Terrain/dark_rock_nor_gl_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dark_rock/dark_rock_nor_gl_2k.jpg
+    sha256: abb3c5f1f932693537333a6d467c3e79bb810afa84416d0deaa10ead9fb4f628
+    source: https://polyhaven.com/a/dark_rock
+    author: Amal Kumar
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Highland terrain layer, dark fissured rock (basalt ground for Shiv); normal, OpenGL convention"
+  - file: Terrain/dark_rock_arm_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dark_rock/dark_rock_arm_2k.jpg
+    sha256: d3a26098ea5329f78a42e223e57c10f00af2a72854982197cc37cc151aa2fd5f
+    source: https://polyhaven.com/a/dark_rock
+    author: Amal Kumar
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Highland terrain layer, dark fissured rock (basalt ground for Shiv); mask source, AO in R, roughness in G, metalness in B"
+  - file: Terrain/ground037_diff_1k.jpg
+    url: https://ambientcg.com/get?file=Ground037_1K-JPG.zip
+    member: Ground037_1K-JPG_Color.jpg
+    archive_sha256: 4e69db2b7251b1736fa70fe6fe4ab80d64bd220117dd5dd4c7caaead51c2574e
+    sha256: d92bec8a35b9cb16ec79b421ca0f572a7400286eae109beafa266629ef49a6cf
+    source: https://ambientcg.com/a/Ground037
+    author: Lennart Demes (ambientCG)
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Meadow terrain layer, moss and thin grass over damp earth; albedo"
+  - file: Terrain/ground037_nor_gl_1k.jpg
+    url: https://ambientcg.com/get?file=Ground037_1K-JPG.zip
+    member: Ground037_1K-JPG_NormalGL.jpg
+    archive_sha256: 4e69db2b7251b1736fa70fe6fe4ab80d64bd220117dd5dd4c7caaead51c2574e
+    sha256: ea59dbdcfa5bf2f28bdd4aa896d4e5f96c4cce5939100dcc6db4bbbcdebfe38d
+    source: https://ambientcg.com/a/Ground037
+    author: Lennart Demes (ambientCG)
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Meadow terrain layer, moss and thin grass over damp earth; normal, OpenGL convention"
+  - file: Terrain/ground037_rough_1k.jpg
+    url: https://ambientcg.com/get?file=Ground037_1K-JPG.zip
+    member: Ground037_1K-JPG_Roughness.jpg
+    archive_sha256: 4e69db2b7251b1736fa70fe6fe4ab80d64bd220117dd5dd4c7caaead51c2574e
+    sha256: 3786b088e981aae562f06b6477972d379cffd09a5cc542ab42f9ffd94f9bcb0e
+    source: https://ambientcg.com/a/Ground037
+    author: Lennart Demes (ambientCG)
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Meadow terrain layer, moss and thin grass over damp earth; mask source, roughness"
+  - file: Terrain/ground037_ao_1k.jpg
+    url: https://ambientcg.com/get?file=Ground037_1K-JPG.zip
+    member: Ground037_1K-JPG_AmbientOcclusion.jpg
+    archive_sha256: 4e69db2b7251b1736fa70fe6fe4ab80d64bd220117dd5dd4c7caaead51c2574e
+    sha256: 8afe189ae915888551076cb279f6282c84255e4b2bdb2c4ce8c1c891074245ef
+    source: https://ambientcg.com/a/Ground037
+    author: Lennart Demes (ambientCG)
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Meadow terrain layer, moss and thin grass over damp earth; mask source, ambient occlusion"
+  - file: Terrain/dark_rock_02_diff_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dark_rock_02/dark_rock_02_diff_2k.jpg
+    sha256: da78fb6dd90414ada98f6e1627aca6bc1acb480c8bce7aabfbde8e3beb666a71
+    source: https://polyhaven.com/a/dark_rock_02
+    author: Amal Kumar
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Highland terrain layer, dark blocky rock (basalt ground for Shiv); albedo"
+  - file: Terrain/dark_rock_02_nor_gl_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dark_rock_02/dark_rock_02_nor_gl_2k.jpg
+    sha256: 37710c782598f158e07310dcbd3a8a89247d31255e6f21136707f66c3653bdec
+    source: https://polyhaven.com/a/dark_rock_02
+    author: Amal Kumar
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Highland terrain layer, dark blocky rock (basalt ground for Shiv); normal, OpenGL convention"
+  - file: Terrain/dark_rock_02_arm_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dark_rock_02/dark_rock_02_arm_2k.jpg
+    sha256: e34aa572f0c578eadbf9d812ad514a22775880c7b19a6b98e979d99474fccbb5
+    source: https://polyhaven.com/a/dark_rock_02
+    author: Amal Kumar
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Highland terrain layer, dark blocky rock (basalt ground for Shiv); mask source, AO in R, roughness in G, metalness in B"
   - file: Props/tree_oak.fbx
     url: https://kenney.nl/media/pages/assets/nature-kit/37ac38a37b-1677698939/kenney_nature-kit.zip
     member: Models/FBX format/tree_oak.fbx
@@ -628,3 +834,255 @@ assets:
     licence_url: https://creativecommons.org/publicdomain/zero/1.0/
     fetched: 2026-10-12
     use: "Flowering ground cover, dandelion; opacity"
+  - file: Props/shrub_03_1k.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/shrub_03/shrub_03_1k.fbx
+    sha256: 81cf3b341356b2938faec4f7935c0e694b923db1a5bca39660afa6fcfc22dcc7
+    source: https://polyhaven.com/a/shrub_03
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Slender stems with seed spikes, four plants of 26 to 40 cm; model"
+  - file: Props/shrub_03_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/shrub_03/shrub_03_diff_1k.jpg
+    sha256: 3cadc7aba46d3aabbd7d6d2b1d04aa32e2a7da0bc87c2d38ef3cb1ee42cb03ec
+    source: https://polyhaven.com/a/shrub_03
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Slender stems with seed spikes, four plants of 26 to 40 cm; albedo"
+  - file: Props/shrub_03_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/shrub_03/shrub_03_nor_gl_1k.jpg
+    sha256: ff856bacfce859b8a7555dd9a3b92fbd36b2e775d486be71df485afb4235d6c9
+    source: https://polyhaven.com/a/shrub_03
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Slender stems with seed spikes, four plants of 26 to 40 cm; normal, OpenGL convention"
+  - file: Props/shrub_03_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/shrub_03/shrub_03_arm_1k.jpg
+    sha256: 3e2b16812a623037138eedace958210c5f3443a827bbe69663045bba5612f815
+    source: https://polyhaven.com/a/shrub_03
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Slender stems with seed spikes, four plants of 26 to 40 cm; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/shrub_03_alpha_1k.png
+    url: https://dl.polyhaven.org/file/ph-assets/Models/png/1k/shrub_03/shrub_03_alpha_1k.png
+    sha256: daef00278879a024fd05216aaa1376067a5f25f1b911d08d9bbdc50fda4a0d66
+    source: https://polyhaven.com/a/shrub_03
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Slender stems with seed spikes, four plants of 26 to 40 cm; opacity"
+  - file: Props/weed_plant_02_1k.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/weed_plant_02/weed_plant_02_1k.fbx
+    sha256: 47773d532983e109627178c888d3ceb7c05076f3fd9abc194698fdb998233467
+    source: https://polyhaven.com/a/weed_plant_02
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Broad-leaved weeds, five low clusters of 12 to 29 cm across; model"
+  - file: Props/weed_plant_02_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/weed_plant_02/weed_plant_02_diff_1k.jpg
+    sha256: 6bcbf7f0b8eaf5156b9021f998dd9233ba4b095aa590f3621b94f47550e21eb9
+    source: https://polyhaven.com/a/weed_plant_02
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Broad-leaved weeds, five low clusters of 12 to 29 cm across; albedo"
+  - file: Props/weed_plant_02_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/weed_plant_02/weed_plant_02_nor_gl_1k.jpg
+    sha256: 53e277362656eaea87a59bc7c5b551e73d2cdb5b852b21d0ffb84becfc7b941d
+    source: https://polyhaven.com/a/weed_plant_02
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Broad-leaved weeds, five low clusters of 12 to 29 cm across; normal, OpenGL convention"
+  - file: Props/weed_plant_02_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/weed_plant_02/weed_plant_02_arm_1k.jpg
+    sha256: 82dd00b135a605aecf09d46bdaa6e71cdfc221d7b53e20e6f446da6e9e5bf942
+    source: https://polyhaven.com/a/weed_plant_02
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Broad-leaved weeds, five low clusters of 12 to 29 cm across; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/weed_plant_02_alpha_1k.png
+    url: https://dl.polyhaven.org/file/ph-assets/Models/png/1k/weed_plant_02/weed_plant_02_alpha_1k.png
+    sha256: ceb47162756cba3d8306ce8aa7097f81786c9cd98785b7da5b191806a88ae44e
+    source: https://polyhaven.com/a/weed_plant_02
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Broad-leaved weeds, five low clusters of 12 to 29 cm across; opacity"
+  - file: Props/shrub_sorrel_01_1k.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/shrub_sorrel_01/shrub_sorrel_01_1k.fbx
+    sha256: 3a28a7b72104f6a0b67270e52f9a45d7aad0d15aea600738742dabda87033cb6
+    source: https://polyhaven.com/a/shrub_sorrel_01
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Wood sorrel, small clusters of 2 to 6 cm with pink flowers; model"
+  - file: Props/shrub_sorrel_01_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/shrub_sorrel_01/shrub_sorrel_01_diff_1k.jpg
+    sha256: 9aa62e57767f5b964b8d52e6406ebadb0205fa469d5a369a946fba13a3bc950f
+    source: https://polyhaven.com/a/shrub_sorrel_01
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Wood sorrel, small clusters of 2 to 6 cm with pink flowers; albedo"
+  - file: Props/shrub_sorrel_01_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/shrub_sorrel_01/shrub_sorrel_01_nor_gl_1k.jpg
+    sha256: 0bb2e2aba7831a4e642ad6b1985ad82b0a574930ec6982f9a1a66ad8b41a94b3
+    source: https://polyhaven.com/a/shrub_sorrel_01
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Wood sorrel, small clusters of 2 to 6 cm with pink flowers; normal, OpenGL convention"
+  - file: Props/shrub_sorrel_01_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/shrub_sorrel_01/shrub_sorrel_01_arm_1k.jpg
+    sha256: a1b49322e2b0ea988336fca959145dbb53b483b8f9ff2ec5f23dda20c486bdb8
+    source: https://polyhaven.com/a/shrub_sorrel_01
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Wood sorrel, small clusters of 2 to 6 cm with pink flowers; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/shrub_sorrel_01_alpha_1k.png
+    url: https://dl.polyhaven.org/file/ph-assets/Models/png/1k/shrub_sorrel_01/shrub_sorrel_01_alpha_1k.png
+    sha256: 4788b2a1e8a53cf6f706b1e75bc4007afec3fc823fd3ccaf9b48a52dc1eb04da
+    source: https://polyhaven.com/a/shrub_sorrel_01
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Wood sorrel, small clusters of 2 to 6 cm with pink flowers; opacity"
+  - file: Props/nettle_plant_1k.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/nettle_plant/nettle_plant_1k.fbx
+    sha256: a5b264b9d7b6639e241f5c7bbaf3bf3659c1f6daa2bb7ffd0269650d521a3bd4
+    source: https://polyhaven.com/a/nettle_plant
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Nettles, six plants of 2 to 22 cm; model"
+  - file: Props/nettle_plant_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/nettle_plant/nettle_plant_diff_1k.jpg
+    sha256: 7172a9971818a18a7cb7ebaa144d9d2313b83d2a6180c9582000f7260542ea7b
+    source: https://polyhaven.com/a/nettle_plant
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Nettles, six plants of 2 to 22 cm; albedo"
+  - file: Props/nettle_plant_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/nettle_plant/nettle_plant_nor_gl_1k.jpg
+    sha256: ab5d0cdc9a487a8874b6e9a11bf67ef90319f02bbd74579576198aca90b0fa85
+    source: https://polyhaven.com/a/nettle_plant
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Nettles, six plants of 2 to 22 cm; normal, OpenGL convention"
+  - file: Props/nettle_plant_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/nettle_plant/nettle_plant_arm_1k.jpg
+    sha256: 8fb33e5e939b4e089f08c867bf449d9e27aa32af94990c3cad1a89dcabd44f14
+    source: https://polyhaven.com/a/nettle_plant
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Nettles, six plants of 2 to 22 cm; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/nettle_plant_alpha_1k.png
+    url: https://dl.polyhaven.org/file/ph-assets/Models/png/1k/nettle_plant/nettle_plant_alpha_1k.png
+    sha256: 61d98e886a20e401f7eb6e2d64e8513b2409e54feb41e83ecbf3b10aaa035810
+    source: https://polyhaven.com/a/nettle_plant
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Nettles, six plants of 2 to 22 cm; opacity"
+  - file: Props/rock_07_1k.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/rock_07/rock_07_1k.fbx
+    sha256: 3c36fbebbedaca6deab892d7384ccbc6cd380fc1492af4fe401e23956da9ce0a
+    source: https://polyhaven.com/a/rock_07
+    author: Jenelle van Heerden
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Stone, a dark block 32 cm long; model"
+  - file: Props/rock_07_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/rock_07/rock_07_diff_1k.jpg
+    sha256: 8ff1965aa1664cc4abcc0131c44ee2b97ab14d6e131d7a51429ff261eeb101c8
+    source: https://polyhaven.com/a/rock_07
+    author: Jenelle van Heerden
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Stone, a dark block 32 cm long; albedo"
+  - file: Props/rock_07_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/rock_07/rock_07_nor_gl_1k.jpg
+    sha256: 57cb2210951aeb376164fce5f7c65f03e5599def04873b56cad0f173c275d78d
+    source: https://polyhaven.com/a/rock_07
+    author: Jenelle van Heerden
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Stone, a dark block 32 cm long; normal, OpenGL convention"
+  - file: Props/rock_07_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/rock_07/rock_07_arm_1k.jpg
+    sha256: 1ed76e9a8542c76bdc6b7b018720ae1f52cd75d9f5ae719f613de3f5032cf4da
+    source: https://polyhaven.com/a/rock_07
+    author: Jenelle van Heerden
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Stone, a dark block 32 cm long; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/dry_branches_medium_01_1k.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/dry_branches_medium_01/dry_branches_medium_01_1k.fbx
+    sha256: 3e47b10e0710b7736688521d66b3eb09aad14cb2db6179d9758a0fd5716ce639
+    source: https://polyhaven.com/a/dry_branches_medium_01
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Dry fallen branches, three of 0.8 to 1.3 m long; model"
+  - file: Props/dry_branches_medium_01_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/dry_branches_medium_01/dry_branches_medium_01_diff_1k.jpg
+    sha256: 1fbaf810a9ca29d2faf0a179834e8dce10cf4854bafe13f63af111030b3ec660
+    source: https://polyhaven.com/a/dry_branches_medium_01
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Dry fallen branches, three of 0.8 to 1.3 m long; albedo"
+  - file: Props/dry_branches_medium_01_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/dry_branches_medium_01/dry_branches_medium_01_nor_gl_1k.jpg
+    sha256: 62f5205bfec599000bb7a430e003bbada939bc8d7976a7d3ab7709fd5893413c
+    source: https://polyhaven.com/a/dry_branches_medium_01
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Dry fallen branches, three of 0.8 to 1.3 m long; normal, OpenGL convention"
+  - file: Props/dry_branches_medium_01_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/dry_branches_medium_01/dry_branches_medium_01_arm_1k.jpg
+    sha256: 6d1ba6f4763d2815301a15bf62eaf68c345cecafb107e2681d12f26fbc657f5a
+    source: https://polyhaven.com/a/dry_branches_medium_01
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Dry fallen branches, three of 0.8 to 1.3 m long; mask source, AO in R, roughness in G, metalness in B"

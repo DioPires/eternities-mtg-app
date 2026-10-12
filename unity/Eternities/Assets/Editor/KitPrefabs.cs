@@ -62,12 +62,23 @@ namespace Eternities.EditorTools
             Photographs("Rocks", "rock_moss_set_02", "2k", false, 0, "rock07", "rock08", "rock09", "rock10", "rock11", "rock12"),
             Photographs("Rocks", "rock_moss_set_02", "2k", false, 0, "rock13").Select(rock => { rock.Sink = 0.4f; return rock; }),
             Photographs("Rocks", "boulder_01", "2k", false, 0, "LOD3"),
-            Photographs("Bushes", "shrub_02", "1k", true, 0, "a_LOD0", "b_LOD0", "c_LOD0", "d_LOD0"),
+            // Thin stems a metre tall, which its source calls ground cover: undergrowth, not a bush.
+            Photographs("GroundCover", "shrub_02", "1k", true, 2, "a_LOD0", "b_LOD0", "c_LOD0", "d_LOD0"),
             Photographs("GroundCover", "fern_02", "1k", true, 0, "a", "b", "c", "d"),
             Photographs("GroundCover", "grass_medium_01", "1k", true, 0, "mid_a_LOD0", "mid_b_LOD0", "mid_c_LOD0", "small_a_LOD0", "small_b_LOD0", "tall_a_LOD0", "tall_b_LOD0", "tall_c_LOD0"),
             Photographs("GroundCover", "grass_medium_02", "1k", true, 0, "a", "b", "c", "d", "e"),
             Photographs("GroundCover", "celandine_01", "1k", true, 0, "a_LOD0", "b_LOD0", "e_LOD0"),
             Photographs("GroundCover", "dandelion_01", "1k", true, 0, "a_LOD1", "b_LOD1", "c_LOD1", "d_LOD1", "e_LOD1"),
+            // The second batch: more species for the floor of a wood and for wet and for stony
+            // ground. A plant over ground cover's cap is drawn from a lighter level.
+            Photographs("GroundCover", "shrub_03", "1k", true, 0, "a_LOD0", "b_LOD0", "c_LOD0", "d_LOD0"),
+            Photographs("GroundCover", "weed_plant_02", "1k", true, 1, "a_LOD0"),
+            Photographs("GroundCover", "weed_plant_02", "1k", true, 0, "b_LOD0", "c_LOD0", "d_LOD0", "e_LOD0"),
+            Photographs("GroundCover", "shrub_sorrel_01", "1k", true, 0, "a", "b", "d", "e"),
+            Photographs("GroundCover", "nettle_plant", "1k", true, 2, "medium_a_LOD0", "medium_b_LOD0", "tall_a_LOD0", "tall_b_LOD0"),
+            // A fallen branch lies about its file's origin, and here on the ground.
+            Photographs("GroundCover", "dry_branches_medium_01", "1k", false, 2, "a", "b", "c").Select(branch => { branch.Sink = 0.05f; return branch; }),
+            Photographs("Rocks", "rock_07", "1k", false, 0, "LOD2"),
         }.SelectMany(some => some).ToArray();
 
         // Props of one file: the meshes named, each `<asset>_<mesh>` in the file, as the prefab

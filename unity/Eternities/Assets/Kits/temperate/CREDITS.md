@@ -15,7 +15,7 @@ base at its origin (the prop conditioning rule, `unity/Eternities/README.md`). "
 lists each prefab with the height and the triangles measured on it; `PropRuleTests` holds the rule
 and that table.
 
-## Terrain layers (2K JPG, 2048 × 2048)
+## Terrain layers (JPG at 2K, 2048 × 2048; `ground037` at 1K)
 
 | File | Source | Author | Licence | Fetched | Intended use |
 |---|---|---|---|---|---|
@@ -28,6 +28,28 @@ and that table.
 | `Terrain/ganges_river_pebbles_diff_2k.jpg` | <https://polyhaven.com/a/ganges_river_pebbles> | Amal Kumar | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | Gravel terrain layer (river bed, banks and the lake shore); albedo |
 | `Terrain/ganges_river_pebbles_nor_gl_2k.jpg` | <https://polyhaven.com/a/ganges_river_pebbles> | Amal Kumar | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | Gravel terrain layer (river bed, banks and the lake shore); normal, OpenGL convention |
 | `Terrain/ganges_river_pebbles_arm_2k.jpg` | <https://polyhaven.com/a/ganges_river_pebbles> | Amal Kumar | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | Gravel terrain layer (river bed, banks and the lake shore); mask source, AO in R, roughness in G, metalness in B |
+| `Terrain/forrest_ground_01_diff_2k.jpg` | <https://polyhaven.com/a/forrest_ground_01> | Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Wood and meadow terrain layer, thin grass over earth with twigs; albedo |
+| `Terrain/forrest_ground_01_nor_gl_2k.jpg` | <https://polyhaven.com/a/forrest_ground_01> | Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Wood and meadow terrain layer, thin grass over earth with twigs; normal, OpenGL convention |
+| `Terrain/forrest_ground_01_arm_2k.jpg` | <https://polyhaven.com/a/forrest_ground_01> | Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Wood and meadow terrain layer, thin grass over earth with twigs; mask source, AO in R, roughness in G, metalness in B |
+| `Terrain/forest_leaves_03_diff_2k.jpg` | <https://polyhaven.com/a/forest_leaves_03> | Dimitrios Savva, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Wood terrain layer, dark leaf litter; albedo |
+| `Terrain/forest_leaves_03_nor_gl_2k.jpg` | <https://polyhaven.com/a/forest_leaves_03> | Dimitrios Savva, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Wood terrain layer, dark leaf litter; normal, OpenGL convention |
+| `Terrain/forest_leaves_03_arm_2k.jpg` | <https://polyhaven.com/a/forest_leaves_03> | Dimitrios Savva, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Wood terrain layer, dark leaf litter; mask source, AO in R, roughness in G, metalness in B |
+| `Terrain/brown_mud_leaves_01_diff_2k.jpg` | <https://polyhaven.com/a/brown_mud_leaves_01> | Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Marsh terrain layer, brown mud with leaves and moss; albedo |
+| `Terrain/brown_mud_leaves_01_nor_gl_2k.jpg` | <https://polyhaven.com/a/brown_mud_leaves_01> | Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Marsh terrain layer, brown mud with leaves and moss; normal, OpenGL convention |
+| `Terrain/brown_mud_leaves_01_arm_2k.jpg` | <https://polyhaven.com/a/brown_mud_leaves_01> | Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Marsh terrain layer, brown mud with leaves and moss; mask source, AO in R, roughness in G, metalness in B |
+| `Terrain/mud_forest_diff_2k.jpg` | <https://polyhaven.com/a/mud_forest> | eye-candy.xyz | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Marsh terrain layer, dark wet mud; albedo |
+| `Terrain/mud_forest_nor_gl_2k.jpg` | <https://polyhaven.com/a/mud_forest> | eye-candy.xyz | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Marsh terrain layer, dark wet mud; normal, OpenGL convention |
+| `Terrain/mud_forest_arm_2k.jpg` | <https://polyhaven.com/a/mud_forest> | eye-candy.xyz | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Marsh terrain layer, dark wet mud; mask source, AO in R, roughness in G, metalness in B |
+| `Terrain/dark_rock_diff_2k.jpg` | <https://polyhaven.com/a/dark_rock> | Amal Kumar | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Highland terrain layer, dark fissured rock (basalt ground for Shiv); albedo |
+| `Terrain/dark_rock_nor_gl_2k.jpg` | <https://polyhaven.com/a/dark_rock> | Amal Kumar | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Highland terrain layer, dark fissured rock (basalt ground for Shiv); normal, OpenGL convention |
+| `Terrain/dark_rock_arm_2k.jpg` | <https://polyhaven.com/a/dark_rock> | Amal Kumar | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Highland terrain layer, dark fissured rock (basalt ground for Shiv); mask source, AO in R, roughness in G, metalness in B |
+| `Terrain/ground037_diff_1k.jpg` | <https://ambientcg.com/a/Ground037> | Lennart Demes (ambientCG) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Meadow terrain layer, moss and thin grass over damp earth; albedo |
+| `Terrain/ground037_nor_gl_1k.jpg` | <https://ambientcg.com/a/Ground037> | Lennart Demes (ambientCG) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Meadow terrain layer, moss and thin grass over damp earth; normal, OpenGL convention |
+| `Terrain/ground037_rough_1k.jpg` | <https://ambientcg.com/a/Ground037> | Lennart Demes (ambientCG) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Meadow terrain layer, moss and thin grass over damp earth; mask source, roughness |
+| `Terrain/ground037_ao_1k.jpg` | <https://ambientcg.com/a/Ground037> | Lennart Demes (ambientCG) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Meadow terrain layer, moss and thin grass over damp earth; mask source, ambient occlusion |
+| `Terrain/dark_rock_02_diff_2k.jpg` | <https://polyhaven.com/a/dark_rock_02> | Amal Kumar | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Highland terrain layer, dark blocky rock (basalt ground for Shiv); albedo |
+| `Terrain/dark_rock_02_nor_gl_2k.jpg` | <https://polyhaven.com/a/dark_rock_02> | Amal Kumar | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Highland terrain layer, dark blocky rock (basalt ground for Shiv); normal, OpenGL convention |
+| `Terrain/dark_rock_02_arm_2k.jpg` | <https://polyhaven.com/a/dark_rock_02> | Amal Kumar | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Highland terrain layer, dark blocky rock (basalt ground for Shiv); mask source, AO in R, roughness in G, metalness in B |
 
 ## Props (FBX)
 
@@ -96,6 +118,34 @@ that draws one of its meshes; "Props as drawn" lists them.
 | `Props/dandelion_01_nor_gl_1k.jpg` | <https://polyhaven.com/a/dandelion_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Flowering ground cover, dandelion; normal, OpenGL convention |
 | `Props/dandelion_01_arm_1k.jpg` | <https://polyhaven.com/a/dandelion_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Flowering ground cover, dandelion; mask source, AO in R, roughness in G, metalness in B |
 | `Props/dandelion_01_alpha_1k.png` | <https://polyhaven.com/a/dandelion_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Flowering ground cover, dandelion; opacity |
+| `Props/shrub_03_1k.fbx` | <https://polyhaven.com/a/shrub_03> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Slender stems with seed spikes, four plants of 26 to 40 cm; model |
+| `Props/shrub_03_diff_1k.jpg` | <https://polyhaven.com/a/shrub_03> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Slender stems with seed spikes, four plants of 26 to 40 cm; albedo |
+| `Props/shrub_03_nor_gl_1k.jpg` | <https://polyhaven.com/a/shrub_03> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Slender stems with seed spikes, four plants of 26 to 40 cm; normal, OpenGL convention |
+| `Props/shrub_03_arm_1k.jpg` | <https://polyhaven.com/a/shrub_03> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Slender stems with seed spikes, four plants of 26 to 40 cm; mask source, AO in R, roughness in G, metalness in B |
+| `Props/shrub_03_alpha_1k.png` | <https://polyhaven.com/a/shrub_03> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Slender stems with seed spikes, four plants of 26 to 40 cm; opacity |
+| `Props/weed_plant_02_1k.fbx` | <https://polyhaven.com/a/weed_plant_02> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Broad-leaved weeds, five low clusters of 12 to 29 cm across; model |
+| `Props/weed_plant_02_diff_1k.jpg` | <https://polyhaven.com/a/weed_plant_02> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Broad-leaved weeds, five low clusters of 12 to 29 cm across; albedo |
+| `Props/weed_plant_02_nor_gl_1k.jpg` | <https://polyhaven.com/a/weed_plant_02> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Broad-leaved weeds, five low clusters of 12 to 29 cm across; normal, OpenGL convention |
+| `Props/weed_plant_02_arm_1k.jpg` | <https://polyhaven.com/a/weed_plant_02> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Broad-leaved weeds, five low clusters of 12 to 29 cm across; mask source, AO in R, roughness in G, metalness in B |
+| `Props/weed_plant_02_alpha_1k.png` | <https://polyhaven.com/a/weed_plant_02> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Broad-leaved weeds, five low clusters of 12 to 29 cm across; opacity |
+| `Props/shrub_sorrel_01_1k.fbx` | <https://polyhaven.com/a/shrub_sorrel_01> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Wood sorrel, small clusters of 2 to 6 cm with pink flowers; model |
+| `Props/shrub_sorrel_01_diff_1k.jpg` | <https://polyhaven.com/a/shrub_sorrel_01> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Wood sorrel, small clusters of 2 to 6 cm with pink flowers; albedo |
+| `Props/shrub_sorrel_01_nor_gl_1k.jpg` | <https://polyhaven.com/a/shrub_sorrel_01> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Wood sorrel, small clusters of 2 to 6 cm with pink flowers; normal, OpenGL convention |
+| `Props/shrub_sorrel_01_arm_1k.jpg` | <https://polyhaven.com/a/shrub_sorrel_01> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Wood sorrel, small clusters of 2 to 6 cm with pink flowers; mask source, AO in R, roughness in G, metalness in B |
+| `Props/shrub_sorrel_01_alpha_1k.png` | <https://polyhaven.com/a/shrub_sorrel_01> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Wood sorrel, small clusters of 2 to 6 cm with pink flowers; opacity |
+| `Props/nettle_plant_1k.fbx` | <https://polyhaven.com/a/nettle_plant> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Nettles, six plants of 2 to 22 cm; model |
+| `Props/nettle_plant_diff_1k.jpg` | <https://polyhaven.com/a/nettle_plant> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Nettles, six plants of 2 to 22 cm; albedo |
+| `Props/nettle_plant_nor_gl_1k.jpg` | <https://polyhaven.com/a/nettle_plant> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Nettles, six plants of 2 to 22 cm; normal, OpenGL convention |
+| `Props/nettle_plant_arm_1k.jpg` | <https://polyhaven.com/a/nettle_plant> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Nettles, six plants of 2 to 22 cm; mask source, AO in R, roughness in G, metalness in B |
+| `Props/nettle_plant_alpha_1k.png` | <https://polyhaven.com/a/nettle_plant> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Nettles, six plants of 2 to 22 cm; opacity |
+| `Props/rock_07_1k.fbx` | <https://polyhaven.com/a/rock_07> | Jenelle van Heerden | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Stone, a dark block 32 cm long; model |
+| `Props/rock_07_diff_1k.jpg` | <https://polyhaven.com/a/rock_07> | Jenelle van Heerden | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Stone, a dark block 32 cm long; albedo |
+| `Props/rock_07_nor_gl_1k.jpg` | <https://polyhaven.com/a/rock_07> | Jenelle van Heerden | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Stone, a dark block 32 cm long; normal, OpenGL convention |
+| `Props/rock_07_arm_1k.jpg` | <https://polyhaven.com/a/rock_07> | Jenelle van Heerden | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Stone, a dark block 32 cm long; mask source, AO in R, roughness in G, metalness in B |
+| `Props/dry_branches_medium_01_1k.fbx` | <https://polyhaven.com/a/dry_branches_medium_01> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Dry fallen branches, three of 0.8 to 1.3 m long; model |
+| `Props/dry_branches_medium_01_diff_1k.jpg` | <https://polyhaven.com/a/dry_branches_medium_01> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Dry fallen branches, three of 0.8 to 1.3 m long; albedo |
+| `Props/dry_branches_medium_01_nor_gl_1k.jpg` | <https://polyhaven.com/a/dry_branches_medium_01> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Dry fallen branches, three of 0.8 to 1.3 m long; normal, OpenGL convention |
+| `Props/dry_branches_medium_01_arm_1k.jpg` | <https://polyhaven.com/a/dry_branches_medium_01> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Dry fallen branches, three of 0.8 to 1.3 m long; mask source, AO in R, roughness in G, metalness in B |
 
 ## Props as drawn
 
@@ -107,10 +157,6 @@ the rows from the prefabs: the editor's menu, Eternities, "Kit props as drawn".
 |---|---|---|---|---|---|
 | plant_bush | bush | `Props/plant_bush.fbx` | 1.04 m | 32 | 1 |
 | plant_bushLarge | bush | `Props/plant_bushLarge.fbx` | 1.46 m | 60 | 1 |
-| shrub_02_a | bush | `Props/shrub_02_1k.fbx` | 1.37 m | 7,590 to 64 | 1 |
-| shrub_02_b | bush | `Props/shrub_02_1k.fbx` | 1.22 m | 5,242 to 64 | 1 |
-| shrub_02_c | bush | `Props/shrub_02_1k.fbx` | 1.07 m | 9,234 to 64 | 1 |
-| shrub_02_d | bush | `Props/shrub_02_1k.fbx` | 1.00 m | 5,188 to 64 | 1 |
 | celandine_01_a | ground cover | `Props/celandine_01_1k.fbx` | 0.19 m | 622 to 64 | 1 |
 | celandine_01_b | ground cover | `Props/celandine_01_1k.fbx` | 0.14 m | 599 to 64 | 1 |
 | celandine_01_e | ground cover | `Props/celandine_01_1k.fbx` | 0.12 m | 442 to 64 | 1 |
@@ -120,6 +166,9 @@ the rows from the prefabs: the editor's menu, Eternities, "Kit props as drawn".
 | dandelion_01_c | ground cover | `Props/dandelion_01_1k.fbx` | 0.10 m | 998 to 64 | 1 |
 | dandelion_01_d | ground cover | `Props/dandelion_01_1k.fbx` | 0.06 m | 880 to 63 | 1 |
 | dandelion_01_e | ground cover | `Props/dandelion_01_1k.fbx` | 0.05 m | 520 to 64 | 1 |
+| dry_branches_medium_01_a | ground cover | `Props/dry_branches_medium_01_1k.fbx` | 0.34 m | 1,534 to 64 | 1 |
+| dry_branches_medium_01_b | ground cover | `Props/dry_branches_medium_01_1k.fbx` | 0.14 m | 1,408 to 64 | 1 |
+| dry_branches_medium_01_c | ground cover | `Props/dry_branches_medium_01_1k.fbx` | 0.14 m | 1,536 to 64 | 1 |
 | fern_02_a | ground cover | `Props/fern_02_1k.fbx` | 0.29 m | 784 to 64 | 1 |
 | fern_02_b | ground cover | `Props/fern_02_1k.fbx` | 0.43 m | 2,384 to 64 | 1 |
 | fern_02_c | ground cover | `Props/fern_02_1k.fbx` | 0.35 m | 2,248 to 64 | 1 |
@@ -137,7 +186,29 @@ the rows from the prefabs: the editor's menu, Eternities, "Kit props as drawn".
 | grass_medium_02_c | ground cover | `Props/grass_medium_02_1k.fbx` | 0.23 m | 1,215 to 64 | 1 |
 | grass_medium_02_d | ground cover | `Props/grass_medium_02_1k.fbx` | 0.26 m | 2,489 to 64 | 1 |
 | grass_medium_02_e | ground cover | `Props/grass_medium_02_1k.fbx` | 0.40 m | 1,664 to 64 | 1 |
+| nettle_plant_medium_a | ground cover | `Props/nettle_plant_1k.fbx` | 0.13 m | 1,535 to 64 | 1 |
+| nettle_plant_medium_b | ground cover | `Props/nettle_plant_1k.fbx` | 0.10 m | 1,535 to 153 | 1 |
+| nettle_plant_tall_a | ground cover | `Props/nettle_plant_1k.fbx` | 0.22 m | 1,919 to 147 | 1 |
+| nettle_plant_tall_b | ground cover | `Props/nettle_plant_1k.fbx` | 0.19 m | 2,111 to 64 | 1 |
+| shrub_02_a | ground cover | `Props/shrub_02_1k.fbx` | 1.37 m | 1,919 to 64 | 1 |
+| shrub_02_b | ground cover | `Props/shrub_02_1k.fbx` | 1.22 m | 1,344 to 64 | 1 |
+| shrub_02_c | ground cover | `Props/shrub_02_1k.fbx` | 1.07 m | 2,494 to 64 | 1 |
+| shrub_02_d | ground cover | `Props/shrub_02_1k.fbx` | 1.00 m | 1,344 to 64 | 1 |
+| shrub_03_a | ground cover | `Props/shrub_03_1k.fbx` | 0.40 m | 2,385 to 64 | 1 |
+| shrub_03_b | ground cover | `Props/shrub_03_1k.fbx` | 0.35 m | 2,134 to 64 | 1 |
+| shrub_03_c | ground cover | `Props/shrub_03_1k.fbx` | 0.30 m | 1,790 to 63 | 1 |
+| shrub_03_d | ground cover | `Props/shrub_03_1k.fbx` | 0.26 m | 1,978 to 63 | 1 |
+| shrub_sorrel_01_a | ground cover | `Props/shrub_sorrel_01_1k.fbx` | 0.06 m | 353 to 64 | 1 |
+| shrub_sorrel_01_b | ground cover | `Props/shrub_sorrel_01_1k.fbx` | 0.05 m | 414 to 64 | 1 |
+| shrub_sorrel_01_d | ground cover | `Props/shrub_sorrel_01_1k.fbx` | 0.05 m | 990 to 64 | 1 |
+| shrub_sorrel_01_e | ground cover | `Props/shrub_sorrel_01_1k.fbx` | 0.05 m | 503 to 63 | 1 |
+| weed_plant_02_a | ground cover | `Props/weed_plant_02_1k.fbx` | 0.07 m | 1,536 to 64 | 1 |
+| weed_plant_02_b | ground cover | `Props/weed_plant_02_1k.fbx` | 0.07 m | 2,273 to 64 | 1 |
+| weed_plant_02_c | ground cover | `Props/weed_plant_02_1k.fbx` | 0.05 m | 1,766 to 148 | 1 |
+| weed_plant_02_d | ground cover | `Props/weed_plant_02_1k.fbx` | 0.04 m | 1,928 to 63 | 1 |
+| weed_plant_02_e | ground cover | `Props/weed_plant_02_1k.fbx` | 0.04 m | 2,182 to 64 | 1 |
 | boulder_01 | rock | `Props/boulder_01_1k.fbx` | 1.00 m | 8,264 to 64 | 1 |
+| rock_07 | rock | `Props/rock_07_1k.fbx` | 0.14 m | 3,710 to 80 | 1 |
 | rock_largeA | rock | `Props/rock_largeA.fbx` | 0.65 m | 80 | 2 |
 | rock_moss_set_01_rock01 | rock | `Props/rock_moss_set_01_1k.fbx` | 1.47 m | 5,758 to 142 | 1 |
 | rock_moss_set_01_rock02 | rock | `Props/rock_moss_set_01_1k.fbx` | 1.26 m | 5,758 to 64 | 1 |
@@ -171,11 +242,11 @@ the rows from the prefabs: the editor's menu, Eternities, "Kit props as drawn".
 
 ## Notes for the slice
 
-- **Size.** The first slice's subset is 24 files and 39.2 MB of source files, under DEC-952's
-  limits for it: 60 MB in all, 8 MB a texture, 200 KB a prop. The photographic props are over the
-  last: `fetch.sh` now holds a model and a texture to 8 MB each and the kit's sources to 200 MB,
-  the proposal of 2026-10-12 on DEC-1003. The cooked size against PRD 7.2 is the build's check
-  (PRD 8.7.2), not this one.
+- **Size.** The kit's sources are 116 files and 165.7 MB. `fetch.sh` holds a model and a texture
+  to 8 MB each and the kit's sources to 200 MB, the proposal of 2026-10-12 on DEC-1003; the first
+  slice's subset of 24 files and 39.2 MB was under DEC-952's limits of 200 KB a prop, 8 MB a
+  texture and 60 MB in all. The cooked size against PRD 7.2 is the build's check (PRD 8.7.2), not
+  this one.
 - **Textures are JPG.** At 2K only Poly Haven's JPG stays under 8 MB per texture (the PNG albedo is
   23 MB, the EXR normal 11 MB). PRD 8.2.3's Git LFS list has no `*.jpg`; `.gitattributes` carries
   the pattern for `unity/`. `nor_gl` is the OpenGL normal convention, which Unity uses. `arm` packs
@@ -196,6 +267,11 @@ the rows from the prefabs: the editor's menu, Eternities, "Kit props as drawn".
   (9.828 s), which are the uploads' published durations. In both, the step from the last sample to
   the first is inside the file's ordinary sample-to-sample range and neither end fades. Nobody has
   listened to them in a loop yet; that is the slice's check.
-- **Not chosen.** ambientCG's lawn grass (`Grass004`): its 2K normal map is 10.0 MB, over the cap.
+- **Ground from ambientCG** (`ground037`) is its 1K files: at 2K its colour is 8.7 MB and its
+  normal map 10.3 MB, over the cap. ambientCG publishes roughness and ambient occlusion as two
+  files and no `arm`; `KitMaskImport` packs the mask from `_rough_` with `_ao_` beside it. The
+  files are members of ambientCG's archive under the kit's own names.
+- **Not chosen.** ambientCG's grass (`Grass001` to `Grass008`): its own listing gives their
+  technique as procedural, so they are not photographs; and `Grass004`'s 2K normal map is 10.0 MB.
   Freesound 817163 (a mono river loop): its page describes a transfer of 1930s to 1960s studio
   effects, so the CC0 dedication could not be traced to the recording's owner.

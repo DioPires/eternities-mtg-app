@@ -226,10 +226,8 @@ namespace Eternities.EditorTools
             // gives it.
             KitPrefabs.Make("temperate", KitPrefabs.Temperate);
             KitPrefabs.Make("temperate", KitPrefabs.TemperatePhotographs);
-            KitProp[] props = Temperate.Kinds.Select(PropOf).ToArray();
-            if (app.KitProps == null || app.KitProps.Length != props.Length
-                || !props.Zip(app.KitProps, (wanted, held) => held != null && wanted.Mesh == held.Mesh && held.Materials != null && wanted.Materials.SequenceEqual(held.Materials)
-                    && wanted.Offset == held.Offset && wanted.Turn == held.Turn && wanted.Scale == held.Scale).All(same => same))
+            KitProp[] props = Temperate.Kinds.Select(kind => PropOf(kind.Prefab, tree: kind.Trunk > 0)).ToArray();
+            if (app.KitProps == null || app.KitProps.Length != props.Length || !props.Zip(app.KitProps, Same).All(same => same))
             {
                 app.KitProps = props;
                 changed = true;
@@ -262,13 +260,34 @@ namespace Eternities.EditorTools
             // the path's is an orange that reads as sand.
             TerrainLayer[] layers =
             {
-                KitLayer("meadow", "leafy_grass", 2f, new Color(0.6f, 1f, 0.62f)),
-                KitLayer("path", "dirt_floor", 2.07f, new Color(0.75f, 0.78f, 0.85f)),
-                KitLayer("gravel", "ganges_river_pebbles", 2.16f, Color.white),
+                KitLayer("meadow", "leafy_grass", "2k", 2f, new Color(0.6f, 1f, 0.62f)),
+                KitLayer("path", "dirt_floor", "2k", 2.07f, new Color(0.75f, 0.78f, 0.85f)),
+                KitLayer("gravel", "ganges_river_pebbles", "2k", 2.16f, Color.white),
             };
             if (app.TerrainLayers == null || !layers.SequenceEqual(app.TerrainLayers))
             {
                 app.TerrainLayers = layers;
+                changed = true;
+            }
+
+            // The kit's variants (PRD v4 5.6.3, 8.12.1; DEC-1003): each one's ground layers and
+            // props, as `Variants.Temperate` names them. A photographed ground is its photograph,
+            // with no tint, on a tile as wide as the ground it shows.
+            foreach (KeyValuePair<string, (string size, float metres)> photograph in Photographed)
+            {
+                KitLayer(photograph.Key, photograph.Key, photograph.Value.size, photograph.Value.metres, Color.white);
+            }
+            KitVariant[] variants = Variants.Temperate.Select(variant => new KitVariant
+            {
+                Name = variant.Name,
+                Layers = variant.Ground.Select(ground => VariantLayer(ground.Layer)).ToArray(),
+                Props = variant.Grows.Select(growth => PropOf(growth.Prefab, tree: growth.Category == "Trees")).ToArray(),
+            }).ToArray();
+            if (app.KitVariants == null || app.KitVariants.Length != variants.Length
+                || !variants.Zip(app.KitVariants, (wanted, held) => held != null && wanted.Name == held.Name && held.Layers != null && wanted.Layers.SequenceEqual(held.Layers)
+                    && held.Props != null && wanted.Props.Length == held.Props.Length && wanted.Props.Zip(held.Props, Same).All(same => same)).All(same => same))
+            {
+                app.KitVariants = variants;
                 changed = true;
             }
             if (changed)
@@ -280,6 +299,13 @@ namespace Eternities.EditorTools
                 EditorSceneManager.MarkSceneDirty(scene);
                 EditorSceneManager.SaveScene(scene);
             }
+        }
+
+        // The kit's variants as the persistent scene holds them, once it is complete.
+        public static KitVariant[] SceneVariants()
+        {
+            PersistentScene();
+            return Object.FindAnyObjectByType<App>().KitVariants;
         }
 
         static bool SetObject(GameObject wanted, GameObject held, System.Action<GameObject> assign)
@@ -295,9 +321,9 @@ namespace Eternities.EditorTools
         // A kit prop as its prefab gives it (the prop conditioning rule, `PropRule`): the mesh, its
         // materials, and where the mesh stands in the prefab. No model file is read here: a model
         // becomes a prop in `KitPrefabs`, and the prefab is what the project draws.
-        static KitProp PropOf(PropKind kind)
+        static KitProp PropOf(string prefabName, bool tree)
         {
-            string path = KitPrefabs.Path("temperate", kind.Prefab);
+            string path = KitPrefabs.Path("temperate", prefabName);
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
             MeshFilter[] filters = prefab == null ? new MeshFilter[0] : prefab.GetComponentsInChildren<MeshFilter>();
             if (filters.Length != 1 || filters[0].sharedMesh == null)
@@ -306,7 +332,7 @@ namespace Eternities.EditorTools
             }
             Transform model = filters[0].transform;
             bool upright = Quaternion.Angle(model.rotation, Quaternion.identity) < 0.01f;
-            if (kind.Trunk > 0 && !upright)
+            if (tree && !upright)
             {
                 throw new InvalidDataException($"{path} is a tree whose mesh does not stand on its own y axis, and its trunk's capsule would not stand either");
             }
@@ -314,29 +340,58 @@ namespace Eternities.EditorTools
             {
                 Mesh = filters[0].sharedMesh, Materials = filters[0].GetComponent<MeshRenderer>().sharedMaterials,
                 Offset = model.position, Turn = upright ? Quaternion.identity : model.rotation, Scale = model.lossyScale.x,
+                From = Mathf.FloorToInt(filters[0].GetComponent<MeshRenderer>().meshLodSelectionBias),
             };
         }
 
+        static bool Same(KitProp wanted, KitProp held) => held != null && wanted.Mesh == held.Mesh && held.Materials != null && wanted.Materials.SequenceEqual(held.Materials)
+            && wanted.Offset == held.Offset && wanted.Turn == held.Turn && wanted.Scale == held.Scale && wanted.From == held.From;
+
         public const string LayerFolder = "Assets/Kits/temperate/TerrainLayers";
 
+        // The photographed ground of the kit's variants (`Assets/Kits/temperate/CREDITS.md`): each
+        // texture is a terrain layer of its own name, at the size of its files and on a tile as
+        // wide, in metres, as its source's page says the photograph is.
+        static readonly Dictionary<string, (string size, float metres)> Photographed = new Dictionary<string, (string, float)>
+        {
+            ["ground037"] = ("1k", 2.1f), ["forrest_ground_01"] = ("2k", 2), ["forest_leaves_03"] = ("2k", 2.3f),
+            ["brown_mud_leaves_01"] = ("2k", 1.3f), ["mud_forest"] = ("2k", 2.3f), ["dark_rock"] = ("2k", 2.4f), ["dark_rock_02"] = ("2k", 2),
+        };
+
+        static TerrainLayer VariantLayer(string name)
+        {
+            var layer = AssetDatabase.LoadAssetAtPath<TerrainLayer>($"{LayerFolder}/{name}.terrainlayer");
+            if (layer == null)
+            {
+                throw new InvalidDataException($"a variant names the terrain layer {name}, which the kit has not");
+            }
+            return layer;
+        }
+
         // A terrain layer of the temperate kit: one texture's colour, normal and mask maps. The mask
-        // is the kit's `arm` file as `KitMaskImport` repacks it, so the layer's smoothness and
-        // occlusion are the texture's own.
-        static TerrainLayer KitLayer(string name, string texture, float metres, Color tint)
+        // is the kit's `arm` file, or its `rough` file where the source has no `arm`, as
+        // `KitMaskImport` packs it, so the layer's smoothness and occlusion are the texture's own.
+        static TerrainLayer KitLayer(string name, string texture, string size, float metres, Color tint)
         {
             string path = $"{LayerFolder}/{name}.terrainlayer";
             var layer = AssetDatabase.LoadAssetAtPath<TerrainLayer>(path);
             if (layer == null)
             {
+                string Named(string kind) => $"Assets/Kits/temperate/Terrain/{texture}_{kind}_{size}.jpg";
                 Texture2D Map(string kind)
                 {
-                    string file = $"Assets/Kits/temperate/Terrain/{texture}_{kind}_2k.jpg";
+                    string file = Named(kind);
                     var map = AssetDatabase.LoadAssetAtPath<Texture2D>(file);
                     if (map == null)
                     {
                         throw new InvalidDataException($"the kit's texture {file} is not in the project: run Assets/Kits/temperate/fetch.sh and git lfs pull");
                     }
                     return map;
+                }
+                if (AssetImporter.GetAtPath(Named("nor_gl")) is TextureImporter normals && normals.textureType != TextureImporterType.NormalMap)
+                {
+                    normals.textureType = TextureImporterType.NormalMap;
+                    normals.SaveAndReimport();
                 }
                 if (!AssetDatabase.IsValidFolder(LayerFolder))
                 {
@@ -346,7 +401,7 @@ namespace Eternities.EditorTools
                 {
                     diffuseTexture = Map("diff"),
                     normalMapTexture = Map("nor_gl"),
-                    maskMapTexture = Map("arm"),
+                    maskMapTexture = Map(File.Exists(Named("arm")) ? "arm" : "rough"),
                     tileSize = new Vector2(metres, metres),
                     diffuseRemapMax = new Vector4(tint.r, tint.g, tint.b, 1),      // HDRP's terrain shader reads the tint here
                 };

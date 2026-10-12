@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Eternities.Kits;
+using Eternities.Travel;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -14,7 +15,12 @@ namespace Eternities.EditorTools
     // height at the quality level named. A row is at most `Row` metres wide, so a prop is seen
     // from about as near as a walker passes it. Nothing is saved but the pictures.
     //
-    //   batchmode.sh -executeMethod Eternities.EditorTools.KitPictures.Run -picturesOut <dir> [-picturesQuality medium] [-picturesSunKelvin 5000]
+    //   batchmode.sh -executeMethod Eternities.EditorTools.KitPictures.Run -picturesOut <dir> [-picturesQuality medium] [-picturesSunKelvin 5000] [-picturesVariant meadow|all]
+    //
+    // With `-picturesVariant`, the pictures are of the kit's variants and not of its props one
+    // by one: a patch of ground painted with the variant's layers and dressed with its props at
+    // the density of the quality level, seen from the avatar's eye height where a walker stands
+    // in it, looking north and looking toward the sun.
     //
     // No `-quit`: a picture is kept after the editor has run some sixty frames on it, so that the
     // sky's light on the shaded sides and the exposure have settled, and the editor exits by
@@ -74,11 +80,50 @@ namespace Eternities.EditorTools
             }
             QualitySettings.SetQualityLevel(level, true);
 
+            string named = CommandLine.Optional("-picturesVariant");
+            if (named != null)
+            {
+                // The scene as the generation entry point leaves it, with the variants in it.
+                Generate.PersistentScene();
+            }
             EditorSceneManager.OpenScene(Generate.HubScene, OpenSceneMode.Single);
             Camera camera = Camera.main;
             Light sun = Object.FindObjectsByType<Light>(FindObjectsSortMode.None).First(light => light.type == LightType.Directional);
             sun.transform.rotation = Temperate.Sun(Temperate.SunElevation, Temperate.SunAzimuth);
             sun.colorTemperature = kelvin == null ? Temperate.SunKelvin : float.Parse(kelvin, System.Globalization.CultureInfo.InvariantCulture);
+            if (named != null)
+            {
+                App app = Object.FindAnyObjectByType<App>();
+                KitVariant[] scene = app.KitVariants;
+                bool any = false;
+                for (int i = 0; i < Variants.Temperate.Length; i++)
+                {
+                    Variant variant = Variants.Temperate[i];
+                    if (named != "all" && named != variant.Name)
+                    {
+                        continue;
+                    }
+                    any = true;
+                    GameObject patch = Dress(variant, scene[i], app.GroundMaterials.Last(), Temperate.Density(quality));
+                    // Toward the sun: its azimuth is clockwise from north.
+                    float toSun = Temperate.SunAzimuth * Mathf.Deg2Rad;
+                    foreach ((string name, Vector3 ahead) in new[] { ("north", Vector3.forward), ("sun", new Vector3(Mathf.Sin(toSun), 0, Mathf.Cos(toSun))) })
+                    {
+                        camera.transform.position = new Vector3(0, Eye, 0);
+                        camera.transform.LookAt(new Vector3(0, Eye, 0) + ahead * 12 + Vector3.down * 1.2f);
+                        foreach (bool step in Shot(camera, Path.Combine(output, $"variant-{variant.Name}-{name}-{quality}.png")))
+                        {
+                            yield return step;
+                        }
+                    }
+                    Object.DestroyImmediate(patch);
+                }
+                if (!any)
+                {
+                    throw new InvalidDataException($"the kit has no variant named {named}: {string.Join(", ", Variants.Temperate.Select(variant => variant.Name))}");
+                }
+                yield break;
+            }
             Ground();
 
             // The flat models of the first slice first, so a category's first row has them beside
@@ -98,18 +143,62 @@ namespace Eternities.EditorTools
                     {
                         camera.transform.position = new Vector3(width / 2, Eye, side * back);
                         camera.transform.LookAt(new Vector3(width / 2, Mathf.Min(tallest / 2, Eye), 0));
-                        var target = new RenderTexture(Width, Height, 24, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
-                        camera.targetTexture = target;
-                        for (int frame = 0; frame < Frames; frame++)
+                        foreach (bool step in Shot(camera, Path.Combine(output, $"{category.Key}-{row}-{name}-{quality}.png")))
                         {
-                            camera.Render();
-                            yield return true;
+                            yield return step;
                         }
-                        Save(camera, target, Path.Combine(output, $"{category.Key}-{row}-{name}-{quality}.png"));
                     }
                     Object.DestroyImmediate(stood);
                 }
             }
+        }
+
+        // A picture from where the camera stands, kept after the editor has run its frames on it.
+        static IEnumerable<bool> Shot(Camera camera, string path)
+        {
+            var target = new RenderTexture(Width, Height, 24, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+            camera.targetTexture = target;
+            for (int frame = 0; frame < Frames; frame++)
+            {
+                camera.Render();
+                yield return true;
+            }
+            Save(camera, target, path);
+        }
+
+        // How wide the dressed patch is, in metres: the walker stands at its middle, and bushes,
+        // rocks and trees stand out to its edge.
+        const float Patch = 240;
+
+        // A patch of ground painted with a variant's layers and dressed with its props, as the
+        // scene holds them, at a share of its full density.
+        static GameObject Dress(Variant variant, KitVariant held, Material groundMaterial, float density)
+        {
+            uint seed = (uint)Eternities.Layout.SplitMix64.Fnv1a64($"eternities-v4|variant|{variant.Name}");
+            var patch = new GameObject(variant.Name);
+            const int Resolution = 1024;
+            var data = new TerrainData { name = variant.Name, heightmapResolution = 33, alphamapResolution = Resolution };
+            data.size = new Vector3(Patch, 1, Patch);       // after the resolutions, which reset it
+            data.terrainLayers = held.Layers;
+            var alphas = new float[Resolution, Resolution, held.Layers.Length];
+            Variants.Paint(variant, alphas, Patch, seed);
+            data.SetAlphamaps(0, 0, alphas);
+            GameObject ground = Terrain.CreateTerrainGameObject(data);
+            ground.transform.SetParent(patch.transform, false);
+            ground.transform.localPosition = new Vector3(-Patch / 2, 0, -Patch / 2);
+            // A copy: a terrain sets its layers' keywords on its material, and the scene's is a file.
+            ground.GetComponent<Terrain>().materialTemplate = new Material(groundMaterial);
+
+            var counts = new int[variant.Grows.Length];
+            foreach (Prop prop in Variants.Scatter(variant, Patch, density, seed, Vector2.zero))
+            {
+                Growth growth = variant.Grows[prop.Kind];
+                held.Props[prop.Kind].Stand(growth.Name, patch.transform, new Vector3(prop.X, 0, prop.Z), prop.Yaw, prop.Scale, shadow: growth.Category != "GroundCover");
+                counts[prop.Kind]++;
+            }
+            Debug.Log($"KitPictures: {variant.Name} at {density:P0} of its density: {counts.Sum()} props on {Patch} m x {Patch} m, of them "
+                + string.Join(", ", variant.Grows.Select((growth, kind) => (growth.Category, counts[kind])).GroupBy(one => one.Category).Select(group => $"{group.Sum(one => one.Item2)} {group.Key}")));
+            return patch;
         }
 
         // The kit's meadow, as the world lays it: a plain 400 m across.

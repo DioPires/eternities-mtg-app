@@ -43,7 +43,8 @@ namespace Eternities.Travel
 
         // Assigned by the generation entry point. The stand materials are the four plinths by
         // rarity, then the slab. The terrain layers are the kit's meadow, path and gravel, or empty.
-        // The props are the kit's kinds, in their order.
+        // The props are the kit's kinds, in their order. The variants are the kit's, in the order of
+        // `Variants.Temperate`; nothing draws them yet (PRD v4 9.6, leg 2).
         [SerializeField] Material[] standMaterials = new Material[0];
         [SerializeField] Material avatarMaterial, hubGroundMaterial, portalFrameMaterial, portalSurfaceMaterial, veilMaterial;
         [SerializeField] TerrainLayer[] terrainLayers = new TerrainLayer[0];
@@ -55,6 +56,7 @@ namespace Eternities.Travel
         [SerializeField] PanelSettings panelSettings;
         [SerializeField] GameObject riverPrefab, lakePrefab;
         [SerializeField] KitProp[] props = new KitProp[0];
+        [SerializeField] KitVariant[] variants = new KitVariant[0];
 
         public static App Instance { get; private set; }
 
@@ -79,6 +81,7 @@ namespace Eternities.Travel
         public GameObject RiverPrefab { get => riverPrefab; set => riverPrefab = value; }
         public GameObject LakePrefab { get => lakePrefab; set => lakePrefab = value; }
         public KitProp[] KitProps { get => props; set => props = value; }
+        public KitVariant[] KitVariants { get => variants; set => variants = value; }
 
         public Pack Pack { get; private set; }
         public AvatarController Avatar { get; private set; }

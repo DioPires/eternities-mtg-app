@@ -170,6 +170,37 @@ models; the owner sets them from PRD v4 7.2's kit rows. The three rules of item 
 defects of the photographic trial of 2026-10-11 (DEC-953): stones of 7 to 30 cm drawn at 2 to 3 m,
 a leaf's photograph written out again too dark, and far trees pale against the sun.
 
+## Kit variants
+
+A variant is what a region's row names (PRD v4 5.6.3, 8.12.1): a ground layer mix, a prop set and
+a density. The temperate kit has four, `meadow`, `wood`, `marsh` and `highland`, in
+`Assets/Scripts/Kits/Variants.cs`. `VariantTests` in `unity-editmode` holds them:
+
+1. **Ground.** Two or more of the kit's terrain layers under `TerrainLayers/`, each with its share
+   of the ground. A layer is one photograph with its own normals and mask, with no tint, on a tile
+   as wide as the ground the photograph shows.
+2. **Props.** The kit's photographic prefabs only, each with how many stand on a hundred square
+   metres at full density and how large an instance is against its prefab. More than one species
+   of each vegetation type the variant uses, and rocks.
+3. **Density.** A quality level draws a share of it, and a lower level's props are among a higher
+   level's. Ground cover stands about the viewer only, thinning from 12 m to nothing at 26 m.
+
+The scene holds each variant's layers and props, so a build carries them. Nothing draws a variant
+in a world yet: that is the dressing of a region (PRD v4 9.6, leg 2). The densities are a first
+setting for the owner's eye.
+
+Pictures of the kit, for the owner's eye and a reviewer's, from the avatar's eye height under
+Dominaria's sun. No `-quit`: the editor exits by itself after the last picture.
+
+```sh
+unity/Eternities/batchmode.sh -executeMethod Eternities.EditorTools.KitPictures.Run -picturesOut "$PWD/pictures" -picturesVariant all
+unity/Eternities/batchmode.sh -executeMethod Eternities.EditorTools.KitPictures.Run -picturesOut "$PWD/pictures"
+```
+
+The first dresses a patch of ground with each variant at the density of the quality level, 240 m
+across, and looks north and toward the sun. The second stands each category's prefabs in rows. Both
+take `-picturesQuality` (`medium` if not given) and `-picturesSunKelvin`.
+
 ## Batchmode commands
 
 Run from the repository root. `batchmode.sh` reads the editor version from `ProjectVersion.txt` and
