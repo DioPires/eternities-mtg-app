@@ -454,9 +454,10 @@ namespace Eternities.Tests
             // the slab beside the box, where the box hides nothing, is off: the shading taken from
             // the screen's own depth, and the bloom, which spreads the box's colour past its edge.
             // The exposure is fixed, as A_ColourIsolation fixes it. The automatic exposure adapts
-            // with game time, and it is still moving when A_ColourIsolation lets go of 13: one long
-            // frame between the two reads darkened the whole slab by up to 12 of 255, and blocks of
-            // it read as hidden (DEC-984).
+            // with game time. It starts from 13 when A_ColourIsolation lets go of it and is still
+            // moving here: one long frame between the two reads darkened the whole slab by 7 to 12
+            // of 255 in a third of a second, and by more in a longer one, and blocks of it read as
+            // hidden (DEC-984).
             Condition<ContactShadows>().enable.Override(false);
             Condition<ScreenSpaceAmbientOcclusion>().intensity.Override(0);
             Condition<Bloom>().intensity.Override(0);
