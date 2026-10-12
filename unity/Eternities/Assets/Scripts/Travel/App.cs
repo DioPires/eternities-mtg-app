@@ -240,7 +240,7 @@ namespace Eternities.Travel
             Veil(0);
 
             // The scene's sun is the hub's as it stands. A world sets it to its own (PRD v4 5.7.1).
-            foreach (Light light in FindObjectsByType<Light>(FindObjectsSortMode.None))
+            foreach (Light light in FindObjectsByType<Light>())
             {
                 if (light.type == LightType.Directional)
                 {
