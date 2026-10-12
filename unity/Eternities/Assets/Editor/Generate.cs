@@ -225,6 +225,7 @@ namespace Eternities.EditorTools
             // kit's own materials and then left alone, and each kind of the scatter as its prefab
             // gives it.
             KitPrefabs.Make("temperate", KitPrefabs.Temperate);
+            KitPrefabs.Make("temperate", KitPrefabs.TemperatePhotographs);
             KitProp[] props = Temperate.Kinds.Select(PropOf).ToArray();
             if (app.KitProps == null || app.KitProps.Length != props.Length
                 || !props.Zip(app.KitProps, (wanted, held) => held != null && wanted.Mesh == held.Mesh && held.Materials != null && wanted.Materials.SequenceEqual(held.Materials)

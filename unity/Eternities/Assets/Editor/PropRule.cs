@@ -30,7 +30,8 @@ namespace Eternities.EditorTools
         {
             [PropCategory.Tree] = new Cap { Triangles = 60000, Materials = 3, HeightFrom = 2.5f, HeightTo = 30, Sink = 0.05f },
             [PropCategory.Bush] = new Cap { Triangles = 10000, Materials = 3, HeightFrom = 0.3f, HeightTo = 3, Sink = 0.1f },
-            [PropCategory.GroundCover] = new Cap { Triangles = 2500, Materials = 1, HeightFrom = 0.02f, HeightTo = 2.5f, Sink = 0.1f },
+            // A tuft a hand high has its roots a finger under the ground.
+            [PropCategory.GroundCover] = new Cap { Triangles = 2500, Materials = 1, HeightFrom = 0.02f, HeightTo = 2.5f, Sink = 0.25f },
             // A rock lies in the ground: the photographed ones are modelled with a third of them under it.
             [PropCategory.Rock] = new Cap { Triangles = 10000, Materials = 1, HeightFrom = 0.05f, HeightTo = 5, Sink = 0.45f },
             [PropCategory.Structure] = new Cap { Triangles = 5000, Materials = 3, HeightFrom = 0.05f, HeightTo = 12, Sink = 0.15f },
@@ -313,11 +314,12 @@ namespace Eternities.EditorTools
             return $"| {Path.GetFileNameWithoutExtension(path)} | {category} | {string.Join(", ", models)} | {measure.Height:F2} m | {levels} | {measure.Materials} |";
         }
 
-        // The rows to put in a kit's `CREDITS.md`, in the Console, for whoever adds a prop.
+        // The rows to put in a kit's `CREDITS.md`, in the Console, for whoever adds a prop. From the
+        // command line: `batchmode.sh -quit -executeMethod Eternities.EditorTools.PropRule.Print`.
         [MenuItem("Eternities/Kit props as drawn")]
-        static void Rows()
+        public static void Print()
         {
-            Debug.Log(string.Join("\n", Props().Select(prop => CreditsRow(prop.Path))));
+            Debug.Log("Props as drawn\n" + string.Join("\n", Props().Select(prop => CreditsRow(prop.Path))));
         }
     }
 }

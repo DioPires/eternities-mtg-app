@@ -47,6 +47,56 @@ and that table.
 | `Props/path_wood.fbx` | <https://kenney.nl/assets/nature-kit> | Kenney | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | Wooden ford planks where water crosses a path (PRD 8.4.2) |
 | `Props/bridge_wood.fbx` | <https://kenney.nl/assets/nature-kit> | Kenney | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | Wooden bridge where water crosses a path (PRD 8.4.2) |
 
+## Props, photographic (FBX; JPG maps at 1K or 2K; PNG opacity)
+
+From Poly Haven, as downloaded. A file of several plants or rocks is several props, each a prefab
+that draws one of its meshes; "Props as drawn" lists them.
+
+| File | Source | Author | Licence | Fetched | Intended use |
+|---|---|---|---|---|---|
+| `Props/rock_moss_set_01_1k.fbx` | <https://polyhaven.com/a/rock_moss_set_01> | Kless Gyzen | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Rocks, six mossy boulders of 1.1 to 1.8 m; model |
+| `Props/rock_moss_set_01_diff_2k.jpg` | <https://polyhaven.com/a/rock_moss_set_01> | Kless Gyzen | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Rocks, six mossy boulders of 1.1 to 1.8 m; albedo |
+| `Props/rock_moss_set_01_nor_gl_2k.jpg` | <https://polyhaven.com/a/rock_moss_set_01> | Kless Gyzen | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Rocks, six mossy boulders of 1.1 to 1.8 m; normal, OpenGL convention |
+| `Props/rock_moss_set_01_arm_2k.jpg` | <https://polyhaven.com/a/rock_moss_set_01> | Kless Gyzen | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Rocks, six mossy boulders of 1.1 to 1.8 m; mask source, AO in R, roughness in G, metalness in B |
+| `Props/rock_moss_set_02_1k.fbx` | <https://polyhaven.com/a/rock_moss_set_02> | Kless Gyzen | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Rocks, seven mossy rocks of 0.5 to 1.3 m; model |
+| `Props/rock_moss_set_02_diff_2k.jpg` | <https://polyhaven.com/a/rock_moss_set_02> | Kless Gyzen | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Rocks, seven mossy rocks of 0.5 to 1.3 m; albedo |
+| `Props/rock_moss_set_02_nor_gl_2k.jpg` | <https://polyhaven.com/a/rock_moss_set_02> | Kless Gyzen | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Rocks, seven mossy rocks of 0.5 to 1.3 m; normal, OpenGL convention |
+| `Props/rock_moss_set_02_arm_2k.jpg` | <https://polyhaven.com/a/rock_moss_set_02> | Kless Gyzen | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Rocks, seven mossy rocks of 0.5 to 1.3 m; mask source, AO in R, roughness in G, metalness in B |
+| `Props/boulder_01_1k.fbx` | <https://polyhaven.com/a/boulder_01> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Rock, a bare boulder of 1.0 m; model |
+| `Props/boulder_01_diff_2k.jpg` | <https://polyhaven.com/a/boulder_01> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Rock, a bare boulder of 1.0 m; albedo |
+| `Props/boulder_01_nor_gl_2k.jpg` | <https://polyhaven.com/a/boulder_01> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Rock, a bare boulder of 1.0 m; normal, OpenGL convention |
+| `Props/boulder_01_arm_2k.jpg` | <https://polyhaven.com/a/boulder_01> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Rock, a bare boulder of 1.0 m; mask source, AO in R, roughness in G, metalness in B |
+| `Props/shrub_02_1k.fbx` | <https://polyhaven.com/a/shrub_02> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Shrubs, four thin-stemmed plants of 1.0 to 1.4 m; model |
+| `Props/shrub_02_diff_1k.jpg` | <https://polyhaven.com/a/shrub_02> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Shrubs, four thin-stemmed plants of 1.0 to 1.4 m; albedo |
+| `Props/shrub_02_nor_gl_1k.jpg` | <https://polyhaven.com/a/shrub_02> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Shrubs, four thin-stemmed plants of 1.0 to 1.4 m; normal, OpenGL convention |
+| `Props/shrub_02_arm_1k.jpg` | <https://polyhaven.com/a/shrub_02> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Shrubs, four thin-stemmed plants of 1.0 to 1.4 m; mask source, AO in R, roughness in G, metalness in B |
+| `Props/shrub_02_alpha_1k.png` | <https://polyhaven.com/a/shrub_02> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Shrubs, four thin-stemmed plants of 1.0 to 1.4 m; opacity |
+| `Props/fern_02_1k.fbx` | <https://polyhaven.com/a/fern_02> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Ferns, four plants of 0.2 to 0.4 m; model |
+| `Props/fern_02_diff_1k.jpg` | <https://polyhaven.com/a/fern_02> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Ferns, four plants of 0.2 to 0.4 m; albedo |
+| `Props/fern_02_nor_gl_1k.jpg` | <https://polyhaven.com/a/fern_02> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Ferns, four plants of 0.2 to 0.4 m; normal, OpenGL convention |
+| `Props/fern_02_arm_1k.jpg` | <https://polyhaven.com/a/fern_02> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Ferns, four plants of 0.2 to 0.4 m; mask source, AO in R, roughness in G, metalness in B |
+| `Props/fern_02_alpha_1k.png` | <https://polyhaven.com/a/fern_02> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Ferns, four plants of 0.2 to 0.4 m; opacity |
+| `Props/grass_medium_01_1k.fbx` | <https://polyhaven.com/a/grass_medium_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Grass tufts of 5 to 32 cm; model |
+| `Props/grass_medium_01_diff_1k.jpg` | <https://polyhaven.com/a/grass_medium_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Grass tufts of 5 to 32 cm; albedo |
+| `Props/grass_medium_01_nor_gl_1k.jpg` | <https://polyhaven.com/a/grass_medium_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Grass tufts of 5 to 32 cm; normal, OpenGL convention |
+| `Props/grass_medium_01_arm_1k.jpg` | <https://polyhaven.com/a/grass_medium_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Grass tufts of 5 to 32 cm; mask source, AO in R, roughness in G, metalness in B |
+| `Props/grass_medium_01_alpha_1k.png` | <https://polyhaven.com/a/grass_medium_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Grass tufts of 5 to 32 cm; opacity |
+| `Props/grass_medium_02_1k.fbx` | <https://polyhaven.com/a/grass_medium_02> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Grass tufts of 16 to 40 cm; model |
+| `Props/grass_medium_02_diff_1k.jpg` | <https://polyhaven.com/a/grass_medium_02> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Grass tufts of 16 to 40 cm; albedo |
+| `Props/grass_medium_02_nor_gl_1k.jpg` | <https://polyhaven.com/a/grass_medium_02> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Grass tufts of 16 to 40 cm; normal, OpenGL convention |
+| `Props/grass_medium_02_arm_1k.jpg` | <https://polyhaven.com/a/grass_medium_02> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Grass tufts of 16 to 40 cm; mask source, AO in R, roughness in G, metalness in B |
+| `Props/grass_medium_02_alpha_1k.png` | <https://polyhaven.com/a/grass_medium_02> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Grass tufts of 16 to 40 cm; opacity |
+| `Props/celandine_01_1k.fbx` | <https://polyhaven.com/a/celandine_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Flowering ground cover, lesser celandine; model |
+| `Props/celandine_01_diff_1k.jpg` | <https://polyhaven.com/a/celandine_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Flowering ground cover, lesser celandine; albedo |
+| `Props/celandine_01_nor_gl_1k.jpg` | <https://polyhaven.com/a/celandine_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Flowering ground cover, lesser celandine; normal, OpenGL convention |
+| `Props/celandine_01_arm_1k.jpg` | <https://polyhaven.com/a/celandine_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Flowering ground cover, lesser celandine; mask source, AO in R, roughness in G, metalness in B |
+| `Props/celandine_01_alpha_1k.png` | <https://polyhaven.com/a/celandine_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Flowering ground cover, lesser celandine; opacity |
+| `Props/dandelion_01_1k.fbx` | <https://polyhaven.com/a/dandelion_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Flowering ground cover, dandelion; model |
+| `Props/dandelion_01_diff_1k.jpg` | <https://polyhaven.com/a/dandelion_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Flowering ground cover, dandelion; albedo |
+| `Props/dandelion_01_nor_gl_1k.jpg` | <https://polyhaven.com/a/dandelion_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Flowering ground cover, dandelion; normal, OpenGL convention |
+| `Props/dandelion_01_arm_1k.jpg` | <https://polyhaven.com/a/dandelion_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Flowering ground cover, dandelion; mask source, AO in R, roughness in G, metalness in B |
+| `Props/dandelion_01_alpha_1k.png` | <https://polyhaven.com/a/dandelion_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Flowering ground cover, dandelion; opacity |
+
 ## Props as drawn
 
 One row a prefab under `Prefabs/`. The height is the prefab's at scale 1; the triangles are those
@@ -55,19 +105,62 @@ the rows from the prefabs: the editor's menu, Eternities, "Kit props as drawn".
 
 | Prop | Category | Model | Height | Triangles | Materials |
 |---|---|---|---|---|---|
-| tree_oak | tree | `Props/tree_oak.fbx` | 7.97 m | 196 | 2 |
-| tree_thin | tree | `Props/tree_thin.fbx` | 8.57 m | 228 | 2 |
-| tree_pineTallA | tree | `Props/tree_pineTallA.fbx` | 9.94 m | 78 | 2 |
 | plant_bush | bush | `Props/plant_bush.fbx` | 1.04 m | 32 | 1 |
 | plant_bushLarge | bush | `Props/plant_bushLarge.fbx` | 1.46 m | 60 | 1 |
+| shrub_02_a | bush | `Props/shrub_02_1k.fbx` | 1.37 m | 7,590 to 64 | 1 |
+| shrub_02_b | bush | `Props/shrub_02_1k.fbx` | 1.22 m | 5,242 to 64 | 1 |
+| shrub_02_c | bush | `Props/shrub_02_1k.fbx` | 1.07 m | 9,234 to 64 | 1 |
+| shrub_02_d | bush | `Props/shrub_02_1k.fbx` | 1.00 m | 5,188 to 64 | 1 |
+| celandine_01_a | ground cover | `Props/celandine_01_1k.fbx` | 0.19 m | 622 to 64 | 1 |
+| celandine_01_b | ground cover | `Props/celandine_01_1k.fbx` | 0.14 m | 599 to 64 | 1 |
+| celandine_01_e | ground cover | `Props/celandine_01_1k.fbx` | 0.12 m | 442 to 64 | 1 |
+| crops_wheatStageB | ground cover | `Props/crops_wheatStageB.fbx` | 1.39 m | 360 | 2 |
+| dandelion_01_a | ground cover | `Props/dandelion_01_1k.fbx` | 0.16 m | 1,933 to 64 | 1 |
+| dandelion_01_b | ground cover | `Props/dandelion_01_1k.fbx` | 0.11 m | 1,873 to 64 | 1 |
+| dandelion_01_c | ground cover | `Props/dandelion_01_1k.fbx` | 0.10 m | 998 to 64 | 1 |
+| dandelion_01_d | ground cover | `Props/dandelion_01_1k.fbx` | 0.06 m | 880 to 63 | 1 |
+| dandelion_01_e | ground cover | `Props/dandelion_01_1k.fbx` | 0.05 m | 520 to 64 | 1 |
+| fern_02_a | ground cover | `Props/fern_02_1k.fbx` | 0.29 m | 784 to 64 | 1 |
+| fern_02_b | ground cover | `Props/fern_02_1k.fbx` | 0.43 m | 2,384 to 64 | 1 |
+| fern_02_c | ground cover | `Props/fern_02_1k.fbx` | 0.35 m | 2,248 to 64 | 1 |
+| fern_02_d | ground cover | `Props/fern_02_1k.fbx` | 0.21 m | 816 to 64 | 1 |
+| grass_medium_01_mid_a | ground cover | `Props/grass_medium_01_1k.fbx` | 0.22 m | 2,287 to 64 | 1 |
+| grass_medium_01_mid_b | ground cover | `Props/grass_medium_01_1k.fbx` | 0.18 m | 1,257 to 64 | 1 |
+| grass_medium_01_mid_c | ground cover | `Props/grass_medium_01_1k.fbx` | 0.14 m | 1,466 to 64 | 1 |
+| grass_medium_01_small_a | ground cover | `Props/grass_medium_01_1k.fbx` | 0.14 m | 833 to 64 | 1 |
+| grass_medium_01_small_b | ground cover | `Props/grass_medium_01_1k.fbx` | 0.10 m | 653 to 64 | 1 |
+| grass_medium_01_tall_a | ground cover | `Props/grass_medium_01_1k.fbx` | 0.32 m | 290 to 64 | 1 |
+| grass_medium_01_tall_b | ground cover | `Props/grass_medium_01_1k.fbx` | 0.29 m | 310 to 64 | 1 |
+| grass_medium_01_tall_c | ground cover | `Props/grass_medium_01_1k.fbx` | 0.24 m | 340 to 64 | 1 |
+| grass_medium_02_a | ground cover | `Props/grass_medium_02_1k.fbx` | 0.16 m | 714 to 64 | 1 |
+| grass_medium_02_b | ground cover | `Props/grass_medium_02_1k.fbx` | 0.18 m | 1,760 to 64 | 1 |
+| grass_medium_02_c | ground cover | `Props/grass_medium_02_1k.fbx` | 0.23 m | 1,215 to 64 | 1 |
+| grass_medium_02_d | ground cover | `Props/grass_medium_02_1k.fbx` | 0.26 m | 2,489 to 64 | 1 |
+| grass_medium_02_e | ground cover | `Props/grass_medium_02_1k.fbx` | 0.40 m | 1,664 to 64 | 1 |
+| boulder_01 | rock | `Props/boulder_01_1k.fbx` | 1.00 m | 8,264 to 64 | 1 |
 | rock_largeA | rock | `Props/rock_largeA.fbx` | 0.65 m | 80 | 2 |
+| rock_moss_set_01_rock01 | rock | `Props/rock_moss_set_01_1k.fbx` | 1.47 m | 5,758 to 142 | 1 |
+| rock_moss_set_01_rock02 | rock | `Props/rock_moss_set_01_1k.fbx` | 1.26 m | 5,758 to 64 | 1 |
+| rock_moss_set_01_rock03 | rock | `Props/rock_moss_set_01_1k.fbx` | 1.10 m | 5,000 to 64 | 1 |
+| rock_moss_set_01_rock04 | rock | `Props/rock_moss_set_01_1k.fbx` | 1.77 m | 5,438 to 80 | 1 |
+| rock_moss_set_01_rock05 | rock | `Props/rock_moss_set_01_1k.fbx` | 1.21 m | 8,702 to 64 | 1 |
+| rock_moss_set_01_rock06 | rock | `Props/rock_moss_set_01_1k.fbx` | 1.26 m | 8,994 to 64 | 1 |
+| rock_moss_set_02_rock07 | rock | `Props/rock_moss_set_02_1k.fbx` | 0.74 m | 9,826 to 64 | 1 |
+| rock_moss_set_02_rock08 | rock | `Props/rock_moss_set_02_1k.fbx` | 0.53 m | 8,000 to 64 | 1 |
+| rock_moss_set_02_rock09 | rock | `Props/rock_moss_set_02_1k.fbx` | 0.61 m | 7,894 to 64 | 1 |
+| rock_moss_set_02_rock10 | rock | `Props/rock_moss_set_02_1k.fbx` | 0.77 m | 8,000 to 64 | 1 |
+| rock_moss_set_02_rock11 | rock | `Props/rock_moss_set_02_1k.fbx` | 1.31 m | 8,000 to 64 | 1 |
+| rock_moss_set_02_rock12 | rock | `Props/rock_moss_set_02_1k.fbx` | 0.74 m | 7,999 to 64 | 1 |
+| rock_moss_set_02_rock13 | rock | `Props/rock_moss_set_02_1k.fbx` | 1.26 m | 7,928 to 64 | 1 |
 | stone_largeB | rock | `Props/stone_largeB.fbx` | 1.08 m | 85 | 2 |
 | stone_smallFlatA | rock | `Props/stone_smallFlatA.fbx` | 0.18 m | 20 | 1 |
 | stone_tallD | rock | `Props/stone_tallD.fbx` | 2.32 m | 38 | 2 |
-| crops_wheatStageB | ground cover | `Props/crops_wheatStageB.fbx` | 1.39 m | 360 | 2 |
-| statue_obelisk | structure | `Props/statue_obelisk.fbx` | 2.19 m | 38 | 2 |
-| path_wood | structure | `Props/path_wood.fbx` | 0.10 m | 60 | 2 |
 | bridge_wood | structure | `Props/bridge_wood.fbx` | 1.60 m | 220 | 3 |
+| path_wood | structure | `Props/path_wood.fbx` | 0.10 m | 60 | 2 |
+| statue_obelisk | structure | `Props/statue_obelisk.fbx` | 2.19 m | 38 | 2 |
+| tree_oak | tree | `Props/tree_oak.fbx` | 7.97 m | 196 | 2 |
+| tree_pineTallA | tree | `Props/tree_pineTallA.fbx` | 9.94 m | 78 | 2 |
+| tree_thin | tree | `Props/tree_thin.fbx` | 8.57 m | 228 | 2 |
 
 ## Audio (Ogg Vorbis)
 
@@ -78,10 +171,11 @@ the rows from the prefabs: the editor's menu, Eternities, "Kit props as drawn".
 
 ## Notes for the slice
 
-- **Size.** 24 files, 39.2 MB of source files, against DEC-952's limit of 60 MB for the subset
-  before cooking. The largest texture is 6.0 MB (cap 8 MB) and the largest prop 82 KB (cap 200 KB);
-  `fetch.sh` enforces all three. The cooked size against PRD 7.2 is the build's check (PRD 8.7.2),
-  not this one.
+- **Size.** The first slice's subset is 24 files and 39.2 MB of source files, under DEC-952's
+  limits for it: 60 MB in all, 8 MB a texture, 200 KB a prop. The photographic props are over the
+  last: `fetch.sh` now holds a model and a texture to 8 MB each and the kit's sources to 200 MB,
+  the proposal of 2026-10-12 on DEC-1003. The cooked size against PRD 7.2 is the build's check
+  (PRD 8.7.2), not this one.
 - **Textures are JPG.** At 2K only Poly Haven's JPG stays under 8 MB per texture (the PNG albedo is
   23 MB, the EXR normal 11 MB). PRD 8.2.3's Git LFS list has no `*.jpg`; `.gitattributes` carries
   the pattern for `unity/`. `nor_gl` is the OpenGL normal convention, which Unity uses. `arm` packs

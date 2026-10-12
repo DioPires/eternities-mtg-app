@@ -51,6 +51,23 @@ namespace Eternities.Tests
             Assert.That(props, Is.GreaterThanOrEqualTo(Temperate.Kinds.Length), "the kits' prefabs were found");
         }
 
+        // The kit's photographic props keep what the rule asks at the photographic standard, while
+        // the kit as a whole is still at basic, with the first slice's flat models in it.
+        [Test]
+        public void EveryPhotographicPropKeepsThePhotographicRule()
+        {
+            var broken = new List<string>();
+            foreach (KitPrefabs.Source source in KitPrefabs.TemperatePhotographs)
+            {
+                string path = KitPrefabs.Path("temperate", source.Prefab);
+                var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+                Assert.That(prefab, Is.Not.Null, path);
+                broken.AddRange(PropRule.Violations(prefab, PropRule.Category(path).Value, PropRule.Photographic, Kit).Select(what => $"{path}: {what}"));
+            }
+            Assert.That(broken, Is.Empty, string.Join("\n", broken));
+            Assert.That(KitPrefabs.TemperatePhotographs, Is.Not.Empty);
+        }
+
         // One prefab a prop: every kind of the scatter has its prefab, and every model under a
         // kit's `Props/` is drawn by a prefab of that kit. And the generation entry point reads
         // prefabs: no model file is named in it.

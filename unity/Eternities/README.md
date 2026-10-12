@@ -118,7 +118,7 @@ builds for Windows.
 | `Assets/Settings/` | The HDRP assets: one per quality level with that level's volume profile, the global settings and the default volume profiles. |
 | `Assets/Scenes/Hub.unity` | The persistent scene (PRD v4 8.4.1): the template's camera, sun and sky, and the `Eternities` object. Kit worlds have no scene; they are built at run time from the pack and the layout. |
 | `Assets/Kits/core/` | What every world shares. `Materials/` holds the slice's plain materials (plinths by rarity, the mannequin, the hub, the portal, the image surface), and `UI/` the overlays' panel settings and theme; both are made by the generation entry point. `Shaders/` holds the two shaders of the isolated image path (PRD v4 8.4.4), written by hand. |
-| `Assets/Kits/temperate/` | The `temperate` kit's slice subset. `Terrain/`, `Props/` and `Audio/` hold the 24 files `sources.yaml` pins, in Git LFS, with a `CREDITS.md` row each; `fetch.sh` verifies them and fails on an unlisted file in those three folders, so what is made from them lives beside them: `Materials/` holds the kit's plain materials for its props, `Prefabs/` one prefab a prop (Kit props, below) and `Water/` its two water prefabs, all made by the generation entry point. `Assets/Editor/KitMaskImport.cs` repacks each `_arm_` texture into HDRP's mask map layout as it is imported. |
+| `Assets/Kits/temperate/` | The `temperate` kit's slice subset. `Terrain/`, `Props/` and `Audio/` hold the files `sources.yaml` pins, in Git LFS, with a `CREDITS.md` row each; `fetch.sh` verifies them and fails on an unlisted file in those three folders, so what is made from them lives beside them: `Materials/` holds the kit's plain materials for its props, `Prefabs/` one prefab a prop (Kit props, below) and `Water/` its two water prefabs, all made by the generation entry point. `Assets/Editor/KitMaskImport.cs` repacks each `_arm_` texture into HDRP's mask map layout as it is imported. |
 | `Assets/StreamingAssets/data/manifest.json` | Names the pinned pack hash. The pack itself is `data/<hash>/` beside it: written by the generation entry point, not committed. |
 | `bench.sh` | Starts a bench run of the built player (Batchmode commands, below). |
 | `batchmode.sh` | Starts the pinned editor on this project in batchmode, logging to stdout, and passes its arguments through. It replaces a `TMPDIR` too long for the compiler's socket. |
@@ -136,8 +136,8 @@ The rule is `Assets/Editor/PropRule.cs`; the figures below are its constants.
 2. **Metres.** The prefab's root is at scale 1 and unturned, so the prop's size at scale 1 is its
    size in the world. The mesh under it is scaled the same along every axis.
 3. **The base at the origin.** No point of the prop is more than 1 cm over its origin, the origin
-   is under the prop, and at most a share of its height is below it: 5% of a tree, 10% of a bush
-   or of ground cover, 15% of a structure, 45% of a rock, which lies in the ground.
+   is under the prop, and at most a share of its height is below it: 5% of a tree, 10% of a bush,
+   25% of ground cover, 15% of a structure, 45% of a rock, which lies in the ground.
 4. **Caps by category**, on the prop as its prefab draws it. The triangles are those of the nearest
    level of detail.
 

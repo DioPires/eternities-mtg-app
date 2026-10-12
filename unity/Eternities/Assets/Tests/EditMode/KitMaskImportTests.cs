@@ -44,11 +44,21 @@ namespace Eternities.Tests
             }
         }
 
-        // The temperate kit has three ground textures (CREDITS.md), each with its `_arm_` file.
+        // The temperate kit has three ground textures (CREDITS.md), each with its `_arm_` file, and
+        // one for each photograph its props are coloured by.
         [Test]
-        public void TheTemperateKitHasItsThreeMaskSources()
+        public void TheTemperateKitHasItsMaskSources()
         {
-            Assert.AreEqual(3, new List<string>(MaskSources()).Count);
+            var sources = new List<string>(MaskSources());
+            Assert.AreEqual(3, sources.FindAll(path => path.StartsWith("Assets/Kits/temperate/Terrain/")).Count);
+            foreach (string guid in AssetDatabase.FindAssets("t:Texture2D", new[] { "Assets/Kits/temperate/Props" }))
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                if (path.Contains("_diff_"))
+                {
+                    CollectionAssert.Contains(sources, System.Text.RegularExpressions.Regex.Replace(path, @"_diff_(\w+)\.\w+$", "_arm_$1.jpg"), $"the mask beside {path}");
+                }
+            }
         }
 
         [TestCaseSource(nameof(MaskSources))]

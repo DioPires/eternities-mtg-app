@@ -17,11 +17,14 @@ manifest="$here/sources.yaml"
 credits="$here/CREDITS.md"
 dest="${1:-$here}"
 
-# The rules the subset was chosen under (DEC-952), in bytes of source file. The last is the PRD 7.2
-# kit ceiling applied before cooking; the cooked size is the build's check (PRD 8.7.2), not this.
-max_prop=200000
+# The limits on a source file and on the kit's sources, in bytes: a tripwire, not the budget. The
+# budget is the cooked size (PRD v4 7.2: 250 MB for a kit at the photographic standard), which the
+# build measures (PRD 8.7.2). The first slice's limits were 200 KB, 8 MB and 60 MB (DEC-952); these
+# are the proposal of 2026-10-12 on DEC-1003, the owner's to set: a photographed rock or bush is
+# 0.1 to 6.6 MB as its source publishes it.
+max_prop=8000000
 max_texture=8000000
-max_total=60000000
+max_total=200000000
 
 die() {
   echo "fetch.sh: $*" >&2
