@@ -115,7 +115,12 @@ The block:
     case " $live_trees " in
       *" $name "*) echo "skip $name: a live run holds it"; continue ;;
     esac
-    branch=$(git -C "$tree" symbolic-ref -q --short HEAD || true)
+    gitdir=$(git -C "$tree" rev-parse --absolute-git-dir || true)
+    if [ -e "$gitdir/rebase-merge" ] || [ -e "$gitdir/rebase-apply" ] \
+      || [ -e "$gitdir/BISECT_LOG" ]; then
+      echo "skip $name: a rebase or a bisect is in progress"; continue
+    fi
+    branch=$(git -C "$tree" branch --show-current || true)
     if [ -n "$branch" ]; then
       case " $open_pr_branches " in
         *" $branch "*) echo "skip $name: $branch has an open pull request"; continue ;;
@@ -144,6 +149,8 @@ What the block does, in the order of item 5:
   if the fetch fails. An empty skip list after a failure would remove a protection.
 - It leaves the shared root checkout out. That is the first entry `git worktree list` prints.
 - It skips a tree named in `live_trees`, and runs no Git command in that tree.
+- It skips a tree where a rebase or a bisect is in progress. Git detaches the head for both, so
+  the block cannot read the branch of that tree.
 - It skips a tree whose branch is in `open_pr_branches`.
 - It skips a tree where `git status --porcelain` prints a line or fails. That covers untracked
   files and uncommitted tracked changes.
