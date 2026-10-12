@@ -453,9 +453,16 @@ namespace Eternities.Tests
             // The main camera's own frame of the card, before the box and with it. What changes
             // the slab beside the box, where the box hides nothing, is off: the shading taken from
             // the screen's own depth, and the bloom, which spreads the box's colour past its edge.
+            // The exposure is fixed, as A_ColourIsolation fixes it. The automatic exposure adapts
+            // with game time, and it is still moving when A_ColourIsolation lets go of 13: one long
+            // frame between the two reads darkened the whole slab by up to 12 of 255, and blocks of
+            // it read as hidden (DEC-984).
             Condition<ContactShadows>().enable.Override(false);
             Condition<ScreenSpaceAmbientOcclusion>().intensity.Override(0);
             Condition<Bloom>().intensity.Override(0);
+            Exposure exposure = Condition<Exposure>();
+            exposure.mode.Override(ExposureMode.Fixed);
+            exposure.fixedExposure.Override(13);
             Camera view = Camera.main;
             Color32[] before = null;
             App.Instance.Exhibit.CompositeEnabled = false;
