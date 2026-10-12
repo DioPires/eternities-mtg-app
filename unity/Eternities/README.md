@@ -89,8 +89,11 @@ holds what a level sets that is a volume setting and not a switch of the asset; 
 kind of cloud. The generation entry point makes a missing one, and never writes one again.
 `RenderPipelineTests` holds the names, the order, one HDRP asset per level and the four rows above.
 
-A player starts at `high`. Started with `-quality medium` or `-quality low` it starts at that level
-instead: the slice has no settings screen, and this is how a visitor walks at another level.
+A player starts at `high`, whatever level it last ran at. The engine remembers the last level in the
+player's preferences and would start there; the application sets its level before the first frame
+and never takes it from the last run. Started with `-quality medium` or `-quality low` it starts at
+that level instead: the slice has no settings screen, and this is how a visitor walks at another
+level. A bench run starts at the level its `-benchQuality` names.
 
 ```sh
 unity/Eternities/Build/Eternities.app/Contents/MacOS/Eternities -quality medium

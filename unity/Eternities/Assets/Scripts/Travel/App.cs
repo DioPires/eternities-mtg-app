@@ -156,31 +156,50 @@ namespace Eternities.Travel
             return 360f * order.FindIndex(plane => plane.Slug == slug) / order.Count;
         }
 
-        // PRD v4 8.1.1 has a settings screen choose the quality level, and the slice has none. A
-        // player started with `-quality high|medium|low` starts at that level, so the owner can
-        // walk at the level the acceptance matrix settles on (DEC-953). The level's place among
-        // `names`, or -1 where the arguments name none of them.
-        public static int QualityFromArguments(string[] arguments, string[] names)
+        // The level a player starts at: the one `-quality high|medium|low` names, else the one a
+        // bench run asks for with `-benchQuality`, else the project's default, which is the first
+        // (PRD v4 8.1.1: high). PRD v4 8.1.1 has a settings screen choose the level and the slice
+        // has none, so `-quality` is how the owner walks at the level the acceptance matrix settles
+        // on (DEC-953).
+        public static int StartLevel(string[] arguments, string[] names)
         {
-            for (int i = 0; i + 1 < arguments.Length; i++)
+            foreach (string argument in new[] { "-quality", "-benchQuality" })
             {
-                if (arguments[i] == "-quality")
+                for (int i = 0; i + 1 < arguments.Length; i++)
                 {
-                    return Array.IndexOf(names, arguments[i + 1]);
+                    int level = arguments[i] == argument ? Array.IndexOf(names, arguments[i + 1]) : -1;
+                    if (level >= 0)
+                    {
+                        return level;
+                    }
                 }
             }
-            return -1;
+            return 0;
+        }
+
+        // The engine keeps the level a player last ran at in the player's preferences and starts the
+        // next run there. So a double-click started at whatever level the last bench run on the
+        // machine had used, and a bench run at another level began at the remembered one, built the
+        // hub there and then changed: its process held two levels' buffers, and its memory figures
+        // were a run's and a half. A player's level is set here, before the pipeline draws its first
+        // frame, and never taken from the last run. The editor's level is the project's.
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSplashScreen)]
+        static void StartAtItsLevel()
+        {
+            if (Application.isEditor)
+            {
+                return;
+            }
+            int level = StartLevel(Environment.GetCommandLineArgs(), QualitySettings.names);
+            if (QualitySettings.GetQualityLevel() != level)
+            {
+                QualitySettings.SetQualityLevel(level, applyExpensiveChanges: true);
+            }
         }
 
         void Awake()
         {
             Instance = this;
-            // Before anything is built: a world's props are as dense as the level in force says.
-            int level = QualityFromArguments(Environment.GetCommandLineArgs(), QualitySettings.names);
-            if (level >= 0)
-            {
-                QualitySettings.SetQualityLevel(level, applyExpensiveChanges: true);
-            }
         }
 
         void Start()
