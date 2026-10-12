@@ -91,6 +91,19 @@ namespace Eternities.Tests
             }
         }
 
+        // PRD v4 7.3.3: loads are time-sliced. A loop's data is read and decompressed when it is
+        // first played, and that is as a session's first world is built behind the hub. On the
+        // main thread it was one frame of 73 ms in a built player (DEC-953). The kit's loops are
+        // imported to load in the background, and a source plays its loop once it is there.
+        [TestCase("meadow_songbirds_loop")]
+        [TestCase("river_splashy_loop")]
+        public void AKitLoopLoadsAwayFromTheMainThread(string file)
+        {
+            var importer = AssetImporter.GetAtPath($"Assets/Kits/temperate/Audio/{file}.ogg") as AudioImporter;
+            Assert.That(importer, Is.Not.Null, "the kit's loop is in the project");
+            Assert.That(importer.loadInBackground, Is.True);
+        }
+
         // The pipeline's default materials are the editor's: in a player each is null. What draws
         // with one is there in the editor and in every test, and is not there in a build.
         [Test]
