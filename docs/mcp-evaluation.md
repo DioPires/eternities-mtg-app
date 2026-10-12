@@ -1,9 +1,13 @@
 # The editor bridge for the Unity work: evaluation
 
+**Decision (owner, 2026-10-12 15:14Z, DEC-960): no-go now.** The note merges as the record of what
+was tested. Nothing is installed on the runner. The first Wave 5 look issue counts its looks and
+what each cost; the CEO reopens the trial if the count shows a bottleneck.
+
 **Recommendation: go, as a trial on one issue. No-go as a standing tool.** The bridge is Unity's own
 command-line bridge, run in batchmode on a project copy of its own, with 69 of its 160 tools
 allowed. No session opens before the runner closes a session ahead of every job
-(`docs/ci-runner.md` section 9) and a control run proves it. Coplay's "MCP for Unity", Unity's AI
+(Appendix A) and a control run proves it. Coplay's "MCP for Unity", Unity's AI
 Assistant server and `blender-mcp` are each a no-go.
 
 DEC-960, the owner's pick 4 on DEC-950 (plan 12.11, finding 9; plan 12.12). Evaluated on 2026-10-12
@@ -28,17 +32,19 @@ There are three candidates, not two. The Unity CLI that the agents already use f
 ### 1.1 Unity's AI Assistant server
 
 - **What it is.** An MCP server inside the package `com.unity.ai.assistant`, reached through a relay
-  binary under `~/.unity/relay/`. (Read: Unity's post of 2026-05-11.)
+  binary under `~/.unity/relay/`. (Read: Unity's post of 2026-05-11,
+  `https://unity.com/blog/unity-ai-mcp-how-to-get-started`.)
 - **Version.** `2.20.0-pre.2`, published 2026-10-06, a pre-release. (Tested: the Unity registry.)
 - **Pinned editor.** The registry entry asks for `6000.0.60f1` or later, which `6000.6.5f1` is.
   (Tested: the registry field, and one batchmode import on `6000.6.5f1`: exit code 0, no compiler
   error, 41 s.)
 - **Licence and cost.** Unity's post lists, for this server, "A Unity project connected to Unity
-  Cloud" and "An active trial or subscription to Unity's AI tools beta". Unity's product page, on
-  2026-10-12, says of the Assistant on Unity Personal: a free trial "which converts to a $10/month
-  subscription". The same page says "MCP server is free, with no concurrency limits and you do not
-  need to purchase Unity's AI credits to use it. Install MCP server through CLI". That sentence is
-  about the server of 1.2, not this one. (Read, both pages, checked word for word.)
+  Cloud" and "An active trial or subscription to Unity's AI tools beta". Unity's product page,
+  `https://unity.com/products/ai`, on 2026-10-12, says of the Assistant on Unity Personal: a free
+  trial "which converts to a $10/month subscription". The same page says "MCP server is free, with
+  no concurrency limits and you do not need to purchase Unity's AI credits to use it. Install MCP
+  server through CLI". That sentence is about the server of 1.2, not this one. (Read, both pages,
+  checked word for word.)
 - **What it exposes.** Scene management, script editing, Console access, GameObject inspection and
   build settings. The post names one tool, `Unity_ReadConsole`. (Read.)
 - **A gate a person must pass.** The editor shows each new client as a pending connection, and a
@@ -84,13 +90,14 @@ There are three candidates, not two. The Unity CLI that the agents already use f
   account is involved, so the Personal licence is not in question. Nothing to buy. It adds a Python
   process, and its packages from PyPI (FastMCP, FastAPI, Uvicorn, HTTPX, Pydantic and what they
   need) run as the owner's user. (Tested: the server started from those packages.)
-- **What it exposes.** 48 tools (Tested: `tools/list` on the server, started alone). Most hold
-  several actions under one name. `manage_scene` holds `get_hierarchy` and `save`. `manage_editor`
-  holds `play` and `stop`, and also `add_tag`, `deploy_package` and `undo`. `read_console` holds
-  `get` and `clear`. Three tools run what the caller supplies: `execute_code`, `execute_menu_item`
-  and `batch_execute`. One, `blender_bridge`, has an action `run_python`: the Unity bridge carries
-  a Blender code path of its own. Four fetch or generate binary assets from outside services:
-  `generate_audio`, `generate_image`, `generate_model` and `import_model`.
+- **What it exposes.** 48 tools (Tested: `tools/list` on the server, started alone). Of these, 21
+  list two or more actions under one name. `manage_scene` holds `get_hierarchy` and `save`.
+  `manage_editor` holds `play` and `stop`, and also `add_tag`, `deploy_package` and `undo`.
+  `read_console` holds `get` and `clear`. Three tools run what the caller supplies: `execute_code`,
+  `execute_menu_item` and `batch_execute`. One, `blender_bridge`, has an action `run_python`: the
+  Unity bridge carries a Blender code path of its own. Four fetch or generate binary assets from
+  outside services: `generate_audio`, `generate_image`, `generate_model` and `import_model`.
+  (Tested: the tool names and each tool's `action` values, in the same `tools/list` answer.)
 - **Telemetry.** On by default, to Coplay; `DISABLE_TELEMETRY=true` turns it off. (Read:
   `website/docs/architecture/telemetry.md`. The test ran with it off.)
 - **How it is reached.** Over HTTP on `localhost:8080`, or over stdio with a bridge inside the
@@ -230,8 +237,7 @@ row 12 denies.
 
 ## 4. Lock protocol with the runner
 
-The protocol is `docs/ci-runner.md` section 9, added by the same pull request and marked there as
-not applied. Its three parts, in short:
+The protocol is Appendix A, marked there as not applied. Its three parts, in short:
 
 - **The trigger.** A session is closed before its agent pushes anything, before its agent hands
   back, when the issue thread names a reviewer's bench or an editor slot of the owner's, and after
@@ -262,11 +268,12 @@ What the evaluation measured for it. (Tested, all five.)
    process closed the editor in the same second it fired, with `kill`.
 4. **The watch's first form was wrong.** It matched `Runner.Worker` against whole command lines
    and closed the session when a shell of mine held those words. `pgrep -x`, which matches the
-   process name, is the form in section 9.
+   process name, is the form in Appendix A.
 5. **The runner's script closes a session and nothing else.** With a session open and the script
    pointed at another directory, it closed nothing: the editor and its import worker stayed alive.
    Pointed at the session's directory, it closed both and returned in 0.1 s. A `kill` leaves the
-   token file behind; the next start rewrites it. The script was run by hand, not by the runner.
+   token file behind; the next start rewrites it. The script was run by hand, not by the runner,
+   in a copy that took its directory from a variable (A.5).
 
 Not tested: the runner calling that script before a job (the adoption's control run proves it),
 the lock directory, the watch's rule for an editor of the owner's, and two sessions at once.
@@ -401,8 +408,8 @@ on one such issue and count, and not a reason to give it to every issue.
 
 **Go, as a trial of the smallest adoption. No-go as a standing tool.**
 
-1. **Before any session:** one adoption issue installs `docs/ci-runner.md` section 9 on the runner
-   and passes its control run (9.5), pins the package version, adds the picture switch and commits
+1. **Before any session:** one adoption issue installs Appendix A on the runner
+   and passes its control run (A.5), pins the package version, adds the picture switch and commits
    the permission file. The CEO assigns it and its reviewer. If the control cannot show the runner
    closing a session before the bench job's check, the answer becomes no-go and the script is
    removed.
@@ -454,13 +461,22 @@ protocol: `initialize`, `tools/list`, `tools/call`.
 | `eval`, once | ran C# as the owner's user; the package logged the call in `Library/Pipeline/eval-usage.jsonl` |
 | `quit`; `unity close`; `kill` from the watch | failed with a package error; closed in 3.8 s; closed in under 1 s |
 | The port with no token, a wrong token, the token, the token and an `Origin` header | 401, 401, 200, 403 |
-| Coplay's server alone, `tools/list` over stdio | 48 tools |
+| Coplay's server alone, `tools/list` over stdio | 48 tools; 21 of them list two or more `action` values, `manage_scene` twelve and `manage_editor` fourteen |
 | One batchmode import with `com.coplaydev.unity-mcp` at `v10.3.0`, `UNITY_MCP_ALLOW_BATCH=1` | exit code 0, no compiler error, 33 s; no bridge started; nothing left in the owner's preferences or home |
 | One batchmode import with `com.unity.ai.assistant` `2.20.0-pre.2` | exit code 0, no compiler error, 41 s; a relay binary installed in `~/.unity/relay/`; three licensing errors |
 | The relay binary alone, `--mcp`, `tools/list` | `unity-mcp-server 1.0.0`, no tool |
 | A refresh of the clone to another local branch, the package added again, the editor started | 1.2 s; serving about 9 s after the start |
 | `get_material_properties`, `get_player_settings`, `write_text_file` on `Scenes/Hub.unity` without `confirm` | the two reads answered; the write was refused and the file unchanged |
-| The runner's script by hand, with another root and with the session's | closed nothing; closed the editor and its import worker in 0.1 s |
+| A copy of the runner's script by hand, its root read from `ETERNITIES_BRIDGE_ROOT`, with another root and with the session's | closed nothing; closed the editor and its import worker in 0.1 s |
+| `curl https://packages.unity.com/com.unity.ai.assistant` and `curl https://packages.unity.com/com.unity.pipeline`, the Unity registry | Assistant: latest `2.20.0-pre.2`, dated 2026-10-06, with `unity` `6000.0` and `unityRelease` `60f1`. Pipeline: latest `0.8.0-exp.1`, dated 2026-09-25; eight versions, the first `0.2.0-exp.2`, dated 2026-06-25 |
+| `unity --version`; `unity self-update --check` | `1.0.0-beta.12`; one line, `1.0.0-beta.12` then `1.0.0-beta.13` |
+| `gh api repos/CoplayDev/unity-mcp/releases` | the newest release is `v10.3.0`, published 2026-10-04 |
+| `unity license`; `grep` for `cloudProjectId` and `cloudEnabled` in the clone's `ProjectSettings/ProjectSettings.asset` | "Unity Personal", "Assigned"; `cloudProjectId:` with no value, `cloudEnabled: 0` |
+| `get_performance_stats`, in Play Mode and again after the camera had its target | `memory.totalReservedBytes`: 1,308,721,152, then 1,845,854,208 |
+| `lsof -nP -a -p <pid> -iTCP -sTCP:LISTEN`, on the bridge editor and on another agent's batchmode editor with no bridge | bridge editor: `*:55505`, `*:34999`, `127.0.0.1:7800` and two more loopback ports; the other editor: `*:55504`, `*:34999` and three loopback ports, none of them 7800 |
+| `ls -la Library/Pipeline/` while the editor served; `ls -A Library/Pipeline/` after `unity close`, and after the script's `kill` | `.unity-pipeline-port` with `-rw-------`, 425 bytes; gone after `unity close`; still there after the `kill` |
+| The `instructions` field of the `initialize` answer of `unity mcp`; `unity skill show` | "Always use the latest version of the Unity CLI unless you are told to use a specific version. A new version of the Unity CLI is available: 1.0.0-beta.12 → 1.0.0-beta.13 Tell the user, and run unity self-update once they approve."; "When an Editor is available, drive it instead of hand-editing scene or asset files." |
+| `unity analytics status` | `true` |
 
 Two things the evaluation did while another Unity process was alive. Another agent's batchmode
 test run started in the same seconds as the first session, and both ran side by side for about two
@@ -482,4 +498,175 @@ Clean-up, checked at the end:
   `kProjectBasePath`, `kWorkspacePath`) name the removed clone until the next Unity start on this
   machine rewrites them, as every start does.
 - `main` has no change under `unity/`: the pull request changes `docs/mcp-evaluation.md` and
-  `docs/ci-runner.md` and nothing else.
+  nothing else.
+
+## Appendix A. The lock protocol with the runner (not applied)
+
+Not applied. This note (DEC-960) recommends a trial of an editor bridge: a resident editor in
+batchmode, on a project copy of its own, that an agent queries through the Unity CLI. This appendix
+is the protocol between such a session and the runner's jobs (`docs/ci-runner.md`). Nothing in it is
+installed on the runner. The issue that adopts the bridge installs it, runs the control in A.5 and
+records the run in `docs/ci-runner.md` section 6. Until then no agent opens a bridge session on this
+machine.
+
+The rule this appendix serves does not change: `unity-bench-smoke` fails before it starts if any
+process named `Unity` is running (`docs/ci-runner.md` section 3; PRD v4 8.8.6). A bridge session is
+a process named `Unity`. The protocol does not teach the job to wait for a session or to overlook
+one. It makes the session give way: a session holds nothing that is kept, so a job, a reviewer's
+bench, the owner's editor and the session's own push each end it without asking.
+
+### A.1 Where a session lives
+
+`~` is the home directory of the account the runner runs in. An agent run may have another `HOME`;
+it then names the directory in full.
+
+| Path | What it is |
+|---|---|
+| `~/eternities-bridge/eternities-mtg-app/` | A clone of its own, made once with `git clone file://<the agents' checkout>`. Not a worktree, not under the agents' checkout, not under `~/actions-work`, and never a project the owner opens. Its `Library/` is its own, so no `Library` lock is shared. |
+| `~/eternities-bridge/session/` | The lock. `mkdir` makes it and fails if it exists, so one session runs on this machine at a time. It holds three files: `issue`, `pid` and `started`. |
+
+The copy is refreshed at the start of every session from the branch under work, as the last local
+commit has it. A local commit starts no job; a push does.
+
+```sh
+cd ~/eternities-bridge/eternities-mtg-app
+git fetch --quiet origin <branch>
+git checkout --quiet --force --detach FETCH_HEAD
+~/.unity/bin/unity pipeline install --project-path "$PWD/unity/Eternities" --package-version <pin>
+```
+
+The last line adds the bridge package to the copy's `Packages/manifest.json` and to no other. The
+next refresh discards it and adds it again. Nothing is ever committed or pushed from the copy: text
+an engineer changes is changed in the worktree.
+
+### A.2 Before a session starts: the check
+
+All four must hold. If one does not, no session starts.
+
+1. `pgrep -x Unity` prints nothing: no editor of the owner's, no batchmode run of an agent's, no
+   bench.
+2. `pgrep -x Runner.Worker` prints nothing: the runner has no job in hand. Match the process name
+   with `-x`. A pattern matched against whole command lines (`pgrep -f`) also matches the shell that
+   runs the check, and closed a session of the evaluation for no reason.
+3. No run is queued or in progress:
+
+   ```sh
+   gh api 'repos/DioPires/eternities-mtg-app/actions/runs?per_page=30' \
+     --jq '[.workflow_runs[] | select(.status != "completed")] | length'
+   ```
+
+   It must print `0`.
+4. `mkdir ~/eternities-bridge/session` succeeds. If it fails and the process in `session/pid` is no
+   longer alive, the lock is stale: remove the directory and make it again.
+
+The session is then the pinned editor, started by the copy's own `unity/Eternities/batchmode.sh`
+with no argument, so with no `-quit`. It has no window and takes no screen.
+
+### A.3 When a session must be closed
+
+`~/.unity/bin/unity close ~/eternities-bridge/eternities-mtg-app/unity/Eternities` closes it, in
+about four seconds; `kill <pid>` does it in under one. Whoever closes it then removes
+`~/eternities-bridge/session`.
+
+The agent that opened the session closes it:
+
+1. before it pushes anything to this repository;
+2. before it hands its issue back, and before its run ends;
+3. when its issue thread names a reviewer's bench (PRD v4 8.8.7) or an editor slot of the owner's;
+4. thirty minutes after it started, whatever it is doing.
+
+A watch started with the session closes it when the agent does not, every two seconds:
+
+1. `pgrep -x Runner.Worker` prints a process: a job has started on this machine;
+2. a `Unity` process runs whose command line has no `-batchmode` in any letter case (a batchmode
+   editor starts its import worker with `-batchMode`): the owner has opened an editor;
+3. the check of A.2 item 3 prints anything but `0` (asked every twenty seconds);
+4. thirty minutes have passed.
+
+A reviewer who finds a session in the way of a bench closes it with the command above and says so in
+the verdict. So does the owner. Nobody asks first.
+
+### A.4 If a job starts while a session is open
+
+Measured on run [38262725056](https://github.com/DioPires/eternities-mtg-app/actions/runs/38262725056)
+(2026-10-12, another agent's pull request): the run was created at 14:24:51Z, `unity-bench-smoke`
+was the first of the four jobs to start, at 14:25:02Z, and its step "No other Unity process is
+running" ran at 14:25:09Z. A session therefore has seven seconds from the start of the job, and
+eighteen from the push, and the push may be any agent's.
+
+Three things stand between a session and that step, in this order:
+
+1. **The runner closes it.** Before each job the runner runs the script of A.5, which closes every
+   editor whose project is under `~/eternities-bridge/` and no other. The job then starts as if no
+   session had been open.
+2. **The watch closes it** (A.3), within about three seconds of the job starting. This is the only
+   one of the two that close a session that exists without the change of A.5.
+3. **The job fails**, exactly as `docs/ci-runner.md` section 3 says, if a `Unity` process is still
+   alive. The agent named in `session/issue` closes the session, re-runs the job with
+   `gh run rerun <run id> --failed`, and reports the run on its issue. An editor of the owner's or
+   a batchmode run of an agent's is never closed by the runner: for those the job fails as it
+   always has.
+
+### A.5 The change to the runner recipe, and its control
+
+One script, installed in a directory of its own, `~/actions-hooks/`: outside `~/actions-runner`,
+outside `~/actions-work` and outside every checkout. GitHub's page "Running scripts before or after
+a job" says such a script "should not be stored in the `actions-runner` application directory", and
+outside a checkout no pull request can change what runs before it is reviewed and installed again:
+
+```sh
+#!/bin/sh
+# ~/actions-hooks/close-bridge.sh
+# Closes every Unity editor whose project is under the bridge directory, and no other. The runner
+# runs it before each job. It always exits 0: the bench job's own check (PRD v4 8.8.6) stays the
+# judge of whether a Unity process is left.
+root=$HOME/eternities-bridge
+bridge_pids() {
+    for pid in $(pgrep -x Unity); do
+        ps -o command= -p "$pid" | grep -qF -- "-projectPath $root/" && echo "$pid"
+    done
+}
+pids=$(bridge_pids)
+[ -z "$pids" ] && exit 0
+echo "close-bridge: closing the bridge session, Unity pid(s): $(echo $pids)"
+kill $pids 2>/dev/null
+i=0
+while [ -n "$(bridge_pids)" ] && [ "$i" -lt 40 ]; do
+    sleep 0.25
+    i=$((i + 1))
+done
+left=$(bridge_pids)
+if [ -n "$left" ]; then
+    echo "close-bridge: still alive after 10 s, killing: $(echo $left)"
+    kill -9 $left 2>/dev/null
+    sleep 1
+fi
+rm -rf "$root/session"
+exit 0
+```
+
+The runner runs the script named by `ACTIONS_RUNNER_HOOK_JOB_STARTED` before the first step of
+every job. The variable goes into the `EnvironmentVariables` of
+`docs/ci-runner/com.eternities.actions-runner.plist`, beside `PATH`, and `register-runner.sh`
+installs the script and reloads the agent while the runner is idle (`docs/ci-runner.md` section 2,
+step 4).
+
+What was tried on 2026-10-12, and what was not:
+
+- **Tried by hand:** a copy of the script, on the evaluation's editor. The copy differed in two
+  lines: it took `root` from a variable, `ETERNITIES_BRIDGE_ROOT`, which named the evaluation's
+  directory, and it matched with `grep -q`. Pointed at another directory it closed nothing; pointed
+  at the session's it closed the editor and its import worker and returned in 0.1 s. The watch's
+  first rule closed a session in the same second it fired. The record is sections 4 and 8.
+- **Not tried:** the runner calling the script. The variable is GitHub's documented way to run a
+  script before a job; that this runner (2.338.0, a launchd agent) calls it before the checkout is
+  the claim the control proves. Also not tried: the script as it stands above, with `root` fixed
+  and `grep -qF`, on an editor; the lock directory; the watch's second rule (A.3) and its
+  thirty-minute limit.
+
+**The control**, run once by the issue that installs the hook and recorded in `docs/ci-runner.md`
+section 6: open a session; push a commit that touches `unity/` on a branch made for it; the job log
+of `unity-bench-smoke` shows the script's line "closing the bridge session" before the checkout; the
+session's editor is gone; the four jobs end `success`. Then the opposite: with an agent's ordinary
+batchmode run alive on a worktree, the same push ends with `unity-bench-smoke` failed on its own
+check, which shows the script closes nothing but a session.
