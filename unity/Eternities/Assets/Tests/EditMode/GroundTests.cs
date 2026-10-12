@@ -105,6 +105,97 @@ namespace Eternities.Tests
             Assert.That(plan.Alphas[Row(0), Row(0), GroundPlan.Path], Is.EqualTo(1));
         }
 
+        // PRD v4 5.6.3 and 9.3: the kit varies its ground by wedge, and the ground under a wedge reads
+        // as its colour. Between the paths the ground is its wedge's tone for a fixed share, in a
+        // layer of its own, and for the rest the kit's layer for the wedge: the meadow, and bare
+        // stone in the badlands and on the colourless ring. A path keeps its own colour, so it
+        // stays visible as ground (9.5).
+        [Test]
+        public void TheGroundBetweenThePathsIsItsWedgesTone()
+        {
+            int n = plan.AlphaResolution;
+            float texel = plan.Side / n, world = layout.WorldRadius / 1000f, plaza = layout.PlazaRadius / 1000f;
+            int Row(float v) => Mathf.FloorToInt((v + plan.Side / 2) / texel);
+            Color32 Painted(float x, float z) =>
+                plan.Tones[Mathf.FloorToInt((z + plan.Side / 2) / plan.Side * GroundPlan.ToneResolution) * GroundPlan.ToneResolution + Mathf.FloorToInt((x + plan.Side / 2) / plan.Side * GroundPlan.ToneResolution)];
+            Assert.That(plan.Tones.Length, Is.EqualTo(GroundPlan.ToneResolution * GroundPlan.ToneResolution));
+
+            var seen = new HashSet<Color32>();
+            for (int c = 0; c < ColourClasses.WedgeCount; c++)
+            {
+                Assert.That(layout.WedgeSpan[c], Is.GreaterThan(0), "Dominaria has all six wedges");
+                double bearing = (layout.WedgeFrom[c] + layout.WedgeSpan[c] / 2) / 1e6 * System.Math.PI / 180;
+                float sine = (float)System.Math.Sin(bearing), cosine = (float)System.Math.Cos(bearing);
+                Color32 tone = Temperate.GroundTones[c];
+                Assert.That(seen.Add(tone), $"the tone of {(ColourClass)c} is no other wedge's");
+                // Out along the middle of the wedge, the first ground that is not a path.
+                bool found = false;
+                for (float r = plaza + 4; r < layout.RingInner / 1000f && !found; r += 0.5f)
+                {
+                    float x = r * sine, z = r * cosine;
+                    if (plan.Alphas[Row(z), Row(x), GroundPlan.Path] > 0)
+                    {
+                        continue;
+                    }
+                    found = true;
+                    Assert.That(plan.Alphas[Row(z), Row(x), GroundPlan.Tone], Is.EqualTo(GroundPlan.ToneShare), $"{(ColourClass)c}: the tone's share");
+                    // The rest is the kit's layer for the wedge: bare stone in the badlands, meadow elsewhere.
+                    int ground = Temperate.GroundBase[c];
+                    Assert.That(ground, Is.EqualTo(c == (int)ColourClass.Red ? GroundPlan.Gravel : GroundPlan.Meadow), $"{(ColourClass)c}: the kit's layer");
+                    Assert.That(plan.Alphas[Row(z), Row(x), ground], Is.EqualTo(1 - GroundPlan.ToneShare), $"{(ColourClass)c}: the rest is the kit's layer");
+                    Assert.That(plan.Alphas[Row(z), Row(x), GroundPlan.Meadow + GroundPlan.Gravel - ground], Is.EqualTo(0), $"{(ColourClass)c}: and no other");
+                    Assert.That((Color32)GroundPlan.ToneAt(layout, x, z), Is.EqualTo(tone), $"{(ColourClass)c}: its tone in the middle of the wedge");
+                    Assert.That(Painted(x, z), Is.EqualTo(tone), $"{(ColourClass)c}: and in the picture the terrain is given");
+                }
+                Assert.That(found, $"{(ColourClass)c}: ground between the paths");
+                // Beyond the rim the wood is its wedge's.
+                Assert.That((Color32)GroundPlan.ToneAt(layout, (world + 60) * sine, (world + 60) * cosine), Is.EqualTo(tone));
+
+                // On the boundary with the next wedge the two tones are half and half, and two
+                // degrees inside it there is one.
+                double edge = (layout.WedgeFrom[c] + layout.WedgeSpan[c]) / 1e6, inside = (edge - 2) * System.Math.PI / 180, on = (edge - 1e-4) * System.Math.PI / 180;
+                Color mixed = GroundPlan.ToneAt(layout, 100 * (float)System.Math.Sin(on), 100 * (float)System.Math.Cos(on));
+                Color next = GroundPlan.ToneAt(layout, 100 * (float)System.Math.Sin(inside + 4 * System.Math.PI / 180), 100 * (float)System.Math.Cos(inside + 4 * System.Math.PI / 180));
+                Assert.That((Color32)GroundPlan.ToneAt(layout, 100 * (float)System.Math.Sin(inside), 100 * (float)System.Math.Cos(inside)), Is.EqualTo(tone));
+                Assert.That(mixed.r, Is.EqualTo((((Color)tone).r + next.r) / 2).Within(0.01f));
+                Assert.That(mixed.g, Is.EqualTo((((Color)tone).g + next.g) / 2).Within(0.01f));
+            }
+
+            // The colourless ring: bare stone in the ring's tone, and no meadow.
+            Color32 slate = Temperate.GroundTones[(int)ColourClass.Colourless];
+            Assert.That(seen.Add(slate), "the ring's tone is no wedge's");
+            bool ringFound = false;
+            for (float r = layout.RingInner / 1000f + 0.5f; r < world && !ringFound; r += 0.5f)
+            {
+                float x = r * 0.6f, z = r * 0.8f;
+                if (plan.Alphas[Row(z), Row(x), GroundPlan.Path] > 0)
+                {
+                    continue;
+                }
+                ringFound = true;
+                Assert.That(plan.Alphas[Row(z), Row(x), GroundPlan.Gravel], Is.EqualTo(1 - GroundPlan.ToneShare));
+                Assert.That(plan.Alphas[Row(z), Row(x), GroundPlan.Tone], Is.EqualTo(GroundPlan.ToneShare));
+                Assert.That(plan.Alphas[Row(z), Row(x), GroundPlan.Meadow], Is.EqualTo(0));
+                Assert.That((Color32)GroundPlan.ToneAt(layout, x, z), Is.EqualTo(slate));
+            }
+            Assert.That(ringFound, "ground on the ring");
+
+            // A path is all path, and every texel's layers add up to the whole.
+            Assert.That(plan.Alphas[Row(0), Row(0), GroundPlan.Tone], Is.EqualTo(0), "the plaza keeps its own colour");
+            for (int row = 0; row < n; row += 37)
+            {
+                for (int column = 0; column < n; column += 41)
+                {
+                    float sum = 0;
+                    for (int layer = 0; layer < GroundPlan.Layers; layer++)
+                    {
+                        sum += plan.Alphas[row, column, layer];
+                    }
+                    Assert.That(sum, Is.EqualTo(1).Within(1e-5f));
+                }
+            }
+        }
+
         // PRD v4 7.3.3: loads are time-sliced. The ground reaches the terrain in steps, each of
         // which ends its frame once the frame's budget is spent, and the terrain that comes out
         // holds the plan: every height, to the 16 bits a heightmap keeps, and every texel's layer.
@@ -117,7 +208,15 @@ namespace Eternities.Tests
             try
             {
                 var material = AssetDatabase.LoadAssetAtPath<Material>("Assets/Kits/core/Materials/ground.mat");
-                TerrainLayer[] layers = System.Array.ConvertAll(new[] { "meadow", "path", "gravel" }, name => AssetDatabase.LoadAssetAtPath<TerrainLayer>($"{Generate.LayerFolder}/{name}.terrainlayer"));
+                TerrainLayer[] kit = System.Array.ConvertAll(new[] { "meadow", "path", "gravel" }, name => AssetDatabase.LoadAssetAtPath<TerrainLayer>($"{Generate.LayerFolder}/{name}.terrainlayer"));
+                TerrainLayer[] layers = WorldGround.Layers(kit, plan, owned);
+                Assert.That(layers.Length, Is.EqualTo(GroundPlan.Layers));
+                Assert.That(layers[GroundPlan.Meadow], Is.SameAs(kit[0]), "the kit's layers are the kit's own files");
+                // The world's tones lie once over the whole terrain, and leave with the world.
+                Assert.That(layers[GroundPlan.Tone].tileSize, Is.EqualTo(new Vector2(plan.Side, plan.Side)));
+                Assert.That(layers[GroundPlan.Tone].diffuseTexture.width, Is.EqualTo(GroundPlan.ToneResolution));
+                Assert.That(owned, Has.Member(layers[GroundPlan.Tone]).And.Member(layers[GroundPlan.Tone].diffuseTexture));
+                Assert.That(owned, Has.No.Member(kit[0]), "and the kit's files do not");
                 Terrain terrain = null;
                 int steps = 1;
                 // A budget of nothing: every step ends its frame.

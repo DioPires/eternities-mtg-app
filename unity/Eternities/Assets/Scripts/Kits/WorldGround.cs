@@ -7,10 +7,23 @@ using UnityEngine.Rendering;
 namespace Eternities.Kits
 {
     // What a world's ground is made from, worked out away from the main thread: which of the kit's
-    // layers lies where. It needs the layout and nothing of the engine.
+    // layers lies where, and the tone of each wedge's ground. It needs the layout and nothing of
+    // the engine.
     public sealed class GroundPlan
     {
-        public const int Meadow = 0, Path = 1, Gravel = 2, Layers = 3;
+        // The kit's three layers, and after them the world's own: its tones.
+        public const int Meadow = 0, Path = 1, Gravel = 2, KitLayers = 3, Tone = 3, Layers = 4;
+        // PRD v4 5.6.3: the kit varies its ground by wedge, so the ground under a wedge reads as its
+        // colour (9.3). One layer more holds a picture of the whole world, each wedge in its tone,
+        // and this share of the ground between the paths is that picture; the rest is the kit's own
+        // layer for the wedge, the meadow or bare stone. A layer for each wedge would be nine, and
+        // the pipeline's terrain shader draws four in its lighter variant.
+        public const float ToneShare = 0.45f;
+        // The picture's side in texels: about 2 m of Dominaria to a texel.
+        public const int ToneResolution = 512;
+        // Two wedges' tones run into each other within this many degrees of their boundary. Inside
+        // the world a radial path lies on it; beyond the rim nothing does.
+        public const double ToneBlend = 1.5;
         public const float Margin = 120;
         // The ground level of everything the allocator placed is 0. The terrain's own floor lies
         // this far below it, so the kit can carve a river bed, and its ceiling as far above.
@@ -26,6 +39,7 @@ namespace Eternities.Kits
         public float[,] Heights;        // [z, x], metres above the ground level
         public float[,] Normalised;     // the same as Unity Terrain takes them: 0 at its floor, 1 at its ceiling
         public float[,,] Alphas;        // [z, x, layer], as Unity Terrain takes them
+        public Color32[] Tones;         // [z * ToneResolution + x]: the tone layer's texture, with no alpha, so no gloss
         // The slice's water (PRD v4 9.5): one river and one lake, in the margin beyond the ring,
         // because inside the world the 3 m water buffer around paths, aprons and corridors leaves
         // no zone (PRD v4 8.4.2). The river runs west to east past the end of the north radial path
@@ -59,7 +73,7 @@ namespace Eternities.Kits
         public static int HeightmapResolution(float worldRadius) => worldRadius < 100 ? 513 : worldRadius <= 260 ? 1025 : 2049;
 
         // The plaza, the ring paths, the radial paths, the spurs and the pads are painted as path;
-        // everything else is meadow (PRD v4 9.5: the paths are visible as ground).
+        // everything else is its wedge's ground (PRD v4 9.5: the paths are visible as ground).
         // `hillHeight` and `hillWidth` are the kit's relief in metres: how high a hill stands over a
         // hollow, and how far apart hills are.
         public static GroundPlan Compute(WorldLayout layout, float hillHeight = 3, float hillWidth = 60)
@@ -156,12 +170,97 @@ namespace Eternities.Kits
                     // them as they stay off a path, so the water lies in the low ground.
                     float bed = plan.Bed(x, z);
                     flat[row, column] |= bed > 0;
-                    plan.Alphas[row, column, path[row, column] ? Path : bed > 0.05f ? Gravel : Meadow] = 1;
+                    if (path[row, column] || bed > 0.05f)
+                    {
+                        plan.Alphas[row, column, path[row, column] ? Path : Gravel] = 1;
+                        continue;
+                    }
+                    // Between the paths: the kit's ground for the wedge, meadow or bare stone, in the
+                    // wedge's tone, and on the colourless ring bare stone in the ring's.
+                    float stone = StoneAt(layout, x, z);
+                    plan.Alphas[row, column, Gravel] = (1 - ToneShare) * stone;
+                    plan.Alphas[row, column, Meadow] = (1 - ToneShare) * (1 - stone);
+                    plan.Alphas[row, column, Tone] = ToneShare;
+                }
+            }
+            plan.Tones = new Color32[ToneResolution * ToneResolution];
+            for (int row = 0; row < ToneResolution; row++)
+            {
+                float z = -plan.Side / 2 + (row + 0.5f) * plan.Side / ToneResolution;
+                for (int column = 0; column < ToneResolution; column++)
+                {
+                    Color tone = ToneAt(layout, -plan.Side / 2 + (column + 0.5f) * plan.Side / ToneResolution, z);
+                    plan.Tones[row * ToneResolution + column] = new Color32((byte)Mathf.RoundToInt(tone.r * 255), (byte)Mathf.RoundToInt(tone.g * 255), (byte)Mathf.RoundToInt(tone.b * 255), 0);
                 }
             }
             plan.Relief(flat, hillHeight, hillWidth, layout.Input.PlaneSlug);
             return plan;
         }
+
+        // Where a point lies among the colour classes (PRD v4 5.6.3): on the ring, in the ring's;
+        // elsewhere in the wedge its bearing lies in, beyond the rim too, so the wood there is its
+        // wedge's. Within `ToneBlend` of a boundary the wedge across it has a share, a half on the
+        // boundary itself.
+        static void Among(WorldLayout layout, float x, float z, out int here, out int other, out float share)
+        {
+            here = other = (int)ColourClass.Colourless;     // a world with no wedge is all ring
+            share = 0;
+            double r = Math.Sqrt((double)x * x + (double)z * z);
+            if (layout.RingWidth > 0 && r >= layout.RingInner / 1000.0 && r <= layout.WorldRadius / 1000.0)
+            {
+                return;
+            }
+            double bearing = Math.Atan2(x, z) * 180 / Math.PI * 1e6;     // clockwise from north
+            int wedge = WedgeAt(layout, bearing);
+            if (wedge < 0)
+            {
+                return;
+            }
+            here = other = wedge;
+            double into = Repeat(bearing - layout.WedgeFrom[wedge]), left = layout.WedgeSpan[wedge] - into, blend = ToneBlend * 1e6;
+            double edge = Math.Min(into, left);
+            if (edge >= blend)
+            {
+                return;
+            }
+            int across = into < left ? WedgeAt(layout, bearing - into - 1) : WedgeAt(layout, bearing + left + 1);
+            if (across >= 0 && across != wedge)
+            {
+                other = across;
+                share = 0.5f * Mathf.SmoothStep(1, 0, (float)(edge / blend));
+            }
+        }
+
+        // The tone of the ground at a point, from the kit's table.
+        public static Color ToneAt(WorldLayout layout, float x, float z)
+        {
+            Among(layout, x, z, out int here, out int other, out float share);
+            Color32[] tones = Temperate.GroundTones;
+            return share > 0 ? Color.Lerp(tones[here], tones[other], share) : (Color)tones[here];
+        }
+
+        // How much of the kit's ground at a point is bare stone and not meadow, from the kit's table.
+        public static float StoneAt(WorldLayout layout, float x, float z)
+        {
+            Among(layout, x, z, out int here, out int other, out float share);
+            int[] ground = Temperate.GroundBase;
+            return Mathf.Lerp(ground[here] == Gravel ? 1 : 0, ground[other] == Gravel ? 1 : 0, share);
+        }
+
+        // The wedge a bearing lies in, in micro-degrees clockwise from north; -1 where there is none.
+        static int WedgeAt(WorldLayout layout, double bearing)
+        {
+            for (int c = 0; c < ColourClasses.WedgeCount; c++)
+            {
+                if (layout.WedgeSpan[c] > 0 && Repeat(bearing - layout.WedgeFrom[c]) < layout.WedgeSpan[c])
+                {
+                    return c;
+                }
+            }
+            return -1;
+        }
+
+        static double Repeat(double microDegrees) => microDegrees - Math.Floor(microDegrees / 360e6) * 360e6;
 
         // The heights: the kit's noise, held to zero on everything flat and for a step around it,
         // rising to full height over the falloff, and carved for the water.
@@ -296,25 +395,38 @@ namespace Eternities.Kits
     public static class WorldGround
     {
 
-        // The kit's layers, or plain colours in their place while the kit has none.
-        public static TerrainLayer[] Layers(TerrainLayer[] kit)
+        // The ground's layers: the kit's three, or plain colours in their place while the kit has
+        // none, and the world's tones (PRD v4 5.6.3) as a fourth, one picture laid once over the
+        // whole terrain. `owned` takes what is made here, which leaves with the world.
+        public static TerrainLayer[] Layers(TerrainLayer[] kit, GroundPlan plan, System.Collections.Generic.List<UnityEngine.Object> owned)
         {
-            if (kit != null && kit.Length == GroundPlan.Layers && Array.TrueForAll(kit, layer => layer != null))
+            var layers = new TerrainLayer[GroundPlan.Layers];
+            if (kit != null && kit.Length == GroundPlan.KitLayers && Array.TrueForAll(kit, layer => layer != null))
             {
-                return kit;
+                Array.Copy(kit, layers, GroundPlan.KitLayers);
             }
-            // Without a mask map the terrain shader reads a layer's smoothness from its alpha: zero,
-            // or the ground mirrors the sky.
-            Color[] colours = { new Color(0.24f, 0.36f, 0.16f, 0), new Color(0.52f, 0.44f, 0.32f, 0), new Color(0.45f, 0.45f, 0.44f, 0) };
-            var plain = new TerrainLayer[GroundPlan.Layers];
-            for (int i = 0; i < plain.Length; i++)
+            else
             {
-                var texture = new Texture2D(2, 2, TextureFormat.RGBA32, mipChain: false) { name = "plain layer" };
-                texture.SetPixels(new[] { colours[i], colours[i], colours[i], colours[i] });
-                texture.Apply();
-                plain[i] = new TerrainLayer { diffuseTexture = texture, tileSize = new Vector2(4, 4), smoothness = 0, metallic = 0 };
+                // Without a mask map the terrain shader reads a layer's smoothness from its alpha:
+                // zero, or the ground mirrors the sky.
+                Color[] colours = { new Color(0.24f, 0.36f, 0.16f, 0), new Color(0.52f, 0.44f, 0.32f, 0), new Color(0.45f, 0.45f, 0.44f, 0) };
+                for (int i = 0; i < GroundPlan.KitLayers; i++)
+                {
+                    var texture = new Texture2D(2, 2, TextureFormat.RGBA32, mipChain: false) { name = "plain layer" };
+                    texture.SetPixels(new[] { colours[i], colours[i], colours[i], colours[i] });
+                    texture.Apply();
+                    layers[i] = new TerrainLayer { diffuseTexture = texture, tileSize = new Vector2(4, 4), smoothness = 0, metallic = 0 };
+                    owned.Add(texture);
+                    owned.Add(layers[i]);
+                }
             }
-            return plain;
+            var tones = new Texture2D(GroundPlan.ToneResolution, GroundPlan.ToneResolution, TextureFormat.RGBA32, mipChain: true) { name = "ground tones", wrapMode = TextureWrapMode.Clamp };
+            tones.SetPixels32(plan.Tones);
+            tones.Apply(updateMipmaps: true, makeNoLongerReadable: true);
+            layers[GroundPlan.Tone] = new TerrainLayer { diffuseTexture = tones, tileSize = new Vector2(plan.Side, plan.Side), smoothness = 0, metallic = 0 };
+            owned.Add(tones);
+            owned.Add(layers[GroundPlan.Tone]);
+            return layers;
         }
 
         // The scene's own material, with HDRP's terrain shader, is one a build can draw. The

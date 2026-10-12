@@ -127,9 +127,10 @@ namespace Eternities.Tests
             Assert.That(Elevation(app.Sun), Is.EqualTo(35).Within(0.01f));
             Assert.That(app.Sun.colorTemperature, Is.LessThan(5600), "a warm sun");
             Assert.That(Vector3.Dot(-app.Sun.transform.forward, Vector3.left), Is.GreaterThan(0.5f), "the sun stands to the west");
-            // The ground wears the kit's three textures, not the plain colours that stand in for them.
+            // The ground wears the kit's three textures, not the plain colours that stand in for them,
+            // and the world's tones as a fourth layer (PRD v4 5.6.3).
             Assert.That(System.Array.ConvertAll(app.Ground.terrainData.terrainLayers, layer => layer.diffuseTexture.name),
-                Is.EqualTo(new[] { "leafy_grass_diff_2k", "dirt_floor_diff_2k", "ganges_river_pebbles_diff_2k" }));
+                Is.EqualTo(new[] { "leafy_grass_diff_2k", "dirt_floor_diff_2k", "ganges_river_pebbles_diff_2k", "ground tones" }));
             Assert.That(app.Ground.terrainData.size.x, Is.GreaterThanOrEqualTo(2 * app.World.Layout.WorldRadius / 1000f));
             // The arrival point, facing north, on the ground.
             yield return new WaitForFixedUpdate();
@@ -155,7 +156,9 @@ namespace Eternities.Tests
             Vector3 size = app.Ground.terrainData.size;
             int n = app.Ground.terrainData.alphamapResolution;
             float[,,] meadow = app.Ground.terrainData.GetAlphamaps((int)(behind.x / size.x * n), (int)(behind.z / size.z * n), 1, 1);
-            Assert.That(meadow[0, 0, GroundPlan.Meadow], Is.EqualTo(1));
+            // Between the paths the ground is its wedge's tone for a share and the meadow for the rest (PRD v4 5.6.3).
+            Assert.That(meadow[0, 0, GroundPlan.Path], Is.EqualTo(0));
+            Assert.That(meadow[0, 0, GroundPlan.Tone], Is.EqualTo(GroundPlan.ToneShare).Within(0.01f));
 
             // PRD v4 8.4.2: the kit's props are in the world, each of them an object of its kind's
             // mesh on the ground, and a tree stops what walks into its trunk.
@@ -313,6 +316,21 @@ namespace Eternities.Tests
                 view.transform.SetPositionAndRotation(eye, Quaternion.LookRotation(new Vector3(lake.x, 0.5f, lake.y) - eye));
                 yield return Read(2);
                 Dump("lake.png");
+                // And each wedge's ground, from just beyond the plaza, out along the middle of the
+                // wedge (PRD v4 5.6.3: the ground under a wedge reads as its colour).
+                WorldLayout layout = app.World.Layout;
+                for (int c = 0; c < ColourClasses.WedgeCount; c++)
+                {
+                    if (layout.WedgeSpan[c] <= 0)
+                    {
+                        continue;
+                    }
+                    double bearing = (layout.WedgeFrom[c] + layout.WedgeSpan[c] / 2) / 1e6 * Math.PI / 180;
+                    var along = new Vector3((float)Math.Sin(bearing), 0, (float)Math.Cos(bearing));
+                    view.transform.SetPositionAndRotation(along * (layout.PlazaRadius / 1000f + 12) + Vector3.up * 1.6f, Quaternion.LookRotation(along) * Quaternion.Euler(6, 0, 0));
+                    yield return Read(1);
+                    Dump($"wedge-{(ColourClass)c}.png");
+                }
             }
             view.targetTexture = null;
             target.Release();

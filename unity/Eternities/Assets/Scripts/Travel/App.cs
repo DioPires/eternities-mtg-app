@@ -562,21 +562,13 @@ namespace Eternities.Travel
             yield return null;
             LoadStage = "ground";
 
-            TerrainLayer[] layers = WorldGround.Layers(terrainLayers);
             Material groundMaterial = groundMaterials.Length > 0 ? groundMaterials[0] : null;
             if (!WorldGround.Drawable(groundMaterial))
             {
                 Fail(new InvalidOperationException("the ground has no material this build can draw; run the generation entry point (unity/Eternities/README.md)"));
                 yield break;
             }
-            if (layers != terrainLayers)
-            {
-                foreach (TerrainLayer layer in layers)
-                {
-                    worldOwned.Add(layer.diffuseTexture);
-                    worldOwned.Add(layer);
-                }
-            }
+            TerrainLayer[] layers = WorldGround.Layers(terrainLayers, plan, worldOwned);
             yield return WorldGround.Build(plan, layers, groundMaterial, World.Plane.Slug, worldRoot.transform, LoadBudgetMs, worldOwned, terrain => Ground = terrain);
             yield return null;
 

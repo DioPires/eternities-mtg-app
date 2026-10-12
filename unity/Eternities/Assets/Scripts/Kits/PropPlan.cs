@@ -81,6 +81,23 @@ namespace Eternities.Kits
             new Dressing { Cover = 0.25f, Mix = new[] { FlatStone, FlatStone, FlatStone, StandingStone, StandingStone, Rock }, Avenue = new[] { StandingStone } },
         };
 
+        // The tone of each class's ground, in the order of the wedges, then the ring's (PRD v4 5.6.3;
+        // `GroundPlan.ToneShare`): pale highland grass, a cool sea green, the marsh's dark olive, the
+        // badlands' rust, the forest's deep green, gold; slate on the ring. A first setting for the
+        // owner's eye, as the props are.
+        public static readonly Color32[] GroundTones =
+        {
+            new Color32(200, 200, 170, 0), new Color32(48, 116, 140, 0), new Color32(46, 56, 34, 0), new Color32(112, 44, 28, 0),
+            new Color32(40, 112, 30, 0), new Color32(220, 172, 44, 0), new Color32(118, 120, 126, 0),
+        };
+
+        // The kit's layer under each class's tone, in the same order (PRD v4 5.6.3: the kit varies its
+        // ground layer by wedge class): the meadow, and bare stone in the badlands and on the ring.
+        public static readonly int[] GroundBase =
+        {
+            GroundPlan.Meadow, GroundPlan.Meadow, GroundPlan.Meadow, GroundPlan.Gravel, GroundPlan.Meadow, GroundPlan.Meadow, GroundPlan.Gravel,
+        };
+
         // Beyond the rim: a mixed wood that thickens away from the world, so the world ends in trees
         // and not at a line (PRD v4 5.1.5).
         public static readonly Dressing Margin = new Dressing { Mix = new[] { Oak, Oak, Oak, Birch, Birch, Pine, Pine, BushLarge, Rock } };

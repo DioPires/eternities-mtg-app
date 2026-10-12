@@ -141,8 +141,13 @@ stands inside a rock's footprint: of the two, the one a lower density already dr
 the kit's three terrain layers, `meadow`, `path` and `gravel` under
 `Assets/Kits/temperate/TerrainLayers/`, once: each has its texture's colour, normal and mask maps and
 a first tile size, and is tuned in its own file from then on. It names them on that object, and a
-ground without all three is painted in plain colours. It also makes the kit's two water prefabs,
-`Assets/Kits/temperate/Water/River.prefab` and `Lake.prefab`, once, from the water system's own
+ground without all three is painted in plain colours. A fourth layer is no file: it is made for each
+world at load, one picture laid once over the whole terrain, with each wedge in the tone the kit's
+table gives it (`Temperate.GroundTones`; PRD v4 5.6.3). Between the paths the ground is that tone
+for 45%, and for the rest the kit's layer for the wedge (`Temperate.GroundBase`): the meadow, and
+gravel in the red wedge and on the colourless ring; a path keeps its own colour. It also makes the
+kit's two water prefabs, `Assets/Kits/temperate/Water/River.prefab` and `Lake.prefab`, once, from
+the water system's own
 presets: its river, running along the bed at 1.5 km/h, and its open sea calmed to a lake's light
 breeze, without foam. Those two are the owner's to tune and it never writes them again. They are
 tuned with the game playing in the editor: select the prefab in the Project window and change its
