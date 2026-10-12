@@ -89,6 +89,13 @@ holds what a level sets that is a volume setting and not a switch of the asset; 
 kind of cloud. The generation entry point makes a missing one, and never writes one again.
 `RenderPipelineTests` holds the names, the order, one HDRP asset per level and the four rows above.
 
+A player starts at `high`. Started with `-quality medium` or `-quality low` it starts at that level
+instead: the slice has no settings screen, and this is how a visitor walks at another level.
+
+```sh
+unity/Eternities/Build/Eternities.app/Contents/MacOS/Eternities -quality medium
+```
+
 ## Target platforms
 
 Standalone, for macOS on Apple Silicon and Windows x64 (PRD v4 7.1.4). The graphics APIs are the

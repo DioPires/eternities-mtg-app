@@ -156,9 +156,31 @@ namespace Eternities.Travel
             return 360f * order.FindIndex(plane => plane.Slug == slug) / order.Count;
         }
 
+        // PRD v4 8.1.1 has a settings screen choose the quality level, and the slice has none. A
+        // player started with `-quality high|medium|low` starts at that level, so the owner can
+        // walk at the level the acceptance matrix settles on (DEC-953). The level's place among
+        // `names`, or -1 where the arguments name none of them.
+        public static int QualityFromArguments(string[] arguments, string[] names)
+        {
+            for (int i = 0; i + 1 < arguments.Length; i++)
+            {
+                if (arguments[i] == "-quality")
+                {
+                    return Array.IndexOf(names, arguments[i + 1]);
+                }
+            }
+            return -1;
+        }
+
         void Awake()
         {
             Instance = this;
+            // Before anything is built: a world's props are as dense as the level in force says.
+            int level = QualityFromArguments(Environment.GetCommandLineArgs(), QualitySettings.names);
+            if (level >= 0)
+            {
+                QualitySettings.SetQualityLevel(level, applyExpensiveChanges: true);
+            }
         }
 
         void Start()

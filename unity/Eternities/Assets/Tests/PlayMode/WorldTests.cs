@@ -224,6 +224,22 @@ namespace Eternities.Tests
             Assert.That(app.Stands.Stands, Is.EqualTo(6271));
         }
 
+        // A player started with `-quality <level>` starts at that level (DEC-953): the argument names
+        // one of the project's three levels, and anything else, or no argument, leaves the default.
+        [Test]
+        public void TheCommandLineNamesAQualityLevel()
+        {
+            string[] names = QualitySettings.names;
+            Assert.That(names, Is.EqualTo(new[] { "high", "medium", "low" }));
+            Assert.That(App.QualityFromArguments(new[] { "Eternities", "-quality", "medium" }, names), Is.EqualTo(1));
+            Assert.That(App.QualityFromArguments(new[] { "Eternities", "-bench", "warm", "-quality", "low" }, names), Is.EqualTo(2));
+            Assert.That(App.QualityFromArguments(new[] { "Eternities", "-quality", "high" }, names), Is.EqualTo(0));
+            Assert.That(App.QualityFromArguments(new[] { "Eternities" }, names), Is.EqualTo(-1));
+            Assert.That(App.QualityFromArguments(new[] { "Eternities", "-quality", "ultra" }, names), Is.EqualTo(-1));
+            Assert.That(App.QualityFromArguments(new[] { "Eternities", "-benchQuality", "low" }, names), Is.EqualTo(-1), "the bench's own argument is not this one");
+            Assert.That(App.QualityFromArguments(new[] { "Eternities", "-quality" }, names), Is.EqualTo(-1));
+        }
+
         // PRD v4 9.5: the river is seen from the rim, where the north radial path ends: the frame
         // from there changes when the water is taken away, by more than it changes by itself.
         [UnityTest]
