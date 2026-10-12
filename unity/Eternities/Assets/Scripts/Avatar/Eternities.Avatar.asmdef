@@ -3,7 +3,8 @@
     "rootNamespace": "Eternities.Avatar",
     "references": [
         "Unity.InputSystem",
-        "Unity.Cinemachine"
+        "Unity.Cinemachine",
+        "Eternities.UI"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

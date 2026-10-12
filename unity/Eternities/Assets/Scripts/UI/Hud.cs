@@ -35,6 +35,9 @@ namespace Eternities.UI
         public bool TravelOpen => travel.style.display == DisplayStyle.Flex;
         public string HoverText => hover.style.display == DisplayStyle.Flex ? hover.text : null;
         public string Line => line.style.display == DisplayStyle.Flex ? line.text : null;
+        // An overlay is open (PRD v4 6.2.1): card view's panel, the travel menu, or the line in the
+        // middle of the view. The pointer is the visitor's for as long (`PointerLock`).
+        public bool Open => CardShown || TravelOpen || Line != null;
         public Rect HoverBounds => hover.worldBound;        // in the panel's units
         public Rect PanelBounds => document.rootVisualElement.worldBound;
         public Vector2 ViewToPanel(Vector2 viewPoint) => RuntimePanelUtils.ScreenToPanel(hover.panel, viewPoint);
@@ -86,6 +89,7 @@ namespace Eternities.UI
             root.Add(hud.panel);
             hud.travel = Side(right: false);
             root.Add(hud.travel);
+            PointerLock.Overlays(hud);
             return hud;
         }
 
@@ -124,6 +128,13 @@ namespace Eternities.UI
         void OnDestroy()
         {
             Destroy(Settings);
+        }
+
+        // With the application's focus the pointer goes back to the visitor, for whatever else is
+        // on the screen.
+        void OnApplicationFocus(bool focused)
+        {
+            PointerLock.Focus(focused);
         }
 
         static Label Text(string text, int size, Color colour)
@@ -175,6 +186,10 @@ namespace Eternities.UI
         {
             line.text = text ?? "";
             line.style.display = text != null ? DisplayStyle.Flex : DisplayStyle.None;
+            if (text != null)
+            {
+                PointerLock.Release();
+            }
         }
 
         // The hover label of a stand within reach (PRD v4 5.5.3), above a point of the view given in
@@ -246,6 +261,7 @@ namespace Eternities.UI
             panel.Add(Action("Open on Scryfall", open));
             panel.Add(Action("Back", leave));
             panel.style.display = DisplayStyle.Flex;
+            PointerLock.Release();
         }
 
         public void HideCard()
@@ -294,6 +310,7 @@ namespace Eternities.UI
             travel.Add(columns);
             travel.Add(Action("Close", close));
             travel.style.display = DisplayStyle.Flex;
+            PointerLock.Release();
         }
 
         public void HideTravel()

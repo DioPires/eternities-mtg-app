@@ -168,10 +168,13 @@ above). The world has its river and its lake only where water is on in the HDRP 
 level in force, which it is at all three.
 
 With the project open in the editor, the menu item Eternities > Generate does the same. To walk the
-world, generate, open `Assets/Scenes/Hub.unity` and press Play: WASD walks, Shift runs, the right
-mouse button orbits the camera, the wheel zooms. Within 3 m of a stand its label shows and E enters
-card view; E there flips a card that has a back image, `[` and `]` step through its printings, and
-Esc or walking leaves. T opens the travel menu. Esc in a world, outside card view, returns to the hub.
+world, generate, open `Assets/Scenes/Hub.unity` and press Play: WASD walks, Shift runs, the mouse
+orbits the camera with no button held, and the wheel, or two fingers on a trackpad, zooms. The first
+click or movement key gives the pointer to the camera, which holds it and does not draw it; card
+view, the travel menu, a notice or another application gives it back to the visitor, until the next
+click or movement key. Within 3 m of a stand its label shows and E or a click enters card view; E
+there flips a card that has a back image, `[` and `]` step through its printings, and Esc or walking
+leaves. T opens the travel menu. Esc in a world, outside card view, returns to the hub.
 
 It logs the world's figures (PRD v4 5.4.14), and writes them to `-reportOut` if that is given:
 

@@ -13,7 +13,10 @@
         "Unity.RenderPipelines.HighDefinition.Runtime",
         "Eternities.Audio",
         "Eternities.UI",
-        "Eternities.Bench"
+        "Eternities.Bench",
+        "Unity.Cinemachine",
+        "Unity.InputSystem",
+        "Unity.InputSystem.TestFramework"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
