@@ -174,7 +174,11 @@ click or movement key gives the pointer to the camera, which holds it and does n
 view, the travel menu, a notice or another application gives it back to the visitor, until the next
 click or movement key. Within 3 m of a stand its label shows and E or a click enters card view; E
 there flips a card that has a back image, `[` and `]` step through its printings, and Esc or walking
-leaves. T opens the travel menu. Esc in a world, outside card view, returns to the hub.
+leaves. T opens the travel menu. Esc in a world, outside card view, returns to the hub. Until the
+zoom's numbers are final (DEC-978), a player or an editor with a window writes every scroll part it
+reads to `scroll-parts.txt` under `Application.persistentDataPath`, on a Mac
+`~/Library/Application Support/DioPires/Eternities/`: a line for each run that scrolled and a line
+for each part, added to the file and never written over it (`ScrollLog`).
 
 It logs the world's figures (PRD v4 5.4.14), and writes them to `-reportOut` if that is given:
 

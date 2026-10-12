@@ -44,7 +44,8 @@ namespace Eternities.Avatar
     // it is: the pointer, the wheel and the right stick are the overlay's.
     public sealed class PlayerInputSource : IAvatarInputSource
     {
-        public const float MouseDegrees = 0.15f, ScrollMetres = 0.5f, ScrollPause = 0.1f, ZoomMetresPerSecond = 3;
+        public const float MouseDegrees = 0.15f, ScrollMetres = 0.5f, ScrollPause = 0.1f;
+        public const float RunMetres = 0.15f, OwedMetres = 1, ZoomMetresPerSecond = 6, ZoomMetresAFrame = 0.1f;
         const float StickDegrees = 150, ShoulderMetres = 3;
 
         bool wanted;            // a click or a movement key asked for the pointer in the last frame
@@ -52,6 +53,10 @@ namespace Eternities.Avatar
         int changes = -1;       // `PointerLock.Changes` as the last frame found it
         float owed;             // metres a scroll has asked for that the camera has not moved yet
         float scrolled = float.NegativeInfinity;    // when the scroll was last not zero
+
+        // The most a scroll moves the camera in a frame of this length: its pace, and in a long
+        // frame no more than `ZoomMetresAFrame`, so that it never jumps.
+        public static float Pace(float seconds) => Mathf.Min(ZoomMetresPerSecond * seconds, ZoomMetresAFrame);
 
         public void Read(AvatarInput input)
         {
@@ -89,17 +94,32 @@ namespace Eternities.Avatar
                 press = mouse.leftButton.wasPressedThisFrame || mouse.rightButton.wasPressedThisFrame;
                 // A notch of a wheel asks for half a metre. A trackpad's two fingers send a run
                 // of parts, one a frame for as long as they move and for a while after they lift.
-                // Taken as a notch each, as they were, they threw the camera from one end of its
-                // range to the other in eight frames. So the first part after a pause is a notch,
-                // whatever its size, which is what a wheel sends; the parts that follow it ask by
-                // their size; no more than a notch is ever owed; and the camera moves at its own
-                // pace (below).
+                // A part's size is what the system would scroll a page by: Unity's player on a
+                // Mac divides the system's points by 20, so one point is a part of 0.05 and a
+                // swipe's parts run from there to about 5.
+                //
+                // The first part after a pause is a notch, whatever its size, which is what a
+                // wheel sends. The parts that follow it ask by their size, `RunMetres` for a part
+                // of 1: about 530 points for the camera's whole range, where the web application
+                // asks 690 for the same threefold (`ZOOM_PER_NOTCH` in
+                // `web/src/camera/attachRig.ts`). So the camera goes as far as the fingers do,
+                // and the tail after they lift, whose parts shrink, moves it less and less.
+                // No more than `OwedMetres` is ever owed, so the camera stops soon after the
+                // parts do, and it moves at its own pace (below).
+                //
+                // Taken as a notch each, as the parts once were, eight frames threw the camera
+                // from one end of its range to the other. Asked at a notch for a part of 1 with
+                // no more than a notch owed, as they were next, every swipe moved it at the one
+                // pace of 3 m a second, however hard it was made: too slow (DEC-978). A drag of
+                // 400 points a second, a slow one, still moves it at that pace, and a quicker
+                // one moves it faster.
                 float scroll = mouse.scroll.ReadValue().y;
                 if (scroll != 0)
                 {
-                    float size = Time.unscaledTime - scrolled > ScrollPause ? Mathf.Max(Mathf.Abs(scroll), 1) : Mathf.Abs(scroll);
+                    ScrollLog.Part(scroll);
+                    float asked = Time.unscaledTime - scrolled > ScrollPause ? ScrollMetres : Mathf.Abs(scroll) * RunMetres;
                     scrolled = Time.unscaledTime;
-                    owed = Mathf.Clamp(owed - Mathf.Sign(scroll) * size * ScrollMetres, -ScrollMetres, ScrollMetres);
+                    owed = Mathf.Clamp(owed - Mathf.Sign(scroll) * asked, -OwedMetres, OwedMetres);
                 }
             }
             if (pad != null)
@@ -122,7 +142,7 @@ namespace Eternities.Avatar
             {
                 owed = 0;
             }
-            float zoom = Mathf.MoveTowards(0, owed, ZoomMetresPerSecond * Time.unscaledDeltaTime);
+            float zoom = Mathf.MoveTowards(0, owed, Pace(Time.unscaledDeltaTime));
             owed -= zoom;
             input.Zoom += zoom;
 
