@@ -1,6 +1,6 @@
 # DEC-950 — Project overhaul: planeswalker visits worlds
 
-**Author:** CEO. **Date:** 2026-10-10. **Status:** revision 10. §12.12 converts the owner's picks on the workflow card (2026-10-10 21:00Z) into DEC-959, DEC-960 and three additions to DEC-953. §12.11 records the adversarial review of the CEO's workflow proposal (two independent reviewers, fourteen merged findings, all accepted) and the corrected recommendation. Sections 1–10 are the first-pass deep dive; §11 records the owner's round-1 decisions; §12 records the round-2 decisions, the Codex review gate the board added, the PRD v4 draft, the Codex triage of all four passes (§12.5, §12.6, §12.8, §12.9) and the statements in §§1–11 that `prd_v4.md` supersedes (§12.7). **The Codex gate is passed: the fourth pass read GO WITH CHANGES and both changes are applied in `prd_v4.md` draft 5.** Where this plan and `prd_v4.md` draft 5 disagree, the PRD wins. Nothing is built.
+**Author:** CEO. **Date:** 2026-10-10. **Status:** revision 12. §14 records the owner's decision after the slice (2026-10-12 15:07Z: lore for every hero plane before the first distribution; an engineer drafts the history text; colour as a cue; photographic props staged), PRD v4 Amendment 4 (the journey law), the two readings the CEO made, the Codex gate on the amended documents and the sequence. §13 records the slice's verdicts (engine: degraded pass 1 at HDRP medium; design: an artistic miss on question 3), the owner's words of 2026-10-12, and the design proposal with three directions for the owner's choice. §12.12 converts the owner's picks on the workflow card (2026-10-10 21:00Z) into DEC-959, DEC-960 and three additions to DEC-953. §12.11 records the adversarial review of the CEO's workflow proposal (two independent reviewers, fourteen merged findings, all accepted) and the corrected recommendation. Sections 1–10 are the first-pass deep dive; §11 records the owner's round-1 decisions; §12 records the round-2 decisions, the Codex review gate the board added, the PRD v4 draft, the Codex triage of all four passes (§12.5, §12.6, §12.8, §12.9) and the statements in §§1–11 that `prd_v4.md` supersedes (§12.7). **The Codex gate is passed: the fourth pass read GO WITH CHANGES and both changes are applied in `prd_v4.md` draft 5.** Where this plan and `prd_v4.md` draft 5 disagree, the PRD wins. Nothing is built.
 **Basis:** `prd_v3.md`, `docs/decisions/w23-concept-and-stack.md`, `REVIEW-2026-09-08.md` §3–§4, production dataset `a5846bec28d1447e` (88 planes, 28,603 cards, 72,811 printings, 57 planes with zero cards), and the Wizards Fan Content Policy (fetched 2026-10-10).
 
 ---
@@ -760,3 +760,151 @@ The owner took every option on the corrected card: 1 (root brief, corrected), 3 
 | 4 MCP evaluation | **DEC-960.** A documents note, `docs/mcp-evaluation.md`: which bridge (Unity's own server against the open-source "MCP for Unity"), tested against the pinned editor and the Personal licence; a tool allowlist (reads: scene inspection, console, screenshots, Play Mode; writes: only hand-authored text assets, never generated scenes); workspace isolation (its own project copy, never the runner's workspace or the owner's open project); the lock protocol with the runner (8.8.6), written into `docs/ci-runner.md` if the answer is go; `blender-mcp` off by default (it executes arbitrary Python as the owner's user in the session that hosts the runner); security on a public repository; cost against DEC-953's day logs; go or no-go. Two days, time-boxed. No product code, no change under `unity/` on `main`, no Blender authoring by engineers. | Interactive Tools Engineer | child of DEC-950, blocked on DEC-953 |
 
 Two things surfaced alongside and are relayed to the board on DEC-950: the Founding Engineer's finding of 21:00Z that some agent runs receive a per-run `HOME` without the owner's `gh` keychain, git identity or Git LFS filter (the working rule until fixed is `HOME="$PAPERCLIP_GITHUB_HOST_HOME"` for `gh`, `git commit` and `git lfs`); and the missing instruction file above. Nothing in this section changes `prd_v4.md` beyond DEC-959's erratum. The 11.1 classification stays the owner's gate before any distribution.
+
+---
+
+## 13. After the slice: the engine verdict, the owner's words, and the design proposal (2026-10-12)
+
+Revision 11. §12 stays as written. This section records what the slice settled, what the owner asked for on 2026-10-12, and a design proposal with three directions for the owner's choice. Nothing is built on the new direction until the owner picks, the PRD is amended, and the amended PRD and this plan pass Codex (the owner's standing instruction of 2026-10-10 15:58Z).
+
+### 13.1 What the slice settled
+
+PR #115 is on `main` at `e79a195` (DEC-953; reviews DEC-976 and DEC-977, both APPROVE, the camera fix of DEC-975 included). The matrix of `prd_v4.md` 9.5, as the reviewer drew it at `237c8aa` and re-read at `3d41c7a`:
+
+| Row | Result | Figures and basis |
+|---|---|---|
+| D | Pass | The scope shipped in the week. Owner editor time: 13 minutes of the 2 days; the owner handed the editor parts to the engineer on 2026-10-11 at 16:50Z. |
+| R1 | Miss, on p90 alone | HDRP high, warm, native: p90 28.18 ms against 20 ms. p99 30.83 ms, longest 49.76 ms and GPU 3.79 GB pass. The volumetric fog at its medium tier, which the owner kept, is 12 to 13 ms of the frame. |
+| R2 | Pass: degraded pass 1 | HDRP medium, warm, native: p90 16.00 ms, p99 17.55 ms, longest 49.45 ms, GPU 3.01 GB. |
+| L | Not run | The owner has no MacBook Air (2026-10-12 10:09Z). Treated as the matrix treats a miss: the light Mac is suspended as a gating target pending Wave 5. |
+| C | Recorded | Cold p90 within 0.1 ms of warm at both levels. 301 images from Scryfall in each cold run, none failed. |
+| I | Pass | The six image-path tests pass with the exhibit-camera design. |
+| A | **Artistic miss** | Question 3 is a no (13.2). Questions 2 and 5 are yes. Question 4 is partly: movement, card view and the river's sound yes; the camera was fixed on DEC-975; the water is "okish". |
+
+Consequences in force:
+
+- **Degraded pass 1** (9.5 row R2): Wave 5 makes HDRP medium the reference machine's ceiling setting and HDRP high a target; 7.2's first three rows are relabelled in the next amendment. The engine is not in question. At HDRP medium there is 4.0 ms of room at p90; the trial of photographic CC0 props (DEC-953, 2026-10-11 21:20Z) cost 1.0 ms of it.
+- **The light Mac is unmeasured.** Wave 5 decides between a URP build variant and dropping the target (11.5).
+- **Row A:** change the design, not the engine; record what failed. This section is that record.
+
+### 13.2 What the owner said
+
+Question 3 on the finished slice (DEC-953, 2026-10-12 10:09Z):
+
+> it's still a radial chart. I mean, the card stands are all together in circles going from the center until almost the end of the map. it's like I'm moving through a radial museum of card stands, it's not like I'm in a world discovering cards as I journey to discover this amazing world (plane) I'm in. I wanted this to be more like an experience in knowing the planes history. I venture into the plane's world, it's modelled as the plane is described in the MTG lore and then I go through its history and can read about it and see the cards that are related to that part of the plane's history. it should be a historical experience kind of "game" with amazing visuals and lighting and sounds and music
+
+Question 4 on the same card: "the river and the lake are okish but I would like them to be translucent water with sea life (fishes, corals, algae, etc)".
+
+The two earlier cards. What makes it a chart (2026-10-11 20:21Z): the rings, the rows, the straight paths, the empty outer bands, the plaza. The trial pictures (2026-10-12 08:52Z): the photographic models are "partly" the look and go in after the slice; still wrong on them: the same tree repeated, pale, the rocks, the bushes, the colour, too sparse; and "missing more environment features, leaves flowing in the wind, trees moving with the wind, birds flying, fish in the water, those types of details. details that actually make me believe I'm in a world".
+
+### 13.3 What that means against PRD v4
+
+Four asks, each with a different weight against the contract:
+
+1. **The layout.** The law of 5.4 (colour is the wedge, time is the radius, each set is a site) produced what it says: a wheel. The slice's figures on Dominaria: 824 m across; 36 bands with a width, 28 of them at the 6 m minimum; a plaza of 20.6 m radius; 5,955 of 6,271 stands facing a ring path; 610 stands with no neighbour within 8 m; from 103 m outward the bands are 6 m rows. 5.4.16 named the risk and gave the slice the question; the answer is no. This changes goal 4, 5.1.4, the 3.1 entities and 5.4. It is the main item.
+2. **History.** "Go through its history and read about it" reverses non-goal 9 ("no plane descriptions, no story text") and adds a content type the product has never had: authored text. A museum has placards, so this is not a policy problem by itself. It is a maintenance, accuracy and licence question (13.5).
+3. **Lore-modelled worlds.** "Modelled as the plane is described in the MTG lore" takes goal 3's hero set-piece further: not a landmark in a kit world but a world whose geography follows the lore. For twenty hero planes that is owner authoring at a scale 8.12.3 already put at 20 to 40 owner-weeks for set-pieces alone. The data can carry part of it (13.4).
+4. **Life in the world.** Wind in trees and grass, drifting clouds and particles are already 5.1.3; the slice's kit subset had none of them, and they were Wave 5 leg 3 work, not slice scope. Birds, fish, corals and algae, and translucent water, are new content. Photographic props are a budget change (7.2's kit row and 8.12.1's model cap).
+
+Not changed: goal 1. A road through a plane's history with reading stones is a museum trail. No objective, no completion, no score. The word "game" in the owner's quote stays out of authored text (9.1.6). Scryfall's "create new games" clause (`docs/scryfall-policy.md` §11.9) bears exactly as before. The 11.1 classification stays the owner's gate before any distribution.
+
+### 13.4 What the data can carry
+
+Checked on Scryfall on 2026-10-12 against Dominaria's 35 sets in Appendix B (6,576 non-basic cards by Scryfall's count; the dataset has 6,271 after the v3 exclusion rules):
+
+| Signal | Count | Use |
+|---|---|---|
+| Sets in release order | 35 sets, 1993-08 to 2022-11 | Today's time axis. It is not the lore's order: The Brothers' War (2022-11) depicts the same war as Antiquities (1994-03), thousands of years before Dominaria United (2022-09). An era table has to be curated; sets then map to eras by rule. |
+| Story Spotlight cards (Scryfall `story_spotlight`) | 54 on Dominaria; 384 across Magic. The flag exists since 2017, so only `dom`, `dmu` and `bro` carry it | The headline exhibits of an era, chosen by Wizards, no curation. Old eras have none. |
+| Cards whose name carries a region word (24 words: Tolarian, Shivan, Urborg, Benalish, Llanowar, Keldon, Yavimaya, Phyrexian, Otaria, Vesuva, Zhalfir, Jamuraa, Thran, Argoth, Koilos, Serra, Academy, Femeref, Kjeldor, Balduvia, Suq'Ata, Sarpadia, Icatia, Ice Age) | 326 of 6,576, about 5 percent | A keyword table places these in their region. The other 95 percent go where their era or set goes. |
+| Legendary creatures | 368 | The people of the plane; candidates for an era's "who was here" group. |
+| Planechase cards typed `Plane — Dominaria` | 9; 185 across Magic | Wizards' own pictures of the plane's places (Academy at Tolaria West, Isle of Vesuva, Krosa, Llanowar, Otaria, Shiv and others). Whether they are in the dataset depends on the v3 set-type rules; a pipeline leg checks. As exhibits they are card images: flat, credited, compliant. |
+| Flavour text | On the card image | Already shown. No extra text is needed for it. |
+
+So eras and regions are curated tables, text, one set per hero plane; the cards' assignment to them is derived by rule (set to era, keyword to region, Story Spotlight to headline). The picture stays mostly the data; goal 4 gains two curated tables beside Appendix C.
+
+### 13.5 The reading layer: form, words, accuracy, policy, scale
+
+- **Form.** A reading stone at each era's site: the era's name and its place in the plane's history, one to three short paragraphs, the sets that depict it, the headline cards. Text only, no voice. The map draws the trail. No counter of stones read; the recently-visited list stays as it is.
+- **Words.** Every paragraph is written by us in our own words. Each era row names its sources: the cards themselves, Wizards' published story index, the MTG Wiki. The MTG Wiki's text is CC BY-NC-SA 4.0 (read at mtg.wiki on 2026-10-12); copying it would put our text under the same licence, so no sentence is copied. Facts carry no licence.
+- **Accuracy.** An engineer drafts from the named sources; the reviewer checks every sentence against a source and rejects any sentence without one; the owner accepts the text under 9.3. A model's own knowledge without a source is not a source.
+- **Policy.** Appendix E gains one item: lore text is our own words, names its sources, and quotes no Wizards story text. Non-goal 9 is reversed by owner decision only.
+- **Scale.** Dominaria: about 10 eras, about 20 paragraphs. Twenty hero planes: about 150 eras. Kit planes: no prose; their trail is the sets in release order with names and years.
+
+### 13.6 Three directions
+
+**Direction A: lore-shaped hero worlds with an era trail (the owner's ask in full).** Per hero plane, three curated tables: regions (6 to 12 named places from the lore, each with a biome, a rough position and a size weight), eras (in lore order, each with its sets, its region, its paragraphs and its sources), keywords (word to region). The pipeline builds the terrain from the region table (biome per region, water on borders, roads between regions), places each card in its region or in its era's region, then in natural clusters (a grove, a ruin, a camp) with stands in groups of three to eight facing a winding path. A road runs through the regions in lore order with a reading stone at each era. Kit planes get the same cluster placement on one biome with a data-derived trail (sets in release order) and no prose. Pockets are unchanged.
+Cost, engineer-days on top of Wave 5's uncut 40 to 60: allocator v2 with its checker and fixtures, 10 to 15; terrain from a region table, 5 to 8; the reading layer (stone, map trail, text in the pack), 5; pipeline tables, validation and the Scryfall flags, 5. Owner: 2 to 3 days of tables per hero plane, or 1 day of review per plane if an engineer drafts, plus the set-piece time 8.12.3 already counts. One-way doors: non-goal 9 reversed; goal 4 becomes "the data plus three curated tables"; colour leaves the map and becomes a cue on the stand, in the HUD and on the map; a hero plane without its tables reads as a kit world.
+
+**Direction B: an organic layout, no lore.** The same data law (colour class, set), new geometry: no plaza wheel, no rings. Sites are clearings scattered over the terrain, with district blobs for colour and a soft chronology (older sets near the arrival, newer ones farther, along winding roads). Stands stand in groups of three to eight facing a path; density varies, dense by the roads and sparse at the edges; the world is sized by its content, not by its busiest band. Non-goal 9 stands; no text.
+Cost: allocator v2 with checker and fixtures, 8 to 10 engineer-days; no owner tables. What it does not do: it gives the owner no history, and it may still read as a museum in a field. It is the base layer Direction A needs in any case.
+
+**Direction C, recommended: staged. B as the law for every world; A on hero planes in Appendix C.1 order, Dominaria first.** Wave 5 leg 1 builds the organic allocator. Dominaria gets its three tables and the era trail, and the reading layer ships with Dominaria. Each later hero plane gets its tables when its set-piece is built, in C.1 order. Kit planes read as B. The first judge is a second one-week Dominaria slice on the new law, with the photographic props, wind on the vegetation and the reading stone, before Wave 5 is cut. Question 3 is restated: "from the avatar's height, does Dominaria read as a place with a history?"
+Cost: B now; A's Dominaria parts in the second slice; about 25 to 33 engineer-days in all (allocator v2 10 to 15, terrain from regions 5 to 8, reading layer 5, tables and pipeline 5), of which the second slice takes the first week. The other nineteen heroes follow over the staged releases. One-way doors as A, taken one plane at a time.
+
+What I would not do: author every hero plane's tables before the first distribution (twenty table sets before anyone walks one world is the plan that never ships); drop the data law for hand-placed stands (the picture stops being the data, and every refresh becomes owner work); keep 5.4 and dress it harder (the owner's five reasons are geometry, not dressing).
+
+### 13.7 The content asks beside the layout
+
+- **Photographic props.** The trial's answer stands: better, 1.0 ms at HDRP medium, "partly" the look. The next step is a per-kit asset pass with the owner's six corrections (more than one tree species, colour, rocks, bushes, density, paleness) under an amended 7.2 kit budget. Proposal: kit at most 250 MB cooked; first release is core plus the temperate kit plus Dominaria; the other kits follow in staged releases, as hero set-pieces already do. The archive ceiling is kept by staging, not by raising it.
+- **Wind, clouds, particles.** 5.1.3 as written; Wave 5 leg 3 kit work. No decision needed.
+- **Birds, fish, corals, algae, translucent water.** New content: HDRP water's absorption and refraction settings for translucency; underwater props; a simple flocking and schooling behaviour for birds and fish. 3 to 5 engineer-days plus assets for each kit that has water or sky life. Proposal: a stretch item in the second Dominaria slice, dropped first.
+
+### 13.8 Sequence
+
+1. The owner picks a direction and answers the three design questions on the card of 2026-10-12.
+2. The CEO writes the PRD amendment (Amendment 4, or a v5 if the law is replaced; the content matters, not the name): goal 4, 5.1.4, the 3.1 entities (region, era, trail, reading stone, cluster), 5.4 replaced, 5.6 and Appendix C fields, non-goal 9, 7.2 budgets and the degraded-pass relabelling, 9.3 criteria, the Appendix E item, section 11.
+3. Codex review of the amended PRD and this plan, as the owner's standing instruction requires; triage in this document; owner confirmation on the plan revision.
+4. A second Dominaria slice, one engineer, one week, with its own acceptance matrix.
+5. Wave 5 is cut after it.
+
+Nothing is built on the new direction before step 3 is passed. DEC-978, DEC-979, DEC-960 and DEC-972 continue as housekeeping on the shipped slice.
+
+---
+
+## 14. The owner's decision after the slice (2026-10-12 15:07Z) and PRD v4 Amendment 4
+
+Revision 12. §13 stays as written. This section records the owner's four answers on the design card of 2026-10-12, the PRD amendment that implements them, the two readings the CEO had to make, the Codex gate on the amended documents, and the sequence that follows. Nothing is built on Amendment 4 before the owner confirms the plan revision that records a passed gate.
+
+### 14.1 The decision
+
+| Question | Owner's answer | Effect |
+|---|---|---|
+| Direction | **Lore for every hero plane before the first distribution: all twenty table sets are written first, then the worlds are built from them.** The owner chose Direction A at full scale over the staged Direction C the CEO recommended (§13.6). | The journey law replaces 5.4 on every world; every hero entry gets three lore tables (regions, eras, keywords); the first distribution waits for all twenty accepted table sets (`prd_v4.md` 4.16.5, 8.12.4, 8.12.7). The CEO's reservation stands on the record (§13.6, "what I would not do") and the decision is the owner's; risk 20 and 11.21 carry the mitigation and the one reading it needs. |
+| History text | An engineer drafts each era's paragraphs in our own words from named sources; the reviewer checks every sentence against a source and rejects any without one; the owner accepts the text. | 5.13, 4.16.6, 8.12.7, Appendix F. One source per sentence is machine-checked; the reviewer is never the drafter; the sources are shown to the visitor. Owner time falls from the card's 40 to 60 days to about half to one day per entry. |
+| Colour | A cue, not geography: the plinth's rim, the hover label, the HUD legend and the map show it; filters still work by colour. | Wedges, bands and rings are retired; the rim on every plinth in every kit (5.5.1); the legend and the map's dots (6.3); no dressing follows colour (5.6.3). |
+| Props | Photographic CC0 models with the owner's six corrections under a 250 MB kit budget; the first release ships core, the temperate kit and Dominaria; the other kits follow by release. | 7.2's kit rows (basic 60 MB, photographic 250 MB); 8.12.1's bar; 8.12.6's kit standard and staging; the archive may be several files under 2 GB (8.9.1). |
+
+### 14.2 What Amendment 4 changes in `prd_v4.md`
+
+- **The journey law (5.4, replaced in full).** The trail runs through the plane's history; each era is a site; cards stand in clusters of three to eight beside a site's winding path; colour is on the stand. On a hero world the regions are the lore's places (a power diagram of the region table's anchors) and the trail visits the eras in lore order; on a kit world the trail runs through the sets in release order on one biome. The allocator keeps the first print's machinery (global lattice, jitter, reservations, inflated candidate tests, checker, integer millimetres, bounded loops) under new geometry: site blobs sized by count and deformed by the PRNG, serpentine sweeps with wobble, cluster slots alternating sides with caps drawn from three to eight, a trail routed by A* on a 5 m grid and wobbled, chapters along an era's path, and nine named failure modes (5.4.12). The rows risk is named with its alternative, a branching path (5.4.17, 11.17).
+- **Entities and invariants (3.1, 3.2, 3.3):** region, era, keyword, cluster, chapter, trail, stone (reading, way, marker, chapter), lore tables; invariant 7 reassigned, 8 extended, 9 restated by geometry type, 10 restated for the trail, 11 new (chapter order and keyword regions, asserted by the checker).
+- **Lore tables (4.16, Appendix F):** three JSON files per hero entry with the schema, the validation (every set in exactly one era; one source per sentence; host allowlist; limits per sentence and era), the emission (`lore/<slug>.json`), the retained `story_spotlight` flag, and the distribution flag that makes the twenty table sets a release gate without blocking development.
+- **The reading layer (5.13):** the reading stone and its overlay (text, sets with chapter travel, headline cards with stand travel, a sources fold), the headline rule, the words rules, the review rule, no mechanic, the region sentence in the HUD, the Blind Eternities as product history.
+- **Everything the geometry touched:** the pack (4.13: site and cluster indices in `stands.bin`, `worlds/<slug>.json` for geometry), 5.1.4, 5.2, 5.5, 5.6.3 (region dressing), 5.6.4, 5.6.5, 5.9, 5.12, 6.1.3 and 5.8.1 (the first slice's camera and click rules), 6.3, 6.4.5, 6.6, 7.3.3 (streaming by cluster), 8.4.2, 8.4.5, 8.7, 8.8.1, 8.8.3, 8.8.4 (the bench path on the trail), 9.1, 9.2, 9.3 (three new checkpoints, four new criteria), risks 15 to 21, 11.9 resolved, 11.17 to 11.22 new, §12 rows, Appendix C.1's set-piece column, Appendix E.10.
+- **The first slice's verdicts:** 7.2's frame rows relabelled (HDRP medium is the reference setting with the 20 ms ceiling; HDRP high a target), 9.5 annotated as the record, 11.22 for the light Mac.
+- **The second slice (9.6):** the journey law on Dominaria with its accepted tables, region dressing on the temperate kit's variants, the reading layer, the photographic asset pass; its own acceptance matrix with rows D, T, R, H, I, C and A, and five questions, the first of which is question 3 restated.
+
+### 14.3 Two readings the CEO had to make
+
+The owner's answers were taken as written. Two of them meet each other, and the PRD records the CEO's reading of each as an open question with a default, so the owner can confirm or correct it on the confirmation card:
+
+1. **The first-release kit standard (11.20).** The props answer says the first release ships core, the temperate kit and Dominaria, and the other kits follow by release. The direction answer needs every hero world in the first release, and the hero worlds sit on nine kits. Reading: every kit ships in the first release, the temperate kit at the photographic standard and the other eleven at the basic standard the first slice used, and the photographic pass reaches the other kits release by release (8.12.6). The alternative, a first release with Dominaria alone walkable, would break invariant 6 and goal 3.
+2. **The second slice before the nineteen remaining table sets (11.21).** The direction answer says all twenty table sets are written first, then the worlds are built from them. Reading: Dominaria's set is written first; the second slice proves the schema and the law on it; the other nineteen are drafted against the proven schema while Wave 5 is built; nothing is distributed before all twenty are accepted. The reason is cost: a schema change found by the slice after nineteen sets were written would rewrite them. The alternative, all twenty before the slice, is the owner's to choose.
+
+### 14.4 Cost and sequence
+
+Engineer-days on top of Wave 5's uncut 40 to 60, as estimated, not measured: allocator v2 with checker and fixtures 10 to 15; region dressing and the blend 5 to 8; the reading layer 5; lore table ingestion, validation and the pipeline flags 5; drafting twenty table sets 20 to 40 (one to two days each); reviewing them 10; the photographic asset pass per kit 1 to 2 each, twelve kits 15 to 25 over the releases. Owner-days: about half to one per table set to accept (10 to 20 over the twenty), plus the set-piece time 8.12.3 already counts. The first distribution date is set by the slowest of the twenty table sets (risk 20).
+
+Sequence: (1) this amendment and the plan pass Codex (14.5); (2) the owner confirms the plan revision, and with it the two readings of 14.3; (3) three content legs open: Dominaria's lore tables (an engineer drafts, a second reviews, the owner accepts), the temperate kit's photographic asset pass, and the pipeline's table validation; (4) the second slice (9.6), one engineer, one week; (5) on its pass, the nineteen remaining table legs open one issue per entry beside Wave 5's engineering legs; (6) Wave 5 is cut; (7) the first distribution waits for 11.1 and for all twenty accepted table sets.
+
+### 14.5 Codex review of Amendment 4 and this plan
+
+*(Filled by the gate's record below.)*
+
+### 14.6 Next steps
+
+1. Codex round(s) on `prd_v4.md` with Amendment 4 and this plan at revision 12; triage recorded in 14.5.
+2. The owner's confirmation of the plan revision that records a passed gate: it accepts Amendment 4 as the product contract, the two readings of 14.3, and the opening of the three content legs and the second slice.
+3. The documents pull request (Amendment 4 and the plan copy), reviewed by an engineer who is not the drafter of any lore table.
+4. The three content legs, then the second slice.
