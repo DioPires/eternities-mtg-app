@@ -45,7 +45,7 @@ namespace Eternities.Avatar
     public sealed class PlayerInputSource : IAvatarInputSource
     {
         public const float MouseDegrees = 0.15f, ScrollMetres = 0.5f, ScrollPause = 0.1f;
-        public const float RunMetres = 0.15f, OwedMetres = 1, ZoomMetresPerSecond = 6, ZoomMetresAFrame = 0.1f;
+        public const float RunMetres = 0.15f, OwedMetres = 1, ZoomMetresPerSecond = 6, ZoomMetresAFrame = 0.2f;
         const float StickDegrees = 150, ShoulderMetres = 3;
 
         bool wanted;            // a click or a movement key asked for the pointer in the last frame
@@ -55,7 +55,9 @@ namespace Eternities.Avatar
         float scrolled = float.NegativeInfinity;    // when the scroll was last not zero
 
         // The most a scroll moves the camera in a frame of this length: its pace, and in a long
-        // frame no more than `ZoomMetresAFrame`, so that it never jumps.
+        // frame no more than `ZoomMetresAFrame`, so that it never jumps. A frame of the high
+        // level, 28 ms at the p90 of its bench run, is under that, so the pace is the same at
+        // every level (DEC-978).
         public static float Pace(float seconds) => Mathf.Min(ZoomMetresPerSecond * seconds, ZoomMetresAFrame);
 
         public void Read(AvatarInput input)

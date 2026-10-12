@@ -243,11 +243,13 @@ namespace Eternities.Tests
                 yield return new WaitForSecondsRealtime(pause);
             }
 
-            // The pace is 6 m a second, and a frame longer than a sixtieth of one moves the
-            // camera a tenth of a metre and no more.
+            // The pace is 6 m a second at every quality level: a frame of 28 ms, the p90 of the
+            // high level's bench run, still moves the camera at it. A frame longer than a
+            // thirtieth of a second moves the camera a fifth of a metre and no more.
             Assert.That(PlayerInputSource.Pace(1f / 120), Is.EqualTo(PlayerInputSource.ZoomMetresPerSecond / 120).Within(1e-6f));
-            Assert.That(PlayerInputSource.Pace(1f / 30), Is.EqualTo(PlayerInputSource.ZoomMetresAFrame));
-            Assert.That(PlayerInputSource.ZoomMetresAFrame, Is.LessThanOrEqualTo(0.1f), "a frame never moves the camera more than 0.1 m");
+            Assert.That(PlayerInputSource.Pace(0.028f), Is.EqualTo(PlayerInputSource.ZoomMetresPerSecond * 0.028f).Within(1e-6f), "a frame of the high level moves the camera at its pace");
+            Assert.That(PlayerInputSource.Pace(1f / 20), Is.EqualTo(PlayerInputSource.ZoomMetresAFrame));
+            Assert.That(PlayerInputSource.ZoomMetresAFrame, Is.LessThanOrEqualTo(0.2f), "a frame never moves the camera more than 0.2 m");
 
             devices.Set(mouse.scroll, new Vector2(0, -1));
             yield return Zoomed();
