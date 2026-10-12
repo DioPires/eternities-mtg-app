@@ -1,0 +1,203 @@
+{
+  "plane": "dominaria",
+  "regions": [
+    {
+      "id": "terisiare",
+      "name": "Terisiare",
+      "kit": "temperate",
+      "anchor": [
+        -600,
+        300
+      ],
+      "weight": 1000,
+      "water": "lake",
+      "sentence": {
+        "text": "Placeholder for the drafter: Terisiare.",
+        "source": "https://mtg.wiki/page/Terisiare"
+      },
+      "sources": [
+        "https://mtg.wiki/page/Terisiare"
+      ]
+    },
+    {
+      "id": "benalia",
+      "name": "Benalia",
+      "kit": "temperate",
+      "anchor": [
+        -200,
+        650
+      ],
+      "weight": 1000,
+      "water": "river",
+      "sentence": {
+        "text": "Placeholder for the drafter: Benalia.",
+        "source": "https://mtg.wiki/page/Benalia"
+      },
+      "sources": [
+        "https://mtg.wiki/page/Benalia"
+      ]
+    },
+    {
+      "id": "tolaria",
+      "name": "Tolaria",
+      "kit": "coast",
+      "anchor": [
+        350,
+        550
+      ],
+      "weight": 1000,
+      "water": "sea",
+      "sentence": {
+        "text": "Placeholder for the drafter: Tolaria.",
+        "source": "https://mtg.wiki/page/Tolaria"
+      },
+      "sources": [
+        "https://mtg.wiki/page/Tolaria"
+      ]
+    },
+    {
+      "id": "shiv",
+      "name": "Shiv",
+      "kit": "volcanic",
+      "anchor": [
+        750,
+        150
+      ],
+      "weight": 1000,
+      "water": "lava",
+      "sentence": {
+        "text": "Placeholder for the drafter: Shiv.",
+        "source": "https://mtg.wiki/page/Shiv"
+      },
+      "sources": [
+        "https://mtg.wiki/page/Shiv"
+      ]
+    },
+    {
+      "id": "jamuraa",
+      "name": "Jamuraa",
+      "kit": "volcanic",
+      "anchor": [
+        800,
+        -350
+      ],
+      "weight": 1000,
+      "water": "none",
+      "sentence": {
+        "text": "Placeholder for the drafter: Jamuraa.",
+        "source": "https://mtg.wiki/page/Jamuraa"
+      },
+      "sources": [
+        "https://mtg.wiki/page/Jamuraa"
+      ]
+    },
+    {
+      "id": "urborg",
+      "name": "Urborg",
+      "kit": "coast",
+      "anchor": [
+        350,
+        -550
+      ],
+      "weight": 1000,
+      "water": "sea",
+      "sentence": {
+        "text": "Placeholder for the drafter: Urborg.",
+        "source": "https://mtg.wiki/page/Urborg"
+      },
+      "sources": [
+        "https://mtg.wiki/page/Urborg"
+      ]
+    },
+    {
+      "id": "otaria",
+      "name": "Otaria",
+      "kit": "temperate",
+      "anchor": [
+        50,
+        50
+      ],
+      "weight": 1000,
+      "water": "river",
+      "sentence": {
+        "text": "Placeholder for the drafter: Otaria.",
+        "source": "https://mtg.wiki/page/Otaria"
+      },
+      "sources": [
+        "https://mtg.wiki/page/Otaria"
+      ]
+    },
+    {
+      "id": "llanowar",
+      "name": "Llanowar",
+      "kit": "temperate",
+      "anchor": [
+        -150,
+        -350
+      ],
+      "weight": 1000,
+      "water": "river",
+      "sentence": {
+        "text": "Placeholder for the drafter: Llanowar.",
+        "source": "https://mtg.wiki/page/Llanowar"
+      },
+      "sources": [
+        "https://mtg.wiki/page/Llanowar"
+      ]
+    },
+    {
+      "id": "yavimaya",
+      "name": "Yavimaya",
+      "kit": "temperate",
+      "anchor": [
+        -550,
+        -600
+      ],
+      "weight": 1000,
+      "water": "river",
+      "sentence": {
+        "text": "Placeholder for the drafter: Yavimaya.",
+        "source": "https://mtg.wiki/page/Yavimaya"
+      },
+      "sources": [
+        "https://mtg.wiki/page/Yavimaya"
+      ]
+    },
+    {
+      "id": "keld",
+      "name": "Keld",
+      "kit": "temperate",
+      "anchor": [
+        -800,
+        -150
+      ],
+      "weight": 1000,
+      "water": "none",
+      "sentence": {
+        "text": "Placeholder for the drafter: Keld.",
+        "source": "https://mtg.wiki/page/Keld"
+      },
+      "sources": [
+        "https://mtg.wiki/page/Keld"
+      ]
+    },
+    {
+      "id": "sarpadia",
+      "name": "Sarpadia",
+      "kit": "temperate",
+      "anchor": [
+        -300,
+        -850
+      ],
+      "weight": 1000,
+      "water": "lake",
+      "sentence": {
+        "text": "Placeholder for the drafter: Sarpadia.",
+        "source": "https://mtg.wiki/page/Sarpadia"
+      },
+      "sources": [
+        "https://mtg.wiki/page/Sarpadia"
+      ]
+    }
+  ]
+}

@@ -130,6 +130,33 @@ Card 3 -> ravnica
 
 Each row should trace to an appendix or override edit (PRD 9.2.3).
 
+## Lore tables (PRD v4 4.16)
+
+Checked against dataset `this run`. A hero entry's tables must map each of its set codes below to exactly one era (4.16.2). The acceptance status is F.2's: reported on every run, enforced only by `--distribution` (4.16.5).
+
+| Hero entry | Tables | Acceptance | Digest | Set codes with first printings |
+|---|---|---|---|---|
+| `dominaria` | none | n/a | n/a | 2: `lea`, `dmr` |
+| `ravnica` | none | n/a | n/a | 1: `rav` |
+
+### Hero entries without tables (2)
+
+`dominaria`, `ravnica`
+
+A development build lays these out by the kit law; a `--distribution` build fails naming each (4.16.5).
+
+### Distribution (4.16.5)
+
+Not requested. 0 of 2 hero entries are accepted; a `--distribution` build needs all of them.
+
+### Schema example (Appendix F.5)
+
+Not checked on this run.
+
+### Story Spotlight sidecars (9.6)
+
+None.
+
 ## First-run verification duties
 
 ### Q4 — security_stamp: triangle semantics (PRD 4.3.5)
