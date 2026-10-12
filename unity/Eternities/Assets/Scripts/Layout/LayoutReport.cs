@@ -6,20 +6,37 @@ using System.Text;
 namespace Eternities.Layout
 {
     // The figures PRD v4 5.4.14 asks the slice to report for a world, as text.
+    //
+    // The text is the same on every runtime, so only whole numbers are formatted here. How a double
+    // is rounded as it is printed is the runtime's own choice: a radius of 102,895 mm was 102.90
+    // from the editor and 102.89 under .NET 8 (DEC-976, N8). A length is printed from its
+    // millimetres and an angle from its micro-degrees, and a half goes up.
     public static class LayoutReport
     {
+        // `numerator / denominator` to the nearest whole number. Neither is negative.
+        static long Nearest(long numerator, long denominator) => (2 * numerator + denominator) / (2 * denominator);
+
+        static long Nearest(double value) => (long)Math.Floor(value + 0.5);
+
+        // A whole number with the point before its last `places` digits: 10290 with two is "102.90".
+        static string Places(long value, int places)
+        {
+            string digits = value.ToString(CultureInfo.InvariantCulture).PadLeft(places + 1, '0');
+            return digits.Insert(digits.Length - places, ".");
+        }
+
         public static string Write(WorldLayout layout, Checker.Result check, string digest)
         {
             LayoutInput input = layout.Input;
             var text = new StringBuilder();
-            string M(double millimetres) => (millimetres / 1000).ToString("F2", CultureInfo.InvariantCulture);
-            string Deg(long microDegrees) => (microDegrees / 1e6).ToString("F3", CultureInfo.InvariantCulture);
+            string M(long millimetres) => Places(Nearest(millimetres, 10), 2);
+            string Deg(long microDegrees) => Places(Nearest(microDegrees, 1000), 3);
 
             int cards = input.Cards.Length;
             text.Append($"plane {input.PlaneSlug}: {cards} cards, {input.SetCodes.Length} sets\n");
-            text.Append($"diameter {M(2.0 * layout.WorldRadius)} m (world radius {M(layout.WorldRadius)} m), plaza radius {M(layout.PlazaRadius)} m, {layout.OuterPasses} outer passes\n");
+            text.Append($"diameter {M(2 * layout.WorldRadius)} m (world radius {M(layout.WorldRadius)} m), plaza radius {M(layout.PlazaRadius)} m, {layout.OuterPasses} outer passes\n");
             double ground = Math.PI * layout.WorldRadius * layout.WorldRadius / 1e6 / Math.Max(1, cards);
-            text.Append($"mean ground per stand {ground.ToString("F1", CultureInfo.InvariantCulture)} m2\n");
+            text.Append($"mean ground per stand {Places(Nearest(ground * 10), 1)} m2\n");
 
             text.Append("wedges:");
             for (int c = 0; c < ColourClasses.WedgeCount; c++)
@@ -45,7 +62,7 @@ namespace Eternities.Layout
             }
             if (bands > 0)
             {
-                text.Append($"bands: {bands} with a width, mean {M((double)widthSum / bands)} m, from {M(narrowest)} m to {M(widest)} m; {bandWidenings} widenings in all, at most {widestWidenings} on one band\n");
+                text.Append($"bands: {bands} with a width, mean {Places(Nearest(widthSum, 10L * bands), 2)} m, from {M(narrowest)} m to {M(widest)} m; {bandWidenings} widenings in all, at most {widestWidenings} on one band\n");
             }
             if (layout.RingWidth > 0)
             {
@@ -102,7 +119,10 @@ namespace Eternities.Layout
 
             if (check != null)
             {
-                text.Append($"checker: {(check.Passed ? "passed" : $"FAILED with {check.ViolationCount} violations")}; minimum spacing {M(check.MinSpacing)} m; {check.PairsTested} stand pairs tested\n");
+                // The spacing is a distance, so it is no whole number of millimetres, and no pair was
+                // tested in a world of one stand.
+                string spacing = double.IsInfinity(check.MinSpacing) ? "Infinity" : Places(Nearest(check.MinSpacing / 10), 2);
+                text.Append($"checker: {(check.Passed ? "passed" : $"FAILED with {check.ViolationCount} violations")}; minimum spacing {spacing} m; {check.PairsTested} stand pairs tested\n");
                 foreach (string violation in check.Violations)
                 {
                     text.Append($"  {violation}\n");
