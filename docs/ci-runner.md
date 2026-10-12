@@ -244,3 +244,168 @@ How it differs from section 2:
    needs a `gh` login that can read the repository's Actions settings.
 5. Step 5 of section 2, then confirm in the `unity-playmode` log that the editor got a graphics
    device: whether a session behind Fast User Switching gives it one is not known.
+
+## 9. The editor bridge: the lock protocol
+
+Not applied. `docs/mcp-evaluation.md` (DEC-960) recommends a trial of an editor bridge: a resident
+editor in batchmode, on a project copy of its own, that an agent queries through the Unity CLI. This
+section is the protocol between such a session and the jobs above. Nothing in it is installed on the
+runner. The issue that adopts the bridge installs it, runs the control in 9.5 and records the run in
+section 6. Until then no agent opens a bridge session on this machine.
+
+The rule this section serves does not change: `unity-bench-smoke` fails before it starts if any
+process named `Unity` is running (section 3; PRD v4 8.8.6). A bridge session is a process named
+`Unity`. The protocol does not teach the job to wait for a session or to overlook one. It makes the
+session give way: a session holds nothing that is kept, so a job, a reviewer's bench, the owner's
+editor and the session's own push each end it without asking.
+
+### 9.1 Where a session lives
+
+`~` is the home directory of the account the runner runs in. An agent run may have another `HOME`;
+it then names the directory in full.
+
+| Path | What it is |
+|---|---|
+| `~/eternities-bridge/eternities-mtg-app/` | A clone of its own, made once with `git clone file://<the agents' checkout>`. Not a worktree, not under the agents' checkout, not under `~/actions-work`, and never a project the owner opens. Its `Library/` is its own, so no `Library` lock is shared. |
+| `~/eternities-bridge/session/` | The lock. `mkdir` makes it and fails if it exists, so one session runs on this machine at a time. It holds three files: `issue`, `pid` and `started`. |
+
+The copy is refreshed at the start of every session from the branch under work, as the last local
+commit has it. A local commit starts no job; a push does.
+
+```sh
+cd ~/eternities-bridge/eternities-mtg-app
+git fetch --quiet origin <branch>
+git checkout --quiet --force --detach FETCH_HEAD
+~/.unity/bin/unity pipeline install --project-path "$PWD/unity/Eternities" --package-version <pin>
+```
+
+The last line adds the bridge package to the copy's `Packages/manifest.json` and to no other. The
+next refresh discards it and adds it again. Nothing is ever committed or pushed from the copy: text
+an engineer changes is changed in the worktree.
+
+### 9.2 Before a session starts: the check
+
+All four must hold. If one does not, no session starts.
+
+1. `pgrep -x Unity` prints nothing: no editor of the owner's, no batchmode run of an agent's, no
+   bench.
+2. `pgrep -x Runner.Worker` prints nothing: the runner has no job in hand. Match the process name
+   with `-x`. A pattern matched against whole command lines (`pgrep -f`) also matches the shell that
+   runs the check, and closed a session of the evaluation for no reason.
+3. No run is queued or in progress:
+
+   ```sh
+   gh api 'repos/DioPires/eternities-mtg-app/actions/runs?per_page=30' \
+     --jq '[.workflow_runs[] | select(.status != "completed")] | length'
+   ```
+
+   It must print `0`.
+4. `mkdir ~/eternities-bridge/session` succeeds. If it fails and the process in `session/pid` is no
+   longer alive, the lock is stale: remove the directory and make it again.
+
+The session is then the pinned editor, started by the copy's own `unity/Eternities/batchmode.sh`
+with no argument, so with no `-quit`. It has no window and takes no screen.
+
+### 9.3 When a session must be closed
+
+`~/.unity/bin/unity close ~/eternities-bridge/eternities-mtg-app/unity/Eternities` closes it, in
+about four seconds; `kill <pid>` does it in under one. Whoever closes it then removes
+`~/eternities-bridge/session`.
+
+The agent that opened the session closes it:
+
+1. before it pushes anything to this repository;
+2. before it hands its issue back, and before its run ends;
+3. when its issue thread names a reviewer's bench (PRD v4 8.8.7) or an editor slot of the owner's;
+4. thirty minutes after it started, whatever it is doing.
+
+A watch started with the session closes it when the agent does not, every two seconds:
+
+1. `pgrep -x Runner.Worker` prints a process: a job has started on this machine;
+2. a `Unity` process runs whose command line has no `-batchmode`: the owner has opened an editor;
+3. the check of 9.2 item 3 prints anything but `0` (asked every twenty seconds);
+4. thirty minutes have passed.
+
+A reviewer who finds a session in the way of a bench closes it with the command above and says so in
+the verdict. So does the owner. Nobody asks first.
+
+### 9.4 If a job starts while a session is open
+
+Measured on run [38262725056](https://github.com/DioPires/eternities-mtg-app/actions/runs/38262725056)
+(2026-10-12, another agent's pull request): the run was created at 14:24:51Z, `unity-bench-smoke`
+was the first of the four jobs to start, at 14:25:02Z, and its step "No other Unity process is
+running" ran at 14:25:09Z. A session therefore has seven seconds from the start of the job, and
+eighteen from the push, and the push may be any agent's.
+
+Three things stand between a session and that step, in this order:
+
+1. **The runner closes it.** Before each job the runner runs the script of 9.5, which closes every
+   editor whose project is under `~/eternities-bridge/` and no other. The job then starts as if no
+   session had been open.
+2. **The watch closes it** (9.3), within about three seconds of the job starting. This is the only
+   one of the three that exists without the change of 9.5.
+3. **The job fails**, exactly as section 3 says, if a `Unity` process is still alive. The agent
+   named in `session/issue` closes the session, re-runs the job with
+   `gh run rerun <run id> --failed`, and reports the run on its issue. An editor of the owner's or
+   a batchmode run of an agent's is never closed by the runner: for those the job fails as it
+   always has.
+
+### 9.5 The change to the runner recipe, and its control
+
+One script, installed outside every checkout so that no pull request can change what runs before it
+is reviewed and installed again:
+
+```sh
+#!/bin/sh
+# ~/actions-runner/hooks/close-bridge.sh
+# Closes every Unity editor whose project is under the bridge directory, and no other. The runner
+# runs it before each job. It always exits 0: the bench job's own check (PRD v4 8.8.6) stays the
+# judge of whether a Unity process is left.
+root=${ETERNITIES_BRIDGE_ROOT:-$HOME/eternities-bridge}
+bridge_pids() {
+    for pid in $(pgrep -x Unity); do
+        ps -o command= -p "$pid" | grep -q -- "-projectPath $root/" && echo "$pid"
+    done
+}
+pids=$(bridge_pids)
+[ -z "$pids" ] && exit 0
+echo "close-bridge: closing the bridge session, Unity pid(s): $(echo $pids)"
+kill $pids 2>/dev/null
+i=0
+while [ -n "$(bridge_pids)" ] && [ "$i" -lt 40 ]; do
+    sleep 0.25
+    i=$((i + 1))
+done
+left=$(bridge_pids)
+if [ -n "$left" ]; then
+    echo "close-bridge: still alive after 10 s, killing: $(echo $left)"
+    kill -9 $left 2>/dev/null
+    sleep 1
+fi
+rm -rf "$root/session"
+exit 0
+```
+
+The runner runs the script named by `ACTIONS_RUNNER_HOOK_JOB_STARTED` before the first step of
+every job. The variable goes into the `EnvironmentVariables` of
+`ci-runner/com.eternities.actions-runner.plist`, beside `PATH`, and `register-runner.sh` installs
+the script and reloads the agent while the runner is idle (section 2, step 4).
+
+What was tried on 2026-10-12, and what was not:
+
+- **Tried by hand:** the script's commands, on the evaluation's editor, with
+  `ETERNITIES_BRIDGE_ROOT` naming the evaluation's directory. Pointed at another directory it closed
+  nothing; pointed at the session's it closed the editor and its import worker and returned in
+  0.1 s. The watch's first rule closed a session in the same second it fired. The record is
+  `docs/mcp-evaluation.md`, sections 4 and 8.
+- **Not tried:** the runner calling the script. The variable is GitHub's documented way to run a
+  script before a job; that this runner (2.338.0, a launchd agent) calls it before the checkout is
+  the claim the control proves. Also not tried: the lock directory, the watch's second rule (9.3)
+  and its thirty-minute limit.
+
+**The control**, run once by the issue that installs the hook and recorded in section 6: open a
+session; push a commit that touches `unity/` on a branch made for it; the job log of
+`unity-bench-smoke` shows the script's line "closing the bridge session" before the checkout; the
+session's editor is gone; the four jobs end `success`. Then the opposite: with an agent's ordinary
+batchmode run alive on a worktree, the same push ends with `unity-bench-smoke` failed on its own
+check, which shows the script closes nothing but a session.
