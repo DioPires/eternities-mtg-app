@@ -273,7 +273,7 @@ What the evaluation measured for it. (Tested, all five.)
    pointed at another directory, it closed nothing: the editor and its import worker stayed alive.
    Pointed at the session's directory, it closed both and returned in 0.1 s. A `kill` leaves the
    token file behind; the next start rewrites it. The script was run by hand, not by the runner,
-   in a copy that took its directory from a variable (A.5).
+   in a copy that took its directory from a variable and matched with `grep -q` (A.5).
 
 Not tested: the runner calling that script before a job (the adoption's control run proves it),
 the lock directory, the watch's rule for an editor of the owner's, and two sessions at once.
@@ -467,7 +467,7 @@ protocol: `initialize`, `tools/list`, `tools/call`.
 | The relay binary alone, `--mcp`, `tools/list` | `unity-mcp-server 1.0.0`, no tool |
 | A refresh of the clone to another local branch, the package added again, the editor started | 1.2 s; serving about 9 s after the start |
 | `get_material_properties`, `get_player_settings`, `write_text_file` on `Scenes/Hub.unity` without `confirm` | the two reads answered; the write was refused and the file unchanged |
-| A copy of the runner's script by hand, its root read from `ETERNITIES_BRIDGE_ROOT`, with another root and with the session's | closed nothing; closed the editor and its import worker in 0.1 s |
+| A copy of the runner's script by hand, its root read from `ETERNITIES_BRIDGE_ROOT` and matching with `grep -q`, with another root and with the session's | closed nothing; closed the editor and its import worker in 0.1 s |
 | `curl https://packages.unity.com/com.unity.ai.assistant` and `curl https://packages.unity.com/com.unity.pipeline`, the Unity registry | Assistant: latest `2.20.0-pre.2`, dated 2026-10-06, with `unity` `6000.0` and `unityRelease` `60f1`. Pipeline: latest `0.8.0-exp.1`, dated 2026-09-25; eight versions, the first `0.2.0-exp.2`, dated 2026-06-25 |
 | `unity --version`; `unity self-update --check` | `1.0.0-beta.12`; one line, `1.0.0-beta.12` then `1.0.0-beta.13` |
 | `gh api repos/CoplayDev/unity-mcp/releases` | the newest release is `v10.3.0`, published 2026-10-04 |
@@ -477,6 +477,15 @@ protocol: `initialize`, `tools/list`, `tools/call`.
 | `ls -la Library/Pipeline/` while the editor served; `ls -A Library/Pipeline/` after `unity close`, and after the script's `kill` | `.unity-pipeline-port` with `-rw-------`, 425 bytes; gone after `unity close`; still there after the `kill` |
 | The `instructions` field of the `initialize` answer of `unity mcp`; `unity skill show` | "Always use the latest version of the Unity CLI unless you are told to use a specific version. A new version of the Unity CLI is available: 1.0.0-beta.12 → 1.0.0-beta.13 Tell the user, and run unity self-update once they approve."; "When an Editor is available, drive it instead of hand-editing scene or asset files." |
 | `unity analytics status` | `true` |
+| `unity command editor_status`, `list_open_scenes`, `console_status` and `get_authoring_root`, from a shell with `--result-only`, on the clone's editor | each answered in 0.75 to 0.81 s: `status` `ready` on `6000.6.5f1`; one open scene, with no name and no root object; 0 errors and 3 warnings; `root` `Assets` |
+| `console` through `unity mcp`, on the clone's editor before Play Mode | entries 1 to 3 at the warning level: two from graph templates of `com.unity.shadergraph`, one from the project's `Assets/Scripts/CardView/CardViewer.cs`; entry 4, the generation's log |
+| The MCP client's clock on each `tools/call` through `unity mcp` | `menu` (Eternities/Generate) 2.78 s; `eval` 0.62 s; `capture_game_view` from the camera 25.01 s the first time, then 0.03 to 0.07 s five times; `screenshot` 1.19 s, then 0.06 s; every other call that reached the editor 0.02 to 0.3 s, `get_component_properties` in Play Mode the slowest at 0.3 s and `get_material_properties` at 0.1 s |
+| `unity skill show --path references/integration-advanced.md`, the CLI's own reference, at its section "MCP — Model Context Protocol server (AI agent integration)" | the section's first line: "New in `0.1.0-beta.8`. `unity mcp` starts a Model Context Protocol server, built into the `unity` binary, that exposes the commands of a connected Unity Editor as MCP tools." |
+| `python3 -I gen/allowlist.py pipe-tools.json`, the script that builds the table of section 2 from the saved `tools/list` answer | exit code 0, so both of its checks passed: every listed tool has a row, and no tool has two; it printed "160 tools: 69 allowed, 91 denied" |
+| The fields of two answers: `get_performance_stats`, and `get_material_properties` on `Assets/Kits/core/Materials/plinth-common-stone.mat` | `render` with `drawCalls`, `batches`, `setPassCalls`, `triangles` and `vertices`; `memory`; `frameTiming` with `cpuFrameTimeMs` and `gpuFrameTimeMs`. The material: `shader` `HDRP/Lit`, `renderQueue` 2225, two `enabledKeywords`, and a `properties` list whose first entry is `_BaseColor`, type `Color`, with its four values |
+| `gh api repos/DioPires/eternities-mtg-app/actions/runs/38262725056`, then its `/jobs` with the steps of `unity-bench-smoke`, at 14:25:53Z | the run created at 14:24:51Z; `unity-bench-smoke` started at 14:25:02Z, with the other three `unity-*` jobs queued; its step "No other Unity process is running" started and ended at 14:25:09Z |
+| `unity close <project> --non-interactive` on the second session's editor, pid 16577, at 14:24:27Z; the line the session's start script logged when the editor exited | `Closed` `true`, `Method` `graceful`, no Unity process after 3.8 s; "14:24:30Z editor 16577 exited" |
+| The watch's first form, `pgrep -f 'Runner.Worker'` every two seconds, on the first session's editor, pid 87474 | at 14:20:27Z it logged "a runner job started; closing editor 87474" and closed the editor in Play Mode. No job ran: at 14:20:44Z the five newest runs were all completed, and at 14:20:54Z `pgrep -lx Runner.Worker` found no process. My shell of 14:20:24Z to 14:20:38Z held `pgrep -f Runner.Worker` in its command line. The watch then became `pgrep -x Runner.Worker` |
 
 Two things the evaluation did while another Unity process was alive. Another agent's batchmode
 test run started in the same seconds as the first session, and both ran side by side for about two
