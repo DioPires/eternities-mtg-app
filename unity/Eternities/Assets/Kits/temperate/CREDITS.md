@@ -9,6 +9,12 @@ The binaries are committed in this folder through Git LFS. `./fetch.sh` verifies
 (PRD 8.12.2: an asset without a row blocks the merge). So whatever is made from these files (terrain
 layers, materials, prefabs) lives beside `Terrain/`, `Props/` and `Audio/`, not inside them.
 
+The kit is at `standard: basic` (PRD v4 8.12.6) until its photographic asset pass lands (DEC-1003).
+A model reaches the world through one prefab under `Prefabs/<category>/`, in metres and with its
+base at its origin (the prop conditioning rule, `unity/Eternities/README.md`). "Props as drawn"
+lists each prefab with the height and the triangles measured on it; `PropRuleTests` holds the rule
+and that table.
+
 ## Terrain layers (2K JPG, 2048 × 2048)
 
 | File | Source | Author | Licence | Fetched | Intended use |
@@ -41,6 +47,28 @@ layers, materials, prefabs) lives beside `Terrain/`, `Props/` and `Audio/`, not 
 | `Props/path_wood.fbx` | <https://kenney.nl/assets/nature-kit> | Kenney | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | Wooden ford planks where water crosses a path (PRD 8.4.2) |
 | `Props/bridge_wood.fbx` | <https://kenney.nl/assets/nature-kit> | Kenney | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | Wooden bridge where water crosses a path (PRD 8.4.2) |
 
+## Props as drawn
+
+One row a prefab under `Prefabs/`. The height is the prefab's at scale 1; the triangles are those
+of the nearest level of detail it draws, and of the farthest where it has more than one. To print
+the rows from the prefabs: the editor's menu, Eternities, "Kit props as drawn".
+
+| Prop | Category | Model | Height | Triangles | Materials |
+|---|---|---|---|---|---|
+| tree_oak | tree | `Props/tree_oak.fbx` | 7.97 m | 196 | 2 |
+| tree_thin | tree | `Props/tree_thin.fbx` | 8.57 m | 228 | 2 |
+| tree_pineTallA | tree | `Props/tree_pineTallA.fbx` | 9.94 m | 78 | 2 |
+| plant_bush | bush | `Props/plant_bush.fbx` | 1.04 m | 32 | 1 |
+| plant_bushLarge | bush | `Props/plant_bushLarge.fbx` | 1.46 m | 60 | 1 |
+| rock_largeA | rock | `Props/rock_largeA.fbx` | 0.65 m | 80 | 2 |
+| stone_largeB | rock | `Props/stone_largeB.fbx` | 1.08 m | 85 | 2 |
+| stone_smallFlatA | rock | `Props/stone_smallFlatA.fbx` | 0.18 m | 20 | 1 |
+| stone_tallD | rock | `Props/stone_tallD.fbx` | 2.32 m | 38 | 2 |
+| crops_wheatStageB | ground cover | `Props/crops_wheatStageB.fbx` | 1.39 m | 360 | 2 |
+| statue_obelisk | structure | `Props/statue_obelisk.fbx` | 2.19 m | 38 | 2 |
+| path_wood | structure | `Props/path_wood.fbx` | 0.10 m | 60 | 2 |
+| bridge_wood | structure | `Props/bridge_wood.fbx` | 1.60 m | 220 | 3 |
+
 ## Audio (Ogg Vorbis)
 
 | File | Source | Author | Licence | Fetched | Intended use |
@@ -64,7 +92,9 @@ layers, materials, prefabs) lives beside `Terrain/`, `Props/` and `Audio/`, not 
   imports FBX without a package, and glTF needs one that PRD 9.5's pinned list does not carry. They
   are ASCII FBX 7.3 with flat colour materials and no textures, modelled in kit units (the trees are
   1.2 to 1.5 units tall, the standing stone 0.77), so each prefab sets its own scale and its HDRP
-  material. Being text, they carry trailing whitespace: the repository's `trailing-whitespace` and
+  material: `KitPrefabs` makes it once, at the middle of the range the first slice drew its model
+  at. The obelisk, the path boards and the bridge are drawn by nothing yet; their sizes are a first
+  setting for leg 2 of the second slice. Being text, they carry trailing whitespace: the repository's `trailing-whitespace` and
   `end-of-file-fixer` hooks must exclude them, or a commit rewrites the bytes these checksums pin.
 - **Audio files are Freesound's high-quality Ogg previews** of the two CC0 sounds; the uploads (a
   24-bit WAV and an 88 kbps Ogg) need a Freesound login to download. Decoded, the meadow loop is

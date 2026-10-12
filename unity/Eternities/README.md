@@ -118,10 +118,57 @@ builds for Windows.
 | `Assets/Settings/` | The HDRP assets: one per quality level with that level's volume profile, the global settings and the default volume profiles. |
 | `Assets/Scenes/Hub.unity` | The persistent scene (PRD v4 8.4.1): the template's camera, sun and sky, and the `Eternities` object. Kit worlds have no scene; they are built at run time from the pack and the layout. |
 | `Assets/Kits/core/` | What every world shares. `Materials/` holds the slice's plain materials (plinths by rarity, the mannequin, the hub, the portal, the image surface), and `UI/` the overlays' panel settings and theme; both are made by the generation entry point. `Shaders/` holds the two shaders of the isolated image path (PRD v4 8.4.4), written by hand. |
-| `Assets/Kits/temperate/` | The `temperate` kit's slice subset. `Terrain/`, `Props/` and `Audio/` hold the 24 files `sources.yaml` pins, in Git LFS, with a `CREDITS.md` row each; `fetch.sh` verifies them and fails on an unlisted file in those three folders, so what is made from them lives beside them: `Materials/` holds the kit's plain materials for its props and `Water/` its two water prefabs, all made by the generation entry point. `Assets/Editor/KitMaskImport.cs` repacks each `_arm_` texture into HDRP's mask map layout as it is imported. |
+| `Assets/Kits/temperate/` | The `temperate` kit's slice subset. `Terrain/`, `Props/` and `Audio/` hold the 24 files `sources.yaml` pins, in Git LFS, with a `CREDITS.md` row each; `fetch.sh` verifies them and fails on an unlisted file in those three folders, so what is made from them lives beside them: `Materials/` holds the kit's plain materials for its props, `Prefabs/` one prefab a prop (Kit props, below) and `Water/` its two water prefabs, all made by the generation entry point. `Assets/Editor/KitMaskImport.cs` repacks each `_arm_` texture into HDRP's mask map layout as it is imported. |
 | `Assets/StreamingAssets/data/manifest.json` | Names the pinned pack hash. The pack itself is `data/<hash>/` beside it: written by the generation entry point, not committed. |
 | `bench.sh` | Starts a bench run of the built player (Batchmode commands, below). |
 | `batchmode.sh` | Starts the pinned editor on this project in batchmode, logging to stdout, and passes its arguments through. It replaces a `TMPDIR` too long for the compiler's socket. |
+
+## Kit props
+
+The prop conditioning rule (DEC-1003). It holds for every prop of every kit, and
+`PropRuleTests` in `unity-editmode` fails on a prop outside it: a merge gate beside PRD v4 8.12.2.
+The rule is `Assets/Editor/PropRule.cs`; the figures below are its constants.
+
+1. **One prefab a prop**, `Assets/Kits/<kit>/Prefabs/<category>/<prop>.prefab`. The categories are
+   `Trees`, `Bushes`, `GroundCover`, `Rocks` and `Structures`. A model becomes a prop in
+   `Assets/Editor/KitPrefabs.cs` and nowhere else: the generation entry point and the scatter read
+   prefabs, never a model file, and every model under a kit's `Props/` is drawn by a prefab.
+2. **Metres.** The prefab's root is at scale 1 and unturned, so the prop's size at scale 1 is its
+   size in the world. The mesh under it is scaled the same along every axis.
+3. **The base at the origin.** No point of the prop is more than 1 cm over its origin, the origin
+   is under the prop, and at most a share of its height is below it: 5% of a tree, 10% of a bush
+   or of ground cover, 15% of a structure, 45% of a rock, which lies in the ground.
+4. **Caps by category**, on the prop as its prefab draws it. The triangles are those of the nearest
+   level of detail.
+
+   | Category | Triangles | Materials | Height |
+   |---|---|---|---|
+   | Tree | 60,000 | 3 | 2.5 to 30 m |
+   | Bush | 10,000 | 3 | 0.3 to 3 m |
+   | Ground cover | 2,500 | 1 | 0.02 to 2.5 m |
+   | Rock | 10,000 | 1 | 0.05 to 5 m |
+   | Structure | 5,000 | 3 | 0.05 to 12 m |
+
+   At the `basic` standard a prop of any category has up to 3 materials.
+5. **Levels of detail.** A prop over 2,000 triangles carries lighter levels, the farthest with at
+   most a tenth of the nearest's triangles, and every level has the nearest level's materials. The
+   importer makes the levels from `generateMeshLods` in the model's `.meta`; a renderer draws from
+   a lighter level on with a whole `meshLodSelectionBias`.
+6. **What a build carries.** The meshes of a prop hold at most 150,000 triangles, whichever level
+   is drawn.
+7. **At the `photographic` standard** (PRD v4 8.12.6), for every category but structures:
+   - a model is imported at its file's own scale and drawn at 0.5 to 2 times that size;
+   - a material's colour is a file under the kit's `Props/` or `Terrain/`, as downloaded, read as
+     a colour and not tinted;
+   - a material that lets light through has a thickness of at least 0.5.
+8. **Credits.** The kit's `CREDITS.md` states its standard above its first table, as
+   `standard: basic` or `standard: photographic`, and lists every prefab under "Props as drawn"
+   with the height and the triangles measured on it.
+
+The caps are the proposal of 2026-10-12 on DEC-1003, from the measured figures of the candidate
+models; the owner sets them from PRD v4 7.2's kit rows. The three rules of item 7 are the three
+defects of the photographic trial of 2026-10-11 (DEC-953): stones of 7 to 30 cm drawn at 2 to 3 m,
+a leaf's photograph written out again too dark, and far trees pale against the sun.
 
 ## Batchmode commands
 
@@ -143,7 +190,9 @@ under `Assets/StreamingAssets/data/<hash>/`:
 It also completes what is committed, and changes nothing there on a second run: the slice's plain
 materials under `Assets/Kits/core/Materials/` and `Assets/Kits/temperate/Materials/`, and in
 `Assets/Scenes/Hub.unity` the one object, `Eternities`, that builds the hub and the world at run
-time. It names the mesh and the materials of each of the kit's props on that object: the world's
+time. It makes each of the kit's prop prefabs under `Assets/Kits/temperate/Prefabs/`, once (Kit
+props, below), and names on that object what each prefab gives: the mesh, the materials, and where
+the mesh stands in the prefab. The world's
 prop scatter (PRD v4 8.4.2) is worked out at load from the layout, seeded by the plane, and the
 quality level in force sets how much of it is drawn (high all of it, medium 60%, low 35%; the
 table of what grows in which wedge is `Temperate` in `Assets/Scripts/Kits/PropPlan.cs`). No tree

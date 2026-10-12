@@ -468,39 +468,69 @@ MonoBehaviour:
     Materials:
     - {fileID: 2100000, guid: 33e81cc45a0404b59bc3df3968be5a70, type: 2}
     - {fileID: 2100000, guid: 9634227e8829540ae9654e72dcd7aa50, type: 2}
+    Offset: {x: 0, y: 0, z: 0}
+    Turn: {x: 0, y: 0, z: 0, w: 1}
+    Scale: 6.5
   - Mesh: {fileID: -4204025313595810674, guid: 9453c352ff4cc4995b3114ba381a0887, type: 3}
     Materials:
     - {fileID: 2100000, guid: 33e81cc45a0404b59bc3df3968be5a70, type: 2}
     - {fileID: 2100000, guid: 9634227e8829540ae9654e72dcd7aa50, type: 2}
+    Offset: {x: 0, y: 0, z: 0}
+    Turn: {x: 0, y: 0, z: 0, w: 1}
+    Scale: 5.75
   - Mesh: {fileID: -6605670835349913235, guid: ab7eebfa28a9d4592943654c59dd64ed, type: 3}
     Materials:
     - {fileID: 2100000, guid: 0d1b6c922e44942a891d4fc9450f8405, type: 2}
     - {fileID: 2100000, guid: eec03d5b1b96e4fa98298b98b75f5290, type: 2}
+    Offset: {x: 0, y: 0, z: 0}
+    Turn: {x: 0, y: 0, z: 0, w: 1}
+    Scale: 6.5
   - Mesh: {fileID: -6502364138876806263, guid: 57972315f5a96462b917273e1d0bc3ce, type: 3}
     Materials:
     - {fileID: 2100000, guid: e3b7094fc1dad47a793b8a75f6e127aa, type: 2}
+    Offset: {x: 0, y: 0, z: 0}
+    Turn: {x: 0, y: 0, z: 0, w: 1}
+    Scale: 4.25
   - Mesh: {fileID: 6267693385154862067, guid: 20b8f493cdbd64ca38bdc3016a8f8216, type: 3}
     Materials:
     - {fileID: 2100000, guid: e3b7094fc1dad47a793b8a75f6e127aa, type: 2}
+    Offset: {x: 0, y: 0, z: 0}
+    Turn: {x: 0, y: 0, z: 0, w: 1}
+    Scale: 6
   - Mesh: {fileID: -7705791283668964911, guid: 824c9305e98544215a9d0ebb0981764c, type: 3}
     Materials:
     - {fileID: 2100000, guid: 46ee26e7f90704d4f9d089c70d80cf51, type: 2}
     - {fileID: 2100000, guid: e3b7094fc1dad47a793b8a75f6e127aa, type: 2}
+    Offset: {x: 0, y: 0, z: 0}
+    Turn: {x: 0, y: 0, z: 0, w: 1}
+    Scale: 2.5
   - Mesh: {fileID: 3833853755141815400, guid: 403a90ec1aaa9471388d51932d910be2, type: 3}
     Materials:
     - {fileID: 2100000, guid: 4e9df8aed0f9842cfb4b5d45aa9fdbd4, type: 2}
     - {fileID: 2100000, guid: e79a8db1be2164332a34385539ff0a6d, type: 2}
+    Offset: {x: 0, y: 0, z: 0}
+    Turn: {x: 0, y: 0, z: 0, w: 1}
+    Scale: 2.5
   - Mesh: {fileID: -5573262258832325011, guid: 9914e662cd1ea48c0b9be9960eea078a, type: 3}
     Materials:
     - {fileID: 2100000, guid: 4e9df8aed0f9842cfb4b5d45aa9fdbd4, type: 2}
+    Offset: {x: 0, y: 0, z: 0}
+    Turn: {x: 0, y: 0, z: 0, w: 1}
+    Scale: 2.75
   - Mesh: {fileID: 4295203676460331610, guid: 192fe68da0cd14ec4bec31f827b85b7e, type: 3}
     Materials:
     - {fileID: 2100000, guid: 4e9df8aed0f9842cfb4b5d45aa9fdbd4, type: 2}
     - {fileID: 2100000, guid: e79a8db1be2164332a34385539ff0a6d, type: 2}
+    Offset: {x: 0, y: 0, z: 0}
+    Turn: {x: 0, y: 0, z: 0, w: 1}
+    Scale: 3
   - Mesh: {fileID: 7209994631503950939, guid: b60b92905113242439b9d426d62e426b, type: 3}
     Materials:
     - {fileID: 2100000, guid: cfca3a329248b46a4b3dc4fddb7c7c7e, type: 2}
     - {fileID: 2100000, guid: e79a8db1be2164332a34385539ff0a6d, type: 2}
+    Offset: {x: 0, y: 0, z: 0}
+    Turn: {x: 0, y: 0, z: 0, w: 1}
+    Scale: 2.6
   ReducedMotion: 0
   LoadDelayForTests: 0
 --- !u!4 &1400825462

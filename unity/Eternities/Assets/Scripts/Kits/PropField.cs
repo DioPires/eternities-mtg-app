@@ -5,13 +5,17 @@ using UnityEngine.Rendering;
 
 namespace Eternities.Kits
 {
-    // A kit prop's model as the project holds it: the mesh of its file and the kit's material for
-    // each of its submeshes. Assigned by the generation entry point, in the order of the kit's kinds.
+    // A kit prop as its prefab gives it: the mesh, the kit's material for each of its submeshes, and
+    // where the mesh stands in the prefab, whose origin is the prop's base and whose lengths are
+    // metres. Assigned by the generation entry point, in the order of the kit's kinds.
     [Serializable]
     public sealed class KitProp
     {
         public Mesh Mesh;
         public Material[] Materials;
+        public Vector3 Offset;
+        public Quaternion Turn = Quaternion.identity;
+        public float Scale = 1;
     }
 
     // A world's props as objects (PRD v4 8.4.2): one object a prop, and every object of a kind
@@ -39,20 +43,23 @@ namespace Eternities.Kits
             {
                 PropKind kind = Temperate.Kinds[prop.Kind];
                 KitProp model = kit[prop.Kind];
-                var made = new GameObject(kind.Model);
+                var made = new GameObject(kind.Name);
                 made.transform.SetParent(transform, false);
-                made.transform.SetLocalPositionAndRotation(new Vector3(prop.X, prop.Y - PropPlan.Sink * prop.Scale, prop.Z), Quaternion.Euler(0, prop.Yaw, 0));
-                made.transform.localScale = Vector3.one * prop.Scale;
+                Quaternion yaw = Quaternion.Euler(0, prop.Yaw, 0);
+                made.transform.SetLocalPositionAndRotation(new Vector3(prop.X, prop.Y - kind.Sink * prop.Scale, prop.Z) + yaw * (model.Offset * prop.Scale), yaw * model.Turn);
+                made.transform.localScale = Vector3.one * (prop.Scale * model.Scale);
                 made.AddComponent<MeshFilter>().sharedMesh = model.Mesh;
                 var renderer = made.AddComponent<MeshRenderer>();
                 renderer.sharedMaterials = model.Materials;
                 renderer.shadowCastingMode = kind.Shadow ? ShadowCastingMode.On : ShadowCastingMode.Off;
                 if (kind.Trunk > 0)
                 {
+                    // In the mesh's own lengths. A tree's mesh stands on its own y axis: the
+                    // generation entry point holds that.
                     var trunk = made.AddComponent<CapsuleCollider>();
-                    trunk.radius = kind.Trunk;
-                    trunk.height = kind.TrunkHeight;
-                    trunk.center = new Vector3(0, kind.TrunkHeight / 2, 0);
+                    trunk.radius = kind.Trunk / model.Scale;
+                    trunk.height = kind.TrunkHeight / model.Scale;
+                    trunk.center = (new Vector3(0, kind.TrunkHeight / 2, 0) - model.Offset) / model.Scale;
                 }
                 else if (kind.Block)
                 {

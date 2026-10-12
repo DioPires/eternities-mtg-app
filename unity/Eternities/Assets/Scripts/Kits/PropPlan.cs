@@ -5,18 +5,22 @@ using UnityEngine;
 
 namespace Eternities.Kits
 {
-    // One of a kit's props as the scatter knows it. Lengths are in the model's own units; an
-    // instance's scale turns them into metres.
+    // One of a kit's props as the scatter knows it. Lengths are in metres, of the prop's prefab as
+    // it stands at scale 1 (the prop conditioning rule, `unity/Eternities/README.md`); an instance
+    // is its prefab at a scale of its own.
     public sealed class PropKind
     {
-        public string Model;                // the file under the kit's `Props/`, without its extension
+        public string Prefab;               // under the kit's `Prefabs/`, without its extension: its category's folder and its name
         public float ScaleFrom, ScaleTo;
         // The radius it takes on the ground. A tree's is its trunk and roots: its crown begins above
         // a stand's top and may reach over a path.
         public float Footprint;
         public float Trunk, TrunkHeight;    // a tree: the capsule the avatar and the camera stop at
+        public float Sink;                  // how far it stands into the ground, for a slope
         public bool Block;                  // a rock: a box of its own size stops them
         public bool Shadow;
+
+        public string Name => Prefab.Substring(Prefab.LastIndexOf('/') + 1);
     }
 
     public struct Prop
@@ -55,17 +59,32 @@ namespace Eternities.Kits
 
         public static readonly PropKind[] Kinds =
         {
-            new PropKind { Model = "tree_oak", ScaleFrom = 5.5f, ScaleTo = 7.5f, Footprint = 0.21f, Trunk = 0.1f, TrunkHeight = 0.55f, Shadow = true },
-            new PropKind { Model = "tree_thin", ScaleFrom = 5, ScaleTo = 6.5f, Footprint = 0.16f, Trunk = 0.05f, TrunkHeight = 0.5f, Shadow = true },
-            new PropKind { Model = "tree_pineTallA", ScaleFrom = 5.5f, ScaleTo = 7.5f, Footprint = 0.07f, Trunk = 0.066f, TrunkHeight = 0.65f, Shadow = true },
-            new PropKind { Model = "plant_bush", ScaleFrom = 3.5f, ScaleTo = 5, Footprint = 0.2f },
-            new PropKind { Model = "plant_bushLarge", ScaleFrom = 5, ScaleTo = 7, Footprint = 0.19f, Shadow = true },
-            new PropKind { Model = "rock_largeA", ScaleFrom = 2, ScaleTo = 3, Footprint = 0.59f, Block = true, Shadow = true },
-            new PropKind { Model = "stone_largeB", ScaleFrom = 2, ScaleTo = 3, Footprint = 0.6f, Block = true, Shadow = true },
-            new PropKind { Model = "stone_smallFlatA", ScaleFrom = 2, ScaleTo = 3.5f, Footprint = 0.26f },
-            new PropKind { Model = "stone_tallD", ScaleFrom = 2.5f, ScaleTo = 3.5f, Footprint = 0.27f, Block = true, Shadow = true },
-            new PropKind { Model = "crops_wheatStageB", ScaleFrom = 2.2f, ScaleTo = 3, Footprint = 0.32f },
+            Kenney("Trees/tree_oak", 5.5f, 7.5f, footprint: 0.21f, trunk: 0.1f, trunkHeight: 0.55f, shadow: true),
+            Kenney("Trees/tree_thin", 5, 6.5f, footprint: 0.16f, trunk: 0.05f, trunkHeight: 0.5f, shadow: true),
+            Kenney("Trees/tree_pineTallA", 5.5f, 7.5f, footprint: 0.07f, trunk: 0.066f, trunkHeight: 0.65f, shadow: true),
+            Kenney("Bushes/plant_bush", 3.5f, 5, footprint: 0.2f),
+            Kenney("Bushes/plant_bushLarge", 5, 7, footprint: 0.19f, shadow: true),
+            Kenney("Rocks/rock_largeA", 2, 3, footprint: 0.59f, block: true, shadow: true),
+            Kenney("Rocks/stone_largeB", 2, 3, footprint: 0.6f, block: true, shadow: true),
+            Kenney("Rocks/stone_smallFlatA", 2, 3.5f, footprint: 0.26f),
+            Kenney("Rocks/stone_tallD", 2.5f, 3.5f, footprint: 0.27f, block: true, shadow: true),
+            Kenney("GroundCover/crops_wheatStageB", 2.2f, 3, footprint: 0.32f),
         };
+
+        // Kenney's models have no real unit, and the first slice drew each at so many metres a unit,
+        // from `from` to `to`. A prop's prefab is its model at the middle of that range, in metres
+        // (`KitPrefabs`), and an instance is the prefab a little smaller or larger: every size on
+        // the ground is the first slice's. The other lengths are given in the model's units, as
+        // the first slice had them.
+        static PropKind Kenney(string prefab, float from, float to, float footprint, float trunk = 0, float trunkHeight = 0, bool block = false, bool shadow = false)
+        {
+            float metres = (from + to) / 2;
+            return new PropKind
+            {
+                Prefab = prefab, ScaleFrom = from / metres, ScaleTo = to / metres, Footprint = footprint * metres,
+                Trunk = trunk * metres, TrunkHeight = trunkHeight * metres, Sink = 0.03f * metres, Block = block, Shadow = shadow,
+            };
+        }
 
         // By colour class, in the order of the wedges: white highlands, a blue birch wood, black
         // pines, red badlands, the green forest, gold between the two woods; then the colourless
@@ -136,7 +155,6 @@ namespace Eternities.Kits
         // stay off the middle of the path, where the camera follows; and one in every band, or one
         // every so many metres of a wide band.
         public const float AvenueFrom = 4, AvenueTo = 6, AvenueEvery = 10;
-        public const float Sink = 0.03f;    // of its scale: a prop stands a little into the ground, for a slope
 
         public readonly List<Prop> Props = new List<Prop>();
         public readonly int[] ByKind = new int[Temperate.Kinds.Length];

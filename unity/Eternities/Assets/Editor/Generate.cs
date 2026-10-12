@@ -22,7 +22,8 @@ namespace Eternities.EditorTools
     //   to `StreamingAssets/data/<hash>/` with every file checked against the pack's manifest, and
     //   each world's layout beside it, `layout/<slug>.txt` (`WorldFiles.Generate`);
     // - committed: the slice's plain materials under `Assets/Kits/core/Materials/` and
-    //   `Assets/Kits/temperate/Materials/`, the persistent scene, `Assets/Scenes/Hub.unity`, and
+    //   `Assets/Kits/temperate/Materials/`, the kit's prop prefabs under
+    //   `Assets/Kits/temperate/Prefabs/`, the persistent scene, `Assets/Scenes/Hub.unity`, and
     //   each quality level's volume profile under `Assets/Settings/`.
     //
     // A missing argument or a failure throws, and the editor turns an exception in an
@@ -220,11 +221,14 @@ namespace Eternities.EditorTools
             changed |= SetObject(WaterPrefab("River", WaterSurfaceType.River), app.RiverPrefab, prefab => app.RiverPrefab = prefab);
             changed |= SetObject(WaterPrefab("Lake", WaterSurfaceType.OceanSeaLake), app.LakePrefab, prefab => app.LakePrefab = prefab);
 
-            // The kit's props (PRD v4 8.4.2): each kind's mesh from its model, drawn in the kit's own
-            // materials, one for each material name the models use.
-            KitProp[] props = Temperate.Kinds.Select(ModelOf).ToArray();
+            // The kit's props (PRD v4 8.4.2): each prop's prefab, made once from its model in the
+            // kit's own materials and then left alone, and each kind of the scatter as its prefab
+            // gives it.
+            KitPrefabs.Make("temperate", KitPrefabs.Temperate);
+            KitProp[] props = Temperate.Kinds.Select(PropOf).ToArray();
             if (app.KitProps == null || app.KitProps.Length != props.Length
-                || !props.Zip(app.KitProps, (wanted, held) => held != null && wanted.Mesh == held.Mesh && held.Materials != null && wanted.Materials.SequenceEqual(held.Materials)).All(same => same))
+                || !props.Zip(app.KitProps, (wanted, held) => held != null && wanted.Mesh == held.Mesh && held.Materials != null && wanted.Materials.SequenceEqual(held.Materials)
+                    && wanted.Offset == held.Offset && wanted.Turn == held.Turn && wanted.Scale == held.Scale).All(same => same))
             {
                 app.KitProps = props;
                 changed = true;
@@ -287,40 +291,29 @@ namespace Eternities.EditorTools
             return true;
         }
 
-        // The models' material names (Kenney's Nature Kit), and the temperate kit's colour for each:
-        // Dominaria's greens, ochre and slate (PRD v4 Appendix C). The models' own colours are
-        // pastel and are not used.
-        static readonly Dictionary<string, (string name, Color colour)> KitColours = new Dictionary<string, (string, Color)>
+        // A kit prop as its prefab gives it (the prop conditioning rule, `PropRule`): the mesh, its
+        // materials, and where the mesh stands in the prefab. No model file is read here: a model
+        // becomes a prop in `KitPrefabs`, and the prefab is what the project draws.
+        static KitProp PropOf(PropKind kind)
         {
-            ["leafsGreen"] = ("leaf", new Color(0.23f, 0.38f, 0.14f)),
-            ["leafsDark"] = ("leaf-dark", new Color(0.12f, 0.25f, 0.14f)),
-            ["woodBark"] = ("bark", new Color(0.33f, 0.25f, 0.17f)),
-            ["woodBarkDark"] = ("bark-dark", new Color(0.24f, 0.18f, 0.13f)),
-            ["grass"] = ("bush", new Color(0.28f, 0.42f, 0.16f)),
-            ["stone"] = ("stone", new Color(0.47f, 0.49f, 0.51f)),
-            ["dirt"] = ("earth", new Color(0.50f, 0.41f, 0.27f)),
-            ["woodInner"] = ("reed", new Color(0.55f, 0.52f, 0.26f)),
-            ["_defaultMat"] = ("pale", new Color(0.70f, 0.67f, 0.50f)),
-        };
-
-        static KitProp ModelOf(PropKind kind)
-        {
-            string path = $"Assets/Kits/temperate/Props/{kind.Model}.fbx";
-            var model = AssetDatabase.LoadAssetAtPath<GameObject>(path);
-            MeshFilter filter = model == null ? null : model.GetComponentInChildren<MeshFilter>();
-            if (filter == null)
+            string path = KitPrefabs.Path("temperate", kind.Prefab);
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            MeshFilter[] filters = prefab == null ? new MeshFilter[0] : prefab.GetComponentsInChildren<MeshFilter>();
+            if (filters.Length != 1 || filters[0].sharedMesh == null)
             {
-                throw new InvalidDataException($"the kit's prop {path} is not in the project: run Assets/Kits/temperate/fetch.sh and git lfs pull");
+                throw new InvalidDataException($"the kit's prop {path} is not a prefab of one mesh");
             }
-            Material[] materials = filter.GetComponent<MeshRenderer>().sharedMaterials.Select(theirs =>
+            Transform model = filters[0].transform;
+            bool upright = Quaternion.Angle(model.rotation, Quaternion.identity) < 0.01f;
+            if (kind.Trunk > 0 && !upright)
             {
-                if (!KitColours.TryGetValue(theirs.name, out (string name, Color colour) ours))
-                {
-                    throw new InvalidDataException($"{path} uses the material {theirs.name}, which the kit has no colour for");
-                }
-                return Lit($"temperate-{ours.name}", ours.colour, 0f, 0.15f, "Assets/Kits/temperate/Materials");
-            }).ToArray();
-            return new KitProp { Mesh = filter.sharedMesh, Materials = materials };
+                throw new InvalidDataException($"{path} is a tree whose mesh does not stand on its own y axis, and its trunk's capsule would not stand either");
+            }
+            return new KitProp
+            {
+                Mesh = filters[0].sharedMesh, Materials = filters[0].GetComponent<MeshRenderer>().sharedMaterials,
+                Offset = model.position, Turn = upright ? Quaternion.identity : model.rotation, Scale = model.lossyScale.x,
+            };
         }
 
         public const string LayerFolder = "Assets/Kits/temperate/TerrainLayers";
@@ -425,7 +418,7 @@ namespace Eternities.EditorTools
         // the card's rarity in four steps (PRD v4 5.5.1), stone, bronze, silver and gold-veined.
         // Each is made once, under `Assets/Kits/core/Materials/` or its kit's folder, and then left
         // alone.
-        static Material Lit(string name, Color colour, float metallic, float smoothness, string folder = MaterialFolder)
+        internal static Material Lit(string name, Color colour, float metallic, float smoothness, string folder = MaterialFolder)
         {
             return Made(name, "HDRP/Lit", material =>
             {
