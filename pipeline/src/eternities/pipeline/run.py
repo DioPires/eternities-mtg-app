@@ -16,6 +16,9 @@ from pathlib import Path
 
 from ..contract import write_dataset
 from ..contract.models import Dataset
+from ..layout import trig
+from ..lore.index import LoreIndex
+from ..lore.stage import LoreInputs, run_stage
 from . import records, report, scryfall, verify
 from .appendices import Appendices, load_appendices
 from .assemble import CardInput, build_dataset, printing_order
@@ -154,10 +157,20 @@ def build(
     roster_diff: bool = True,
     bulk_updated_at: str | None = None,
     swatch_cache_path: Path | None = None,
+    distribution: bool = False,
+    lore: LoreInputs | None = None,
     log: Callable[[str], object] = print,
 ) -> BuildResult:
-    """Run every stage of PRD 8.2 and write the artefacts and the report."""
+    """Run every stage of PRD 8.2 and write the artefacts and the report.
+
+    ``distribution`` is PRD v4 4.16.5's flag: every hero entry's lore tables must validate and be
+    accepted, or the run fails naming the entry, and the manifest records ``distribution: true``.
+    ``lore`` is where the lore stage reads; ``None`` is the committed inputs (``LoreInputs``).
+    """
     emit = log
+
+    emit("trig: the committed table's SHA-256 (PRD v4 5.4.18)")
+    trig.load()
 
     ready = prepare(as_of=as_of, cache_dir=cache_dir, bulk_updated_at=bulk_updated_at, emit=emit)
     source, scry_sets, appendices = ready.source, ready.scry_sets, ready.appendices
@@ -185,6 +198,20 @@ def build(
         scryfall_bulk_updated_at=source.updated_at,
     )
 
+    emit("lore: tables, schema example and sidecars (PRD v4 4.16)")
+    # Before anything is written: a table that breaks a rule fails the build (4.16.2), and a
+    # failed build leaves no data directory behind.
+    lore_inputs = lore or LoreInputs()
+    lore_result = run_stage(
+        LoreIndex.from_dataset(dataset, label=f"{as_of} (bulk {source.updated_at})"),
+        lore_root=lore_inputs.root,
+        example_dir=lore_inputs.example_dir,
+        hero_entries=lore_inputs.hero_entries,
+        distribution=distribution,
+    )
+    with_tables = len(lore_result.entries) - len(lore_result.without_tables)
+    emit(f"  {with_tables} of {len(lore_result.entries)} hero entries have tables")
+
     emit("verify: first-run duties (implementation plan §2)")
     wiki_titles: list[str] | None = None
     if roster_diff:
@@ -205,7 +232,10 @@ def build(
     # tree that directory is this run's own. `manifest_chain` explains what the pair is for.
     carried = report.recorded_previous_run(data_root / previous.name) if previous else None
     data_dir = write_dataset(
-        dataset, data_root, previous_runs=report.manifest_chain(previous, carried)
+        dataset,
+        data_root,
+        previous_runs=report.manifest_chain(previous, carried),
+        distribution=distribution,
     )
 
     plane_changes: list[tuple[str, str, str]] = []
@@ -248,6 +278,7 @@ def build(
             previous_run=previous_run,
             previous_run_pruned=previous_run_pruned,
             previous_run_contract_version=previous_run_contract_version,
+            lore=lore_result,
         )
     )
     reports_dir.mkdir(parents=True, exist_ok=True)

@@ -148,7 +148,7 @@ def _card_json(card: Card) -> dict[str, Any]:
 
 
 def encode_artefacts(
-    dataset: Dataset, *, previous_runs: Sequence[str | None] = ()
+    dataset: Dataset, *, previous_runs: Sequence[str | None] = (), distribution: bool = False
 ) -> tuple[list[EncodedArtefact], dict[str, Any]]:
     """Encode everything but ``manifest.json``, and return it alongside the manifest body.
 
@@ -163,6 +163,11 @@ def encode_artefacts(
 
     The key is omitted rather than written as ``null`` when no candidate survives — every fixture,
     and a first production run — so every already-committed manifest is unchanged.
+
+    ``distribution`` records that the run passed PRD v4 4.16.5's ``--distribution`` check: every
+    hero entry's lore tables validate and are accepted. The manifest then carries
+    ``"distribution": true``; without the flag the key is absent, like ``previousRun``, so no
+    committed manifest changes and the data hash, which excludes the manifest, never moves.
     """
     artefacts: list[EncodedArtefact] = []
 
@@ -309,6 +314,8 @@ def encode_artefacts(
         del manifest["previousRun"]
     else:
         manifest["previousRun"] = resolved
+    if distribution:
+        manifest["distribution"] = True
     return artefacts, manifest
 
 
@@ -320,10 +327,16 @@ def compute_data_hash(artefacts: list[EncodedArtefact]) -> str:
 
 
 def write_dataset(
-    dataset: Dataset, data_root: Path, *, previous_runs: Sequence[str | None] = ()
+    dataset: Dataset,
+    data_root: Path,
+    *,
+    previous_runs: Sequence[str | None] = (),
+    distribution: bool = False,
 ) -> Path:
     """Write one run into ``<data_root>/<dataHash>/`` and return that directory."""
-    artefacts, manifest = encode_artefacts(dataset, previous_runs=previous_runs)
+    artefacts, manifest = encode_artefacts(
+        dataset, previous_runs=previous_runs, distribution=distribution
+    )
     out_dir = data_root / str(manifest["dataHash"])
     out_dir.mkdir(parents=True, exist_ok=True)
     for artefact in artefacts:
