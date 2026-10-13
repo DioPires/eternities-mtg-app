@@ -35,6 +35,13 @@ namespace Eternities.Tests
             App.ImageSourceForTests = null;
         }
 
+        // `OneSlowStep` sets the length of a frame, and a test that fails there leaves it set.
+        [TearDown]
+        public void GiveTheClockBack()
+        {
+            Time.captureDeltaTime = 0;
+        }
+
         // These tests are about the world, not its images: every stand stays its swatch.
         public sealed class NoImages : Eternities.CardView.IImageSource
         {
@@ -479,6 +486,104 @@ namespace Eternities.Tests
             yield return Until(() => app.WorldReady, 60, "the arrival");
             Assert.That(app.LastHoldSeconds, Is.GreaterThan(App.HoldIndicatorAfter));
             Assert.That(app.Hud.Line, Is.Null, "the line goes with the hold");
+        }
+
+        // Where the last `OneSlowStep` began and where it ended.
+        Vector3 from, to;
+
+        // Stands the avatar 1 m before a ring's plane, in the middle of its opening, and runs it
+        // straight on for one frame as long as the project lets a frame be (`Maximum Allowed
+        // Timestep`, a third of a second): one step of 2 m, to 1 m beyond the plane.
+        IEnumerator OneSlowStep(Portal portal)
+        {
+            AvatarController avatar = App.Instance.Avatar;
+            Transform ring = portal.transform;
+            avatar.Place(ring.TransformPoint(0, 0, 1), Quaternion.LookRotation(-ring.forward));
+            Time.captureDeltaTime = Time.maximumDeltaTime;
+            hands.WorldMove = -ring.forward;
+            hands.Run = true;
+            yield return null;
+            Time.captureDeltaTime = 0;
+            hands.WorldMove = Vector3.zero;
+            hands.Run = false;
+            from = avatar.StepFrom;
+            to = avatar.transform.position;
+            Vector3 began = ring.InverseTransformPoint(from), ended = ring.InverseTransformPoint(to);
+            Assert.That(began.z, Is.EqualTo(1).Within(0.05f), $"the step began 1 m before the ring{Where()}");
+            Assert.That(ended.z, Is.EqualTo(-1).Within(0.05f), $"the step ended 1 m beyond the ring{Where()}");
+            Assert.That(Mathf.Max(Mathf.Abs(began.x), Mathf.Abs(ended.x)), Is.LessThan(0.05f), "and went through the middle of the opening");
+        }
+
+        // DEC-989: a portal is used by the step that crosses its ring, however long the step. One
+        // slow frame at a run carries the avatar 2 m and the opening is 1 m deep, so a step can
+        // begin before the opening and end beyond it, with neither end inside. Both portals read
+        // the step, and the automatic walk goes on the way the step went, not back through the ring.
+        [UnityTest]
+        public IEnumerator AStepAcrossTheRingUsesThePortal()
+        {
+            yield return Hub();
+            App app = App.Instance;
+            foreach (Place destination in new[] { Place.World, Place.Hub })
+            {
+                Portal portal = destination == Place.World ? app.HubPortal : app.ReturnPortal;
+                yield return OneSlowStep(portal);
+                Assert.That(portal.Holds(from), Is.False, $"to the {destination}: the step begins outside the opening");
+                Assert.That(portal.Holds(to), Is.False, $"to the {destination}: and ends outside it, on the far side");
+                Assert.That(portal.Crossed(from, to), $"to the {destination}: the step crossed the ring's plane inside the opening");
+                yield return null;      // the application may read a step in the frame after the avatar took it
+                Assert.That(app.InTransition, $"to the {destination}: the step across the ring uses the portal{Where()}");
+                Assert.That(Vector3.Dot(app.Avatar.Walk, portal.transform.forward), Is.EqualTo(-AvatarController.WalkSpeed).Within(1e-3f), $"to the {destination}: the automatic walk goes on, away from the side the step began on");
+                yield return Until(() => app.Place == destination && !app.InTransition, 60, $"the arrival in the {destination}");
+            }
+            Assert.That(app.WorldLoaded, Is.False, "the return unloaded the world");
+        }
+
+        // DEC-989: the swept check reads the opening in the portal's own space, from either side:
+        // a step uses the portal when it ends inside the opening, or crosses the ring's plane there.
+        [Test]
+        public void AStepUsesAPortalOnlyThroughItsOpening()
+        {
+            Portal portal = Portal.Build("A portal", null, null, null, new Vector3(30, 2, -70), Quaternion.Euler(0, 130, 0));
+            Vector3 At(float x, float y, float z) => portal.transform.TransformPoint(x, y, z);
+            try
+            {
+                Assert.That(portal.Crossed(At(0, 0, 1), At(0, 0, -1)), "2 m through the opening");
+                Assert.That(portal.Crossed(At(0, 0, -1), At(0, 0, 1)), "and from behind");
+                Assert.That(portal.Crossed(At(1, 0, 1), At(-1, 0, -1)), "and at a slant");
+                Assert.That(portal.Crossed(At(0, 0, 0.6f), At(0, 0, 0.4f)), "a short step that ends inside the opening, as before");
+                Assert.That(portal.Crossed(At(2, 0, 1), At(2, 0, -1)), Is.False, "2 m beside the ring");
+                Assert.That(portal.Crossed(At(2, 0, 0.2f), At(0, 0, -1.8f)), Is.False, "across the plane beside the ring, to end behind the opening");
+                Assert.That(portal.Crossed(At(0, 0, 3), At(0, 0, 1)), Is.False, "2 m that end short of the ring");
+                Assert.That(portal.Crossed(At(0, 4, 1), At(0, 4, -1)), Is.False, "2 m over the ring");
+                Assert.That(portal.Crossed(At(0, 0, 1), At(0, 0, 1)), Is.False, "no step at all");
+            }
+            finally
+            {
+                UnityEngine.Object.Destroy(portal.gameObject);
+            }
+        }
+
+        // DEC-989: a placement is not a step. An arrival, and a test, put the avatar somewhere
+        // without walking it there, and the line from where it stood may cross a ring.
+        [UnityTest]
+        public IEnumerator APlacementAcrossTheRingDoesNotUseThePortal()
+        {
+            yield return Hub();
+            App app = App.Instance;
+            Transform ring = app.HubPortal.transform;
+            Vector3 before = ring.TransformPoint(0, 0, 1), beyond = ring.TransformPoint(0, 0, -1);
+            Assert.That(app.HubPortal.Crossed(before, beyond), "a step between the two places would use the portal");
+            app.Avatar.Place(before, ring.rotation);
+            yield return null;
+            yield return null;      // the avatar has stood a step at the first place, whichever of the two updates first
+            app.Avatar.Place(beyond, ring.rotation);
+            Assert.That(Vector3.Distance(app.Avatar.StepFrom, beyond), Is.LessThan(1e-3f), "the next step begins where the avatar was placed");
+            for (int frame = 0; frame < 3; frame++)
+            {
+                yield return null;
+                Assert.That(app.InTransition, Is.False, $"a placement across the ring is not a step through it{Where()}");
+            }
+            Assert.That(app.Place, Is.EqualTo(Place.Hub));
         }
     }
 }
