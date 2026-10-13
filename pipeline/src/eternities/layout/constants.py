@@ -64,13 +64,17 @@ CAP_MAX: Final = 8
 CLUSTER_ALONG: Final = 1_500
 CLUSTER_ACROSS: Final = 1_000
 CORRIDOR_ARC_WINDOW: Final = 6_000
-"""Test (e) of 5.4.9: a candidate's path vertex lies within 6 m of its slot along the path."""
+"""A candidate's path vertex is the nearest vertex within 6 m of its slot along the path (5.4.9
+and the CEO ruling of 2026-10-13 on DEC-1004, rule 2)."""
 MIN_CLUSTER: Final = 3
 
 # The site path.
 SWEEP_SPACING: Final = 21_000
 CHORD_SHORTENING: Final = 4_500
 HEAD_SHORTENING: Final = 1_500
+JOINED_SHORTENING: Final = 15_000
+"""A chord end that a half-turn joins: 4.5 m plus the turn's radius h / 2, so the half-turn lies
+inside the blob (CEO ruling of 2026-10-13 on DEC-1004, rule 1)."""
 SWEEP_WOBBLE: Final = 3_000
 SWEEP_WAVELENGTH: Final = (24_000, 40_000)
 SWEEP_TAPER: Final = 6_000

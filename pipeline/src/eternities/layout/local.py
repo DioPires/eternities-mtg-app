@@ -11,9 +11,13 @@ fixtures:
   line is its ``tau``, a multiplier of the table direction (5.4.18 (7)). Shortening, trimming and
   a run's length are sums and differences of ``tau``.
 - A blob edge crosses a sweep line when exactly one of its ends lies strictly below the line.
+- A chord end that a half-turn joins is shortened by 15 m, so the half-turn lies inside the blob
+  (CEO ruling of 2026-10-13 on DEC-1004, rule 1). With ``m`` the sweep count before any drop:
+  the head end of sweep 0 by 1.5 m, the head end of every later sweep and the far end of every
+  sweep but the last by 15 m, the far end of sweep ``m - 1`` by 4.5 m.
 - Every chord is shortened, then every join trims its two chords, and only then is the first
-  chord shorter than ``s`` dropped with every sweep after it. The last sweep kept keeps the
-  trimmed far end of the join that was dropped.
+  chord shorter than ``s`` dropped with every sweep after it. A sweep that a drop leaves last
+  keeps its shortened and trimmed far end.
 - The wobble's two draws are taken for the sweeps that are kept, in sweep order.
 - The head ``H`` is the first vertex of the rounded path. The pad's centre is the first vertex of
   the rounded approach, and the approach point is its second.
@@ -40,6 +44,7 @@ from .constants import (
     HALF_TURN_SEGMENTS,
     HALF_TURN_STEP,
     HEAD_SHORTENING,
+    JOINED_SHORTENING,
     K_SITE,
     MARGIN,
     MICRO_PER_COUNT,
@@ -162,9 +167,6 @@ class _Sweep:
         return self.sign * (self.far - self.head)
 
 
-TURN_INSET = 0  # experiment: extra shortening at joined chord ends
-
-
 def _chords(blob: Shape, direction: Pt) -> list[_Sweep] | None:
     """The sweeps of 5.4.8 after shortening and trimming, or None when a line has no chord."""
     c, s = direction
@@ -200,8 +202,8 @@ def _chords(blob: Shape, direction: Pt) -> list[_Sweep] | None:
         if best is None:
             return None
         sign = 1 if k % 2 == 0 else -1
-        head_cut = HEAD_SHORTENING if k == 0 else CHORD_SHORTENING + TURN_INSET
-        far_cut = CHORD_SHORTENING + (TURN_INSET if k < count - 1 else 0)
+        head_cut = HEAD_SHORTENING if k == 0 else JOINED_SHORTENING
+        far_cut = JOINED_SHORTENING if k < count - 1 else CHORD_SHORTENING
         if sign > 0:
             sweeps.append(_Sweep(offset, best[0] + head_cut, best[1] - far_cut, sign))
         else:

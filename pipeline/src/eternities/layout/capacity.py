@@ -8,6 +8,10 @@ centre is an input: a lattice point's local position is its world position less 
 - A slot lies on the first segment whose cumulative length reaches its arc length; the slot is on
   a half-turn when that segment is. The path's direction at a slot is that segment's table
   direction, and "across" is its left normal: a positive draw moves the centre to the left.
+- A candidate's **path vertex** is the nearest vertex of the path among those whose arc length
+  lies within 6 m of the slot's arc length, ties by the lower index (CEO ruling of 2026-10-13 on
+  DEC-1004, rule 2). Test (e) of 5.4.9 holds by that definition and rejects no point.
+- A lattice point that lies on its path vertex has no direction to face and is no candidate.
 - A candidate's tests read the whole path as built. When two void slots cut the path, the path
   ends at the first vertex at or past the cut's arc length, the rule of the trim (5.4.10).
 - The plaza approach is reserved at step (6) of 5.4.12, after this step, so test (b) cannot read
@@ -16,7 +20,7 @@ centre is an input: a lattice point's local position is its world position less 
 
 from __future__ import annotations
 
-from bisect import bisect_left
+from bisect import bisect_left, bisect_right
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -40,19 +44,13 @@ from .constants import (
     SLOT_SPACING,
 )
 from .exact import SCALE, Directions, Prng, Pt, lattice_within
-from .geometry import PointIndex, Shape, clear, disc, inside, rectangle, strip
+from .geometry import Shape, clear, disc, inside, rectangle, strip
 from .local import Local
 
 FOOT_BACK = FOOTPRINT_DEPTH // 2
 FOOT_HALF = FOOTPRINT_WIDTH // 2
 APRON_FRONT = FOOT_BACK + APRON_DEPTH
 APRON_HALF = APRON_WIDTH // 2
-
-WINDOW_VERTEX = False  # experiment: the path vertex is the nearest one inside the arc window
-
-_VERTEX_REACH = 13_000
-"""No lattice point of a cluster is farther than 12.81 m from the path's nearest vertex: 4.252 m
-to the centre, at most 7.16 m from there to the slot, and half a segment (1.4 m) to a vertex."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +73,8 @@ class Slot:
     """The cluster centre, numerators over ``den``, in the site's frame."""
     den: int
     cap: int
+    on_turn: bool
+    """The slot lies on a half-turn and its cluster stands on the turn's inner side."""
     candidates: tuple[Candidate, ...]
     disc: Shape
 
@@ -112,13 +112,11 @@ def capacity_of(
     directions: Directions,
     footprint_foreign: Sequence[Shape] = (),
     corridor_foreign: Sequence[Shape] = (),
-    turn_rule: str = "letter",
 ) -> Capacity:
     """5.4.9 for a site whose centre is ``centre``. The foreign shapes are in the site's frame."""
     prng = Prng(0)
     prng.state = local.state
     path, arcs, blob = local.path, local.arcs, local.blob
-    vertices = PointIndex(path)
     kept: list[Slot] = []
     census = [0, 0, 0, 0, 0, 0]
     void = 0
@@ -137,8 +135,6 @@ def capacity_of(
         along_segment = arc - arcs[segment]
         c, s = directions.at(directions.count_of(bx - ax, bz - az))
         on_turn = local.turn[segment]
-        if on_turn != 0 and turn_rule == "none":
-            continue
         side = on_turn if on_turn != 0 else (1 if number % 2 == 1 else -1)
         along = prng.randint(-CLUSTER_ALONG, CLUSTER_ALONG)
         across = prng.randint(-CLUSTER_ACROSS, CLUSTER_ACROSS)
@@ -153,7 +149,6 @@ def capacity_of(
         if disc_inside:
             candidates = _candidates(
                 local,
-                vertices,
                 (cx, cz),
                 den,
                 centre,
@@ -166,16 +161,12 @@ def capacity_of(
         is_kept = len(candidates) >= MIN_CLUSTER or (small and bool(candidates))
         census[(3 if on_turn else 0) + (0 if is_kept else 2 if disc_inside else 1)] += 1
         if is_kept:
-            kept.append(Slot(number, arc, (cx, cz), den, cap, tuple(candidates), cluster))
+            kept.append(
+                Slot(number, arc, (cx, cz), den, cap, on_turn != 0, tuple(candidates), cluster)
+            )
             run_of_void = 0
         else:
             void += 1
-            if turn_rule == "census":
-                continue
-            if on_turn != 0 and turn_rule in ("skip", "reset"):
-                if turn_rule == "reset":
-                    run_of_void = 0
-                continue
             run_of_void += 1
             if run_of_void == 2:
                 cut = arc
@@ -193,7 +184,6 @@ def capacity_of(
 
 def _candidates(
     local: Local,
-    vertices: PointIndex,
     centre: Pt,
     den: int,
     site: Pt,
@@ -202,31 +192,29 @@ def _candidates(
     footprint_foreign: Sequence[Shape],
     corridor_foreign: Sequence[Shape],
 ) -> list[Candidate]:
-    """The lattice points of one cluster that pass tests (a) to (e), in the fixed order."""
+    """The lattice points of one cluster that pass tests (a) to (d), in the fixed order."""
     path, arcs, blob = local.path, local.arcs, local.blob
     points = lattice_within(
         centre[0] + site[0] * den, centre[1] + site[1] * den, den, CLUSTER_RADIUS - JITTER_RADIUS
     )
     if not points:
         return []
-    mx, mz = centre[0] // den, centre[1] // den
-    reach = CLUSTER_RADIUS + _VERTEX_REACH
-    nearby = vertices.within((mx - reach, mz - reach, mx + reach + 1, mz + reach + 1))
+    # The vertices within 6 m of the slot along the path: a point's path vertex is one of them.
+    window = range(
+        bisect_left(arcs, arc - CORRIDOR_ARC_WINDOW), bisect_right(arcs, arc + CORRIDOR_ARC_WINDOW)
+    )
     inflate = JITTER_RADIUS
     path_reach = PATH_HALF_WIDTH + MARGIN + 1
     found: list[tuple[int, int, int, int, Candidate]] = []
     for row, column, wx, wz in points:
         x, z = wx - site[0], wz - site[1]
         best, vertex = -1, -1
-        for index in nearby:
-            if WINDOW_VERTEX and abs(arcs[index] - arc) > CORRIDOR_ARC_WINDOW:
-                continue
+        for index in window:
             vx, vz = path[index]
             distance = (vx - x) ** 2 + (vz - z) ** 2
             if best < 0 or distance < best:
                 best, vertex = distance, index
-        # (e): the path vertex lies within 6 m of the slot along the path.
-        if vertex < 0 or best == 0 or abs(arcs[vertex] - arc) > CORRIDOR_ARC_WINDOW:
+        if best <= 0:
             continue
         # (a): the point's disc of radius j lies inside the blob.
         if not inside(disc(directions.disc, x, z, 1, inflate), blob, MARGIN):

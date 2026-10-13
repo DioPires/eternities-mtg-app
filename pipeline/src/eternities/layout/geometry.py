@@ -329,30 +329,6 @@ def touches(a: Shape, b: Shape) -> bool:
     return b.closed and any(point_in_polygon(x, z, pb) for x, z in pa)
 
 
-class PointIndex:
-    """Integer points in a hash grid, to find those inside a box."""
-
-    __slots__ = ("_cells", "_pitch", "pts")
-
-    def __init__(self, pts: Sequence[Pt], pitch: int = 4_000) -> None:
-        self.pts = tuple(pts)
-        self._pitch = pitch
-        cells: dict[tuple[int, int], list[int]] = {}
-        for index, (x, z) in enumerate(self.pts):
-            cells.setdefault((x // pitch, z // pitch), []).append(index)
-        self._cells = cells
-
-    def within(self, box: Box) -> list[int]:
-        """Indices of every point inside ``box``, ascending, and perhaps a few just outside."""
-        pitch = self._pitch
-        found: list[int] = []
-        for cx in range(box[0] // pitch, box[2] // pitch + 1):
-            for cz in range(box[1] // pitch, box[3] // pitch + 1):
-                found.extend(self._cells.get((cx, cz), ()))
-        found.sort()
-        return found
-
-
 class SegmentIndex:
     """The segments of one integer polyline in a hash grid, to find those near a box."""
 
