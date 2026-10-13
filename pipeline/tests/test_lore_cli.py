@@ -283,7 +283,7 @@ def test_the_integer_fields_are_every_one_the_committed_files_hold():
 
 
 @pytest.mark.parametrize(
-    "spelling", [LONGEST, "-" + LONGEST[1:]], ids=["4300 nines", "a minus sign and 4299 nines"]
+    "spelling", [LONGEST, "-" + LONGEST], ids=["4300 nines", "a minus sign and 4300 nines"]
 )
 @pytest.mark.parametrize(
     ("file", "path", "named"),

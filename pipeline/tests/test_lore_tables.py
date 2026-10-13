@@ -599,12 +599,17 @@ def test_an_anchor_on_the_rim_of_the_disc_passes(tmp_path: Path, anchor: list[in
 _COORDINATE_LINE = "a coordinate is an integer in thousandths in [-1000, 1000] (4.16.2)"
 
 
-@pytest.mark.parametrize("anchor", [[1001, 0], [-1001, 0], [0, 1001], [0, -1001]], ids=str)
+@pytest.mark.parametrize(
+    "anchor",
+    [[1001, 0], [-1001, 0], [0, 1001], [0, -1001], [1001, 1001], [-1001, 1001]],
+    ids=str,
+)
 def test_a_coordinate_over_1000_fails_on_its_own_and_the_line_states_its_bound(
     tmp_path: Path, anchor: list[int]
 ):
-    """One coordinate over 1,000 puts the anchor outside the disc whatever the other one is. The
-    line states the bound of a coordinate, as the weight line states its range, and no sum."""
+    """One coordinate over 1,000 puts the anchor outside the disc whatever the other one is, and
+    so do two. The line states the bound of a coordinate, as the weight line states its range, and
+    no sum."""
     regions = kit.regions()
     regions["regions"][0]["anchor"] = anchor
 
@@ -649,15 +654,17 @@ def test_an_anchor_outside_the_disc_with_both_coordinates_in_range_prints_the_su
     assert problem.message == message
 
 
-@pytest.mark.parametrize("at", [0, 1], ids=["u", "v"])
+@pytest.mark.parametrize("long", [(0,), (1,), (0, 1)], ids=["u", "v", "both"])
 def test_a_coordinate_too_long_to_square_fails_as_an_anchor_outside_the_disc(
-    tmp_path: Path, at: int
+    tmp_path: Path, long: tuple[int, ...]
 ):
     """The reader takes an integer of up to 4,300 digits, and Python prints none longer. The square
-    of 2,151 nines has 4,302, so the rule answers from the coordinate and squares nothing."""
+    of 2,151 nines has 4,302, so the rule answers from the coordinate and squares nothing. Two
+    coordinates that long get the same answer."""
     nines = int("9" * 2151)
     anchor = [0, 500]
-    anchor[at] = nines
+    for at in long:
+        anchor[at] = nines
     regions = kit.regions()
     regions["regions"][0]["anchor"] = anchor
 
