@@ -67,7 +67,7 @@ namespace Eternities.Tests
 
         // The temperate kit has ten ground textures (CREDITS.md): nine with an `_arm_` file and one
         // with its roughness and occlusion apart. And one mask for each photograph its props are
-        // coloured by.
+        // coloured by, but for a scan's: a scan has its colour and nothing else (`KitPrefabs.Scan`).
         [Test]
         public void TheTemperateKitHasItsMaskSources()
         {
@@ -77,7 +77,7 @@ namespace Eternities.Tests
             foreach (string guid in AssetDatabase.FindAssets("t:Texture2D", new[] { "Assets/Kits/temperate/Props" }))
             {
                 string path = AssetDatabase.GUIDToAssetPath(guid);
-                if (path.Contains("_diff_"))
+                if (path.Contains("_diff_") && !path.EndsWith($"_diff_{KitPrefabs.Scan}.jpg"))
                 {
                     CollectionAssert.Contains(sources, System.Text.RegularExpressions.Regex.Replace(path, @"_diff_(\w+)\.\w+$", "_arm_$1.jpg"), $"the mask beside {path}");
                 }

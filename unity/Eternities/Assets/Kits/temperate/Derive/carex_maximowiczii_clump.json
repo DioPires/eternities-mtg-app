@@ -1,0 +1,53 @@
+{
+ "clump": "carex_maximowiczii",
+ "source": "QS1701-W22-1-3.gltf",
+ "blender": "5.2.2 LTS",
+ "stems": {
+  "QS1701-W22-1-3": {
+   "triangles": 58424,
+   "metres_high": 0.334
+  }
+ },
+ "levels": [
+  {
+   "level": 0,
+   "stems": 28,
+   "stem_triangles": [
+    340
+   ],
+   "triangles": 9520,
+   "materials": [
+    "carex_maximowiczii"
+   ]
+  },
+  {
+   "level": 1,
+   "stems": 28,
+   "stem_triangles": [
+    150
+   ],
+   "triangles": 4200,
+   "materials": [
+    "carex_maximowiczii"
+   ]
+  },
+  {
+   "level": 2,
+   "stems": 7,
+   "stem_triangles": [
+    128
+   ],
+   "triangles": 896,
+   "materials": [
+    "carex_maximowiczii"
+   ]
+  }
+ ],
+ "metres": [
+  0.375,
+  0.526,
+  0.34
+ ],
+ "under_its_base_m": -0.002,
+ "bytes": 428956
+}

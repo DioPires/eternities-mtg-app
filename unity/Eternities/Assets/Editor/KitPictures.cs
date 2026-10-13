@@ -6,6 +6,7 @@ using Eternities.Travel;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.Rendering.HighDefinition;
 
 namespace Eternities.EditorTools
@@ -15,7 +16,7 @@ namespace Eternities.EditorTools
     // height at the quality level named. A row is at most `Row` metres wide, so a prop is seen
     // from about as near as a walker passes it. Nothing is saved but the pictures.
     //
-    //   batchmode.sh -executeMethod Eternities.EditorTools.KitPictures.Run -picturesOut <dir> [-picturesQuality medium] [-picturesSunKelvin 5000] [-picturesVariant meadow|all] [-picturesCategory Trees]
+    //   batchmode.sh -executeMethod Eternities.EditorTools.KitPictures.Run -picturesOut <dir> [-picturesQuality medium] [-picturesSunKelvin 5000] [-picturesVariant meadow|all [-picturesTime <frames>]] [-picturesCategory Trees]
     //
     // With `-picturesVariant`, the pictures are of the kit's variants and not of its props one
     // by one: a patch of ground painted with the variant's layers and dressed with its props at
@@ -32,6 +33,8 @@ namespace Eternities.EditorTools
     public static class KitPictures
     {
         const int Width = 1920, Height = 1080;
+        // A timed run renders at the reference machine's display, as the bench's figures of record do.
+        const int TimedWidth = 3456, TimedHeight = 2234;
         const float Eye = 1.6f;
         // How wide a row is, by category, in metres: ground cover is a hand high and is seen from
         // a step away, a tree from across a clearing.
@@ -116,6 +119,16 @@ namespace Eternities.EditorTools
                             yield return step;
                         }
                     }
+                    string timed = CommandLine.Optional("-picturesTime");
+                    if (timed != null)
+                    {
+                        camera.transform.position = new Vector3(0, Eye, 0);
+                        camera.transform.LookAt(new Vector3(0, Eye, 12) + Vector3.down * 1.2f);
+                        foreach (bool step in Timed(camera, patch, variant, int.Parse(timed), quality, Path.Combine(output, $"variant-{variant.Name}-time-{quality}.json")))
+                        {
+                            yield return step;
+                        }
+                    }
                     Object.DestroyImmediate(patch);
                 }
                 if (!any)
@@ -165,6 +178,68 @@ namespace Eternities.EditorTools
                 yield return true;
             }
             Save(camera, target, path);
+        }
+
+        // What a dressed patch costs to draw, for the hand-back's frame cost (DEC-1003; leg 2's
+        // row R judges it): the north view rendered `frames` times with all the variant's props,
+        // as many with all but its ground cover, and as many with none, in turns of a tenth, each
+        // frame timed from the start of its render to the end of the GPU's work on it. The editor
+        // renders off screen and one frame at a time, so a frame here is longer than a player's,
+        // whose CPU and GPU overlap: what it gives is the difference between the runs.
+        static IEnumerable<bool> Timed(Camera camera, GameObject patch, Variant variant, int frames, string quality, string path)
+        {
+            var target = new RenderTexture(TimedWidth, TimedHeight, 24, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+            camera.targetTexture = target;
+            var cover = new HashSet<string>(variant.Grows.Where(growth => growth.Category == "GroundCover").Select(growth => growth.Name));
+            string[] runs = { "all", "no cover", "none" };
+            void Dressed(int run)
+            {
+                foreach (Transform child in patch.transform)
+                {
+                    if (child.GetComponent<Terrain>() == null)
+                    {
+                        child.gameObject.SetActive(run == 0 || (run == 1 && !cover.Contains(child.name)));
+                    }
+                }
+            }
+            var series = runs.Select(run => new List<double>()).ToArray();
+            var clock = new System.Diagnostics.Stopwatch();
+            int turn = Mathf.Max(10, frames / 10);
+            for (int done = -Frames; done < runs.Length * frames; done++)
+            {
+                int run = done < 0 ? 0 : (done / turn) % runs.Length;
+                if (done >= 0 && done % turn == 0)
+                {
+                    Dressed(run);
+                }
+                clock.Restart();
+                camera.Render();
+                AsyncGPUReadback.Request(target, 0, 0, 1, 0, 1, 0, 1).WaitForCompletion();
+                clock.Stop();
+                // The first frames of a turn are not counted: the pipeline's history settles on them.
+                if (done >= 0 && done % turn >= 5)
+                {
+                    series[run].Add(clock.Elapsed.TotalMilliseconds);
+                }
+                yield return true;
+            }
+            Dressed(0);
+            camera.targetTexture = null;
+            target.Release();
+            double Percentile(List<double> one, int percent)
+            {
+                List<double> sorted = one.OrderBy(ms => ms).ToList();
+                return sorted[Mathf.Clamp(Mathf.CeilToInt(percent / 100f * sorted.Count) - 1, 0, sorted.Count - 1)];
+            }
+            string Ms(double ms) => ms.ToString("F3", System.Globalization.CultureInfo.InvariantCulture);
+            string Figures(List<double> one) => $"{{\"count\": {one.Count}, \"p50Ms\": {Ms(Percentile(one, 50))}, \"p90Ms\": {Ms(Percentile(one, 90))}, \"p99Ms\": {Ms(Percentile(one, 99))}}}";
+            int props = patch.transform.Cast<Transform>().Count(child => child.GetComponent<Terrain>() == null);
+            int covers = patch.transform.Cast<Transform>().Count(child => cover.Contains(child.name));
+            string report = $"{{\"variant\": \"{variant.Name}\", \"quality\": \"{quality}\", \"size\": \"{TimedWidth}x{TimedHeight}\", \"props\": {props}, \"groundCover\": {covers}, "
+                + $"\"all\": {Figures(series[0])}, \"noCover\": {Figures(series[1])}, \"none\": {Figures(series[2])}, "
+                + $"\"p90DeltaMs\": {Ms(Percentile(series[0], 90) - Percentile(series[2], 90))}, \"p90DeltaNoCoverMs\": {Ms(Percentile(series[1], 90) - Percentile(series[2], 90))}}}\n";
+            File.WriteAllText(path, report);
+            Debug.Log($"KitPictures: {report}");
         }
 
         // How wide the dressed patch is, in metres: the walker stands at its middle, and bushes,

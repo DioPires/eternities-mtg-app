@@ -250,7 +250,13 @@ unity/Eternities/batchmode.sh -executeMethod Eternities.EditorTools.KitPictures.
 The first dresses a patch of ground with each variant at the density of the quality level, 240 m
 across, and looks north and toward the sun. The second stands each category's prefabs in rows, or
 one category's with `-picturesCategory Trees`. Both take `-picturesQuality` (`medium` if not given)
-and `-picturesSunKelvin`.
+and `-picturesSunKelvin`. With `-picturesTime <frames>` the first also times each variant's patch at the
+reference display's 3456 x 2234: the north view rendered that many times with all the props, as many
+with all but the ground cover and as many with none, each frame from the start of its render to the
+end of the GPU's work on it, and writes the p50, p90 and p99 of each and the differences to
+`variant-<name>-time-<quality>.json`. The editor
+renders off screen and one frame at a time, so a frame there is longer than a player's; the
+difference is the figure.
 
 ## Batchmode commands
 

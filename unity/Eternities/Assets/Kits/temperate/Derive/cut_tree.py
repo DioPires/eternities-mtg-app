@@ -69,6 +69,9 @@ TREES["island_tree_02"] = {
                   "island_tree_02_leaves": ("leaves", "island_tree_02_leaves")},
     "levels": [(1600, 1400, 3500), (350, 150, 700), (100, 0, 140)],
 }
+# The slender small tree again, 4.6 m tall, cut to a bush's levels: the kit draws it at half its
+# size, as a sapling under the trees of a wood.
+TREES["tree_small_02_sapling"] = dict(TREES["tree_small_02"], levels=TREES["island_tree_02"]["levels"])
 # Seven bushes of one file, 0.7 to 2.3 m tall. A bush has no limb: its stems are twigs. Its
 # stems, twigs and leaves are on one photograph, so they are one material.
 TREES.update({

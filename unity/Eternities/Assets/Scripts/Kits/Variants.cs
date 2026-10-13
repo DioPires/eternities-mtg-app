@@ -54,8 +54,9 @@ namespace Eternities.Kits
         // metre, which is the meadow at the medium level, the ground still shows between them.
         // The trees and bushes are their sources cut to levels by the kit's `Derive/` scripts (PRD
         // v4 7.6.4; the owner's answer of 2026-10-13 on DEC-1003): a mixed wood of firs and
-        // broadleaves over bushes, a few trees standing alone in the meadow, and low bushes and
-        // stunted trees on the highland. No variant has a reed yet.
+        // broadleaves over young trees, a few trees standing alone in the meadow, and low bushes and
+        // stunted trees on the highland. The marsh's tall plants are clumps of sedge set from
+        // scanned stems; no CC0 source has a whole reed.
         public static readonly Variant[] Temperate =
         {
             new Variant
@@ -86,26 +87,29 @@ namespace Eternities.Kits
                     Each("Rocks/rock_moss_set_01_", 0.5f, 0.85f, 1.25f, "rock01", "rock02", "rock03", "rock04", "rock05", "rock06"),
                     Each("Rocks/rock_moss_set_02_", 1.2f, 0.85f, 1.25f, "rock07", "rock08", "rock09", "rock10", "rock11", "rock12", "rock13"),
                     // Tall firs and a few jacarandas are the roof, 14 to 22 m; young firs and two
-                    // small broadleaves stand under them, and bushes close the height between.
+                    // small broadleaves stand under them, and saplings of the slender tree and the
+                    // gnarled one drawn as a shrub close the height between. The leafy bush of a
+                    // dry land, `searsia_lucida`, is not of a wood: it grows on the highland.
                     Each("Trees/fir_tree_01_", 0.5f, 0.85f, 1.15f, "a", "b"),
                     Each("Trees/jacaranda_tree", 0.1f, 0.7f, 1.1f, ""),
                     Each("Trees/fir_sapling_medium_", 0.9f, 0.8f, 1.3f, "a", "b", "c"),
                     Each("Trees/tree_small_02", 1, 1.2f, 2, ""),
                     Each("Trees/island_tree_01", 0.5f, 1, 1.8f, ""),
-                    Each("Bushes/searsia_lucida_", 5, 0.85f, 1.3f, "a", "b", "c", "d", "e"),
-                    Each("Bushes/searsia_lucida_", 3, 0.85f, 1.3f, "f", "g"),
-                    Each("Bushes/island_tree_02", 0.5f, 0.8f, 1.2f, "")),
+                    Each("Bushes/tree_small_02_sapling", 3, 0.8f, 1.3f, ""),
+                    Each("Bushes/island_tree_02", 2, 0.85f, 1.2f, "")),
             },
             new Variant
             {
                 Name = "marsh",
                 Ground = new[] { ("mud_forest", 0.6f), ("brown_mud_leaves_01", 0.4f) },
                 Grows = Some(
-                    Each("GroundCover/grass_medium_02_", 1600, 1.4f, 2, "c", "d", "e"),
+                    Each("GroundCover/grass_medium_02_", 800, 1.4f, 2, "c", "d", "e"),
                     Each("GroundCover/shrub_03_", 250, 1.3f, 2, "a", "b", "c", "d"),
                     Each("GroundCover/weed_plant_02_", 80, 1.2f, 2, "a", "b", "c"),
                     Each("GroundCover/nettle_plant_", 80, 1.4f, 2, "tall_a", "tall_b"),
                     Each("GroundCover/fern_02_", 15, 1, 1.5f, "a", "d"),
+                    Each("Bushes/carex_dispalata", 20, 1.3f, 2, ""),
+                    Each("Bushes/carex_maximowiczii", 20, 1.4f, 2, ""),
                     Each("Rocks/rock_moss_set_02_", 0.4f, 0.85f, 1.2f, "rock07", "rock10", "rock12")),
             },
             new Variant

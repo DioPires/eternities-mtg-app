@@ -1,0 +1,61 @@
+{
+ "clump": "carex_dispalata",
+ "source": "QS1701-W21_combine.gltf",
+ "blender": "5.2.2 LTS",
+ "stems": {
+  "QS1701-W21-1-1": {
+   "triangles": 100842,
+   "metres_high": 0.588
+  },
+  "QS1701-W21-2-1": {
+   "triangles": 168188,
+   "metres_high": 0.553
+  }
+ },
+ "levels": [
+  {
+   "level": 0,
+   "stems": 16,
+   "stem_triangles": [
+    600
+   ],
+   "triangles": 9600,
+   "materials": [
+    "carex_dispalata_1",
+    "carex_dispalata_2"
+   ]
+  },
+  {
+   "level": 1,
+   "stems": 15,
+   "stem_triangles": [
+    150,
+    344
+   ],
+   "triangles": 3608,
+   "materials": [
+    "carex_dispalata_1",
+    "carex_dispalata_2"
+   ]
+  },
+  {
+   "level": 2,
+   "stems": 8,
+   "stem_triangles": [
+    100,
+    344
+   ],
+   "triangles": 800,
+   "materials": [
+    "carex_dispalata_1"
+   ]
+  }
+ ],
+ "metres": [
+  0.515,
+  0.674,
+  0.59
+ ],
+ "under_its_base_m": -0.001,
+ "bytes": 429996
+}

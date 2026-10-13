@@ -25,7 +25,7 @@ namespace Eternities.EditorTools
             // A photographic model: each of its materials is drawn with its own photographs, the
             // files `<material>_diff_<size>.jpg`, `_nor_gl_` and `_arm_` beside the model, or the
             // model's own where a material has none; and the importer makes its levels of detail.
-            public string Photographs;  // the size of the photographs, "1k" or "2k"; null for a model of flat colours
+            public string Photographs;  // the size of the photographs, "1k" or "2k", or `Scan`; null for a model of flat colours
             public bool Leaves;         // cut out by the photograph's opacity, and lit from both sides and through
             public int From;            // the level of detail it is drawn from, for a mesh heavier than its category's cap
             // A model cut to levels of its own (`Derive/cut_tree.py`): its file's meshes
@@ -102,8 +102,9 @@ namespace Eternities.EditorTools
             Cut("Trees", "fir_sapling_medium_a", TreeLevels),
             Cut("Trees", "fir_sapling_medium_b", TreeLevels),
             Cut("Trees", "fir_sapling_medium_c", TreeLevels),
-            // Bushes: seven of one source, and a small tree of 3.4 m that stands as a shrub at six
-            // tenths of its size. No source has a second leafy bush.
+            // Bushes: seven of one source, a small tree of 3.4 m that stands as a shrub at six
+            // tenths of its size, and the slender small tree as a sapling at half its size. No
+            // source has a second leafy bush of the temperate biome.
             Cut("Bushes", "searsia_lucida_a", BushLevels),
             Cut("Bushes", "searsia_lucida_b", BushLevels),
             Cut("Bushes", "searsia_lucida_c", BushLevels),
@@ -112,6 +113,10 @@ namespace Eternities.EditorTools
             Cut("Bushes", "searsia_lucida_f", BushLevels),
             Cut("Bushes", "searsia_lucida_g", BushLevels),
             Cut("Bushes", "island_tree_02", BushLevels, 0.6f),
+            Cut("Bushes", "tree_small_02_sapling", BushLevels, 0.5f),
+            // Sedges of the marsh: clumps set from scanned stems by `Derive/set_clump.py`.
+            Clump("Bushes", "carex_dispalata", BushLevels),
+            Clump("Bushes", "carex_maximowiczii", BushLevels),
         }.SelectMany(some => some).ToArray();
 
         // Props of one file: the meshes named, each `<asset>_<mesh>` in the file, as the prefab
@@ -128,6 +133,17 @@ namespace Eternities.EditorTools
         static IEnumerable<Source> Cut(string category, string asset, float[] until, float metres = 1) => new[]
         {
             new Source { Prefab = $"{category}/{asset}", Model = $"{asset}_cut.fbx", Mesh = asset, Metres = metres, Photographs = "1k", Leaves = true, Until = until },
+        };
+
+        // The size of a scan's photographs: as its glTF holds them (`Derive/scan_photograph.py`),
+        // 3,889 to 5,653 pixels, which the importer makes 2K.
+        public const string Scan = "scan";
+
+        // A clump set from a scan's stems (`Derive/set_clump.py`): the kit's `<asset>_clump.fbx`,
+        // drawn with each stem's photograph, `<stem>_diff_scan.jpg`.
+        static IEnumerable<Source> Clump(string category, string asset, float[] until) => new[]
+        {
+            new Source { Prefab = $"{category}/{asset}", Model = $"{asset}_clump.fbx", Mesh = asset, Photographs = Scan, Leaves = true, Until = until },
         };
 
         // The models' material names (Kenney's Nature Kit), and the temperate kit's colour for each:
@@ -202,8 +218,9 @@ namespace Eternities.EditorTools
                 }
                 return texture;
             }
+            bool scan = source.Photographs == Scan;
             string normal = $"{props}/{named}_nor_gl_{source.Photographs}.jpg";
-            if (AssetImporter.GetAtPath(normal) is TextureImporter normals && normals.textureType != TextureImporterType.NormalMap)
+            if (!scan && AssetImporter.GetAtPath(normal) is TextureImporter normals && normals.textureType != TextureImporterType.NormalMap)
             {
                 normals.textureType = TextureImporterType.NormalMap;
                 normals.SaveAndReimport();
@@ -211,20 +228,36 @@ namespace Eternities.EditorTools
             material = new Material(Shader.Find("HDRP/Lit")) { name = $"{kit}-{named}" };
             material.SetTexture("_BaseColorMap", Map("diff"));
             material.SetColor("_BaseColor", Color.white);
-            material.SetTexture("_NormalMap", Map("nor_gl"));
-            material.SetFloat("_NormalScale", 1);
-            material.SetTexture("_MaskMap", Map("arm"));
-            // Of a cut model's materials, its leaves are the one with an opacity file; its wood is whole.
-            bool leaves = source.Leaves && (source.Until == null || KitAlphaImport.OpacityOf($"{props}/{named}_diff_{source.Photographs}.jpg") != null);
+            if (scan)
+            {
+                // A scan's photograph is its colour and nothing else: its glTF has no normal map and
+                // no mask, no metal, and no roughness, which glTF reads as 1.
+                material.SetFloat("_Metallic", 0);
+                material.SetFloat("_Smoothness", 0);
+            }
+            else
+            {
+                material.SetTexture("_NormalMap", Map("nor_gl"));
+                material.SetFloat("_NormalScale", 1);
+                material.SetTexture("_MaskMap", Map("arm"));
+            }
+            // Of a cut model's materials, its leaves are the one with an opacity file; its wood is
+            // whole. A scan's leaves are its mesh's own, with no opacity to cut them out.
+            string opacity = KitAlphaImport.OpacityOf($"{props}/{named}_diff_{source.Photographs}.jpg");
+            bool leaves = source.Leaves && (scan || source.Until == null || opacity != null);
+            bool cards = source.Until != null && !scan;
             if (leaves)
             {
-                material.SetFloat("_AlphaCutoffEnable", 1);
-                material.SetFloat("_AlphaCutoff", KitAlphaImport.Cut);
+                if (!scan)
+                {
+                    material.SetFloat("_AlphaCutoffEnable", 1);
+                    material.SetFloat("_AlphaCutoff", KitAlphaImport.Cut);
+                }
                 material.SetFloat("_DoubleSidedEnable", 1);
                 // Mirror: the back of a leaf is lit as its front is. A cut tree's leaves are cards
                 // that carry the round crown's normal and not their own, so both faces keep it.
-                material.SetFloat("_DoubleSidedNormalMode", source.Until == null ? 1 : 2);
-                if (source.Until != null)
+                material.SetFloat("_DoubleSidedNormalMode", cards ? 2 : 1);
+                if (cards)
                 {
                     // With one normal for the whole crown, the photograph's gloss is one mirror.
                     material.SetFloat("_SmoothnessRemapMax", PropRule.CrownGloss);

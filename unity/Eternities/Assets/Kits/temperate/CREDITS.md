@@ -241,6 +241,12 @@ its source's photographs, which are in the table above as downloaded.
 | `Props/searsia_lucida_f_cut.fbx` | <https://polyhaven.com/a/searsia_lucida> | James Ray Cock, Jenelle van Heerden | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Leafy bush, 0.7 m; cut by `Derive/cut_tree.py` from the source's 7,232 triangles to three levels of 3,287 to 280 |
 | `Props/searsia_lucida_g_cut.fbx` | <https://polyhaven.com/a/searsia_lucida> | James Ray Cock, Jenelle van Heerden | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Leafy bush, 0.8 m; cut by `Derive/cut_tree.py` from the source's 6,302 triangles to three levels of 3,223 to 280 |
 | `Props/island_tree_02_cut.fbx` | <https://polyhaven.com/a/island_tree_02> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Small gnarled tree, 3.4 m tall and 4.2 m across, drawn smaller as a shrub; cut by `Derive/cut_tree.py` from the source's 1,072,213 triangles to three levels of 9,999 to 379 |
+| `Props/tree_small_02_sapling_cut.fbx` | <https://polyhaven.com/a/tree_small_02> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Slender small tree, 4.6 m tall, drawn at half its size as a sapling under a wood's trees; cut by `Derive/cut_tree.py` from the source's 2,062,487 triangles to three levels of 9,998 to 379 |
+| `Props/carex_dispalata_1_diff_scan.jpg` | <https://sketchfab.com/3d-models/cc0-kasa-sge-sedge-carex-dispalata-79f4b32c824c45be8e3f668d18062cdf> | ffish.asia / floraZia.com | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Kasa-suge sedge, the stem of 0.59 m: its photograph, taken out of the scan's glTF byte for byte by `Derive/scan_photograph.py`; albedo |
+| `Props/carex_dispalata_2_diff_scan.jpg` | <https://sketchfab.com/3d-models/cc0-kasa-sge-sedge-carex-dispalata-79f4b32c824c45be8e3f668d18062cdf> | ffish.asia / floraZia.com | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Kasa-suge sedge, the stem of 0.55 m: its photograph, taken out of the scan's glTF byte for byte by `Derive/scan_photograph.py`; albedo |
+| `Props/carex_maximowiczii_diff_scan.jpg` | <https://sketchfab.com/3d-models/cc0-maximowiczs-sedge-carex-maximowiczii-5737d74736ab440cb5b87f1c23ff96ff> | ffish.asia / floraZia.com | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Maximowicz's sedge, a stem of 0.33 m: its photograph, taken out of the scan's glTF byte for byte by `Derive/scan_photograph.py`; albedo |
+| `Props/carex_dispalata_clump.fbx` | <https://sketchfab.com/3d-models/cc0-kasa-sge-sedge-carex-dispalata-79f4b32c824c45be8e3f668d18062cdf> | ffish.asia / floraZia.com | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Kasa-suge sedge, a clump of 16 stems 0.59 m tall for the marsh; set by `Derive/set_clump.py` from the scan's two stems of 100,842 and 168,188 triangles, to three levels of 9,600 to 800 |
+| `Props/carex_maximowiczii_clump.fbx` | <https://sketchfab.com/3d-models/cc0-maximowiczs-sedge-carex-maximowiczii-5737d74736ab440cb5b87f1c23ff96ff> | ffish.asia / floraZia.com | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Maximowicz's sedge, a clump of 28 stems 0.34 m tall for the marsh; set by `Derive/set_clump.py` from the scan's stem of 58,424 triangles, to three levels of 9,520 to 896 |
 
 ## Props as drawn
 
@@ -250,6 +256,8 @@ the rows from the prefabs: the editor's menu, Eternities, "Kit props as drawn".
 
 | Prop | Category | Model | Height | Triangles | Materials |
 |---|---|---|---|---|---|
+| carex_dispalata | bush | `Props/carex_dispalata_clump.fbx` | 0.59 m | 9,600 to 800 | 2 |
+| carex_maximowiczii | bush | `Props/carex_maximowiczii_clump.fbx` | 0.34 m | 9,520 to 896 | 1 |
 | island_tree_02 | bush | `Props/island_tree_02_cut.fbx` | 2.05 m | 9,999 to 379 | 3 |
 | plant_bush | bush | `Props/plant_bush.fbx` | 1.04 m | 32 | 1 |
 | plant_bushLarge | bush | `Props/plant_bushLarge.fbx` | 1.46 m | 60 | 1 |
@@ -260,6 +268,7 @@ the rows from the prefabs: the editor's menu, Eternities, "Kit props as drawn".
 | searsia_lucida_e | bush | `Props/searsia_lucida_e_cut.fbx` | 1.02 m | 5,446 to 280 | 1 |
 | searsia_lucida_f | bush | `Props/searsia_lucida_f_cut.fbx` | 0.74 m | 3,287 to 280 | 1 |
 | searsia_lucida_g | bush | `Props/searsia_lucida_g_cut.fbx` | 0.79 m | 3,223 to 280 | 1 |
+| tree_small_02_sapling | bush | `Props/tree_small_02_sapling_cut.fbx` | 2.35 m | 9,998 to 379 | 3 |
 | celandine_01_a | ground cover | `Props/celandine_01_1k.fbx` | 0.19 m | 622 to 64 | 1 |
 | celandine_01_b | ground cover | `Props/celandine_01_1k.fbx` | 0.14 m | 599 to 64 | 1 |
 | celandine_01_e | ground cover | `Props/celandine_01_1k.fbx` | 0.12 m | 442 to 64 | 1 |
