@@ -17,6 +17,8 @@ from typing import Any, cast
 from ..contract.binary import decode_sets
 from ..contract.enums import CONTRACT_VERSION
 from ..contract.models import Dataset
+from ..lore.stage import LoreStageResult
+from ..lore.stage import report_section as lore_section
 from .assemble import BRIGHTNESS_PERCENTILE, AssemblyStats
 from .swatches import CONCURRENCY, SWATCH_SOURCE, SwatchStats
 from .verify import Finding
@@ -65,6 +67,9 @@ class ReportInput:
     The third way to reach "no diff", and it is not the same as either of the other two: unlike
     ``previous_run is None`` there was a predecessor, and unlike ``previous_run_pruned`` its files
     are still on disk. Only the reader has moved on. The manifest link is unaffected either way."""
+    lore: LoreStageResult | None = None
+    """What the lore stage found (PRD v4 4.16): per hero entry its set codes, acceptance status and
+    digest. ``None`` for a report rendered without the stage, and the section says so."""
 
 
 def recorded_previous_run(directory: Path) -> str | None:
@@ -670,6 +675,8 @@ def render(data: ReportInput) -> str:
             out.append(f"…and {len(data.plane_changes) - 200} more.")
         out.append("")
         out.append("Each row should trace to an appendix or override edit (PRD 9.2.3).")
+
+    out.extend(["", *lore_section(data.lore)])
 
     out.extend(["", "## First-run verification duties", ""])
     if not data.findings:

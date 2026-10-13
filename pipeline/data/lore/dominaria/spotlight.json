@@ -1,0 +1,496 @@
+{
+  "plane": "dominaria",
+  "fetched_on": "2026-10-12",
+  "fetch_script": "pipeline/scripts/spotlight_sidecar.py",
+  "bulk": {
+    "type": "default_cards",
+    "updated_at": "2026-10-12T09:05:45.962+00:00"
+  },
+  "dataset": "a5846bec28d1447e",
+  "set_codes": [
+    "lea",
+    "leb",
+    "atq",
+    "leg",
+    "drk",
+    "fem",
+    "ice",
+    "all",
+    "mir",
+    "mgb",
+    "vis",
+    "wth",
+    "p02",
+    "usg",
+    "ulg",
+    "uds",
+    "pcy",
+    "inv",
+    "pls",
+    "apc",
+    "ody",
+    "tor",
+    "jud",
+    "ons",
+    "lgn",
+    "scg",
+    "csp",
+    "tsb",
+    "tsp",
+    "plc",
+    "fut",
+    "dom",
+    "dmc",
+    "dmu",
+    "brc",
+    "bro",
+    "mom"
+  ],
+  "count": 74,
+  "printings": [
+    {
+      "id": "d72bf6b4-ac70-4be0-86de-cb3c47244dbc",
+      "set": "dom",
+      "collector_number": "54",
+      "name": "In Bolas's Clutches"
+    },
+    {
+      "id": "de8803f6-9efa-4323-b8c5-29bdd5a48f9a",
+      "set": "dom",
+      "collector_number": "93",
+      "name": "Final Parting"
+    },
+    {
+      "id": "1b18558f-6b40-4d1d-859a-3ba68950f064",
+      "set": "dom",
+      "collector_number": "103",
+      "name": "Settle the Score"
+    },
+    {
+      "id": "b4dcb59f-2a47-4461-9831-204ad15696b5",
+      "set": "dom",
+      "collector_number": "157",
+      "name": "Broken Bond"
+    },
+    {
+      "id": "4aab611c-64e0-4b38-97b9-b29a1c6a79b7",
+      "set": "dmu",
+      "collector_number": "20",
+      "name": "Heroic Charge"
+    },
+    {
+      "id": "82b3088f-7b49-45e9-b447-129a597ceb75",
+      "set": "dmu",
+      "collector_number": "36",
+      "name": "Temporary Lockdown"
+    },
+    {
+      "id": "6129b0d3-b50a-4a4b-9111-39f8fc6718dd",
+      "set": "dmu",
+      "collector_number": "48",
+      "name": "Ertai's Scorn"
+    },
+    {
+      "id": "bb6db604-8bbe-4719-88bd-f3cad8c4725d",
+      "set": "dmu",
+      "collector_number": "62",
+      "name": "Protect the Negotiators"
+    },
+    {
+      "id": "8b650ab6-9c22-424f-99e5-8ef5235a18a3",
+      "set": "dmu",
+      "collector_number": "65",
+      "name": "Silver Scrutiny"
+    },
+    {
+      "id": "01a51d08-f90e-4b72-8dce-fb2a6c72f181",
+      "set": "dmu",
+      "collector_number": "94",
+      "name": "Extinguish the Light"
+    },
+    {
+      "id": "ed719f25-1aab-4a1e-8c9f-dd574db5de0c",
+      "set": "dmu",
+      "collector_number": "108",
+      "name": "Sheoldred's Restoration"
+    },
+    {
+      "id": "7d541125-bfb8-4f88-8bf3-ad7b6af7ad1d",
+      "set": "dmu",
+      "collector_number": "137",
+      "name": "Lightning Strike"
+    },
+    {
+      "id": "9d690340-75f1-4733-bde5-2d60fd02f060",
+      "set": "dmu",
+      "collector_number": "147",
+      "name": "Temporal Firestorm"
+    },
+    {
+      "id": "bc531409-26cb-4c58-ba69-f39dd8aee3d1",
+      "set": "dmu",
+      "collector_number": "149",
+      "name": "Twinferno"
+    },
+    {
+      "id": "013bed2b-25db-4dfc-9283-e80c9ac6c841",
+      "set": "bro",
+      "collector_number": "4",
+      "name": "Calamity's Wake"
+    },
+    {
+      "id": "2bb84e72-0231-461a-a230-d8afa6e54289",
+      "set": "bro",
+      "collector_number": "10",
+      "name": "Kayla's Reconstruction"
+    },
+    {
+      "id": "3765610d-a0c1-4de9-a81b-ffa3eb06454b",
+      "set": "bro",
+      "collector_number": "14",
+      "name": "Loran's Escape"
+    },
+    {
+      "id": "e811461a-6a90-416f-940c-c9579659ae0c",
+      "set": "bro",
+      "collector_number": "16",
+      "name": "Meticulous Excavation"
+    },
+    {
+      "id": "28bb8ec0-9729-4aa1-8ce4-a3a5598b0d70",
+      "set": "bro",
+      "collector_number": "26",
+      "name": "Soul Partition"
+    },
+    {
+      "id": "56cd89f1-f9f4-4cb5-a573-79809d0b6dfd",
+      "set": "bro",
+      "collector_number": "30",
+      "name": "Tocasia's Welcome"
+    },
+    {
+      "id": "486a0745-7360-4cc9-9cc2-30c0eda6e00c",
+      "set": "bro",
+      "collector_number": "31",
+      "name": "Union of the Third Path"
+    },
+    {
+      "id": "3000d1c6-dbb3-4e65-b428-dbf167bb8797",
+      "set": "bro",
+      "collector_number": "40",
+      "name": "Urza's Sylex"
+    },
+    {
+      "id": "46e101e5-2b20-48dd-aac4-15a3c32a7441",
+      "set": "bro",
+      "collector_number": "46",
+      "name": "Desynchronize"
+    },
+    {
+      "id": "057f6add-1f1d-4cce-9c9d-5e59fb74d78e",
+      "set": "bro",
+      "collector_number": "50",
+      "name": "Forging the Anchor"
+    },
+    {
+      "id": "5577f345-9577-42f8-b244-089b9a7c2e56",
+      "set": "bro",
+      "collector_number": "52",
+      "name": "Hurkyl's Final Meditation"
+    },
+    {
+      "id": "d08eadf5-a86d-4e8d-b65d-79b4f88477b9",
+      "set": "bro",
+      "collector_number": "57",
+      "name": "Machine Over Matter"
+    },
+    {
+      "id": "7868529f-8abb-4b1d-9c04-e628f81e08d2",
+      "set": "bro",
+      "collector_number": "59",
+      "name": "One with the Multiverse"
+    },
+    {
+      "id": "569dab90-a0d8-4c0a-8e32-b2cb3aec39a6",
+      "set": "bro",
+      "collector_number": "63",
+      "name": "Splitting the Powerstone"
+    },
+    {
+      "id": "3151caa2-10ed-4f30-83eb-cd1bd3f642ce",
+      "set": "bro",
+      "collector_number": "64",
+      "name": "Stern Lesson"
+    },
+    {
+      "id": "46a2108e-e45e-4b21-a03b-5f644b6043be",
+      "set": "bro",
+      "collector_number": "65",
+      "name": "Take Flight"
+    },
+    {
+      "id": "1a212d59-b72e-4939-a757-c131ca4323ce",
+      "set": "bro",
+      "collector_number": "82",
+      "name": "The Temporal Anchor"
+    },
+    {
+      "id": "bcf491db-d12b-4c58-9c05-085cac34a73e",
+      "set": "bro",
+      "collector_number": "85",
+      "name": "Ashnod's Intervention"
+    },
+    {
+      "id": "c92ea561-80da-4fe1-ad87-ce47d9eb80bc",
+      "set": "bro",
+      "collector_number": "88",
+      "name": "Corrupt"
+    },
+    {
+      "id": "d72ab698-de67-4ca8-8e42-b05346bf52fa",
+      "set": "bro",
+      "collector_number": "89",
+      "name": "Diabolic Intent"
+    },
+    {
+      "id": "261ac92e-c61a-4c11-aa6a-9ae1cb703e5c",
+      "set": "bro",
+      "collector_number": "92",
+      "name": "Dreams of Steel and Oil"
+    },
+    {
+      "id": "0bbed8f9-3615-428b-8d0d-18291c5a99be",
+      "set": "bro",
+      "collector_number": "94",
+      "name": "Fateful Handoff"
+    },
+    {
+      "id": "21cd0ece-a267-42ab-b95a-6e7931bd837a",
+      "set": "bro",
+      "collector_number": "103",
+      "name": "Gruesome Realization"
+    },
+    {
+      "id": "f827a9a0-7b72-49e2-85fa-adcce1e8fdda",
+      "set": "bro",
+      "collector_number": "105",
+      "name": "Hostile Negotiations"
+    },
+    {
+      "id": "202cbfa4-3b3d-47fd-84a6-892692c906d6",
+      "set": "bro",
+      "collector_number": "110",
+      "name": "Overwhelming Remorse"
+    },
+    {
+      "id": "345a1c80-41d6-43b1-83ab-1aa56dd06b1b",
+      "set": "bro",
+      "collector_number": "127",
+      "name": "Bitter Reunion"
+    },
+    {
+      "id": "50f7666d-0d60-4fe5-b144-286d4e47b704",
+      "set": "bro",
+      "collector_number": "128",
+      "name": "Brotherhood's End"
+    },
+    {
+      "id": "f454583d-d227-4fc8-842e-128e025880e4",
+      "set": "bro",
+      "collector_number": "133",
+      "name": "The Fall of Kroog"
+    },
+    {
+      "id": "87c71fb1-a30b-4e0e-a6d6-4656cfff2da1",
+      "set": "bro",
+      "collector_number": "142",
+      "name": "Mishra's Domination"
+    },
+    {
+      "id": "838b25d2-7615-4375-a5e6-3d762c9072a5",
+      "set": "bro",
+      "collector_number": "149",
+      "name": "Raze to the Ground"
+    },
+    {
+      "id": "c44b24de-60b4-4855-9111-f1237f71bc4d",
+      "set": "bro",
+      "collector_number": "152",
+      "name": "Sibling Rivalry"
+    },
+    {
+      "id": "e922ef35-b62a-4cf8-9282-319f6de150b0",
+      "set": "bro",
+      "collector_number": "156",
+      "name": "Visions of Phyrexia"
+    },
+    {
+      "id": "f7761ed0-a784-4dfb-ab6c-0f4b9a411cf3",
+      "set": "bro",
+      "collector_number": "159",
+      "name": "Fallaji Dragon Engine"
+    },
+    {
+      "id": "1c95f8b8-faba-4412-8d8f-093e2ec903f0",
+      "set": "bro",
+      "collector_number": "170",
+      "name": "Awaken the Woods"
+    },
+    {
+      "id": "35ba6c05-a4c2-422b-a4cb-852b3aef77a5",
+      "set": "bro",
+      "collector_number": "176",
+      "name": "Epic Confrontation"
+    },
+    {
+      "id": "20014a1c-197c-4e04-94b2-874886183e2f",
+      "set": "bro",
+      "collector_number": "190",
+      "name": "Shoot Down"
+    },
+    {
+      "id": "00a0c819-36d1-442b-bec5-e6df58a122c0",
+      "set": "bro",
+      "collector_number": "196",
+      "name": "Wasteful Harvest"
+    },
+    {
+      "id": "5f608efc-0dbc-4cc3-aadd-ed473bfc29ab",
+      "set": "bro",
+      "collector_number": "240",
+      "name": "Portal to Phyrexia"
+    },
+    {
+      "id": "45537ac3-fc61-4253-a782-7f3e436b2aa6",
+      "set": "bro",
+      "collector_number": "245",
+      "name": "The Stasis Coffin"
+    },
+    {
+      "id": "23d4b90c-95b1-4828-bc08-7067da0d5364",
+      "set": "bro",
+      "collector_number": "266",
+      "name": "Tocasia's Dig Site"
+    },
+    {
+      "id": "35ed6263-bdd7-4013-ac8c-9b652d71a0db",
+      "set": "mom",
+      "collector_number": "6",
+      "name": "Archangel Elspeth"
+    },
+    {
+      "id": "f03a480f-de67-4611-9db7-c0c3d020f597",
+      "set": "mom",
+      "collector_number": "13",
+      "name": "Elspeth's Smite"
+    },
+    {
+      "id": "2ccc29cc-025d-402e-9fe3-75998eb290c9",
+      "set": "mom",
+      "collector_number": "35",
+      "name": "Seal from Existence"
+    },
+    {
+      "id": "41d25ee5-0348-4206-bb6a-ccb0a599ac87",
+      "set": "mom",
+      "collector_number": "41",
+      "name": "Surge of Salvation"
+    },
+    {
+      "id": "0e758594-a48c-4508-b400-9028aec07f63",
+      "set": "mom",
+      "collector_number": "67",
+      "name": "Moment of Truth"
+    },
+    {
+      "id": "81752db1-374e-4723-b695-a2f4a634dfc6",
+      "set": "mom",
+      "collector_number": "68",
+      "name": "Negate"
+    },
+    {
+      "id": "3261c7e6-45be-44d1-8855-026359ba0ae7",
+      "set": "mom",
+      "collector_number": "83",
+      "name": "Transcendent Message"
+    },
+    {
+      "id": "daf51a76-7a57-4462-ae18-a19e817e49e5",
+      "set": "mom",
+      "collector_number": "94",
+      "name": "Breach the Multiverse"
+    },
+    {
+      "id": "ce133ad5-8748-4a3d-ae8c-7b2a5938927d",
+      "set": "mom",
+      "collector_number": "98",
+      "name": "Corrupted Conviction"
+    },
+    {
+      "id": "70edec35-1770-47f0-9ad2-32e597ee0327",
+      "set": "mom",
+      "collector_number": "117",
+      "name": "Merciless Repurposing"
+    },
+    {
+      "id": "750b2090-7fd4-4048-a148-9a5fc7b6f265",
+      "set": "mom",
+      "collector_number": "118",
+      "name": "Mirrodin Avenged"
+    },
+    {
+      "id": "b3b66ef5-9b93-4042-a618-c1ade83d0004",
+      "set": "mom",
+      "collector_number": "123",
+      "name": "Render Inert"
+    },
+    {
+      "id": "59d40511-c9ff-466c-8eb9-cc7afc5c2eab",
+      "set": "mom",
+      "collector_number": "127",
+      "name": "Traumatic Revelation"
+    },
+    {
+      "id": "4f6eb966-67af-4b18-8899-4a99a5179aa3",
+      "set": "mom",
+      "collector_number": "136",
+      "name": "Coming In Hot"
+    },
+    {
+      "id": "80f649bb-b163-44ae-801f-8884143c407f",
+      "set": "mom",
+      "collector_number": "144",
+      "name": "Into the Fire"
+    },
+    {
+      "id": "9a47999c-12d5-4e1a-a9c1-40a1757007f1",
+      "set": "mom",
+      "collector_number": "173",
+      "name": "Wrenn's Resolve"
+    },
+    {
+      "id": "084a8b94-0c5d-41e0-88e4-fe91ab92c09d",
+      "set": "mom",
+      "collector_number": "204",
+      "name": "Seed of Hope"
+    },
+    {
+      "id": "bf989a4d-3209-4071-b6e9-d2b99372ec10",
+      "set": "mom",
+      "collector_number": "206",
+      "name": "Storm the Seedcore"
+    },
+    {
+      "id": "6f807d91-b157-44e8-a431-49782184f876",
+      "set": "mom",
+      "collector_number": "217",
+      "name": "Wrenn and Realmbreaker"
+    },
+    {
+      "id": "1b83af86-e1a9-4be1-83dc-0c1ab81b129e",
+      "set": "mom",
+      "collector_number": "239",
+      "name": "Invasion of New Phyrexia"
+    }
+  ]
+}

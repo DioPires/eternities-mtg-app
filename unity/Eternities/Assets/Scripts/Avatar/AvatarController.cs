@@ -23,6 +23,7 @@ namespace Eternities.Avatar
         public Func<Vector3, Vector3> Keep;         // keeps a position on the ground the visitor may walk
         public float Speed { get; private set; }
         public float Travelled { get; private set; }    // metres walked since the last `Place`
+        public Vector3 StepFrom { get; private set; }   // where the last step began; a `Place` is not a step
 
         public static AvatarController Create(Material material)
         {
@@ -63,6 +64,7 @@ namespace Eternities.Avatar
             body.enabled = false;
             transform.SetPositionAndRotation(position, facing);
             body.enabled = true;
+            StepFrom = position;
             Travelled = 0;
             Speed = 0;
         }
@@ -93,7 +95,7 @@ namespace Eternities.Avatar
             {
                 transform.rotation = Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(ground), TurnDegreesPerSecond * Time.deltaTime);
             }
-            Vector3 before = transform.position;
+            StepFrom = transform.position;
             body.Move((ground + Vector3.down * Grounding) * Time.deltaTime);
             if (Keep != null)
             {
@@ -105,7 +107,7 @@ namespace Eternities.Avatar
                     body.enabled = true;
                 }
             }
-            Vector3 moved = transform.position - before;
+            Vector3 moved = transform.position - StepFrom;
             moved.y = 0;
             Travelled += moved.magnitude;
             Speed = Time.deltaTime > 0 ? moved.magnitude / Time.deltaTime : 0;

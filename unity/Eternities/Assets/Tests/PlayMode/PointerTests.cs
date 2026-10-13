@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using Eternities.Avatar;
 using Eternities.Data;
@@ -11,6 +12,7 @@ using Unity.Cinemachine;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.Controls;
+using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 
@@ -19,12 +21,14 @@ namespace Eternities.Tests
     // PRD v4 6.1.2 and 6.1.3, with the source the product ships and the Input System's test devices
     // where a visitor has a mouse and a keyboard: the mouse orbits the camera with no button held,
     // in the hub and in a world, and not under an overlay, where the pointer is the visitor's; a
-    // click is on the stand whose label shows; a scroll zooms by a notch and then by its size.
+    // click is on the stand whose label shows; a scroll zooms by a notch and then by its parts'
+    // sizes, in the frames that send them.
     public class PointerTests
     {
         readonly InputTestFixture devices = new InputTestFixture();
         readonly ScriptedInputSource hands = new ScriptedInputSource();
         IAvatarInputSource own;     // the source the application made for itself
+        string scrolls;             // where the instrument writes in a test: never in the visitor's file
         Mouse mouse;
         Keyboard keyboard;
 
@@ -67,6 +71,9 @@ namespace Eternities.Tests
         [UnitySetUp]
         public IEnumerator TheHub()
         {
+            scrolls = Path.Combine(Application.temporaryCachePath, "scroll-parts-test.txt");
+            File.Delete(scrolls);
+            ScrollLog.PathForTests = scrolls;
             PointerLock.StateForTests = CursorLockMode.None;
             devices.Setup();
             mouse = InputSystem.AddDevice<Mouse>();
@@ -81,6 +88,9 @@ namespace Eternities.Tests
         [TearDown]
         public void End()
         {
+            ScrollLog.PathForTests = null;
+            ScrollLog.Close();
+            File.Delete(scrolls);
             PointerLock.StateForTests = null;
             devices.TearDown();
         }
@@ -218,24 +228,34 @@ namespace Eternities.Tests
 
         // PRD v4 6.1.2: scroll zooms. A wheel's notch is half a metre, whatever size the system
         // sends it as. A trackpad's two fingers send a run of parts, one a frame: after the first
-        // each moves the camera by its size, never more than a notch is owed, and the camera goes
-        // at its own pace.
+        // each moves the camera by its size, a part of 1 by `RunMetres`. No frame moves the camera
+        // more than `ZoomMetresAFrame`, and when the parts stop no more than `OwedMetres` is still
+        // owed, which is three frames.
         [UnityTest]
-        public IEnumerator AScrollZoomsByANotchAndThenByItsSizeAtTheCamerasPace()
+        public IEnumerator AScrollZoomsByANotchThenByItsPartsSizesAndNoFrameJumps()
         {
             App app = App.Instance;
             float start = Orbit().z;
             float pause = PlayerInputSource.ScrollPause * 2;
+            float coasted = 0;      // metres the scroll asked of the camera in the frames `Zoomed` waited through,
+            int coasting = 0;       // and how many of those frames it moved the camera in
             IEnumerator Zoomed()
             {
+                coasted = 0;
+                coasting = 0;
                 for (int quiet = 0; quiet < 3;)
                 {
                     yield return null;
-                    Assert.That(Mathf.Abs(app.Avatar.Input.Zoom), Is.LessThanOrEqualTo(PlayerInputSource.ZoomMetresPerSecond * Time.unscaledDeltaTime + 1e-4f), "the camera moves no faster than its pace");
-                    quiet = app.Avatar.Input.Zoom == 0 ? quiet + 1 : 0;
+                    float zoom = Mathf.Abs(app.Avatar.Input.Zoom);
+                    Assert.That(zoom, Is.LessThanOrEqualTo(PlayerInputSource.ZoomMetresAFrame + 1e-4f), "no frame moves the camera more than its bound");
+                    coasted += zoom;
+                    coasting += zoom == 0 ? 0 : 1;
+                    quiet = zoom == 0 ? quiet + 1 : 0;
                 }
                 yield return new WaitForSecondsRealtime(pause);
             }
+
+            Assert.That(PlayerInputSource.ZoomMetresAFrame, Is.LessThanOrEqualTo(0.3f), "a frame never moves the camera more than 0.3 m");
 
             devices.Set(mouse.scroll, new Vector2(0, -1));
             yield return Zoomed();
@@ -244,9 +264,10 @@ namespace Eternities.Tests
             yield return Zoomed();
             Assert.That(Orbit().z, Is.EqualTo(start).Within(1e-3f), "and a notch away, sent as a tenth of one, brings it back");
 
-            // Two fingers on a trackpad, which sends about 120 parts a second: a notch for the
-            // first, and the nineteen that follow within the pause by their size.
-            const float part = 0.005f;
+            // Two fingers on a trackpad, which sends about 120 parts a second, each here of 5 of
+            // the system's points: a notch for the first, and the nineteen that follow within the
+            // pause by their size.
+            const float part = 0.25f;
             float last = 0, slowest = 0;
             for (int sent = 0; sent < 20; sent++)
             {
@@ -259,30 +280,143 @@ namespace Eternities.Tests
             yield return Zoomed();
             if (slowest < PlayerInputSource.ScrollPause)
             {
-                Assert.That(Orbit().z, Is.EqualTo(start + (1 + 19 * part) * PlayerInputSource.ScrollMetres).Within(1e-3f), "a run moves the camera a notch and then by the sum of its parts");
+                Assert.That(Orbit().z, Is.EqualTo(start + PlayerInputSource.ScrollMetres + 19 * part * PlayerInputSource.RunMetres).Within(1e-3f), "a run moves the camera a notch and then by the sum of its parts");
             }
             else
             {
                 Debug.Log($"PointerTests: a frame of the run took {slowest:F3} s, a pause, so the run was more than one; its sum is not checked");
             }
 
-            // A flick: more than a notch a frame, for twenty frames. No frame moves the camera
-            // faster than its pace.
-            float flicked = Orbit().z;
+            // A hard swipe: far more a frame than a frame may move the camera, for twenty frames.
+            // No frame moves it more than its bound, and when the parts stop it goes on for what
+            // is owed, which is never more than `OwedMetres`: for three frames, so it has stopped
+            // within 0.1 s wherever a frame is a thirtieth of a second or shorter.
+            float swiped = Orbit().z;
             for (int sent = 0; sent < 20; sent++)
             {
                 devices.Set(mouse.scroll, new Vector2(0, 8));
                 yield return null;
-                Assert.That(Mathf.Abs(app.Avatar.Input.Zoom), Is.LessThanOrEqualTo(PlayerInputSource.ZoomMetresPerSecond * Time.unscaledDeltaTime + 1e-4f), "a flick moves the camera no faster than its pace");
+                Assert.That(Mathf.Abs(app.Avatar.Input.Zoom), Is.LessThanOrEqualTo(PlayerInputSource.ZoomMetresAFrame + 1e-4f), "a hard swipe moves the camera no more in a frame than its bound");
             }
             yield return Zoomed();
-            Assert.That(flicked - Orbit().z, Is.GreaterThanOrEqualTo(PlayerInputSource.ScrollMetres - 1e-3f), "a flick away from the visitor brings the camera a notch closer or more");
+            Assert.That(swiped - Orbit().z, Is.GreaterThanOrEqualTo(PlayerInputSource.ScrollMetres - 1e-3f), "a hard swipe away from the visitor brings the camera a notch closer or more");
+            Assert.That(coasted, Is.EqualTo(PlayerInputSource.OwedMetres - PlayerInputSource.ZoomMetresAFrame).Within(1e-3f), "after a hard swipe the camera goes on for what it may owe, less the last part's frame, and no further");
+            Assert.That(coasting, Is.LessThanOrEqualTo(3), "and it has stopped three frames after the last part");
 
-            // And however much one frame's scroll asks for, no more than a notch is owed.
+            // And the first part after a pause is one notch, however much it asks for.
             float before = Orbit().z;
             devices.Set(mouse.scroll, new Vector2(0, -100));
             yield return Zoomed();
             Assert.That(Orbit().z, Is.EqualTo(before + PlayerInputSource.ScrollMetres).Within(1e-3f), "a hundred notches in one frame move the camera one");
+        }
+
+        // The owner's own hand (DEC-978): every scroll part their wheel and their trackpad sent
+        // the build from `4c4ad05` at medium on 2026-10-12, as that build's instrument wrote them
+        // (`owner-scroll-parts.txt`), replayed here a frame for each frame of theirs and by their
+        // clock. That build moved the camera at 6 m a second whatever the hand did, and the owner
+        // found every swipe too slow. Now the camera goes as far as the fingers do, in the frames
+        // they move in: the distances asked here of a roll of the wheel and of three of the swipes
+        // are the ones the owner's answer set.
+        [UnityTest]
+        public IEnumerator TheOwnersSwipesMoveTheCameraAsFarAsTheirFingersWent()
+        {
+            App app = App.Instance;
+            var plain = System.Globalization.CultureInfo.InvariantCulture;
+            float now = 0;
+            ((PlayerInputSource)own).Clock = () => now;
+
+            var metres = new Dictionary<int, float>();      // the camera's, after each of the owner's frames
+            int frame = -1, quiet = 0;      // the owner's frame the replay is at, and their frames since the last part
+            foreach (string line in File.ReadAllLines(Path.Combine(Application.dataPath, "Tests", "PlayMode", "owner-scroll-parts.txt")))
+            {
+                if (line.StartsWith("#"))
+                {
+                    continue;
+                }
+                string[] fields = line.Split('\t');
+                int sent = int.Parse(fields[1], plain);
+                if (frame < 0)
+                {
+                    frame = sent - 1;
+                    metres[frame] = Orbit().z;
+                }
+                // A frame of the owner's that read no scroll is a frame here too: the camera
+                // moves in it only what it is still owed.
+                while (frame < sent)
+                {
+                    frame++;
+                    quiet++;
+                    if (frame == sent)
+                    {
+                        now = float.Parse(fields[0], plain);
+                        devices.Set(mouse.scroll, new Vector2(0, float.Parse(fields[3], plain)));
+                        quiet = 0;
+                    }
+                    yield return null;
+                    float zoom = Mathf.Abs(app.Avatar.Input.Zoom);
+                    Assert.That(zoom, Is.LessThanOrEqualTo(PlayerInputSource.ZoomMetresAFrame + 1e-4f), $"no frame moves the camera more than its bound: the owner's frame {frame}");
+                    Assert.That(zoom == 0 || quiet <= 3, $"the camera has stopped three frames after the last part, which were 0.04 s of the owner's: their frame {frame}");
+                    metres[frame] = Orbit().z;
+                }
+            }
+
+            // From before the owner's frame `first` to before their frame `next`, in which their
+            // next gesture began.
+            float Moved(int first, int next) => Mathf.Abs(metres[next - 1] - metres[first - 1]);
+            Debug.Log(string.Format(plain, "PointerTests: the owner's hand: the roll of the wheel moved the camera {0:F2} m; the swipe of 1,648 points took it from {1:F2} m to {2:F2} m; the swipe of 1,012 points moved it {3:F2} m and the drag of 211 points {4:F2} m",
+                Moved(80, 121), metres[310], metres[359], Moved(443, 509), Moved(604, 665)));
+            Assert.That(Moved(80, 121), Is.InRange(1f, 2f), "a fast roll of five clicks of the wheel, a notch and four by their sizes, moves the camera 1 to 2 m");
+            Assert.That(metres[310], Is.EqualTo(6f).Within(1e-3f), "the owner's hard swipe of 1,648 points began with the camera at the far end of its range, 6 m,");
+            Assert.That(metres[359], Is.EqualTo(2f).Within(1e-3f), "and takes it to the near end, 2 m: across the whole range");
+            Assert.That(Moved(443, 509), Is.InRange(2.5f, 4f), "an easy swipe of 1,012 points moves the camera 2.5 to 4 m");
+            Assert.That(Moved(604, 665), Is.InRange(0.4f, 0.9f), "a slow drag of 211 points moves the camera 0.4 to 0.9 m");
+        }
+
+        // The instrument of DEC-978, which comes out with its test when the owner's wheel is
+        // settled: every scroll the player reads is a line in its file, under a line for the run,
+        // with what the visitor was doing and where the frame left the camera, and a second run
+        // adds to the file.
+        [UnityTest]
+        public IEnumerator EveryScrollPartThePlayerReadsIsWrittenDown()
+        {
+            float start = Orbit().z;
+            // A notch along, and then a scroll across while the visitor runs, by when the camera
+            // has the pointer: it zooms nothing and is a line all the same.
+            devices.Set(mouse.scroll, new Vector2(0, -1));
+            yield return null;
+            // W and Shift in one event: the fixture's second press of a key would let the first go.
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.W, Key.LeftShift));
+            InputSystem.Update();
+            yield return Frames(3);
+            Assert.That(PointerLock.Held, "a movement key gives the pointer to the camera");
+            devices.Set(mouse.scroll, new Vector2(0.05f, 0));
+            yield return Frames(3);
+            ScrollLog.Close();
+            string[] read = { "-1\t0\t0\t0\t0", "0\t0.05\t1\t1\t1" };
+            float[] asked = { start + PlayerInputSource.ZoomMetresAFrame, start + PlayerInputSource.ScrollMetres };
+
+            string[] lines = File.ReadAllLines(scrolls);
+            Assert.That(lines.Length, Is.EqualTo(1 + read.Length), "a line for the run and one for each frame that scrolled, and none for a frame that did not");
+            Assert.That(lines[0], Does.StartWith("# run: build ").And.Contain("; started ").And.Contain("; quality " + QualitySettings.names[QualitySettings.GetQualityLevel()] + ";"));
+            var plain = System.Globalization.CultureInfo.InvariantCulture;
+            int frame = 0;
+            for (int line = 0; line < read.Length; line++)
+            {
+                string[] fields = lines[1 + line].Split('\t');
+                Assert.That(fields.Length, Is.EqualTo(10), "seconds, frame, the frame's unscaled seconds, the part, the scroll across, moving, running, the pointer held, the orbit's metres, the camera's metres");
+                Assert.That(float.Parse(fields[0], plain), Is.GreaterThan(0));
+                Assert.That(int.Parse(fields[1], plain), Is.GreaterThan(frame), "the lines are in the order the scrolls came, a frame each");
+                frame = int.Parse(fields[1], plain);
+                Assert.That(float.Parse(fields[2], plain), Is.GreaterThan(0));
+                Assert.That(string.Join("\t", fields, 3, 5), Is.EqualTo(read[line]), "the part, the scroll across, and whether the visitor was moving, was running and the camera held the pointer");
+                Assert.That(float.Parse(fields[8], plain), Is.EqualTo(asked[line]).Within(2e-3f), "the orbit's metres after the frame's zoom: after the first frame of the notch, and after all of it");
+                Assert.That(float.Parse(fields[9], plain), Is.EqualTo(asked[line]).Within(0.5f), "the camera's own metres from the point it orbits: the orbit's, where nothing stands between");
+            }
+
+            devices.Set(mouse.scroll, new Vector2(0, 2));
+            yield return Frames(3);
+            ScrollLog.Close();
+            Assert.That(File.ReadAllLines(scrolls).Length, Is.EqualTo(lines.Length + 2), "a second run adds its two lines and writes over nothing");
         }
     }
 }

@@ -93,5 +93,26 @@ namespace Eternities.Avatar
                 orbit.HorizontalAxis.Value = Mathf.Repeat(behind + 180, 360) - 180;
             }
         }
+
+        // The instrument of DEC-978 (`ScrollLog`), and it comes out with it: in a frame that
+        // scrolled, once the brain has placed the camera, how far the orbit asks it to be from
+        // the point above the avatar that it orbits, and how far it is.
+        void OnEnable()
+        {
+            CinemachineCore.CameraUpdatedEvent.AddListener(Placed);
+        }
+
+        void OnDisable()
+        {
+            CinemachineCore.CameraUpdatedEvent.RemoveListener(Placed);
+        }
+
+        void Placed(CinemachineBrain brain)
+        {
+            if (ScrollLog.Waiting)
+            {
+                ScrollLog.Camera(orbit.Radius * orbit.RadialAxis.Value, Vector3.Distance(brain.transform.position, avatar.transform.position + orbit.TargetOffset));
+            }
+        }
     }
 }
