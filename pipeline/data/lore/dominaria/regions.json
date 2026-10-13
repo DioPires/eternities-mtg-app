@@ -147,7 +147,7 @@
       "weight": 500,
       "water": "none",
       "ambient": "alpine-wind",
-      "sentence": {"text": "The Keldons, tall grey-skinned warriors hardened to the cold, hold the north of Aerona.", "source": "https://mtg.wiki/page/Keld"},
+      "sentence": {"text": "The Keldons, tall grey-skinned warriors hardened to the cold, live in Icehaven, a subcontinent of Aerona.", "source": "https://mtg.wiki/page/Keld"},
       "set_piece": "A ring of Keldon megaliths on a bare ridge, with the prow of the Golden Argosy raised among them.",
       "sources": ["https://mtg.wiki/page/Keld"]
     }
