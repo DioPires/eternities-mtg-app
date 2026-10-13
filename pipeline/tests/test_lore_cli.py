@@ -95,6 +95,27 @@ def test_lore_validate_fails_naming_the_file_the_row_and_the_field(
     assert 'of regions[0] "terisiare"; two anchors are at least 150 apart' in err
 
 
+def test_lore_validate_names_a_forbidden_number_by_the_row_and_its_id(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+    """The reader finds the number before any rule reads its row, and the line still names the row
+    as every other failure of that row does. The example with Terisiare's weight as ``1000.0``."""
+    directory = tmp_path / "dominaria"
+    directory.mkdir()
+    for name in ("regions.json", "eras.json", "keywords.json"):
+        document = json.loads((example.EXAMPLE_DIR / "dominaria" / name).read_text("utf-8"))
+        if name == "regions.json":
+            assert document["regions"][0]["id"] == "terisiare"
+            document["regions"][0]["weight"] = 1000.0
+        (directory / name).write_text(json.dumps(document), encoding="utf-8")
+
+    assert cli.main(["lore", "validate", str(directory)]) == 1
+
+    err = capsys.readouterr().err
+    assert "breaks 1 lore table rule" in err
+    assert 'regions.json: regions[0] "terisiare": weight: 1000.0 is not an integer' in err
+
+
 def _pack(tmp_path: Path) -> Path:
     """A pack on disk for `--data`: the small fixture dataset."""
     return write_dataset(build(SMALL), tmp_path / "data")
@@ -148,6 +169,34 @@ def test_fixture_relaxes_the_accepted_requirement(
 
     assert cli.main([*arguments, "--fixture"]) == 0
     assert "a fixture needs no `accepted` record" in capsys.readouterr().out
+
+
+def test_an_integer_too_long_for_python_fails_naming_the_file_and_the_field(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+    """``int`` refuses a string of more than 4,300 digits. Both commands that read a table answer
+    with the file and the field (4.16.2, F.0), not with the traceback of that refusal."""
+    pack = _pack(tmp_path)
+    directory = _one_region_one_era(tmp_path, pack)
+    text = (directory / "regions.json").read_text(encoding="utf-8")
+    assert text.count('"weight": 1000') == 1
+    (directory / "regions.json").write_text(
+        text.replace('"weight": 1000', '"weight": ' + "7" * 5000), encoding="utf-8"
+    )
+    says = "weight: an integer of more than 4300 digits is too long to read"
+
+    assert cli.main(["lore", "validate", str(directory), "--data", str(pack), "--fixture"]) == 1
+    err = capsys.readouterr().err
+    assert "breaks 1 lore table rule" in err
+    assert "dominaria/regions.json: regions[0]" in err
+    assert f": {says}" in err
+    assert "7" * 50 not in err
+
+    assert cli.main(["lore", "digest", str(directory)]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "lore digest failed" in captured.err
+    assert f"dominaria/regions.json: regions[0].{says}" in captured.err
 
 
 def test_validate_distribution_fails_on_an_absent_or_stale_record(
