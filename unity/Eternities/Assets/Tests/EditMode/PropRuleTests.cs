@@ -45,14 +45,16 @@ namespace Eternities.Tests
                     broken.Add($"{path}: it is not in a category's folder under `Prefabs/`: {string.Join(", ", PropRule.Folders.Keys)}");
                     continue;
                 }
-                broken.AddRange(PropRule.Violations(AssetDatabase.LoadAssetAtPath<GameObject>(path), category.Value, PropRule.Standard(kit), kit).Select(what => $"{path}: {what}"));
+                broken.AddRange(PropRule.Violations(AssetDatabase.LoadAssetAtPath<GameObject>(path), category.Value, PropRule.Standard(kit, path), kit).Select(what => $"{path}: {what}"));
             }
             Assert.That(broken, Is.Empty, string.Join("\n", broken));
             Assert.That(props, Is.GreaterThanOrEqualTo(Temperate.Kinds.Length), "the kits' prefabs were found");
         }
 
-        // The kit's photographic props keep what the rule asks at the photographic standard, while
-        // the kit as a whole is still at basic, with the first slice's flat models in it.
+        // The kit's photographic props keep what the rule asks at the photographic standard, each
+        // named: a prop missing from the kit fails here and not only in the scan of its folders.
+        // The first slice's flat models, which its scatter of Dominaria still draws, are held at
+        // the basic standard (`PropRule.Standard`).
         [Test]
         public void EveryPhotographicPropKeepsThePhotographicRule()
         {

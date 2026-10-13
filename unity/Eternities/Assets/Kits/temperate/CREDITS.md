@@ -9,7 +9,11 @@ The binaries are committed in this folder through Git LFS. `./fetch.sh` verifies
 (PRD 8.12.2: an asset without a row blocks the merge). So whatever is made from these files (terrain
 layers, materials, prefabs) lives beside `Terrain/`, `Props/` and `Audio/`, not inside them.
 
-The kit is at `standard: basic` (PRD v4 8.12.6) until its photographic asset pass lands (DEC-1003).
+The kit is at `standard: photographic` (PRD v4 8.12.6; DEC-1003): its vegetation, rocks and ground
+are photographic CC0 models and textures, as downloaded or as a committed script derives them
+(`Derive/`, PRD v4 7.6.4). The first slice's ten flat models of trees, bushes, rocks and wheat stay
+for the first slice's scatter of Dominaria only, held at the basic standard, until leg 2 dresses
+regions with the kit's variants (PRD v4 9.6); no variant grows them. The structures are Kenney's.
 A model reaches the world through one prefab under `Prefabs/<category>/`, in metres and with its
 base at its origin (the prop conditioning rule, `unity/Eternities/README.md`). "Props as drawn"
 lists each prefab with the height and the triangles measured on it; `PropRuleTests` holds the rule
@@ -362,17 +366,19 @@ the rows from the prefabs: the editor's menu, Eternities, "Kit props as drawn".
 
 ## Notes for the slice
 
-- **Cooked size.** 229.8 MB on 2026-10-13, against PRD 7.2's 250 MB for a kit at the
-  photographic standard: textures 182.0 MB, meshes 46.3 MB, audio 1.3 MB. It is what the assets
+- **Cooked size.** 231.9 MB on 2026-10-13, against PRD 7.2's 250 MB for a kit at the
+  photographic standard: textures 184.0 MB, meshes 46.3 MB, audio 1.3 MB. It is what the assets
   under this folder take in a macOS player's data, summed by the build from its own report
   (`Build: cooked by owner`, `unity/Eternities/README.md`). A megabyte there is 1,048,576 bytes,
-  as in Unity's own build report; in megabytes of a million bytes the kit is 241.0. A normal or
+  as in Unity's own build report; in megabytes of a million bytes the kit is 243.2. A normal or
   mask map cooks to a byte a texel and a third more for its smaller levels: 1.3 MB at 1K in that
   build, so 5.3 MB at 2K. A 2K colour cooks to 2.7 MB. So the 24 normal and mask maps that are
   2K files are imported at 1K (`maxTextureSize` in their `.meta`), and a colour stays at its
   file's size. With the 24 at 2K the kit would be about 96 MB more, which is over its row; that
-  figure is the sum and was not built.
-- **Size.** The kit's sources are 196 files and 242.1 MB. `fetch.sh` holds a model and a texture
+  figure is the sum and was not built. A scan's photograph (`_diff_scan.jpg`) is imported at 1K,
+  as every plant's photograph here is: at 2K the three cooked to 2.7 MB each, and the kit to
+  237.9 MB.
+- **Size.** The kit's sources are 202 files and 250.5 MB. `fetch.sh` holds a model and a texture
   to 8 MB each and the kit's sources to 300 MB, the proposal on DEC-1003; the first
   slice's subset of 24 files and 39.2 MB was under DEC-952's limits of 200 KB a prop, 8 MB a
   texture and 60 MB in all. The cooked size against PRD 7.2 is the build's check (PRD 8.7.2), not

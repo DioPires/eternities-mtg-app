@@ -169,7 +169,9 @@ The rule is `Assets/Editor/PropRule.cs`; the figures below are its constants.
      material has no gloss: with the photograph's gloss a crown shines as one mirror.
 8. **Credits.** The kit's `CREDITS.md` states its standard above its first table, as
    `standard: basic` or `standard: photographic`, and lists every prefab under "Props as drawn"
-   with the height and the triangles measured on it.
+   with the height and the triangles measured on it. In the temperate kit, which is at
+   `photographic`, the first slice's flat models of vegetation and rock are held at `basic` while
+   the first slice's scatter of Dominaria draws them; leg 2 of the second slice retires it.
 
 The caps are the proposal of 2026-10-12 on DEC-1003, from the measured figures of the candidate
 models; the owner sets them from PRD v4 7.2's kit rows. The first three rules of item 7 are the

@@ -136,7 +136,8 @@ namespace Eternities.EditorTools
         };
 
         // The size of a scan's photographs: as its glTF holds them (`Derive/scan_photograph.py`),
-        // 3,889 to 5,653 pixels, which the importer makes 2K.
+        // 3,889 to 5,653 pixels. The importer makes them 1K, as every plant's photograph in the
+        // kit is (`maxTextureSize` in their `.meta`).
         public const string Scan = "scan";
 
         // A clump set from a scan's stems (`Derive/set_clump.py`): the kit's `<asset>_clump.fbx`,
