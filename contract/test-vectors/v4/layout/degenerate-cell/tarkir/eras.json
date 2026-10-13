@@ -1,0 +1,24 @@
+{
+  "plane": "tarkir",
+  "kind": "lore",
+  "eras": [
+    {
+      "id": "khans",
+      "name": "Khans",
+      "years": "Long before the first war",
+      "region": "heavy",
+      "sets": [
+        "tk1"
+      ],
+      "headline": [],
+      "paragraphs": [
+        [
+          {
+            "text": "The first people came by sea.",
+            "source": "https://magic.wizards.com/en/story/fixture"
+          }
+        ]
+      ]
+    }
+  ]
+}

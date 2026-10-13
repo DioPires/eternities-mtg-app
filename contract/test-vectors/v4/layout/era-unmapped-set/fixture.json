@@ -1,0 +1,7 @@
+{
+  "purpose": "The era table maps `ta1` and leaves `ta2` unmapped: validation fails naming the set (5.4.3, 5.4.14, F.2).",
+  "slug": "theros",
+  "expect": "failure",
+  "lore": "theros",
+  "loreFixture": true
+}

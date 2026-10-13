@@ -1,0 +1,23 @@
+{
+  "plane": "lorwyn",
+  "regions": [
+    {
+      "id": "glen",
+      "name": "Glen",
+      "kit": "temperate",
+      "anchor": [
+        0,
+        0
+      ],
+      "weight": 1000,
+      "water": "river",
+      "sentence": {
+        "text": "A place of stone and wind.",
+        "source": "https://magic.wizards.com/en/story/fixture"
+      },
+      "sources": [
+        "https://magic.wizards.com/en/story/fixture"
+      ]
+    }
+  ]
+}

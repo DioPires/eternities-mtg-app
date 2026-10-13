@@ -1,0 +1,1 @@
+DegenerateCell: region 'edge': degenerate cell; move the anchor or change the weight (5.4.5)

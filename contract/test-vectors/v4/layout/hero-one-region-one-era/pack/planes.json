@@ -1,0 +1,24 @@
+{
+  "contractVersion": 3,
+  "shardSize": 2000,
+  "planes": [
+    {
+      "index": 0,
+      "slug": "kamigawa",
+      "displayName": "Kamigawa",
+      "cardCount": 12,
+      "starOffset": 0,
+      "starCount": 12,
+      "shardCount": 1,
+      "sets": [
+        {
+          "id": 1,
+          "code": "kx1",
+          "name": "Fixture set kx1",
+          "year": 2001,
+          "cardCount": 12
+        }
+      ]
+    }
+  ]
+}

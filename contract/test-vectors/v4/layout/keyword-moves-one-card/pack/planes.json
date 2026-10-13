@@ -1,0 +1,24 @@
+{
+  "contractVersion": 3,
+  "shardSize": 2000,
+  "planes": [
+    {
+      "index": 0,
+      "slug": "ixalan",
+      "displayName": "Ixalan",
+      "cardCount": 10,
+      "starOffset": 0,
+      "starCount": 10,
+      "shardCount": 1,
+      "sets": [
+        {
+          "id": 1,
+          "code": "ix1",
+          "name": "Fixture set ix1",
+          "year": 2001,
+          "cardCount": 10
+        }
+      ]
+    }
+  ]
+}

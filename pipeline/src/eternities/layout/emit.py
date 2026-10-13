@@ -74,13 +74,13 @@ class Emitted:
 
     def write(self, out: Path, slug: str) -> list[Path]:
         """Write the files under ``out`` and return their paths."""
-        written = [out / "stands.bin", out / "worlds" / f"{slug}.json"]
+        written = [out.joinpath("stands.bin"), out.joinpath("worlds", f"{slug}.json")]
         written[0].parent.mkdir(parents=True, exist_ok=True)
         written[0].write_bytes(self.stands_bin)
         written[1].parent.mkdir(parents=True, exist_ok=True)
         written[1].write_text(to_json(self.world), encoding="utf-8")
         if self.lore is not None:
-            path = out / "lore" / f"{slug}.json"
+            path = out.joinpath("lore", f"{slug}.json")
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(to_json(self.lore), encoding="utf-8")
             written.append(path)
@@ -234,6 +234,11 @@ def _world(
         stone_yaw = directions.count_of(
             local.pad[0] * SCALE - local.stone[0], local.pad[1] * SCALE - local.stone[1]
         )
+        pad_pose = {
+            "x": pad[0],
+            "z": pad[1],
+            "yaw": (local.head_count + COUNTS_PER_TURN // 2) % COUNTS_PER_TURN * MICRO_PER_COUNT,
+        }
         chapters: list[dict[str, Any]] = []
         stone_of = {stone.chapter: stone for stone in placement.stones}
         for number, chapter in enumerate(site.plan.chapters):
@@ -253,6 +258,7 @@ def _world(
                     "firstStand": first,
                     "firstCluster": cluster_of[first],
                     "stone": pose,
+                    "destination": pad_pose if pose is None else pose,
                 }
             )
         sites.append(
@@ -267,13 +273,7 @@ def _world(
                 "boundingRadius": local.bounding,
                 "blob": _rounded(local.blob, centre),
                 "path": _moved(local.path[: placement.end + 1], centre),
-                "pad": {
-                    "x": pad[0],
-                    "z": pad[1],
-                    "yaw": (local.head_count + COUNTS_PER_TURN // 2)
-                    % COUNTS_PER_TURN
-                    * MICRO_PER_COUNT,
-                },
+                "pad": pad_pose,
                 "approachPoint": [local.approach_point[0] + cx, local.approach_point[1] + cz],
                 "stone": {
                     "kind": _stone_kind(site),
@@ -316,7 +316,17 @@ def _world(
             }
         )
 
-    junctions: dict[tuple[int, int], list[int]] = {}
+    # A junction is an end of a leg: the far end of the plaza approach, a site's approach point,
+    # or the vertex of the trail where a spur starts. It lists every leg that has the point as a
+    # vertex.
+    owners: dict[Pt, str] = {}
+    if layout.approach is not None:
+        owners[layout.approach.far] = "plaza"
+    for site in layout.sites:
+        point = site.local.approach_point
+        owners[(point[0] + site.centre[0], point[1] + site.centre[1])] = site.plan.key
+    vertices = [set(leg.polyline) for leg in layout.legs]
+    ends: list[Pt] = []
     legs: list[dict[str, Any]] = []
     for leg in layout.legs:
         legs.append(
@@ -330,8 +340,9 @@ def _world(
                 "endAttachment": [list(point) for point in leg.end_attachment],
             }
         )
-        junctions.setdefault(leg.polyline[0], []).append(leg.index)
-        junctions.setdefault(leg.polyline[-1], []).append(leg.index)
+        for point in (leg.polyline[0], leg.polyline[-1]):
+            if point not in ends:
+                ends.append(point)
     approach = layout.approach
     return {
         "contractVersion": CONTRACT_VERSION,
@@ -357,7 +368,16 @@ def _world(
         "trail": {
             "legs": legs,
             "junctions": [
-                {"point": list(point), "legs": held} for point, held in junctions.items()
+                {
+                    "point": list(point),
+                    "owner": owners.get(point),
+                    "legs": [
+                        leg.index
+                        for leg, held in zip(layout.legs, vertices, strict=True)
+                        if point in held
+                    ],
+                }
+                for point in ends
             ],
         },
         "stands": {

@@ -1,0 +1,8 @@
+{
+  "purpose": "Dominaria with a hero volume over the ground where `era:the-dark` stands in the `dominaria` fixture: the site moves and the trail routes round the volume (5.4.14).",
+  "slug": "dominaria",
+  "expect": "layout",
+  "productionPack": "a5846bec28d1447e",
+  "productTables": true,
+  "heroVolumes": "volumes.json"
+}

@@ -1,0 +1,5 @@
+{
+  "purpose": "A kit world of one set of twelve cards whose first sweep direction fails the approach test at the site's final radius; the second try passes and the report names it (5.4.8, 5.4.14). The set code `ha1` was chosen by trial for that outcome.",
+  "slug": "mercadia",
+  "expect": "layout"
+}

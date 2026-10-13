@@ -1,0 +1,38 @@
+{
+  "contractVersion": 3,
+  "shardSize": 2000,
+  "planes": [
+    {
+      "index": 0,
+      "slug": "lorwyn",
+      "displayName": "Lorwyn",
+      "cardCount": 3,
+      "starOffset": 0,
+      "starCount": 3,
+      "shardCount": 1,
+      "sets": [
+        {
+          "id": 1,
+          "code": "lw1",
+          "name": "Fixture set lw1",
+          "year": 2001,
+          "cardCount": 1
+        },
+        {
+          "id": 2,
+          "code": "lw2",
+          "name": "Fixture set lw2",
+          "year": 2002,
+          "cardCount": 1
+        },
+        {
+          "id": 3,
+          "code": "lw3",
+          "name": "Fixture set lw3",
+          "year": 2003,
+          "cardCount": 1
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "purpose": "Dominaria from its accepted lore tables and the production pack (5.4.14, 9.6).",
+  "slug": "dominaria",
+  "expect": "layout",
+  "productionPack": "a5846bec28d1447e",
+  "productTables": true
+}
