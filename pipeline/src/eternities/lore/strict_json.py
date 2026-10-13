@@ -8,6 +8,8 @@ have smoothed over:
 
 - a fraction or an exponent (``1.5``, ``1e3``, ``1.0``) and a negative zero (``-0``) are read as a
   :class:`Flaw` that stands where the number stood, so the validator names its row and field;
+- an integer too long for Python to convert is a :class:`Flaw` too: ``int`` raises on it, and a
+  traceback names no file and no field;
 - a leading plus (``+1``) and a leading zero (``01``) are not JSON at all, and fail the read with
   the line and the column;
 - a field written twice in one object is a :class:`Flaw` too: the standard parser keeps the last
@@ -17,6 +19,7 @@ have smoothed over:
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -44,7 +47,15 @@ def _float(literal: str) -> Flaw:
 def _int(literal: str) -> int | Flaw:
     if literal == "-0":
         return Flaw(duplicate=False, message="-0 is a negative zero; write 0 (F.0)")
-    return int(literal)
+    try:
+        return int(literal)
+    except ValueError:
+        # Python converts an integer string only up to a limit, 4,300 digits unless it is raised.
+        limit = sys.get_int_max_str_digits()
+        return Flaw(
+            duplicate=False,
+            message=f"an integer of more than {limit} digits is too long to read",
+        )
 
 
 def _constant(literal: str) -> Flaw:
