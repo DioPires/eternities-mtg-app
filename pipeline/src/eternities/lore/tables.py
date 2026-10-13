@@ -177,6 +177,25 @@ def _row(table: str, position: int, row: Any) -> str:
     return label
 
 
+def _named_rows(document: Any) -> dict[str, str]:
+    """``regions[3]`` to ``regions[3] "shiv"``, for every row the rules name with its id.
+
+    The reader reports a forbidden value by the path to it, before any rule has read the row. This
+    is how its message names the row as the rules below name it. A keyword and a sidecar printing
+    are named by position, so they are not here; neither is a row whose id is not text.
+    """
+    names: dict[str, str] = {}
+    if isinstance(document, dict):
+        for table in ("regions", "eras"):
+            rows = cast("dict[str, Any]", document).get(table)
+            if isinstance(rows, list):
+                for position, row in enumerate(cast("list[Any]", rows)):
+                    named = _row(table, position, row)
+                    if not strict_json.lone_surrogates(named):
+                        names[f"{table}[{position}]"] = named
+    return names
+
+
 @dataclass(slots=True)
 class _Region:
     row: str
@@ -225,19 +244,24 @@ class Check:
             return None
         # Every forbidden number and every repeated field is reported here, once, with the path
         # to it. The rules below then pass over a `Flaw` without a second message.
+        names = _named_rows(value)
         for where, flaw in strict_json.flaws(value):
             row, _, field = where.partition(".")
             if not field:
                 row, field = "", where
             rule = Rule.DUPLICATE_FIELD if flaw.duplicate else Rule.NUMBER
-            self.add(rule, name, row, field, flaw.message)
+            self.add(rule, name, names.get(row, row), field, flaw.message)
         surrogates = strict_json.lone_surrogates(value)
         for where in surrogates:
             row, _, field = where.partition(".")
             if not field:
                 row, field = "", where
             self.add(
-                Rule.NOT_JSON, name, row, field, "holds half of a surrogate pair, which is not text"
+                Rule.NOT_JSON,
+                name,
+                names.get(row, row),
+                field,
+                "holds half of a surrogate pair, which is not text",
             )
         if not isinstance(value, dict):
             self.add(Rule.WRONG_TYPE, name, "", "", "the file must hold one JSON object (F.0)")
