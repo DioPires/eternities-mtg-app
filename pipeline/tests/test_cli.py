@@ -186,6 +186,7 @@ def _run_build(
         bulk_updated_at=None,
         register=register,
         keep_active=keep_active,
+        distribution=False,
     )
     assert cli._cmd_build(args) == 0
     return json.loads(Path(cli.DATASETS_FILE).read_text(encoding="utf-8"))
@@ -251,6 +252,7 @@ def test_a_directory_another_key_still_names_is_never_pruned(
         bulk_updated_at=None,
         register=None,
         keep_active=True,
+        distribution=False,
     )
 
     assert cli._cmd_build(args) == 0

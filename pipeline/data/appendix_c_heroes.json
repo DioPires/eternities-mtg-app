@@ -1,0 +1,26 @@
+{
+  "source": "prd_v4.md Appendix C.1",
+  "note": "The twenty hero entries, in the appendix's order. This list stands in for the `hero: true` rows of `themes.yaml` until Appendix C ingestion (PRD v4 4.12) is in the pipeline; that ingestion replaces this file.",
+  "heroEntries": [
+    "dominaria",
+    "blind-eternities",
+    "ravnica",
+    "innistrad",
+    "new-phyrexia",
+    "zendikar",
+    "lorwyn",
+    "tarkir",
+    "kamigawa",
+    "theros",
+    "ixalan",
+    "rath",
+    "arcavios",
+    "forgotten-realms",
+    "eldraine",
+    "alara",
+    "avishkar",
+    "amonkhet",
+    "capenna",
+    "thunder-junction"
+  ]
+}

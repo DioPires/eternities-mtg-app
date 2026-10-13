@@ -1,0 +1,298 @@
+{
+  "plane": "dominaria",
+  "kind": "lore",
+  "eras": [
+    {
+      "id": "first-cards",
+      "name": "The first cards",
+      "years": "Placeholder for the drafter.",
+      "region": "benalia",
+      "sets": [
+        "lea",
+        "leb"
+      ],
+      "headline": [],
+      "paragraphs": [
+        [
+          {
+            "text": "Placeholder for the drafter.",
+            "source": "card:01f07ab9-3c3e-4fea-9cd6-543a5b7056b8"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "brothers-war",
+      "name": "The Brothers' War",
+      "years": "Placeholder for the drafter.",
+      "region": "terisiare",
+      "sets": [
+        "atq",
+        "bro",
+        "brc"
+      ],
+      "headline": [],
+      "paragraphs": [
+        [
+          {
+            "text": "Placeholder for the drafter.",
+            "source": "card:004584f8-fd89-4a3e-9782-c117dbe1532b"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "legends",
+      "name": "Legends",
+      "years": "Placeholder for the drafter.",
+      "region": "tolaria",
+      "sets": [
+        "leg"
+      ],
+      "headline": [],
+      "paragraphs": [
+        [
+          {
+            "text": "Placeholder for the drafter.",
+            "source": "card:0158a440-6573-4f12-958b-a5f0cf190d5b"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "dark-age",
+      "name": "The Dark Age",
+      "years": "Placeholder for the drafter.",
+      "region": "sarpadia",
+      "sets": [
+        "drk",
+        "fem",
+        "p02"
+      ],
+      "headline": [],
+      "paragraphs": [
+        [
+          {
+            "text": "Placeholder for the drafter.",
+            "source": "card:00358a89-2058-448b-a2fd-389f639ba2da"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "ice-age",
+      "name": "The Ice Age",
+      "years": "Placeholder for the drafter.",
+      "region": "terisiare",
+      "sets": [
+        "ice",
+        "all",
+        "csp"
+      ],
+      "headline": [],
+      "paragraphs": [
+        [
+          {
+            "text": "Placeholder for the drafter.",
+            "source": "card:000d5588-5a4c-434e-988d-396632ade42c"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "mirage",
+      "name": "Mirage",
+      "years": "Placeholder for the drafter.",
+      "region": "jamuraa",
+      "sets": [
+        "mir",
+        "vis",
+        "mgb"
+      ],
+      "headline": [],
+      "paragraphs": [
+        [
+          {
+            "text": "Placeholder for the drafter.",
+            "source": "card:0126f620-1dbf-405c-b5cf-f48b7ef02d32"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "weatherlight",
+      "name": "Weatherlight",
+      "years": "Placeholder for the drafter.",
+      "region": "urborg",
+      "sets": [
+        "wth"
+      ],
+      "headline": [],
+      "paragraphs": [
+        [
+          {
+            "text": "Placeholder for the drafter.",
+            "source": "card:019d0013-52fd-4261-9cc8-7efcee5a4616"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "urza",
+      "name": "Urza's block",
+      "years": "Placeholder for the drafter.",
+      "region": "tolaria",
+      "sets": [
+        "usg",
+        "ulg",
+        "uds"
+      ],
+      "headline": [],
+      "paragraphs": [
+        [
+          {
+            "text": "Placeholder for the drafter.",
+            "source": "card:000e5d65-96c3-498b-bd01-72b1a1991850"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "prophecy",
+      "name": "Prophecy",
+      "years": "Placeholder for the drafter.",
+      "region": "jamuraa",
+      "sets": [
+        "pcy"
+      ],
+      "headline": [],
+      "paragraphs": [
+        [
+          {
+            "text": "Placeholder for the drafter.",
+            "source": "card:02fd4da6-6c6e-4143-a915-495c668de148"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "invasion",
+      "name": "Invasion",
+      "years": "Placeholder for the drafter.",
+      "region": "urborg",
+      "sets": [
+        "inv",
+        "pls",
+        "apc"
+      ],
+      "headline": [],
+      "paragraphs": [
+        [
+          {
+            "text": "Placeholder for the drafter.",
+            "source": "card:0045cf16-86dd-4417-ae36-88ca63b30c26"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "otaria-odyssey",
+      "name": "Otaria, Odyssey",
+      "years": "Placeholder for the drafter.",
+      "region": "otaria",
+      "sets": [
+        "ody",
+        "tor",
+        "jud"
+      ],
+      "headline": [],
+      "paragraphs": [
+        [
+          {
+            "text": "Placeholder for the drafter.",
+            "source": "card:001c233f-2959-479b-a82a-64a25ac60830"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "otaria-onslaught",
+      "name": "Otaria, Onslaught",
+      "years": "Placeholder for the drafter.",
+      "region": "otaria",
+      "sets": [
+        "ons",
+        "lgn",
+        "scg"
+      ],
+      "headline": [],
+      "paragraphs": [
+        [
+          {
+            "text": "Placeholder for the drafter.",
+            "source": "card:00181784-9213-492a-ba8c-2028969b049e"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "time-spiral",
+      "name": "Time Spiral",
+      "years": "Placeholder for the drafter.",
+      "region": "shiv",
+      "sets": [
+        "tsp",
+        "tsb",
+        "plc",
+        "fut"
+      ],
+      "headline": [],
+      "paragraphs": [
+        [
+          {
+            "text": "Placeholder for the drafter.",
+            "source": "card:008cb342-79f5-4df6-a6b7-0e9e22ed693f"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "return",
+      "name": "Dominaria",
+      "years": "Placeholder for the drafter.",
+      "region": "benalia",
+      "sets": [
+        "dom"
+      ],
+      "headline": [],
+      "paragraphs": [
+        [
+          {
+            "text": "Placeholder for the drafter.",
+            "source": "card:004f82f0-74cc-4bc7-ab22-ab1a5247bc29"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "united",
+      "name": "Dominaria United",
+      "years": "Placeholder for the drafter.",
+      "region": "llanowar",
+      "sets": [
+        "dmu",
+        "dmc",
+        "mom"
+      ],
+      "headline": [],
+      "paragraphs": [
+        [
+          {
+            "text": "Placeholder for the drafter.",
+            "source": "card:01591d42-4ef8-471d-beda-d31186bba6a6"
+          }
+        ]
+      ]
+    }
+  ]
+}

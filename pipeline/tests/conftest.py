@@ -14,6 +14,7 @@ from typing import Any, NoReturn, cast
 
 import pytest
 
+from eternities.lore.index import LoreIndex
 from eternities.pipeline.appendices import (
     Appendices,
     CardOverride,
@@ -175,6 +176,16 @@ def production_dir() -> Path:
     if not (directory / "manifest.json").exists():
         _no_production_dataset(f"production dataset {name} is not on disk")
     return directory
+
+
+@pytest.fixture(scope="session")
+def production_index(production_dir: Path) -> LoreIndex:
+    """The committed production dataset as the lore tables see it (PRD v4 4.16.2).
+
+    Read once per session: the committed lore inputs name real set codes, real cards and real
+    printings, and this is the dataset they are checked against in CI, with no Scryfall download.
+    """
+    return LoreIndex.from_pack(production_dir)
 
 
 def read_json(path: Path) -> dict[str, Any]:
