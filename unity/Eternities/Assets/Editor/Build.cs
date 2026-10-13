@@ -17,7 +17,7 @@ namespace Eternities.EditorTools
     // The player's identity (company, product, bundle identifier, minimum macOS) is in
     // ProjectSettings. The architecture is not a committed setting; it is chosen here.
     //
-    // The player carries the commit it was built from and whether the tree held uncommitted
+    // The player carries the commit it was built from and whether the project held uncommitted
     // changes (`BuildStamp`), read from git before anything here writes: the stamp is in
     // StreamingAssets for the length of the build and is not committed.
     public static class Build
@@ -27,7 +27,7 @@ namespace Eternities.EditorTools
             string output = CommandLine.Require("-buildOut");
             string repository = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "..", ".."));
             string commit = Git(repository, "rev-parse HEAD").Trim();
-            bool dirty = Git(repository, "status --porcelain").Trim().Length > 0;
+            bool dirty = Dirty(Path.GetFullPath(Path.Combine(Application.dataPath, "..")));
             if (commit.Length != 40)
             {
                 throw new BuildFailedException($"git names no commit for {repository}: '{commit}'");
@@ -45,6 +45,15 @@ namespace Eternities.EditorTools
                 File.Delete(stamp + ".meta");
             }
             Debug.Log($"Build: from {commit}{(dirty ? ", with uncommitted changes" : "")}");
+        }
+
+        // Whether the project, `unity/Eternities/`, holds a change that no commit holds: a changed
+        // file or one git does not track. The rest of the repository is not asked. The README's own
+        // commands write a layout report to the repository's root, and with the whole tree read
+        // that file stamped every player built after it as dirty (DEC-976, N5).
+        public static bool Dirty(string project)
+        {
+            return Git(project, "status --porcelain -- .").Trim().Length > 0;
         }
 
         static string Git(string repository, string arguments)
