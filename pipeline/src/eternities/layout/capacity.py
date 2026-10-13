@@ -53,6 +53,12 @@ APRON_FRONT = FOOT_BACK + APRON_DEPTH
 APRON_HALF = APRON_WIDTH // 2
 
 
+TURN_SIDES: str = (
+    "inner"  # experiment: "alternate" voids a half-turn slot whose side is the outer one
+)
+ORDER: str = "vertex"  # experiment: "distance" puts the candidate nearest its path vertex first
+
+
 @dataclass(frozen=True, slots=True)
 class Candidate:
     row: int
@@ -135,7 +141,9 @@ def capacity_of(
         along_segment = arc - arcs[segment]
         c, s = directions.at(directions.count_of(bx - ax, bz - az))
         on_turn = local.turn[segment]
-        side = on_turn if on_turn != 0 else (1 if number % 2 == 1 else -1)
+        alternate = 1 if number % 2 == 1 else -1
+        side = on_turn if on_turn != 0 else alternate
+        by_rule = TURN_SIDES == "alternate" and on_turn != 0 and alternate != on_turn
         along = prng.randint(-CLUSTER_ALONG, CLUSTER_ALONG)
         across = prng.randint(-CLUSTER_ACROSS, CLUSTER_ACROSS)
         cap = prng.randint(CAP_MIN, CAP_MAX)
@@ -145,7 +153,7 @@ def capacity_of(
         cz = (az * length + along_segment * (bz - az)) * SCALE + length * (along * s + offset * c)
         cluster = disc(directions.disc, cx, cz, den, CLUSTER_RADIUS)
         candidates: list[Candidate] = []
-        disc_inside = inside(cluster, blob, MARGIN)
+        disc_inside = not by_rule and inside(cluster, blob, MARGIN)
         if disc_inside:
             candidates = _candidates(
                 local,
@@ -246,7 +254,10 @@ def _candidates(
         if not all(clear(corridor, other, MARGIN) for other in corridor_foreign):
             continue
         found.append((vertex, best, row, column, Candidate(row, column, x, z, vertex)))
-    found.sort(key=lambda item: item[:4])
+    if ORDER == "distance":
+        found.sort(key=lambda item: (item[1], item[0], item[2], item[3]))
+    else:
+        found.sort(key=lambda item: item[:4])
     return [item[4] for item in found]
 
 

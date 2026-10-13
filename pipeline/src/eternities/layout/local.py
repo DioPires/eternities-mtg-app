@@ -27,7 +27,7 @@ fixtures:
 from __future__ import annotations
 
 import itertools
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from fractions import Fraction
 from math import isqrt
 
@@ -128,6 +128,12 @@ class Local:
     pad_disc: Shape
     approach_strip: Shape
     stone_disc: Shape
+    blocked_cells: dict[tuple[int, int], bool] = field(
+        default_factory=dict, compare=False, repr=False
+    )
+    """Routing cells within 5 m of the blob, in the site's frame, filled as routes ask (5.4.11)."""
+    near_cells: dict[tuple[int, int], bool] = field(default_factory=dict, compare=False, repr=False)
+    """Routing cells whose centre is less than 10 m from the blob, in the site's frame."""
 
 
 def blob_of(radius: int, prng: Prng, directions: Directions) -> Shape:
