@@ -167,26 +167,33 @@ def _words(text: str) -> int:
     return len(text.split())
 
 
+_NAMED_BY: Final = {"regions": "id", "eras": "id", "keywords": "word"}
+"""The field whose text names a row of each table, beside the row's position."""
+
+
 def _row(table: str, position: int, row: Any) -> str:
-    """``regions[3] "shiv"``: the row's position, and its id when it has one."""
+    """``regions[3] "shiv"``: the row's position, and its id when it has one.
+
+    A keyword row has no id, and its word names it the same way: ``keywords[0] "Thran"``.
+    """
     label = f"{table}[{position}]"
     if isinstance(row, dict):
-        ident = cast("dict[str, Any]", row).get("id")
-        if isinstance(ident, str):
-            return f'{label} "{ident}"'
+        text = cast("dict[str, Any]", row).get(_NAMED_BY[table])
+        if isinstance(text, str):
+            return f'{label} "{text}"'
     return label
 
 
 def _named_rows(document: Any) -> dict[str, str]:
-    """``regions[3]`` to ``regions[3] "shiv"``, for every row the rules name with its id.
+    """``regions[3]`` to ``regions[3] "shiv"``, for every row the rules name with its id or word.
 
     The reader reports a forbidden value by the path to it, before any rule has read the row. This
-    is how its message names the row as the rules below name it. A keyword and a sidecar printing
-    are named by position, so they are not here; neither is a row whose id is not text.
+    is how its message names the row as the rules below name it. A sidecar printing is named by
+    position, so it is not here; neither is a row whose id or word is not text.
     """
     names: dict[str, str] = {}
     if isinstance(document, dict):
-        for table in ("regions", "eras"):
+        for table in _NAMED_BY:
             rows = cast("dict[str, Any]", document).get(table)
             if isinstance(rows, list):
                 for position, row in enumerate(cast("list[Any]", rows)):
@@ -718,6 +725,18 @@ class Check:
             )
             return None
         u, v = cast("list[int]", value)
+        if abs(u) > DISC_RADIUS or abs(v) > DISC_RADIUS:
+            # Outside the disc whatever the other coordinate is, so nothing is squared. The reader
+            # takes an integer of up to 4,300 digits, and Python refuses to print a longer one.
+            self.add(
+                Rule.ANCHOR_OUTSIDE_DISC,
+                file,
+                row,
+                "anchor",
+                f"[{u}, {v}] lies outside the unit disc: a coordinate is an integer in thousandths "
+                f"in [{-DISC_RADIUS}, {DISC_RADIUS}] (4.16.2)",
+            )
+            return None
         if u * u + v * v > DISC_RADIUS * DISC_RADIUS:
             self.add(
                 Rule.ANCHOR_OUTSIDE_DISC,
@@ -988,13 +1007,12 @@ class Check:
             )
         seen: dict[str, str] = {}
         for position, raw in enumerate(rows):
-            row = f"keywords[{position}]"
+            row = _row("keywords", position, raw)
             keyword = self.shape(file, row, raw, {"word": "string", "region": "string"})
             if keyword is None:
                 continue
             word = keyword.get("word")
             if word is not None:
-                row = f'{row} "{word}"'
                 if len(word) < KEYWORD_CHARS:
                     self.add(
                         Rule.KEYWORD,
