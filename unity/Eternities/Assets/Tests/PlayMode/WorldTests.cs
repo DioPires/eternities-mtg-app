@@ -493,15 +493,19 @@ namespace Eternities.Tests
 
         // Stands the avatar 1 m before a ring's plane, in the middle of its opening, and runs it
         // straight on for one frame as long as the project lets a frame be (`Maximum Allowed
-        // Timestep`, a third of a second): one step of 2 m, to 1 m beyond the plane.
-        IEnumerator OneSlowStep(Portal portal)
+        // Timestep`, a third of a second): one step of 2 m, to 1 m beyond the plane. `beside` moves
+        // the step that many metres along the plane, `fromBehind` turns it round, to begin behind
+        // the ring and end before it, and `press` is what else the visitor does in the step's frame.
+        IEnumerator OneSlowStep(Portal portal, float beside = 0, bool fromBehind = false, Action press = null)
         {
             AvatarController avatar = App.Instance.Avatar;
             Transform ring = portal.transform;
-            avatar.Place(ring.TransformPoint(0, 0, 1), Quaternion.LookRotation(-ring.forward));
+            float side = fromBehind ? -1 : 1;
+            avatar.Place(ring.TransformPoint(beside, 0, side), Quaternion.LookRotation(-side * ring.forward));
             Time.captureDeltaTime = Time.maximumDeltaTime;
-            hands.WorldMove = -ring.forward;
+            hands.WorldMove = -side * ring.forward;
             hands.Run = true;
+            press?.Invoke();
             yield return null;
             Time.captureDeltaTime = 0;
             hands.WorldMove = Vector3.zero;
@@ -509,9 +513,18 @@ namespace Eternities.Tests
             from = avatar.StepFrom;
             to = avatar.transform.position;
             Vector3 began = ring.InverseTransformPoint(from), ended = ring.InverseTransformPoint(to);
-            Assert.That(began.z, Is.EqualTo(1).Within(0.05f), $"the step began 1 m before the ring{Where()}");
-            Assert.That(ended.z, Is.EqualTo(-1).Within(0.05f), $"the step ended 1 m beyond the ring{Where()}");
-            Assert.That(Mathf.Max(Mathf.Abs(began.x), Mathf.Abs(ended.x)), Is.LessThan(0.05f), "and went through the middle of the opening");
+            Assert.That(began.z, Is.EqualTo(side).Within(0.05f), $"the step began 1 m {(fromBehind ? "behind" : "before")} the ring{Where()}");
+            Assert.That(ended.z, Is.EqualTo(-side).Within(0.05f), $"the step ended 1 m {(fromBehind ? "before" : "beyond")} the ring{Where()}");
+            Assert.That(Mathf.Max(Mathf.Abs(began.x - beside), Mathf.Abs(ended.x - beside)), Is.LessThan(0.05f), beside == 0 ? "and went through the middle of the opening" : $"and went {beside} m beside the middle of the opening");
+        }
+
+        // Dominaria, by one slow step through the hub's ring. The walk there is
+        // `ThePortalLeadsToDominariaAndBack`'s to test.
+        IEnumerator World()
+        {
+            yield return Hub();
+            yield return OneSlowStep(App.Instance.HubPortal);
+            yield return Until(() => App.Instance.WorldReady, 60, "the arrival");
         }
 
         // DEC-989: a portal is used by the step that crosses its ring, however long the step. One
@@ -536,6 +549,93 @@ namespace Eternities.Tests
                 yield return Until(() => app.Place == destination && !app.InTransition, 60, $"the arrival in the {destination}");
             }
             Assert.That(app.WorldLoaded, Is.False, "the return unloaded the world");
+        }
+
+        // DEC-1033: the travel menu uses a frame's input and the avatar takes its step all the
+        // same, so a step across the return ring counts in a frame with the menu open. The menu
+        // closes as the transition begins.
+        [UnityTest]
+        public IEnumerator AStepAcrossTheReturnRingCountsWithTheTravelMenuOpen()
+        {
+            yield return World();
+            App app = App.Instance;
+            hands.TravelMenu = true;
+            yield return Until(() => app.Hud.TravelOpen, 5, "the travel menu");
+            yield return OneSlowStep(app.ReturnPortal);
+            Assert.That(app.ReturnPortal.Crossed(from, to), "the step crossed the ring's plane inside the opening");
+            yield return null;      // the application may read a step in the frame after the avatar took it
+            Assert.That(app.InTransition, $"the step across the ring uses the portal with the travel menu open{Where()}");
+            Assert.That(app.Hud.TravelOpen, Is.False, "the menu closes as the transition begins");
+            yield return Until(() => app.Place == Place.Hub && !app.InTransition, 60, "the arrival in the hub");
+        }
+
+        // DEC-1033: the automatic walk takes its side from the step only when the step used the
+        // ring. E on the hub's pad uses no step: the walk goes through the ring's plane from the
+        // side the avatar is on, as before DEC-989, in the frame its step came round the ring from
+        // behind too.
+        [UnityTest]
+        public IEnumerator AnInteractOnThePadWalksFromTheSideTheAvatarIsOn()
+        {
+            yield return Hub();
+            App app = App.Instance;
+            Portal portal = app.HubPortal;
+            yield return OneSlowStep(portal, beside: 1.7f, fromBehind: true, press: () => hands.Interact = true);
+            Assert.That(portal.Crossed(from, to), Is.False, "the step crossed the ring's plane beside the ring, and did not use it");
+            Assert.That(Vector3.Distance(to, portal.Pad), Is.LessThan(3), "and ended on the pad");
+            yield return null;      // the application may read a step in the frame after the avatar took it
+            Assert.That(app.InTransition, $"E on the pad uses the portal{Where()}");
+            Assert.That(Vector3.Dot(app.Avatar.Walk, portal.transform.forward), Is.EqualTo(-AvatarController.WalkSpeed).Within(1e-3f), "the avatar is before the ring's plane now, and the automatic walk goes on through that plane");
+            yield return Until(() => app.WorldReady, 60, "the arrival");
+        }
+
+        // And Esc beside the return ring uses no step either, in the frame the avatar's step
+        // crossed the ring's plane from the front.
+        [UnityTest]
+        public IEnumerator AnEscBesideTheRingWalksFromTheSideTheAvatarIsOn()
+        {
+            yield return World();
+            App app = App.Instance;
+            Portal portal = app.ReturnPortal;
+            yield return OneSlowStep(portal, beside: 3, press: () => hands.Back = true);
+            Assert.That(portal.Crossed(from, to), Is.False, "the step crossed the ring's plane beside the ring, and did not use it");
+            Assert.That(Vector3.Distance(to, portal.transform.position), Is.LessThan(2 * Portal.PadDistance), "and ended near enough to the ring for the automatic walk");
+            yield return null;      // the application may read a step in the frame after the avatar took it
+            Assert.That(app.InTransition, $"Esc returns to the hub{Where()}");
+            Assert.That(Vector3.Dot(app.Avatar.Walk, portal.transform.forward), Is.EqualTo(AvatarController.WalkSpeed).Within(1e-3f), "the avatar is behind the ring's plane now, and the automatic walk goes back through that plane");
+            yield return Until(() => app.Place == Place.Hub && !app.InTransition, 60, "the arrival in the hub");
+        }
+
+        // DEC-1033: a step kept at the world's limit is a step like any other. An avatar pushed
+        // along the limit stands on dry ground there, and a step from there into the water is not
+        // taken: it stays at the edge. Before, it went back to the last dry ground it had stood on
+        // inside the limit, however far away. The lake lies across the limit, and the limit does
+        // not lead into it.
+        [UnityTest]
+        public IEnumerator AStepIntoWaterFromTheWorldsEdgeStaysAtTheEdge()
+        {
+            yield return World();
+            App app = App.Instance;
+            GroundPlan plan = app.GroundPlan;
+            float limit = app.World.Layout.WorldRadius / 1000f + GroundPlan.Margin - 20;
+            Vector3 OnLimit(float bearing) => new Vector3(Mathf.Sin(bearing), 0, Mathf.Cos(bearing)) * limit;
+            bool Wet(Vector3 at) => plan.Wet(at.x, at.z);
+
+            // West along the limit from the lake's bearing, half a metre at a time, to dry ground.
+            var lake = new Vector3(plan.LakeCentre.x, 0, plan.LakeCentre.y);
+            float inLake = Mathf.Atan2(lake.x, lake.z), dry = inLake;
+            Assert.That(Wet(OnLimit(inLake)), "the lake's wet ground lies across the world's limit");
+            while (Wet(OnLimit(dry)))
+            {
+                dry -= 0.5f / limit;
+            }
+
+            // The avatar's own step is kept each frame, so every call here is in one frame.
+            Vector3 edge = app.Avatar.Keep(OnLimit(dry) * 1.01f);
+            Assert.That(Vector3.Distance(edge, OnLimit(dry)), Is.LessThan(0.01f), "5 m beyond the limit is kept on the limit");
+            Vector3 water = edge + (lake - edge).normalized * 1.5f;
+            Assert.That(Wet(water) && water.magnitude < limit, "a step of 1.5 m toward the lake ends in the water, inside the limit");
+            Assert.That(Vector3.Distance(app.Avatar.Keep(water), edge), Is.LessThan(1e-3f), "the step into the water is not taken: the avatar stays where it was, at the edge");
+            Assert.That(Vector3.Distance(app.Avatar.Keep(OnLimit(inLake) * 1.01f), edge), Is.LessThan(1e-3f), "and a step along the limit into the lake is not taken either");
         }
 
         // DEC-989: the swept check reads the opening in the portal's own space, from either side:
