@@ -56,6 +56,23 @@ namespace Eternities.Tests
             }
         }
 
+        // No paleness (DEC-1055, B1): a variant's ground does not shine. A layer's gloss is the
+        // mean smoothness of its mask as the layer reads it, and the first meadow, with a mean of
+        // 0.54 on seven tenths of its ground, lay toward the sun as one pale sheet.
+        [TestCaseSource(nameof(All))]
+        public void AVariantsGroundDoesNotShine(Variant variant)
+        {
+            foreach ((string name, float _) in variant.Ground)
+            {
+                var layer = AssetDatabase.LoadAssetAtPath<TerrainLayer>($"{Generate.LayerFolder}/{name}.terrainlayer");
+                Assert.That(layer, Is.Not.Null, name);
+                Assert.That(layer.metallic, Is.EqualTo(0), $"{name} is a metal");
+                Assert.That(layer.maskMapRemapMin.w, Is.EqualTo(0), name);
+                Assert.That(layer.maskMapRemapMax.w, Is.EqualTo(Generate.GlossRange(name)), $"{name}'s file has another range than the generation entry point gives it");
+                Assert.That(Generate.Gloss(layer), Is.InRange(0f, Generate.GroundGloss), $"{variant.Name}'s ground {name} shines");
+            }
+        }
+
         // No flat model stands in a variant: every prop is one of the kit's photographic prefabs,
         // which `PropRuleTests` holds to the rule at the photographic standard.
         [TestCaseSource(nameof(All))]

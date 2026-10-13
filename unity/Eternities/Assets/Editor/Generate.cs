@@ -273,9 +273,9 @@ namespace Eternities.EditorTools
             // The kit's variants (PRD v4 5.6.3, 8.12.1; DEC-1003): each one's ground layers and
             // props, as `Variants.Temperate` names them. A photographed ground is its photograph,
             // with no tint, on a tile as wide as the ground it shows.
-            foreach (KeyValuePair<string, (string size, float metres)> photograph in Photographed)
+            foreach (KeyValuePair<string, (string size, float metres, float gloss)> photograph in Photographed)
             {
-                KitLayer(photograph.Key, photograph.Key, photograph.Value.size, photograph.Value.metres, Color.white);
+                KitLayer(photograph.Key, photograph.Key, photograph.Value.size, photograph.Value.metres, Color.white, photograph.Value.gloss);
             }
             KitVariant[] variants = Variants.Temperate.Select(variant => new KitVariant
             {
@@ -379,12 +379,48 @@ namespace Eternities.EditorTools
 
         // The photographed ground of the kit's variants (`Assets/Kits/temperate/CREDITS.md`): each
         // texture is a terrain layer of its own name, at the size of its files and on a tile as
-        // wide, in metres, as its source's page says the photograph is.
-        static readonly Dictionary<string, (string size, float metres)> Photographed = new Dictionary<string, (string, float)>
+        // wide, in metres, as its source's page says the photograph is. The last figure is the
+        // most gloss the layer draws: the top of the range its mask's smoothness is read into.
+        // It is 1, the mask as it is, for every ground but `ground037`. That file's roughness is
+        // 0.46 on average as ambientCG publishes it, where the six others' are 0.78 to 0.93, and
+        // with the mask as it is the meadow shone toward the sun as one pale sheet (DEC-1055, B1).
+        // At 0.25 its mean gloss is 0.13, the middle of the six others' 0.07 to 0.22.
+        static readonly Dictionary<string, (string size, float metres, float gloss)> Photographed = new Dictionary<string, (string, float, float)>
         {
-            ["ground037"] = ("1k", 2.1f), ["forrest_ground_01"] = ("2k", 2), ["forest_leaves_03"] = ("2k", 2.3f),
-            ["brown_mud_leaves_01"] = ("2k", 1.3f), ["mud_forest"] = ("2k", 2.3f), ["dark_rock"] = ("2k", 2.4f), ["dark_rock_02"] = ("2k", 2),
+            ["ground037"] = ("1k", 2.1f, 0.25f), ["forrest_ground_01"] = ("2k", 2, 1), ["forest_leaves_03"] = ("2k", 2.3f, 1),
+            ["brown_mud_leaves_01"] = ("2k", 1.3f, 1), ["mud_forest"] = ("2k", 2.3f, 1), ["dark_rock"] = ("2k", 2.4f, 1), ["dark_rock_02"] = ("2k", 2, 1),
         };
+
+        // The top of the range a photographed ground's layer reads its mask's smoothness into.
+        public static float GlossRange(string layer) => Photographed[layer].gloss;
+
+        // The most gloss a variant's ground has, as `Gloss` measures it: dry ground is rough. The
+        // glossiest of the photographs as they are is the wood's leaf litter, at 0.22.
+        public const float GroundGloss = 0.25f;
+
+        // A layer's gloss: the mean smoothness of its mask, read into the layer's own range. The
+        // mean is taken from the mask's file: its roughness is the green of an `arm` file and the
+        // grey of a `rough` file (`KitMaskImport`), and smoothness is one minus it.
+        public static float Gloss(TerrainLayer layer)
+        {
+            string file = AssetDatabase.GetAssetPath(layer.maskMapTexture);
+            var mask = new Texture2D(2, 2, TextureFormat.RGBA32, true, true);
+            try
+            {
+                if (!mask.LoadImage(File.ReadAllBytes(file)))
+                {
+                    throw new InvalidDataException($"{file} is not a picture");
+                }
+                // The smallest level of a picture is its mean.
+                Color32 mean = mask.GetPixels32(mask.mipmapCount - 1)[0];
+                float smoothness = 1 - (Path.GetFileName(file).Contains("_arm_") ? mean.g : mean.r) / 255f;
+                return Mathf.Lerp(layer.maskMapRemapMin.w, layer.maskMapRemapMax.w, smoothness);
+            }
+            finally
+            {
+                Object.DestroyImmediate(mask);
+            }
+        }
 
         static TerrainLayer VariantLayer(string name)
         {
@@ -399,7 +435,7 @@ namespace Eternities.EditorTools
         // A terrain layer of the temperate kit: one texture's colour, normal and mask maps. The mask
         // is the kit's `arm` file, or its `rough` file where the source has no `arm`, as
         // `KitMaskImport` packs it, so the layer's smoothness and occlusion are the texture's own.
-        static TerrainLayer KitLayer(string name, string texture, string size, float metres, Color tint)
+        static TerrainLayer KitLayer(string name, string texture, string size, float metres, Color tint, float gloss = 1)
         {
             string path = $"{LayerFolder}/{name}.terrainlayer";
             var layer = AssetDatabase.LoadAssetAtPath<TerrainLayer>(path);
@@ -432,6 +468,7 @@ namespace Eternities.EditorTools
                     maskMapTexture = Map(File.Exists(Named("arm")) ? "arm" : "rough"),
                     tileSize = new Vector2(metres, metres),
                     diffuseRemapMax = new Vector4(tint.r, tint.g, tint.b, 1),      // HDRP's terrain shader reads the tint here
+                    maskMapRemapMax = new Vector4(1, 1, 1, gloss),                  // and the mask's smoothness, its alpha, into 0 to this
                 };
                 AssetDatabase.CreateAsset(layer, path);
                 AssetDatabase.SaveAssets();
