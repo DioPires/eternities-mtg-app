@@ -672,6 +672,26 @@ def test_a_coordinate_too_long_to_square_fails_as_an_anchor_outside_the_disc(
     assert problem.message == f"{anchor} lies outside the unit disc: {_COORDINATE_LINE}"
 
 
+@pytest.mark.parametrize(
+    ("outside", "beside"),
+    [([1001, 0], [1000, 0]), ([800, 800], [700, 700])],
+    ids=["a coordinate over 1000", "a sum over 1,000,000"],
+)
+def test_an_anchor_outside_the_disc_is_not_placed_so_no_distance_is_measured_from_it(
+    tmp_path: Path, outside: list[int], beside: list[int]
+):
+    """The row after it is inside the disc and under 150 from it. The anchor outside the disc was
+    reported once and is no place on the map, so the row beside it gets no line about a distance."""
+    regions = kit.regions()
+    regions["regions"][0]["anchor"] = outside
+    regions["regions"][1]["anchor"] = beside
+
+    problem = kit.only(kit.problems(kit.write(tmp_path, regions_table=regions)))
+
+    assert problem.rule is Rule.ANCHOR_OUTSIDE_DISC
+    assert (problem.row, problem.field) == ('regions[0] "north"', "anchor")
+
+
 @pytest.mark.parametrize("weight", [499, 2001, 0, -1000])
 def test_a_weight_outside_500_to_2000_fails(tmp_path: Path, weight: int):
     regions = kit.regions()
