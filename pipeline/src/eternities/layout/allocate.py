@@ -14,6 +14,12 @@ is reached. It is the only allocator (8.3.3): the engine reads its output.
   not only the sites placed before it.
 - A local geometry, a capacity and a placement are pure functions of their inputs, so a restart
   that meets the same inputs again reads the earlier result instead of computing it again.
+- The arrival point is the plaza's centre, the world's origin. The return portal's pad is the
+  disc of radius 1.5 m centred 1.5 m north of the portal, between the portal and the centre.
+- A hero volume is used as its file gives it. 5.4.11 says "clipped to the world"; no test reads
+  the ground outside the world polygon, so no step clips it, and it is emitted whole.
+- The partition is computed on every pass and its degeneracy test with it. The partition has
+  the same shape at every R (5.4.5), so the test of the first pass is the test of every pass.
 - A site is exhausted at placement when two void slots in a row cut its path, or its kept slots
   run out, while cards remain (the CEO's ruling 2 of 2026-10-13 on DEC-1004, W). It is widened
   and the pass restarts at step (4).
@@ -52,7 +58,7 @@ from .constants import (
     world_seed,
 )
 from .exact import Directions, Prng, Pt
-from .geometry import SegmentIndex, Shape, boxes_apart, clear, disc, point_in_polygon, strip
+from .geometry import SegmentIndex, Shape, boxes_apart, clear, disc, strip
 from .local import Local
 from .placement import Foreign, Placement
 from .regions import RegionRow
@@ -318,8 +324,8 @@ def allocate(
 def _check_volumes(state: _State) -> None:
     pad = disc(state.directions.disc, RETURN_PAD[0], RETURN_PAD[1], 1, PAD_RADIUS)
     for volume in state.volumes:
-        den = volume.shape.den
-        if point_in_polygon(0, 0, volume.shape.scaled(den)):
+        # The point is the second shape: ``clear`` reads a lone point there.
+        if not clear(volume.shape, Shape([(0, 0)], 1, closed=False), MARGIN):
             raise LayoutError(
                 f"hero volume {volume.id!r} of {state.slug} covers the arrival point (5.4.11)"
             )
@@ -480,7 +486,12 @@ def _trail(
         return None, []
     approach = trail.plaza_approach(obstacles, points[chain[0]], state.directions)
     if approach is None:
-        return _Short("the plaza approach finds no angle")
+        first = plans[chain[0]].key
+        return _Short(
+            f"the trail leg from 'plaza' to {first!r} has no route: the plaza approach finds "
+            "no angle",
+            first,
+        )
     prng = Prng.of(world_seed(state.slug))
     legs: list[Leg] = []
     name, anchor = "plaza", approach.far

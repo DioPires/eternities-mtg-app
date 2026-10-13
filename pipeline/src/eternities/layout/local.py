@@ -19,6 +19,11 @@ fixtures:
   chord shorter than ``s`` dropped with every sweep after it. A sweep that a drop leaves last
   keeps its shortened and trimmed far end.
 - The wobble's two draws are taken for the sweeps that are kept, in sweep order.
+- A run's samples are displaced along ``n_s``, the left normal of the sweep direction, on every
+  sweep (5.4.8). 5.4.18 (5) says "the table left normal of the segment's direction", which is
+  ``-n_s`` on a sweep that runs against ``d_s``; the two sentences disagree there, and the code
+  follows 5.4.8.
+- A vertex that rounds to the vertex before it is dropped, so no segment has a length of zero.
 - The head ``H`` is the first vertex of the rounded path. The pad's centre is the first vertex of
   the rounded approach, and the approach point is its second.
 - The stone stands on the side whose centre is farther from the first run's polyline.

@@ -16,6 +16,13 @@ centre is an input: a lattice point's local position is its world position less 
   ends at the first vertex at or past the cut's arc length, the rule of the trim (5.4.10).
 - The plaza approach is reserved at step (6) of 5.4.12, after this step, so test (b) cannot read
   it here; placement tests it (5.4.10).
+- The allocator passes no plaza, edge path or hero volume to tests (b) to (d). A site's bounding
+  disc lies 10 m from each of them (5.4.6) and a candidate lies inside the blob, 15 m inside that
+  disc, so no candidate can meet one. ``capacity_of`` takes them for a caller that has them, and
+  placement tests them on the final geometry all the same (5.4.10).
+- A slot takes its three draws when it is reached. After two void slots in a row the path ends
+  and no later slot is a slot (5.4.9), so none draws: the jitter draws of placement follow the
+  draws of the slots up to the cut.
 """
 
 from __future__ import annotations

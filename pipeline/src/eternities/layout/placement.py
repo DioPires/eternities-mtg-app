@@ -43,6 +43,8 @@ until the next erratum writes them into the PRD:
   pitch (5.4.18 (8)), so on one stand a point. The independent checker found the pair on
   Dominaria: two stands of `era:urzas-academy` 451 mm apart, in the clusters at 45 m and 261 m.
   A withdrawn cluster gives its points back.
+- A site with no stand keeps the first segment of its path: t_end of the trim has no slot and no
+  corridor to read. Such a site is an era whose every card stands at a regional site (5.4.3).
 - A stone's yaw and a pad's yaw are set at emission, not here.
 - Other sites' stands, stones, paths and pads are not tested: every site's bounding disc lies
   10 m from every other's (5.4.6), and the independent checker asserts the pairs all the same.
@@ -441,7 +443,9 @@ def _stand_conflict(stand: Stand, index: _Index) -> int:
     Returns 0 when nothing is met, or the index in :data:`CAUSES` of the first rule broken.
     """
     box = _box(stand)
-    for other in index.near(box):
+    # The query reaches the margin past the stand's own box: a stand in the next cell of the grid
+    # can lie within 2 mm of this one without its box entering this one's cells.
+    for other in index.near(_grow(box, MARGIN + 1)):
         if boxes_apart(box, _box(other), MARGIN + 1):
             continue
         if not (

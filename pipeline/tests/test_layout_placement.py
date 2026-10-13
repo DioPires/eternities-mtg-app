@@ -12,17 +12,26 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from eternities.layout.capacity import Candidate
+from eternities.layout.capacity import APRON_FRONT, APRON_HALF, FOOT_BACK, FOOT_HALF, Candidate
 from eternities.layout.constants import (
     CLUSTER_OFFSET,
     CORRIDOR_ARC_WINDOW,
+    CORRIDOR_HALF_WIDTH,
+    MARGIN,
     MICRO_PER_TURN,
     JITTER_RADIUS,
     SLOT_SPACING,
 )
 from eternities.layout.exact import SCALE, Prng
-from eternities.layout.geometry import disc
-from eternities.layout.placement import CAUSES, place_site
+from eternities.layout.geometry import clear, disc, rectangle, strip
+from eternities.layout.placement import (
+    CAUSES,
+    Stand,
+    _box,
+    _Index,
+    _stand_conflict,
+    place_site,
+)
 
 from layout_kit import SLOT_Z, capacity_with, directions, row, slot_at, straight_site
 
@@ -251,3 +260,42 @@ def test_a_withdrawn_cluster_gives_its_lattice_points_back():
         (1, 2, 1),
     ]
     assert sum(placed.rejected) == 0
+
+
+def test_two_stands_within_the_margin_across_a_line_of_the_grid_are_found():
+    # Stand A faces north and its corridor's east side lies at x = 7,999 mm. Stand B faces east
+    # and its footprint's back edge lies at x = 8,000.5 mm: 1.5 mm from that corridor, under the
+    # 2 mm margin. The two boxes lie in two cells of the 8 m grid of accepted stands.
+    north, east = directions().at(90_000), directions().at(0)
+
+    def stand(x: int, z: int, facing: tuple[int, int], yaw: int, reach: int) -> Stand:
+        end = (x + reach * facing[0], z + reach * facing[1])
+        start = (x + APRON_FRONT * facing[0], z + APRON_FRONT * facing[1])
+        return Stand(
+            slot=0,
+            row=0,
+            column=yaw,
+            x=x,
+            z=z,
+            yaw=yaw,
+            vertex=0,
+            nearest=0,
+            rank=0,
+            footprint=rectangle(x, z, facing, -FOOT_BACK, FOOT_BACK, FOOT_HALF),
+            apron=rectangle(x, z, facing, FOOT_BACK, APRON_FRONT, APRON_HALF),
+            corridor=strip([start, end], CORRIDOR_HALF_WIDTH, SCALE),
+        )
+
+    first = stand(7_249 * SCALE, 0, north, 90_000, 6_000)
+    second = stand(8_150 * SCALE + SCALE // 2, 3_000 * SCALE, east, 0, 6_000)
+    assert not clear(first.corridor, second.footprint, MARGIN)
+    assert clear(first.corridor, second.footprint, 1)
+    index = _Index()
+    index.add(first)
+    # The second stand's own cells do not hold the first: the query must reach past them.
+    assert index.near(_box(second)) == []
+    cause = _stand_conflict(second, index)
+    assert CAUSES[cause] == "the footprint or the apron lies in another stand's corridor"
+    # A millimetre farther east the pair is clear, and the stand is accepted.
+    third = stand(8_151 * SCALE + SCALE // 2, 3_000 * SCALE, east, 0, 6_000)
+    assert _stand_conflict(third, index) == 0

@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import struct
 from functools import cache
+from math import isqrt
 from pathlib import Path
 from typing import Any
 
@@ -128,7 +130,7 @@ def test_the_stand_index_joins_a_record_to_its_corridor_vertex():
     )
     arcs = [0]
     for (ax, az), (bx, bz) in zip(site["path"], site["path"][1:], strict=False):
-        arcs.append(arcs[-1] + int(((bx - ax) ** 2 + (bz - az) ** 2) ** 0.5))
+        arcs.append(arcs[-1] + isqrt((bx - ax) ** 2 + (bz - az) ** 2))
     for stand in built.emitted.stands:
         vertex = world["stands"]["vertex"][stand.index]
         assert vertex < len(site["path"])
@@ -280,6 +282,48 @@ def test_three_chapters_of_one_card_stand_in_one_cluster_with_two_chapter_stones
     for stone in (second["stone"], third["stone"]):
         k, rest = divmod(stone["z"], 2_599)
         assert rest == 0 and (stone["x"] - 1_500 * k) % 3_000 == 0
+
+
+def test_an_era_whose_every_card_moved_keeps_its_site_with_no_stand(tmp_path: Path):
+    # The fixture's plane, cut down to the one card that the keyword moves: the era site has no
+    # card left. It still stands, with its pad, its reading stone and the first segment of its
+    # path, because the trail visits every era (5.4.2, 5.4.11).
+    fixture = next(found for found in fixtures.discover() if found.name == "keyword-moves-one-card")
+    shutil.copytree(fixture.directory, tmp_path / "moved")
+    shard = tmp_path / "moved" / "pack" / "planes" / "ixalan.0.json"
+    rows = json.loads(shard.read_text(encoding="utf-8"))
+    rows["cards"] = [card for card in rows["cards"] if card["n"] == "Sunspire Lookout"]
+    shard.write_text(json.dumps(rows), encoding="utf-8")
+    planes = tmp_path / "moved" / "pack" / "planes.json"
+    listed = json.loads(planes.read_text(encoding="utf-8"))
+    listed["planes"][0]["cardCount"] = listed["planes"][0]["starCount"] = 1
+    planes.write_text(json.dumps(listed), encoding="utf-8")
+    built = build.build_world(
+        "ixalan",
+        tmp_path / "moved" / "pack",
+        directions(),
+        lore_dir=tmp_path / "moved" / "ixalan",
+        hero_entries=load_hero_entries(),
+        fixture=True,
+    )
+    era, regional = built.emitted.world["sites"]
+    assert (era["key"], era["clusters"], era["chapters"], len(era["path"])) == (
+        "era:landfall",
+        [],
+        [],
+        2,
+    )
+    assert era["stone"]["kind"] == "reading" and era["setIds"] == [1]
+    assert [cluster["stands"] for cluster in regional["clusters"]] == [1]
+    assert built.assignment.empty_chapters == (("landfall", "ix1"),)
+    assert [leg["to"] for leg in built.emitted.world["trail"]["legs"]] == [
+        "era:landfall",
+        "region:south",
+    ]
+    assert build.check_built(built, trig.load()).ok
+    text = report.render(built, None, directions())
+    assert "### Empty chapters\n\n| Era | Set |\n|---|---|\n| `landfall` | `ix1` |" in text
+    assert report.site_gaps(built.layout.sites[0]) == (0, 0, 0)
 
 
 # --- lore/<slug>.json (4.16.3) ----------------------------------------------------------------

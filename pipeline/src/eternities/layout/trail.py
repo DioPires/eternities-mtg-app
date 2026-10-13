@@ -15,7 +15,14 @@ from a hero volume, from the plaza with its edge path or from a site's blob.
 - The two attachment cells of a leg are never treated as blocked on that leg. A site's cell and
   the plaza approach's cell are free by construction; a spur starts at a vertex of the wobbled
   trail, and that vertex can lie in a blocked cell.
-- Smoothing tests the closed squares of the cells that the straight segment touches.
+- Smoothing tests the closed squares of the cells that the straight segment touches. It is one
+  pass from the start: a vertex is tested against the vertex kept before it and the vertex after
+  it, and when it goes the next vertex is tested against the same kept vertex.
+- A vertex of a leg that equals the vertex before it is dropped, so an attachment segment whose
+  anchor point is its cell's centre has no length.
+- A leg is not tested against the pads and the stones when it is reserved. 5.4.11 holds that
+  none can meet one; the independent checker tests every pair on the final geometry (5.4.12,
+  step (8)), and a leg that met one would fail the build there.
 - A spur starts at the vertex of the legs reserved so far that is nearest the regional site's
   approach point: by squared distance, then by leg, then by vertex.
 - The plaza approach runs from the rounded point 15 m from the origin to the rounded point 25 m

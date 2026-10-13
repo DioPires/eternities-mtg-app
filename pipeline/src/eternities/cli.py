@@ -468,7 +468,8 @@ def _cmd_layout_fixtures(args: argparse.Namespace) -> int:
         state = "differs" if different else "matches"
         if not args.check:
             state = "written" if different else "unchanged"
-        print(f"{fixture.name}: {len(produced)} files, {state}")
+        # Flushed, so a log shows each fixture when it is done: Dominaria takes a minute or more.
+        print(f"{fixture.name}: {len(produced)} files, {state}", flush=True)
     if not wanted:
         print(f"predicates: {len(list(fixtures.PREDICATES.glob('*.json')))} documents")
     for line in problems:

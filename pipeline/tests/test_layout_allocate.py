@@ -197,8 +197,13 @@ def test_a_leg_with_no_route_on_the_twentieth_pass_fails_naming_its_two_ends(
 
 def test_a_plaza_approach_with_no_angle_makes_the_world_short(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(trail, "plaza_approach", _always(None))
-    with pytest.raises(LayoutError, match="the plaza approach finds no angle after 20 passes"):
+    with pytest.raises(LayoutError) as raised:
         lay([set_site(4)])
+    # The failure names the leg's two ends (5.4.11).
+    assert str(raised.value) == (
+        "mercadia: the trail leg from 'plaza' to 'set:ha1' has no route: the plaza approach "
+        "finds no angle after 20 passes (5.4.12)"
+    )
 
 
 def square(x: int, z: int, half: int) -> Volume:
@@ -215,6 +220,21 @@ def test_a_hero_volume_over_the_arrival_point_or_the_return_pad_fails_naming_the
         allocate.allocate("mercadia", [set_site(4)], None, [square(0, 0, 2_000)], directions())
     with pytest.raises(LayoutError, match="hero volume 'keep' of mercadia covers the return pad"):
         allocate.allocate("mercadia", [set_site(4)], None, [square(0, -7_000, 1_000)], directions())
+
+
+def test_a_hero_volume_within_two_millimetres_of_the_arrival_point_covers_it():
+    # 5.4.18 (4): the arrival point must lie 2 mm clear of a volume, as every exclusion does.
+    def north_of(gap: int) -> Volume:
+        return Volume(
+            "keep",
+            polygon([(-2_000, gap), (2_000, gap), (2_000, gap + 3_000), (-2_000, gap + 3_000)]),
+        )
+
+    for gap in (-1_000, 0, 1):
+        with pytest.raises(LayoutError, match="covers the arrival point"):
+            allocate.allocate("mercadia", [set_site(4)], None, [north_of(gap)], directions())
+    found = allocate.allocate("mercadia", [set_site(4)], None, [north_of(2)], directions())
+    assert found.volumes[0].id == "keep"
 
 
 def test_a_hero_volume_may_overlap_the_plaza_and_moves_the_first_site():
