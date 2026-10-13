@@ -153,22 +153,56 @@ The rule is `Assets/Editor/PropRule.cs`; the figures below are its constants.
 5. **Levels of detail.** A prop over 2,000 triangles carries lighter levels, the farthest with at
    most a tenth of the nearest's triangles, and every level has the nearest level's materials. The
    importer makes the levels from `generateMeshLods` in the model's `.meta`; a renderer draws from
-   a lighter level on with a whole `meshLodSelectionBias`.
+   a lighter level on with a whole `meshLodSelectionBias`. A tree is cut to levels of its own,
+   one mesh a level (Derived files, below): the importer would thin its leaves away. Its prefab
+   draws them through a `LODGroup`, the nearest while the tree is 30% of the view's height or
+   more, then down to 10%, to 3.5% and to the edge of sight.
 6. **What a build carries.** The meshes of a prop hold at most 150,000 triangles, whichever level
    is drawn.
 7. **At the `photographic` standard** (PRD v4 8.12.6), for every category but structures:
    - a model is imported at its file's own scale and drawn at 0.5 to 2 times that size;
    - a material's colour is a file under the kit's `Props/` or `Terrain/`, as downloaded, read as
      a colour and not tinted;
-   - a material that lets light through has a thickness of at least 0.5.
+   - a material that lets light through has a thickness of at least 0.5;
+   - a cut tree's leaves are cards that carry the round crown's normal on both faces, and such a
+     material has no gloss: with the photograph's gloss a crown shines as one mirror.
 8. **Credits.** The kit's `CREDITS.md` states its standard above its first table, as
    `standard: basic` or `standard: photographic`, and lists every prefab under "Props as drawn"
    with the height and the triangles measured on it.
 
 The caps are the proposal of 2026-10-12 on DEC-1003, from the measured figures of the candidate
-models; the owner sets them from PRD v4 7.2's kit rows. The three rules of item 7 are the three
-defects of the photographic trial of 2026-10-11 (DEC-953): stones of 7 to 30 cm drawn at 2 to 3 m,
-a leaf's photograph written out again too dark, and far trees pale against the sun.
+models; the owner sets them from PRD v4 7.2's kit rows. The first three rules of item 7 are the
+three defects of the photographic trial of 2026-10-11 (DEC-953): stones of 7 to 30 cm drawn at 2
+to 3 m, a leaf's photograph written out again too dark, and far trees pale against the sun. The
+fourth is the same paleness from a second cause, found on this kit's first wood.
+
+### Derived files
+
+A derived file is a binary that a committed script makes from a CC0 source (PRD v4 7.6.4, by the
+owner's answer of 2026-10-13 on DEC-1003; DEC-1038 is the erratum that records it). The kit's
+trees are derived: a tree as Poly Haven publishes it is one mesh of one to four million triangles
+with no lighter level, and `Assets/Kits/temperate/Derive/cut_tree.py` cuts it to four levels of
+about 59,000, 10,000, 1,900 and 450 triangles. The script's own first lines say what the cut does.
+
+- **The source is pinned and not committed.** The file's entry in `sources.yaml` has the source's
+  address (`url`), the source's SHA-256 (`source_sha256`), the script and its word for the tree
+  (`derived_by`), and the derived file's own SHA-256. `CREDITS.md` credits the source's author.
+- **`fetch.sh` verifies the derived file** against its SHA-256 and does not download it.
+- **`derive.sh` makes it again**: it downloads the source, verifies it, runs the script in
+  Blender and compares the result with the kit's file, byte for byte. The script fixes the two
+  things that differ between two runs of Blender's FBX exporter, its clock and its object numbers.
+  The bytes are those of the Blender the file's report names; with another Blender `derive.sh`
+  compares the reports and says so.
+- **The report** is `Derive/<file>.json`, written by the script: what it kept of the source, level
+  by level. `PropRuleTests` holds each level's mesh to the triangles its report counts.
+- **No texture is derived.** A cut model is drawn with its source's photographs as downloaded.
+
+```sh
+unity/Eternities/Assets/Kits/temperate/derive.sh                           # make each again and compare
+unity/Eternities/Assets/Kits/temperate/derive.sh --write Props/<file>.fbx  # after a change to the script
+```
+
+After `--write`, put the SHA-256 it prints into the file's entry in `sources.yaml`.
 
 ## Kit variants
 
@@ -198,8 +232,9 @@ unity/Eternities/batchmode.sh -executeMethod Eternities.EditorTools.KitPictures.
 ```
 
 The first dresses a patch of ground with each variant at the density of the quality level, 240 m
-across, and looks north and toward the sun. The second stands each category's prefabs in rows. Both
-take `-picturesQuality` (`medium` if not given) and `-picturesSunKelvin`.
+across, and looks north and toward the sun. The second stands each category's prefabs in rows, or
+one category's with `-picturesCategory Trees`. Both take `-picturesQuality` (`medium` if not given)
+and `-picturesSunKelvin`.
 
 ## Batchmode commands
 

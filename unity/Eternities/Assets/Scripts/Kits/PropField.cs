@@ -18,6 +18,11 @@ namespace Eternities.Kits
         public Quaternion Turn = Quaternion.identity;
         public float Scale = 1;
         public int From;
+        // A tree is cut to levels of its own (`Derive/cut_tree.py`), each a mesh, and not to the
+        // importer's: `Mesh` is drawn while the prop takes at least `First` of the view's height,
+        // and then each of `Levels` in turn. A prop of one mesh has none.
+        public float First;
+        public KitLevel[] Levels = new KitLevel[0];
 
         // One of it as an object of its own: the prop's base at `position`, turned by `yaw` degrees
         // and `scale` times its prefab's size.
@@ -33,8 +38,37 @@ namespace Eternities.Kits
             renderer.sharedMaterials = Materials;
             renderer.shadowCastingMode = shadow ? ShadowCastingMode.On : ShadowCastingMode.Off;
             renderer.meshLodSelectionBias = From;
+            if (Levels != null && Levels.Length > 0)
+            {
+                var levels = new LOD[Levels.Length + 1];
+                levels[0] = new LOD(First, new Renderer[] { renderer });
+                for (int i = 0; i < Levels.Length; i++)
+                {
+                    var level = new GameObject($"LOD{i + 1}");
+                    level.transform.SetParent(made.transform, false);
+                    level.AddComponent<MeshFilter>().sharedMesh = Levels[i].Mesh;
+                    var lighter = level.AddComponent<MeshRenderer>();
+                    lighter.sharedMaterials = Levels[i].Materials;
+                    lighter.shadowCastingMode = renderer.shadowCastingMode;
+                    levels[i + 1] = new LOD(Levels[i].Until, new Renderer[] { lighter });
+                }
+                var group = made.AddComponent<LODGroup>();
+                group.fadeMode = LODFadeMode.None;
+                group.SetLODs(levels);
+                group.RecalculateBounds();
+            }
             return renderer;
         }
+    }
+
+    // A lighter level of a prop that was cut to levels of its own: it is drawn while the prop
+    // takes at least `Until` of the view's height and less than the level before it needs.
+    [Serializable]
+    public sealed class KitLevel
+    {
+        public Mesh Mesh;
+        public Material[] Materials;
+        public float Until;
     }
 
     // A world's props as objects (PRD v4 8.4.2): one object a prop, and every object of a kind

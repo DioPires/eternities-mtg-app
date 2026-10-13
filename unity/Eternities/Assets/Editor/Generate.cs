@@ -326,9 +326,29 @@ namespace Eternities.EditorTools
             string path = KitPrefabs.Path("temperate", prefabName);
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
             MeshFilter[] filters = prefab == null ? new MeshFilter[0] : prefab.GetComponentsInChildren<MeshFilter>();
-            if (filters.Length != 1 || filters[0].sharedMesh == null)
+            // A prop cut to levels of its own draws them through a `LODGroup`, one mesh a level,
+            // each standing where the first does.
+            LOD[] levels = prefab == null || prefab.GetComponent<LODGroup>() == null ? new LOD[0] : prefab.GetComponent<LODGroup>().GetLODs();
+            if (levels.Length > 0)
+            {
+                if (levels.Length != filters.Length || levels.Any(level => level.renderers.Length != 1 || level.renderers[0] == null))
+                {
+                    throw new InvalidDataException($"the kit's prop {path} has {levels.Length} levels for {filters.Length} meshes: one mesh a level");
+                }
+                filters = levels.Select(level => level.renderers[0].GetComponent<MeshFilter>()).ToArray();
+                Transform first = filters[0].transform;
+                if (filters.Any(filter => filter.transform.position != first.position || filter.transform.rotation != first.rotation || filter.transform.lossyScale != first.lossyScale))
+                {
+                    throw new InvalidDataException($"the levels of the kit's prop {path} do not stand in one place");
+                }
+            }
+            else if (filters.Length != 1)
             {
                 throw new InvalidDataException($"the kit's prop {path} is not a prefab of one mesh");
+            }
+            if (filters.Any(filter => filter == null || filter.sharedMesh == null))
+            {
+                throw new InvalidDataException($"the kit's prop {path} has a level with no mesh");
             }
             Transform model = filters[0].transform;
             bool upright = Quaternion.Angle(model.rotation, Quaternion.identity) < 0.01f;
@@ -341,11 +361,19 @@ namespace Eternities.EditorTools
                 Mesh = filters[0].sharedMesh, Materials = filters[0].GetComponent<MeshRenderer>().sharedMaterials,
                 Offset = model.position, Turn = upright ? Quaternion.identity : model.rotation, Scale = model.lossyScale.x,
                 From = Mathf.FloorToInt(filters[0].GetComponent<MeshRenderer>().meshLodSelectionBias),
+                First = levels.Length > 0 ? levels[0].screenRelativeTransitionHeight : 0,
+                Levels = filters.Skip(1).Select((filter, i) => new KitLevel
+                {
+                    Mesh = filter.sharedMesh, Materials = filter.GetComponent<MeshRenderer>().sharedMaterials, Until = levels[i + 1].screenRelativeTransitionHeight,
+                }).ToArray(),
             };
         }
 
         static bool Same(KitProp wanted, KitProp held) => held != null && wanted.Mesh == held.Mesh && held.Materials != null && wanted.Materials.SequenceEqual(held.Materials)
-            && wanted.Offset == held.Offset && wanted.Turn == held.Turn && wanted.Scale == held.Scale && wanted.From == held.From;
+            && wanted.Offset == held.Offset && wanted.Turn == held.Turn && wanted.Scale == held.Scale && wanted.From == held.From
+            && wanted.First == held.First && held.Levels != null && wanted.Levels.Length == held.Levels.Length
+            && wanted.Levels.Zip(held.Levels, (level, other) => other != null && level.Mesh == other.Mesh && level.Until == other.Until
+                && other.Materials != null && level.Materials.SequenceEqual(other.Materials)).All(same => same);
 
         public const string LayerFolder = "Assets/Kits/temperate/TerrainLayers";
 

@@ -146,6 +146,52 @@ that draws one of its meshes; "Props as drawn" lists them.
 | `Props/dry_branches_medium_01_diff_1k.jpg` | <https://polyhaven.com/a/dry_branches_medium_01> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Dry fallen branches, three of 0.8 to 1.3 m long; albedo |
 | `Props/dry_branches_medium_01_nor_gl_1k.jpg` | <https://polyhaven.com/a/dry_branches_medium_01> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Dry fallen branches, three of 0.8 to 1.3 m long; normal, OpenGL convention |
 | `Props/dry_branches_medium_01_arm_1k.jpg` | <https://polyhaven.com/a/dry_branches_medium_01> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-12 | Dry fallen branches, three of 0.8 to 1.3 m long; mask source, AO in R, roughness in G, metalness in B |
+| `Props/jacaranda_tree_trunk_diff_1k.jpg` | <https://polyhaven.com/a/jacaranda_tree> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Jacaranda, a spreading tree 19.5 m tall: its trunk; albedo |
+| `Props/jacaranda_tree_trunk_nor_gl_1k.jpg` | <https://polyhaven.com/a/jacaranda_tree> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Jacaranda, a spreading tree 19.5 m tall: its trunk; normal, OpenGL convention |
+| `Props/jacaranda_tree_trunk_arm_1k.jpg` | <https://polyhaven.com/a/jacaranda_tree> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Jacaranda, a spreading tree 19.5 m tall: its trunk; mask source, AO in R, roughness in G, metalness in B |
+| `Props/jacaranda_tree_branches_diff_1k.jpg` | <https://polyhaven.com/a/jacaranda_tree> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Jacaranda, a spreading tree 19.5 m tall: its boughs and twigs; albedo |
+| `Props/jacaranda_tree_branches_nor_gl_1k.jpg` | <https://polyhaven.com/a/jacaranda_tree> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Jacaranda, a spreading tree 19.5 m tall: its boughs and twigs; normal, OpenGL convention |
+| `Props/jacaranda_tree_branches_arm_1k.jpg` | <https://polyhaven.com/a/jacaranda_tree> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Jacaranda, a spreading tree 19.5 m tall: its boughs and twigs; mask source, AO in R, roughness in G, metalness in B |
+| `Props/jacaranda_tree_leaves_diff_1k.jpg` | <https://polyhaven.com/a/jacaranda_tree> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Jacaranda, a spreading tree 19.5 m tall: its leaves; albedo |
+| `Props/jacaranda_tree_leaves_nor_gl_1k.jpg` | <https://polyhaven.com/a/jacaranda_tree> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Jacaranda, a spreading tree 19.5 m tall: its leaves; normal, OpenGL convention |
+| `Props/jacaranda_tree_leaves_arm_1k.jpg` | <https://polyhaven.com/a/jacaranda_tree> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Jacaranda, a spreading tree 19.5 m tall: its leaves; mask source, AO in R, roughness in G, metalness in B |
+| `Props/jacaranda_tree_leaves_alpha_1k.png` | <https://polyhaven.com/a/jacaranda_tree> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Jacaranda, a spreading tree 19.5 m tall: its leaves; opacity |
+| `Props/tree_small_02_diff_1k.jpg` | <https://polyhaven.com/a/tree_small_02> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Slender small tree, 4.6 m tall: its trunk; albedo |
+| `Props/tree_small_02_nor_gl_1k.jpg` | <https://polyhaven.com/a/tree_small_02> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Slender small tree, 4.6 m tall: its trunk; normal, OpenGL convention |
+| `Props/tree_small_02_arm_1k.jpg` | <https://polyhaven.com/a/tree_small_02> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Slender small tree, 4.6 m tall: its trunk; mask source, AO in R, roughness in G, metalness in B |
+| `Props/tree_small_02_branch_diff_1k.jpg` | <https://polyhaven.com/a/tree_small_02> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Slender small tree, 4.6 m tall: its twigs; albedo |
+| `Props/tree_small_02_branch_nor_gl_1k.jpg` | <https://polyhaven.com/a/tree_small_02> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Slender small tree, 4.6 m tall: its twigs; normal, OpenGL convention |
+| `Props/tree_small_02_branch_arm_1k.jpg` | <https://polyhaven.com/a/tree_small_02> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Slender small tree, 4.6 m tall: its twigs; mask source, AO in R, roughness in G, metalness in B |
+| `Props/tree_small_02_leaves_diff_1k.jpg` | <https://polyhaven.com/a/tree_small_02> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Slender small tree, 4.6 m tall: its leaves; albedo |
+| `Props/tree_small_02_leaves_nor_gl_1k.jpg` | <https://polyhaven.com/a/tree_small_02> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Slender small tree, 4.6 m tall: its leaves; normal, OpenGL convention |
+| `Props/tree_small_02_leaves_arm_1k.jpg` | <https://polyhaven.com/a/tree_small_02> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Slender small tree, 4.6 m tall: its leaves; mask source, AO in R, roughness in G, metalness in B |
+| `Props/tree_small_02_leaves_alpha_1k.png` | <https://polyhaven.com/a/tree_small_02> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Slender small tree, 4.6 m tall: its leaves; opacity |
+| `Props/island_tree_01_diff_1k.jpg` | <https://polyhaven.com/a/island_tree_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Gnarled small tree, 5.0 m tall: its trunk; albedo |
+| `Props/island_tree_01_nor_gl_1k.jpg` | <https://polyhaven.com/a/island_tree_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Gnarled small tree, 5.0 m tall: its trunk; normal, OpenGL convention |
+| `Props/island_tree_01_arm_1k.jpg` | <https://polyhaven.com/a/island_tree_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Gnarled small tree, 5.0 m tall: its trunk; mask source, AO in R, roughness in G, metalness in B |
+| `Props/island_tree_01_branches_diff_1k.jpg` | <https://polyhaven.com/a/island_tree_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Gnarled small tree, 5.0 m tall: its twigs; albedo |
+| `Props/island_tree_01_branches_nor_gl_1k.jpg` | <https://polyhaven.com/a/island_tree_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Gnarled small tree, 5.0 m tall: its twigs; normal, OpenGL convention |
+| `Props/island_tree_01_branches_arm_1k.jpg` | <https://polyhaven.com/a/island_tree_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Gnarled small tree, 5.0 m tall: its twigs; mask source, AO in R, roughness in G, metalness in B |
+| `Props/island_tree_01_leaves_diff_1k.jpg` | <https://polyhaven.com/a/island_tree_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Gnarled small tree, 5.0 m tall: its leaves; albedo |
+| `Props/island_tree_01_leaves_nor_gl_1k.jpg` | <https://polyhaven.com/a/island_tree_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Gnarled small tree, 5.0 m tall: its leaves; normal, OpenGL convention |
+| `Props/island_tree_01_leaves_arm_1k.jpg` | <https://polyhaven.com/a/island_tree_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Gnarled small tree, 5.0 m tall: its leaves; mask source, AO in R, roughness in G, metalness in B |
+| `Props/island_tree_01_leaves_alpha_1k.png` | <https://polyhaven.com/a/island_tree_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Gnarled small tree, 5.0 m tall: its leaves; opacity |
+
+## Props, cut from photographic models (FBX)
+
+A tree as Poly Haven publishes it is one mesh of one to four million triangles, with no lighter
+level in its file. Each file here is such a tree cut to four levels of detail by
+`Derive/cut_tree.py` (PRD v4 7.6.4). Its source is pinned in `sources.yaml` by its address (`url`)
+and its SHA-256 (`source_sha256`) and is not committed; `derived_by` is the script and its word
+for the tree. `./derive.sh` downloads the source, cuts it again and holds the result to the file
+here, byte for byte. `Derive/<file>.json` is the cut's own report of what it kept. A cut model is
+drawn with its source's photographs, which are in the table above as downloaded.
+
+| File | Source | Author | Licence | Fetched | Intended use |
+|---|---|---|---|---|---|
+| `Props/jacaranda_tree_cut.fbx` | <https://polyhaven.com/a/jacaranda_tree> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Jacaranda, a spreading tree 19.5 m tall and 24.7 m across; the source's 3,863,832 triangles cut to four levels of 59,620 to 452 |
+| `Props/tree_small_02_cut.fbx` | <https://polyhaven.com/a/tree_small_02> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Slender small tree, 4.6 m tall; the source's 2,062,487 triangles cut to four levels of 58,999 to 429 |
+| `Props/island_tree_01_cut.fbx` | <https://polyhaven.com/a/island_tree_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Gnarled small tree, 5.0 m tall; the source's 1,599,403 triangles cut to four levels of 58,998 to 429 |
 
 ## Props as drawn
 
@@ -229,8 +275,11 @@ the rows from the prefabs: the editor's menu, Eternities, "Kit props as drawn".
 | bridge_wood | structure | `Props/bridge_wood.fbx` | 1.60 m | 220 | 3 |
 | path_wood | structure | `Props/path_wood.fbx` | 0.10 m | 60 | 2 |
 | statue_obelisk | structure | `Props/statue_obelisk.fbx` | 2.19 m | 38 | 2 |
+| island_tree_01 | tree | `Props/island_tree_01_cut.fbx` | 5.05 m | 58,998 to 429 | 3 |
+| jacaranda_tree | tree | `Props/jacaranda_tree_cut.fbx` | 19.48 m | 59,620 to 452 | 3 |
 | tree_oak | tree | `Props/tree_oak.fbx` | 7.97 m | 196 | 2 |
 | tree_pineTallA | tree | `Props/tree_pineTallA.fbx` | 9.94 m | 78 | 2 |
+| tree_small_02 | tree | `Props/tree_small_02_cut.fbx` | 4.58 m | 58,999 to 429 | 3 |
 | tree_thin | tree | `Props/tree_thin.fbx` | 8.57 m | 228 | 2 |
 
 ## Audio (Ogg Vorbis)
@@ -242,7 +291,7 @@ the rows from the prefabs: the editor's menu, Eternities, "Kit props as drawn".
 
 ## Notes for the slice
 
-- **Size.** The kit's sources are 116 files and 165.7 MB. `fetch.sh` holds a model and a texture
+- **Size.** The kit's sources are 149 files and 197.8 MB. `fetch.sh` holds a model and a texture
   to 8 MB each and the kit's sources to 200 MB, the proposal of 2026-10-12 on DEC-1003; the first
   slice's subset of 24 files and 39.2 MB was under DEC-952's limits of 200 KB a prop, 8 MB a
   texture and 60 MB in all. The cooked size against PRD 7.2 is the build's check (PRD 8.7.2), not

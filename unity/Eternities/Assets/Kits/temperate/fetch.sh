@@ -9,6 +9,10 @@
 # It also fails if CREDITS.md and sources.yaml disagree on any row, or if an asset folder holds a
 # file that sources.yaml does not list.
 #
+# A derived file (PRD v4 7.6.4) is one a committed script made from a source: its entry has
+# `derived_by` and `source_sha256`, and its `url` is the source's. It is not downloaded: this
+# verifies the kit's own copy, and `./derive.sh` makes it again from its source.
+#
 # Needs bash, curl, unzip, awk and sha256sum or shasum. Exits non-zero on the first failure.
 set -euo pipefail
 
@@ -45,19 +49,20 @@ get() {
     --output "$2" "$1" || die "download failed: $1"
 }
 
-# One tab-separated line per asset: file, url, member, archive_sha256, sha256 and the CREDITS.md row
-# the entry stands for. `-` stands for an absent value, because `read` folds consecutive tabs into
+# One tab-separated line per asset: file, url, member, archive_sha256, derived_by, source_sha256,
+# sha256 and the CREDITS.md row the entry stands for. `-` stands for an absent value, because `read` folds consecutive tabs into
 # one and would shift the later fields.
 records() {
   awk '
     function flush() {
       if (file != "") {
-        printf "%s\t%s\t%s\t%s\t%s\t| `%s` | <%s> | %s | [%s](%s) | %s | %s |\n", file,
+        printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t| `%s` | <%s> | %s | [%s](%s) | %s | %s |\n", file,
           (url == "" ? "-" : url), (member == "" ? "-" : member), (archive == "" ? "-" : archive),
+          (derived == "" ? "-" : derived), (from == "" ? "-" : from),
           (sum == "" ? "-" : sum), file, f["source"], f["author"], f["licence"], f["licence_url"],
           f["fetched"], f["use"]
       }
-      file = url = member = archive = sum = ""
+      file = url = member = archive = derived = from = sum = ""
       split("", f)
     }
     /^  - file: / { flush() }
@@ -73,6 +78,8 @@ records() {
       else if (key == "url") url = val
       else if (key == "member") member = val
       else if (key == "archive_sha256") archive = val
+      else if (key == "derived_by") derived = val
+      else if (key == "source_sha256") from = val
       else if (key == "sha256") sum = val
       else f[key] = val
     }
@@ -88,13 +95,20 @@ trap 'rm -rf "$tmp"' EXIT
 
 count=0
 total=0
-while IFS=$'\t' read -r file url member archive_sha want row; do
+while IFS=$'\t' read -r file url member archive_sha derived source_sha want row; do
   [ "$url" != "-" ] && [ "${#want}" -eq 64 ] || die "$file: entry has no url or no sha256"
   grep -qFx -- "$row" "$credits" || die "$file: CREDITS.md has no row equal to: $row"
   printf '%s\n' "$file" >>"$tmp/listed"
 
   out="$dest/$file"
-  if [ -f "$out" ] && [ "$(sha "$out")" = "$want" ]; then
+  if [ "$derived" != "-" ]; then
+    [ "${#source_sha}" -eq 64 ] || die "$file: derived by $derived, and its entry has no source_sha256"
+    [ -f "$here/${derived%% *}" ] || die "$file: derived by ${derived%% *}, which is not in the kit"
+    out="$here/$file"
+    [ -f "$out" ] && [ "$(sha "$out")" = "$want" ] ||
+      die "$file: the kit's copy is missing or is not the file its sha256 names: git lfs pull, or ./derive.sh"
+    how="derived"
+  elif [ -f "$out" ] && [ "$(sha "$out")" = "$want" ]; then
     how="on disk"
   else
     if [ "$member" = "-" ]; then

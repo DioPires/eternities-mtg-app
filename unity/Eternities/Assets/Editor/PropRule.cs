@@ -61,6 +61,10 @@ namespace Eternities.EditorTools
         // The trial's leaves were given a thickness of 0.25, a quarter of HDRP's own, and its far
         // trees stood pale against the sun.
         public const float ThinnestLeaf = 0.5f;
+        // A cut tree's leaves are cards that carry the round crown's normal on both faces, and
+        // not their own. With the photograph's gloss on them a crown shines as one mirror: the
+        // first wood of DEC-1003 stood silver against the sun. So such a card has no gloss.
+        public const float CrownGloss = 0;
 
         public const string Basic = "basic", Photographic = "photographic";
 
@@ -298,6 +302,12 @@ namespace Eternities.EditorTools
             if (material.HasProperty("_MaterialID") && material.GetFloat("_MaterialID") == 5 && material.GetFloat("_Thickness") < ThinnestLeaf)
             {
                 broken.Add($"the material {material.name} lets light through a thickness of {material.GetFloat("_Thickness")}: at least {ThinnestLeaf}");
+            }
+            // Double-sided normal mode 2 is "none": both faces are lit by the mesh's normal.
+            if (material.HasProperty("_DoubleSidedNormalMode") && material.GetFloat("_DoubleSidedEnable") == 1 && material.GetFloat("_DoubleSidedNormalMode") == 2
+                && material.GetFloat("_SmoothnessRemapMax") > CrownGloss)
+            {
+                broken.Add($"the material {material.name} is lit by its crown's normal on both faces with a gloss of up to {material.GetFloat("_SmoothnessRemapMax")}: at most {CrownGloss}");
             }
         }
 

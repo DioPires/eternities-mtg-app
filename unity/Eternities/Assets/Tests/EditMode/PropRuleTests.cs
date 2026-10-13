@@ -153,6 +153,50 @@ namespace Eternities.Tests
             StringAssert.Contains("a farther level has a material its nearest level has not", Single(Broken(bush)));
         }
 
+        // The same defect from a second cause, found on this kit's first wood (DEC-1003): a cut
+        // tree's leaf cards carry the round crown's normal on both faces, and with the
+        // photograph's gloss on them the crown shone silver against the sun.
+        [Test]
+        public void ACrownThatShinesAsOneMirrorBreaksTheRule()
+        {
+            var photograph = AssetDatabase.LoadAssetAtPath<Texture2D>(Photograph);
+            Material Card(float normalMode, float gloss)
+            {
+                Material card = Lit(photograph, Color.white);
+                card.SetFloat("_DoubleSidedEnable", 1);
+                card.SetFloat("_DoubleSidedNormalMode", normalMode);
+                card.SetFloat("_SmoothnessRemapMax", gloss);
+                return card;
+            }
+            Assert.That(Broken(Bush(Card(2, PropRule.CrownGloss))), Is.Empty);
+            // A leaf lit by its own normal, mirrored on its back, keeps its gloss.
+            Assert.That(Broken(Bush(Card(1, 1))), Is.Empty);
+            StringAssert.Contains("is lit by its crown's normal on both faces with a gloss of up to 1", Single(Broken(Bush(Card(2, 1)))));
+        }
+
+        // A cut model is what its report says (`Derive/<file>.json`, written by the script that
+        // cut it): each level's mesh has the triangles the report counts, in the report's order.
+        [Test]
+        public void ACutModelHasTheLevelsItsReportCounts()
+        {
+            string[] reports = Directory.GetFiles($"{Kit}/Derive", "*_cut.json");
+            Assert.That(reports, Is.Not.Empty);
+            foreach (string report in reports)
+            {
+                string text = File.ReadAllText(report);
+                string tree = Regex.Match(text, "^ \"tree\": \"(\\w+)\"", RegexOptions.Multiline).Groups[1].Value;
+                int[] counted = Regex.Matches(text, "^   \"triangles\": (\\d+)", RegexOptions.Multiline).Cast<Match>().Select(match => int.Parse(match.Groups[1].Value)).ToArray();
+                string file = $"{Kit}/Props/{Path.GetFileNameWithoutExtension(report)}.fbx";
+                Dictionary<string, Mesh> meshes = AssetDatabase.LoadAllAssetsAtPath(file).OfType<Mesh>().ToDictionary(mesh => mesh.name);
+                Assert.That(counted.Length, Is.EqualTo(meshes.Count), $"{file} holds {string.Join(", ", meshes.Keys)}");
+                for (int level = 0; level < counted.Length; level++)
+                {
+                    Assert.That(meshes, Does.ContainKey($"{tree}_LOD{level}"), file);
+                    Assert.That(meshes[$"{tree}_LOD{level}"].triangles.Length / 3, Is.EqualTo(counted[level]), $"{tree}_LOD{level} in {file}");
+                }
+            }
+        }
+
         [Test]
         public void APropOutsideItsCategorysCapsBreaksTheRule()
         {

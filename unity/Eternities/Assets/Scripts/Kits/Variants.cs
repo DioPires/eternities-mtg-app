@@ -52,9 +52,10 @@ namespace Eternities.Kits
         // The temperate kit's four (PRD v4 9.6; DEC-1003): a field, a wood, wet ground and bare
         // dark rock. The densities are a first setting for the owner's eye. At 24 tufts a square
         // metre, which is the meadow at the medium level, the ground still shows between them.
-        // No variant has a tree, a bush or a reed yet: no photographed one is usable as its
-        // source publishes it, and how one is made is the owner's to say (DEC-1003, the card of
-        // 2026-10-12).
+        // The trees are their sources cut to four levels by the kit's `Derive/cut_tree.py` (PRD v4
+        // 7.6.4; the owner's answer of 2026-10-13 on DEC-1003): a wood of tall jacarandas over
+        // two small trees, and a few of them standing alone in the meadow. No variant has a bush
+        // or a reed yet.
         public static readonly Variant[] Temperate =
         {
             new Variant
@@ -67,7 +68,9 @@ namespace Eternities.Kits
                     Each("GroundCover/dandelion_01_", 60, 1, 1.6f, "a", "b", "c", "d", "e"),
                     Each("GroundCover/celandine_01_", 60, 1, 1.6f, "a", "b", "e"),
                     Each("GroundCover/weed_plant_02_", 20, 1, 1.6f, "a", "b", "c", "d", "e"),
-                    Each("Rocks/rock_moss_set_02_", 0.25f, 0.8f, 1.1f, "rock08", "rock09", "rock12")),
+                    Each("Rocks/rock_moss_set_02_", 0.25f, 0.8f, 1.1f, "rock08", "rock09", "rock12"),
+                    Each("Trees/jacaranda_tree", 0.012f, 0.8f, 1.1f, ""),
+                    Each("Trees/tree_small_02", 0.04f, 1.2f, 2, "")),
             },
             new Variant
             {
@@ -81,7 +84,11 @@ namespace Eternities.Kits
                     Each("GroundCover/dry_branches_medium_01_", 4, 0.8f, 1.2f, "a", "b", "c"),
                     Each("GroundCover/shrub_02_", 8, 0.9f, 1.3f, "a", "b", "c", "d"),
                     Each("Rocks/rock_moss_set_01_", 0.5f, 0.85f, 1.25f, "rock01", "rock02", "rock03", "rock04", "rock05", "rock06"),
-                    Each("Rocks/rock_moss_set_02_", 1.2f, 0.85f, 1.25f, "rock07", "rock08", "rock09", "rock10", "rock11", "rock12", "rock13")),
+                    Each("Rocks/rock_moss_set_02_", 1.2f, 0.85f, 1.25f, "rock07", "rock08", "rock09", "rock10", "rock11", "rock12", "rock13"),
+                    // A jacaranda's crown is 25 m across: one to four hundred square metres closes the roof.
+                    Each("Trees/jacaranda_tree", 0.25f, 0.7f, 1.1f, ""),
+                    Each("Trees/tree_small_02", 1.2f, 1.2f, 2, ""),
+                    Each("Trees/island_tree_01", 0.8f, 1, 1.8f, "")),
             },
             new Variant
             {

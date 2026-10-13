@@ -28,7 +28,16 @@ namespace Eternities.EditorTools
             public string Photographs;  // the size of the photographs, "1k" or "2k"; null for a model of flat colours
             public bool Leaves;         // cut out by the photograph's opacity, and lit from both sides and through
             public int From;            // the level of detail it is drawn from, for a mesh heavier than its category's cap
+            // A model cut to levels of its own (`Derive/cut_tree.py`): its file's meshes
+            // `<Mesh>_LOD0` on, the first drawn while the prop takes at least the first share of
+            // the view's height and each lighter one down to its own. The importer makes it no
+            // levels. Of its materials, the one whose photograph has an opacity file is its leaves.
+            public float[] Until;
         }
+
+        // A tree's levels: the nearest while it is a third of the view's height or more, which is
+        // within 15 m of a tree 5 m tall, and the farthest to the edge of sight.
+        static readonly float[] TreeLevels = { 0.30f, 0.10f, 0.035f, 0.0001f };
 
         // The temperate kit's props (`Assets/Kits/temperate/CREDITS.md`). They are Kenney's models,
         // which have no real unit: `Metres` is the middle of the range the first slice drew each
@@ -79,6 +88,11 @@ namespace Eternities.EditorTools
             // A fallen branch lies about its file's origin, and here on the ground.
             Photographs("GroundCover", "dry_branches_medium_01", "1k", false, 2, "a", "b", "c").Select(branch => { branch.Sink = 0.05f; return branch; }),
             Photographs("Rocks", "rock_07", "1k", false, 0, "LOD2"),
+            // Trees. Each is its source cut to four levels by `Derive/cut_tree.py` (PRD v4 7.6.4):
+            // as published it is one mesh of one to four million triangles.
+            Cut("Trees", "jacaranda_tree", TreeLevels),
+            Cut("Trees", "tree_small_02", TreeLevels),
+            Cut("Trees", "island_tree_01", TreeLevels),
         }.SelectMany(some => some).ToArray();
 
         // Props of one file: the meshes named, each `<asset>_<mesh>` in the file, as the prefab
@@ -89,6 +103,13 @@ namespace Eternities.EditorTools
                 Prefab = $"{category}/{asset}_{System.Text.RegularExpressions.Regex.Replace(mesh, "_?LOD\\d$", "")}".TrimEnd('_'),
                 Model = $"{asset}_1k.fbx", Mesh = $"{asset}_{mesh}", Photographs = size, Leaves = leaves, From = from,
             });
+
+        // A prop cut from its source: the kit's `<asset>_cut.fbx`, drawn with the source's
+        // photographs at 1K.
+        static IEnumerable<Source> Cut(string category, string asset, float[] until) => new[]
+        {
+            new Source { Prefab = $"{category}/{asset}", Model = $"{asset}_cut.fbx", Mesh = asset, Photographs = "1k", Leaves = true, Until = until },
+        };
 
         // The models' material names (Kenney's Nature Kit), and the temperate kit's colour for each:
         // Dominaria's greens, ochre and slate (PRD v4 Appendix C). The models' own colours are
@@ -114,18 +135,19 @@ namespace Eternities.EditorTools
         // How a photographic model is imported, written into its `.meta` once: the levels of detail
         // the importer makes, the file's axes turned into the project's in the mesh itself, so a
         // mesh stands on its own y axis, and none of the file's cameras or lights. The file's
-        // materials stay, for their names; nothing draws them.
-        static void Condition(string file)
+        // materials stay, for their names; nothing draws them. A model cut to levels of its own
+        // gets none from the importer.
+        static void Condition(string file, bool levels)
         {
             if (!(AssetImporter.GetAtPath(file) is ModelImporter importer))
             {
                 return;
             }
-            if (importer.generateMeshLods && importer.bakeAxisConversion)
+            if (importer.generateMeshLods == levels && importer.bakeAxisConversion)
             {
                 return;
             }
-            importer.generateMeshLods = true;
+            importer.generateMeshLods = levels;
             importer.bakeAxisConversion = true;
             importer.importAnimation = false;
             importer.animationType = ModelImporterAnimationType.None;
@@ -173,12 +195,21 @@ namespace Eternities.EditorTools
             material.SetTexture("_NormalMap", Map("nor_gl"));
             material.SetFloat("_NormalScale", 1);
             material.SetTexture("_MaskMap", Map("arm"));
-            if (source.Leaves)
+            // Of a cut model's materials, its leaves are the one with an opacity file; its wood is whole.
+            bool leaves = source.Leaves && (source.Until == null || KitAlphaImport.OpacityOf($"{props}/{named}_diff_{source.Photographs}.jpg") != null);
+            if (leaves)
             {
                 material.SetFloat("_AlphaCutoffEnable", 1);
                 material.SetFloat("_AlphaCutoff", KitAlphaImport.Cut);
                 material.SetFloat("_DoubleSidedEnable", 1);
-                material.SetFloat("_DoubleSidedNormalMode", 1);    // mirror: the back of a leaf is lit as its front is
+                // Mirror: the back of a leaf is lit as its front is. A cut tree's leaves are cards
+                // that carry the round crown's normal and not their own, so both faces keep it.
+                material.SetFloat("_DoubleSidedNormalMode", source.Until == null ? 1 : 2);
+                if (source.Until != null)
+                {
+                    // With one normal for the whole crown, the photograph's gloss is one mirror.
+                    material.SetFloat("_SmoothnessRemapMax", PropRule.CrownGloss);
+                }
                 // A leaf lets light through: HDRP's translucent material with its own foliage
                 // profile, at HDRP's own thickness (`PropRule.ThinnestLeaf`).
                 material.SetFloat("_MaterialID", 5);
@@ -187,7 +218,7 @@ namespace Eternities.EditorTools
             }
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path));
             AssetDatabase.CreateAsset(material, path);
-            if (source.Leaves)
+            if (leaves)
             {
                 // The profile is held beside the material in its file, so the file comes first.
                 UnityEngine.Rendering.HighDefinition.HDMaterial.SetDiffusionProfile(material,
@@ -214,46 +245,69 @@ namespace Eternities.EditorTools
                 string file = $"Assets/Kits/{kit}/Props/{source.Model}";
                 if (source.Photographs != null)
                 {
-                    Condition(file);
+                    Condition(file, levels: source.Until == null);
                 }
                 var model = AssetDatabase.LoadAssetAtPath<GameObject>(file);
-                MeshFilter[] theirs = model == null ? new MeshFilter[0]
-                    : model.GetComponentsInChildren<MeshFilter>(true).Where(filter => source.Mesh == null || filter.sharedMesh.name == source.Mesh).ToArray();
-                if (theirs.Length != 1)
+                if (model == null)
                 {
-                    throw new InvalidDataException(model == null ? $"the kit's prop {file} is not in the project: run Assets/Kits/{kit}/fetch.sh and git lfs pull"
-                        : $"{file} holds {theirs.Length} meshes named {source.Mesh ?? "anything"}, and a prop is one of them");
+                    throw new InvalidDataException($"the kit's prop {file} is not in the project: run Assets/Kits/{kit}/fetch.sh and git lfs pull");
                 }
+                // One mesh, or one a level for a model cut to levels of its own.
+                string[] named = source.Until == null ? new[] { source.Mesh } : source.Until.Select((until, level) => $"{source.Mesh}_LOD{level}").ToArray();
+                MeshFilter[] theirs = named.Select(name =>
+                {
+                    MeshFilter[] found = model.GetComponentsInChildren<MeshFilter>(true).Where(filter => name == null || filter.sharedMesh.name == name).ToArray();
+                    if (found.Length != 1)
+                    {
+                        throw new InvalidDataException($"{file} holds {found.Length} meshes named {name ?? "anything"}, and a prop is one of them");
+                    }
+                    return found[0];
+                }).ToArray();
 
                 var root = new GameObject(System.IO.Path.GetFileName(source.Prefab));
-                var drawn = new GameObject("Model");
-                drawn.transform.SetParent(root.transform, false);
-                // The mesh as its file turns and sizes it, times the prop's size against its file's.
-                Quaternion turn = theirs[0].transform.rotation;
-                drawn.transform.localRotation = Quaternion.Angle(turn, Quaternion.identity) < 0.01f ? Quaternion.identity : turn;
-                drawn.transform.localScale = theirs[0].transform.lossyScale * source.Metres;
-                Mesh mesh = theirs[0].sharedMesh;
-                drawn.AddComponent<MeshFilter>().sharedMesh = mesh;
-                var renderer = drawn.AddComponent<MeshRenderer>();
-                renderer.sharedMaterials = theirs[0].GetComponent<MeshRenderer>().sharedMaterials.Select(material =>
+                var levels = new List<LOD>();
+                for (int level = 0; level < theirs.Length; level++)
                 {
-                    if (source.Photographs != null)
+                    var drawn = new GameObject(theirs.Length == 1 ? "Model" : $"LOD{level}");
+                    drawn.transform.SetParent(root.transform, false);
+                    // The mesh as its file turns and sizes it, times the prop's size against its file's.
+                    Quaternion turn = theirs[level].transform.rotation;
+                    drawn.transform.localRotation = Quaternion.Angle(turn, Quaternion.identity) < 0.01f ? Quaternion.identity : turn;
+                    drawn.transform.localScale = theirs[level].transform.lossyScale * source.Metres;
+                    Mesh mesh = theirs[level].sharedMesh;
+                    drawn.AddComponent<MeshFilter>().sharedMesh = mesh;
+                    var renderer = drawn.AddComponent<MeshRenderer>();
+                    renderer.sharedMaterials = theirs[level].GetComponent<MeshRenderer>().sharedMaterials.Select(material =>
                     {
-                        return Photographed(kit, file, material == null ? null : material.name, source);
-                    }
-                    if (!KitColours.TryGetValue(material.name, out (string name, Color colour) ours))
+                        if (source.Photographs != null)
+                        {
+                            return Photographed(kit, file, material == null ? null : material.name, source);
+                        }
+                        if (!KitColours.TryGetValue(material.name, out (string name, Color colour) ours))
+                        {
+                            throw new InvalidDataException($"{file} uses the material {material.name}, which the kit has no colour for");
+                        }
+                        return Generate.Lit($"{kit}-{ours.name}", ours.colour, 0f, 0.15f, $"Assets/Kits/{kit}/Materials");
+                    }).ToArray();
+                    renderer.meshLodSelectionBias = source.From;
+                    // The base: the mesh's own origin, or its lowest point a share of its height under it.
+                    if (source.Sink != null)
                     {
-                        throw new InvalidDataException($"{file} uses the material {material.name}, which the kit has no colour for");
+                        float lowest = mesh.vertices.Min(vertex => drawn.transform.TransformPoint(vertex).y);
+                        float highest = mesh.vertices.Max(vertex => drawn.transform.TransformPoint(vertex).y);
+                        drawn.transform.localPosition = new Vector3(0, 0 - lowest - source.Sink.Value * (highest - lowest), 0);
                     }
-                    return Generate.Lit($"{kit}-{ours.name}", ours.colour, 0f, 0.15f, $"Assets/Kits/{kit}/Materials");
-                }).ToArray();
-                renderer.meshLodSelectionBias = source.From;
-                // The base: the mesh's own origin, or its lowest point a share of its height under it.
-                if (source.Sink != null)
+                    if (source.Until != null)
+                    {
+                        levels.Add(new LOD(source.Until[level], new Renderer[] { renderer }));
+                    }
+                }
+                if (levels.Count > 0)
                 {
-                    float lowest = mesh.vertices.Min(vertex => drawn.transform.TransformPoint(vertex).y);
-                    float highest = mesh.vertices.Max(vertex => drawn.transform.TransformPoint(vertex).y);
-                    drawn.transform.localPosition = new Vector3(0, 0 - lowest - source.Sink.Value * (highest - lowest), 0);
+                    var group = root.AddComponent<LODGroup>();
+                    group.fadeMode = LODFadeMode.None;
+                    group.SetLODs(levels.ToArray());
+                    group.RecalculateBounds();
                 }
 
                 Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path));

@@ -15,7 +15,7 @@ namespace Eternities.EditorTools
     // height at the quality level named. A row is at most `Row` metres wide, so a prop is seen
     // from about as near as a walker passes it. Nothing is saved but the pictures.
     //
-    //   batchmode.sh -executeMethod Eternities.EditorTools.KitPictures.Run -picturesOut <dir> [-picturesQuality medium] [-picturesSunKelvin 5000] [-picturesVariant meadow|all]
+    //   batchmode.sh -executeMethod Eternities.EditorTools.KitPictures.Run -picturesOut <dir> [-picturesQuality medium] [-picturesSunKelvin 5000] [-picturesVariant meadow|all] [-picturesCategory Trees]
     //
     // With `-picturesVariant`, the pictures are of the kit's variants and not of its props one
     // by one: a patch of ground painted with the variant's layers and dressed with its props at
@@ -129,8 +129,9 @@ namespace Eternities.EditorTools
             // The flat models of the first slice first, so a category's first row has them beside
             // what replaces them.
             var flat = new HashSet<string>(KitPrefabs.Temperate.Select(source => KitPrefabs.Path("temperate", source.Prefab)));
+            string only = CommandLine.Optional("-picturesCategory");
             foreach (IGrouping<string, string> category in PropRule.Props().Where(prop => prop.Kit == "Assets/Kits/temperate").Select(prop => prop.Path)
-                .GroupBy(path => Path.GetFileName(Path.GetDirectoryName(path))))
+                .GroupBy(path => Path.GetFileName(Path.GetDirectoryName(path))).Where(category => only == null || category.Key == only))
             {
                 var left = new Queue<string>(category.OrderBy(path => flat.Contains(path) ? 0 : 1).ThenBy(path => path));
                 for (int row = 1; left.Count > 0; row++)

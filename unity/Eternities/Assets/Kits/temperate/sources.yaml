@@ -1086,3 +1086,306 @@ assets:
     licence_url: https://creativecommons.org/publicdomain/zero/1.0/
     fetched: 2026-10-12
     use: "Dry fallen branches, three of 0.8 to 1.3 m long; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/jacaranda_tree_trunk_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/jacaranda_tree/jacaranda_tree_trunk_diff_1k.jpg
+    sha256: e5582fba664a9255252d1ee8088f75ad557f07360aa7f4513f2b2f1577e90be9
+    source: https://polyhaven.com/a/jacaranda_tree
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Jacaranda, a spreading tree 19.5 m tall: its trunk; albedo"
+  - file: Props/jacaranda_tree_trunk_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/jacaranda_tree/jacaranda_tree_trunk_nor_gl_1k.jpg
+    sha256: b2ad4e5daf8ec3fb87ba6c5f38e6a6924c9a6adebec20389f503e42da5d04587
+    source: https://polyhaven.com/a/jacaranda_tree
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Jacaranda, a spreading tree 19.5 m tall: its trunk; normal, OpenGL convention"
+  - file: Props/jacaranda_tree_trunk_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/jacaranda_tree/jacaranda_tree_trunk_arm_1k.jpg
+    sha256: 4a12e238cf3b8ba860626e99bf128e56ab41642fa4c2502a77df41a338689b78
+    source: https://polyhaven.com/a/jacaranda_tree
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Jacaranda, a spreading tree 19.5 m tall: its trunk; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/jacaranda_tree_branches_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/jacaranda_tree/jacaranda_tree_branches_diff_1k.jpg
+    sha256: 5a4fe735f0c346cec83b6b444a0169fc14d2b31bbb7b26e26b1b6c726b6e06f6
+    source: https://polyhaven.com/a/jacaranda_tree
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Jacaranda, a spreading tree 19.5 m tall: its boughs and twigs; albedo"
+  - file: Props/jacaranda_tree_branches_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/jacaranda_tree/jacaranda_tree_branches_nor_gl_1k.jpg
+    sha256: 2d67393ba76a0f49cf965fa0c99d8c16268e71e87b1203d35539bfdb971a514e
+    source: https://polyhaven.com/a/jacaranda_tree
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Jacaranda, a spreading tree 19.5 m tall: its boughs and twigs; normal, OpenGL convention"
+  - file: Props/jacaranda_tree_branches_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/jacaranda_tree/jacaranda_tree_branches_arm_1k.jpg
+    sha256: 9e3f82263247ce4f619692cea4c4f6fe9936ff465a86623481849062642c7d05
+    source: https://polyhaven.com/a/jacaranda_tree
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Jacaranda, a spreading tree 19.5 m tall: its boughs and twigs; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/jacaranda_tree_leaves_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/jacaranda_tree/jacaranda_tree_leaves_diff_1k.jpg
+    sha256: 6fe80c1f514ef690cccefb90b7e559fbd1aa9c8935fdc02523cc8ab83c22f7c2
+    source: https://polyhaven.com/a/jacaranda_tree
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Jacaranda, a spreading tree 19.5 m tall: its leaves; albedo"
+  - file: Props/jacaranda_tree_leaves_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/jacaranda_tree/jacaranda_tree_leaves_nor_gl_1k.jpg
+    sha256: 61520be2529ffe8e3d93d4361892134833bb4657117e121749089769067914c1
+    source: https://polyhaven.com/a/jacaranda_tree
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Jacaranda, a spreading tree 19.5 m tall: its leaves; normal, OpenGL convention"
+  - file: Props/jacaranda_tree_leaves_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/jacaranda_tree/jacaranda_tree_leaves_arm_1k.jpg
+    sha256: 577eab0a07279fb4afd24522e85e0f188058c88db4b35eb0b330005b0d745b7a
+    source: https://polyhaven.com/a/jacaranda_tree
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Jacaranda, a spreading tree 19.5 m tall: its leaves; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/jacaranda_tree_leaves_alpha_1k.png
+    url: https://dl.polyhaven.org/file/ph-assets/Models/png/1k/jacaranda_tree/jacaranda_tree_leaves_alpha_1k.png
+    sha256: c708a7e928a2e4d26981b021a22deeefc0ebb0e467f60b53cfa636a7e24d68f7
+    source: https://polyhaven.com/a/jacaranda_tree
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Jacaranda, a spreading tree 19.5 m tall: its leaves; opacity"
+  - file: Props/tree_small_02_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_diff_1k.jpg
+    sha256: 4e0093f407b3a1120a36de49a48ebe5a465a9a9b77e361c7a3e66866e115e404
+    source: https://polyhaven.com/a/tree_small_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Slender small tree, 4.6 m tall: its trunk; albedo"
+  - file: Props/tree_small_02_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_nor_gl_1k.jpg
+    sha256: 9c83be074c950ea1b94c732c0c0291b53b9ba357f932d378bafe3ca3b4418871
+    source: https://polyhaven.com/a/tree_small_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Slender small tree, 4.6 m tall: its trunk; normal, OpenGL convention"
+  - file: Props/tree_small_02_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_arm_1k.jpg
+    sha256: 891c5a1bb124292984b01558e9f2b0302d27d2fa3ccf9dfc6c34f9ea4ca24e6c
+    source: https://polyhaven.com/a/tree_small_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Slender small tree, 4.6 m tall: its trunk; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/tree_small_02_branch_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_branch_diff_1k.jpg
+    sha256: a71b768e330c0c6cca097e30314f6b4e842ef724a1370f6aab14b4434eec64cb
+    source: https://polyhaven.com/a/tree_small_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Slender small tree, 4.6 m tall: its twigs; albedo"
+  - file: Props/tree_small_02_branch_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_branch_nor_gl_1k.jpg
+    sha256: a2efae9e7fede259601188cd5cb7e561fc502bd87e04d862a9532b2d8e647a62
+    source: https://polyhaven.com/a/tree_small_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Slender small tree, 4.6 m tall: its twigs; normal, OpenGL convention"
+  - file: Props/tree_small_02_branch_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_branch_arm_1k.jpg
+    sha256: 8968b46d76c67da09ebbf4eed04b8123c9e0ddf5b55d123968b35b32aa76d27a
+    source: https://polyhaven.com/a/tree_small_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Slender small tree, 4.6 m tall: its twigs; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/tree_small_02_leaves_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_leaves_diff_1k.jpg
+    sha256: 261e7d7a5ac7d2e16ea8823ff8510be8f3f615999724232994039ad2885e5c36
+    source: https://polyhaven.com/a/tree_small_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Slender small tree, 4.6 m tall: its leaves; albedo"
+  - file: Props/tree_small_02_leaves_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_leaves_nor_gl_1k.jpg
+    sha256: 8c72e04fb23e16ae1df79c01385a638473d1dd4dede3d51e83d70153c129f09b
+    source: https://polyhaven.com/a/tree_small_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Slender small tree, 4.6 m tall: its leaves; normal, OpenGL convention"
+  - file: Props/tree_small_02_leaves_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_leaves_arm_1k.jpg
+    sha256: 71f81374daf5a8f3e6eb2c694264a1769fdb0bea508178e4105618eecea83c3e
+    source: https://polyhaven.com/a/tree_small_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Slender small tree, 4.6 m tall: its leaves; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/tree_small_02_leaves_alpha_1k.png
+    url: https://dl.polyhaven.org/file/ph-assets/Models/png/1k/tree_small_02/tree_small_02_leaves_alpha_1k.png
+    sha256: 4f143e2dda8a6a572f427ac378b92255d21761e4611de0d26e21816c01aa533b
+    source: https://polyhaven.com/a/tree_small_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Slender small tree, 4.6 m tall: its leaves; opacity"
+  - file: Props/island_tree_01_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_diff_1k.jpg
+    sha256: 51bff9a3a6ed7d89ff4c73f01708b7267ed8d7a82b0cb12343741894f708218f
+    source: https://polyhaven.com/a/island_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Gnarled small tree, 5.0 m tall: its trunk; albedo"
+  - file: Props/island_tree_01_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_nor_gl_1k.jpg
+    sha256: ca22e428e1b1ebac47b2fc67ec355700c8779d6628d2fc6c3ebae9002988f63e
+    source: https://polyhaven.com/a/island_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Gnarled small tree, 5.0 m tall: its trunk; normal, OpenGL convention"
+  - file: Props/island_tree_01_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_arm_1k.jpg
+    sha256: bf972dff0fbc71f146b4c02103fc3596477a49a9eff46b87b13c89b7b90d18ca
+    source: https://polyhaven.com/a/island_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Gnarled small tree, 5.0 m tall: its trunk; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/island_tree_01_branches_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_branches_diff_1k.jpg
+    sha256: bee5ec22196e9e31ad0c95a5a9b4636571cc0124d5bb27a92f1e307d289cc60d
+    source: https://polyhaven.com/a/island_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Gnarled small tree, 5.0 m tall: its twigs; albedo"
+  - file: Props/island_tree_01_branches_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_branches_nor_gl_1k.jpg
+    sha256: 2d67393ba76a0f49cf965fa0c99d8c16268e71e87b1203d35539bfdb971a514e
+    source: https://polyhaven.com/a/island_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Gnarled small tree, 5.0 m tall: its twigs; normal, OpenGL convention"
+  - file: Props/island_tree_01_branches_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_branches_arm_1k.jpg
+    sha256: 9e3f82263247ce4f619692cea4c4f6fe9936ff465a86623481849062642c7d05
+    source: https://polyhaven.com/a/island_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Gnarled small tree, 5.0 m tall: its twigs; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/island_tree_01_leaves_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_leaves_diff_1k.jpg
+    sha256: f56d762a1507754752abf164cc12acbc1e87ce87fa609ac44b98a1b0037c89d8
+    source: https://polyhaven.com/a/island_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Gnarled small tree, 5.0 m tall: its leaves; albedo"
+  - file: Props/island_tree_01_leaves_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_leaves_nor_gl_1k.jpg
+    sha256: 07ba461c0c95da4e49a42981766bdb6191d4c3c4d815796c082266dcc3cecdb8
+    source: https://polyhaven.com/a/island_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Gnarled small tree, 5.0 m tall: its leaves; normal, OpenGL convention"
+  - file: Props/island_tree_01_leaves_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_leaves_arm_1k.jpg
+    sha256: 90da3a072dbcb052715b1313b9dbc69a4aa8a09a31a4b3868411a2bb51d72037
+    source: https://polyhaven.com/a/island_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Gnarled small tree, 5.0 m tall: its leaves; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/island_tree_01_leaves_alpha_1k.png
+    url: https://dl.polyhaven.org/file/ph-assets/Models/png/1k/island_tree_01/island_tree_01_leaves_alpha_1k.png
+    sha256: f4341f147988dbe6b58d9ca841a8f0e4bcff25bc40d05f9877da82006d489c39
+    source: https://polyhaven.com/a/island_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Gnarled small tree, 5.0 m tall: its leaves; opacity"
+  - file: Props/jacaranda_tree_cut.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/jacaranda_tree/jacaranda_tree_1k.fbx
+    source_sha256: 392c74d85100efc8ee045fed820ec4fbe79d62e154e4c54156ef1e0ec0465a5a
+    derived_by: Derive/cut_tree.py jacaranda_tree
+    sha256: 5751ccbac92695b43a5f490419d5594f002c608fd08905bf079d6cc0e587f761
+    source: https://polyhaven.com/a/jacaranda_tree
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Jacaranda, a spreading tree 19.5 m tall and 24.7 m across; the source's 3,863,832 triangles cut to four levels of 59,620 to 452"
+  - file: Props/tree_small_02_cut.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/tree_small_02/tree_small_02_1k.fbx
+    source_sha256: 442394b4d39dcefef6c54358becea3c86735f040f2601b2c0c082e3ecf3685c5
+    derived_by: Derive/cut_tree.py tree_small_02
+    sha256: cd6a6feb065ac73151a4f77c5b9446d32683c8adc335c9c6ee606d6093012aa0
+    source: https://polyhaven.com/a/tree_small_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Slender small tree, 4.6 m tall; the source's 2,062,487 triangles cut to four levels of 58,999 to 429"
+  - file: Props/island_tree_01_cut.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/island_tree_01/island_tree_01_1k.fbx
+    source_sha256: 3f193c0ca27977b001682aa4ba3eef654b31c1af60a166af4024a11cc19a2948
+    derived_by: Derive/cut_tree.py island_tree_01
+    sha256: 4a081bc6581a7bf01da72a873e427819b80d5453c85975f6b950897368082a62
+    source: https://polyhaven.com/a/island_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Gnarled small tree, 5.0 m tall; the source's 1,599,403 triangles cut to four levels of 58,998 to 429"
