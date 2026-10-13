@@ -349,6 +349,11 @@ own modelling (PRD v4 8.12.3):
 
 An engineer's use needs an amendment of PRD v4 7.6.4 first.
 
+*Note, 2026-10-13 (PRD v4 Amendment 4 erratum 3, DEC-1038).* 7.6.4 now admits a derived binary,
+which a committed script makes from pinned CC0 sources. That amendment does not open this server
+to an engineer. A derivation script runs in Blender from the command line, with no window and no
+open port. The four conditions above stand, and no agent's client configures the server.
+
 ## 6. Cost and benefit
 
 The record is DEC-953: the slice engineer's twelve notes for DEC-960 in its day logs, and its
