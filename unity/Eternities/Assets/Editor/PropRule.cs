@@ -268,6 +268,16 @@ namespace Eternities.EditorTools
             return broken;
         }
 
+        // How large a prefab draws its meshes against the size their files give them: the least
+        // and the most of them. A variant grows a prop at a share of its prefab, and the rule's
+        // `DrawnFrom` to `DrawnTo` holds the two together (`VariantTests`).
+        public static (float Least, float Most) Against(GameObject prefab)
+        {
+            var broken = new List<string>();
+            float[] each = Drawn(prefab.GetComponentsInChildren<Renderer>()).Select(drawn => Against(drawn.renderer, drawn.mesh, broken)).ToArray();
+            return (each.Min(), each.Max());
+        }
+
         // How large a renderer draws its mesh against the size the mesh has in its own file.
         static float Against(MeshRenderer renderer, Mesh mesh, List<string> broken)
         {

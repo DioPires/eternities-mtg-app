@@ -95,7 +95,7 @@ namespace Eternities.Kits
                     Each("Trees/fir_sapling_medium_", 0.9f, 0.8f, 1.3f, "a", "b", "c"),
                     Each("Trees/tree_small_02", 1, 1.2f, 2, ""),
                     Each("Trees/island_tree_01", 0.5f, 1, 1.8f, ""),
-                    Each("Bushes/tree_small_02_sapling", 3, 0.8f, 1.3f, ""),
+                    Each("Bushes/tree_small_02_sapling", 3, 1, 1.3f, ""),
                     Each("Bushes/island_tree_02", 2, 0.85f, 1.2f, "")),
             },
             new Variant
@@ -125,7 +125,7 @@ namespace Eternities.Kits
                     Each("Trees/island_tree_01", 0.04f, 0.6f, 1, ""),
                     Each("Trees/fir_sapling_medium_c", 0.04f, 0.5f, 0.9f, ""),
                     Each("Bushes/searsia_lucida_", 0.6f, 0.7f, 1.1f, "f", "g"),
-                    Each("Bushes/island_tree_02", 0.08f, 0.7f, 1, "")),
+                    Each("Bushes/island_tree_02", 0.08f, 0.85f, 1, "")),
             },
         };
 

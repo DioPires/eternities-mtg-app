@@ -85,9 +85,15 @@ namespace Eternities.Tests
                 Assert.That(photographed, Does.Contain(growth.Prefab), $"{variant.Name} grows {growth.Prefab}");
                 Assert.That(PropRule.Folders.Keys, Does.Contain(growth.Category), growth.Prefab);
                 Assert.That(growth.PerAre, Is.GreaterThan(0), growth.Prefab);
-                // With the prefab's own 0.5 to 2 times, an instance stays about its file's size.
-                Assert.That(growth.ScaleFrom, Is.InRange(0.5f, growth.ScaleTo), growth.Prefab);
-                Assert.That(growth.ScaleTo, Is.LessThanOrEqualTo(PropRule.DrawnTo), growth.Prefab);
+                Assert.That(growth.ScaleFrom, Is.GreaterThan(0).And.LessThanOrEqualTo(growth.ScaleTo), growth.Prefab);
+                // An instance is its file's size times its prefab's share of it times the growth's
+                // share of the prefab. The rule's 0.5 to 2 times holds the product: a sapling that
+                // is half its file in its prefab is not grown smaller than the prefab.
+                (float least, float most) = PropRule.Against(AssetDatabase.LoadAssetAtPath<GameObject>(KitPrefabs.Path("temperate", growth.Prefab)));
+                Assert.That(least * growth.ScaleFrom, Is.GreaterThanOrEqualTo(PropRule.DrawnFrom - 1e-4f),
+                    $"{variant.Name} grows {growth.Prefab} at {growth.ScaleFrom} of a prefab that is {least} of its file");
+                Assert.That(most * growth.ScaleTo, Is.LessThanOrEqualTo(PropRule.DrawnTo + 1e-4f),
+                    $"{variant.Name} grows {growth.Prefab} at {growth.ScaleTo} of a prefab that is {most} of its file");
             }
             Assert.That(variant.Grows.Select(growth => growth.Prefab).Distinct().Count(), Is.EqualTo(variant.Grows.Length), "a prop is named once");
         }

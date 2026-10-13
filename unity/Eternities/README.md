@@ -243,8 +243,10 @@ a density. The temperate kit has four, `meadow`, `wood`, `marsh` and `highland`,
    is text in the layer's file. That range is 0 to 1, the mask as it is, for every ground but
    `ground037`, whose range is 0 to 0.25. No texture is written for it.
 3. **Props.** The kit's photographic prefabs only, each with how many stand on a hundred square
-   metres at full density and how large an instance is against its prefab. More than one species
-   of each vegetation type the variant uses, and rocks.
+   metres at full density and how large an instance is against its prefab. An instance is 0.5 to
+   2 times the size its file gives it: that holds the prefab's share of its file times the
+   growth's share of the prefab. More than one species of each vegetation type the variant uses,
+   and rocks.
 4. **Density.** A quality level draws a share of it, and a lower level's props are among a higher
    level's. Ground cover stands about the viewer only, thinning from 12 m to nothing at 26 m.
 
