@@ -67,6 +67,20 @@ READINGS = {
         ALL,
         "void",
     ),
+    "SVW": (
+        "S + V + W: on a half-turn, the slot after a kept slot of that half-turn is void",
+        "spaced",
+        "vertex",
+        ALL,
+        "void",
+    ),
+    "CVW": (
+        "C + V + W: a cluster on a half-turn has the cap 3",
+        "capped",
+        "vertex",
+        ALL,
+        "void",
+    ),
     "TVW": (
         "T + V + W: on a half-turn, a slot whose alternate side is the outer side is void",
         "alternate",

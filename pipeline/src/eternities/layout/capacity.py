@@ -129,6 +129,7 @@ def capacity_of(
     run_of_void = 0
     cut: int | None = None
     number = 0
+    kept_on = (0, -1)
     while cut is None:
         number += 1
         arc = number * SLOT_SPACING
@@ -144,9 +145,17 @@ def capacity_of(
         alternate = 1 if number % 2 == 1 else -1
         side = on_turn if on_turn != 0 else alternate
         by_rule = TURN_SIDES == "alternate" and on_turn != 0 and alternate != on_turn
+        if TURN_SIDES == "spaced" and on_turn != 0:
+            # The half-turn this slot lies on, named by the first of its segments.
+            first = segment
+            while first > 0 and local.turn[first - 1] != 0:
+                first -= 1
+            by_rule = kept_on == (number - 1, first)
         along = prng.randint(-CLUSTER_ALONG, CLUSTER_ALONG)
         across = prng.randint(-CLUSTER_ACROSS, CLUSTER_ACROSS)
         cap = prng.randint(CAP_MIN, CAP_MAX)
+        if TURN_SIDES == "capped" and on_turn != 0:
+            cap = CAP_MIN
         offset = side * CLUSTER_OFFSET + across
         den = length * SCALE
         cx = (ax * length + along_segment * (bx - ax)) * SCALE + length * (along * c - offset * s)
@@ -173,6 +182,11 @@ def capacity_of(
                 Slot(number, arc, (cx, cz), den, cap, on_turn != 0, tuple(candidates), cluster)
             )
             run_of_void = 0
+            if on_turn != 0:
+                first = segment
+                while first > 0 and local.turn[first - 1] != 0:
+                    first -= 1
+                kept_on = (number, first)
         else:
             void += 1
             run_of_void += 1
