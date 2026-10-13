@@ -375,12 +375,12 @@ namespace Eternities.Travel
                 {
                     loading = StartCoroutine(Load(HomeWorld));
                 }
-                if (HubPortal.Holds(at) || (Avatar.Input.Interact && Vector3.Distance(at, HubPortal.Pad) < 3))
+                if (HubPortal.Crossed(Avatar.StepFrom, at) || (Avatar.Input.Interact && Vector3.Distance(at, HubPortal.Pad) < 3))
                 {
                     StartCoroutine(Through(HubPortal, Place.World));
                 }
             }
-            else if (ReturnPortal.Holds(at) || Avatar.Input.Back)
+            else if (ReturnPortal.Crossed(Avatar.StepFrom, at) || Avatar.Input.Back)
             {
                 // PRD v4 5.3.5: Esc from any world returns to the hub through the return portal.
                 StartCoroutine(Through(ReturnPortal, Place.Hub));
@@ -697,8 +697,9 @@ namespace Eternities.Travel
             InTransition = true;
             double entered = Now;
             Avatar.Locked = true;
-            // The automatic walk goes on through the ring. A return by Esc starts anywhere, and stays there.
-            Vector3 through = Vector3.Dot(portal.transform.forward, Avatar.transform.position - portal.transform.position) > 0 ? -portal.transform.forward : portal.transform.forward;
+            // The automatic walk goes on through the ring, away from the side the step began on: a
+            // long step has crossed the ring already. A return by Esc starts anywhere, and stays there.
+            Vector3 through = Vector3.Dot(portal.transform.forward, Avatar.StepFrom - portal.transform.position) > 0 ? -portal.transform.forward : portal.transform.forward;
             bool atPortal = Vector3.Distance(Avatar.transform.position, portal.transform.position) < 2 * Portal.PadDistance;
             Avatar.Walk = atPortal ? through * AvatarController.WalkSpeed : Vector3.zero;
             if (destination == Place.World && loading == null && !WorldLoaded)
