@@ -281,6 +281,33 @@ namespace Eternities.Tests
             Assert.That(back.Input.Cards[17].OracleId, Is.EqualTo(layout.Input.Cards[17].OracleId));
         }
 
+        // The report is one text on every runtime: it prints a length from its millimetres, and a
+        // half goes up. Printed as a double, each figure here that ends in a half is the runtime's
+        // to round: a radius of 102,895 mm was 102.90 from the editor and 102.89 under .NET 8
+        // (DEC-976, N8).
+        [Test]
+        public void TheReportPrintsALengthFromItsMillimetres()
+        {
+            WorldLayout layout = Allocator.Run(Synthetic("synthetic-report", 2, cards =>
+            {
+                Add(cards, 0, ColourClass.Blue, 2);
+                Add(cards, 1, ColourClass.Blue, 2);
+            }));
+            layout.WorldRadius = 102_895;
+            layout.PlazaRadius = 12_004;
+            layout.WedgeSpan[(int)ColourClass.Blue] = 120_000_500;
+            (layout.Bands[0].Inner, layout.Bands[0].Width, layout.Bands[0].Widenings) = (15_004, 6000, 0);
+            (layout.Bands[1].Inner, layout.Bands[1].Width, layout.Bands[1].Widenings) = (21_005, 6010, 0);
+
+            string report = LayoutReport.Write(layout, new Checker.Result { MinSpacing = 2505, PairsTested = 1 }, null);
+            StringAssert.Contains("diameter 205.79 m (world radius 102.90 m), plaza radius 12.00 m,", report);
+            StringAssert.Contains("mean ground per stand 8315.3 m2\n", report);
+            StringAssert.Contains("wedges: U 120.001\n", report);
+            StringAssert.Contains("mean 6.01 m, from 6.00 m to 6.01 m;", report);      // the mean is 6005 mm
+            StringAssert.Contains("  s00 15.00 6.00 0\n  s01 21.01 6.01 0\n", report);
+            StringAssert.Contains("minimum spacing 2.51 m;", report);
+        }
+
         // The checker is only worth its pass if it fails on a broken layout. Each case breaks one
         // rule of invariants 7, 9 or 10 on a layout that passes.
         [Test]

@@ -28,6 +28,8 @@ from conftest import appendices, printing, scry_set, set_entry
 
 from eternities.contract import write_dataset
 from eternities.contract.enums import CONTRACT_VERSION
+from eternities.lore.index import LoreIndex
+from eternities.lore.stage import run_stage
 from eternities.pipeline.assemble import CardInput, build_dataset
 from eternities.pipeline.records import CardDetail, FaceDetail
 from eternities.pipeline.assemble import PlaneAssignmentStats
@@ -152,6 +154,15 @@ def _report_input(data_root: Path, codes: list[str] | None = None) -> ReportInpu
         ],
         plane_changes=[("Card 7", "ravnica", "dominaria")],
         previous_run="0123456789abcdef",
+        # The lore section as a development build prints it before any table is drafted: two hero
+        # entries, each with the set codes its tables must map, and neither with tables. The
+        # section with tables, statuses, digests and a sidecar is asserted in `test_lore_stage`.
+        lore=run_stage(
+            LoreIndex.from_dataset(dataset),
+            lore_root=data_root / "lore",
+            example_dir=None,
+            hero_entries=("dominaria", "ravnica"),
+        ),
     )
 
 

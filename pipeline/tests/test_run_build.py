@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from eternities.contract.enums import CONTRACT_VERSION
+from eternities.lore.stage import LoreInputs
 from eternities.pipeline import run
 
 AS_OF = "2026-09-04"
@@ -106,6 +107,11 @@ def _build(tmp_path: Path, *, as_of: str, cards: list[dict[str, object]]) -> run
         roster_diff=False,  # the wiki diff is a report item, and this must not touch the network
         bulk_updated_at=BULK_UPDATED_AT,
         swatch_cache_path=swatch_cache,
+        # The committed lore inputs name Dominaria's real set codes and real printings, which a
+        # bulk file of two cards does not hold. An empty lore root leaves every hero entry
+        # without tables, which is a state a development build accepts (PRD v4 4.16.5).
+        # `test_lore_build` runs the stage inside `build` on tables written for such a file.
+        lore=LoreInputs(root=tmp_path / "lore", example_dir=None),
         log=_quiet,
     )
 
