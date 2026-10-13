@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Downloads the `temperate` kit's slice subset into this folder and verifies every file against the
+# Downloads the `temperate` kit's files into this folder and verifies every file against the
 # SHA-256 in sources.yaml (PRD v4 8.12, 9.5). Re-running skips a file whose checksum already
 # matches, so a second run is the offline verification of what is on disk.
 #
@@ -25,8 +25,9 @@ dest="${1:-$here}"
 # budget is the cooked size (PRD v4 7.2: 250 MB for a kit at the photographic standard), which the
 # build measures (PRD 8.7.2). The first slice's limits were 200 KB, 8 MB and 60 MB (DEC-952); these
 # are the proposal on DEC-1003, the owner's to set: a photographed rock or plant is 0.1 to 6.6 MB
-# as its source publishes it, and a cut tree is 3.4 to 4.8 MB. The kit's sources were 242 MB on
-# 2026-10-13 and cooked to 229.8 MB, so the first proposal of 200 MB for the sources is 300 MB.
+# as its source publishes it, and a cut tree is 3.4 to 4.8 MB. On 2026-10-13 the kit's sources are
+# 250.5 MB and cook to 243.2 MB, in megabytes of a million bytes (231.9 MB as Unity's build report
+# counts them), so the first proposal of 200 MB for the sources is 300 MB.
 max_prop=8000000
 max_texture=8000000
 max_total=300000000
@@ -149,7 +150,7 @@ listed="$(grep -c '^  - file: ' "$manifest" || true)"
   die "verified $count files, sources.yaml lists $listed"
 rows="$(grep -c '^| `' "$credits" || true)"
 [ "$rows" -eq "$count" ] || die "CREDITS.md has $rows rows, sources.yaml lists $count files"
-[ "$total" -lt "$max_total" ] || die "subset is $total source bytes, the limit is $max_total"
+[ "$total" -lt "$max_total" ] || die "the kit's sources are $total bytes, the limit is $max_total"
 
 # An asset without a row blocks the merge (PRD 8.12.2), so a file nobody listed must not pass.
 # Unity's .meta files sit beside the assets once the folder is under Assets/.

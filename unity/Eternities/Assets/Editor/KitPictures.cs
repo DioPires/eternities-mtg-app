@@ -44,8 +44,11 @@ namespace Eternities.EditorTools
 
         public static void Run()
         {
-            // The level in force is the project's own setting, and the editor writes it out as it
-            // exits: it is put back first.
+            // The level in force is the project's own setting, and the editor writes its settings
+            // file out as it exits. The level is put back first, so the file names the level it
+            // did. The file itself is still rewritten, in the editor's current serialisation: a
+            // run leaves `ProjectSettings/QualitySettings.asset` changed, to be discarded
+            // (`README.md`, Batchmode commands).
             int level = QualitySettings.GetQualityLevel();
             IEnumerator<bool> pictures = Pictures();
             void Step()

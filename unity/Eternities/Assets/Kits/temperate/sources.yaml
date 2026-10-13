@@ -1,4 +1,4 @@
-# Sources of the `temperate` kit's slice subset (PRD v4 5.6, 8.12, 9.5): one entry per binary asset,
+# Sources of the `temperate` kit (PRD v4 5.6, 8.12, 9.5): one entry per binary asset,
 # the same rows as CREDITS.md plus the download URL and the SHA-256 of the file.
 #
 # `./fetch.sh` reads this file line by line, not with a YAML parser. Keep the shape: one `key: value`

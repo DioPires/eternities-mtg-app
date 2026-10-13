@@ -1,9 +1,11 @@
 # Eternities — the Unity project
 
-PRD v4 8.1 and 8.2. Unity 6.6 with HDRP, for macOS on Apple Silicon and Windows x64. Everything an
-engineer commits here is text (PRD v4 7.6.4): C#, assembly definitions, and scenes, prefabs,
+PRD v4 8.1 and 8.2. Unity 6.6 with HDRP, for macOS on Apple Silicon and Windows x64. What an
+engineer writes here is text (PRD v4 7.6.4): C#, assembly definitions, and scenes, prefabs,
 materials and settings serialised as Force Text with their `.meta` files. Models, textures and audio
-are content and go through Git LFS (`.gitattributes` at the repository root).
+are content and go through Git LFS (`.gitattributes` at the repository root). An engineer commits
+content in two ways only: as its CC0 source publishes it, or as a derived file, which is a binary
+that a committed script makes from a pinned CC0 source (Derived files, below).
 
 The project was created from Unity's HDRP template and then changed in four places:
 
@@ -118,7 +120,7 @@ builds for Windows.
 | `Assets/Settings/` | The HDRP assets: one per quality level with that level's volume profile, the global settings and the default volume profiles. |
 | `Assets/Scenes/Hub.unity` | The persistent scene (PRD v4 8.4.1): the template's camera, sun and sky, and the `Eternities` object. Kit worlds have no scene; they are built at run time from the pack and the layout. |
 | `Assets/Kits/core/` | What every world shares. `Materials/` holds the slice's plain materials (plinths by rarity, the mannequin, the hub, the portal, the image surface), and `UI/` the overlays' panel settings and theme; both are made by the generation entry point. `Shaders/` holds the two shaders of the isolated image path (PRD v4 8.4.4), written by hand. |
-| `Assets/Kits/temperate/` | The `temperate` kit's slice subset. `Terrain/`, `Props/` and `Audio/` hold the files `sources.yaml` pins, in Git LFS, with a `CREDITS.md` row each; `fetch.sh` verifies them and fails on an unlisted file in those three folders, so what is made from them lives beside them: `Materials/` holds the kit's plain materials for its props, `Prefabs/` one prefab a prop (Kit props, below) and `Water/` its two water prefabs, all made by the generation entry point. `Assets/Editor/KitMaskImport.cs` repacks each `_arm_` texture into HDRP's mask map layout as it is imported. |
+| `Assets/Kits/temperate/` | The `temperate` kit. `Terrain/`, `Props/` and `Audio/` hold the files `sources.yaml` pins, in Git LFS, with a `CREDITS.md` row each; `fetch.sh` verifies them and fails on an unlisted file in those three folders. So what is made from them lives beside them: `TerrainLayers/` holds the kit's terrain layers, `Materials/` the materials of its props, `Prefabs/` one prefab a prop (Kit props, below) and `Water/` its two water prefabs, all made by the generation entry point. `Derive/` holds the scripts that make the kit's derived files and each file's report, and `derive.sh` makes the files again (Derived files, below). `Assets/Editor/KitMaskImport.cs` repacks each `_arm_` texture into HDRP's mask map layout as it is imported. |
 | `Assets/StreamingAssets/data/manifest.json` | Names the pinned pack hash. The pack itself is `data/<hash>/` beside it: written by the generation entry point, not committed. |
 | `bench.sh` | Starts a bench run of the built player (Batchmode commands, below). |
 | `batchmode.sh` | Starts the pinned editor on this project in batchmode, logging to stdout, and passes its arguments through. It replaces a `TMPDIR` too long for the compiler's socket. |
@@ -459,6 +461,11 @@ a cold import writes the global settings back. Discard it after a build:
 ```sh
 git checkout -- unity/Eternities/Assets/Settings unity/Eternities/ProjectSettings/QualitySettings.asset
 ```
+
+A pictures run (`KitPictures`, above) rewrites `ProjectSettings/QualitySettings.asset` and no
+other file. It sets the quality level for its pictures and puts the level back before the editor
+exits. The editor then saves the file in its current serialisation, so the file differs from the
+committed one though the level does not. Discard that rewrite with the same command.
 
 The build is the macOS player for Apple Silicon, IL2CPP, not a development build, with the pinned
 pack and the world's files inside it. Its identity is in `ProjectSettings/ProjectSettings.asset`:

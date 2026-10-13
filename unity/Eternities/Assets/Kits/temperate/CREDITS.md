@@ -1,19 +1,22 @@
-# Temperate kit: asset credits (slice subset)
+# Temperate kit: asset credits
 
-Every binary asset of the `temperate` kit's slice subset (PRD v4 5.6, 8.12, 9.5), one row each. All
-are CC0 1.0. `sources.yaml` carries the same rows with each file's download URL and SHA-256.
+Every binary asset of the `temperate` kit (PRD v4 5.6, 8.12, 9.5), one row each. All are CC0 1.0.
+`sources.yaml` carries the same rows with each file's download URL and SHA-256.
 
 The binaries are committed in this folder through Git LFS. `./fetch.sh` verifies each against
-`sources.yaml` and downloads any that is missing. That run fails if a row here differs from its
-`sources.yaml` entry or if an asset folder holds a file without one, Unity's `.meta` files aside
-(PRD 8.12.2: an asset without a row blocks the merge). So whatever is made from these files (terrain
-layers, materials, prefabs) lives beside `Terrain/`, `Props/` and `Audio/`, not inside them.
+`sources.yaml` and downloads a missing file from its source. It does not download a derived file:
+it verifies the kit's own copy, and `./derive.sh` makes that file again from its source. The
+`fetch.sh` run fails if a row here differs from its `sources.yaml` entry or if an asset folder
+holds a file without one, Unity's `.meta` files aside (PRD 8.12.2: an asset without a row blocks
+the merge). So whatever is made from these files (terrain layers, materials, prefabs) lives beside
+`Terrain/`, `Props/` and `Audio/`, not inside them.
 
 The kit is at `standard: photographic` (PRD v4 8.12.6; DEC-1003): its vegetation, rocks and ground
 are photographic CC0 models and textures, as downloaded or as a committed script derives them
 (`Derive/`, PRD v4 7.6.4). The first slice's ten flat models of trees, bushes, rocks and wheat stay
-for the first slice's scatter of Dominaria only, held at the basic standard, until leg 2 dresses
-regions with the kit's variants (PRD v4 9.6); no variant grows them. The structures are Kenney's.
+in the kit, held at the basic standard. Only the first slice's scatter of Dominaria draws them, and
+no variant grows them. Leg 2 retires that scatter when it dresses regions with the kit's variants
+(PRD v4 9.6). The structures are Kenney's.
 A model reaches the world through one prefab under `Prefabs/<category>/`, in metres and with its
 base at its origin (the prop conditioning rule, `unity/Eternities/README.md`). "Props as drawn"
 lists each prefab with the height and the triangles measured on it; `PropRuleTests` holds the rule
@@ -371,7 +374,7 @@ the rows from the prefabs: the editor's menu, Eternities, "Kit props as drawn".
 | `Audio/meadow_songbirds_loop.ogg` | <https://freesound.org/people/DreamSavvyr/sounds/781115/> | DreamSavvyr | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | Ambient bed, meadow (PRD 5.12.1); seamless stereo loop, 60.0 s |
 | `Audio/river_splashy_loop.ogg` | <https://freesound.org/people/loopo/sounds/164039/> | loopo | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | River spatial emitter (PRD 5.12.3); seamless mono loop, 9.8 s |
 
-## Notes for the slice
+## Notes
 
 - **Cooked size.** 231.9 MB on 2026-10-13, against PRD 7.2's 250 MB for a kit at the
   photographic standard: textures 184.0 MB, meshes 46.3 MB, audio 1.3 MB. It is what the assets

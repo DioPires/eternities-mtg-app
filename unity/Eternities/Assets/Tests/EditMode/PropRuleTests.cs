@@ -70,6 +70,23 @@ namespace Eternities.Tests
             Assert.That(KitPrefabs.TemperatePhotographs, Is.Not.Empty);
         }
 
+        // The exception to the kit's standard is the ten flat models that the first slice's scatter
+        // of Dominaria draws, each by its name. A model is not held at the basic standard for
+        // being added to `Temperate.Kinds`: this list changes with it, in sight of a review.
+        [Test]
+        public void TheBasicStandardHoldsTheFirstSlicesTenFlatModelsOnly()
+        {
+            string[] ten =
+            {
+                "Trees/tree_oak", "Trees/tree_thin", "Trees/tree_pineTallA", "Bushes/plant_bush", "Bushes/plant_bushLarge",
+                "Rocks/rock_largeA", "Rocks/stone_largeB", "Rocks/stone_smallFlatA", "Rocks/stone_tallD", "GroundCover/crops_wheatStageB",
+            };
+            Assert.That(PropRule.Standard(Kit), Is.EqualTo(PropRule.Photographic));
+            CollectionAssert.AreEquivalent(ten, Temperate.Kinds.Select(kind => kind.Prefab));
+            CollectionAssert.AreEquivalent(ten.Select(name => KitPrefabs.Path("temperate", name)),
+                PropRule.Props().Where(prop => prop.Kit == Kit && PropRule.Standard(prop.Kit, prop.Path) == PropRule.Basic).Select(prop => prop.Path));
+        }
+
         // One prefab a prop: every kind of the scatter has its prefab, and every model under a
         // kit's `Props/` is drawn by a prefab of that kit. And the generation entry point reads
         // prefabs: no model file is named in it.

@@ -40,8 +40,8 @@ namespace Eternities.Kits
         public int[] Avenue;
     }
 
-    // The temperate kit's slice subset (PRD v4 5.6.1, 9.5; `Assets/Kits/temperate/CREDITS.md`): its
-    // props, and the kit's fixed table of what grows in which wedge (PRD v4 5.6.3), so the ground
+    // The temperate kit as the first slice draws it (PRD v4 5.6.1, 9.5; `Assets/Kits/temperate/CREDITS.md`):
+    // its props, and the kit's fixed table of what grows in which wedge (PRD v4 5.6.3), so the ground
     // says which colour a visitor is among. The numbers are a first setting for the owner's eye.
     public static class Temperate
     {
