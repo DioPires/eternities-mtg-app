@@ -156,7 +156,8 @@ The rule is `Assets/Editor/PropRule.cs`; the figures below are its constants.
    a lighter level on with a whole `meshLodSelectionBias`. A tree is cut to levels of its own,
    one mesh a level (Derived files, below): the importer would thin its leaves away. Its prefab
    draws them through a `LODGroup`, the nearest while the tree is 30% of the view's height or
-   more, then down to 10%, to 3.5% and to the edge of sight.
+   more, then down to 10%, to 3.5% and to the edge of sight. A cut bush has three levels, the
+   nearest from 12% and the next from 4%.
 6. **What a build carries.** The meshes of a prop hold at most 150,000 triangles, whichever level
    is drawn.
 7. **At the `photographic` standard** (PRD v4 8.12.6), for every category but structures:
@@ -180,19 +181,34 @@ fourth is the same paleness from a second cause, found on this kit's first wood.
 
 A derived file is a binary that a committed script makes from a CC0 source (PRD v4 7.6.4, by the
 owner's answer of 2026-10-13 on DEC-1003; DEC-1038 is the erratum that records it). The kit's
-trees are derived: a tree as Poly Haven publishes it is one mesh of one to four million triangles
-with no lighter level, and `Assets/Kits/temperate/Derive/cut_tree.py` cuts it to four levels of
-about 59,000, 10,000, 1,900 and 450 triangles. The script's own first lines say what the cut does.
+trees and bushes are derived, sixteen files: a tree as Poly Haven publishes it is one mesh of 0.4
+to 4.2 million triangles with no lighter level. The scripts are in
+`Assets/Kits/temperate/Derive/`, they run in Blender 5.2.2 LTS from the command line, and each
+one's first lines say what its cut does.
 
+- **`cut_tree.py`** cuts a broadleaf tree or a bush. A limb keeps its shape and loses triangles;
+  the longest twigs stay; each leaf becomes one flat card with its own piece of the photograph,
+  and of the cards one in so many stays, made larger. A tree comes out as four levels of about
+  59,000, 10,000, 1,900 and 450 triangles, a bush as three of up to 10,000, 1,900 and 380.
+- **`cut_fir.py`** cuts a fir, from its glTF: the FBX of a Poly Haven fir has no texture
+  coordinates. A fir's needles are tufts of four or eight triangles each, up to 812,000 a tree.
+  The tufts are gathered by place, and the tufts of a cell become one card that shows one of the
+  seven sprays photographed in the fir's own texture, which the published model does not draw.
+  Where the seven are in the photograph is a table in the script, `SPRAYS`; `sprays.py` measures
+  it again from the photograph's opacity map.
+- **What a script makes that its source does not hold** is the card and the normal it is lit
+  by: the round crown's, or the fir's cone's. Where a card stands and what it shows are the
+  source's. Each script says so in its first lines.
 - **The source is pinned and not committed.** The file's entry in `sources.yaml` has the source's
   address (`url`), the source's SHA-256 (`source_sha256`), the script and its word for the tree
-  (`derived_by`), and the derived file's own SHA-256. `CREDITS.md` credits the source's author.
+  (`derived_by`), and the derived file's own SHA-256. A glTF's data file is `url_2` and
+  `source_sha256_2`. `CREDITS.md` credits the source's author and names the script.
 - **`fetch.sh` verifies the derived file** against its SHA-256 and does not download it.
 - **`derive.sh` makes it again**: it downloads the source, verifies it, runs the script in
-  Blender and compares the result with the kit's file, byte for byte. The script fixes the two
+  Blender and compares the result with the kit's file, byte for byte. `cutlib.py` fixes the two
   things that differ between two runs of Blender's FBX exporter, its clock and its object numbers.
   The bytes are those of the Blender the file's report names; with another Blender `derive.sh`
-  compares the reports and says so.
+  compares the reports and says so. The sources are 0.9 GB in all and are kept between runs.
 - **The report** is `Derive/<file>.json`, written by the script: what it kept of the source, level
   by level. `PropRuleTests` holds each level's mesh to the triangles its report counts.
 - **No texture is derived.** A cut model is drawn with its source's photographs as downloaded.
@@ -342,6 +358,10 @@ unity/Eternities/batchmode.sh -quit -executeMethod Eternities.EditorTools.Build.
 unity/Eternities/bench.sh "$PWD/unity/Eternities/Build/Eternities.app" -bench warm -benchQuality high -benchScale 1 -benchOut "$PWD/bench-warm.json"
 unity/Eternities/bench.sh "$PWD/unity/Eternities/Build/Eternities.app" -bench cold -benchQuality high -benchScale 1 -benchOut "$PWD/bench-cold.json"
 ```
+
+The build also logs the cooked size by owner (PRD v4 7.2, 8.12.5), as `Build: cooked by owner`:
+what the assets under each kit's folder take in the player's data, then each kit's heaviest files
+and its sizes by kind. A kit's figure is the one a content task states against its row in 7.2.
 
 Two rules for an agent's runs on the reference machine (DEC-953):
 

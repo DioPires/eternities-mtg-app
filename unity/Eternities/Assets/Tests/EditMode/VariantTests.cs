@@ -14,9 +14,17 @@ namespace Eternities.Tests
     {
         static IEnumerable<Variant> All() => Variants.Temperate;
 
-        // A species is a source: the props of one file are plants or rocks of one kind.
-        static string Species(Growth growth) =>
-            AssetDatabase.GetAssetPath(AssetDatabase.LoadAssetAtPath<GameObject>(KitPrefabs.Path("temperate", growth.Prefab)).GetComponentInChildren<MeshFilter>().sharedMesh);
+        // A species is a source: the props of one file are plants or rocks of one kind, and so are
+        // the props that are cut from one source, each into a file of its own. `sources.yaml` names
+        // every model's source.
+        static string Species(Growth growth)
+        {
+            string model = AssetDatabase.GetAssetPath(AssetDatabase.LoadAssetAtPath<GameObject>(KitPrefabs.Path("temperate", growth.Prefab)).GetComponentInChildren<MeshFilter>().sharedMesh);
+            string[] lines = System.IO.File.ReadAllLines("Assets/Kits/temperate/sources.yaml");
+            int entry = System.Array.IndexOf(lines, $"  - file: {model.Substring("Assets/Kits/temperate/".Length)}");
+            Assert.That(entry, Is.GreaterThanOrEqualTo(0), $"sources.yaml has no entry for {model}");
+            return lines.Skip(entry + 1).TakeWhile(line => !line.StartsWith("  - file: ")).First(line => line.StartsWith("    source: ")).Substring("    source: ".Length);
+        }
 
         [Test]
         public void TheKitHasTheFourVariantsItsRegionRowsName()

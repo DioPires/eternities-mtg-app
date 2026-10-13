@@ -38,6 +38,8 @@ namespace Eternities.EditorTools
         // A tree's levels: the nearest while it is a third of the view's height or more, which is
         // within 15 m of a tree 5 m tall, and the farthest to the edge of sight.
         static readonly float[] TreeLevels = { 0.30f, 0.10f, 0.035f, 0.0001f };
+        // A bush's three: the nearest within 14 m of a bush 2 m tall.
+        static readonly float[] BushLevels = { 0.12f, 0.04f, 0.0001f };
 
         // The temperate kit's props (`Assets/Kits/temperate/CREDITS.md`). They are Kenney's models,
         // which have no real unit: `Metres` is the middle of the range the first slice drew each
@@ -93,6 +95,23 @@ namespace Eternities.EditorTools
             Cut("Trees", "jacaranda_tree", TreeLevels),
             Cut("Trees", "tree_small_02", TreeLevels),
             Cut("Trees", "island_tree_01", TreeLevels),
+            // Firs, cut by `Derive/cut_fir.py`: two tall ones of one source and three young ones
+            // of another. A fir's needles become cards that show the sprays its source photographed.
+            Cut("Trees", "fir_tree_01_a", TreeLevels),
+            Cut("Trees", "fir_tree_01_b", TreeLevels),
+            Cut("Trees", "fir_sapling_medium_a", TreeLevels),
+            Cut("Trees", "fir_sapling_medium_b", TreeLevels),
+            Cut("Trees", "fir_sapling_medium_c", TreeLevels),
+            // Bushes: seven of one source, and a small tree of 3.4 m that stands as a shrub at six
+            // tenths of its size. No source has a second leafy bush.
+            Cut("Bushes", "searsia_lucida_a", BushLevels),
+            Cut("Bushes", "searsia_lucida_b", BushLevels),
+            Cut("Bushes", "searsia_lucida_c", BushLevels),
+            Cut("Bushes", "searsia_lucida_d", BushLevels),
+            Cut("Bushes", "searsia_lucida_e", BushLevels),
+            Cut("Bushes", "searsia_lucida_f", BushLevels),
+            Cut("Bushes", "searsia_lucida_g", BushLevels),
+            Cut("Bushes", "island_tree_02", BushLevels, 0.6f),
         }.SelectMany(some => some).ToArray();
 
         // Props of one file: the meshes named, each `<asset>_<mesh>` in the file, as the prefab
@@ -105,10 +124,10 @@ namespace Eternities.EditorTools
             });
 
         // A prop cut from its source: the kit's `<asset>_cut.fbx`, drawn with the source's
-        // photographs at 1K.
-        static IEnumerable<Source> Cut(string category, string asset, float[] until) => new[]
+        // photographs at 1K, at its file's size or at a share of it.
+        static IEnumerable<Source> Cut(string category, string asset, float[] until, float metres = 1) => new[]
         {
-            new Source { Prefab = $"{category}/{asset}", Model = $"{asset}_cut.fbx", Mesh = asset, Photographs = "1k", Leaves = true, Until = until },
+            new Source { Prefab = $"{category}/{asset}", Model = $"{asset}_cut.fbx", Mesh = asset, Metres = metres, Photographs = "1k", Leaves = true, Until = until },
         };
 
         // The models' material names (Kenney's Nature Kit), and the temperate kit's colour for each:

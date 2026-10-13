@@ -24,11 +24,12 @@ dest="${1:-$here}"
 # The limits on a source file and on the kit's sources, in bytes: a tripwire, not the budget. The
 # budget is the cooked size (PRD v4 7.2: 250 MB for a kit at the photographic standard), which the
 # build measures (PRD 8.7.2). The first slice's limits were 200 KB, 8 MB and 60 MB (DEC-952); these
-# are the proposal of 2026-10-12 on DEC-1003, the owner's to set: a photographed rock or bush is
-# 0.1 to 6.6 MB as its source publishes it.
+# are the proposal on DEC-1003, the owner's to set: a photographed rock or plant is 0.1 to 6.6 MB
+# as its source publishes it, and a cut tree is 3.4 to 4.8 MB. The kit's sources were 242 MB on
+# 2026-10-13 and cooked to 229.8 MB, so the first proposal of 200 MB for the sources is 300 MB.
 max_prop=8000000
 max_texture=8000000
-max_total=200000000
+max_total=300000000
 
 die() {
   echo "fetch.sh: $*" >&2

@@ -2,11 +2,14 @@
 
     blender -b --factory-startup --python cut_tree.py -- <tree> <source model> <out.fbx>
 
+The tool is Blender 5.2.2 LTS, run from the command line with no window (`cutlib.TOOL`; PRD v4
+7.6.4, the derived binary).
+
 A tree as Poly Haven publishes it is one mesh of one to four million triangles, with no lighter
 level in its file. This writes the same tree as four meshes, `<tree>_LOD0` to `<tree>_LOD3`, each
 lighter than the one before, and beside the model a report of what it kept. Nothing is added to
 the tree and no texture is read or written: the kit draws the cut model with the source's own
-photographs, as downloaded.
+photographs, as downloaded. A bush is cut as a tree is, to three levels.
 
 What the cut does:
 - a limb, which is the trunk or a bough, keeps its shape and loses triangles (Blender's collapse
@@ -17,18 +20,23 @@ What the cut does:
   larger, so that the crown covers what it covered. A level's leaves are among the leaves of the
   level before, so a tree keeps its shape as the viewer walks up to it.
 
+What it makes that its source does not hold: the flat card that stands for a leaf, and the
+normal a card is lit by, which is the round crown's and not the card's own. Both are worked out
+from the source's leaves and from nothing else.
+
 `derive.sh` runs this and holds the result to the file the kit commits. The same source and the
-same Blender give the same bytes: the exporter's clock and its object numbers are fixed below.
+same Blender give the same bytes: `cutlib` fixes the exporter's clock and its object numbers.
 """
-import datetime
-import hashlib
-import json
 import os
 import sys
 
-import bmesh
 import bpy
 import numpy as np
+
+sys.dont_write_bytecode = True                      # no cache folder beside the script, in the kit
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import cutlib
+from cutlib import collapsed, cut, triangles
 
 # One row a level: the triangles its limbs keep, the triangles its twigs keep, and its leaf cards.
 LEVELS = [(9000, 7000, 21500), (2000, 800, 3800), (450, 0, 750), (130, 0, 150)]
@@ -54,18 +62,31 @@ TREES = {
         "levels": [(13000, 3000, 21500), (3000, 400, 3300), (700, 0, 600), (220, 0, 110)],
     },
 }
+# A small tree, 3.4 m tall and 4.2 m across, that the kit draws smaller, as a shrub: a bush's levels.
+TREES["island_tree_02"] = {
+    "object": "island_tree_02_LOD0",
+    "materials": {"island_tree_02": ("wood", "island_tree_02"), "island_tree_02_branches": ("wood", "island_tree_02_branches"),
+                  "island_tree_02_leaves": ("leaves", "island_tree_02_leaves")},
+    "levels": [(1600, 1400, 3500), (350, 150, 700), (100, 0, 140)],
+}
+# Seven bushes of one file, 0.7 to 2.3 m tall. A bush has no limb: its stems are twigs. Its
+# stems, twigs and leaves are on one photograph, so they are one material.
+TREES.update({
+    f"searsia_lucida_{bush}": {
+        "object": f"searsia_lucida_{bush}_LOD0",
+        "materials": {"searsia_lucida": ("wood", "searsia_lucida"), "searsia_lucida_twigs": ("wood", "searsia_lucida"),
+                      "searsia_lucida_leaves": ("leaves", "searsia_lucida")},
+        "levels": [(0, 2600, 3500), (0, 450, 700), (0, 0, 140)],
+    } for bush in "abcdefg"
+})
 
 # A connected part of the wood with this many triangles or more is a limb; a lighter one is a twig.
 LIMB = 1000
 # A twig is cut to no less than this share of its triangles: under it a twig is a sliver.
 TWIG = 0.2
-# The longest edge of a bough, in metres, that is closed before the bough is collapsed.
-WELD = 4.0
 # A kept card is larger than its leaf by the square root of how many leaves it stands for, times
 # this: cards overlap more than leaves do.
 OVER = 1.15
-# A card is lit as part of a round crown and only a little as the flat thing it is.
-ROUND = 0.75
 SEED = 1003
 
 
@@ -103,47 +124,8 @@ def components(nv, lv, ls, lt, keep_loop):
             return label
 
 
-def triangles(mesh):
-    mesh.calc_loop_triangles()
-    return len(mesh.loop_triangles)
-
-
-def only(objects):
-    for o in bpy.context.selected_objects:
-        o.select_set(False)
-    for o in objects:
-        o.select_set(True)
-    bpy.context.view_layer.objects.active = objects[0]
-
-
-def reproducible():
-    """Blender's FBX exporter writes the hour into a file and numbers its objects by Python's
-    hash of their names, which differs from one run to the next. Both are fixed here, so that
-    the same tree is the same file."""
-    import io_scene_fbx.export_fbx_bin as writer
-    import io_scene_fbx.fbx_utils as utils
-
-    class Fixed(datetime.datetime):
-        @classmethod
-        def now(cls, tz=None):
-            return cls(2026, 1, 1)
-
-    class Clock:
-        datetime = Fixed
-
-    def numbered(taken, key):
-        number = int.from_bytes(hashlib.sha256(repr(key).encode()).digest()[:8], "big") % 10 ** 9
-        while number in taken:
-            number += 1
-        return utils.UUID(number)
-
-    writer.datetime = Clock
-    utils._key_to_uuid = numbered
-    utils._keys_to_uuids.clear()
-    utils._uuids_to_keys.clear()
-
-
 tree, src, out = sys.argv[sys.argv.index("--") + 1:][:3]
+cutlib.tool()
 spec = TREES[tree]
 levels = spec.get("levels", LEVELS)
 
@@ -153,8 +135,9 @@ source = bpy.data.objects[spec["object"]]
 me = source.data
 source.name = me.name = "source"                    # the levels take the tree's name
 co, lv, uv, ls, lt, mi = arrays(me)
-place = np.array(source.matrix_world)
-co = co @ place[:3, :3].T + place[:3, 3]            # metres, z up, as the tree stands
+# Metres, z up, about the tree's own origin: a file of several lays them out in a row, and where
+# a tree lies in that row is not where it stands in the world.
+co = co @ np.array(source.matrix_world)[:3, :3].T
 lp = np.repeat(np.arange(len(ls)), lt)              # a loop's polygon
 tri = lt - 2                                        # a polygon's triangles
 theirs = [m.name for m in me.materials]
@@ -193,53 +176,6 @@ def submesh(name, poly_mask, material):
     held = bpy.data.objects.new(name, made)
     bpy.context.scene.collection.objects.link(held)
     return held
-
-
-def collapsed(held, budget, weld):
-    """A copy with about `budget` triangles: its edges shorter than `weld` metres closed, then
-    Blender's collapse. Only an edge is closed, never two vertices that merely lie near each
-    other: that stretches a skin between two boughs."""
-    copy = held.copy()
-    copy.data = held.data.copy()
-    bpy.context.scene.collection.objects.link(copy)
-    if weld > 0:
-        mesh = bmesh.new()
-        mesh.from_mesh(copy.data)
-        bmesh.ops.dissolve_degenerate(mesh, dist=weld, edges=mesh.edges)
-        mesh.to_mesh(copy.data)
-        mesh.free()
-    have = triangles(copy.data)
-    if have > budget:
-        only([copy])
-        collapse = copy.modifiers.new("cut", "DECIMATE")
-        collapse.ratio = budget / have
-        collapse.use_collapse_triangulate = True
-        bpy.ops.object.modifier_apply(modifier="cut")
-    return copy
-
-
-def cut(held, budget):
-    """The object with about `budget` triangles, in place of the one given, and the length of
-    edge that was closed first. Collapse alone stops short on boughs made of many thin tubes: it
-    will not take a side from a tube of four. Then the edges shorter than a length are closed
-    first, which closes the thinnest tubes, and the length is the shortest of twelve tried that
-    lets the collapse reach the budget."""
-    best, weld = collapsed(held, budget, 0), 0.0
-    if triangles(best.data) > 1.1 * budget:
-        bpy.data.objects.remove(best)
-        best, weld = collapsed(held, budget, WELD), WELD
-        near = 0.0
-        for _ in range(12):
-            middle = (near + weld) / 2
-            tried = collapsed(held, budget, middle)
-            if triangles(tried.data) > 1.1 * budget:
-                near = middle
-                bpy.data.objects.remove(tried)
-            else:
-                bpy.data.objects.remove(best)
-                best, weld = tried, middle
-    bpy.data.objects.remove(held)
-    return best, weld
 
 
 # ---- the wood: limbs and twigs, by material ----
@@ -320,7 +256,7 @@ crown = centre[good].mean(0) - np.array([0, 0, 0.6 * (centre[good, 2].max() - ce
 outward = centre - crown
 outward /= np.maximum(np.linalg.norm(outward, axis=1, keepdims=True), 1e-12)
 face *= np.where((face * outward).sum(1) < 0, -1.0, 1.0)[:, None]
-normal = ROUND * outward + (1 - ROUND) * face
+normal = cutlib.ROUND * outward + (1 - cutlib.ROUND) * face
 normal /= np.maximum(np.linalg.norm(normal, axis=1, keepdims=True), 1e-12)
 order = np.random.default_rng(SEED).permutation(np.flatnonzero(good))
 report["leaves"] = int(n)
@@ -333,21 +269,7 @@ def cards(kept):
     chosen = order[:kept]
     size = 1.0 if kept >= len(order) else OVER * (len(order) / kept) ** 0.5
     verts = centre[chosen, None, :] + size * (corners[chosen] - centre[chosen, None, :])
-    k = len(chosen)
-    made = bpy.data.meshes.new("leaves")
-    made.vertices.add(4 * k); made.loops.add(4 * k); made.polygons.add(k)
-    made.vertices.foreach_set("co", verts.reshape(-1, 3).astype(np.float32).ravel())
-    made.loops.foreach_set("vertex_index", np.arange(4 * k, dtype=np.int32))
-    made.polygons.foreach_set("loop_start", np.arange(0, 4 * k, 4, dtype=np.int32))
-    made.polygons.foreach_set("loop_total", np.full(k, 4, dtype=np.int32))
-    made.update(calc_edges=True)
-    made.uv_layers.new(name="UVMap").data.foreach_set("uv", corner_uv[chosen].reshape(-1, 2).astype(np.float32).ravel())
-    made.normals_split_custom_set_from_vertices(np.repeat(normal[chosen], 4, axis=0).astype(np.float32).tolist())
-    made.materials.append(leaf_material)
-    made.validate()
-    held = bpy.data.objects.new("leaves", made)
-    bpy.context.scene.collection.objects.link(held)
-    return held, size
+    return cutlib.card_mesh(verts, corner_uv[chosen], normal[chosen], leaf_material), size
 
 
 # ---- the levels ----
@@ -375,30 +297,11 @@ for level, (limb_budget, twig_budget, card_budget) in enumerate(levels):
     leaves, size = cards(min(card_budget, len(order)))
     parts.append(leaves)
     row.update({"leaf_cards": len(leaves.data.polygons), "card_size": round(float(size), 3)})
-    only(parts)
-    bpy.ops.object.join()
-    joined = bpy.context.view_layer.objects.active
-    joined.name = f"{tree}_LOD{level}"
-    joined.data.name = joined.name
+    joined = cutlib.join(parts, f"{tree}_LOD{level}")
     row["triangles"] = triangles(joined.data)
     row["materials"] = [slot.material.name for slot in joined.material_slots]
     report["levels"].append(row)
     made.append(joined)
 
 bpy.data.objects.remove(source)
-nearest = np.empty(len(made[0].data.vertices) * 3, np.float32)
-made[0].data.vertices.foreach_get("co", nearest)
-low, high = nearest.reshape(-1, 3).min(0), nearest.reshape(-1, 3).max(0)
-report["metres"] = [round(float(s), 3) for s in high - low]          # across, deep and high
-report["under_its_base_m"] = round(float(-low[2]), 3)
-
-reproducible()
-only(made)
-bpy.ops.export_scene.fbx(filepath=out, use_selection=True, apply_scale_options="FBX_SCALE_ALL", axis_forward="-Z", axis_up="Y",
-                         bake_space_transform=True, mesh_smooth_type="OFF", add_leaf_bones=False, bake_anim=False,
-                         path_mode="STRIP", embed_textures=False, object_types={"MESH"})
-report["bytes"] = os.path.getsize(out)
-with open(os.path.splitext(out)[0] + ".json", "w") as f:
-    json.dump(report, f, indent=1)
-    f.write("\n")
-print("cut", json.dumps(report))
+cutlib.write(made, out, report)

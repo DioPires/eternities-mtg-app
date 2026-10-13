@@ -179,19 +179,68 @@ that draws one of its meshes; "Props as drawn" lists them.
 
 ## Props, cut from photographic models (FBX)
 
-A tree as Poly Haven publishes it is one mesh of one to four million triangles, with no lighter
-level in its file. Each file here is such a tree cut to four levels of detail by
-`Derive/cut_tree.py` (PRD v4 7.6.4). Its source is pinned in `sources.yaml` by its address (`url`)
-and its SHA-256 (`source_sha256`) and is not committed; `derived_by` is the script and its word
-for the tree. `./derive.sh` downloads the source, cuts it again and holds the result to the file
-here, byte for byte. `Derive/<file>.json` is the cut's own report of what it kept. A cut model is
-drawn with its source's photographs, which are in the table above as downloaded.
+A tree or a bush as Poly Haven publishes it is a mesh of up to four million triangles, with no
+lighter level in its file. Each file here is one cut to three or four levels of detail by a
+script under `Derive/` (PRD v4 7.6.4, the derived binary): a broadleaf or a bush by
+`cut_tree.py`, a fir by `cut_fir.py` from its glTF. Its source is pinned in `sources.yaml` by its
+address (`url`) and its SHA-256 (`source_sha256`), a glTF's data file by `url_2` and
+`source_sha256_2`, and is not committed; `derived_by` is the script and its word for the plant.
+`./derive.sh` downloads the source, cuts it again and holds the result to the file here, byte
+for byte. `Derive/<file>.json` is the cut's own report of what it kept. A cut model is drawn with
+its source's photographs, which are in the table above as downloaded.
 
 | File | Source | Author | Licence | Fetched | Intended use |
 |---|---|---|---|---|---|
-| `Props/jacaranda_tree_cut.fbx` | <https://polyhaven.com/a/jacaranda_tree> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Jacaranda, a spreading tree 19.5 m tall and 24.7 m across; the source's 3,863,832 triangles cut to four levels of 59,620 to 452 |
-| `Props/tree_small_02_cut.fbx` | <https://polyhaven.com/a/tree_small_02> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Slender small tree, 4.6 m tall; the source's 2,062,487 triangles cut to four levels of 58,999 to 429 |
-| `Props/island_tree_01_cut.fbx` | <https://polyhaven.com/a/island_tree_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Gnarled small tree, 5.0 m tall; the source's 1,599,403 triangles cut to four levels of 58,998 to 429 |
+| `Props/jacaranda_tree_cut.fbx` | <https://polyhaven.com/a/jacaranda_tree> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Jacaranda, a spreading tree 19.5 m tall and 24.7 m across; cut by `Derive/cut_tree.py` from the source's 3,863,832 triangles to four levels of 59,620 to 452 |
+| `Props/tree_small_02_cut.fbx` | <https://polyhaven.com/a/tree_small_02> | Rico Cilliers | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Slender small tree, 4.6 m tall; cut by `Derive/cut_tree.py` from the source's 2,062,487 triangles to four levels of 58,999 to 429 |
+| `Props/island_tree_01_cut.fbx` | <https://polyhaven.com/a/island_tree_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Gnarled small tree, 5.0 m tall; cut by `Derive/cut_tree.py` from the source's 1,599,403 triangles to four levels of 58,998 to 429 |
+| `Props/fir_sapling_medium_branches_diff_1k.jpg` | <https://polyhaven.com/a/fir_sapling_medium> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Young firs, three of 6.0 to 8.9 m: their trunk and boughs; albedo |
+| `Props/fir_sapling_medium_branches_nor_gl_1k.jpg` | <https://polyhaven.com/a/fir_sapling_medium> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Young firs, three of 6.0 to 8.9 m: their trunk and boughs; normal, OpenGL convention |
+| `Props/fir_sapling_medium_branches_arm_1k.jpg` | <https://polyhaven.com/a/fir_sapling_medium> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Young firs, three of 6.0 to 8.9 m: their trunk and boughs; mask source, AO in R, roughness in G, metalness in B |
+| `Props/fir_sapling_medium_twigs_diff_1k.jpg` | <https://polyhaven.com/a/fir_sapling_medium> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Young firs, three of 6.0 to 8.9 m: their needles, as sprays; albedo |
+| `Props/fir_sapling_medium_twigs_nor_gl_1k.jpg` | <https://polyhaven.com/a/fir_sapling_medium> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Young firs, three of 6.0 to 8.9 m: their needles, as sprays; normal, OpenGL convention |
+| `Props/fir_sapling_medium_twigs_arm_1k.jpg` | <https://polyhaven.com/a/fir_sapling_medium> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Young firs, three of 6.0 to 8.9 m: their needles, as sprays; mask source, AO in R, roughness in G, metalness in B |
+| `Props/fir_sapling_medium_twigs_alpha_1k.png` | <https://polyhaven.com/a/fir_sapling_medium> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Young firs, three of 6.0 to 8.9 m: their needles, as sprays; opacity |
+| `Props/fir_tree_01_bark_diff_1k.jpg` | <https://polyhaven.com/a/fir_tree_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Tall firs, two of 14.1 and 19.0 m: their boughs; albedo |
+| `Props/fir_tree_01_bark_nor_gl_1k.jpg` | <https://polyhaven.com/a/fir_tree_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Tall firs, two of 14.1 and 19.0 m: their boughs; normal, OpenGL convention |
+| `Props/fir_tree_01_bark_arm_1k.jpg` | <https://polyhaven.com/a/fir_tree_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Tall firs, two of 14.1 and 19.0 m: their boughs; mask source, AO in R, roughness in G, metalness in B |
+| `Props/fir_tree_01_trunk_a_diff_1k.jpg` | <https://polyhaven.com/a/fir_tree_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Tall fir of 19.0 m: its trunk; albedo |
+| `Props/fir_tree_01_trunk_a_nor_gl_1k.jpg` | <https://polyhaven.com/a/fir_tree_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Tall fir of 19.0 m: its trunk; normal, OpenGL convention |
+| `Props/fir_tree_01_trunk_a_arm_1k.jpg` | <https://polyhaven.com/a/fir_tree_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Tall fir of 19.0 m: its trunk; mask source, AO in R, roughness in G, metalness in B |
+| `Props/fir_tree_01_trunk_b_diff_1k.jpg` | <https://polyhaven.com/a/fir_tree_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Tall fir of 14.1 m: its trunk; albedo |
+| `Props/fir_tree_01_trunk_b_nor_gl_1k.jpg` | <https://polyhaven.com/a/fir_tree_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Tall fir of 14.1 m: its trunk; normal, OpenGL convention |
+| `Props/fir_tree_01_trunk_b_arm_1k.jpg` | <https://polyhaven.com/a/fir_tree_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Tall fir of 14.1 m: its trunk; mask source, AO in R, roughness in G, metalness in B |
+| `Props/fir_tree_01_twig_diff_1k.jpg` | <https://polyhaven.com/a/fir_tree_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Tall firs, two of 14.1 and 19.0 m: their needles, as sprays; albedo |
+| `Props/fir_tree_01_twig_nor_gl_1k.jpg` | <https://polyhaven.com/a/fir_tree_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Tall firs, two of 14.1 and 19.0 m: their needles, as sprays; normal, OpenGL convention |
+| `Props/fir_tree_01_twig_arm_1k.jpg` | <https://polyhaven.com/a/fir_tree_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Tall firs, two of 14.1 and 19.0 m: their needles, as sprays; mask source, AO in R, roughness in G, metalness in B |
+| `Props/fir_tree_01_twig_alpha_1k.png` | <https://polyhaven.com/a/fir_tree_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Tall firs, two of 14.1 and 19.0 m: their needles, as sprays; opacity |
+| `Props/searsia_lucida_diff_1k.jpg` | <https://polyhaven.com/a/searsia_lucida> | James Ray Cock, Jenelle van Heerden | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Leafy bushes, seven of 0.7 to 2.3 m: stems, twigs and leaves; albedo |
+| `Props/searsia_lucida_nor_gl_1k.jpg` | <https://polyhaven.com/a/searsia_lucida> | James Ray Cock, Jenelle van Heerden | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Leafy bushes, seven of 0.7 to 2.3 m: stems, twigs and leaves; normal, OpenGL convention |
+| `Props/searsia_lucida_arm_1k.jpg` | <https://polyhaven.com/a/searsia_lucida> | James Ray Cock, Jenelle van Heerden | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Leafy bushes, seven of 0.7 to 2.3 m: stems, twigs and leaves; mask source, AO in R, roughness in G, metalness in B |
+| `Props/searsia_lucida_alpha_1k.png` | <https://polyhaven.com/a/searsia_lucida> | James Ray Cock, Jenelle van Heerden | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Leafy bushes, seven of 0.7 to 2.3 m: stems, twigs and leaves; opacity |
+| `Props/island_tree_02_diff_1k.jpg` | <https://polyhaven.com/a/island_tree_02> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Small gnarled tree of 3.4 m, drawn smaller as a shrub: its trunk; albedo |
+| `Props/island_tree_02_nor_gl_1k.jpg` | <https://polyhaven.com/a/island_tree_02> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Small gnarled tree of 3.4 m, drawn smaller as a shrub: its trunk; normal, OpenGL convention |
+| `Props/island_tree_02_arm_1k.jpg` | <https://polyhaven.com/a/island_tree_02> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Small gnarled tree of 3.4 m, drawn smaller as a shrub: its trunk; mask source, AO in R, roughness in G, metalness in B |
+| `Props/island_tree_02_branches_diff_1k.jpg` | <https://polyhaven.com/a/island_tree_02> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Small gnarled tree of 3.4 m, drawn smaller as a shrub: its twigs; albedo |
+| `Props/island_tree_02_branches_nor_gl_1k.jpg` | <https://polyhaven.com/a/island_tree_02> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Small gnarled tree of 3.4 m, drawn smaller as a shrub: its twigs; normal, OpenGL convention |
+| `Props/island_tree_02_branches_arm_1k.jpg` | <https://polyhaven.com/a/island_tree_02> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Small gnarled tree of 3.4 m, drawn smaller as a shrub: its twigs; mask source, AO in R, roughness in G, metalness in B |
+| `Props/island_tree_02_leaves_diff_1k.jpg` | <https://polyhaven.com/a/island_tree_02> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Small gnarled tree of 3.4 m, drawn smaller as a shrub: its leaves; albedo |
+| `Props/island_tree_02_leaves_nor_gl_1k.jpg` | <https://polyhaven.com/a/island_tree_02> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Small gnarled tree of 3.4 m, drawn smaller as a shrub: its leaves; normal, OpenGL convention |
+| `Props/island_tree_02_leaves_arm_1k.jpg` | <https://polyhaven.com/a/island_tree_02> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Small gnarled tree of 3.4 m, drawn smaller as a shrub: its leaves; mask source, AO in R, roughness in G, metalness in B |
+| `Props/island_tree_02_leaves_alpha_1k.png` | <https://polyhaven.com/a/island_tree_02> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Small gnarled tree of 3.4 m, drawn smaller as a shrub: its leaves; opacity |
+| `Props/fir_tree_01_a_cut.fbx` | <https://polyhaven.com/a/fir_tree_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Tall fir, 19.0 m; cut by `Derive/cut_fir.py` from the source's 4,176,819 triangles to four levels of 57,964 to 418 |
+| `Props/fir_tree_01_b_cut.fbx` | <https://polyhaven.com/a/fir_tree_01> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Tall fir, 14.1 m; cut by `Derive/cut_fir.py` from the source's 2,300,624 triangles to four levels of 58,031 to 417 |
+| `Props/fir_sapling_medium_a_cut.fbx` | <https://polyhaven.com/a/fir_sapling_medium> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Young fir, 8.9 m; cut by `Derive/cut_fir.py` from the source's 685,046 triangles to four levels of 48,937 to 374 |
+| `Props/fir_sapling_medium_b_cut.fbx` | <https://polyhaven.com/a/fir_sapling_medium> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Young fir, 7.8 m; cut by `Derive/cut_fir.py` from the source's 420,822 triangles to four levels of 45,430 to 369 |
+| `Props/fir_sapling_medium_c_cut.fbx` | <https://polyhaven.com/a/fir_sapling_medium> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Young fir, 6.0 m; cut by `Derive/cut_fir.py` from the source's 427,645 triangles to four levels of 45,556 to 368 |
+| `Props/searsia_lucida_a_cut.fbx` | <https://polyhaven.com/a/searsia_lucida> | James Ray Cock, Jenelle van Heerden | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Leafy bush, 2.3 m; cut by `Derive/cut_tree.py` from the source's 113,405 triangles to three levels of 9,598 to 280 |
+| `Props/searsia_lucida_b_cut.fbx` | <https://polyhaven.com/a/searsia_lucida> | James Ray Cock, Jenelle van Heerden | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Leafy bush, 2.0 m; cut by `Derive/cut_tree.py` from the source's 88,629 triangles to three levels of 9,598 to 280 |
+| `Props/searsia_lucida_c_cut.fbx` | <https://polyhaven.com/a/searsia_lucida> | James Ray Cock, Jenelle van Heerden | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Leafy bush, 1.7 m; cut by `Derive/cut_tree.py` from the source's 77,603 triangles to three levels of 9,599 to 280 |
+| `Props/searsia_lucida_d_cut.fbx` | <https://polyhaven.com/a/searsia_lucida> | James Ray Cock, Jenelle van Heerden | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Leafy bush, 1.4 m; cut by `Derive/cut_tree.py` from the source's 56,320 triangles to three levels of 8,538 to 280 |
+| `Props/searsia_lucida_e_cut.fbx` | <https://polyhaven.com/a/searsia_lucida> | James Ray Cock, Jenelle van Heerden | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Leafy bush, 1.0 m; cut by `Derive/cut_tree.py` from the source's 27,701 triangles to three levels of 5,446 to 280 |
+| `Props/searsia_lucida_f_cut.fbx` | <https://polyhaven.com/a/searsia_lucida> | James Ray Cock, Jenelle van Heerden | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Leafy bush, 0.7 m; cut by `Derive/cut_tree.py` from the source's 7,232 triangles to three levels of 3,287 to 280 |
+| `Props/searsia_lucida_g_cut.fbx` | <https://polyhaven.com/a/searsia_lucida> | James Ray Cock, Jenelle van Heerden | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Leafy bush, 0.8 m; cut by `Derive/cut_tree.py` from the source's 6,302 triangles to three levels of 3,223 to 280 |
+| `Props/island_tree_02_cut.fbx` | <https://polyhaven.com/a/island_tree_02> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Small gnarled tree, 3.4 m tall and 4.2 m across, drawn smaller as a shrub; cut by `Derive/cut_tree.py` from the source's 1,072,213 triangles to three levels of 9,999 to 379 |
 
 ## Props as drawn
 
@@ -201,8 +250,16 @@ the rows from the prefabs: the editor's menu, Eternities, "Kit props as drawn".
 
 | Prop | Category | Model | Height | Triangles | Materials |
 |---|---|---|---|---|---|
+| island_tree_02 | bush | `Props/island_tree_02_cut.fbx` | 2.05 m | 9,999 to 379 | 3 |
 | plant_bush | bush | `Props/plant_bush.fbx` | 1.04 m | 32 | 1 |
 | plant_bushLarge | bush | `Props/plant_bushLarge.fbx` | 1.46 m | 60 | 1 |
+| searsia_lucida_a | bush | `Props/searsia_lucida_a_cut.fbx` | 2.34 m | 9,598 to 280 | 1 |
+| searsia_lucida_b | bush | `Props/searsia_lucida_b_cut.fbx` | 2.00 m | 9,598 to 280 | 1 |
+| searsia_lucida_c | bush | `Props/searsia_lucida_c_cut.fbx` | 1.69 m | 9,599 to 280 | 1 |
+| searsia_lucida_d | bush | `Props/searsia_lucida_d_cut.fbx` | 1.43 m | 8,538 to 280 | 1 |
+| searsia_lucida_e | bush | `Props/searsia_lucida_e_cut.fbx` | 1.02 m | 5,446 to 280 | 1 |
+| searsia_lucida_f | bush | `Props/searsia_lucida_f_cut.fbx` | 0.74 m | 3,287 to 280 | 1 |
+| searsia_lucida_g | bush | `Props/searsia_lucida_g_cut.fbx` | 0.79 m | 3,223 to 280 | 1 |
 | celandine_01_a | ground cover | `Props/celandine_01_1k.fbx` | 0.19 m | 622 to 64 | 1 |
 | celandine_01_b | ground cover | `Props/celandine_01_1k.fbx` | 0.14 m | 599 to 64 | 1 |
 | celandine_01_e | ground cover | `Props/celandine_01_1k.fbx` | 0.12 m | 442 to 64 | 1 |
@@ -275,6 +332,11 @@ the rows from the prefabs: the editor's menu, Eternities, "Kit props as drawn".
 | bridge_wood | structure | `Props/bridge_wood.fbx` | 1.60 m | 220 | 3 |
 | path_wood | structure | `Props/path_wood.fbx` | 0.10 m | 60 | 2 |
 | statue_obelisk | structure | `Props/statue_obelisk.fbx` | 2.19 m | 38 | 2 |
+| fir_sapling_medium_a | tree | `Props/fir_sapling_medium_a_cut.fbx` | 8.88 m | 48,937 to 374 | 2 |
+| fir_sapling_medium_b | tree | `Props/fir_sapling_medium_b_cut.fbx` | 7.82 m | 45,430 to 369 | 2 |
+| fir_sapling_medium_c | tree | `Props/fir_sapling_medium_c_cut.fbx` | 5.96 m | 45,556 to 368 | 2 |
+| fir_tree_01_a | tree | `Props/fir_tree_01_a_cut.fbx` | 19.03 m | 57,964 to 418 | 3 |
+| fir_tree_01_b | tree | `Props/fir_tree_01_b_cut.fbx` | 14.08 m | 58,031 to 417 | 3 |
 | island_tree_01 | tree | `Props/island_tree_01_cut.fbx` | 5.05 m | 58,998 to 429 | 3 |
 | jacaranda_tree | tree | `Props/jacaranda_tree_cut.fbx` | 19.48 m | 59,620 to 452 | 3 |
 | tree_oak | tree | `Props/tree_oak.fbx` | 7.97 m | 196 | 2 |
@@ -291,8 +353,17 @@ the rows from the prefabs: the editor's menu, Eternities, "Kit props as drawn".
 
 ## Notes for the slice
 
-- **Size.** The kit's sources are 149 files and 197.8 MB. `fetch.sh` holds a model and a texture
-  to 8 MB each and the kit's sources to 200 MB, the proposal of 2026-10-12 on DEC-1003; the first
+- **Cooked size.** 229.8 MB on 2026-10-13, against PRD 7.2's 250 MB for a kit at the
+  photographic standard: textures 182.0 MB, meshes 46.3 MB, audio 1.3 MB. It is what the assets
+  under this folder take in a macOS player's data, summed by the build from its own report
+  (`Build: cooked by owner`, `unity/Eternities/README.md`). A normal or mask map cooks to a byte
+  a texel and a third more for its smaller levels: 1.3 MB at 1K in that build, so 5.3 MB at 2K.
+  A 2K colour cooks to 2.7 MB. So the 24 normal and mask maps that are 2K files are imported at
+  1K (`maxTextureSize` in their `.meta`), and a colour stays at its file's size. With the 24 at
+  2K the kit would be about 96 MB more, which is over its row; that figure is the sum and was
+  not built.
+- **Size.** The kit's sources are 196 files and 242.1 MB. `fetch.sh` holds a model and a texture
+  to 8 MB each and the kit's sources to 300 MB, the proposal on DEC-1003; the first
   slice's subset of 24 files and 39.2 MB was under DEC-952's limits of 200 KB a prop, 8 MB a
   texture and 60 MB in all. The cooked size against PRD 7.2 is the build's check (PRD 8.7.2), not
   this one.

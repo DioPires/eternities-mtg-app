@@ -1,0 +1,68 @@
+{
+ "tree": "searsia_lucida_f",
+ "source": "searsia_lucida_1k.fbx",
+ "blender": "5.2.2 LTS",
+ "source_triangles": 7232,
+ "levels": [
+  {
+   "level": 0,
+   "limb_triangles": 0,
+   "twigs": 402,
+   "twig_triangles": 2599,
+   "closed_edges_m": 0.0,
+   "leaf_cards": 344,
+   "card_size": 1.0,
+   "triangles": 3287,
+   "materials": [
+    "searsia_lucida"
+   ]
+  },
+  {
+   "level": 1,
+   "limb_triangles": 0,
+   "twigs": 77,
+   "twig_triangles": 448,
+   "closed_edges_m": 0.0,
+   "leaf_cards": 344,
+   "card_size": 1.0,
+   "triangles": 1136,
+   "materials": [
+    "searsia_lucida"
+   ]
+  },
+  {
+   "level": 2,
+   "limb_triangles": 0,
+   "twigs": 0,
+   "twig_triangles": 0,
+   "closed_edges_m": 0.0,
+   "leaf_cards": 140,
+   "card_size": 1.803,
+   "triangles": 280,
+   "materials": [
+    "searsia_lucida"
+   ]
+  }
+ ],
+ "limb_triangles": 0,
+ "limbs_held_twice": 0,
+ "twigs": 402,
+ "leaves": 344,
+ "leaves_not_flat": 0,
+ "leaf_fit_mm": [
+  1.3,
+  3.4
+ ],
+ "leaf_fit_share_of_card": [
+  0.046,
+  0.058,
+  0.058
+ ],
+ "metres": [
+  0.675,
+  0.489,
+  0.739
+ ],
+ "under_its_base_m": 0.006,
+ "bytes": 278364
+}

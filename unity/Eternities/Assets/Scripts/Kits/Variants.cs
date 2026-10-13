@@ -52,10 +52,10 @@ namespace Eternities.Kits
         // The temperate kit's four (PRD v4 9.6; DEC-1003): a field, a wood, wet ground and bare
         // dark rock. The densities are a first setting for the owner's eye. At 24 tufts a square
         // metre, which is the meadow at the medium level, the ground still shows between them.
-        // The trees are their sources cut to four levels by the kit's `Derive/cut_tree.py` (PRD v4
-        // 7.6.4; the owner's answer of 2026-10-13 on DEC-1003): a wood of tall jacarandas over
-        // two small trees, and a few of them standing alone in the meadow. No variant has a bush
-        // or a reed yet.
+        // The trees and bushes are their sources cut to levels by the kit's `Derive/` scripts (PRD
+        // v4 7.6.4; the owner's answer of 2026-10-13 on DEC-1003): a mixed wood of firs and
+        // broadleaves over bushes, a few trees standing alone in the meadow, and low bushes and
+        // stunted trees on the highland. No variant has a reed yet.
         public static readonly Variant[] Temperate =
         {
             new Variant
@@ -85,10 +85,16 @@ namespace Eternities.Kits
                     Each("GroundCover/shrub_02_", 8, 0.9f, 1.3f, "a", "b", "c", "d"),
                     Each("Rocks/rock_moss_set_01_", 0.5f, 0.85f, 1.25f, "rock01", "rock02", "rock03", "rock04", "rock05", "rock06"),
                     Each("Rocks/rock_moss_set_02_", 1.2f, 0.85f, 1.25f, "rock07", "rock08", "rock09", "rock10", "rock11", "rock12", "rock13"),
-                    // A jacaranda's crown is 25 m across: one to four hundred square metres closes the roof.
-                    Each("Trees/jacaranda_tree", 0.25f, 0.7f, 1.1f, ""),
-                    Each("Trees/tree_small_02", 1.2f, 1.2f, 2, ""),
-                    Each("Trees/island_tree_01", 0.8f, 1, 1.8f, "")),
+                    // Tall firs and a few jacarandas are the roof, 14 to 22 m; young firs and two
+                    // small broadleaves stand under them, and bushes close the height between.
+                    Each("Trees/fir_tree_01_", 0.5f, 0.85f, 1.15f, "a", "b"),
+                    Each("Trees/jacaranda_tree", 0.1f, 0.7f, 1.1f, ""),
+                    Each("Trees/fir_sapling_medium_", 0.9f, 0.8f, 1.3f, "a", "b", "c"),
+                    Each("Trees/tree_small_02", 1, 1.2f, 2, ""),
+                    Each("Trees/island_tree_01", 0.5f, 1, 1.8f, ""),
+                    Each("Bushes/searsia_lucida_", 5, 0.85f, 1.3f, "a", "b", "c", "d", "e"),
+                    Each("Bushes/searsia_lucida_", 3, 0.85f, 1.3f, "f", "g"),
+                    Each("Bushes/island_tree_02", 0.5f, 0.8f, 1.2f, "")),
             },
             new Variant
             {
@@ -111,7 +117,11 @@ namespace Eternities.Kits
                     Each("GroundCover/shrub_03_", 25, 1, 1.6f, "c", "d"),
                     Each("GroundCover/dry_branches_medium_01_", 2, 0.8f, 1.2f, "a", "b", "c"),
                     Each("Rocks/boulder_01", 1.2f, 0.6f, 1.8f, ""),
-                    Each("Rocks/rock_07", 8, 1, 2, "")),
+                    Each("Rocks/rock_07", 8, 1, 2, ""),
+                    Each("Trees/island_tree_01", 0.04f, 0.6f, 1, ""),
+                    Each("Trees/fir_sapling_medium_c", 0.04f, 0.5f, 0.9f, ""),
+                    Each("Bushes/searsia_lucida_", 0.6f, 0.7f, 1.1f, "f", "g"),
+                    Each("Bushes/island_tree_02", 0.08f, 0.7f, 1, "")),
             },
         };
 

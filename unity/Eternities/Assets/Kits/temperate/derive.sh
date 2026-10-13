@@ -3,7 +3,9 @@
 # result to the file the kit commits (PRD v4 7.6.4, 8.12). A derived file is a binary that a
 # committed script makes from a CC0 source: its entry in sources.yaml names the script and its
 # arguments (`derived_by`), the source's address (`url`) and the source's SHA-256
-# (`source_sha256`); `sha256` is the derived file's own, which `./fetch.sh` verifies.
+# (`source_sha256`); `sha256` is the derived file's own, which `./fetch.sh` verifies. A source of
+# two files, a glTF and its data, has the second as `url_2` and `source_sha256_2`: it is kept
+# beside the first under its own name, and the script is given the first.
 #
 #   ./derive.sh                  every derived file: download its source, verify it, make the
 #                                file again and compare it with the kit's, byte for byte
@@ -11,7 +13,7 @@
 #   ./derive.sh --write [...]    put each result in the kit, and its report beside the script;
 #                                prints the sha256 that sources.yaml must then carry
 #
-# A source is 48 to 132 MB and is kept between runs in $ETERNITIES_DERIVE_CACHE, or in a folder
+# A source is 48 to 480 MB and is kept between runs in $ETERNITIES_DERIVE_CACHE, or in a folder
 # of this script's own under $TMPDIR. Needs bash, curl, awk, sha256sum or shasum, and Blender. The
 # bytes are those of the Blender that a file's report names; another Blender may cut the same
 # tree into other bytes, and then this compares the two reports and says so.
@@ -42,12 +44,13 @@ fi
 command -v blender >/dev/null 2>&1 || die "Blender is not on the PATH"
 ours="$(blender --version | head -1 | sed 's/^Blender //')"
 
-# One tab-separated line per derived file: file, url, source_sha256, derived_by, sha256.
+# One tab-separated line per derived file: file, url, source_sha256, url_2, source_sha256_2,
+# derived_by, sha256. `-` stands for an absent value.
 records() {
   awk '
     function flush() {
-      if (file != "" && derived != "") printf "%s\t%s\t%s\t%s\t%s\n", file, url, from, derived, sum
-      file = url = from = derived = sum = ""
+      if (file != "" && derived != "") printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", file, url, from, (url2 == "" ? "-" : url2), (from2 == "" ? "-" : from2), derived, sum
+      file = url = from = url2 = from2 = derived = sum = ""
     }
     /^  - file: / { flush() }
     /^  (- |  )[a-z_0-9]+: / {
@@ -61,11 +64,26 @@ records() {
       if (key == "file") file = val
       else if (key == "url") url = val
       else if (key == "source_sha256") from = val
+      else if (key == "url_2") url2 = val
+      else if (key == "source_sha256_2") from2 = val
       else if (key == "derived_by") derived = val
       else if (key == "sha256") sum = val
     }
     END { flush() }
   ' "$manifest"
+}
+
+# A source file at its address, into the cache if it is not there with its checksum.
+source_file() {
+  if [ ! -f "$2" ] || [ "$(sha "$2")" != "$3" ]; then
+    mkdir -p "$(dirname "$2")"
+    curl --fail --silent --show-error --location --retry 3 --connect-timeout 20 --max-time 3000 \
+      --user-agent "eternities-kit-fetch/1 (+https://github.com/DioPires/eternities-mtg-app)" \
+      --output "$2.part" "$1" || die "download failed: $1"
+    got="$(sha "$2.part")"
+    [ "$got" = "$3" ] || die "$1: expected sha256 $3, got $got"
+    mv "$2.part" "$2"
+  fi
 }
 
 tmp="$(mktemp -d)"
@@ -74,7 +92,7 @@ mkdir -p "$cache"
 
 made=0
 differ=0
-while IFS=$'\t' read -r file url source_sha derived want; do
+while IFS=$'\t' read -r file url source_sha url_2 source_sha_2 derived want; do
   if [ "$#" -gt 0 ]; then
     wanted=0
     for name in "$@"; do
@@ -89,14 +107,10 @@ while IFS=$'\t' read -r file url source_sha derived want; do
 
   # The source, in a folder of its own that holds nothing else.
   source="$cache/$source_sha/$(basename "$url")"
-  if [ ! -f "$source" ] || [ "$(sha "$source")" != "$source_sha" ]; then
-    mkdir -p "$(dirname "$source")"
-    curl --fail --silent --show-error --location --retry 3 --connect-timeout 20 --max-time 3000 \
-      --user-agent "eternities-kit-fetch/1 (+https://github.com/DioPires/eternities-mtg-app)" \
-      --output "$source.part" "$url" || die "download failed: $url"
-    got="$(sha "$source.part")"
-    [ "$got" = "$source_sha" ] || die "$url: expected sha256 $source_sha, got $got"
-    mv "$source.part" "$source"
+  source_file "$url" "$source" "$source_sha"
+  if [ "$url_2" != "-" ]; then
+    [ "${#source_sha_2}" -eq 64 ] || die "$file: entry has a url_2 and no source_sha256_2"
+    source_file "$url_2" "$cache/$source_sha/$(basename "$url_2")" "$source_sha_2"
   fi
 
   out="$tmp/$(basename "$file")"
