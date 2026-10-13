@@ -53,12 +53,6 @@ APRON_FRONT = FOOT_BACK + APRON_DEPTH
 APRON_HALF = APRON_WIDTH // 2
 
 
-TURN_SIDES: str = (
-    "inner"  # experiment: "alternate" voids a half-turn slot whose side is the outer one
-)
-ORDER: str = "vertex"  # experiment: "distance" puts the candidate nearest its path vertex first
-
-
 @dataclass(frozen=True, slots=True)
 class Candidate:
     row: int
@@ -129,7 +123,6 @@ def capacity_of(
     run_of_void = 0
     cut: int | None = None
     number = 0
-    kept_on = (0, -1)
     while cut is None:
         number += 1
         arc = number * SLOT_SPACING
@@ -144,25 +137,16 @@ def capacity_of(
         on_turn = local.turn[segment]
         alternate = 1 if number % 2 == 1 else -1
         side = on_turn if on_turn != 0 else alternate
-        by_rule = TURN_SIDES == "alternate" and on_turn != 0 and alternate != on_turn
-        if TURN_SIDES == "spaced" and on_turn != 0:
-            # The half-turn this slot lies on, named by the first of its segments.
-            first = segment
-            while first > 0 and local.turn[first - 1] != 0:
-                first -= 1
-            by_rule = kept_on == (number - 1, first)
         along = prng.randint(-CLUSTER_ALONG, CLUSTER_ALONG)
         across = prng.randint(-CLUSTER_ACROSS, CLUSTER_ACROSS)
         cap = prng.randint(CAP_MIN, CAP_MAX)
-        if TURN_SIDES == "capped" and on_turn != 0:
-            cap = CAP_MIN
         offset = side * CLUSTER_OFFSET + across
         den = length * SCALE
         cx = (ax * length + along_segment * (bx - ax)) * SCALE + length * (along * c - offset * s)
         cz = (az * length + along_segment * (bz - az)) * SCALE + length * (along * s + offset * c)
         cluster = disc(directions.disc, cx, cz, den, CLUSTER_RADIUS)
         candidates: list[Candidate] = []
-        disc_inside = not by_rule and inside(cluster, blob, MARGIN)
+        disc_inside = inside(cluster, blob, MARGIN)
         if disc_inside:
             candidates = _candidates(
                 local,
@@ -182,11 +166,6 @@ def capacity_of(
                 Slot(number, arc, (cx, cz), den, cap, on_turn != 0, tuple(candidates), cluster)
             )
             run_of_void = 0
-            if on_turn != 0:
-                first = segment
-                while first > 0 and local.turn[first - 1] != 0:
-                    first -= 1
-                kept_on = (number, first)
         else:
             void += 1
             run_of_void += 1
@@ -268,10 +247,7 @@ def _candidates(
         if not all(clear(corridor, other, MARGIN) for other in corridor_foreign):
             continue
         found.append((vertex, best, row, column, Candidate(row, column, x, z, vertex)))
-    if ORDER == "distance":
-        found.sort(key=lambda item: (item[1], item[0], item[2], item[3]))
-    else:
-        found.sort(key=lambda item: item[:4])
+    found.sort(key=lambda item: item[:4])
     return [item[4] for item in found]
 
 

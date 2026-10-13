@@ -84,7 +84,7 @@ def _clip(points: list[Point], a: Fraction, b: Fraction, c: Fraction) -> list[Po
         if side_here <= 0:
             kept.append(here)
         if (side_here < 0 < side_there) or (side_there < 0 < side_here):
-            t = side_here / (side_here - side_there)
+            t = Fraction(side_here, side_here - side_there)
             kept.append((here[0] + t * (there[0] - here[0]), here[1] + t * (there[1] - here[1])))
     return kept
 

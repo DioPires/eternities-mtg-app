@@ -1,10 +1,26 @@
 """Placement of a site's stands, its chapter stones and the trim of its path (PRD v4 5.4.10).
 
 The work is done in the site's frame, after every site has capacity and the trail is reserved.
-Each candidate takes its jitter, is displaced, faces its path vertex, and its footprint, apron
-and corridor are tested on that final geometry with the 2 mm margin.
+Each candidate takes its jitter, is displaced, faces a vertex of its path, and its footprint,
+apron and corridor are tested on that final geometry with the 2 mm margin.
 
-**What the code defines where 5.4.10 leaves a choice** (5.4.18 (12)):
+Two rules are the CEO's ruling 2 of 2026-10-13 on DEC-1004, which wins over the letter of 5.4.10
+until the next erratum writes them into the PRD:
+
+- **V, the vertex of the window that fits.** A candidate is tried at the vertices of its slot's
+  6 m window, in order of distance from its lattice point (ties by the lower vertex index). It
+  faces the first vertex at which its footprint, apron and corridor pass every test. That vertex
+  is its path vertex: the yaw, the corridor, the emitted vertex index and the trim read it. At a
+  vertex other than the nearest, the corridor must also lie inside the blob. The tries take no
+  draw. Capacity and the candidate order read the nearest vertex of the window (5.4.9).
+- **W, the withdrawn cluster.** A cluster that would close with fewer than three stands is
+  withdrawn, unless the site's stand count is reached in it or the site has fewer than three
+  stands. Its stands and its chapter stone are removed and block nothing later, the chapter state
+  returns to what it was before the cluster, the draws stay taken, and its slot is void. A slot
+  void at capacity and a withdrawn slot count together: two in a row cut the path at the second.
+  The site is exhausted when its path is cut, or its kept slots run out, while cards remain.
+
+**What the code defines where 5.4.10 and the ruling leave a choice** (5.4.18 (12)):
 
 - A candidate takes its two jitter draws when it is considered: in a cluster, candidates are
   considered in their fixed order until the cluster's capacity is used or the site's stand count
@@ -14,7 +30,19 @@ and corridor are tested on that final geometry with the 2 mm margin.
   of their stands' yaws, between 0 and 180 degrees, and it must be 30 degrees or more.
 - A chapter stone lies inside the blob and inside its cluster's disc, as a footprint does.
 - A cluster closes under three when it holds fewer than three **stands**; a chapter stone is not
-  a stand.
+  a stand. A cluster that accepts no stand is withdrawn on any site, a site of fewer than three
+  stands included, because a cluster has one stand or more (3.1).
+- The first vertex of the window's order is the candidate's nearest vertex of 5.4.9, so the
+  first try is the try of the letter. The first try's cause is the one counted for a candidate
+  that fits at no vertex.
+- **One stand or stone a lattice point.** A candidate whose lattice point already holds an
+  accepted stand or a chapter stone of the site is rejected, after its two draws. Two clusters
+  of neighbouring sweeps can hold the same lattice point: their discs overlap where the wobble
+  brings the sweeps together. Two stands on one point can then pass every footprint, apron and
+  corridor test back to back, half a metre apart. The 2.5 m of invariant 9 rests on the lattice
+  pitch (5.4.18 (8)), so on one stand a point. The independent checker found the pair on
+  Dominaria: two stands of `era:urzas-academy` 451 mm apart, in the clusters at 45 m and 261 m.
+  A withdrawn cluster gives its points back.
 - A stone's yaw and a pad's yaw are set at emission, not here.
 - Other sites' stands, stones, paths and pads are not tested: every site's bounding disc lies
   10 m from every other's (5.4.6), and the independent checker asserts the pairs all the same.
@@ -70,6 +98,11 @@ class Stand:
     yaw: int
     """The direction the image surface faces, in counts of the trig table."""
     vertex: int
+    """Index of the stand's path vertex: the vertex of the window that fits (V)."""
+    nearest: int
+    """Index of the nearest vertex of the window, the path vertex of 5.4.9."""
+    rank: int
+    """The path vertex's place in the window's order: 0 when it is the nearest vertex."""
     footprint: Shape
     apron: Shape
     corridor: Shape
@@ -80,6 +113,8 @@ class ChapterStone:
     slot: int
     chapter: int
     """Index of the chapter this stone opens, 1 or more."""
+    row: int
+    column: int
     x: int
     """The lattice point, whole millimetres, in the site's frame."""
     z: int
@@ -95,8 +130,10 @@ class Placement:
     end: int
     """Index of the path's last vertex after the trim."""
     exhausted: int | None
-    """None when every card has a stand. Else the number of the slot that closed under three
-    stands, or 0 when the kept slots ran out."""
+    """None when every card has a stand. Else the number of the slot at which two void slots in
+    a row cut the path, or 0 when the kept slots ran out."""
+    withdrawn: tuple[int, ...]
+    """The numbers of the slots whose cluster was withdrawn (W), in slot order."""
     considered: int
     """Candidates that took a jitter draw."""
     rejected: tuple[int, ...]
@@ -123,6 +160,7 @@ CAUSES: tuple[str, ...] = (
     "the corridor meets another stand's footprint or apron",
     "the corridor meets another corridor at under 30 degrees",
     "a chapter stone does not fit at the lattice point",
+    "the lattice point holds another stand or a chapter stone",
 )
 
 
@@ -182,29 +220,32 @@ def yaw_gap(a: int, b: int) -> int:
     return min(gap, COUNTS_PER_TURN - gap)
 
 
-VERTEX_TRIES: int = 1  # experiment: how many vertices of the window a candidate may face
-UNDER_THREE: str = "exhaust"  # experiment: "void" withdraws a cluster under three; "keep" keeps it
-
-
 def place_site(
     local: Local,
     capacity: Capacity,
     chapters: Sequence[int],
     directions: Directions,
     foreign: Foreign | None = None,
+    jitter: Prng | None = None,
 ) -> Placement:
     """5.4.10 for one site. ``chapters`` is the stand count of each chapter, in order.
 
-    A site with no chapters of its own (a regional site, a set site) passes one count.
+    A site with no chapters of its own (a regional site, a set site) passes one count. The
+    jitter draws continue the site's stream from the state after its slots' draws (5.4.9);
+    ``jitter`` gives another stream in its place, which only a measured reading does
+    (``allocate.allocate``, ``redraw_scope="jitter"``).
     """
     foreign = foreign or Foreign()
     prng = Prng(0)
     prng.state = capacity.state
+    if jitter is not None:
+        prng = jitter
     total = sum(chapters)
     small = total < MIN_CLUSTER
     index = _Index()
     stones: list[ChapterStone] = []
     stone_discs: list[Shape] = [local.stone_disc]
+    taken: set[tuple[int, int]] = set()
     chapter, in_chapter, stone_due = 0, 0, False
     exhausted: int | None = None
     considered = 0
@@ -226,7 +267,7 @@ def place_site(
         return inside(shape, local.blob, MARGIN) and inside(shape, slot.disc, MARGIN)
 
     def attempt(
-        position: int, slot: Slot, candidate: Candidate, px: int, pz: int, vertex: int
+        position: int, slot: Slot, candidate: Candidate, px: int, pz: int, vertex: int, rank: int
     ) -> Stand | int:
         """The stand at (px, pz) / 2^30 facing ``vertex``, or the cause that rejects it."""
         vx, vz = path[vertex]
@@ -254,6 +295,8 @@ def place_site(
             z=pz,
             yaw=yaw,
             vertex=vertex,
+            nearest=candidate.vertex,
+            rank=rank,
             footprint=footprint,
             apron=apron,
             corridor=corridor,
@@ -261,18 +304,17 @@ def place_site(
         return _stand_conflict(stand, index) or stand
 
     def vertices(slot: Slot, candidate: Candidate) -> list[int]:
-        if VERTEX_TRIES == 1:
-            return [candidate.vertex]
+        """The vertices of the slot's 6 m window, the nearest to the lattice point first."""
         window = range(
             bisect_left(arcs, slot.arc - CORRIDOR_ARC_WINDOW),
             bisect_right(arcs, slot.arc + CORRIDOR_ARC_WINDOW),
         )
-        ordered = sorted(
+        return sorted(
             window,
             key=lambda i: ((path[i][0] - candidate.x) ** 2 + (path[i][1] - candidate.z) ** 2, i),
         )
-        return ordered[:VERTEX_TRIES]
 
+    withdrawn: list[int] = []
     void_run = 0
     previous = 0
     for position, slot in enumerate(capacity.slots):
@@ -294,6 +336,10 @@ def place_site(
             considered += 1
             angle = prng.randint(0, MICRO_PER_TURN - 1)
             radius = prng.randint(0, JITTER_RADIUS)
+            point = (candidate.row, candidate.column)
+            if point in taken:
+                rejected[8] += 1
+                continue
             if stone_due:
                 stone = disc(directions.disc, candidate.x, candidate.z, 1, STONE_RADIUS)
                 if not (
@@ -312,6 +358,8 @@ def place_site(
                     ChapterStone(
                         slot=position,
                         chapter=chapter,
+                        row=candidate.row,
+                        column=candidate.column,
                         x=candidate.x,
                         z=candidate.z,
                         vertex=candidate.vertex,
@@ -319,6 +367,7 @@ def place_site(
                     )
                 )
                 stone_discs.append(stone)
+                taken.add(point)
                 stone_due = False
                 units += 1
                 continue
@@ -327,8 +376,8 @@ def place_site(
             pz = candidate.z * SCALE + radius * js
             first: int | None = None
             found: Stand | None = None
-            for vertex in vertices(slot, candidate):
-                tried = attempt(position, slot, candidate, px, pz, vertex)
+            for rank, vertex in enumerate(vertices(slot, candidate)):
+                tried = attempt(position, slot, candidate, px, pz, vertex, rank)
                 if isinstance(tried, Stand):
                     found = tried
                     break
@@ -338,6 +387,7 @@ def place_site(
                 rejected[first or 0] += 1
                 continue
             index.add(found)
+            taken.add(point)
             units += 1
             stands_here += 1
             in_chapter += 1
@@ -345,18 +395,17 @@ def place_site(
                 chapter += 1
                 in_chapter = 0
                 stone_due = True
-        if len(index.stands) < total and stands_here < MIN_CLUSTER and not small:
-            if UNDER_THREE == "exhaust":
-                exhausted = slot.number
-                break
-            if UNDER_THREE == "keep":
-                void_run = 0
-                continue
+        if len(index.stands) < total and (
+            stands_here == 0 or (stands_here < MIN_CLUSTER and not small)
+        ):
             # The cluster is withdrawn and its slot is void; a second void in a row cuts the path.
+            taken.difference_update((stand.row, stand.column) for stand in index.stands[mark[0] :])
+            taken.difference_update((stone.row, stone.column) for stone in stones[mark[1] :])
             index.truncate(mark[0])
             del stones[mark[1] :]
             del stone_discs[mark[1] + 1 :]
             chapter, in_chapter, stone_due = mark[2], mark[3], mark[4]
+            withdrawn.append(slot.number)
             void_run += 1
             if void_run == 2:
                 exhausted = slot.number
@@ -380,6 +429,7 @@ def place_site(
         stones=tuple(stones),
         end=end,
         exhausted=exhausted,
+        withdrawn=tuple(withdrawn),
         considered=considered,
         rejected=tuple(rejected),
     )

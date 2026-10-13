@@ -119,6 +119,8 @@ class Local:
     """The sweep direction that passed, in counts."""
     tries: int
     """Sweep-direction tries used, 1 to 18."""
+    failures: tuple[str, ...]
+    """Why each earlier try failed, in try order: one of :data:`TRY_FAILURES`."""
     sweeps: int
     """Sweeps kept."""
     state: int
@@ -134,6 +136,13 @@ class Local:
     """Routing cells within 5 m of the blob, in the site's frame, filled as routes ask (5.4.11)."""
     near_cells: dict[tuple[int, int], bool] = field(default_factory=dict, compare=False, repr=False)
     """Routing cells whose centre is less than 10 m from the blob, in the site's frame."""
+
+
+EMPTY_PATH = "the path is empty"
+APPROACH_MEETS_BLOB = "the approach meets the blob"
+SQUARE_NEAR_BLOB = "the attachment square lies within 5 m of the blob"
+STONE_TEST = "the stone test fails"
+TRY_FAILURES: tuple[str, ...] = (EMPTY_PATH, APPROACH_MEETS_BLOB, SQUARE_NEAR_BLOB, STONE_TEST)
 
 
 def blob_of(radius: int, prng: Prng, directions: Directions) -> Shape:
@@ -327,22 +336,30 @@ def build(radius: int, seed: str, directions: Directions) -> Local | None:
     blob = blob_of(radius, prng, directions)
     drawn = prng.randint(0, MICRO_PER_TURN // 2 - 1)
     after_direction = prng.state
+    failures: list[str] = []
     for attempt in range(SWEEP_TRIES):
         prng.state = after_direction
         count = ((drawn + attempt * SWEEP_TRY_STEP) % MICRO_PER_TURN) // MICRO_PER_COUNT
-        found = _try(radius, blob, count, attempt + 1, prng, directions)
-        if found is not None:
+        found = _try(radius, blob, count, tuple(failures), prng, directions)
+        if isinstance(found, Local):
             return found
+        failures.append(found)
     return None
 
 
 def _try(
-    radius: int, blob: Shape, count: int, tries: int, prng: Prng, directions: Directions
-) -> Local | None:
+    radius: int,
+    blob: Shape,
+    count: int,
+    failures: tuple[str, ...],
+    prng: Prng,
+    directions: Directions,
+) -> Local | str:
+    """One sweep direction: the local geometry, or the reason the try fails (5.4.8)."""
     direction = directions.at(count)
     sweeps = _chords(blob, direction)
     if not sweeps:
-        return None
+        return EMPTY_PATH
     path: list[Pt] = []
     turn: list[int] = []
     first_run = 0
@@ -364,7 +381,7 @@ def _try(
             turn.extend([0] * (len(run) - 1))
             first_run = len(run)
     if len(path) < 2:
-        return None
+        return EMPTY_PATH
 
     hx, hz = path[0]
     head_count = directions.count_of(hx, hz)
@@ -384,10 +401,10 @@ def _try(
     far_edge = (hx * SCALE + 2 * PAD_RADIUS * uc, hz * SCALE + 2 * PAD_RADIUS * us)
     axis = strip([far_edge, (approach_point[0] * SCALE, approach_point[1] * SCALE)], 0, SCALE)
     if not clear(axis, blob, MARGIN):
-        return None
+        return APPROACH_MEETS_BLOB
     square = polygon(cell_square(*grid_cell(*approach_point)))
     if not clear(square, blob, OBSTACLE_EXPANSION + MARGIN):
-        return None
+        return SQUARE_NEAR_BLOB
 
     # The stone: the side whose centre is farther from the first run, ties left.
     along_x = hx * SCALE + STONE_ALONG * uc
@@ -413,7 +430,7 @@ def _try(
         and clear(approach_strip, stone_disc, spacing)
         and clear(path_strip, stone_disc, spacing, near)
     ):
-        return None
+        return STONE_TEST
 
     return Local(
         radius=radius,
@@ -429,7 +446,8 @@ def _try(
         stone=stone,
         stone_side=side,
         sweep_count=count,
-        tries=tries,
+        tries=len(failures) + 1,
+        failures=failures,
         sweeps=len(sweeps),
         state=prng.state,
         index=index,

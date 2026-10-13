@@ -14,6 +14,19 @@ is reached. It is the only allocator (8.3.3): the engine reads its output.
   not only the sites placed before it.
 - A local geometry, a capacity and a placement are pure functions of their inputs, so a restart
   that meets the same inputs again reads the earlier result instead of computing it again.
+- A site is exhausted at placement when two void slots in a row cut its path, or its kept slots
+  run out, while cards remain (the CEO's ruling 2 of 2026-10-13 on DEC-1004, W). It is widened
+  and the pass restarts at step (4).
+
+**Reading X, measured and not the law.** ``allocate(..., redraw_limit=n)`` gives a site that is
+exhausted at placement up to ``n`` second attempts at the same radius before it is widened: its
+redraw count ``a`` goes up by one, its seed string gains ``|<a>``, and the pass restarts at
+step (4). A widening returns ``a`` to 0. The law is ``redraw_limit=0``, and every fixture is
+emitted under it. ``redraw_scope="jitter"`` is a second reading measured beside X: the site
+keeps its seed, so its blob, its path and its capacity stay, and only the jitter draws of
+placement take the stream of the seed string with ``|jitter|<a>``. The two parameters exist for
+``scripts/layout_redraw_reading.py`` and go, or one becomes the law, with the CEO's ruling on X
+(DEC-1004 ruling 2, item 9; DEC-1040 note 14).
 """
 
 from __future__ import annotations
@@ -66,6 +79,28 @@ class Volume:
     shape: Shape
 
 
+CAPACITY = "capacity"
+NO_PATH = "no path and approach"
+RAN_OUT = "the kept slots ran out"
+CUT = "two void slots in a row"
+WIDENING_CAUSES: tuple[str, ...] = (NO_PATH, CAPACITY, RAN_OUT, CUT)
+
+
+@dataclass(frozen=True, slots=True)
+class Event:
+    """One step of the outer iteration, for the layout report."""
+
+    kind: str
+    """``pass``, ``widening`` (of a site), ``redraw``, ``restart`` or ``short`` (R is widened)."""
+    text: str
+    site: str | None = None
+    cause: str | None = None
+    """A widening's cause, one of :data:`WIDENING_CAUSES`."""
+    region: str | None = None
+    radius: int = 0
+    """R for a pass; the site's new r_s for a widening."""
+
+
 @dataclass(frozen=True, slots=True)
 class SiteLayout:
     plan: SitePlan
@@ -74,6 +109,8 @@ class SiteLayout:
     local: Local
     centre: Pt
     widenings: int
+    redraws: int
+    """Reading X's redraw count at the final layout; 0 under the law."""
     capacity: Capacity
     placement: Placement
 
@@ -93,8 +130,8 @@ class Layout:
     approach: PlazaApproach | None
     """None for a world with no site."""
     legs: tuple[Leg, ...]
-    events: tuple[str, ...]
-    """Every widening, restart and pass, in order, for the layout report."""
+    events: tuple[Event, ...]
+    """Every pass, widening, restart and widening of R, in order, for the layout report."""
 
 
 @dataclass(slots=True)
@@ -102,6 +139,8 @@ class _Short:
     """The world is short at this R (5.4.6, 5.4.11): the outer iteration widens it."""
 
     message: str
+    site: str | None = None
+    region: str | None = None
 
 
 @dataclass(slots=True)
@@ -112,44 +151,86 @@ class _State:
     directions: Directions
     volumes: tuple[Volume, ...]
     radius: dict[str, int]
+    redraw_limit: int = 0
+    redraw_scope: str = "site"
     widenings: dict[str, int] = field(default_factory=dict)
-    locals: dict[tuple[str, int], Local | None] = field(default_factory=dict)
-    capacities: dict[tuple[str, int, Pt], Capacity] = field(default_factory=dict)
-    placements: dict[tuple[str, int, Pt, tuple[object, ...]], Placement] = field(
+    redraws: dict[str, int] = field(default_factory=dict)
+    locals: dict[tuple[str, int, int], Local | None] = field(default_factory=dict)
+    capacities: dict[tuple[str, int, int, Pt], Capacity] = field(default_factory=dict)
+    placements: dict[tuple[str, int, int, Pt, tuple[object, ...]], Placement] = field(
         default_factory=dict
     )
-    events: list[str] = field(default_factory=list)
+    events: list[Event] = field(default_factory=list)
     restarts: int = 0
 
-    def widen(self, plan: SitePlan, reason: str) -> None:
+    def widen(self, plan: SitePlan, cause: str, detail: str) -> None:
         """One widening of a site (5.4.9), or the failure of 5.4.12 after twenty."""
         if self.widenings[plan.key] == SITE_WIDEN_LIMIT:
             raise LayoutError(
-                f"site {plan.key!r} of {self.slug}: {reason} after {SITE_WIDEN_LIMIT} widenings "
+                f"site {plan.key!r} of {self.slug}: {detail} after {SITE_WIDEN_LIMIT} widenings "
                 f"(r_s = {self.radius[plan.key]:,} mm; 5.4.12)"
             )
         self.widenings[plan.key] += 1
+        self.redraws[plan.key] = 0
         self.radius[plan.key] = local_step.widened(self.radius[plan.key])
         self.events.append(
-            f"widening {self.widenings[plan.key]} of `{plan.key}`: {reason}; "
-            f"r_s = {self.radius[plan.key]:,} mm"
+            Event(
+                kind="widening",
+                text=f"widening {self.widenings[plan.key]} of `{plan.key}`: {detail}; "
+                f"r_s = {self.radius[plan.key]:,} mm",
+                site=plan.key,
+                cause=cause,
+                radius=self.radius[plan.key],
+            )
         )
+
+    def exhausted(self, plan: SitePlan, cause: str, detail: str) -> None:
+        """A site is exhausted at placement: it is widened (5.4.10), or redrawn under reading X."""
+        if self.redraws[plan.key] < self.redraw_limit:
+            self.redraws[plan.key] += 1
+            self.events.append(
+                Event(
+                    kind="redraw",
+                    text=f"redraw {self.redraws[plan.key]} of `{plan.key}`: {detail}; "
+                    f"r_s = {self.radius[plan.key]:,} mm",
+                    site=plan.key,
+                    cause=cause,
+                    radius=self.radius[plan.key],
+                )
+            )
+            return
+        self.widen(plan, cause, detail)
+
+    def drawn(self, plan: SitePlan) -> int:
+        """The redraw count that the site's own stream reads: 0 under the law."""
+        return self.redraws[plan.key] if self.redraw_scope == "site" else 0
+
+    def seed(self, plan: SitePlan) -> str:
+        """The site's seed string (5.4.1); under reading X it gains ``|<a>`` at a redraw."""
+        seed = site_seed(self.slug, plan.key)
+        redraw = self.drawn(plan)
+        return seed if redraw == 0 else f"{seed}|{redraw}"
+
+    def jitter(self, plan: SitePlan) -> Prng | None:
+        """The jitter stream of the reading that redraws the jitter only; None under the law."""
+        redraw = self.redraws[plan.key] if self.redraw_scope == "jitter" else 0
+        if redraw == 0:
+            return None
+        return Prng.of(f"{site_seed(self.slug, plan.key)}|jitter|{redraw}")
 
     def local(self, plan: SitePlan) -> Local:
         """The site's local geometry at its radius, widening it while no try passes (5.4.8)."""
         while True:
-            key = (plan.key, self.radius[plan.key])
+            key = (plan.key, self.radius[plan.key], self.drawn(plan))
             if key not in self.locals:
-                self.locals[key] = local_step.build(
-                    key[1], site_seed(self.slug, plan.key), self.directions
-                )
+                self.locals[key] = local_step.build(key[1], self.seed(plan), self.directions)
             found = self.locals[key]
             if found is not None:
                 return found
-            self.widen(plan, "no path and approach in eighteen tries")
+            self.widen(plan, NO_PATH, "no path and approach in eighteen tries")
 
     def capacity(self, plan: SitePlan, built: Local, centre: Pt) -> Capacity:
-        key = (plan.key, built.radius, centre)
+        key = (plan.key, built.radius, self.drawn(plan), centre)
         found = self.capacities.get(key)
         if found is None:
             found = capacity_step.capacity_of(built, centre, plan.stands, self.directions)
@@ -163,8 +244,15 @@ def allocate(
     rows: Sequence[RegionRow] | None,
     volumes: Sequence[Volume],
     directions: Directions,
+    *,
+    redraw_limit: int = 0,
+    redraw_scope: str = "site",
 ) -> Layout:
-    """Lay one world out (5.4.12). ``rows`` is the region table, or None for a kit world."""
+    """Lay one world out (5.4.12). ``rows`` is the region table, or None for a kit world.
+
+    ``redraw_limit`` and ``redraw_scope`` are the measured readings of the module's note; the
+    law is a limit of 0.
+    """
     plans = tuple(plans)
     if rows is None:
         region_of = tuple(0 for _ in plans)
@@ -178,8 +266,11 @@ def allocate(
         directions=directions,
         volumes=tuple(volumes),
         radius={plan.key: local_step.base_radius(plan.stands) for plan in plans},
+        redraw_limit=redraw_limit,
+        redraw_scope=redraw_scope,
     )
     state.widenings = {plan.key: 0 for plan in plans}
+    state.redraws = {plan.key: 0 for plan in plans}
     _check_volumes(state)
     initial = regions.initial_radius(
         [local_step.bounding_radius(state.radius[plan.key]) for plan in plans]
@@ -188,12 +279,22 @@ def allocate(
     for number in range(1, PASS_LIMIT + 1):
         world = regions.world_polygon(radius, directions)
         cells = [world] if rows is None else regions.partition(radius, list(rows), directions)
-        state.events.append(f"pass {number}: R = {radius:,} mm")
+        state.events.append(
+            Event(kind="pass", text=f"pass {number}: R = {radius:,} mm", radius=radius)
+        )
         found = _pass(state, radius, world, cells)
         if isinstance(found, _Short):
             if number == PASS_LIMIT:
                 raise LayoutError(f"{slug}: {found.message} after {PASS_LIMIT} passes (5.4.12)")
-            state.events.append(f"R is widened: {found.message}")
+            state.events.append(
+                Event(
+                    kind="short",
+                    text=f"R is widened: {found.message}",
+                    site=found.site,
+                    region=found.region,
+                    radius=radius,
+                )
+            )
             radius = regions.widened_world(radius)
             continue
         sites, approach, legs = found
@@ -256,7 +357,9 @@ def _pass(
             )
             if centre is None:
                 region = plan.region or "the world"
-                return _Short(f"region {region!r} cannot hold site {plan.key!r}")
+                return _Short(
+                    f"region {region!r} cannot hold site {plan.key!r}", plan.key, plan.region
+                )
             placed.append(placing.Placed(centre, built[position].bounding))
             if plan.kind != "region":
                 last_era = centre
@@ -270,7 +373,11 @@ def _pass(
                 found = state.capacity(plan, built[position], centre)
                 if found.total - plan.chapter_stones >= plan.stands:
                     break
-                state.widen(plan, f"capacity {found.total - plan.chapter_stones} for {plan.stands}")
+                state.widen(
+                    plan,
+                    CAPACITY,
+                    f"capacity {found.total - plan.chapter_stones} for {plan.stands}",
+                )
                 built[position] = state.local(plan)
                 others = placed[:position] + placed[position + 1 :]
                 cell = cells[state.region_of[position]]
@@ -283,7 +390,12 @@ def _pass(
             capacities.append(found)
         if restart:
             state.restarts += 1
-            state.events.append("restart at step (4): a widened site no longer fits at its centre")
+            state.events.append(
+                Event(
+                    kind="restart",
+                    text="restart at step (4): a widened site no longer fits at its centre",
+                )
+            )
             continue
 
         # (6) Reservations and the trail.
@@ -307,22 +419,29 @@ def _pass(
         for position, plan in enumerate(plans):
             centre = centres[position]
             foreign, signature = _foreign(state, built[position], centre, approach, legs, indexes)
-            key = (plan.key, built[position].radius, centre, signature)
+            key = (plan.key, built[position].radius, state.redraws[plan.key], centre, signature)
             found_placement = state.placements.get(key)
             if found_placement is None:
                 chapters = [len(chapter.cards) for chapter in plan.chapters] or [plan.stands]
                 found_placement = placement_step.place_site(
-                    built[position], capacities[position], chapters, state.directions, foreign
+                    built[position],
+                    capacities[position],
+                    chapters,
+                    state.directions,
+                    foreign,
+                    state.jitter(plan),
                 )
                 state.placements[key] = found_placement
             if found_placement.exhausted is not None:
                 held = len(found_placement.stands)
-                where = (
-                    f"slot {found_placement.exhausted} closed under three"
-                    if found_placement.exhausted
-                    else "the clusters ran out"
+                if found_placement.exhausted:
+                    cause = CUT
+                    where = f"{CUT} cut the path at slot {found_placement.exhausted}"
+                else:
+                    cause, where = RAN_OUT, RAN_OUT
+                state.exhausted(
+                    plan, cause, f"exhausted at {held} of {plan.stands} stands, {where}"
                 )
-                state.widen(plan, f"exhausted at {held} of {plan.stands} stands, {where}")
                 restart = True
                 break
             sites.append(
@@ -332,13 +451,16 @@ def _pass(
                     local=built[position],
                     centre=centre,
                     widenings=state.widenings[plan.key],
+                    redraws=state.redraws[plan.key],
                     capacity=capacities[position],
                     placement=found_placement,
                 )
             )
         if restart:
             state.restarts += 1
-            state.events.append("restart at step (4): a site is exhausted at placement")
+            state.events.append(
+                Event(kind="restart", text="restart at step (4): a site is exhausted at placement")
+            )
             continue
         return sites, approach, legs
 
@@ -374,7 +496,7 @@ def _trail(
             state.directions,
         )
         if found is None:
-            return _Short(f"the trail leg from {name!r} to {key!r} has no route")
+            return _Short(f"the trail leg from {name!r} to {key!r} has no route", key)
         legs.append(found)
         name, anchor = key, points[position]
     for position in spurs:
@@ -390,7 +512,7 @@ def _trail(
             state.directions,
         )
         if found is None:
-            return _Short(f"the spur from the trail to {key!r} has no route")
+            return _Short(f"the spur from the trail to {key!r} has no route", key)
         legs.append(found)
     return approach, legs
 
