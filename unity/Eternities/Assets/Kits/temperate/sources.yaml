@@ -1,4 +1,4 @@
-# Sources of the `temperate` kit's slice subset (PRD v4 5.6, 8.12, 9.5): one entry per binary asset,
+# Sources of the `temperate` kit (PRD v4 5.6, 8.12, 9.5): one entry per binary asset,
 # the same rows as CREDITS.md plus the download URL and the SHA-256 of the file.
 #
 # `./fetch.sh` reads this file line by line, not with a YAML parser. Keep the shape: one `key: value`
@@ -89,6 +89,212 @@ assets:
     licence_url: https://creativecommons.org/publicdomain/zero/1.0/
     fetched: 2026-10-10
     use: "Gravel terrain layer (river bed, banks and the lake shore); mask source, AO in R, roughness in G, metalness in B"
+  - file: Terrain/forrest_ground_01_diff_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/forrest_ground_01/forrest_ground_01_diff_2k.jpg
+    sha256: e4d557ff61a0b42712a58e8a2e91c6010738977d4e172b7af47abd7d406ae735
+    source: https://polyhaven.com/a/forrest_ground_01
+    author: Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Wood and meadow terrain layer, thin grass over earth with twigs; albedo"
+  - file: Terrain/forrest_ground_01_nor_gl_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/forrest_ground_01/forrest_ground_01_nor_gl_2k.jpg
+    sha256: aa23fa930c6303490f842f7c016c19d838263e8e4538d42508a9332e3fd76b69
+    source: https://polyhaven.com/a/forrest_ground_01
+    author: Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Wood and meadow terrain layer, thin grass over earth with twigs; normal, OpenGL convention"
+  - file: Terrain/forrest_ground_01_arm_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/forrest_ground_01/forrest_ground_01_arm_2k.jpg
+    sha256: abc91717bc60c831f2cd86ad06a5c575ac0e5bd11870b1e7b6dcefc122fc64db
+    source: https://polyhaven.com/a/forrest_ground_01
+    author: Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Wood and meadow terrain layer, thin grass over earth with twigs; mask source, AO in R, roughness in G, metalness in B"
+  - file: Terrain/forest_leaves_03_diff_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/forest_leaves_03/forest_leaves_03_diff_2k.jpg
+    sha256: 638aa3006c508566fae0b78bb0f87ab8a3e7c89dd37d7a25966a4b8dd288c651
+    source: https://polyhaven.com/a/forest_leaves_03
+    author: Dimitrios Savva, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Wood terrain layer, dark leaf litter; albedo"
+  - file: Terrain/forest_leaves_03_nor_gl_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/forest_leaves_03/forest_leaves_03_nor_gl_2k.jpg
+    sha256: d2d3194cacf1b7cc424304626bbf7d05d556633dae92cfeadd73c1f6b8c3d73f
+    source: https://polyhaven.com/a/forest_leaves_03
+    author: Dimitrios Savva, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Wood terrain layer, dark leaf litter; normal, OpenGL convention"
+  - file: Terrain/forest_leaves_03_arm_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/forest_leaves_03/forest_leaves_03_arm_2k.jpg
+    sha256: 0a9141b7cad8a46ad7f56dcdfd351e06ab2f475af44abdd1311c913cff0bc2c3
+    source: https://polyhaven.com/a/forest_leaves_03
+    author: Dimitrios Savva, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Wood terrain layer, dark leaf litter; mask source, AO in R, roughness in G, metalness in B"
+  - file: Terrain/brown_mud_leaves_01_diff_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/brown_mud_leaves_01/brown_mud_leaves_01_diff_2k.jpg
+    sha256: 29c997d77f56e4ea16d3e998a306be0c17fddb28ab4822657c7cd8249040ffda
+    source: https://polyhaven.com/a/brown_mud_leaves_01
+    author: Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Marsh terrain layer, brown mud with leaves and moss; albedo"
+  - file: Terrain/brown_mud_leaves_01_nor_gl_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/brown_mud_leaves_01/brown_mud_leaves_01_nor_gl_2k.jpg
+    sha256: b6ec386e00d9d2a1c3a1da6a98a67066b0dfaa88ddb779341df29700cf081bdf
+    source: https://polyhaven.com/a/brown_mud_leaves_01
+    author: Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Marsh terrain layer, brown mud with leaves and moss; normal, OpenGL convention"
+  - file: Terrain/brown_mud_leaves_01_arm_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/brown_mud_leaves_01/brown_mud_leaves_01_arm_2k.jpg
+    sha256: a80135a30b7ea0f29f093269acae10f83d327dcc0a20bc10083da59843988c15
+    source: https://polyhaven.com/a/brown_mud_leaves_01
+    author: Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Marsh terrain layer, brown mud with leaves and moss; mask source, AO in R, roughness in G, metalness in B"
+  - file: Terrain/mud_forest_diff_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/mud_forest/mud_forest_diff_2k.jpg
+    sha256: 6726cf9ad9b1be9bf284c629dd95d732527b18fc92be06ae9093a96a68f77628
+    source: https://polyhaven.com/a/mud_forest
+    author: eye-candy.xyz
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Marsh terrain layer, dark wet mud; albedo"
+  - file: Terrain/mud_forest_nor_gl_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/mud_forest/mud_forest_nor_gl_2k.jpg
+    sha256: 8d0ad08c4d0df9aabd2fc42ef34e0d34010d9a63eb472eed214be6fad5bc2d4e
+    source: https://polyhaven.com/a/mud_forest
+    author: eye-candy.xyz
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Marsh terrain layer, dark wet mud; normal, OpenGL convention"
+  - file: Terrain/mud_forest_arm_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/mud_forest/mud_forest_arm_2k.jpg
+    sha256: 909f709f75601721689f019afe2e1127d7a2fadb90711bba70fd365037003f94
+    source: https://polyhaven.com/a/mud_forest
+    author: eye-candy.xyz
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Marsh terrain layer, dark wet mud; mask source, AO in R, roughness in G, metalness in B"
+  - file: Terrain/dark_rock_diff_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dark_rock/dark_rock_diff_2k.jpg
+    sha256: 0f01bfec36ec4546e23576a10c52ef073f9eb815826c5fce2a1cdb08cd8188b8
+    source: https://polyhaven.com/a/dark_rock
+    author: Amal Kumar
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Highland terrain layer, dark fissured rock (basalt ground for Shiv); albedo"
+  - file: Terrain/dark_rock_nor_gl_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dark_rock/dark_rock_nor_gl_2k.jpg
+    sha256: abb3c5f1f932693537333a6d467c3e79bb810afa84416d0deaa10ead9fb4f628
+    source: https://polyhaven.com/a/dark_rock
+    author: Amal Kumar
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Highland terrain layer, dark fissured rock (basalt ground for Shiv); normal, OpenGL convention"
+  - file: Terrain/dark_rock_arm_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dark_rock/dark_rock_arm_2k.jpg
+    sha256: d3a26098ea5329f78a42e223e57c10f00af2a72854982197cc37cc151aa2fd5f
+    source: https://polyhaven.com/a/dark_rock
+    author: Amal Kumar
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Highland terrain layer, dark fissured rock (basalt ground for Shiv); mask source, AO in R, roughness in G, metalness in B"
+  - file: Terrain/ground037_diff_1k.jpg
+    url: https://ambientcg.com/get?file=Ground037_1K-JPG.zip
+    member: Ground037_1K-JPG_Color.jpg
+    archive_sha256: 4e69db2b7251b1736fa70fe6fe4ab80d64bd220117dd5dd4c7caaead51c2574e
+    sha256: d92bec8a35b9cb16ec79b421ca0f572a7400286eae109beafa266629ef49a6cf
+    source: https://ambientcg.com/a/Ground037
+    author: Lennart Demes (ambientCG)
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Meadow terrain layer, moss and thin grass over damp earth; albedo"
+  - file: Terrain/ground037_nor_gl_1k.jpg
+    url: https://ambientcg.com/get?file=Ground037_1K-JPG.zip
+    member: Ground037_1K-JPG_NormalGL.jpg
+    archive_sha256: 4e69db2b7251b1736fa70fe6fe4ab80d64bd220117dd5dd4c7caaead51c2574e
+    sha256: ea59dbdcfa5bf2f28bdd4aa896d4e5f96c4cce5939100dcc6db4bbbcdebfe38d
+    source: https://ambientcg.com/a/Ground037
+    author: Lennart Demes (ambientCG)
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Meadow terrain layer, moss and thin grass over damp earth; normal, OpenGL convention"
+  - file: Terrain/ground037_rough_1k.jpg
+    url: https://ambientcg.com/get?file=Ground037_1K-JPG.zip
+    member: Ground037_1K-JPG_Roughness.jpg
+    archive_sha256: 4e69db2b7251b1736fa70fe6fe4ab80d64bd220117dd5dd4c7caaead51c2574e
+    sha256: 3786b088e981aae562f06b6477972d379cffd09a5cc542ab42f9ffd94f9bcb0e
+    source: https://ambientcg.com/a/Ground037
+    author: Lennart Demes (ambientCG)
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Meadow terrain layer, moss and thin grass over damp earth; mask source, roughness"
+  - file: Terrain/ground037_ao_1k.jpg
+    url: https://ambientcg.com/get?file=Ground037_1K-JPG.zip
+    member: Ground037_1K-JPG_AmbientOcclusion.jpg
+    archive_sha256: 4e69db2b7251b1736fa70fe6fe4ab80d64bd220117dd5dd4c7caaead51c2574e
+    sha256: 8afe189ae915888551076cb279f6282c84255e4b2bdb2c4ce8c1c891074245ef
+    source: https://ambientcg.com/a/Ground037
+    author: Lennart Demes (ambientCG)
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Meadow terrain layer, moss and thin grass over damp earth; mask source, ambient occlusion"
+  - file: Terrain/dark_rock_02_diff_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dark_rock_02/dark_rock_02_diff_2k.jpg
+    sha256: da78fb6dd90414ada98f6e1627aca6bc1acb480c8bce7aabfbde8e3beb666a71
+    source: https://polyhaven.com/a/dark_rock_02
+    author: Amal Kumar
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Highland terrain layer, dark blocky rock (basalt ground for Shiv); albedo"
+  - file: Terrain/dark_rock_02_nor_gl_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dark_rock_02/dark_rock_02_nor_gl_2k.jpg
+    sha256: 37710c782598f158e07310dcbd3a8a89247d31255e6f21136707f66c3653bdec
+    source: https://polyhaven.com/a/dark_rock_02
+    author: Amal Kumar
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Highland terrain layer, dark blocky rock (basalt ground for Shiv); normal, OpenGL convention"
+  - file: Terrain/dark_rock_02_arm_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dark_rock_02/dark_rock_02_arm_2k.jpg
+    sha256: e34aa572f0c578eadbf9d812ad514a22775880c7b19a6b98e979d99474fccbb5
+    source: https://polyhaven.com/a/dark_rock_02
+    author: Amal Kumar
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Highland terrain layer, dark blocky rock (basalt ground for Shiv); mask source, AO in R, roughness in G, metalness in B"
   - file: Props/tree_oak.fbx
     url: https://kenney.nl/media/pages/assets/nature-kit/37ac38a37b-1677698939/kenney_nature-kit.zip
     member: Models/FBX format/tree_oak.fbx
@@ -250,3 +456,1461 @@ assets:
     licence_url: https://creativecommons.org/publicdomain/zero/1.0/
     fetched: 2026-10-10
     use: "River spatial emitter (PRD 5.12.3); seamless mono loop, 9.8 s"
+  - file: Props/rock_moss_set_01_1k.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/rock_moss_set_01/rock_moss_set_01_1k.fbx
+    sha256: 8fa2a2666ecc4591f59e1d45db05d86857115b55492c8522917f3de5e650e6f9
+    source: https://polyhaven.com/a/rock_moss_set_01
+    author: Kless Gyzen
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Rocks, six mossy boulders of 1.1 to 1.8 m; model"
+  - file: Props/rock_moss_set_01_diff_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/rock_moss_set_01/rock_moss_set_01_diff_2k.jpg
+    sha256: bdee6da8baba67bd7e85e414e669cd46aab9afaf755114fb5163f0e68775c3d6
+    source: https://polyhaven.com/a/rock_moss_set_01
+    author: Kless Gyzen
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Rocks, six mossy boulders of 1.1 to 1.8 m; albedo"
+  - file: Props/rock_moss_set_01_nor_gl_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/rock_moss_set_01/rock_moss_set_01_nor_gl_2k.jpg
+    sha256: f11c238a203eebd5e82da3a50468040a78d25fd2e46783c4ad79b1022b144c0d
+    source: https://polyhaven.com/a/rock_moss_set_01
+    author: Kless Gyzen
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Rocks, six mossy boulders of 1.1 to 1.8 m; normal, OpenGL convention"
+  - file: Props/rock_moss_set_01_arm_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/rock_moss_set_01/rock_moss_set_01_arm_2k.jpg
+    sha256: 6950db6ff777260ac42158103c9f00a0cfe30b86b78d8747804549601d309860
+    source: https://polyhaven.com/a/rock_moss_set_01
+    author: Kless Gyzen
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Rocks, six mossy boulders of 1.1 to 1.8 m; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/rock_moss_set_02_1k.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/rock_moss_set_02/rock_moss_set_02_1k.fbx
+    sha256: 249bf02eb4c521887a47165d0e3279fd895785addb43cfdf9938f921e6884fc3
+    source: https://polyhaven.com/a/rock_moss_set_02
+    author: Kless Gyzen
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Rocks, seven mossy rocks of 0.5 to 1.3 m; model"
+  - file: Props/rock_moss_set_02_diff_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/rock_moss_set_02/rock_moss_set_02_diff_2k.jpg
+    sha256: 796cbab6ee2708f443f5a57e9081ac8747c703ab035e9cf3a438147bcde187f0
+    source: https://polyhaven.com/a/rock_moss_set_02
+    author: Kless Gyzen
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Rocks, seven mossy rocks of 0.5 to 1.3 m; albedo"
+  - file: Props/rock_moss_set_02_nor_gl_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/rock_moss_set_02/rock_moss_set_02_nor_gl_2k.jpg
+    sha256: 5d2d7095a4ad459b40d3da2c5d9083e0735484a7df6033ac696e4379fb2e86f3
+    source: https://polyhaven.com/a/rock_moss_set_02
+    author: Kless Gyzen
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Rocks, seven mossy rocks of 0.5 to 1.3 m; normal, OpenGL convention"
+  - file: Props/rock_moss_set_02_arm_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/rock_moss_set_02/rock_moss_set_02_arm_2k.jpg
+    sha256: 675583a5714ae600a01741d63c31f77a212317cbae2ab94c9d2893781557bc70
+    source: https://polyhaven.com/a/rock_moss_set_02
+    author: Kless Gyzen
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Rocks, seven mossy rocks of 0.5 to 1.3 m; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/boulder_01_1k.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/boulder_01/boulder_01_1k.fbx
+    sha256: aa0613a9df686e9252df1e9d34c356d25c4ab135d9754af66b4794438957d94f
+    source: https://polyhaven.com/a/boulder_01
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Rock, a bare boulder of 1.0 m; model"
+  - file: Props/boulder_01_diff_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/boulder_01/boulder_01_diff_2k.jpg
+    sha256: 90bbaa17c1fe0254d2b0b6e5148264fa834953a72724d566f14af029eebe3ca3
+    source: https://polyhaven.com/a/boulder_01
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Rock, a bare boulder of 1.0 m; albedo"
+  - file: Props/boulder_01_nor_gl_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/boulder_01/boulder_01_nor_gl_2k.jpg
+    sha256: 5174b318712ac7725cbcb55d422607f9c66d7f8d035c5412ab897b5939e2db6b
+    source: https://polyhaven.com/a/boulder_01
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Rock, a bare boulder of 1.0 m; normal, OpenGL convention"
+  - file: Props/boulder_01_arm_2k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/boulder_01/boulder_01_arm_2k.jpg
+    sha256: ab52859dde519b4822111aa60916b6d21f8a6966c67b6cec44d1cd0775b8a86a
+    source: https://polyhaven.com/a/boulder_01
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Rock, a bare boulder of 1.0 m; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/shrub_02_1k.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/shrub_02/shrub_02_1k.fbx
+    sha256: 7bd42e635ed83a9341a9953280845dc2685615a4a4a5441e31eedd39d5431ec8
+    source: https://polyhaven.com/a/shrub_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Shrubs, four thin-stemmed plants of 1.0 to 1.4 m; model"
+  - file: Props/shrub_02_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/shrub_02/shrub_02_diff_1k.jpg
+    sha256: 9956eff294034d70516d867e9668428a23d782feb3d4c34061dce5e44bacd5a8
+    source: https://polyhaven.com/a/shrub_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Shrubs, four thin-stemmed plants of 1.0 to 1.4 m; albedo"
+  - file: Props/shrub_02_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/shrub_02/shrub_02_nor_gl_1k.jpg
+    sha256: 54c24e433365d5410223b7ebd2b33042b80831f80976e10768114db5ef6911d7
+    source: https://polyhaven.com/a/shrub_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Shrubs, four thin-stemmed plants of 1.0 to 1.4 m; normal, OpenGL convention"
+  - file: Props/shrub_02_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/shrub_02/shrub_02_arm_1k.jpg
+    sha256: 7186bf604d5c02f873aef6de2346cc06b6fa48f47d054edbef36d2c3772c0890
+    source: https://polyhaven.com/a/shrub_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Shrubs, four thin-stemmed plants of 1.0 to 1.4 m; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/shrub_02_alpha_1k.png
+    url: https://dl.polyhaven.org/file/ph-assets/Models/png/1k/shrub_02/shrub_02_alpha_1k.png
+    sha256: 5c2c31bac311051db77443e1780078403c2df0a832c40fe6ed7bcd982695cdf0
+    source: https://polyhaven.com/a/shrub_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Shrubs, four thin-stemmed plants of 1.0 to 1.4 m; opacity"
+  - file: Props/fern_02_1k.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/fern_02/fern_02_1k.fbx
+    sha256: 6d8238b9cc1bbb5f5766396c2db26f2219c0d0e5ca226fb81dcc44bdb35045e8
+    source: https://polyhaven.com/a/fern_02
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Ferns, four plants of 0.2 to 0.4 m; model"
+  - file: Props/fern_02_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fern_02/fern_02_diff_1k.jpg
+    sha256: a828a6e7b4c01c826911e2eac4b3afc7457dab7b3b392a31c681ed88b7d50029
+    source: https://polyhaven.com/a/fern_02
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Ferns, four plants of 0.2 to 0.4 m; albedo"
+  - file: Props/fern_02_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fern_02/fern_02_nor_gl_1k.jpg
+    sha256: 45bce132c6e96a0864bc89ab5da51361ab3f4afa83a6669ae499ab5ca811f621
+    source: https://polyhaven.com/a/fern_02
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Ferns, four plants of 0.2 to 0.4 m; normal, OpenGL convention"
+  - file: Props/fern_02_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fern_02/fern_02_arm_1k.jpg
+    sha256: ebfb5d76ce9cbdaec20bcd22dce9b755f0b1b8650ef29ca13555e3e6961025d7
+    source: https://polyhaven.com/a/fern_02
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Ferns, four plants of 0.2 to 0.4 m; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/fern_02_alpha_1k.png
+    url: https://dl.polyhaven.org/file/ph-assets/Models/png/1k/fern_02/fern_02_alpha_1k.png
+    sha256: ea3c64284c7ebdeedf484d2d816eae92825ec526140c3bb83859ddc7a64001f9
+    source: https://polyhaven.com/a/fern_02
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Ferns, four plants of 0.2 to 0.4 m; opacity"
+  - file: Props/grass_medium_01_1k.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/grass_medium_01/grass_medium_01_1k.fbx
+    sha256: ef823eba5c7114b98fb544a85ab7b17dd1c2ddd6f3e785cd232029b980ae7c44
+    source: https://polyhaven.com/a/grass_medium_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Grass tufts of 5 to 32 cm; model"
+  - file: Props/grass_medium_01_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/grass_medium_01/grass_medium_01_diff_1k.jpg
+    sha256: 71495bd6a11fddcab0aaff38246fea1a7b802a705483f1c7cbca53955daa8050
+    source: https://polyhaven.com/a/grass_medium_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Grass tufts of 5 to 32 cm; albedo"
+  - file: Props/grass_medium_01_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/grass_medium_01/grass_medium_01_nor_gl_1k.jpg
+    sha256: cae298d3d1d7ff7c7e210ad8ac772b96706e356f9315a6b04fde373ce01ccf1e
+    source: https://polyhaven.com/a/grass_medium_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Grass tufts of 5 to 32 cm; normal, OpenGL convention"
+  - file: Props/grass_medium_01_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/grass_medium_01/grass_medium_01_arm_1k.jpg
+    sha256: 9a3a30f72bc02f4398967c5b08f2d20cce30bd423a2613b42a727034296fa3ae
+    source: https://polyhaven.com/a/grass_medium_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Grass tufts of 5 to 32 cm; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/grass_medium_01_alpha_1k.png
+    url: https://dl.polyhaven.org/file/ph-assets/Models/png/1k/grass_medium_01/grass_medium_01_alpha_1k.png
+    sha256: 711a8e49af758d6a6ce1f610db858899a27be19da6d1866bd35c13bc7b8ffeff
+    source: https://polyhaven.com/a/grass_medium_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Grass tufts of 5 to 32 cm; opacity"
+  - file: Props/grass_medium_02_1k.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/grass_medium_02/grass_medium_02_1k.fbx
+    sha256: 459230e3f17dd40f55372c71d802a2ad7475a661a9ad22d9ab622b5c2d24ae57
+    source: https://polyhaven.com/a/grass_medium_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Grass tufts of 16 to 40 cm; model"
+  - file: Props/grass_medium_02_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/grass_medium_02/grass_medium_02_diff_1k.jpg
+    sha256: 91ae99005b449011aceb207a68a937258fd9bfd66ff367d344c50398b1df389c
+    source: https://polyhaven.com/a/grass_medium_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Grass tufts of 16 to 40 cm; albedo"
+  - file: Props/grass_medium_02_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/grass_medium_02/grass_medium_02_nor_gl_1k.jpg
+    sha256: 0b464550366ed72a6cad9c357e19ac4c83fc9adc87272771479138129853b300
+    source: https://polyhaven.com/a/grass_medium_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Grass tufts of 16 to 40 cm; normal, OpenGL convention"
+  - file: Props/grass_medium_02_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/grass_medium_02/grass_medium_02_arm_1k.jpg
+    sha256: f0d57bfd95bff7710526b49d47cf2326ee3796e425639d53b983d1472480b57d
+    source: https://polyhaven.com/a/grass_medium_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Grass tufts of 16 to 40 cm; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/grass_medium_02_alpha_1k.png
+    url: https://dl.polyhaven.org/file/ph-assets/Models/png/1k/grass_medium_02/grass_medium_02_alpha_1k.png
+    sha256: 15976877b3dbd22cd496a9549f1eb7d86710846a3631fb87eedbf046519e339f
+    source: https://polyhaven.com/a/grass_medium_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Grass tufts of 16 to 40 cm; opacity"
+  - file: Props/celandine_01_1k.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/celandine_01/celandine_01_1k.fbx
+    sha256: c8c8104ec19131cf3330db859d13c66833b74443c8b8de95634ca8ced7c2aa2b
+    source: https://polyhaven.com/a/celandine_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Flowering ground cover, lesser celandine; model"
+  - file: Props/celandine_01_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/celandine_01/celandine_01_diff_1k.jpg
+    sha256: d21558d8d101fd6601d620018f9efd2878b559666099aac3ab05df17da833b5f
+    source: https://polyhaven.com/a/celandine_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Flowering ground cover, lesser celandine; albedo"
+  - file: Props/celandine_01_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/celandine_01/celandine_01_nor_gl_1k.jpg
+    sha256: 060fc4533ce82b9f9c9e86362920ba1a1934ba5a670bdd77aa803622ceec34ff
+    source: https://polyhaven.com/a/celandine_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Flowering ground cover, lesser celandine; normal, OpenGL convention"
+  - file: Props/celandine_01_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/celandine_01/celandine_01_arm_1k.jpg
+    sha256: c04ac3ed56abfbb5193d59016c5b680ca3e53130518084e69c805f2edc1ad6e7
+    source: https://polyhaven.com/a/celandine_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Flowering ground cover, lesser celandine; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/celandine_01_alpha_1k.png
+    url: https://dl.polyhaven.org/file/ph-assets/Models/png/1k/celandine_01/celandine_01_alpha_1k.png
+    sha256: 60c2b1387a71376b118de49e6354fbb82762a6ada0c01e5a2205b1502a1bc76c
+    source: https://polyhaven.com/a/celandine_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Flowering ground cover, lesser celandine; opacity"
+  - file: Props/dandelion_01_1k.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/dandelion_01/dandelion_01_1k.fbx
+    sha256: e39c1bcaa29b6711607455b20bf3ac685314ee0936c4292fee3bbaf931d6c7c9
+    source: https://polyhaven.com/a/dandelion_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Flowering ground cover, dandelion; model"
+  - file: Props/dandelion_01_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/dandelion_01/dandelion_01_diff_1k.jpg
+    sha256: 17e49d535dfce890e539038a80eaa77d90dab5f1781350266dd8f736ee7370d6
+    source: https://polyhaven.com/a/dandelion_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Flowering ground cover, dandelion; albedo"
+  - file: Props/dandelion_01_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/dandelion_01/dandelion_01_nor_gl_1k.jpg
+    sha256: fd69513a4803145f634b5ace49fed8709e454b3026d060687071757a72c33250
+    source: https://polyhaven.com/a/dandelion_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Flowering ground cover, dandelion; normal, OpenGL convention"
+  - file: Props/dandelion_01_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/dandelion_01/dandelion_01_arm_1k.jpg
+    sha256: dad70c20756581fd795548f52a23580d94a2af538664dbbfe64e66a76e4eebb6
+    source: https://polyhaven.com/a/dandelion_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Flowering ground cover, dandelion; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/dandelion_01_alpha_1k.png
+    url: https://dl.polyhaven.org/file/ph-assets/Models/png/1k/dandelion_01/dandelion_01_alpha_1k.png
+    sha256: 8fa462009b79d58741ba058418cd0ac7e9ec61b049b601f1351179204256c8eb
+    source: https://polyhaven.com/a/dandelion_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Flowering ground cover, dandelion; opacity"
+  - file: Props/shrub_03_1k.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/shrub_03/shrub_03_1k.fbx
+    sha256: 81cf3b341356b2938faec4f7935c0e694b923db1a5bca39660afa6fcfc22dcc7
+    source: https://polyhaven.com/a/shrub_03
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Slender stems with seed spikes, four plants of 26 to 40 cm; model"
+  - file: Props/shrub_03_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/shrub_03/shrub_03_diff_1k.jpg
+    sha256: 3cadc7aba46d3aabbd7d6d2b1d04aa32e2a7da0bc87c2d38ef3cb1ee42cb03ec
+    source: https://polyhaven.com/a/shrub_03
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Slender stems with seed spikes, four plants of 26 to 40 cm; albedo"
+  - file: Props/shrub_03_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/shrub_03/shrub_03_nor_gl_1k.jpg
+    sha256: ff856bacfce859b8a7555dd9a3b92fbd36b2e775d486be71df485afb4235d6c9
+    source: https://polyhaven.com/a/shrub_03
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Slender stems with seed spikes, four plants of 26 to 40 cm; normal, OpenGL convention"
+  - file: Props/shrub_03_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/shrub_03/shrub_03_arm_1k.jpg
+    sha256: 3e2b16812a623037138eedace958210c5f3443a827bbe69663045bba5612f815
+    source: https://polyhaven.com/a/shrub_03
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Slender stems with seed spikes, four plants of 26 to 40 cm; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/shrub_03_alpha_1k.png
+    url: https://dl.polyhaven.org/file/ph-assets/Models/png/1k/shrub_03/shrub_03_alpha_1k.png
+    sha256: daef00278879a024fd05216aaa1376067a5f25f1b911d08d9bbdc50fda4a0d66
+    source: https://polyhaven.com/a/shrub_03
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Slender stems with seed spikes, four plants of 26 to 40 cm; opacity"
+  - file: Props/weed_plant_02_1k.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/weed_plant_02/weed_plant_02_1k.fbx
+    sha256: 47773d532983e109627178c888d3ceb7c05076f3fd9abc194698fdb998233467
+    source: https://polyhaven.com/a/weed_plant_02
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Broad-leaved weeds, five low clusters of 12 to 29 cm across; model"
+  - file: Props/weed_plant_02_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/weed_plant_02/weed_plant_02_diff_1k.jpg
+    sha256: 6bcbf7f0b8eaf5156b9021f998dd9233ba4b095aa590f3621b94f47550e21eb9
+    source: https://polyhaven.com/a/weed_plant_02
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Broad-leaved weeds, five low clusters of 12 to 29 cm across; albedo"
+  - file: Props/weed_plant_02_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/weed_plant_02/weed_plant_02_nor_gl_1k.jpg
+    sha256: 53e277362656eaea87a59bc7c5b551e73d2cdb5b852b21d0ffb84becfc7b941d
+    source: https://polyhaven.com/a/weed_plant_02
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Broad-leaved weeds, five low clusters of 12 to 29 cm across; normal, OpenGL convention"
+  - file: Props/weed_plant_02_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/weed_plant_02/weed_plant_02_arm_1k.jpg
+    sha256: 82dd00b135a605aecf09d46bdaa6e71cdfc221d7b53e20e6f446da6e9e5bf942
+    source: https://polyhaven.com/a/weed_plant_02
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Broad-leaved weeds, five low clusters of 12 to 29 cm across; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/weed_plant_02_alpha_1k.png
+    url: https://dl.polyhaven.org/file/ph-assets/Models/png/1k/weed_plant_02/weed_plant_02_alpha_1k.png
+    sha256: ceb47162756cba3d8306ce8aa7097f81786c9cd98785b7da5b191806a88ae44e
+    source: https://polyhaven.com/a/weed_plant_02
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Broad-leaved weeds, five low clusters of 12 to 29 cm across; opacity"
+  - file: Props/shrub_sorrel_01_1k.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/shrub_sorrel_01/shrub_sorrel_01_1k.fbx
+    sha256: 3a28a7b72104f6a0b67270e52f9a45d7aad0d15aea600738742dabda87033cb6
+    source: https://polyhaven.com/a/shrub_sorrel_01
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Wood sorrel, small clusters of 2 to 6 cm with pink flowers; model"
+  - file: Props/shrub_sorrel_01_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/shrub_sorrel_01/shrub_sorrel_01_diff_1k.jpg
+    sha256: 9aa62e57767f5b964b8d52e6406ebadb0205fa469d5a369a946fba13a3bc950f
+    source: https://polyhaven.com/a/shrub_sorrel_01
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Wood sorrel, small clusters of 2 to 6 cm with pink flowers; albedo"
+  - file: Props/shrub_sorrel_01_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/shrub_sorrel_01/shrub_sorrel_01_nor_gl_1k.jpg
+    sha256: 0bb2e2aba7831a4e642ad6b1985ad82b0a574930ec6982f9a1a66ad8b41a94b3
+    source: https://polyhaven.com/a/shrub_sorrel_01
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Wood sorrel, small clusters of 2 to 6 cm with pink flowers; normal, OpenGL convention"
+  - file: Props/shrub_sorrel_01_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/shrub_sorrel_01/shrub_sorrel_01_arm_1k.jpg
+    sha256: a1b49322e2b0ea988336fca959145dbb53b483b8f9ff2ec5f23dda20c486bdb8
+    source: https://polyhaven.com/a/shrub_sorrel_01
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Wood sorrel, small clusters of 2 to 6 cm with pink flowers; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/shrub_sorrel_01_alpha_1k.png
+    url: https://dl.polyhaven.org/file/ph-assets/Models/png/1k/shrub_sorrel_01/shrub_sorrel_01_alpha_1k.png
+    sha256: 4788b2a1e8a53cf6f706b1e75bc4007afec3fc823fd3ccaf9b48a52dc1eb04da
+    source: https://polyhaven.com/a/shrub_sorrel_01
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Wood sorrel, small clusters of 2 to 6 cm with pink flowers; opacity"
+  - file: Props/nettle_plant_1k.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/nettle_plant/nettle_plant_1k.fbx
+    sha256: a5b264b9d7b6639e241f5c7bbaf3bf3659c1f6daa2bb7ffd0269650d521a3bd4
+    source: https://polyhaven.com/a/nettle_plant
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Nettles, six plants of 2 to 22 cm; model"
+  - file: Props/nettle_plant_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/nettle_plant/nettle_plant_diff_1k.jpg
+    sha256: 7172a9971818a18a7cb7ebaa144d9d2313b83d2a6180c9582000f7260542ea7b
+    source: https://polyhaven.com/a/nettle_plant
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Nettles, six plants of 2 to 22 cm; albedo"
+  - file: Props/nettle_plant_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/nettle_plant/nettle_plant_nor_gl_1k.jpg
+    sha256: ab5d0cdc9a487a8874b6e9a11bf67ef90319f02bbd74579576198aca90b0fa85
+    source: https://polyhaven.com/a/nettle_plant
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Nettles, six plants of 2 to 22 cm; normal, OpenGL convention"
+  - file: Props/nettle_plant_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/nettle_plant/nettle_plant_arm_1k.jpg
+    sha256: 8fb33e5e939b4e089f08c867bf449d9e27aa32af94990c3cad1a89dcabd44f14
+    source: https://polyhaven.com/a/nettle_plant
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Nettles, six plants of 2 to 22 cm; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/nettle_plant_alpha_1k.png
+    url: https://dl.polyhaven.org/file/ph-assets/Models/png/1k/nettle_plant/nettle_plant_alpha_1k.png
+    sha256: 61d98e886a20e401f7eb6e2d64e8513b2409e54feb41e83ecbf3b10aaa035810
+    source: https://polyhaven.com/a/nettle_plant
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Nettles, six plants of 2 to 22 cm; opacity"
+  - file: Props/rock_07_1k.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/rock_07/rock_07_1k.fbx
+    sha256: 3c36fbebbedaca6deab892d7384ccbc6cd380fc1492af4fe401e23956da9ce0a
+    source: https://polyhaven.com/a/rock_07
+    author: Jenelle van Heerden
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Stone, a dark block 32 cm long; model"
+  - file: Props/rock_07_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/rock_07/rock_07_diff_1k.jpg
+    sha256: 8ff1965aa1664cc4abcc0131c44ee2b97ab14d6e131d7a51429ff261eeb101c8
+    source: https://polyhaven.com/a/rock_07
+    author: Jenelle van Heerden
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Stone, a dark block 32 cm long; albedo"
+  - file: Props/rock_07_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/rock_07/rock_07_nor_gl_1k.jpg
+    sha256: 57cb2210951aeb376164fce5f7c65f03e5599def04873b56cad0f173c275d78d
+    source: https://polyhaven.com/a/rock_07
+    author: Jenelle van Heerden
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Stone, a dark block 32 cm long; normal, OpenGL convention"
+  - file: Props/rock_07_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/rock_07/rock_07_arm_1k.jpg
+    sha256: 1ed76e9a8542c76bdc6b7b018720ae1f52cd75d9f5ae719f613de3f5032cf4da
+    source: https://polyhaven.com/a/rock_07
+    author: Jenelle van Heerden
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Stone, a dark block 32 cm long; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/dry_branches_medium_01_1k.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/dry_branches_medium_01/dry_branches_medium_01_1k.fbx
+    sha256: 3e47b10e0710b7736688521d66b3eb09aad14cb2db6179d9758a0fd5716ce639
+    source: https://polyhaven.com/a/dry_branches_medium_01
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Dry fallen branches, three of 0.8 to 1.3 m long; model"
+  - file: Props/dry_branches_medium_01_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/dry_branches_medium_01/dry_branches_medium_01_diff_1k.jpg
+    sha256: 1fbaf810a9ca29d2faf0a179834e8dce10cf4854bafe13f63af111030b3ec660
+    source: https://polyhaven.com/a/dry_branches_medium_01
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Dry fallen branches, three of 0.8 to 1.3 m long; albedo"
+  - file: Props/dry_branches_medium_01_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/dry_branches_medium_01/dry_branches_medium_01_nor_gl_1k.jpg
+    sha256: 62f5205bfec599000bb7a430e003bbada939bc8d7976a7d3ab7709fd5893413c
+    source: https://polyhaven.com/a/dry_branches_medium_01
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Dry fallen branches, three of 0.8 to 1.3 m long; normal, OpenGL convention"
+  - file: Props/dry_branches_medium_01_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/dry_branches_medium_01/dry_branches_medium_01_arm_1k.jpg
+    sha256: 6d1ba6f4763d2815301a15bf62eaf68c345cecafb107e2681d12f26fbc657f5a
+    source: https://polyhaven.com/a/dry_branches_medium_01
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-12
+    use: "Dry fallen branches, three of 0.8 to 1.3 m long; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/jacaranda_tree_trunk_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/jacaranda_tree/jacaranda_tree_trunk_diff_1k.jpg
+    sha256: e5582fba664a9255252d1ee8088f75ad557f07360aa7f4513f2b2f1577e90be9
+    source: https://polyhaven.com/a/jacaranda_tree
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Jacaranda, a spreading tree 19.5 m tall: its trunk; albedo"
+  - file: Props/jacaranda_tree_trunk_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/jacaranda_tree/jacaranda_tree_trunk_nor_gl_1k.jpg
+    sha256: b2ad4e5daf8ec3fb87ba6c5f38e6a6924c9a6adebec20389f503e42da5d04587
+    source: https://polyhaven.com/a/jacaranda_tree
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Jacaranda, a spreading tree 19.5 m tall: its trunk; normal, OpenGL convention"
+  - file: Props/jacaranda_tree_trunk_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/jacaranda_tree/jacaranda_tree_trunk_arm_1k.jpg
+    sha256: 4a12e238cf3b8ba860626e99bf128e56ab41642fa4c2502a77df41a338689b78
+    source: https://polyhaven.com/a/jacaranda_tree
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Jacaranda, a spreading tree 19.5 m tall: its trunk; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/jacaranda_tree_branches_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/jacaranda_tree/jacaranda_tree_branches_diff_1k.jpg
+    sha256: 5a4fe735f0c346cec83b6b444a0169fc14d2b31bbb7b26e26b1b6c726b6e06f6
+    source: https://polyhaven.com/a/jacaranda_tree
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Jacaranda, a spreading tree 19.5 m tall: its boughs and twigs; albedo"
+  - file: Props/jacaranda_tree_branches_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/jacaranda_tree/jacaranda_tree_branches_nor_gl_1k.jpg
+    sha256: 2d67393ba76a0f49cf965fa0c99d8c16268e71e87b1203d35539bfdb971a514e
+    source: https://polyhaven.com/a/jacaranda_tree
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Jacaranda, a spreading tree 19.5 m tall: its boughs and twigs; normal, OpenGL convention"
+  - file: Props/jacaranda_tree_branches_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/jacaranda_tree/jacaranda_tree_branches_arm_1k.jpg
+    sha256: 9e3f82263247ce4f619692cea4c4f6fe9936ff465a86623481849062642c7d05
+    source: https://polyhaven.com/a/jacaranda_tree
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Jacaranda, a spreading tree 19.5 m tall: its boughs and twigs; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/jacaranda_tree_leaves_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/jacaranda_tree/jacaranda_tree_leaves_diff_1k.jpg
+    sha256: 6fe80c1f514ef690cccefb90b7e559fbd1aa9c8935fdc02523cc8ab83c22f7c2
+    source: https://polyhaven.com/a/jacaranda_tree
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Jacaranda, a spreading tree 19.5 m tall: its leaves; albedo"
+  - file: Props/jacaranda_tree_leaves_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/jacaranda_tree/jacaranda_tree_leaves_nor_gl_1k.jpg
+    sha256: 61520be2529ffe8e3d93d4361892134833bb4657117e121749089769067914c1
+    source: https://polyhaven.com/a/jacaranda_tree
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Jacaranda, a spreading tree 19.5 m tall: its leaves; normal, OpenGL convention"
+  - file: Props/jacaranda_tree_leaves_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/jacaranda_tree/jacaranda_tree_leaves_arm_1k.jpg
+    sha256: 577eab0a07279fb4afd24522e85e0f188058c88db4b35eb0b330005b0d745b7a
+    source: https://polyhaven.com/a/jacaranda_tree
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Jacaranda, a spreading tree 19.5 m tall: its leaves; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/jacaranda_tree_leaves_alpha_1k.png
+    url: https://dl.polyhaven.org/file/ph-assets/Models/png/1k/jacaranda_tree/jacaranda_tree_leaves_alpha_1k.png
+    sha256: c708a7e928a2e4d26981b021a22deeefc0ebb0e467f60b53cfa636a7e24d68f7
+    source: https://polyhaven.com/a/jacaranda_tree
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Jacaranda, a spreading tree 19.5 m tall: its leaves; opacity"
+  - file: Props/tree_small_02_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_diff_1k.jpg
+    sha256: 4e0093f407b3a1120a36de49a48ebe5a465a9a9b77e361c7a3e66866e115e404
+    source: https://polyhaven.com/a/tree_small_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Slender small tree, 4.6 m tall: its trunk; albedo"
+  - file: Props/tree_small_02_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_nor_gl_1k.jpg
+    sha256: 9c83be074c950ea1b94c732c0c0291b53b9ba357f932d378bafe3ca3b4418871
+    source: https://polyhaven.com/a/tree_small_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Slender small tree, 4.6 m tall: its trunk; normal, OpenGL convention"
+  - file: Props/tree_small_02_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_arm_1k.jpg
+    sha256: 891c5a1bb124292984b01558e9f2b0302d27d2fa3ccf9dfc6c34f9ea4ca24e6c
+    source: https://polyhaven.com/a/tree_small_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Slender small tree, 4.6 m tall: its trunk; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/tree_small_02_branch_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_branch_diff_1k.jpg
+    sha256: a71b768e330c0c6cca097e30314f6b4e842ef724a1370f6aab14b4434eec64cb
+    source: https://polyhaven.com/a/tree_small_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Slender small tree, 4.6 m tall: its twigs; albedo"
+  - file: Props/tree_small_02_branch_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_branch_nor_gl_1k.jpg
+    sha256: a2efae9e7fede259601188cd5cb7e561fc502bd87e04d862a9532b2d8e647a62
+    source: https://polyhaven.com/a/tree_small_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Slender small tree, 4.6 m tall: its twigs; normal, OpenGL convention"
+  - file: Props/tree_small_02_branch_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_branch_arm_1k.jpg
+    sha256: 8968b46d76c67da09ebbf4eed04b8123c9e0ddf5b55d123968b35b32aa76d27a
+    source: https://polyhaven.com/a/tree_small_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Slender small tree, 4.6 m tall: its twigs; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/tree_small_02_leaves_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_leaves_diff_1k.jpg
+    sha256: 261e7d7a5ac7d2e16ea8823ff8510be8f3f615999724232994039ad2885e5c36
+    source: https://polyhaven.com/a/tree_small_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Slender small tree, 4.6 m tall: its leaves; albedo"
+  - file: Props/tree_small_02_leaves_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_leaves_nor_gl_1k.jpg
+    sha256: 8c72e04fb23e16ae1df79c01385a638473d1dd4dede3d51e83d70153c129f09b
+    source: https://polyhaven.com/a/tree_small_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Slender small tree, 4.6 m tall: its leaves; normal, OpenGL convention"
+  - file: Props/tree_small_02_leaves_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_leaves_arm_1k.jpg
+    sha256: 71f81374daf5a8f3e6eb2c694264a1769fdb0bea508178e4105618eecea83c3e
+    source: https://polyhaven.com/a/tree_small_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Slender small tree, 4.6 m tall: its leaves; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/tree_small_02_leaves_alpha_1k.png
+    url: https://dl.polyhaven.org/file/ph-assets/Models/png/1k/tree_small_02/tree_small_02_leaves_alpha_1k.png
+    sha256: 4f143e2dda8a6a572f427ac378b92255d21761e4611de0d26e21816c01aa533b
+    source: https://polyhaven.com/a/tree_small_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Slender small tree, 4.6 m tall: its leaves; opacity"
+  - file: Props/island_tree_01_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_diff_1k.jpg
+    sha256: 51bff9a3a6ed7d89ff4c73f01708b7267ed8d7a82b0cb12343741894f708218f
+    source: https://polyhaven.com/a/island_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Gnarled small tree, 5.0 m tall: its trunk; albedo"
+  - file: Props/island_tree_01_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_nor_gl_1k.jpg
+    sha256: ca22e428e1b1ebac47b2fc67ec355700c8779d6628d2fc6c3ebae9002988f63e
+    source: https://polyhaven.com/a/island_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Gnarled small tree, 5.0 m tall: its trunk; normal, OpenGL convention"
+  - file: Props/island_tree_01_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_arm_1k.jpg
+    sha256: bf972dff0fbc71f146b4c02103fc3596477a49a9eff46b87b13c89b7b90d18ca
+    source: https://polyhaven.com/a/island_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Gnarled small tree, 5.0 m tall: its trunk; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/island_tree_01_branches_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_branches_diff_1k.jpg
+    sha256: bee5ec22196e9e31ad0c95a5a9b4636571cc0124d5bb27a92f1e307d289cc60d
+    source: https://polyhaven.com/a/island_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Gnarled small tree, 5.0 m tall: its twigs; albedo"
+  - file: Props/island_tree_01_branches_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_branches_nor_gl_1k.jpg
+    sha256: 2d67393ba76a0f49cf965fa0c99d8c16268e71e87b1203d35539bfdb971a514e
+    source: https://polyhaven.com/a/island_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Gnarled small tree, 5.0 m tall: its twigs; normal, OpenGL convention"
+  - file: Props/island_tree_01_branches_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_branches_arm_1k.jpg
+    sha256: 9e3f82263247ce4f619692cea4c4f6fe9936ff465a86623481849062642c7d05
+    source: https://polyhaven.com/a/island_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Gnarled small tree, 5.0 m tall: its twigs; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/island_tree_01_leaves_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_leaves_diff_1k.jpg
+    sha256: f56d762a1507754752abf164cc12acbc1e87ce87fa609ac44b98a1b0037c89d8
+    source: https://polyhaven.com/a/island_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Gnarled small tree, 5.0 m tall: its leaves; albedo"
+  - file: Props/island_tree_01_leaves_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_leaves_nor_gl_1k.jpg
+    sha256: 07ba461c0c95da4e49a42981766bdb6191d4c3c4d815796c082266dcc3cecdb8
+    source: https://polyhaven.com/a/island_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Gnarled small tree, 5.0 m tall: its leaves; normal, OpenGL convention"
+  - file: Props/island_tree_01_leaves_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_leaves_arm_1k.jpg
+    sha256: 90da3a072dbcb052715b1313b9dbc69a4aa8a09a31a4b3868411a2bb51d72037
+    source: https://polyhaven.com/a/island_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Gnarled small tree, 5.0 m tall: its leaves; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/island_tree_01_leaves_alpha_1k.png
+    url: https://dl.polyhaven.org/file/ph-assets/Models/png/1k/island_tree_01/island_tree_01_leaves_alpha_1k.png
+    sha256: f4341f147988dbe6b58d9ca841a8f0e4bcff25bc40d05f9877da82006d489c39
+    source: https://polyhaven.com/a/island_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Gnarled small tree, 5.0 m tall: its leaves; opacity"
+  - file: Props/jacaranda_tree_cut.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/jacaranda_tree/jacaranda_tree_1k.fbx
+    source_sha256: 392c74d85100efc8ee045fed820ec4fbe79d62e154e4c54156ef1e0ec0465a5a
+    derived_by: Derive/cut_tree.py jacaranda_tree
+    sha256: 5751ccbac92695b43a5f490419d5594f002c608fd08905bf079d6cc0e587f761
+    source: https://polyhaven.com/a/jacaranda_tree
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Jacaranda, a spreading tree 19.5 m tall and 24.7 m across; cut by `Derive/cut_tree.py` from the source's 3,863,832 triangles to four levels of 59,620 to 452"
+  - file: Props/tree_small_02_cut.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/tree_small_02/tree_small_02_1k.fbx
+    source_sha256: 442394b4d39dcefef6c54358becea3c86735f040f2601b2c0c082e3ecf3685c5
+    derived_by: Derive/cut_tree.py tree_small_02
+    sha256: cd6a6feb065ac73151a4f77c5b9446d32683c8adc335c9c6ee606d6093012aa0
+    source: https://polyhaven.com/a/tree_small_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Slender small tree, 4.6 m tall; cut by `Derive/cut_tree.py` from the source's 2,062,487 triangles to four levels of 58,999 to 429"
+  - file: Props/island_tree_01_cut.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/island_tree_01/island_tree_01_1k.fbx
+    source_sha256: 3f193c0ca27977b001682aa4ba3eef654b31c1af60a166af4024a11cc19a2948
+    derived_by: Derive/cut_tree.py island_tree_01
+    sha256: 4a081bc6581a7bf01da72a873e427819b80d5453c85975f6b950897368082a62
+    source: https://polyhaven.com/a/island_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Gnarled small tree, 5.0 m tall; cut by `Derive/cut_tree.py` from the source's 1,599,403 triangles to four levels of 58,998 to 429"
+  - file: Props/fir_sapling_medium_branches_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_sapling_medium/fir_sapling_medium_branches_diff_1k.jpg
+    sha256: a5d25150ba1bee10008c039f98aa3c73b4477a404d6715c511ca9b5b0f4a9077
+    source: https://polyhaven.com/a/fir_sapling_medium
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Young firs, three of 6.0 to 8.9 m: their trunk and boughs; albedo"
+  - file: Props/fir_sapling_medium_branches_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_sapling_medium/fir_sapling_medium_branches_nor_gl_1k.jpg
+    sha256: 6a570ab53ab2249ecdfa93e7d3b9a8a2cb1a8ad391400e5a64c708914779b2c3
+    source: https://polyhaven.com/a/fir_sapling_medium
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Young firs, three of 6.0 to 8.9 m: their trunk and boughs; normal, OpenGL convention"
+  - file: Props/fir_sapling_medium_branches_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_sapling_medium/fir_sapling_medium_branches_arm_1k.jpg
+    sha256: 95d4e9e62cd309fbc38a175e2306379c76c062425b09c0fb72c5b7356a719123
+    source: https://polyhaven.com/a/fir_sapling_medium
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Young firs, three of 6.0 to 8.9 m: their trunk and boughs; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/fir_sapling_medium_twigs_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_sapling_medium/fir_sapling_medium_twigs_diff_1k.jpg
+    sha256: db1113d37d68d960b84eb14ce67a4022d02bf10d6f0c078d689063f6296eaa1d
+    source: https://polyhaven.com/a/fir_sapling_medium
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Young firs, three of 6.0 to 8.9 m: their needles, as sprays; albedo"
+  - file: Props/fir_sapling_medium_twigs_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_sapling_medium/fir_sapling_medium_twigs_nor_gl_1k.jpg
+    sha256: d470dc39b1d02bbeba06feb0ad818680ef3c24623b4db597270301a5fb8c9369
+    source: https://polyhaven.com/a/fir_sapling_medium
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Young firs, three of 6.0 to 8.9 m: their needles, as sprays; normal, OpenGL convention"
+  - file: Props/fir_sapling_medium_twigs_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_sapling_medium/fir_sapling_medium_twigs_arm_1k.jpg
+    sha256: d66c81fc073ee7ea97a76b6da2399769f16944e50ef0e007f09c95619f597c79
+    source: https://polyhaven.com/a/fir_sapling_medium
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Young firs, three of 6.0 to 8.9 m: their needles, as sprays; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/fir_sapling_medium_twigs_alpha_1k.png
+    url: https://dl.polyhaven.org/file/ph-assets/Models/png/1k/fir_sapling_medium/fir_sapling_medium_twigs_alpha_1k.png
+    sha256: 3f399629337e7ac3af27a01b08ffb9c0d60224a9dd374a1427761a5c2eea9d6e
+    source: https://polyhaven.com/a/fir_sapling_medium
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Young firs, three of 6.0 to 8.9 m: their needles, as sprays; opacity"
+  - file: Props/fir_tree_01_bark_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_bark_diff_1k.jpg
+    sha256: a5d25150ba1bee10008c039f98aa3c73b4477a404d6715c511ca9b5b0f4a9077
+    source: https://polyhaven.com/a/fir_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Tall firs, two of 14.1 and 19.0 m: their boughs; albedo"
+  - file: Props/fir_tree_01_bark_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_bark_nor_gl_1k.jpg
+    sha256: 6a570ab53ab2249ecdfa93e7d3b9a8a2cb1a8ad391400e5a64c708914779b2c3
+    source: https://polyhaven.com/a/fir_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Tall firs, two of 14.1 and 19.0 m: their boughs; normal, OpenGL convention"
+  - file: Props/fir_tree_01_bark_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_bark_arm_1k.jpg
+    sha256: 95d4e9e62cd309fbc38a175e2306379c76c062425b09c0fb72c5b7356a719123
+    source: https://polyhaven.com/a/fir_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Tall firs, two of 14.1 and 19.0 m: their boughs; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/fir_tree_01_trunk_a_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_trunk_a_diff_1k.jpg
+    sha256: cfb646cbc4b6cb2db410eb4342174ebe7812a4ae03520491e788722cf1867286
+    source: https://polyhaven.com/a/fir_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Tall fir of 19.0 m: its trunk; albedo"
+  - file: Props/fir_tree_01_trunk_a_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_trunk_a_nor_gl_1k.jpg
+    sha256: 9d46c05be22de0dcc4af7e3703fde4c7397644b9faeff4914c0469a6bde99caf
+    source: https://polyhaven.com/a/fir_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Tall fir of 19.0 m: its trunk; normal, OpenGL convention"
+  - file: Props/fir_tree_01_trunk_a_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_trunk_a_arm_1k.jpg
+    sha256: 2e439391e98f427207a7fc180eb262f4c1ab3ca0ef570785ea7352826bac342b
+    source: https://polyhaven.com/a/fir_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Tall fir of 19.0 m: its trunk; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/fir_tree_01_trunk_b_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_trunk_b_diff_1k.jpg
+    sha256: 9d39263a9243a4b6cd669de5e3a504eae32d52f5ab48e471cad5f7e52e052508
+    source: https://polyhaven.com/a/fir_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Tall fir of 14.1 m: its trunk; albedo"
+  - file: Props/fir_tree_01_trunk_b_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_trunk_b_nor_gl_1k.jpg
+    sha256: 5e498ee6fee29437196085620c978346ba6731edad8bfc2a2642868f8bf64efe
+    source: https://polyhaven.com/a/fir_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Tall fir of 14.1 m: its trunk; normal, OpenGL convention"
+  - file: Props/fir_tree_01_trunk_b_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_trunk_b_arm_1k.jpg
+    sha256: c9e0571b2067cad25a4553119204874e6a5ea3156043cacbd5171155d856cff4
+    source: https://polyhaven.com/a/fir_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Tall fir of 14.1 m: its trunk; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/fir_tree_01_twig_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_twig_diff_1k.jpg
+    sha256: 8c0833a10e4fd44498d848cf9e659fe250a3813984cbd679f42430eb98c61fb8
+    source: https://polyhaven.com/a/fir_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Tall firs, two of 14.1 and 19.0 m: their needles, as sprays; albedo"
+  - file: Props/fir_tree_01_twig_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_twig_nor_gl_1k.jpg
+    sha256: d470dc39b1d02bbeba06feb0ad818680ef3c24623b4db597270301a5fb8c9369
+    source: https://polyhaven.com/a/fir_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Tall firs, two of 14.1 and 19.0 m: their needles, as sprays; normal, OpenGL convention"
+  - file: Props/fir_tree_01_twig_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_twig_arm_1k.jpg
+    sha256: d66c81fc073ee7ea97a76b6da2399769f16944e50ef0e007f09c95619f597c79
+    source: https://polyhaven.com/a/fir_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Tall firs, two of 14.1 and 19.0 m: their needles, as sprays; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/fir_tree_01_twig_alpha_1k.png
+    url: https://dl.polyhaven.org/file/ph-assets/Models/png/1k/fir_tree_01/fir_tree_01_twig_alpha_1k.png
+    sha256: 3f399629337e7ac3af27a01b08ffb9c0d60224a9dd374a1427761a5c2eea9d6e
+    source: https://polyhaven.com/a/fir_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Tall firs, two of 14.1 and 19.0 m: their needles, as sprays; opacity"
+  - file: Props/searsia_lucida_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/searsia_lucida/searsia_lucida_diff_1k.jpg
+    sha256: 5d99ed106c6629d91cf5d29f067c1fd10ff4894df40634abb6c4694c59d3c764
+    source: https://polyhaven.com/a/searsia_lucida
+    author: James Ray Cock, Jenelle van Heerden
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Leafy bushes, seven of 0.7 to 2.3 m: stems, twigs and leaves; albedo"
+  - file: Props/searsia_lucida_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/searsia_lucida/searsia_lucida_nor_gl_1k.jpg
+    sha256: d28556973d1cbf96c5327341be7a71da66ac63ed97b31f22162376a9f95b0041
+    source: https://polyhaven.com/a/searsia_lucida
+    author: James Ray Cock, Jenelle van Heerden
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Leafy bushes, seven of 0.7 to 2.3 m: stems, twigs and leaves; normal, OpenGL convention"
+  - file: Props/searsia_lucida_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/searsia_lucida/searsia_lucida_arm_1k.jpg
+    sha256: f7bf2359e932d3633ac99a5f9e6a507eda439b64937eb6774585da3d0fb6d3d7
+    source: https://polyhaven.com/a/searsia_lucida
+    author: James Ray Cock, Jenelle van Heerden
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Leafy bushes, seven of 0.7 to 2.3 m: stems, twigs and leaves; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/searsia_lucida_alpha_1k.png
+    url: https://dl.polyhaven.org/file/ph-assets/Models/png/1k/searsia_lucida/searsia_lucida_alpha_1k.png
+    sha256: 2306c054f7188aa34fdbfd1be725899159c82730c1a5c14fcc56ef7353107006
+    source: https://polyhaven.com/a/searsia_lucida
+    author: James Ray Cock, Jenelle van Heerden
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Leafy bushes, seven of 0.7 to 2.3 m: stems, twigs and leaves; opacity"
+  - file: Props/island_tree_02_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_02/island_tree_02_diff_1k.jpg
+    sha256: 8fc20397ab5d514c119d7a025868414d78e436138d3867a4b7ba12334a72ec3a
+    source: https://polyhaven.com/a/island_tree_02
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Small gnarled tree of 3.4 m, drawn smaller as a shrub: its trunk; albedo"
+  - file: Props/island_tree_02_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_02/island_tree_02_nor_gl_1k.jpg
+    sha256: 1580d5a42d02f4ede51bfb03972ab0aef3d8acafbd3692276879171007bb70ec
+    source: https://polyhaven.com/a/island_tree_02
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Small gnarled tree of 3.4 m, drawn smaller as a shrub: its trunk; normal, OpenGL convention"
+  - file: Props/island_tree_02_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_02/island_tree_02_arm_1k.jpg
+    sha256: ada61dd4fad023e699b6314b8b76590017b301719bf74ffc9e20b95893ed62b6
+    source: https://polyhaven.com/a/island_tree_02
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Small gnarled tree of 3.4 m, drawn smaller as a shrub: its trunk; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/island_tree_02_branches_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_02/island_tree_02_branches_diff_1k.jpg
+    sha256: bee5ec22196e9e31ad0c95a5a9b4636571cc0124d5bb27a92f1e307d289cc60d
+    source: https://polyhaven.com/a/island_tree_02
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Small gnarled tree of 3.4 m, drawn smaller as a shrub: its twigs; albedo"
+  - file: Props/island_tree_02_branches_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_02/island_tree_02_branches_nor_gl_1k.jpg
+    sha256: 2d67393ba76a0f49cf965fa0c99d8c16268e71e87b1203d35539bfdb971a514e
+    source: https://polyhaven.com/a/island_tree_02
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Small gnarled tree of 3.4 m, drawn smaller as a shrub: its twigs; normal, OpenGL convention"
+  - file: Props/island_tree_02_branches_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_02/island_tree_02_branches_arm_1k.jpg
+    sha256: 9e3f82263247ce4f619692cea4c4f6fe9936ff465a86623481849062642c7d05
+    source: https://polyhaven.com/a/island_tree_02
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Small gnarled tree of 3.4 m, drawn smaller as a shrub: its twigs; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/island_tree_02_leaves_diff_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_02/island_tree_02_leaves_diff_1k.jpg
+    sha256: f56d762a1507754752abf164cc12acbc1e87ce87fa609ac44b98a1b0037c89d8
+    source: https://polyhaven.com/a/island_tree_02
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Small gnarled tree of 3.4 m, drawn smaller as a shrub: its leaves; albedo"
+  - file: Props/island_tree_02_leaves_nor_gl_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_02/island_tree_02_leaves_nor_gl_1k.jpg
+    sha256: 07ba461c0c95da4e49a42981766bdb6191d4c3c4d815796c082266dcc3cecdb8
+    source: https://polyhaven.com/a/island_tree_02
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Small gnarled tree of 3.4 m, drawn smaller as a shrub: its leaves; normal, OpenGL convention"
+  - file: Props/island_tree_02_leaves_arm_1k.jpg
+    url: https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_02/island_tree_02_leaves_arm_1k.jpg
+    sha256: 90da3a072dbcb052715b1313b9dbc69a4aa8a09a31a4b3868411a2bb51d72037
+    source: https://polyhaven.com/a/island_tree_02
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Small gnarled tree of 3.4 m, drawn smaller as a shrub: its leaves; mask source, AO in R, roughness in G, metalness in B"
+  - file: Props/island_tree_02_leaves_alpha_1k.png
+    url: https://dl.polyhaven.org/file/ph-assets/Models/png/1k/island_tree_02/island_tree_02_leaves_alpha_1k.png
+    sha256: f4341f147988dbe6b58d9ca841a8f0e4bcff25bc40d05f9877da82006d489c39
+    source: https://polyhaven.com/a/island_tree_02
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Small gnarled tree of 3.4 m, drawn smaller as a shrub: its leaves; opacity"
+  - file: Props/fir_tree_01_a_cut.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/fir_tree_01/fir_tree_01_1k.gltf
+    source_sha256: 72e49eefb4ed4db6a8ca5e17fb10980f8463dd300d94589ac774cde95ade7709
+    url_2: https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/fir_tree_01/fir_tree_01.bin
+    source_sha256_2: ba2ef15a1061a84c73b0a74643e88c118f801ce1664ca7a25a6a79bcc2c63790
+    derived_by: Derive/cut_fir.py fir_tree_01_a
+    sha256: 09b89f28db698af80d20feaf8bd224dbfec9c9f24d55ff6de7a11888eea41733
+    source: https://polyhaven.com/a/fir_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Tall fir, 19.0 m; cut by `Derive/cut_fir.py` from the source's 4,176,819 triangles to four levels of 57,964 to 418"
+  - file: Props/fir_tree_01_b_cut.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/fir_tree_01/fir_tree_01_1k.gltf
+    source_sha256: 72e49eefb4ed4db6a8ca5e17fb10980f8463dd300d94589ac774cde95ade7709
+    url_2: https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/fir_tree_01/fir_tree_01.bin
+    source_sha256_2: ba2ef15a1061a84c73b0a74643e88c118f801ce1664ca7a25a6a79bcc2c63790
+    derived_by: Derive/cut_fir.py fir_tree_01_b
+    sha256: a63ed01be753c161cc8e5e898dbf40b86b11623612f5840ef2ae9e0528f0f42a
+    source: https://polyhaven.com/a/fir_tree_01
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Tall fir, 14.1 m; cut by `Derive/cut_fir.py` from the source's 2,300,624 triangles to four levels of 58,031 to 417"
+  - file: Props/fir_sapling_medium_a_cut.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/fir_sapling_medium/fir_sapling_medium_1k.gltf
+    source_sha256: 2e80cd49d716c99bdead5a42aa6441e89443044d9a0edc31b56b5dbf87fc41de
+    url_2: https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/fir_sapling_medium/fir_sapling_medium.bin
+    source_sha256_2: e3f3fabcaa1bacfc8b1feca5e6500b13c63a0e45cd812e663d01d31b042d73b1
+    derived_by: Derive/cut_fir.py fir_sapling_medium_a
+    sha256: 648b419f3fc4bacecfb6bd44c2509e4735131adb0d9834478c8c339c70c40776
+    source: https://polyhaven.com/a/fir_sapling_medium
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Young fir, 8.9 m; cut by `Derive/cut_fir.py` from the source's 685,046 triangles to four levels of 48,937 to 374"
+  - file: Props/fir_sapling_medium_b_cut.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/fir_sapling_medium/fir_sapling_medium_1k.gltf
+    source_sha256: 2e80cd49d716c99bdead5a42aa6441e89443044d9a0edc31b56b5dbf87fc41de
+    url_2: https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/fir_sapling_medium/fir_sapling_medium.bin
+    source_sha256_2: e3f3fabcaa1bacfc8b1feca5e6500b13c63a0e45cd812e663d01d31b042d73b1
+    derived_by: Derive/cut_fir.py fir_sapling_medium_b
+    sha256: 6b973ce1d501808217e41671f362b0146e4ca9c2a598e66455ba456c031d6ec0
+    source: https://polyhaven.com/a/fir_sapling_medium
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Young fir, 7.8 m; cut by `Derive/cut_fir.py` from the source's 420,822 triangles to four levels of 45,430 to 369"
+  - file: Props/fir_sapling_medium_c_cut.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/fir_sapling_medium/fir_sapling_medium_1k.gltf
+    source_sha256: 2e80cd49d716c99bdead5a42aa6441e89443044d9a0edc31b56b5dbf87fc41de
+    url_2: https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/fir_sapling_medium/fir_sapling_medium.bin
+    source_sha256_2: e3f3fabcaa1bacfc8b1feca5e6500b13c63a0e45cd812e663d01d31b042d73b1
+    derived_by: Derive/cut_fir.py fir_sapling_medium_c
+    sha256: fcac456387a76a3af33bf687e2ce033d17af5813f35d62da3dc665d413e4355e
+    source: https://polyhaven.com/a/fir_sapling_medium
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Young fir, 6.0 m; cut by `Derive/cut_fir.py` from the source's 427,645 triangles to four levels of 45,556 to 368"
+  - file: Props/searsia_lucida_a_cut.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/searsia_lucida/searsia_lucida_1k.fbx
+    source_sha256: 28186f8618f92b7aaebac84d87a453a46e61a0fad0e88915508cdc9316bfc74b
+    derived_by: Derive/cut_tree.py searsia_lucida_a
+    sha256: 4da1a5b92acfe6a54e7bffc8cdd348e73ed7568a8e8a8536a344aa035a91d6db
+    source: https://polyhaven.com/a/searsia_lucida
+    author: James Ray Cock, Jenelle van Heerden
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Leafy bush, 2.3 m; cut by `Derive/cut_tree.py` from the source's 113,405 triangles to three levels of 9,598 to 280"
+  - file: Props/searsia_lucida_b_cut.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/searsia_lucida/searsia_lucida_1k.fbx
+    source_sha256: 28186f8618f92b7aaebac84d87a453a46e61a0fad0e88915508cdc9316bfc74b
+    derived_by: Derive/cut_tree.py searsia_lucida_b
+    sha256: 07bab930e51b25f8a906a230797abf865b0fdc8a80a6f7296ebeeb04fa7b63ec
+    source: https://polyhaven.com/a/searsia_lucida
+    author: James Ray Cock, Jenelle van Heerden
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Leafy bush, 2.0 m; cut by `Derive/cut_tree.py` from the source's 88,629 triangles to three levels of 9,598 to 280"
+  - file: Props/searsia_lucida_c_cut.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/searsia_lucida/searsia_lucida_1k.fbx
+    source_sha256: 28186f8618f92b7aaebac84d87a453a46e61a0fad0e88915508cdc9316bfc74b
+    derived_by: Derive/cut_tree.py searsia_lucida_c
+    sha256: 218b9239ace476679387364ddfc8258852fd173c0b7cee00c0532db9e70a2d4b
+    source: https://polyhaven.com/a/searsia_lucida
+    author: James Ray Cock, Jenelle van Heerden
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Leafy bush, 1.7 m; cut by `Derive/cut_tree.py` from the source's 77,603 triangles to three levels of 9,599 to 280"
+  - file: Props/searsia_lucida_d_cut.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/searsia_lucida/searsia_lucida_1k.fbx
+    source_sha256: 28186f8618f92b7aaebac84d87a453a46e61a0fad0e88915508cdc9316bfc74b
+    derived_by: Derive/cut_tree.py searsia_lucida_d
+    sha256: 069af05a9e93287a44957df84281d17817c411a0ec3b03b4f6dc4bfcf76cde27
+    source: https://polyhaven.com/a/searsia_lucida
+    author: James Ray Cock, Jenelle van Heerden
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Leafy bush, 1.4 m; cut by `Derive/cut_tree.py` from the source's 56,320 triangles to three levels of 8,538 to 280"
+  - file: Props/searsia_lucida_e_cut.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/searsia_lucida/searsia_lucida_1k.fbx
+    source_sha256: 28186f8618f92b7aaebac84d87a453a46e61a0fad0e88915508cdc9316bfc74b
+    derived_by: Derive/cut_tree.py searsia_lucida_e
+    sha256: 1b05dd46482a0ed6fe2c28292f289967a2613f457fb67725e61f888d0503656e
+    source: https://polyhaven.com/a/searsia_lucida
+    author: James Ray Cock, Jenelle van Heerden
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Leafy bush, 1.0 m; cut by `Derive/cut_tree.py` from the source's 27,701 triangles to three levels of 5,446 to 280"
+  - file: Props/searsia_lucida_f_cut.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/searsia_lucida/searsia_lucida_1k.fbx
+    source_sha256: 28186f8618f92b7aaebac84d87a453a46e61a0fad0e88915508cdc9316bfc74b
+    derived_by: Derive/cut_tree.py searsia_lucida_f
+    sha256: 01f7dc576ce13af05567b58693cc966637bc66b2220a3b5f60369ccfb5394334
+    source: https://polyhaven.com/a/searsia_lucida
+    author: James Ray Cock, Jenelle van Heerden
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Leafy bush, 0.7 m; cut by `Derive/cut_tree.py` from the source's 7,232 triangles to three levels of 3,287 to 280"
+  - file: Props/searsia_lucida_g_cut.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/searsia_lucida/searsia_lucida_1k.fbx
+    source_sha256: 28186f8618f92b7aaebac84d87a453a46e61a0fad0e88915508cdc9316bfc74b
+    derived_by: Derive/cut_tree.py searsia_lucida_g
+    sha256: 89c8fd88810c7672da5012b553216752c5783b88ce7a94f070276c1a4e685cef
+    source: https://polyhaven.com/a/searsia_lucida
+    author: James Ray Cock, Jenelle van Heerden
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Leafy bush, 0.8 m; cut by `Derive/cut_tree.py` from the source's 6,302 triangles to three levels of 3,223 to 280"
+  - file: Props/island_tree_02_cut.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/island_tree_02/island_tree_02_1k.fbx
+    source_sha256: ac2489d7c5b76cbe050a4f78d1984d614c2a7b0cfbe617b95836859613ab6d76
+    derived_by: Derive/cut_tree.py island_tree_02
+    sha256: 08ecc2c1cf9d2e716645083fa83e501ea971d449d748d9a7bca9ff0bbddbebbd
+    source: https://polyhaven.com/a/island_tree_02
+    author: Rico Cilliers, Rob Tuytel
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Small gnarled tree, 3.4 m tall and 4.2 m across, drawn smaller as a shrub; cut by `Derive/cut_tree.py` from the source's 1,072,213 triangles to three levels of 9,999 to 379"
+  - file: Props/tree_small_02_sapling_cut.fbx
+    url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/tree_small_02/tree_small_02_1k.fbx
+    source_sha256: 442394b4d39dcefef6c54358becea3c86735f040f2601b2c0c082e3ecf3685c5
+    derived_by: Derive/cut_tree.py tree_small_02_sapling
+    sha256: 609bf0f5c8cf0752704b8561c0bb67e44d68de138637463e14a0e3f74a7b6d2c
+    source: https://polyhaven.com/a/tree_small_02
+    author: Rico Cilliers
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Slender small tree, 4.6 m tall, drawn at half its size as a sapling under a wood's trees; cut by `Derive/cut_tree.py` from the source's 2,062,487 triangles to three levels of 9,998 to 379"
+  - file: Props/carex_dispalata_1_diff_scan.jpg
+    url: https://github.com/DioPires/eternities-mtg-app/releases/download/kit-sources-temperate-1/QS1701-W21_combine.gltf
+    source_sha256: 869514e6add4e0d7b7ce5a2034abea37d2efb87e7c52037ac5daf2700e11ee55
+    derived_by: Derive/scan_photograph.py QS1701-W21-1-1
+    sha256: 6c445cc197b5990ec70804b61e58322af830f3584e4bf7848ab1a36c0dc04447
+    source: https://sketchfab.com/3d-models/cc0-kasa-sge-sedge-carex-dispalata-79f4b32c824c45be8e3f668d18062cdf
+    author: ffish.asia / floraZia.com
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Kasa-suge sedge, the stem of 0.59 m: its photograph, taken out of the scan's glTF byte for byte by `Derive/scan_photograph.py`; albedo"
+  - file: Props/carex_dispalata_2_diff_scan.jpg
+    url: https://github.com/DioPires/eternities-mtg-app/releases/download/kit-sources-temperate-1/QS1701-W21_combine.gltf
+    source_sha256: 869514e6add4e0d7b7ce5a2034abea37d2efb87e7c52037ac5daf2700e11ee55
+    derived_by: Derive/scan_photograph.py QS1701-W21-2-1
+    sha256: 7041b51807208e278e39e5937999c5a7bc34f7598038867f024bbc0463e82736
+    source: https://sketchfab.com/3d-models/cc0-kasa-sge-sedge-carex-dispalata-79f4b32c824c45be8e3f668d18062cdf
+    author: ffish.asia / floraZia.com
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Kasa-suge sedge, the stem of 0.55 m: its photograph, taken out of the scan's glTF byte for byte by `Derive/scan_photograph.py`; albedo"
+  - file: Props/carex_maximowiczii_diff_scan.jpg
+    url: https://github.com/DioPires/eternities-mtg-app/releases/download/kit-sources-temperate-1/QS1701-W22-1-3.gltf
+    source_sha256: 4a63d6e4abb9340071ac3bcd93984bd54bc95b3ab51745a47f2735bcc6f3d2b4
+    derived_by: Derive/scan_photograph.py QS1701-W22-1-3
+    sha256: f64ab3e6f6ea32bf8c10edf5a6802f063cdc7a6555293f3cc0c2879502167f23
+    source: https://sketchfab.com/3d-models/cc0-maximowiczs-sedge-carex-maximowiczii-5737d74736ab440cb5b87f1c23ff96ff
+    author: ffish.asia / floraZia.com
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Maximowicz's sedge, a stem of 0.33 m: its photograph, taken out of the scan's glTF byte for byte by `Derive/scan_photograph.py`; albedo"
+  - file: Props/carex_dispalata_clump.fbx
+    url: https://github.com/DioPires/eternities-mtg-app/releases/download/kit-sources-temperate-1/QS1701-W21_combine.gltf
+    source_sha256: 869514e6add4e0d7b7ce5a2034abea37d2efb87e7c52037ac5daf2700e11ee55
+    derived_by: Derive/set_clump.py carex_dispalata
+    sha256: 6358ea1183b8b026b51219fe9369e5aeefbdb6fff5c061912a5e7b461bb74075
+    source: https://sketchfab.com/3d-models/cc0-kasa-sge-sedge-carex-dispalata-79f4b32c824c45be8e3f668d18062cdf
+    author: ffish.asia / floraZia.com
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Kasa-suge sedge, a clump of 16 stems 0.59 m tall for the marsh and the meadow; set by `Derive/set_clump.py` from the scan's two stems of 100,842 and 168,188 triangles, to three levels of 9,600 to 800"
+  - file: Props/carex_maximowiczii_clump.fbx
+    url: https://github.com/DioPires/eternities-mtg-app/releases/download/kit-sources-temperate-1/QS1701-W22-1-3.gltf
+    source_sha256: 4a63d6e4abb9340071ac3bcd93984bd54bc95b3ab51745a47f2735bcc6f3d2b4
+    derived_by: Derive/set_clump.py carex_maximowiczii
+    sha256: b90bcf85e986fcf38dab630a31f0d93c38648a61cdfeff68e100ce5a699d2f55
+    source: https://sketchfab.com/3d-models/cc0-maximowiczs-sedge-carex-maximowiczii-5737d74736ab440cb5b87f1c23ff96ff
+    author: ffish.asia / floraZia.com
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-13
+    use: "Maximowicz's sedge, a clump of 28 stems 0.34 m tall for the marsh and the meadow; set by `Derive/set_clump.py` from the scan's stem of 58,424 triangles, to three levels of 9,520 to 896"

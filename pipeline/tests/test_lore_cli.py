@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import lore_kit as kit
@@ -19,8 +19,10 @@ from eternities import cli
 from eternities.contract import write_dataset
 from eternities.fixtures import SMALL, build
 from eternities.lore import example
+from eternities.lore.digest import FILES
 from eternities.lore.problems import Rule
-from eternities.lore.stage import LoreStageError
+from eternities.lore.spotlight import SIDECAR_NAME
+from eternities.lore.stage import LORE_ROOT, LoreStageError
 
 EXAMPLE = str(example.EXAMPLE_DIR / "dominaria")
 EXAMPLE_DIGEST = "sha256:9c3e8af62db72675c17a2e5495109d6e870b658839fedc28775730306308d87a"
@@ -197,6 +199,117 @@ def test_an_integer_too_long_for_python_fails_naming_the_file_and_the_field(
     assert captured.out == ""
     assert "lore digest failed" in captured.err
     assert f"dominaria/regions.json: regions[0].{says}" in captured.err
+
+
+def _committed() -> dict[str, Path]:
+    """The schema example's three tables and Dominaria's sidecar, as committed."""
+    files = {name: example.EXAMPLE_DIR / "dominaria" / name for name in FILES}
+    files[SIDECAR_NAME] = LORE_ROOT / "dominaria" / SIDECAR_NAME
+    return files
+
+
+def _example_with(root: Path, file: str, path: tuple[kit.Step, ...], value: Any) -> Path:
+    """A copy of the example and the sidecar, valid together, with one member of ``file`` set."""
+    directory = root / "dominaria"
+    directory.mkdir()
+    for name, source in _committed().items():
+        document = json.loads(source.read_text("utf-8"))
+        if name == file:
+            kit.edit(document, path, value)
+        (directory / name).write_text(json.dumps(document), encoding="utf-8")
+    return directory
+
+
+def test_lore_validate_answers_a_coordinate_too_long_to_square_with_the_rule_line(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+    """The example with Terisiare's first coordinate as 2,151 nines. Python does not print the
+    square of that, and the command still answers with the row and the field (4.16.2). These two
+    lines are all it prints: an exception would end the test at the call, and print a traceback."""
+    nines = "9" * 2151
+    directory = _example_with(tmp_path, "regions.json", ("regions", 0, "anchor", 0), int(nines))
+    shown = cli._display(directory.resolve())
+
+    assert cli.main(["lore", "validate", str(directory)]) == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        f"lore validate failed — {shown} breaks 1 lore table rule:\n"
+        f'  {shown}/regions.json: regions[0] "terisiare": anchor: [{nines}, 300] lies outside the '
+        "unit disc: a coordinate is an integer in thousandths in [-1000, 1000] (4.16.2)\n"
+    )
+
+
+# Every field of the three tables and the sidecar that holds an integer: its file, the path to the
+# first row's, and how a failure there is named.
+_INTEGER_FIELDS: list[tuple[str, tuple[kit.Step, ...], str]] = [
+    ("regions.json", ("regions", 0, "anchor", 0), 'regions.json: regions[0] "terisiare": anchor: '),
+    ("regions.json", ("regions", 0, "anchor", 1), 'regions.json: regions[0] "terisiare": anchor: '),
+    ("regions.json", ("regions", 0, "weight"), 'regions.json: regions[0] "terisiare": weight: '),
+    (SIDECAR_NAME, ("count",), "spotlight.json: count: "),
+]
+
+LONGEST = "9" * 4300
+"""The longest integer the reader takes, at Python's default limit (``strict_json``)."""
+
+
+def _integer_paths(value: Any, path: tuple[kit.Step, ...] = ()) -> set[tuple[kit.Step, ...]]:
+    """Where a parsed file holds an integer, with every row of a table read as its first row."""
+    if isinstance(value, bool):
+        return set()
+    if isinstance(value, int):
+        return {path}
+    members: list[tuple[kit.Step, Any]] = []
+    if isinstance(value, dict):
+        members = list(cast("dict[str, Any]", value).items())
+    elif isinstance(value, list):
+        # The array under a top-level field is a table. An anchor's two coordinates are two fields.
+        table = len(path) == 1
+        rows = cast("list[Any]", value)
+        members = [(0 if table else position, row) for position, row in enumerate(rows)]
+    return {found for step, member in members for found in _integer_paths(member, (*path, step))}
+
+
+def test_the_integer_fields_are_every_one_the_committed_files_hold():
+    """A field that F.0 or the sidecar gains fails here until the test below reads it too."""
+    held = {
+        (name, path)
+        for name, source in _committed().items()
+        for path in _integer_paths(json.loads(source.read_text("utf-8")))
+    }
+
+    assert held == {(file, path) for file, path, _ in _INTEGER_FIELDS}
+
+
+@pytest.mark.parametrize(
+    "spelling", [LONGEST, "-" + LONGEST], ids=["4300 nines", "a minus sign and 4300 nines"]
+)
+@pytest.mark.parametrize(
+    ("file", "path", "named"),
+    _INTEGER_FIELDS,
+    ids=["anchor[0]", "anchor[1]", "weight", "the sidecar's count"],
+)
+def test_the_longest_integer_in_an_integer_field_fails_its_rule_and_has_a_digest(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    file: str,
+    path: tuple[kit.Step, ...],
+    named: str,
+    spelling: str,
+):
+    """A message may print a number from a file. It prints no arithmetic on one that Python could
+    refuse to convert, so ``lore validate`` answers with one line that names the field. ``lore
+    digest`` does not judge validity, and prints a digest."""
+    directory = _example_with(tmp_path, file, path, int(spelling))
+
+    assert cli.main(["lore", "validate", str(directory)]) == 1
+    failed, line = capsys.readouterr().err.splitlines()
+    assert "breaks 1 lore table rule" in failed
+    assert named in line
+
+    assert cli.main(["lore", "digest", str(directory)]) == 0
+    assert capsys.readouterr().out.startswith("sha256:")
 
 
 def test_validate_distribution_fails_on_an_absent_or_stale_record(

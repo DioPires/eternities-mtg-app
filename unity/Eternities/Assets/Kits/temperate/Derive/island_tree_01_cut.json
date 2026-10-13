@@ -1,0 +1,87 @@
+{
+ "tree": "island_tree_01",
+ "source": "island_tree_01_1k.fbx",
+ "blender": "5.2.2 LTS",
+ "source_triangles": 1599403,
+ "levels": [
+  {
+   "level": 0,
+   "limb_triangles": 8999,
+   "twigs": 340,
+   "twig_triangles": 6999,
+   "closed_edges_m": 0.0,
+   "leaf_cards": 21500,
+   "card_size": 1.648,
+   "triangles": 58998,
+   "materials": [
+    "island_tree_01",
+    "island_tree_01_branches",
+    "island_tree_01_leaves"
+   ]
+  },
+  {
+   "level": 1,
+   "limb_triangles": 2000,
+   "twigs": 32,
+   "twig_triangles": 799,
+   "closed_edges_m": 0.0,
+   "leaf_cards": 3800,
+   "card_size": 3.921,
+   "triangles": 10399,
+   "materials": [
+    "island_tree_01",
+    "island_tree_01_branches",
+    "island_tree_01_leaves"
+   ]
+  },
+  {
+   "level": 2,
+   "limb_triangles": 450,
+   "twigs": 0,
+   "twig_triangles": 0,
+   "closed_edges_m": 0.0,
+   "leaf_cards": 750,
+   "card_size": 8.825,
+   "triangles": 1950,
+   "materials": [
+    "island_tree_01",
+    "island_tree_01_leaves"
+   ]
+  },
+  {
+   "level": 3,
+   "limb_triangles": 129,
+   "twigs": 0,
+   "twig_triangles": 0,
+   "closed_edges_m": 0.0,
+   "leaf_cards": 150,
+   "card_size": 19.734,
+   "triangles": 429,
+   "materials": [
+    "island_tree_01",
+    "island_tree_01_leaves"
+   ]
+  }
+ ],
+ "limb_triangles": 34787,
+ "limbs_held_twice": 0,
+ "twigs": 8357,
+ "leaves": 44168,
+ "leaves_not_flat": 0,
+ "leaf_fit_mm": [
+  1.5,
+  5.9
+ ],
+ "leaf_fit_share_of_card": [
+  0.073,
+  0.091,
+  0.095
+ ],
+ "metres": [
+  4.791,
+  4.828,
+  5.047
+ ],
+ "under_its_base_m": 0.02,
+ "bytes": 4233548
+}

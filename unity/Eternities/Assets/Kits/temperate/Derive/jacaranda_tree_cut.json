@@ -1,0 +1,89 @@
+{
+ "tree": "jacaranda_tree",
+ "source": "jacaranda_tree_1k.fbx",
+ "blender": "5.2.2 LTS",
+ "source_triangles": 3863832,
+ "levels": [
+  {
+   "level": 0,
+   "limb_triangles": 13620,
+   "twigs": 294,
+   "twig_triangles": 3000,
+   "closed_edges_m": 0.0107,
+   "leaf_cards": 21500,
+   "card_size": 1.927,
+   "triangles": 59620,
+   "materials": [
+    "jacaranda_tree_branches",
+    "jacaranda_tree_trunk",
+    "jacaranda_tree_leaves"
+   ]
+  },
+  {
+   "level": 1,
+   "limb_triangles": 3154,
+   "twigs": 39,
+   "twig_triangles": 399,
+   "closed_edges_m": 0.0381,
+   "leaf_cards": 3300,
+   "card_size": 4.919,
+   "triangles": 10153,
+   "materials": [
+    "jacaranda_tree_branches",
+    "jacaranda_tree_trunk",
+    "jacaranda_tree_leaves"
+   ]
+  },
+  {
+   "level": 2,
+   "limb_triangles": 730,
+   "twigs": 0,
+   "twig_triangles": 0,
+   "closed_edges_m": 0.082,
+   "leaf_cards": 600,
+   "card_size": 11.536,
+   "triangles": 1930,
+   "materials": [
+    "jacaranda_tree_branches",
+    "jacaranda_tree_trunk",
+    "jacaranda_tree_leaves"
+   ]
+  },
+  {
+   "level": 3,
+   "limb_triangles": 232,
+   "twigs": 0,
+   "twig_triangles": 0,
+   "closed_edges_m": 0.1055,
+   "leaf_cards": 110,
+   "card_size": 26.943,
+   "triangles": 452,
+   "materials": [
+    "jacaranda_tree_branches",
+    "jacaranda_tree_trunk",
+    "jacaranda_tree_leaves"
+   ]
+  }
+ ],
+ "limb_triangles": 397892,
+ "limbs_held_twice": 1,
+ "twigs": 30316,
+ "leaves": 60378,
+ "leaves_not_flat": 0,
+ "leaf_fit_mm": [
+  11.7,
+  52.2
+ ],
+ "leaf_fit_share_of_card": [
+  0.094,
+  0.124,
+  0.134
+ ],
+ "metres": [
+  24.722,
+  19.24,
+  19.479
+ ],
+ "under_its_base_m": 0.155,
+ "bytes": 4979996
+}

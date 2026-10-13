@@ -1,0 +1,74 @@
+{
+ "tree": "fir_sapling_medium_c",
+ "source": "fir_sapling_medium_1k.gltf",
+ "blender": "5.2.2 LTS",
+ "source_triangles": 427645,
+ "levels": [
+  {
+   "level": 0,
+   "wood_triangles": 5590,
+   "closed_edges_m": 0.0,
+   "cards": 19983,
+   "unsure_cards": 8777,
+   "cell_m": 0.0575,
+   "card_long_m": 0.121,
+   "triangles": 45556,
+   "materials": [
+    "fir_sapling_medium_branches",
+    "fir_sapling_medium_twigs"
+   ]
+  },
+  {
+   "level": 1,
+   "wood_triangles": 1998,
+   "closed_edges_m": 0.0,
+   "cards": 3489,
+   "unsure_cards": 1414,
+   "cell_m": 0.1439,
+   "card_long_m": 0.302,
+   "triangles": 8976,
+   "materials": [
+    "fir_sapling_medium_branches",
+    "fir_sapling_medium_twigs"
+   ]
+  },
+  {
+   "level": 2,
+   "wood_triangles": 478,
+   "closed_edges_m": 0.0029,
+   "cards": 650,
+   "unsure_cards": 245,
+   "cell_m": 0.3397,
+   "card_long_m": 0.713,
+   "triangles": 1778,
+   "materials": [
+    "fir_sapling_medium_branches",
+    "fir_sapling_medium_twigs"
+   ]
+  },
+  {
+   "level": 3,
+   "wood_triangles": 128,
+   "closed_edges_m": 0.0195,
+   "cards": 120,
+   "unsure_cards": 52,
+   "cell_m": 0.781,
+   "card_long_m": 1.64,
+   "triangles": 368,
+   "materials": [
+    "fir_sapling_medium_branches",
+    "fir_sapling_medium_twigs"
+   ]
+  }
+ ],
+ "wood_triangles": 5590,
+ "tuft_triangles": 350800,
+ "bare_twig_triangles": 71255,
+ "metres": [
+  4.404,
+  4.056,
+  5.962
+ ],
+ "under_its_base_m": 0.152,
+ "bytes": 3410492
+}
