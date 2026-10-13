@@ -311,6 +311,17 @@ def test_a_table_that_is_not_an_array_fails_naming_the_table(tmp_path: Path, fil
     assert "must be an array" in wrong[0].message
 
 
+def test_a_keyword_table_that_is_not_an_array_fails_naming_the_table(tmp_path: Path):
+    """The reader looks up the keyword rows too, because a keyword row is named with its word."""
+    keywords: dict[str, Any] = {"plane": "dominaria", "keywords": 7}
+
+    problem = kit.only(kit.problems(kit.write(tmp_path, keywords_table=keywords)))
+
+    assert problem.rule is Rule.WRONG_TYPE
+    assert (problem.file, problem.row, problem.field) == ("keywords.json", "", "keywords")
+    assert "must be an array" in problem.message
+
+
 def test_a_missing_file_fails_naming_the_file(tmp_path: Path):
     directory = kit.write(tmp_path)
     (directory / "keywords.json").unlink()
@@ -362,6 +373,21 @@ def test_half_of_a_surrogate_pair_fails_naming_the_field(
 
     assert (problem.rule, problem.file) == (Rule.NOT_JSON, "regions.json")
     assert (problem.row, problem.field) == (row, field)
+
+
+def test_half_of_a_surrogate_pair_in_a_field_of_the_file_itself_names_no_row(tmp_path: Path):
+    """``plane`` is a field of the file and of no row: the row is empty and the field is named."""
+    directory = kit.write(tmp_path)
+    text = (directory / "regions.json").read_text(encoding="utf-8")
+    assert '"plane": "dominaria"' in text
+    (directory / "regions.json").write_text(
+        text.replace('"plane": "dominaria"', '"plane": "domin\\ud800aria"'), encoding="utf-8"
+    )
+
+    problem = kit.only(kit.problems(directory))
+
+    assert (problem.rule, problem.file) == (Rule.NOT_JSON, "regions.json")
+    assert (problem.row, problem.field) == ("", "plane")
 
 
 # --- F.0: every number is an integer in plain decimal ---------------------------------------
@@ -469,8 +495,8 @@ def test_a_forbidden_number_in_place_of_a_region_sentence_is_reported_once(tmp_p
     assert (problem.row, problem.field) == ('regions[0] "north"', "sentence")
 
 
-def test_a_forbidden_number_in_a_keyword_row_fails_naming_the_row_by_its_position(tmp_path: Path):
-    """A keyword row has no id, so the reader names it as the row's shape failures do."""
+def test_a_forbidden_number_in_a_keyword_row_fails_naming_the_row_with_its_word(tmp_path: Path):
+    """A keyword row has no id; its word names it, here as on every other failure of the row."""
     directory = kit.write(tmp_path)
     text = (directory / "keywords.json").read_text(encoding="utf-8")
     assert '"region": "north"' in text
@@ -481,7 +507,22 @@ def test_a_forbidden_number_in_a_keyword_row_fails_naming_the_row_by_its_positio
     problem = kit.only(kit.problems(directory))
 
     assert problem.rule is Rule.NUMBER
-    assert (problem.file, problem.row, problem.field) == ("keywords.json", "keywords[0]", "region")
+    assert (problem.file, problem.row, problem.field) == (
+        "keywords.json",
+        'keywords[0] "Alpha"',
+        "region",
+    )
+
+
+def test_a_forbidden_number_in_the_accepted_record_fails_naming_the_record(tmp_path: Path):
+    """The record is no row of a table, so the reader names it by the path to it and no more."""
+    eras = kit.eras()
+    eras["accepted"] = {**_RECORD, "by": 1.5}
+
+    problem = kit.only(kit.problems(kit.write(tmp_path, eras_table=eras)))
+
+    assert problem.rule is Rule.NUMBER
+    assert (problem.file, problem.row, problem.field) == ("eras.json", "accepted", "by")
 
 
 def test_a_leading_plus_fails_the_read_and_says_so(tmp_path: Path):
@@ -553,6 +594,109 @@ def test_an_anchor_on_the_rim_of_the_disc_passes(tmp_path: Path, anchor: list[in
         row["region"] = region_id
 
     kit.validate(kit.write(tmp_path, regions_table=regions, eras_table=eras))
+
+
+_COORDINATE_LINE = "a coordinate is an integer in thousandths in [-1000, 1000] (4.16.2)"
+
+
+@pytest.mark.parametrize(
+    "anchor",
+    [[1001, 0], [-1001, 0], [0, 1001], [0, -1001], [1001, 1001], [-1001, 1001]],
+    ids=str,
+)
+def test_a_coordinate_over_1000_fails_on_its_own_and_the_line_states_its_bound(
+    tmp_path: Path, anchor: list[int]
+):
+    """One coordinate over 1,000 puts the anchor outside the disc whatever the other one is, and
+    so do two. The line states the bound of a coordinate, as the weight line states its range, and
+    no sum."""
+    regions = kit.regions()
+    regions["regions"][0]["anchor"] = anchor
+
+    problem = kit.only(kit.problems(kit.write(tmp_path, regions_table=regions)))
+
+    assert problem.rule is Rule.ANCHOR_OUTSIDE_DISC
+    assert (problem.row, problem.field) == ('regions[0] "north"', "anchor")
+    assert problem.message == f"{anchor} lies outside the unit disc: {_COORDINATE_LINE}"
+
+
+@pytest.mark.parametrize(
+    ("anchor", "message"),
+    [
+        (
+            [800, 800],
+            "[800, 800] lies outside the unit disc: u^2 + v^2 is 1,280,000, over 1,000,000 "
+            "(4.16.2)",
+        ),
+        # The two ends of the sum the line can print: one over the rim, and the corner.
+        (
+            [1000, 1],
+            "[1000, 1] lies outside the unit disc: u^2 + v^2 is 1,000,001, over 1,000,000 (4.16.2)",
+        ),
+        (
+            [-1000, -1000],
+            "[-1000, -1000] lies outside the unit disc: u^2 + v^2 is 2,000,000, over 1,000,000 "
+            "(4.16.2)",
+        ),
+    ],
+    ids=["[800, 800]", "[1000, 1]", "[-1000, -1000]"],
+)
+def test_an_anchor_outside_the_disc_with_both_coordinates_in_range_prints_the_sum(
+    tmp_path: Path, anchor: list[int], message: str
+):
+    regions = kit.regions()
+    regions["regions"][0]["anchor"] = anchor
+
+    problem = kit.only(kit.problems(kit.write(tmp_path, regions_table=regions)))
+
+    assert problem.rule is Rule.ANCHOR_OUTSIDE_DISC
+    assert (problem.row, problem.field) == ('regions[0] "north"', "anchor")
+    assert problem.message == message
+
+
+@pytest.mark.parametrize("long", [(0,), (1,), (0, 1)], ids=["u", "v", "both"])
+def test_a_coordinate_too_long_to_square_fails_as_an_anchor_outside_the_disc(
+    tmp_path: Path, long: tuple[int, ...]
+):
+    """The reader takes an integer of up to 4,300 digits, and Python prints none longer. The square
+    of 2,151 nines has 4,302, so the rule answers from the coordinate and squares nothing. Two
+    coordinates that long get the same answer."""
+    nines = int("9" * 2151)
+    anchor = [0, 500]
+    for at in long:
+        anchor[at] = nines
+    regions = kit.regions()
+    regions["regions"][0]["anchor"] = anchor
+
+    problem = kit.only(kit.problems(kit.write(tmp_path, regions_table=regions)))
+
+    assert problem.rule is Rule.ANCHOR_OUTSIDE_DISC
+    assert (problem.file, problem.row, problem.field) == (
+        "regions.json",
+        'regions[0] "north"',
+        "anchor",
+    )
+    assert problem.message == f"{anchor} lies outside the unit disc: {_COORDINATE_LINE}"
+
+
+@pytest.mark.parametrize(
+    ("outside", "beside"),
+    [([1001, 0], [1000, 0]), ([800, 800], [700, 700])],
+    ids=["a coordinate over 1000", "a sum over 1,000,000"],
+)
+def test_an_anchor_outside_the_disc_is_not_placed_so_no_distance_is_measured_from_it(
+    tmp_path: Path, outside: list[int], beside: list[int]
+):
+    """The row after it is inside the disc and under 150 from it. The anchor outside the disc was
+    reported once and is no place on the map, so the row beside it gets no line about a distance."""
+    regions = kit.regions()
+    regions["regions"][0]["anchor"] = outside
+    regions["regions"][1]["anchor"] = beside
+
+    problem = kit.only(kit.problems(kit.write(tmp_path, regions_table=regions)))
+
+    assert problem.rule is Rule.ANCHOR_OUTSIDE_DISC
+    assert (problem.row, problem.field) == ('regions[0] "north"', "anchor")
 
 
 @pytest.mark.parametrize("weight", [499, 2001, 0, -1000])
@@ -1163,6 +1307,88 @@ def test_an_empty_keyword_table_and_a_two_word_keyword_validate(tmp_path: Path):
     kit.validate(kit.write(tmp_path, keywords_table={"plane": "dominaria", "keywords": []}))
     two = {"plane": "dominaria", "keywords": [{"word": "Ice Age", "region": "north"}]}
     kit.validate(kit.write(tmp_path, keywords_table=two))
+
+
+_KEYWORD_ROW = '{"word": "Alpha", "region": "north"}'
+
+
+def _keyword_row(root: Path, row: str) -> Path:
+    """The valid tables with their one keyword row written as ``row``.
+
+    As text, because ``json.dumps`` writes neither a field twice nor half of a surrogate pair.
+    """
+    directory = kit.write(root)
+    text = (directory / "keywords.json").read_text(encoding="utf-8")
+    assert _KEYWORD_ROW in text
+    (directory / "keywords.json").write_text(text.replace(_KEYWORD_ROW, row), encoding="utf-8")
+    return directory
+
+
+@pytest.mark.parametrize(
+    ("row", "rule", "field"),
+    [
+        # The reader's two other failures; the forbidden number has its own test above.
+        ('{"word": "Alpha", "region": "north", "region": "east"}', Rule.DUPLICATE_FIELD, "region"),
+        ('{"word": "Alpha", "region": "nor\\ud800th"}', Rule.NOT_JSON, "region"),
+        # The shape failures. F.0 allows `7` as a number, so only the field's type is wrong.
+        ('{"word": "Alpha", "region": 7}', Rule.WRONG_TYPE, "region"),
+        ('{"word": "Alpha", "region": "north", "colour": "red"}', Rule.UNKNOWN_FIELD, "colour"),
+        ('{"word": "Alpha"}', Rule.MISSING_FIELD, "region"),
+    ],
+    ids=[
+        "a field written twice",
+        "half of a surrogate pair",
+        "a wrong type",
+        "an unknown field",
+        "a missing field",
+    ],
+)
+def test_a_keyword_row_is_named_with_its_word_on_every_failure(
+    tmp_path: Path, row: str, rule: Rule, field: str
+):
+    """The three keyword rules name a row ``keywords[0] "Alpha"``. So does every other failure."""
+    problem = kit.only(kit.problems(_keyword_row(tmp_path, row)))
+
+    assert problem.rule is rule
+    assert (problem.file, problem.row, problem.field) == (
+        "keywords.json",
+        'keywords[0] "Alpha"',
+        field,
+    )
+
+
+@pytest.mark.parametrize(
+    ("row", "failures"),
+    [
+        ('{"word": 7, "region": 1.0}', [(Rule.NUMBER, "region"), (Rule.WRONG_TYPE, "word")]),
+        ('{"word": 7, "region": 8}', [(Rule.WRONG_TYPE, "region"), (Rule.WRONG_TYPE, "word")]),
+        ('{"region": 1.0}', [(Rule.MISSING_FIELD, "word"), (Rule.NUMBER, "region")]),
+        # A forbidden number is not text, and neither is half of a surrogate pair.
+        ('{"word": 1.0, "region": "north"}', [(Rule.NUMBER, "word")]),
+        ('{"word": "Al\\ud800pha", "region": "north"}', [(Rule.NOT_JSON, "word")]),
+        # Written twice, the row has two words and the reader keeps neither.
+        (
+            '{"word": "Alpha", "word": "Beta", "region": "north"}',
+            [(Rule.DUPLICATE_FIELD, "word")],
+        ),
+    ],
+    ids=[
+        "a word that is not text, a forbidden number",
+        "a word that is not text, a wrong type",
+        "no word",
+        "a word that is a forbidden number",
+        "a word that holds half of a surrogate pair",
+        "a word written twice",
+    ],
+)
+def test_a_keyword_row_with_no_word_of_text_is_named_by_its_position(
+    tmp_path: Path, row: str, failures: list[tuple[Rule, str]]
+):
+    found = kit.problems(_keyword_row(tmp_path, row))
+
+    assert sorted((p.rule, p.file, p.row, p.field) for p in found) == sorted(
+        (rule, "keywords.json", "keywords[0]", field) for rule, field in failures
+    )
 
 
 # --- product tables (F.2) -------------------------------------------------------------------

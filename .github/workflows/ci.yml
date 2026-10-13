@@ -466,13 +466,26 @@ jobs:
           lfs: true
       # PRD v4 8.8.6: a bench that shares the GPU with another editor is not a figure for this
       # machine. `pgrep` sees every account's processes, so an editor the owner left open counts.
+      # It waits for an editor or a built player to exit, looking every 15 s for up to 15 minutes:
+      # a pointer-test run is under two minutes and a draw about four a run, and a run that waits
+      # longer than that is better failed and rerun.
       - name: No other Unity process is running
         run: |
-          if pgrep -x Unity > /dev/null; then
-            echo "::error::Another Unity process is running on the reference machine. Close it and re-run this job."
-            pgrep -lx Unity
-            exit 1
-          fi
+          for wait in $(seq 0 60); do
+            editor=$(pgrep -lx Unity || true)
+            player=$(pgrep -fl 'MacOS/[E]ternities' || true)
+            seen=$(printf '%s\n' "$editor" "$player" | sed '/^$/d')
+            if [ -z "$seen" ]; then
+              exit 0
+            fi
+            if [ "$wait" -lt 60 ]; then
+              echo "Wait $((wait + 1)) of 60, 15 s: $(paste -sd ';' - <<< "$seen")"
+              sleep 15
+            fi
+          done
+          echo "::error::Another Unity process is running on the reference machine. Close it and re-run this job."
+          echo "$seen"
+          exit 1
       # The editor host of the bench (unity/Eternities/README.md): play mode, off screen at the
       # reference display's native size. No `-quit`: the run ends the editor itself, with exit code 0
       # only if the path completed. Its figures prove the path runs; they fill no row of PRD v4 9.5.
