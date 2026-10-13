@@ -12,6 +12,10 @@ namespace Eternities.Kits
         public string Prefab;       // under the kit's `Prefabs/`, without its extension
         public float PerAre;
         public float ScaleFrom = 0.85f, ScaleTo = 1.2f;
+        // A growth that is seen across a field, as a clump of grass to the knee and over is. It
+        // stands about the viewer, as ground cover does, and thins out to the patch's edge and
+        // not to nothing (`Variants.Scatter`).
+        public bool Far;
 
         public string Category => Prefab.Substring(0, Prefab.IndexOf('/'));
         public string Name => Prefab.Substring(Prefab.LastIndexOf('/') + 1);
@@ -49,9 +53,22 @@ namespace Eternities.Kits
         // there.
         public const float CoverNear = 12, CoverFar = 26;
 
+        // A growth that is seen across a field stands at its full density within `FieldNear`
+        // metres of the viewer, and from there it thins as `FieldNear` over the distance, out to
+        // the patch's edge. The ground that a clump hides from a walker's eye grows with its
+        // distance, so the field stays as closed with fewer clumps. Within some 50 m a clump is
+        // seen as a clump and the ground shows between two. The figure is from pictures (DEC-1055,
+        // B2) of the meadow on a patch 240 m across at the medium level: thinning from 12 m left
+        // it bare beyond 40 m, and thinning from 48 m closed it as the same clumps at one density
+        // on all the patch did, with some 16,000 of them and not 27,600.
+        public const float FieldNear = 48;
+
         // The temperate kit's four (PRD v4 9.6; DEC-1003): a field, a wood, wet ground and bare
-        // dark rock. The densities are a first setting for the owner's eye. At 24 tufts a square
-        // metre, which is the meadow at the medium level, the ground still shows between them.
+        // dark rock. The densities are a first setting for the owner's eye. The meadow's low
+        // cover is tufts a hand high with broad-leaved plants between them, 22 to a square metre
+        // at the medium level. A tuft is not seen beyond 26 m, however many stand there: 46,000
+        // more of them out to the patch's edge left the far ground as bare in the picture. What
+        // closes the field to the horizon is tall grass in clumps, which is the kit's two sedges.
         // The trees and bushes are their sources cut to levels by the kit's `Derive/` scripts (PRD
         // v4 7.6.4; the owner's answer of 2026-10-13 on DEC-1003): a mixed wood of firs and
         // broadleaves over young trees, a few trees standing alone in the meadow, and low bushes and
@@ -64,14 +81,18 @@ namespace Eternities.Kits
                 Name = "meadow",
                 Ground = new[] { ("ground037", 0.7f), ("forrest_ground_01", 0.3f) },
                 Grows = Some(
-                    Each("GroundCover/grass_medium_01_", 2400, 1.4f, 2, "mid_a", "mid_b", "mid_c", "small_a", "small_b", "tall_a", "tall_b", "tall_c"),
-                    Each("GroundCover/grass_medium_02_", 1500, 1.3f, 2, "a", "b", "c", "d", "e"),
-                    Each("GroundCover/dandelion_01_", 60, 1, 1.6f, "a", "b", "c", "d", "e"),
-                    Each("GroundCover/celandine_01_", 60, 1, 1.6f, "a", "b", "e"),
-                    Each("GroundCover/weed_plant_02_", 20, 1, 1.6f, "a", "b", "c", "d", "e"),
+                    Each("GroundCover/grass_medium_01_", 2000, 1.4f, 2, "mid_a", "mid_b", "mid_c", "small_a", "small_b", "tall_a", "tall_b", "tall_c"),
+                    Each("GroundCover/grass_medium_02_", 1200, 1.3f, 2, "a", "b", "c", "d", "e"),
+                    Each("GroundCover/dandelion_01_", 150, 1.2f, 2, "a", "b", "c", "d", "e"),
+                    Each("GroundCover/celandine_01_", 300, 1.3f, 2, "a", "b", "e"),
+                    Each("GroundCover/weed_plant_02_", 60, 1.2f, 2, "a", "b", "c", "d", "e"),
                     Each("Rocks/rock_moss_set_02_", 0.25f, 0.8f, 1.1f, "rock08", "rock09", "rock12"),
                     Each("Trees/jacaranda_tree", 0.012f, 0.8f, 1.1f, ""),
-                    Each("Trees/tree_small_02", 0.04f, 1.2f, 2, "")),
+                    Each("Trees/tree_small_02", 0.04f, 1.2f, 2, ""),
+                    // The field's tall grass, seen to the horizon: the two sedges, a clump to
+                    // every two square metres at the medium level near the walker.
+                    Far("Bushes/carex_dispalata", 40, 1.3f, 2, ""),
+                    Far("Bushes/carex_maximowiczii", 40, 1.4f, 2, "")),
             },
             new Variant
             {
@@ -150,9 +171,21 @@ namespace Eternities.Kits
             return grows;
         }
 
+        // The same, of a growth that is seen across a field.
+        static Growth[] Far(string prefix, float perAre, float from, float to, params string[] names)
+        {
+            Growth[] grows = Each(prefix, perAre, from, to, names);
+            foreach (Growth growth in grows)
+            {
+                growth.Far = true;
+            }
+            return grows;
+        }
+
         // A variant's props on a square patch of ground `side` metres wide about the origin, at a
         // share of its full density: which of its growths, where, turned how and how large. Ground
-        // cover stands about `viewer` only. The same patch has the same props on every machine,
+        // cover stands about `viewer` only, and so does a growth seen across a field, which thins
+        // from `FieldNear` and does not end. The same patch has the same props on every machine,
         // and a lower density's props are among a higher density's: each growth has its own run
         // of draws, five a prop, and a density takes the first so many of them.
         public static List<Prop> Scatter(Variant variant, float side, float density, uint seed, Vector2 viewer)
@@ -161,19 +194,20 @@ namespace Eternities.Kits
             for (int kind = 0; kind < variant.Grows.Length; kind++)
             {
                 Growth growth = variant.Grows[kind];
-                bool cover = growth.Category == "GroundCover";
-                float reach = cover ? Mathf.Min(side, 2 * CoverFar) : side;
+                bool low = growth.Category == "GroundCover" && !growth.Far;
+                float reach = low ? Mathf.Min(side, 2 * CoverFar) : side;
                 int count = Mathf.RoundToInt(growth.PerAre * reach * reach / 100 * density);
                 var draws = new SplitMix64(((ulong)seed << 20) + (ulong)kind);
                 float Draw() => (draws.Next() >> 40) / (float)(1 << 24);
                 for (int i = 0; i < count; i++)
                 {
                     float x = (Draw() - 0.5f) * reach, z = (Draw() - 0.5f) * reach, thinned = Draw(), yaw = Draw() * 360, scale = Draw();
-                    if (cover)
+                    if (low || growth.Far)
                     {
                         x += viewer.x;
                         z += viewer.y;
-                        if (thinned < Mathf.InverseLerp(CoverNear, CoverFar, Vector2.Distance(new Vector2(x, z), viewer)))
+                        float away = Vector2.Distance(new Vector2(x, z), viewer);
+                        if (low ? thinned < Mathf.InverseLerp(CoverNear, CoverFar, away) : thinned * away > FieldNear)
                         {
                             continue;
                         }

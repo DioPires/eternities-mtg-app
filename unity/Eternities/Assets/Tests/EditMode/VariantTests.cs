@@ -146,8 +146,37 @@ namespace Eternities.Tests
             {
                 Growth growth = variant.Grows[prop.Kind];
                 float away = new Vector2(prop.X, prop.Z).magnitude;
-                Assert.That(away, Is.LessThanOrEqualTo(growth.Category == "GroundCover" ? Variants.CoverFar : 120), growth.Prefab);
+                Assert.That(away, Is.LessThanOrEqualTo(growth.Category == "GroundCover" && !growth.Far ? Variants.CoverFar : 120), growth.Prefab);
                 Assert.That(prop.Scale, Is.InRange(growth.ScaleFrom, growth.ScaleTo), growth.Prefab);
+            }
+        }
+
+        // Density (DEC-1055, B2): a field is grown over from the walker to its edge. The first
+        // meadow's cover ended on a line 26 m from the walker, with bare ground from there to the
+        // horizon. A growth that is seen across a field stands at its full density within
+        // `FieldNear` and thins from there as one over the distance. Two rings of one width
+        // beyond `FieldNear` then hold as many plants as each other, where a growth that did not
+        // thin would have 1.4 times as many in the farther.
+        [Test]
+        public void TheMeadowIsGrownOverToItsEdge()
+        {
+            Variant meadow = Variants.Temperate.Single(variant => variant.Name == "meadow");
+            Growth[] far = meadow.Grows.Where(growth => growth.Far).ToArray();
+            Assert.That(far.Select(Species).Distinct().Count(), Is.GreaterThanOrEqualTo(2), "more than one species is seen across the field");
+            const float Side = 240, Near = Variants.FieldNear;
+            float density = Temperate.Density("medium");
+            float[] away = Variants.Scatter(meadow, Side, density, 7, Vector2.zero)
+                .Where(prop => meadow.Grows[prop.Kind].Far).Select(prop => new Vector2(prop.X, prop.Z).magnitude).ToArray();
+            int Ring(float from, float to) => away.Count(metres => metres >= from && metres < to);
+            float within = far.Sum(growth => growth.PerAre) / 100 * density * Mathf.PI * Near * Near;
+            Assert.That(Ring(0, Near), Is.EqualTo(within).Within(0.05f * within), "at its full density near the walker");
+            Assert.That(Ring(1.5f * Near, 2 * Near) / (float)Ring(Near, 1.5f * Near), Is.EqualTo(1).Within(0.1f), "thinner with distance");
+            // No band of the field beyond the low cover holds fewer plants than the first.
+            int first = Ring(Variants.CoverFar, Variants.CoverFar + 10);
+            Assert.That(first, Is.GreaterThan(0));
+            for (float from = Variants.CoverFar + 10; from < Side / 2; from += 10)
+            {
+                Assert.That(Ring(from, from + 10), Is.GreaterThanOrEqualTo(first), $"{from} to {from + 10} m from the walker");
             }
         }
 

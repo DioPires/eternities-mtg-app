@@ -114,7 +114,8 @@ namespace Eternities.EditorTools
             Cut("Bushes", "searsia_lucida_g", BushLevels),
             Cut("Bushes", "island_tree_02", BushLevels, 0.6f),
             Cut("Bushes", "tree_small_02_sapling", BushLevels, 0.5f),
-            // Sedges of the marsh: clumps set from scanned stems by `Derive/set_clump.py`.
+            // Sedges, for the marsh and for the meadow's tall grass: clumps set from scanned stems
+            // by `Derive/set_clump.py`.
             Clump("Bushes", "carex_dispalata", BushLevels),
             Clump("Bushes", "carex_maximowiczii", BushLevels),
         }.SelectMany(some => some).ToArray();

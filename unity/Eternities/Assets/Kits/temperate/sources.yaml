@@ -1902,7 +1902,7 @@ assets:
     licence: CC0 1.0
     licence_url: https://creativecommons.org/publicdomain/zero/1.0/
     fetched: 2026-10-13
-    use: "Kasa-suge sedge, a clump of 16 stems 0.59 m tall for the marsh; set by `Derive/set_clump.py` from the scan's two stems of 100,842 and 168,188 triangles, to three levels of 9,600 to 800"
+    use: "Kasa-suge sedge, a clump of 16 stems 0.59 m tall for the marsh and the meadow; set by `Derive/set_clump.py` from the scan's two stems of 100,842 and 168,188 triangles, to three levels of 9,600 to 800"
   - file: Props/carex_maximowiczii_clump.fbx
     url: https://github.com/DioPires/eternities-mtg-app/releases/download/kit-sources-temperate-1/QS1701-W22-1-3.gltf
     source_sha256: 4a63d6e4abb9340071ac3bcd93984bd54bc95b3ab51745a47f2735bcc6f3d2b4
@@ -1913,4 +1913,4 @@ assets:
     licence: CC0 1.0
     licence_url: https://creativecommons.org/publicdomain/zero/1.0/
     fetched: 2026-10-13
-    use: "Maximowicz's sedge, a clump of 28 stems 0.34 m tall for the marsh; set by `Derive/set_clump.py` from the scan's stem of 58,424 triangles, to three levels of 9,520 to 896"
+    use: "Maximowicz's sedge, a clump of 28 stems 0.34 m tall for the marsh and the meadow; set by `Derive/set_clump.py` from the scan's stem of 58,424 triangles, to three levels of 9,520 to 896"

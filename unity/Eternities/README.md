@@ -248,7 +248,13 @@ a density. The temperate kit has four, `meadow`, `wood`, `marsh` and `highland`,
    growth's share of the prefab. More than one species of each vegetation type the variant uses,
    and rocks.
 4. **Density.** A quality level draws a share of it, and a lower level's props are among a higher
-   level's. Ground cover stands about the viewer only, thinning from 12 m to nothing at 26 m.
+   level's. Ground cover stands about the viewer only, thinning from 12 m to nothing at 26 m: a
+   tuft a hand high is a few pixels there. A growth that is seen across a field (`Growth.Far`)
+   also stands about the viewer, at its full density within 48 m, and from there it thins as 48 m
+   over the distance, out to the patch's edge. The ground that a clump hides from a walker's eye
+   grows with its distance, so the field stays as closed with fewer clumps. The meadow's tall
+   grass is such a growth: the kit's two sedges, in clumps. Other trees, bushes and rocks stand
+   on the patch, wherever the viewer is.
 
 The scene holds each variant's layers and props, so a build carries them. Nothing draws a variant
 in a world yet: that is the dressing of a region (PRD v4 9.6, leg 2). The densities are a first

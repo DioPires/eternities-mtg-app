@@ -884,6 +884,42 @@ MonoBehaviour:
         - {fileID: 2100000, guid: 1d9d39c99fd2740cb8344f2b9c2fa656, type: 2}
         - {fileID: 2100000, guid: c2a99cacf7ebb4deb9079f18a45f6715, type: 2}
         Until: 0.0001
+    - Mesh: {fileID: -7846835327933424102, guid: 62e61cf42b86b4e8682a4be7970a6245, type: 3}
+      Materials:
+      - {fileID: 2100000, guid: 677846923d6c840b08d84fd749a13236, type: 2}
+      - {fileID: 2100000, guid: a01c546693b514272abb0ceaef6308e8, type: 2}
+      Offset: {x: 0, y: 0, z: 0}
+      Turn: {x: 0, y: 0, z: 0, w: 1}
+      Scale: 1
+      From: 0
+      First: 0.12
+      Levels:
+      - Mesh: {fileID: 1903995071619040275, guid: 62e61cf42b86b4e8682a4be7970a6245, type: 3}
+        Materials:
+        - {fileID: 2100000, guid: 677846923d6c840b08d84fd749a13236, type: 2}
+        - {fileID: 2100000, guid: a01c546693b514272abb0ceaef6308e8, type: 2}
+        Until: 0.04
+      - Mesh: {fileID: -552597715812673617, guid: 62e61cf42b86b4e8682a4be7970a6245, type: 3}
+        Materials:
+        - {fileID: 2100000, guid: 677846923d6c840b08d84fd749a13236, type: 2}
+        Until: 0.0001
+    - Mesh: {fileID: 8161923649076146455, guid: 367337df30bbd4562aeb2a72b52e5f18, type: 3}
+      Materials:
+      - {fileID: 2100000, guid: f24633c826f28418da93b6266d919508, type: 2}
+      Offset: {x: 0, y: 0, z: 0}
+      Turn: {x: 0, y: 0, z: 0, w: 1}
+      Scale: 1
+      From: 0
+      First: 0.12
+      Levels:
+      - Mesh: {fileID: 8826924132504065605, guid: 367337df30bbd4562aeb2a72b52e5f18, type: 3}
+        Materials:
+        - {fileID: 2100000, guid: f24633c826f28418da93b6266d919508, type: 2}
+        Until: 0.04
+      - Mesh: {fileID: -140623683293895967, guid: 367337df30bbd4562aeb2a72b52e5f18, type: 3}
+        Materials:
+        - {fileID: 2100000, guid: f24633c826f28418da93b6266d919508, type: 2}
+        Until: 0.0001
   - Name: wood
     Layers:
     - {fileID: 8574412962073106934, guid: 6a130e00da3594c15b7276ecaaa008ae, type: 2}
