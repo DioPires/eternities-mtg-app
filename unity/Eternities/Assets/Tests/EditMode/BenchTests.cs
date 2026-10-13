@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.RegularExpressions;
 using Eternities.Bench;
+using Eternities.EditorTools;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -42,6 +43,55 @@ namespace Eternities.Tests
             Assert.That(BuildStamp.TryRead("", out _, out _), Is.False);
             Assert.That(BuildStamp.TryRead($"commit {head}\n", out _, out _), Is.False, "a stamp that does not say whether the tree was clean is no stamp");
             Assert.That(BuildStamp.TryRead("dirty false\n", out _, out _), Is.False);
+        }
+
+        // The stamp's `dirty` is the project's, `unity/Eternities/`, and not the repository's
+        // (DEC-976, N5): a file at the repository's root, as the layout report the README's own
+        // command writes there, is no change to the player. A change in the project still is one.
+        [Test]
+        public void ABuildsStampReadsTheProjectAndNotTheRepository()
+        {
+            string repository = Path.Combine(Path.GetTempPath(), "eternities-stamp-" + System.Guid.NewGuid().ToString("N"));
+            string project = Path.Combine(repository, "unity", "Eternities");
+            Directory.CreateDirectory(project);
+            try
+            {
+                File.WriteAllText(Path.Combine(project, "committed.txt"), "as committed\n");
+                Git(repository, "init --quiet");
+                Git(repository, "add unity");
+                Git(repository, "-c user.name=test -c user.email=test@example.invalid -c commit.gpgsign=false commit --quiet --no-verify -m scratch");
+                Assert.That(Build.Dirty(project), Is.False, "nothing has changed");
+
+                File.WriteAllText(Path.Combine(repository, "dominaria-layout.txt"), "a report\n");
+                Assert.That(Build.Dirty(project), Is.False, "an untracked file at the repository's root");
+
+                File.WriteAllText(Path.Combine(project, "untracked.txt"), "new\n");
+                Assert.That(Build.Dirty(project), Is.True, "an untracked file in the project");
+                File.Delete(Path.Combine(project, "untracked.txt"));
+                Assert.That(Build.Dirty(project), Is.False, "the untracked file is gone");
+
+                File.WriteAllText(Path.Combine(project, "committed.txt"), "changed\n");
+                Assert.That(Build.Dirty(project), Is.True, "a changed file in the project");
+            }
+            finally
+            {
+                // Git's object files are read-only, and Windows does not delete one that is.
+                foreach (string file in Directory.GetFiles(repository, "*", SearchOption.AllDirectories))
+                {
+                    File.SetAttributes(file, FileAttributes.Normal);
+                }
+                Directory.Delete(repository, recursive: true);
+            }
+        }
+
+        static void Git(string repository, string arguments)
+        {
+            var git = new System.Diagnostics.ProcessStartInfo("git", $"-C \"{repository}\" {arguments}") { UseShellExecute = false };
+            using (System.Diagnostics.Process process = System.Diagnostics.Process.Start(git))
+            {
+                process.WaitForExit();
+                Assert.That(process.ExitCode, Is.EqualTo(0), $"git {arguments}");
+            }
         }
 
         [Test]
