@@ -284,6 +284,21 @@ def test_the_sidecars_own_fields_are_checked(
     assert (problem.rule, problem.file, problem.field) == (rule, "spotlight.json", field)
 
 
+def test_a_forbidden_number_in_a_printing_fails_naming_the_row_by_its_position(tmp_path: Path):
+    """A printing is named by position on every failure, the reader's included."""
+    document = _document()
+    document["printings"][0]["collector_number"] = 1.0
+
+    problem = kit.only(_problems(_write(tmp_path, document)))
+
+    assert problem.rule is Rule.NUMBER
+    assert (problem.file, problem.row, problem.field) == (
+        "spotlight.json",
+        "printings[0]",
+        "collector_number",
+    )
+
+
 def test_a_sidecar_that_is_not_json_fails(tmp_path: Path):
     problem = kit.only(_problems(_write(tmp_path, '{"plane": "dominaria"')))
 
