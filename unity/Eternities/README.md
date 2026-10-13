@@ -1,9 +1,11 @@
 # Eternities — the Unity project
 
-PRD v4 8.1 and 8.2. Unity 6.6 with HDRP, for macOS on Apple Silicon and Windows x64. Everything an
-engineer commits here is text (PRD v4 7.6.4): C#, assembly definitions, and scenes, prefabs,
+PRD v4 8.1 and 8.2. Unity 6.6 with HDRP, for macOS on Apple Silicon and Windows x64. What an
+engineer writes here is text (PRD v4 7.6.4): C#, assembly definitions, and scenes, prefabs,
 materials and settings serialised as Force Text with their `.meta` files. Models, textures and audio
-are content and go through Git LFS (`.gitattributes` at the repository root).
+are content and go through Git LFS (`.gitattributes` at the repository root). An engineer commits
+content in two ways only: as its CC0 source publishes it, or as a derived file, which is a binary
+that a committed script makes from a pinned CC0 source (Derived files, below).
 
 The project was created from Unity's HDRP template and then changed in four places:
 
@@ -118,10 +120,166 @@ builds for Windows.
 | `Assets/Settings/` | The HDRP assets: one per quality level with that level's volume profile, the global settings and the default volume profiles. |
 | `Assets/Scenes/Hub.unity` | The persistent scene (PRD v4 8.4.1): the template's camera, sun and sky, and the `Eternities` object. Kit worlds have no scene; they are built at run time from the pack and the layout. |
 | `Assets/Kits/core/` | What every world shares. `Materials/` holds the slice's plain materials (plinths by rarity, the mannequin, the hub, the portal, the image surface), and `UI/` the overlays' panel settings and theme; both are made by the generation entry point. `Shaders/` holds the two shaders of the isolated image path (PRD v4 8.4.4), written by hand. |
-| `Assets/Kits/temperate/` | The `temperate` kit's slice subset. `Terrain/`, `Props/` and `Audio/` hold the 24 files `sources.yaml` pins, in Git LFS, with a `CREDITS.md` row each; `fetch.sh` verifies them and fails on an unlisted file in those three folders, so what is made from them lives beside them: `Materials/` holds the kit's plain materials for its props and `Water/` its two water prefabs, all made by the generation entry point. `Assets/Editor/KitMaskImport.cs` repacks each `_arm_` texture into HDRP's mask map layout as it is imported. |
+| `Assets/Kits/temperate/` | The `temperate` kit. `Terrain/`, `Props/` and `Audio/` hold the files `sources.yaml` pins, in Git LFS, with a `CREDITS.md` row each; `fetch.sh` verifies them and fails on an unlisted file in those three folders. So what is made from them lives beside them: `TerrainLayers/` holds the kit's terrain layers, `Materials/` the materials of its props, `Prefabs/` one prefab a prop (Kit props, below) and `Water/` its two water prefabs, all made by the generation entry point. `Derive/` holds the scripts that make the kit's derived files and each file's report, and `derive.sh` makes the files again (Derived files, below). `Assets/Editor/KitMaskImport.cs` repacks each `_arm_` texture into HDRP's mask map layout as it is imported. |
 | `Assets/StreamingAssets/data/manifest.json` | Names the pinned pack hash. The pack itself is `data/<hash>/` beside it: written by the generation entry point, not committed. |
 | `bench.sh` | Starts a bench run of the built player (Batchmode commands, below). |
 | `batchmode.sh` | Starts the pinned editor on this project in batchmode, logging to stdout, and passes its arguments through. It replaces a `TMPDIR` too long for the compiler's socket. |
+
+## Kit props
+
+The prop conditioning rule (DEC-1003). It holds for every prop of every kit, and
+`PropRuleTests` in `unity-editmode` fails on a prop outside it: a merge gate beside PRD v4 8.12.2.
+The rule is `Assets/Editor/PropRule.cs`; the figures below are its constants.
+
+1. **One prefab a prop**, `Assets/Kits/<kit>/Prefabs/<category>/<prop>.prefab`. The categories are
+   `Trees`, `Bushes`, `GroundCover`, `Rocks` and `Structures`. A model becomes a prop in
+   `Assets/Editor/KitPrefabs.cs` and nowhere else: the generation entry point and the scatter read
+   prefabs, never a model file, and every model under a kit's `Props/` is drawn by a prefab.
+2. **Metres.** The prefab's root is at scale 1 and unturned, so the prop's size at scale 1 is its
+   size in the world. The mesh under it is scaled the same along every axis.
+3. **The base at the origin.** No point of the prop is more than 1 cm over its origin, the origin
+   is under the prop, and at most a share of its height is below it: 5% of a tree, 10% of a bush,
+   25% of ground cover, 15% of a structure, 45% of a rock, which lies in the ground.
+4. **Caps by category**, on the prop as its prefab draws it. The triangles are those of the nearest
+   level of detail.
+
+   | Category | Triangles | Materials | Height |
+   |---|---|---|---|
+   | Tree | 60,000 | 3 | 2.5 to 30 m |
+   | Bush | 10,000 | 3 | 0.3 to 3 m |
+   | Ground cover | 2,500 | 1 | 0.02 to 2.5 m |
+   | Rock | 10,000 | 1 | 0.05 to 5 m |
+   | Structure | 5,000 | 3 | 0.05 to 12 m |
+
+   At the `basic` standard a prop of any category has up to 3 materials.
+5. **Levels of detail.** A prop over 2,000 triangles carries lighter levels, the farthest with at
+   most a tenth of the nearest's triangles, and every level has the nearest level's materials. The
+   importer makes the levels from `generateMeshLods` in the model's `.meta`; a renderer draws from
+   a lighter level on with a whole `meshLodSelectionBias`. A tree is cut to levels of its own,
+   one mesh a level (Derived files, below): the importer would thin its leaves away. Its prefab
+   draws them through a `LODGroup`, the nearest while the tree is 30% of the view's height or
+   more, then down to 10%, to 3.5% and to the edge of sight. A cut bush has three levels, the
+   nearest from 12% and the next from 4%.
+6. **What a build carries.** The meshes of a prop hold at most 150,000 triangles, whichever level
+   is drawn.
+7. **At the `photographic` standard** (PRD v4 8.12.6), for every category but structures:
+   - a model is imported at its file's own scale and drawn at 0.5 to 2 times that size;
+   - a material's colour is a file under the kit's `Props/` or `Terrain/`, as downloaded, read as
+     a colour and not tinted;
+   - a material that lets light through has a thickness of at least 0.5;
+   - a cut tree's leaves are cards that carry the round crown's normal on both faces, and such a
+     material has no gloss: with the photograph's gloss a crown shines as one mirror.
+8. **Credits.** The kit's `CREDITS.md` states its standard above its first table, as
+   `standard: basic` or `standard: photographic`, and lists every prefab under "Props as drawn"
+   with the height and the triangles measured on it. In the temperate kit, which is at
+   `photographic`, the first slice's flat models of vegetation and rock are held at `basic` while
+   the first slice's scatter of Dominaria draws them; leg 2 of the second slice retires it.
+
+The caps are the proposal of 2026-10-12 on DEC-1003, from the measured figures of the candidate
+models; the owner sets them from PRD v4 7.2's kit rows. The first three rules of item 7 are the
+three defects of the photographic trial of 2026-10-11 (DEC-953): stones of 7 to 30 cm drawn at 2
+to 3 m, a leaf's photograph written out again too dark, and far trees pale against the sun. The
+fourth is the same paleness from a second cause, found on this kit's first wood.
+
+### Derived files
+
+A derived file is a binary that a committed script makes from a CC0 source (PRD v4 7.6.4, by the
+owner's answer of 2026-10-13 on DEC-1003; DEC-1038 is the erratum that records it). The kit's
+trees, bushes and sedges are derived, twenty-two files: a tree as Poly Haven publishes it is one
+mesh of 0.4 to 4.2 million triangles with no lighter level, and a sedge scan is one to three
+stems photographed on a table. The scripts are in
+`Assets/Kits/temperate/Derive/`, they run in Blender 5.2.2 LTS from the command line, and each
+one's first lines say what its cut does.
+
+- **`cut_tree.py`** cuts a broadleaf tree or a bush. A limb keeps its shape and loses triangles;
+  the longest twigs stay; each leaf becomes one flat card with its own piece of the photograph,
+  and of the cards one in so many stays, made larger. A tree comes out as four levels of about
+  59,000, 10,000, 1,900 and 450 triangles, a bush as three of up to 10,000, 1,900 and 380.
+- **`cut_fir.py`** cuts a fir, from its glTF: the FBX of a Poly Haven fir has no texture
+  coordinates. A fir's needles are tufts of four or eight triangles each, up to 812,000 a tree.
+  The tufts are gathered by place, and the tufts of a cell become one card that shows one of the
+  seven sprays photographed in the fir's own texture, which the published model does not draw.
+  Where the seven are in the photograph is a table in the script, `SPRAYS`; `sprays.py` measures
+  it again from the photograph's opacity map. Where a cell's tufts lie along no line, or along
+  the trunk, its card points out from the trunk; the report counts those cards (`unsure_cards`).
+- **`set_clump.py`** sets a clump of sedge from a scan's stems: each stem loses triangles, and
+  copies of it are turned and leaned out from the clump's middle by a seeded draw, never made
+  larger. **`scan_photograph.py`** copies a scan's photograph out of its glTF, byte for byte.
+- **What a script makes that its source does not hold** is the card and the normal it is lit
+  by: the round crown's, or the fir's cone's. Where a card stands and what it shows are the
+  source's. Each script says so in its first lines.
+- **The source is pinned and not committed.** The file's entry in `sources.yaml` has the source's
+  address (`url`), the source's SHA-256 (`source_sha256`), the script and its word for the tree
+  (`derived_by`), and the derived file's own SHA-256. A glTF's data file is `url_2` and
+  `source_sha256_2`. `CREDITS.md` credits the source's author and names the script. A source
+  that its site gives only behind a login, as Sketchfab does, is pinned at a pre-release of this
+  repository that holds it as downloaded (`kit-sources-temperate-1`).
+- **`fetch.sh` verifies the derived file** against its SHA-256 and does not download it.
+- **`derive.sh` makes it again**: it downloads the source, verifies it, runs the script in
+  Blender and compares the result with the kit's file, byte for byte. `cutlib.py` fixes the two
+  things that differ between two runs of Blender's FBX exporter, its clock and its object numbers.
+  The bytes are those of the Blender the file's report names; with another Blender `derive.sh`
+  compares the reports and says so. The sources are 0.9 GB in all and are kept between runs.
+- **The report** is `Derive/<file>.json`, written by the script: what it kept of the source, level
+  by level. `PropRuleTests` holds each level's mesh to the triangles its report counts.
+- **No texture is derived.** A cut model is drawn with its source's photographs as downloaded.
+
+```sh
+unity/Eternities/Assets/Kits/temperate/derive.sh                           # make each again and compare
+unity/Eternities/Assets/Kits/temperate/derive.sh --write Props/<file>.fbx  # after a change to the script
+```
+
+After `--write`, put the SHA-256 it prints into the file's entry in `sources.yaml`.
+
+## Kit variants
+
+A variant is what a region's row names (PRD v4 5.6.3, 8.12.1): a ground layer mix, a prop set and
+a density. The temperate kit has four, `meadow`, `wood`, `marsh` and `highland`, in
+`Assets/Scripts/Kits/Variants.cs`. `VariantTests` in `unity-editmode` holds them:
+
+1. **Ground.** Two or more of the kit's terrain layers under `TerrainLayers/`, each with its share
+   of the ground. A layer is one photograph with its own normals and mask, with no tint, on a tile
+   as wide as the ground the photograph shows.
+2. **Gloss.** A ground does not shine: the mean smoothness a layer draws is at most 0.25
+   (`Generate.GroundGloss`). A layer reads its mask's smoothness into a range of its own, which
+   is text in the layer's file. That range is 0 to 1, the mask as it is, for every ground but
+   `ground037`, whose range is 0 to 0.25. No texture is written for it.
+3. **Props.** The kit's photographic prefabs only, each with how many stand on a hundred square
+   metres at full density and how large an instance is against its prefab. An instance is 0.5 to
+   2 times the size its file gives it: that holds the prefab's share of its file times the
+   growth's share of the prefab. More than one species of each vegetation type the variant uses,
+   and rocks.
+4. **Density.** A quality level draws a share of it, and a lower level's props are among a higher
+   level's. Ground cover stands about the viewer only, thinning from 12 m to nothing at 26 m: a
+   tuft a hand high is a few pixels there. A growth that is seen across a field (`Growth.Far`)
+   also stands about the viewer, at its full density within 48 m, and from there it thins as 48 m
+   over the distance, out to the patch's edge. The ground that a clump hides from a walker's eye
+   grows with its distance, so the field stays as closed with fewer clumps. The meadow's tall
+   grass is such a growth: the kit's two sedges, in clumps. Other trees, bushes and rocks stand
+   on the patch, wherever the viewer is.
+
+The scene holds each variant's layers and props, so a build carries them. Nothing draws a variant
+in a world yet: that is the dressing of a region (PRD v4 9.6, leg 2). The densities are a first
+setting for the owner's eye.
+
+Pictures of the kit, for the owner's eye and a reviewer's, from the avatar's eye height under
+Dominaria's sun. No `-quit`: the editor exits by itself after the last picture.
+
+```sh
+unity/Eternities/batchmode.sh -executeMethod Eternities.EditorTools.KitPictures.Run -picturesOut "$PWD/pictures" -picturesVariant all
+unity/Eternities/batchmode.sh -executeMethod Eternities.EditorTools.KitPictures.Run -picturesOut "$PWD/pictures"
+```
+
+The first dresses a patch of ground with each variant at the density of the quality level, 240 m
+across, and looks north and toward the sun. The second stands each category's prefabs in rows, or
+one category's with `-picturesCategory Trees`. Both take `-picturesQuality` (`medium` if not given)
+and `-picturesSunKelvin`. With `-picturesTime <frames>` the first also times each variant's patch at the
+reference display's 3456 x 2234: the north view rendered that many times with all the props, as many
+with all but the ground cover and as many with none, each frame from the start of its render to the
+end of the GPU's work on it, and writes the p50, p90 and p99 of each and the differences to
+`variant-<name>-time-<quality>.json`. The editor
+renders off screen and one frame at a time, so a frame there is longer than a player's; the
+difference is the figure.
 
 ## Batchmode commands
 
@@ -143,7 +301,9 @@ under `Assets/StreamingAssets/data/<hash>/`:
 It also completes what is committed, and changes nothing there on a second run: the slice's plain
 materials under `Assets/Kits/core/Materials/` and `Assets/Kits/temperate/Materials/`, and in
 `Assets/Scenes/Hub.unity` the one object, `Eternities`, that builds the hub and the world at run
-time. It names the mesh and the materials of each of the kit's props on that object: the world's
+time. It makes each of the kit's prop prefabs under `Assets/Kits/temperate/Prefabs/`, once (Kit
+props, below), and names on that object what each prefab gives: the mesh, the materials, and where
+the mesh stands in the prefab. The world's
 prop scatter (PRD v4 8.4.2) is worked out at load from the layout, seeded by the plane, and the
 quality level in force sets how much of it is drawn (high all of it, medium 60%, low 35%; the
 table of what grows in which wedge is `Temperate` in `Assets/Scripts/Kits/PropPlan.cs`). No tree
@@ -243,6 +403,11 @@ repository, so a file at the root, as the layout report of the command above, le
 `dirty false`. The five settings files a build rewrites (below) are in the project: discard them
 before the next build, or it stamps its player `dirty true`.
 
+The build also logs the cooked size by owner (PRD v4 7.2, 8.12.5), as `Build: cooked by owner`:
+what the assets under each kit's folder take in the player's data, then each kit's heaviest files
+and its sizes by kind, in megabytes of 1,048,576 bytes as Unity's own build report counts them. A
+kit's figure is the one a content task states against its row in 7.2.
+
 Two rules for an agent's runs on the reference machine (DEC-953):
 
 - **Start every run with `--locked-only`**, before the player's path:
@@ -296,6 +461,11 @@ a cold import writes the global settings back. Discard it after a build:
 ```sh
 git checkout -- unity/Eternities/Assets/Settings unity/Eternities/ProjectSettings/QualitySettings.asset
 ```
+
+A pictures run (`KitPictures`, above) rewrites `ProjectSettings/QualitySettings.asset` and no
+other file. It sets the quality level for its pictures and puts the level back before the editor
+exits. The editor then saves the file in its current serialisation, so the file differs from the
+committed one though the level does not. Discard that rewrite with the same command.
 
 The build is the macOS player for Apple Silicon, IL2CPP, not a development build, with the pinned
 pack and the world's files inside it. Its identity is in `ProjectSettings/ProjectSettings.asset`:

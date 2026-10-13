@@ -117,7 +117,7 @@ namespace Eternities.Tests
                 double room = Room(world, prop.X, prop.Z, out string nearest) - kind.Footprint * prop.Scale;
                 tightest = Math.Min(tightest, room);
                 Assert.That(room, Is.GreaterThanOrEqualTo(LayoutConstants.PropClearance / 1000.0 - 1e-3),
-                    $"a {kind.Model} at ({prop.X:F2}, {prop.Z:F2}), {kind.Footprint * prop.Scale:F2} m in radius, is {room:F3} m from {nearest}");
+                    $"a {kind.Name} at ({prop.X:F2}, {prop.Z:F2}), {kind.Footprint * prop.Scale:F2} m in radius, is {room:F3} m from {nearest}");
                 Assert.That(prop.Scale, Is.InRange(kind.ScaleFrom, kind.ScaleTo));
                 Assert.That(prop.Y, Is.EqualTo(plan.HeightAt(prop.X, prop.Z)), "a prop stands on the ground");
                 Assert.That(Mathf.Max(Mathf.Abs(prop.X), Mathf.Abs(prop.Z)), Is.LessThan(plan.Side / 2 - PropPlan.Cell), "and on the terrain, a cell from its edge");
@@ -161,7 +161,7 @@ namespace Eternities.Tests
                     double room = apart - stone.Footprint * rock.Scale - wood.Trunk * tree.Scale;
                     nearest = Math.Min(nearest, room);
                     Assert.That(room, Is.GreaterThanOrEqualTo(-1e-3),
-                        $"a {wood.Model} at ({tree.X:F2}, {tree.Z:F2}) stands {-room:F2} m inside a {stone.Model} at ({rock.X:F2}, {rock.Z:F2})");
+                        $"a {wood.Name} at ({tree.X:F2}, {tree.Z:F2}) stands {-room:F2} m inside a {stone.Name} at ({rock.X:F2}, {rock.Z:F2})");
                 }
             }
             Debug.Log($"PropTests: {rocks} rocks and {trees} trees; {props.GaveWay} props gave way to another; the nearest trunk is {nearest:F2} m from a rock's footprint");
@@ -185,7 +185,7 @@ namespace Eternities.Tests
                 }
                 else
                 {
-                    Assert.That(bed, Is.EqualTo(0), $"a {Temperate.Kinds[prop.Kind].Model} stands in the water's bed or on its bank");
+                    Assert.That(bed, Is.EqualTo(0), $"a {Temperate.Kinds[prop.Kind].Name} stands in the water's bed or on its bank");
                 }
             }
             Assert.That(reeds, Is.GreaterThan(20));
@@ -281,7 +281,7 @@ namespace Eternities.Tests
                 var zone = PropPlan.ClassAt(layout, prop.X, prop.Z, r > ring);
                 Dressing dressing = Temperate.Wedges[(int)zone];
                 Assert.That(Array.IndexOf(dressing.Mix, prop.Kind) >= 0 || Array.IndexOf(dressing.Avenue, prop.Kind) >= 0,
-                    $"a {Temperate.Kinds[prop.Kind].Model} stands in the {zone} zone, which does not grow it");
+                    $"a {Temperate.Kinds[prop.Kind].Name} stands in the {zone} zone, which does not grow it");
                 byClass[(int)zone, prop.Kind]++;
             }
             int Trees(ColourClass zone) => byClass[(int)zone, Temperate.Oak] + byClass[(int)zone, Temperate.Birch] + byClass[(int)zone, Temperate.Pine];
@@ -310,7 +310,7 @@ namespace Eternities.Tests
             var counts = new List<string>();
             for (int kind = 0; kind < Temperate.Kinds.Length; kind++)
             {
-                counts.Add($"{Temperate.Kinds[kind].Model} {props.ByKind[kind]}");
+                counts.Add($"{Temperate.Kinds[kind].Name} {props.ByKind[kind]}");
             }
             Debug.Log($"PropTests: {string.Join(", ", counts)}; {props.Props.Count - margin} inside the rim, {margin} beyond it; the north avenue {west} west and {east} east");
             Assert.That(props.Props.Count, Is.InRange(3000, 14000), "enough to dress the world, few enough to draw");

@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1953259897 &8574412962073106934
+TerrainLayer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: forest_leaves_03
+  m_DiffuseTexture: {fileID: 2800000, guid: 6f1fb9b4fdc6c40248f6f886ff3da53e, type: 3}
+  m_NormalMapTexture: {fileID: 2800000, guid: 128762ed68e1a4f33b58ef74d8cf6069, type: 3}
+  m_MaskMapTexture: {fileID: 2800000, guid: b617504e11a4e4fdf989b2320d5af57f, type: 3}
+  m_TileSize: {x: 2.3, y: 2.3}
+  m_TileOffset: {x: 0, y: 0}
+  m_Specular: {r: 0, g: 0, b: 0, a: 0}
+  m_Metallic: 0
+  m_Smoothness: 0
+  m_NormalScale: 1
+  m_DiffuseRemapMin: {x: 0, y: 0, z: 0, w: 0}
+  m_DiffuseRemapMax: {x: 1, y: 1, z: 1, w: 1}
+  m_MaskMapRemapMin: {x: 0, y: 0, z: 0, w: 0}
+  m_MaskMapRemapMax: {x: 1, y: 1, z: 1, w: 1}
+  m_SmoothnessSource: 1

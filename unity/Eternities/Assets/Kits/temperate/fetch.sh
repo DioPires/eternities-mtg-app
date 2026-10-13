@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Downloads the `temperate` kit's slice subset into this folder and verifies every file against the
+# Downloads the `temperate` kit's files into this folder and verifies every file against the
 # SHA-256 in sources.yaml (PRD v4 8.12, 9.5). Re-running skips a file whose checksum already
 # matches, so a second run is the offline verification of what is on disk.
 #
@@ -9,6 +9,10 @@
 # It also fails if CREDITS.md and sources.yaml disagree on any row, or if an asset folder holds a
 # file that sources.yaml does not list.
 #
+# A derived file (PRD v4 7.6.4) is one a committed script made from a source: its entry has
+# `derived_by` and `source_sha256`, and its `url` is the source's. It is not downloaded: this
+# verifies the kit's own copy, and `./derive.sh` makes it again from its source.
+#
 # Needs bash, curl, unzip, awk and sha256sum or shasum. Exits non-zero on the first failure.
 set -euo pipefail
 
@@ -17,11 +21,16 @@ manifest="$here/sources.yaml"
 credits="$here/CREDITS.md"
 dest="${1:-$here}"
 
-# The rules the subset was chosen under (DEC-952), in bytes of source file. The last is the PRD 7.2
-# kit ceiling applied before cooking; the cooked size is the build's check (PRD 8.7.2), not this.
-max_prop=200000
+# The limits on a source file and on the kit's sources, in bytes: a tripwire, not the budget. The
+# budget is the cooked size (PRD v4 7.2: 250 MB for a kit at the photographic standard), which the
+# build measures (PRD 8.7.2). The first slice's limits were 200 KB, 8 MB and 60 MB (DEC-952); these
+# are the proposal on DEC-1003, the owner's to set: a photographed rock or plant is 0.1 to 6.6 MB
+# as its source publishes it, and a cut tree is 3.4 to 4.8 MB. On 2026-10-13 the kit's sources are
+# 250.5 MB and cook to 243.2 MB, in megabytes of a million bytes (231.9 MB as Unity's build report
+# counts them), so the first proposal of 200 MB for the sources is 300 MB.
+max_prop=8000000
 max_texture=8000000
-max_total=60000000
+max_total=300000000
 
 die() {
   echo "fetch.sh: $*" >&2
@@ -42,19 +51,20 @@ get() {
     --output "$2" "$1" || die "download failed: $1"
 }
 
-# One tab-separated line per asset: file, url, member, archive_sha256, sha256 and the CREDITS.md row
-# the entry stands for. `-` stands for an absent value, because `read` folds consecutive tabs into
+# One tab-separated line per asset: file, url, member, archive_sha256, derived_by, source_sha256,
+# sha256 and the CREDITS.md row the entry stands for. `-` stands for an absent value, because `read` folds consecutive tabs into
 # one and would shift the later fields.
 records() {
   awk '
     function flush() {
       if (file != "") {
-        printf "%s\t%s\t%s\t%s\t%s\t| `%s` | <%s> | %s | [%s](%s) | %s | %s |\n", file,
+        printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t| `%s` | <%s> | %s | [%s](%s) | %s | %s |\n", file,
           (url == "" ? "-" : url), (member == "" ? "-" : member), (archive == "" ? "-" : archive),
+          (derived == "" ? "-" : derived), (from == "" ? "-" : from),
           (sum == "" ? "-" : sum), file, f["source"], f["author"], f["licence"], f["licence_url"],
           f["fetched"], f["use"]
       }
-      file = url = member = archive = sum = ""
+      file = url = member = archive = derived = from = sum = ""
       split("", f)
     }
     /^  - file: / { flush() }
@@ -70,6 +80,8 @@ records() {
       else if (key == "url") url = val
       else if (key == "member") member = val
       else if (key == "archive_sha256") archive = val
+      else if (key == "derived_by") derived = val
+      else if (key == "source_sha256") from = val
       else if (key == "sha256") sum = val
       else f[key] = val
     }
@@ -85,13 +97,20 @@ trap 'rm -rf "$tmp"' EXIT
 
 count=0
 total=0
-while IFS=$'\t' read -r file url member archive_sha want row; do
+while IFS=$'\t' read -r file url member archive_sha derived source_sha want row; do
   [ "$url" != "-" ] && [ "${#want}" -eq 64 ] || die "$file: entry has no url or no sha256"
   grep -qFx -- "$row" "$credits" || die "$file: CREDITS.md has no row equal to: $row"
   printf '%s\n' "$file" >>"$tmp/listed"
 
   out="$dest/$file"
-  if [ -f "$out" ] && [ "$(sha "$out")" = "$want" ]; then
+  if [ "$derived" != "-" ]; then
+    [ "${#source_sha}" -eq 64 ] || die "$file: derived by $derived, and its entry has no source_sha256"
+    [ -f "$here/${derived%% *}" ] || die "$file: derived by ${derived%% *}, which is not in the kit"
+    out="$here/$file"
+    [ -f "$out" ] && [ "$(sha "$out")" = "$want" ] ||
+      die "$file: the kit's copy is missing or is not the file its sha256 names: git lfs pull, or ./derive.sh"
+    how="derived"
+  elif [ -f "$out" ] && [ "$(sha "$out")" = "$want" ]; then
     how="on disk"
   else
     if [ "$member" = "-" ]; then
@@ -131,7 +150,7 @@ listed="$(grep -c '^  - file: ' "$manifest" || true)"
   die "verified $count files, sources.yaml lists $listed"
 rows="$(grep -c '^| `' "$credits" || true)"
 [ "$rows" -eq "$count" ] || die "CREDITS.md has $rows rows, sources.yaml lists $count files"
-[ "$total" -lt "$max_total" ] || die "subset is $total source bytes, the limit is $max_total"
+[ "$total" -lt "$max_total" ] || die "the kit's sources are $total bytes, the limit is $max_total"
 
 # An asset without a row blocks the merge (PRD 8.12.2), so a file nobody listed must not pass.
 # Unity's .meta files sit beside the assets once the folder is under Assets/.

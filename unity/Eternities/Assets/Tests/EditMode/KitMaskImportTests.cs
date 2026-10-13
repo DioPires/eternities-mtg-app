@@ -25,11 +25,32 @@ namespace Eternities.Tests
         }
 
         [Test]
+        public void PackPutsRoughnessAndOcclusionInTheirMaskMapSlots()
+        {
+            // Roughness 200 and, in the file beside it, ambient occlusion 10: no metal.
+            var pixels = new[] { new Color32(200, 200, 200, 255) };
+            KitMaskImport.Pack(pixels, new[] { new Color32(10, 10, 10, 255) });
+            Assert.AreEqual(new Color32(0, 10, KitMaskImport.Height, 55), pixels[0]);
+        }
+
+        [Test]
         public void OnlyAKitsArmTextureIsAMaskSource()
         {
             Assert.IsTrue(KitMaskImport.IsMaskSource("Assets/Kits/temperate/Terrain/leafy_grass_arm_2k.jpg"));
             Assert.IsFalse(KitMaskImport.IsMaskSource("Assets/Kits/temperate/Terrain/leafy_grass_diff_2k.jpg"));
             Assert.IsFalse(KitMaskImport.IsMaskSource("Assets/Settings/some_arm_2k.jpg"));
+        }
+
+        // A source with no `_arm_` file: its roughness is the mask's source, with the occlusion
+        // file beside it.
+        [Test]
+        public void ARoughnessFileWithItsOcclusionBesideItIsAMaskSource()
+        {
+            Assert.AreEqual("Assets/Kits/temperate/Terrain/ground037_ao_1k.jpg", KitMaskImport.OcclusionOf("Assets/Kits/temperate/Terrain/ground037_rough_1k.jpg"));
+            Assert.IsTrue(KitMaskImport.IsMaskSource("Assets/Kits/temperate/Terrain/ground037_rough_1k.jpg"));
+            Assert.IsFalse(KitMaskImport.IsMaskSource("Assets/Kits/temperate/Terrain/ground037_ao_1k.jpg"), "the occlusion is read, and is no mask itself");
+            Assert.IsNull(KitMaskImport.OcclusionOf("Assets/Kits/temperate/Terrain/no_such_rough_1k.jpg"), "a roughness file alone");
+            Assert.IsNull(KitMaskImport.OcclusionOf("Assets/Settings/ground037_rough_1k.jpg"), "only a kit's");
         }
 
         static IEnumerable<string> MaskSources()
@@ -44,11 +65,23 @@ namespace Eternities.Tests
             }
         }
 
-        // The temperate kit has three ground textures (CREDITS.md), each with its `_arm_` file.
+        // The temperate kit has ten ground textures (CREDITS.md): nine with an `_arm_` file and one
+        // with its roughness and occlusion apart. And one mask for each photograph its props are
+        // coloured by, but for a scan's: a scan has its colour and nothing else (`KitPrefabs.Scan`).
         [Test]
-        public void TheTemperateKitHasItsThreeMaskSources()
+        public void TheTemperateKitHasItsMaskSources()
         {
-            Assert.AreEqual(3, new List<string>(MaskSources()).Count);
+            var sources = new List<string>(MaskSources());
+            Assert.AreEqual(10, sources.FindAll(path => path.StartsWith("Assets/Kits/temperate/Terrain/")).Count);
+            Assert.AreEqual(1, sources.FindAll(path => KitMaskImport.OcclusionOf(path) != null).Count);
+            foreach (string guid in AssetDatabase.FindAssets("t:Texture2D", new[] { "Assets/Kits/temperate/Props" }))
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                if (path.Contains("_diff_") && !path.EndsWith($"_diff_{KitPrefabs.Scan}.jpg"))
+                {
+                    CollectionAssert.Contains(sources, System.Text.RegularExpressions.Regex.Replace(path, @"_diff_(\w+)\.\w+$", "_arm_$1.jpg"), $"the mask beside {path}");
+                }
+            }
         }
 
         [TestCaseSource(nameof(MaskSources))]
@@ -60,11 +93,21 @@ namespace Eternities.Tests
             Assert.IsFalse(GraphicsFormatUtility.IsSRGBFormat(imported.graphicsFormat), $"{imported.graphicsFormat} is sRGB");
 
             var source = new Texture2D(2, 2, TextureFormat.RGB24, false, true);
+            var beside = new Texture2D(2, 2, TextureFormat.RGB24, false, true);
             try
             {
                 Assert.IsTrue(source.LoadImage(File.ReadAllBytes(path)), path);
                 Color32[] expected = source.GetPixels32();
-                KitMaskImport.Repack(expected);
+                string occlusion = KitMaskImport.OcclusionOf(path);
+                if (occlusion == null)
+                {
+                    KitMaskImport.Repack(expected);
+                }
+                else
+                {
+                    Assert.IsTrue(beside.LoadImage(File.ReadAllBytes(occlusion)), occlusion);
+                    KitMaskImport.Pack(expected, beside.GetPixels32());
+                }
 
                 Vector4 want = Mean(expected);
                 Vector4 got = Mean(Minified(imported));
@@ -76,6 +119,7 @@ namespace Eternities.Tests
             finally
             {
                 Object.DestroyImmediate(source);
+                Object.DestroyImmediate(beside);
             }
         }
 

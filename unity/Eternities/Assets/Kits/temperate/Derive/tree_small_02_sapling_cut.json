@@ -1,0 +1,73 @@
+{
+ "tree": "tree_small_02_sapling",
+ "source": "tree_small_02_1k.fbx",
+ "blender": "5.2.2 LTS",
+ "source_triangles": 2062487,
+ "levels": [
+  {
+   "level": 0,
+   "limb_triangles": 1599,
+   "twigs": 18,
+   "twig_triangles": 1399,
+   "closed_edges_m": 0.0,
+   "leaf_cards": 3500,
+   "card_size": 3.381,
+   "triangles": 9998,
+   "materials": [
+    "tree_small_02_branch",
+    "tree_small_02",
+    "tree_small_02_leaves"
+   ]
+  },
+  {
+   "level": 1,
+   "limb_triangles": 350,
+   "twigs": 1,
+   "twig_triangles": 149,
+   "closed_edges_m": 0.0,
+   "leaf_cards": 700,
+   "card_size": 7.56,
+   "triangles": 1899,
+   "materials": [
+    "tree_small_02_branch",
+    "tree_small_02",
+    "tree_small_02_leaves"
+   ]
+  },
+  {
+   "level": 2,
+   "limb_triangles": 99,
+   "twigs": 0,
+   "twig_triangles": 0,
+   "closed_edges_m": 0.0,
+   "leaf_cards": 140,
+   "card_size": 16.904,
+   "triangles": 379,
+   "materials": [
+    "tree_small_02",
+    "tree_small_02_leaves"
+   ]
+  }
+ ],
+ "limb_triangles": 28293,
+ "limbs_held_twice": 0,
+ "twigs": 751,
+ "leaves": 30250,
+ "leaves_not_flat": 0,
+ "leaf_fit_mm": [
+  2.6,
+  13.8
+ ],
+ "leaf_fit_share_of_card": [
+  0.086,
+  0.132,
+  0.164
+ ],
+ "metres": [
+  3.113,
+  4.398,
+  4.693
+ ],
+ "under_its_base_m": 0.025,
+ "bytes": 747452
+}

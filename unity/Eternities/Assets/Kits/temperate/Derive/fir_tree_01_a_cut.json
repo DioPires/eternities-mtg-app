@@ -1,0 +1,78 @@
+{
+ "tree": "fir_tree_01_a",
+ "source": "fir_tree_01_1k.gltf",
+ "blender": "5.2.2 LTS",
+ "source_triangles": 4176819,
+ "levels": [
+  {
+   "level": 0,
+   "wood_triangles": 14000,
+   "closed_edges_m": 0.0088,
+   "cards": 21982,
+   "unsure_cards": 7980,
+   "cell_m": 0.1469,
+   "card_long_m": 0.308,
+   "triangles": 57964,
+   "materials": [
+    "fir_tree_01_bark",
+    "fir_tree_01_trunk_a",
+    "fir_tree_01_twig"
+   ]
+  },
+  {
+   "level": 1,
+   "wood_triangles": 2997,
+   "closed_edges_m": 0.0146,
+   "cards": 3494,
+   "unsure_cards": 1614,
+   "cell_m": 0.3468,
+   "card_long_m": 0.728,
+   "triangles": 9985,
+   "materials": [
+    "fir_tree_01_bark",
+    "fir_tree_01_trunk_a",
+    "fir_tree_01_twig"
+   ]
+  },
+  {
+   "level": 2,
+   "wood_triangles": 600,
+   "closed_edges_m": 0.0186,
+   "cards": 650,
+   "unsure_cards": 302,
+   "cell_m": 0.7338,
+   "card_long_m": 1.541,
+   "triangles": 1900,
+   "materials": [
+    "fir_tree_01_bark",
+    "fir_tree_01_trunk_a",
+    "fir_tree_01_twig"
+   ]
+  },
+  {
+   "level": 3,
+   "wood_triangles": 178,
+   "closed_edges_m": 0.0244,
+   "cards": 120,
+   "unsure_cards": 52,
+   "cell_m": 1.5834,
+   "card_long_m": 3.325,
+   "triangles": 418,
+   "materials": [
+    "fir_tree_01_bark",
+    "fir_tree_01_trunk_a",
+    "fir_tree_01_twig"
+   ]
+  }
+ ],
+ "wood_triangles": 110700,
+ "tuft_triangles": 3218604,
+ "bare_twig_triangles": 847515,
+ "metres": [
+  6.828,
+  6.649,
+  19.03
+ ],
+ "under_its_base_m": 0.08,
+ "bytes": 4242396
+}
