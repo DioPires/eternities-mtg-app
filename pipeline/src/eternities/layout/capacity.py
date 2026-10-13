@@ -96,6 +96,8 @@ class Capacity:
     """Index of the path's last vertex after the cut."""
     state: int
     """The site PRNG's state after the slots' draws; placement continues from it."""
+    census: tuple[int, int, int, int, int, int] = (0, 0, 0, 0, 0, 0)
+    """Slots on runs, then on half-turns: kept, void for the disc, void for under 3 candidates."""
 
 
 def path_end(arcs: Sequence[int], arc: int) -> int:
@@ -118,6 +120,7 @@ def capacity_of(
     path, arcs, blob = local.path, local.arcs, local.blob
     vertices = PointIndex(path)
     kept: list[Slot] = []
+    census = [0, 0, 0, 0, 0, 0]
     void = 0
     run_of_void = 0
     cut: int | None = None
@@ -146,7 +149,8 @@ def capacity_of(
         cz = (az * length + along_segment * (bz - az)) * SCALE + length * (along * s + offset * c)
         cluster = disc(directions.disc, cx, cz, den, CLUSTER_RADIUS)
         candidates: list[Candidate] = []
-        if inside(cluster, blob, MARGIN):
+        disc_inside = inside(cluster, blob, MARGIN)
+        if disc_inside:
             candidates = _candidates(
                 local,
                 vertices,
@@ -159,11 +163,15 @@ def capacity_of(
                 corridor_foreign,
             )
         small = stands < MIN_CLUSTER and not kept and len(candidates) >= stands
-        if len(candidates) >= MIN_CLUSTER or (small and candidates):
+        is_kept = len(candidates) >= MIN_CLUSTER or (small and bool(candidates))
+        census[(3 if on_turn else 0) + (0 if is_kept else 2 if disc_inside else 1)] += 1
+        if is_kept:
             kept.append(Slot(number, arc, (cx, cz), den, cap, tuple(candidates), cluster))
             run_of_void = 0
         else:
             void += 1
+            if turn_rule == "census":
+                continue
             if on_turn != 0 and turn_rule in ("skip", "reset"):
                 if turn_rule == "reset":
                     run_of_void = 0
@@ -179,6 +187,7 @@ def capacity_of(
         cut=cut,
         end=end,
         state=prng.state,
+        census=(census[0], census[1], census[2], census[3], census[4], census[5]),
     )
 
 
