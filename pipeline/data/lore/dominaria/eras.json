@@ -1,6 +1,7 @@
 {
   "plane": "dominaria",
   "kind": "lore",
+  "accepted": {"by": "owner", "on": "2026-10-13", "issue": "DEC-1002", "digest": "sha256:59322664c8da5b437cf9c5c00a7126a12bdf0570c458cfd154a2680ee443b8d2"},
   "eras": [
     {
       "id": "first-ages",
