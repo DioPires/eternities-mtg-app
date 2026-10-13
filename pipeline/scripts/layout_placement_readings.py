@@ -16,11 +16,14 @@ For each reading the script prints two things.
 2. **The site loop.** Each site is widened until every card has a stand, or twenty widenings
    have failed (5.4.9, 5.4.10).
 
+3. **The world**, when asked for. Dominaria end to end by the order of computation of 5.4.12:
+   R, the passes, the restarts, every site's widenings and the trail's legs. No checker runs.
+
 Run from ``pipeline/``:
-``uv run python -u scripts/layout_placement_readings.py [census] [loop] [reading ...]``.
-With no reading named it runs all six; the readings are ``letter``, ``V``, ``W``, ``VW``, ``VWO``
-and ``TVW``. A reading under which the sites fail takes long: a site that fails is built twenty
-times, and its last radius is 6.7 times its first.
+``uv run python -u scripts/layout_placement_readings.py [census] [loop] [world] [reading ...]``.
+With no part named it runs the census and the loop; with no reading named it runs every reading
+of ``READINGS``. A reading under which the sites fail takes long: a site that fails is built
+twenty times, and its last radius is 6.7 times its first.
 """
 
 from __future__ import annotations
@@ -30,9 +33,10 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from eternities.layout import capacity, cards, local, placement, sites, trig
+from eternities.layout import allocate, capacity, cards, local, placement, sites, trig
 from eternities.layout.constants import SITE_WIDEN_LIMIT, site_seed
 from eternities.layout.exact import Directions
+from eternities.layout.regions import RegionRow
 
 REPO = Path(__file__).resolve().parents[2]
 PACK = REPO / "web" / "public" / "data" / "a5846bec28d1447e"
@@ -60,6 +64,9 @@ READINGS = {
         "void",
     ),
     "VW": ("V + W", "inner", "vertex", ALL, "void"),
+    "V3W": ("V3 + W: the 3 nearest vertices of the window only", "inner", "vertex", 3, "void"),
+    "V5W": ("V5 + W: the 5 nearest vertices of the window only", "inner", "vertex", 5, "void"),
+    "V9W": ("V9 + W: the 9 nearest vertices of the window only", "inner", "vertex", 9, "void"),
     "VWO": (
         "V + W + O: candidates in order of distance to their path vertex",
         "inner",
@@ -216,8 +223,68 @@ def _loop(jobs: list[Job], directions: Directions) -> None:
     print()
 
 
+def _world(directions: Directions) -> None:
+    plane = cards.read_plane(PACK, "dominaria")
+    regions, eras, keywords = (
+        json.loads((LORE / name).read_text(encoding="utf-8"))
+        for name in ("regions.json", "eras.json", "keywords.json")
+    )
+    assignment = sites.hero_assignment(plane, regions, eras, keywords)
+    rows = [
+        RegionRow(row["id"], (row["anchor"][0], row["anchor"][1]), row["weight"])
+        for row in regions["regions"]
+    ]
+    try:
+        found = allocate.allocate("dominaria", assignment.sites, rows, [], directions)
+    except allocate.LayoutError as error:
+        print(f"Dominaria does not lay out: {error}")
+        print()
+        return
+    print(
+        f"R0 = {found.initial_radius:,} mm. R = {found.radius:,} mm after {found.passes} passes. "
+        f"{found.restarts} restarts."
+    )
+    for line in found.events:
+        if line.startswith("R is widened"):
+            print(f"- {line}")
+    print()
+    print("| Site | Stands | Widenings | r_s (mm) | Kept slots | Capacity | Clusters used |")
+    print("|---|---|---|---|---|---|---|")
+    for site in found.sites:
+        used = len({stand.slot for stand in site.placement.stands})
+        print(
+            f"| `{site.plan.key}` | {site.plan.stands} | {site.widenings} | {site.local.radius} | "
+            f"{len(site.capacity.slots)} | {site.capacity.total} | {used} |"
+        )
+    print()
+    causes = Counter(
+        "capacity"
+        if ": capacity " in line
+        else "the kept slots ran out"
+        if "ran out" in line
+        else "two void slots in a row"
+        if "closed under three" in line
+        else "no path and approach"
+        for line in found.events
+        if line.startswith("widening")
+    )
+    print(f"Site widenings: {sum(causes.values())}: {dict(causes)}.")
+    print()
+    print("| Leg | Kind | From | To | Length (mm) | Start cell blocked |")
+    print("|---|---|---|---|---|---|")
+    for leg in found.legs:
+        print(
+            f"| {leg.index} | {leg.kind} | {leg.start} | {leg.end} | {leg.length} | "
+            f"{'yes' if leg.start_blocked else 'no'} |"
+        )
+    trail = sum(leg.length for leg in found.legs if leg.kind == "trail")
+    print()
+    print(f"The trail from the plaza to the last era site's approach point: {trail:,} mm.")
+    print()
+
+
 def main(argv: list[str]) -> int:
-    parts = [word for word in argv if word in ("census", "loop")] or ["census", "loop"]
+    parts = [word for word in argv if word in ("census", "loop", "world")] or ["census", "loop"]
     names = [word for word in argv if word in READINGS] or list(READINGS)
     directions = Directions(trig.load())
     jobs = _jobs()
@@ -233,6 +300,8 @@ def main(argv: list[str]) -> int:
             _census(jobs, directions)
         if "loop" in parts:
             _loop(jobs, directions)
+        if "world" in parts:
+            _world(directions)
     return 0
 
 
