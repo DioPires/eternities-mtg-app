@@ -342,9 +342,11 @@ namespace Eternities.Travel
             var flat = new Vector3(position.x, 0, position.z);
             if (flat.magnitude > limit)
             {
-                return flat.normalized * limit + Vector3.up * position.y;
+                position = flat.normalized * limit + Vector3.up * position.y;
             }
-            // The water is an edge too: a step that would end in it is not taken.
+            // The water is an edge too: a step that would end in it is not taken. A step kept at the
+            // limit is a step like any other: `lastDry` follows the avatar along the limit, and the
+            // limit does not lead into a lake that lies across it (DEC-1033).
             return plan.Wet(position.x, position.z) && !plan.Wet(lastDry.x, lastDry.z) ? lastDry : (lastDry = position);
         }
 
@@ -364,7 +366,17 @@ namespace Eternities.Travel
                 return;
             }
             Vector3 at = Avatar.transform.position;
-            if (Place == Place.World && Explore(at))
+            // Did the avatar's step use the ring of the place it is in? A world reads this before
+            // card view and the travel menu take the frame: they use the frame's input, and the
+            // avatar takes its step all the same. A step that used the ring closes whatever is open
+            // (DEC-1033).
+            bool crossed = (Place == Place.Hub ? HubPortal : ReturnPortal).Crossed(Avatar.StepFrom, at);
+            if (Place == Place.World && crossed)
+            {
+                CardView.Leave();
+                Hud.HideTravel();
+            }
+            else if (Place == Place.World && Explore(at))
             {
                 return;
             }
@@ -375,15 +387,15 @@ namespace Eternities.Travel
                 {
                     loading = StartCoroutine(Load(HomeWorld));
                 }
-                if (HubPortal.Crossed(Avatar.StepFrom, at) || (Avatar.Input.Interact && Vector3.Distance(at, HubPortal.Pad) < 3))
+                if (crossed || (Avatar.Input.Interact && Vector3.Distance(at, HubPortal.Pad) < 3))
                 {
-                    StartCoroutine(Through(HubPortal, Place.World));
+                    StartCoroutine(Through(HubPortal, Place.World, crossed));
                 }
             }
-            else if (ReturnPortal.Crossed(Avatar.StepFrom, at) || Avatar.Input.Back)
+            else if (crossed || Avatar.Input.Back)
             {
                 // PRD v4 5.3.5: Esc from any world returns to the hub through the return portal.
-                StartCoroutine(Through(ReturnPortal, Place.Hub));
+                StartCoroutine(Through(ReturnPortal, Place.Hub, crossed));
             }
         }
 
@@ -692,14 +704,18 @@ namespace Eternities.Travel
 
         // The portal transition (PRD v4 5.9.1, 5.9.2): the visitor's input is locked, the avatar
         // walks on into the ring, the surface fills the view, and the cut waits for the destination.
-        IEnumerator Through(Portal portal, Place destination)
+        // `crossed` is whether a step used the ring; E on the pad and Esc use it without one.
+        IEnumerator Through(Portal portal, Place destination, bool crossed)
         {
             InTransition = true;
             double entered = Now;
             Avatar.Locked = true;
-            // The automatic walk goes on through the ring, away from the side the step began on: a
-            // long step has crossed the ring already. A return by Esc starts anywhere, and stays there.
-            Vector3 through = Vector3.Dot(portal.transform.forward, Avatar.StepFrom - portal.transform.position) > 0 ? -portal.transform.forward : portal.transform.forward;
+            // The automatic walk goes on through the ring. After a step that used the ring it goes
+            // away from the side the step began on: a long step has crossed the ring already. After
+            // E or Esc it goes away from the side the avatar is on, whatever its last step crossed
+            // (DEC-1033). A return by Esc starts anywhere, and stays there.
+            Vector3 side = crossed ? Avatar.StepFrom : Avatar.transform.position;
+            Vector3 through = Vector3.Dot(portal.transform.forward, side - portal.transform.position) > 0 ? -portal.transform.forward : portal.transform.forward;
             bool atPortal = Vector3.Distance(Avatar.transform.position, portal.transform.position) < 2 * Portal.PadDistance;
             Avatar.Walk = atPortal ? through * AvatarController.WalkSpeed : Vector3.zero;
             if (destination == Place.World && loading == null && !WorldLoaded)
