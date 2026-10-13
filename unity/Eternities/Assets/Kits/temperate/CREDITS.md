@@ -193,6 +193,13 @@ address (`url`) and its SHA-256 (`source_sha256`), a glTF's data file by `url_2`
 for byte. `Derive/<file>.json` is the cut's own report of what it kept. A cut model is drawn with
 its source's photographs, which are in the table above as downloaded.
 
+A sedge clump is set by `set_clump.py` from the stems of a scan by ffish.asia / floraZia.com, and
+the scan's photograph is copied out of its glTF, byte for byte, by `scan_photograph.py`. Sketchfab
+gives no download without a login, so the two scans' glTF files, as downloaded, are pinned at a
+pre-release of this repository that holds them and nothing else:
+<https://github.com/DioPires/eternities-mtg-app/releases/tag/kit-sources-temperate-1>. The Source
+column names each scan's own page.
+
 | File | Source | Author | Licence | Fetched | Intended use |
 |---|---|---|---|---|---|
 | `Props/jacaranda_tree_cut.fbx` | <https://polyhaven.com/a/jacaranda_tree> | Rico Cilliers, Rob Tuytel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-13 | Jacaranda, a spreading tree 19.5 m tall and 24.7 m across; cut by `Derive/cut_tree.py` from the source's 3,863,832 triangles to four levels of 59,620 to 452 |

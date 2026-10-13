@@ -183,8 +183,9 @@ fourth is the same paleness from a second cause, found on this kit's first wood.
 
 A derived file is a binary that a committed script makes from a CC0 source (PRD v4 7.6.4, by the
 owner's answer of 2026-10-13 on DEC-1003; DEC-1038 is the erratum that records it). The kit's
-trees and bushes are derived, sixteen files: a tree as Poly Haven publishes it is one mesh of 0.4
-to 4.2 million triangles with no lighter level. The scripts are in
+trees, bushes and sedges are derived, twenty-two files: a tree as Poly Haven publishes it is one
+mesh of 0.4 to 4.2 million triangles with no lighter level, and a sedge scan is one to three
+stems photographed on a table. The scripts are in
 `Assets/Kits/temperate/Derive/`, they run in Blender 5.2.2 LTS from the command line, and each
 one's first lines say what its cut does.
 
@@ -197,14 +198,20 @@ one's first lines say what its cut does.
   The tufts are gathered by place, and the tufts of a cell become one card that shows one of the
   seven sprays photographed in the fir's own texture, which the published model does not draw.
   Where the seven are in the photograph is a table in the script, `SPRAYS`; `sprays.py` measures
-  it again from the photograph's opacity map.
+  it again from the photograph's opacity map. Where a cell's tufts lie along no line, or along
+  the trunk, its card points out from the trunk; the report counts those cards (`unsure_cards`).
+- **`set_clump.py`** sets a clump of sedge from a scan's stems: each stem loses triangles, and
+  copies of it are turned and leaned out from the clump's middle by a seeded draw, never made
+  larger. **`scan_photograph.py`** copies a scan's photograph out of its glTF, byte for byte.
 - **What a script makes that its source does not hold** is the card and the normal it is lit
   by: the round crown's, or the fir's cone's. Where a card stands and what it shows are the
   source's. Each script says so in its first lines.
 - **The source is pinned and not committed.** The file's entry in `sources.yaml` has the source's
   address (`url`), the source's SHA-256 (`source_sha256`), the script and its word for the tree
   (`derived_by`), and the derived file's own SHA-256. A glTF's data file is `url_2` and
-  `source_sha256_2`. `CREDITS.md` credits the source's author and names the script.
+  `source_sha256_2`. `CREDITS.md` credits the source's author and names the script. A source
+  that its site gives only behind a login, as Sketchfab does, is pinned at a pre-release of this
+  repository that holds it as downloaded (`kit-sources-temperate-1`).
 - **`fetch.sh` verifies the derived file** against its SHA-256 and does not download it.
 - **`derive.sh` makes it again**: it downloads the source, verifies it, runs the script in
   Blender and compares the result with the kit's file, byte for byte. `cutlib.py` fixes the two

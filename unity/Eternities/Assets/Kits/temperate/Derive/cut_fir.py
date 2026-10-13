@@ -221,7 +221,7 @@ def cards(budget):
     cone /= np.linalg.norm(cone, axis=1, keepdims=True)
     normal = cutlib.ROUND * cone + (1 - cutlib.ROUND) * face
     normal /= np.linalg.norm(normal, axis=1, keepdims=True)
-    return cutlib.card_mesh(corner, corner_uv, normal, needle_material), wide, float(np.median(long))
+    return cutlib.card_mesh(corner, corner_uv, normal, needle_material), wide, float(np.median(long)), int(unsure.sum())
 
 
 made = []
@@ -233,9 +233,10 @@ for level, (wood_budget, card_budget) in enumerate(spec.get("levels", LEVELS)):
         row["wood_triangles"] += triangles(limbs.data)
         row["closed_edges_m"] = max(row["closed_edges_m"], round(weld, 4))
         held.append(limbs)
-    sprays, width, long = cards(card_budget)
+    sprays, width, long, unsure = cards(card_budget)
     held.append(sprays)
-    row.update({"cards": len(sprays.data.polygons), "cell_m": round(width, 4), "card_long_m": round(long, 3)})
+    # `unsure_cards`: the cards whose tufts lie along no line, or along the trunk, and so point out.
+    row.update({"cards": len(sprays.data.polygons), "unsure_cards": unsure, "cell_m": round(width, 4), "card_long_m": round(long, 3)})
     joined = cutlib.join(held, f"{fir}_LOD{level}")
     row["triangles"] = triangles(joined.data)
     row["materials"] = [slot.material.name for slot in joined.material_slots]
