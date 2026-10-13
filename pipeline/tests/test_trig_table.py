@@ -200,7 +200,13 @@ def test_the_build_fails_on_a_table_that_is_not_the_committed_one(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ):
     """PRD 5.4.18 (6): "the pipeline asserts the file's SHA-256 before use". `eternities build`
-    checks the table first, so the failure comes before any download and writes nothing."""
+    checks the table first, so the failure comes before any download and writes nothing.
+
+    The bulk file is pinned to a key the empty cache does not hold, and the swatch cache is a path
+    of the test's own. A build that got past the table stops at the pinned file with another
+    message: it can neither reach Scryfall nor write under `pipeline/.cache/`
+    (`docs/scryfall-policy.md` section 4).
+    """
     monkeypatch.setattr(trig, "TRIG_TABLE", _corrupted(tmp_path))
 
     code = cli.main(
@@ -212,11 +218,17 @@ def test_the_build_fails_on_a_table_that_is_not_the_committed_one(
             str(tmp_path / "reports"),
             "--cache",
             str(tmp_path / "cache"),
+            "--bulk-updated-at",
+            "2026-10-12T09:05:45.962+00:00",
+            "--swatch-cache",
+            str(tmp_path / "swatches.jsonl"),
             "--no-roster-diff",
         ]
     )
 
     assert code == 1
+    # The message is what shows the order: past the table, the build fails on the pinned file.
     assert "build failed — the trig table" in capsys.readouterr().err
     assert not (tmp_path / "data").exists()
-    assert not (tmp_path / "cache").exists(), "the check runs before the fetch stage"
+    assert not (tmp_path / "cache").exists()
+    assert not (tmp_path / "swatches.jsonl").exists()
