@@ -51,7 +51,7 @@
     {
       "id": "the-dark",
       "name": "The Dark",
-      "years": "From the Sylex Blast of 64 AR to about 450 AR",
+      "years": "From the Sylex Blast to about 450 AR",
       "region": "terisiare",
       "sets": ["drk"],
       "headline": ["City of Shadows", "Tivadar's Crusade", "Preacher", "Maze of Ith", "Barl's Cage"],
@@ -146,7 +146,8 @@
         ],
         [
           {"text": "West of Jamuraa lie the islands of Madara, where three lines of mana cross, red, black and blue; that is why the elder dragon Nicol Bolas wanted them.", "source": "https://mtg.wiki/page/Madara"},
-          {"text": "Madara's empire dated from 3226 AR, when a warrior queen declared herself a god; Bolas took her dynasty's place in 3455 AR and governed through his officers, at the end through a single regent, Ramses Overdark.", "source": "https://mtg.wiki/page/Madara"},
+          {"text": "Bolas became Madara's god-emperor in 3455 AR, ruling an empire that a warrior queen had founded in about 3226 AR.", "source": "https://mtg.wiki/page/Madara"},
+          {"text": "Three officers governed for him until one of them, the assassin Ramses Overdark, became his single regent.", "source": "https://mtg.wiki/page/Madara"},
           {"text": "Tetsuo Umezawa, once the emperor's champion, killed Overdark in single combat at the Imperial Shrine and then brought down the shrine itself, and with it Bolas's hold on Dominaria.", "source": "https://mtg.wiki/page/Tetsuo_Umezawa"}
         ]
       ]
@@ -162,7 +163,7 @@
         [
           {"text": "Caliman lies south-east of Jamuraa; Tojira and her nightstalkers hold its swamp island of Dakmor, the elves of Norwood its northern forest, and the kingdom of Alaborn its southern plains.", "source": "https://mtg.wiki/page/Caliman"},
           {"text": "Alaborn's soldiers carry firearms, which had not been seen on Dominaria before.", "source": "https://mtg.wiki/page/Portal_Second_Age"},
-          {"text": "Alaborn's enemy was the sorceress Tojira, maker of the nightstalkers, who made war on it from the marshes of Dakmor.", "source": "https://mtg.wiki/page/Tojira"}
+          {"text": "Tojira, the swamp queen, armed the nightstalkers that attack Alaborn: long-limbed, sharp-toothed beings of black mana, mounted on mechanical beasts.", "source": "https://mtg.wiki/page/Nightstalker"}
         ]
       ]
     },
@@ -198,7 +199,7 @@
       "headline": ["Gerrard Capashen", "Captain Sisay", "Hanna, Ship's Navigator", "Tsabo Tavoc", "Skyship Weatherlight", "Legacy Weapon"],
       "paragraphs": [
         [
-          {"text": "Urza invented the skyship Weatherlight at the Tolarian Academy; under Jhoira, its first captain, it carried refugees out of Serra's collapsing realm, and Urza left it in the keeping of a Zhalfirin family, away from Phyrexia's notice.", "source": "https://mtg.wiki/page/Skyship_Weatherlight"},
+          {"text": "The Weatherlight, a skyship whose engine could take it between planes, came to Sisay from her family, Zhalfirins who had kept it for Urza, its designer.", "source": "https://mtg.wiki/page/Skyship_Weatherlight"},
           {"text": "Sisay learned her trade as a pirate ship's cabin boy, scouted for Zhalfir's armies from the Weatherlight in the Mirage War, and hunted pieces of the Legacy, which she knew could kill the Lord of the Wastes.", "source": "https://mtg.wiki/page/Sisay"},
           {"text": "Gerrard Capashen, whom Urza's Bloodline Project had bred to be the Legacy's heir, had left her crew; he came back when Sisay was abducted to Rath, where his adoptive brother Vuel ruled as Volrath.", "source": "https://mtg.wiki/page/Gerrard_Capashen"}
         ],
@@ -206,7 +207,8 @@
           {"text": "The invasion began in 4205 AR with strikes on Benalia, and Urborg was soon taken as Phyrexia's staging ground.", "source": "https://mtg.wiki/page/Phyrexian_Invasion_of_Dominaria"},
           {"text": "The second stage was Rath, an artificial plane that its evincars had swollen with flowstone until it merged into Dominaria; the merger set the Stronghold and its armies down in Urborg and ended Rath as a plane.", "source": "https://mtg.wiki/page/Rathi_Overlay"},
           {"text": "Hanna, the navigator Gerrard loved, died of plague at Koilos; Yawgmoth's promise to raise her won Gerrard over, and in the duel that Yawgmoth then staged Gerrard beheaded Urza.", "source": "https://mtg.wiki/page/Gerrard_Capashen"},
-          {"text": "Karn was himself a piece of the Legacy, and it fired when Gerrard set Urza's eyes into him: Yawgmoth died, so did Urza and Gerrard, and Karn inherited Urza's spark.", "source": "https://mtg.wiki/page/Karn"},
+          {"text": "The Legacy was Urza's store of artifacts against Phyrexia, the silver golem Karn among them, and in the end the Legacy killed Yawgmoth.", "source": "https://mtg.wiki/page/Karn"},
+          {"text": "Urza's spark passed to Karn, who became a planeswalker; neither Urza nor Gerrard survived.", "source": "https://mtg.wiki/page/Karn"},
           {"text": "Urborg keeps the war's marks: the ruins of the Stronghold, which magma covered inside its volcano, and the Heroes' Memorial that Freyalise raised to the dead.", "source": "https://mtg.wiki/page/Urborg"}
         ]
       ]
@@ -224,10 +226,11 @@
           {"text": "The Cabal, founded in 4050 AR by Virot Maglan, its Patriarch, worshipped profit and grew rich on pit fights and the betting on them.", "source": "https://mtg.wiki/page/Cabal"}
         ],
         [
-          {"text": "The Mirari was a probe made by Karn, but those who saw it craved it, for it turned its holder's desires into fact.", "source": "https://mtg.wiki/page/Mirari"},
+          {"text": "The Mirari, made by Karn as no more than a probe, turned its holder's desires into fact, and those who saw it craved it.", "source": "https://mtg.wiki/page/Mirari"},
           {"text": "Three holders in turn loosed a spell they could not stop and died of it: Kirtar of the Order, the emperor Aboshan, whose wave drowned the continent's north, and Chainer.", "source": "https://mtg.wiki/page/Mirari"},
           {"text": "Kamahl fixed the Mirari to his sword and, under its sway, ran his own sister Jeska through; to be rid of it he went to the Krosan forest.", "source": "https://mtg.wiki/page/Kamahl"},
-          {"text": "In Krosa the nantuko Thriss taught Kamahl the druids' way; when the merfolk Laquatus came for the Mirari, Kamahl killed him with the sword and left it there, planted in the soil.", "source": "https://mtg.wiki/page/Kamahl"}
+          {"text": "Laquatus, a merfolk ambassador and an old rival, followed Kamahl to Krosa to take the Mirari, and Kamahl killed him there with the sword.", "source": "https://mtg.wiki/page/Kamahl"},
+          {"text": "Kamahl left the sword where Laquatus lay and took up the druids' life that the nantuko Thriss had shown him.", "source": "https://mtg.wiki/page/Kamahl"}
         ]
       ]
     },
