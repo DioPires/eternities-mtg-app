@@ -16,8 +16,28 @@ namespace Eternities.Travel
         public bool Holds(Vector3 position)
         {
             Vector3 local = transform.InverseTransformPoint(position);
-            return Mathf.Abs(local.x) < RingRadius - 0.3f && Mathf.Abs(local.z) < 0.5f && local.y > -1 && local.y < 2 * RingRadius;
+            return Opening(local) && Mathf.Abs(local.z) < 0.5f;
         }
+
+        // Did a step from one point to another use the ring? It did when it ends inside the opening,
+        // or when it crossed the ring's plane inside the opening. One slow frame at a run is a step
+        // of 2 m, longer than the opening is deep, and neither of its ends is inside (DEC-989).
+        public bool Crossed(Vector3 from, Vector3 to)
+        {
+            if (Holds(to))
+            {
+                return true;
+            }
+            Vector3 start = transform.InverseTransformPoint(from), end = transform.InverseTransformPoint(to);
+            if (start.z * end.z >= 0)
+            {
+                return false;       // both ends on one side of the plane, or no step at all
+            }
+            return Opening(Vector3.Lerp(start, end, start.z / (start.z - end.z)));
+        }
+
+        // Is a point of the portal's own space within the opening's width and height?
+        static bool Opening(Vector3 local) => Mathf.Abs(local.x) < RingRadius - 0.3f && local.y > -1 && local.y < 2 * RingRadius;
 
         public static Portal Build(string name, Material frame, Material surface, Transform parent, Vector3 position, Quaternion facing)
         {

@@ -25,6 +25,7 @@ DATASETS_FILE = REPO_ROOT / "web" / "datasets.json"
 REPORTS_DIR = REPO_ROOT / "pipeline" / "reports"
 CACHE_DIR = REPO_ROOT / "pipeline" / ".cache" / "scryfall"
 SWATCH_CACHE_FILE = REPO_ROOT / "pipeline" / ".cache" / "swatches" / "swatches.jsonl"
+LORE_DIR = REPO_ROOT / "pipeline" / "data" / "lore"
 
 _FIXTURES: dict[str, FixtureSpec] = {"small": SMALL, "scale": SCALE}
 
@@ -142,6 +143,9 @@ def _cmd_test_vector(args: argparse.Namespace) -> int:
 
 
 def _cmd_build(args: argparse.Namespace) -> int:
+    from .layout.trig import TrigTableError
+    from .lore import LoreIndexError, LoreStageError
+    from .lore.vocabulary import HeroEntriesError
     from .pipeline import UnmappedSetError
     from .pipeline import build as run_pipeline
     from .pipeline.records import UnknownEnumError
@@ -158,11 +162,20 @@ def _cmd_build(args: argparse.Namespace) -> int:
             roster_diff=not args.no_roster_diff,
             bulk_updated_at=args.bulk_updated_at,
             swatch_cache_path=Path(args.swatch_cache).resolve(),
+            distribution=bool(args.distribution),
         )
-    except (UnknownEnumError, UnmappedSetError, PinnedBulkMissingError) as error:
+    except (
+        UnknownEnumError,
+        UnmappedSetError,
+        PinnedBulkMissingError,
+        LoreStageError,
+        LoreIndexError,
+        HeroEntriesError,
+        TrigTableError,
+    ) as error:
         # PRD 7.7.2, 4.6.4 and the pinned cache key are the rules that stop a run rather than
-        # guess. None is a crash to be read from a traceback: the message names what to add
-        # and where.
+        # guess, and PRD v4 4.16.2, 4.16.5 and 5.4.18 (6) add the lore tables and the trig table.
+        # None is a crash to be read from a traceback: the message names what to add and where.
         print(f"\nbuild failed — {error}", file=sys.stderr)
         return 1
 
@@ -264,6 +277,109 @@ def _cmd_swatches(args: argparse.Namespace) -> int:
     return 0
 
 
+def _production_pack() -> Path | None:
+    """The committed production pack, which the lore commands validate against by default."""
+    if not DATASETS_FILE.exists():
+        return None
+    registry = cast("dict[str, Any]", json.loads(DATASETS_FILE.read_text(encoding="utf-8")))
+    name = registry.get("production")
+    return WEB_DATA_ROOT / str(name) if name else None
+
+
+def _lore_index(args: argparse.Namespace) -> Any:
+    """The dataset a lore command resolves against: ``--data``, or the production pack."""
+    from .lore import LoreIndex, LoreIndexError
+
+    pack = Path(args.data).resolve() if args.data else _production_pack()
+    if pack is None:
+        raise LoreIndexError("web/datasets.json names no production pack; pass --data")
+    return LoreIndex.from_pack(pack)
+
+
+def _cmd_lore_digest(args: argparse.Namespace) -> int:
+    """Print the acceptance digest of a lore directory (PRD v4 Appendix F.2)."""
+    from .lore import DigestError, digest_of_directory
+
+    try:
+        print(digest_of_directory(Path(args.directory).resolve()))
+    except DigestError as error:
+        print(f"lore digest failed — {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
+def _cmd_lore_validate(args: argparse.Namespace) -> int:
+    """Validate one lore directory against a dataset (PRD v4 4.16.2, Appendix F)."""
+    from .lore import LoreIndexError, LoreValidationError, validate_directory
+    from .lore.spotlight import SIDECAR_NAME, validate_sidecar
+    from .lore.stage import acceptance_refusal
+    from .lore.vocabulary import HeroEntriesError, load_hero_entries
+
+    directory = Path(args.directory).resolve()
+    shown = _display(directory)
+    try:
+        index = _lore_index(args)
+        heroes = load_hero_entries()
+        spotlight_sets = None
+        if (directory / SIDECAR_NAME).exists():
+            sidecar = validate_sidecar(
+                directory / SIDECAR_NAME, index, hero_entries=heroes, display=shown
+            )
+            spotlight_sets = sidecar.sets_with_cards
+        tables = validate_directory(
+            directory,
+            index,
+            hero_entries=heroes,
+            fixture=bool(args.fixture),
+            spotlight_sets=spotlight_sets,
+            display=shown,
+        )
+    except (LoreValidationError, LoreIndexError, HeroEntriesError) as error:
+        print(f"lore validate failed — {error}", file=sys.stderr)
+        return 1
+
+    expected = index.expected_sets(tables.slug)
+    rules = "the ordinary rules of 4.16.2"
+    if args.fixture:
+        rules = "the rules of 4.16.2 with the row minimums relaxed (--fixture)"
+    print(f"{shown}: valid under {rules}, against dataset {index.label}")
+    print(f"set codes mapped: {len(expected)}: {', '.join(expected)}")
+    print(f"digest: {tables.digest}")
+    print(f"acceptance status: {tables.status}")
+    if args.distribution:
+        if args.fixture:
+            print("--fixture: a fixture needs no `accepted` record (5.4.14)")
+        else:
+            refusal = acceptance_refusal(tables, shown)
+            if refusal is not None:
+                print(f"lore validate failed — --distribution: {refusal}", file=sys.stderr)
+                return 1
+    return 0
+
+
+def _cmd_lore_check(args: argparse.Namespace) -> int:
+    """Run the lore stage of a build on a pack already on disk, and print its report section."""
+    from .layout import trig
+    from .lore import LoreIndexError, LoreStageError, run_stage
+    from .lore.stage import report_section
+    from .lore.vocabulary import HeroEntriesError
+
+    try:
+        table = trig.load()
+        result = run_stage(
+            _lore_index(args),
+            lore_root=Path(args.lore_root).resolve(),
+            distribution=bool(args.distribution),
+        )
+    except (LoreStageError, LoreIndexError, HeroEntriesError, trig.TrigTableError) as error:
+        print(f"lore check failed — {error}", file=sys.stderr)
+        return 1
+    print("\n".join(report_section(result)))
+    print()
+    print(f"Trig table: sha256 {table.sha256} (PRD v4 5.4.18 (6)).")
+    return 0
+
+
 def _today() -> str:
     return datetime.now(tz=UTC).date().isoformat()
 
@@ -327,7 +443,63 @@ def main(argv: list[str] | None = None) -> int:
         "makes the dual-scene period free: the deployed build keeps fetching the dataset it "
         "already fetches, and this run lands beside it.",
     )
+    build_cmd.add_argument(
+        "--distribution",
+        action="store_true",
+        help="PRD v4 4.16.5: fail, naming the entry, unless every one of the twenty hero entries "
+        "has lore tables that validate and carry a matching `accepted` record; then record "
+        "`distribution: true` in the manifest. A tagged build passes this.",
+    )
     build_cmd.set_defaults(func=_cmd_build)
+
+    lore_cmd = sub.add_parser(
+        "lore", help="lore tables (PRD v4 4.16, Appendix F): digest, validate, check"
+    )
+    lore_sub = lore_cmd.add_subparsers(dest="lore_command", required=True)
+
+    digest_cmd = lore_sub.add_parser(
+        "digest", help="print the acceptance digest of a lore directory (Appendix F.2)"
+    )
+    digest_cmd.add_argument("directory", help="a directory holding the three tables")
+    digest_cmd.set_defaults(func=_cmd_lore_digest)
+
+    validate_cmd = lore_sub.add_parser(
+        "validate", help="validate one lore directory against a data pack (4.16.2)"
+    )
+    validate_cmd.add_argument("directory", help="a directory named for its hero entry")
+    validate_cmd.add_argument(
+        "--fixture",
+        action="store_true",
+        help="for a synthetic fixture (5.4.14): relax the row minimums of Appendix F (4 regions, "
+        "3 eras) and the `accepted` requirement, and nothing else",
+    )
+    validate_cmd.add_argument(
+        "--distribution",
+        action="store_true",
+        help="also fail unless the tables carry a matching `accepted` record (4.16.5)",
+    )
+    validate_cmd.add_argument(
+        "--data", default=None, help="data pack directory (default: the production pack)"
+    )
+    validate_cmd.set_defaults(func=_cmd_lore_validate)
+
+    check_cmd = lore_sub.add_parser(
+        "check",
+        help="run a build's lore stage on a pack on disk: every hero entry, the schema example, "
+        "the sidecars and the trig table's hash",
+    )
+    check_cmd.add_argument(
+        "--distribution",
+        action="store_true",
+        help="fail unless all twenty hero entries are accepted (4.16.5)",
+    )
+    check_cmd.add_argument(
+        "--data", default=None, help="data pack directory (default: the production pack)"
+    )
+    check_cmd.add_argument(
+        "--lore-root", default=str(LORE_DIR), help="the directory of the hero entries' tables"
+    )
+    check_cmd.set_defaults(func=_cmd_lore_check)
 
     swatch_cmd = sub.add_parser(
         "swatches",

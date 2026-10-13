@@ -190,8 +190,12 @@ unity/Eternities/batchmode.sh -quit -executeMethod Eternities.EditorTools.Genera
 
 Bench runner (PRD v4 8.8.4), the editor host, as CI runs it. It makes the world's files, opens
 `Assets/Scenes/Hub.unity`, enters play mode and renders off screen at `-benchSize`. No `-quit`: the
-run ends the editor itself, with exit code 0 only if the path completed, and a watchdog ends it
-with 1 after fifteen minutes. It writes `eternities.bench.v1` JSON to `-benchOut` and, if
+run ends the editor itself, with exit code 0 only if the path completed. An editor whose run does
+not end it ends itself with 1, and its log says why: when play mode has not started five minutes
+after the command (`-benchStartWait <seconds>` sets another wait; on the reference machine play
+mode starts after about half a minute), and fifteen minutes after the command whatever the run is
+doing. A second thread holds both limits ten seconds later and ends the process, for an editor
+whose main thread hangs. It writes `eternities.bench.v1` JSON to `-benchOut` and, if
 `-benchCaptures` is given, the checkpoints as PNG files into that directory: 2, 3, 4, 5 and 9 of
 PRD v4 9.3, and 6, the river from the end of the north radial path, with what the listener hears
 there as `checkpoint-6-river.wav` (six seconds: the river ahead, then to one side, then to the
@@ -233,6 +237,12 @@ unity/Eternities/bench.sh "$PWD/unity/Eternities/Build/Eternities.app" -bench wa
 unity/Eternities/bench.sh "$PWD/unity/Eternities/Build/Eternities.app" -bench cold -benchQuality high -benchScale 1 -benchOut "$PWD/bench-cold.json"
 ```
 
+The build stamps the player with the commit, and with `dirty true` if `git status` shows a change
+under `unity/Eternities/`: a changed file, or one git does not track. It reads nothing else of the
+repository, so a file at the root, as the layout report of the command above, leaves the stamp at
+`dirty false`. The five settings files a build rewrites (below) are in the project: discard them
+before the next build, or it stamps its player `dirty true`.
+
 Two rules for an agent's runs on the reference machine (DEC-953):
 
 - **Start every run with `--locked-only`**, before the player's path:
@@ -247,7 +257,7 @@ Two rules for an agent's runs on the reference machine (DEC-953):
 `bench.sh` starts the player with those arguments, refuses to start while a Unity editor runs on
 the machine, and exits with the player's exit code. It needs the player and nothing else, so it
 runs on a machine with no checkout: the build writes the commit it was built from, and whether the
-tree held uncommitted changes, into the player, and the run's JSON carries both. It also
+project held uncommitted changes, into the player, and the run's JSON carries both. It also
 answers the run's one question. A player that is not a development build has no counter for GPU
 memory and cannot start a process, so before it leaves the world the run asks for its own
 `footprint(1)`: the script runs the tool and the run writes the process's footprint, and the part
@@ -324,3 +334,7 @@ by checking out clean. A cold import takes about 45 seconds on the reference mac
 request that touches `unity/`, `.github/workflows/ci.yml`, `.gitattributes`, `.gitignore` or
 `.lfsconfig`.
 `docs/ci-runner.md` is how that runner is built and re-verified.
+
+The two test jobs keep their NUnit XML as the artefacts `unity-editmode-results` and
+`unity-playmode-results`, from a failed run too, for 90 days. A job's log names no test: the name of
+each test that ran, and how it ended, is in that file.

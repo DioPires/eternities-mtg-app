@@ -405,12 +405,15 @@ jobs:
           total=$(xmllint --xpath "count($ours)" "$RUNNER_TEMP/editmode.xml")
           echo "EditMode: $passed of $total passed in Eternities.Tests"
           [ "$passed" -ge 1 ]
+      # The NUnit XML is kept from every run, a failed one too, for as long as the bench JSON. The
+      # log above names no test: this file is where a reviewer reads which tests ran, by name, and
+      # how each one ended (DEC-976, N6).
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
           name: unity-editmode-results
           path: ${{ runner.temp }}/editmode.xml
-          retention-days: 7
+          retention-days: 90
 
   # With graphics (PRD v4 8.8.3): `batchmode.sh` never passes `-nographics`, and the runner is a
   # launchd agent in a GUI session so there is a window server to give the editor a device. The
@@ -438,12 +441,13 @@ jobs:
           total=$(xmllint --xpath "count($ours)" "$RUNNER_TEMP/playmode.xml")
           echo "PlayMode: $passed of $total passed in Eternities.Tests"
           [ "$passed" -ge 1 ]
+      # Kept from every run, as the EditMode results above.
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
           name: unity-playmode-results
           path: ${{ runner.temp }}/playmode.xml
-          retention-days: 7
+          retention-days: 90
 
   # Runs the batchmode bench runner and archives what it wrote. The runner is a stub until the
   # slice agrees the JSON schema (PRD v4 9.5), so this proves the plumbing, not a frame time.
