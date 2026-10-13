@@ -295,6 +295,22 @@ def test_a_row_that_is_not_an_object_fails(tmp_path: Path):
     ]
 
 
+@pytest.mark.parametrize(("file", "table"), [("regions.json", "regions"), ("eras.json", "eras")])
+def test_a_table_that_is_not_an_array_fails_naming_the_table(tmp_path: Path, file: str, table: str):
+    """The reader looks up the rows of a table before any rule has read the table's type."""
+    regions = kit.regions()
+    eras = kit.eras()
+    {"regions": regions, "eras": eras}[table][table] = 7
+
+    found = kit.problems(kit.write(tmp_path, regions_table=regions, eras_table=eras))
+
+    # With no region table, each era and the keyword name a region that does not exist, so the
+    # wrong type is not the only problem.
+    wrong = [p for p in found if p.rule is Rule.WRONG_TYPE]
+    assert [(p.file, p.row, p.field) for p in wrong] == [(file, "", table)]
+    assert "must be an array" in wrong[0].message
+
+
 def test_a_missing_file_fails_naming_the_file(tmp_path: Path):
     directory = kit.write(tmp_path)
     (directory / "keywords.json").unlink()
@@ -363,6 +379,8 @@ def test_half_of_a_surrogate_pair_fails_naming_the_field(
         ("-0.0", "no fraction"),
         ("NaN", "not a JSON number"),
         ("Infinity", "not a JSON number"),
+        # One digit more than Python converts: `int` raises, and the reader answers with a `Flaw`.
+        pytest.param("7" * 4301, "too long to read", id="4301 digits"),
     ],
 )
 def test_a_number_that_is_not_a_plain_integer_fails_naming_the_field(
@@ -449,6 +467,21 @@ def test_a_forbidden_number_in_place_of_a_region_sentence_is_reported_once(tmp_p
 
     assert problem.rule is Rule.NUMBER
     assert (problem.row, problem.field) == ('regions[0] "north"', "sentence")
+
+
+def test_a_forbidden_number_in_a_keyword_row_fails_naming_the_row_by_its_position(tmp_path: Path):
+    """A keyword row has no id, so the reader names it as the row's shape failures do."""
+    directory = kit.write(tmp_path)
+    text = (directory / "keywords.json").read_text(encoding="utf-8")
+    assert '"region": "north"' in text
+    (directory / "keywords.json").write_text(
+        text.replace('"region": "north"', '"region": 1.0'), encoding="utf-8"
+    )
+
+    problem = kit.only(kit.problems(directory))
+
+    assert problem.rule is Rule.NUMBER
+    assert (problem.file, problem.row, problem.field) == ("keywords.json", "keywords[0]", "region")
 
 
 def test_a_leading_plus_fails_the_read_and_says_so(tmp_path: Path):
