@@ -376,7 +376,8 @@ before the next build, or it stamps its player `dirty true`.
 
 The build also logs the cooked size by owner (PRD v4 7.2, 8.12.5), as `Build: cooked by owner`:
 what the assets under each kit's folder take in the player's data, then each kit's heaviest files
-and its sizes by kind. A kit's figure is the one a content task states against its row in 7.2.
+and its sizes by kind, in megabytes of 1,048,576 bytes as Unity's own build report counts them. A
+kit's figure is the one a content task states against its row in 7.2.
 
 Two rules for an agent's runs on the reference machine (DEC-953):
 

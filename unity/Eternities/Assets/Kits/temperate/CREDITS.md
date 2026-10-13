@@ -356,12 +356,13 @@ the rows from the prefabs: the editor's menu, Eternities, "Kit props as drawn".
 - **Cooked size.** 229.8 MB on 2026-10-13, against PRD 7.2's 250 MB for a kit at the
   photographic standard: textures 182.0 MB, meshes 46.3 MB, audio 1.3 MB. It is what the assets
   under this folder take in a macOS player's data, summed by the build from its own report
-  (`Build: cooked by owner`, `unity/Eternities/README.md`). A normal or mask map cooks to a byte
-  a texel and a third more for its smaller levels: 1.3 MB at 1K in that build, so 5.3 MB at 2K.
-  A 2K colour cooks to 2.7 MB. So the 24 normal and mask maps that are 2K files are imported at
-  1K (`maxTextureSize` in their `.meta`), and a colour stays at its file's size. With the 24 at
-  2K the kit would be about 96 MB more, which is over its row; that figure is the sum and was
-  not built.
+  (`Build: cooked by owner`, `unity/Eternities/README.md`). A megabyte there is 1,048,576 bytes,
+  as in Unity's own build report; in megabytes of a million bytes the kit is 241.0. A normal or
+  mask map cooks to a byte a texel and a third more for its smaller levels: 1.3 MB at 1K in that
+  build, so 5.3 MB at 2K. A 2K colour cooks to 2.7 MB. So the 24 normal and mask maps that are
+  2K files are imported at 1K (`maxTextureSize` in their `.meta`), and a colour stays at its
+  file's size. With the 24 at 2K the kit would be about 96 MB more, which is over its row; that
+  figure is the sum and was not built.
 - **Size.** The kit's sources are 196 files and 242.1 MB. `fetch.sh` holds a model and a texture
   to 8 MB each and the kit's sources to 300 MB, the proposal on DEC-1003; the first
   slice's subset of 24 files and 39.2 MB was under DEC-952's limits of 200 KB a prop, 8 MB a

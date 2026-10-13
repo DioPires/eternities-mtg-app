@@ -94,6 +94,7 @@ namespace Eternities.EditorTools
         // take in the player's data, as the build packed them, and what everything else takes. A
         // kit's row in 7.2 is its own assets: the figure a content task states (PRD v4 8.12.6).
         // Then each kit's heaviest, which is where a kit over its row is brought back under it.
+        // A megabyte is 1,048,576 bytes, as in the build report the editor logs.
         static void Cooked(BuildReport report)
         {
             const double Mega = 1024 * 1024;
