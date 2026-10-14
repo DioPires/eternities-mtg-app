@@ -129,6 +129,9 @@ export function vercelConfig() {
     buildCommand: 'pnpm build',
     outputDirectory: 'dist',
     installCommand: 'pnpm install --frozen-lockfile',
+    // DEC-1066: Vercel deploys main only. A branch deploys when at least one rule it matches is
+    // true; '**' matches every branch name, with or without '/', so no other branch deploys.
+    git: { deploymentEnabled: { '**': false, main: true } },
     github: { silent: true },
     // PRD 6.7.5 / 8.8.2: the site is static, so the host serves index.html for every route that
     // is not a real file. Anything with a dot in the last segment is an asset and falls through.
