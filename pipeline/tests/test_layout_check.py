@@ -892,6 +892,20 @@ def test_the_gap_bounds_and_the_bounding_disc_are_asserted():
     assert rules(result) == {"stand-region"} and result.violation_count == len(rows)
 
 
+def test_the_bounding_disc_counts_the_points_it_tested():
+    # DEC-1091, N15: a list of points stops at its first violation and counts only what it
+    # tested. With no bounding radius the first point of each of the five lists fails: the blob,
+    # the path, the pad, the approach point and the stone.
+    rows, world, cards = fresh()
+    site = world["sites"][0]
+    tested = run(rows, world, cards).assertions["site-bounds"]
+    assert tested == len(site["blob"]) + len(site["path"]) + 3
+    site["boundingRadius"] = 0
+    result = run(rows, world, cards)
+    assert len(under(result, "site-bounds")) == 5
+    assert result.assertions["site-bounds"] == 5
+
+
 def test_at_most_the_limit_of_violations_is_kept_and_all_are_counted(
     monkeypatch: pytest.MonkeyPatch,
 ):
