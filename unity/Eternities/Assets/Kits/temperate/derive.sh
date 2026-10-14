@@ -14,9 +14,12 @@
 #                                prints the sha256 that sources.yaml must then carry
 #
 # A source is 48 to 480 MB and is kept between runs in $ETERNITIES_DERIVE_CACHE, or in a folder
-# of this script's own under $TMPDIR. Needs bash, curl, awk, sha256sum or shasum, and Blender. The
-# bytes are those of the Blender that a file's report names; another Blender may cut the same
-# tree into other bytes, and then this compares the two reports and says so.
+# of this script's own under $TMPDIR. Needs bash, curl, awk, sha256sum or shasum, pgrep, and
+# Blender. The bytes are those of the Blender that a file's report names; another Blender may cut
+# the same tree into other bytes, and then this compares the two reports and says so.
+#
+# Blender does not start while the CI runner on this Mac has a job: before each start the script
+# waits for the job to end (docs/ci-runner.md section 3).
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -36,12 +39,63 @@ sha() {
   fi
 }
 
+# The CI runner's jobs run on this Mac, and a bench beside Blender is not a figure for it. The
+# runner's worker process lives as long as a job does, so the script looks for it every 15 s and
+# waits while it is there.
+#
+# The limit is two runs of the four Unity jobs back to back, as when a second push queues behind
+# the first: over ten runs of 2026-10-13 with no job re-run, a run took 868 to 1053 s from its
+# first job's start to its last job's end. A job that holds the runner longer than 36 minutes is
+# stuck, and is better named than waited for.
+#
+# The four jobs of a run take turns 2 to 63 s apart, with no worker in between. So once the script
+# has waited, Blender starts only after 75 s with no job.
+WAITS=144     # looks of 15 s that found a job: 36 minutes
+SETTLE=75     # seconds with no job after a wait
+
+# The processes of a runner job, one a line: pid and executable, never the arguments. The `[W]`
+# keeps the pattern from matching a command line that quotes it. pgrep exits 1 when it matches
+# nothing, and 2 or 3 on an error, which must not read as an idle runner.
+runner_job() {
+  local pids pid code=0
+  pids="$(pgrep -f 'Runner\.[W]orker')" || code=$?
+  [ "$code" -le 1 ] || die "pgrep -f 'Runner\\.[W]orker' exited $code, so whether the runner has a job is not known"
+  for pid in $pids; do
+    # A process gone since pgrep saw it prints nothing, and is not waited for.
+    ps -o pid=,comm= -p "$pid" | sed 's/^ *//' || true
+  done
+}
+
+wait_for_runner() {
+  local job waited=0 idle=0
+  while :; do
+    job="$(runner_job)" || exit 1
+    if [ -n "$job" ]; then
+      [ "$waited" -lt "$WAITS" ] ||
+        die "a runner job still runs after $((WAITS / 4)) minutes: $(paste -sd ';' - <<<"$job"). Make the derived files again when the runner has no job."
+      waited=$((waited + 1))
+      idle=0
+      echo "derive.sh: wait $waited of $WAITS, 15 s, for a runner job: $(paste -sd ';' - <<<"$job")"
+    elif [ "$waited" -eq 0 ]; then
+      return 0
+    elif [ "$idle" -lt "$SETTLE" ]; then
+      echo "derive.sh: no runner job for $idle of $SETTLE s: a run's jobs take turns up to 63 s apart"
+      idle=$((idle + 15))
+    else
+      echo "derive.sh: no runner job for $SETTLE s; Blender starts"
+      return 0
+    fi
+    sleep 15
+  done
+}
+
 write=0
 if [ "${1:-}" = "--write" ]; then
   write=1
   shift
 fi
 command -v blender >/dev/null 2>&1 || die "Blender is not on the PATH"
+wait_for_runner
 ours="$(blender --version | head -1 | sed 's/^Blender //')"
 
 # One tab-separated line per derived file: file, url, source_sha256, url_2, source_sha256_2,
@@ -114,6 +168,7 @@ while IFS=$'\t' read -r file url source_sha url_2 source_sha_2 derived want; do
   fi
 
   out="$tmp/$(basename "$file")"
+  wait_for_runner
   # shellcheck disable=SC2086  # the words after the script are its arguments, one a word
   blender -b --factory-startup --disable-autoexec --python-exit-code 1 --python "$here/$script" -- \
     $words "$source" "$out" >"$tmp/log" 2>&1 || { tail -20 "$tmp/log" >&2; die "$file: $script failed"; }
