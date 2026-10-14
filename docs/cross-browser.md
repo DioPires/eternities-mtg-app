@@ -20,8 +20,9 @@ rm web/scripts/cross-browser.mjs
 The generated file is a *template* as much as a report: parts of its prose are hardcoded in the
 script and do not follow the run. Two of them were wrong on regeneration and are corrected here —
 it tells the reader to `pnpm cross-browser`, which no longer resolves, and its sampling paragraph
-quotes `N/720` while this run sampled 770. Read this file as edited-from-the-run, not as machine
-output.
+quotes `N/720` while this run sampled 770. DEC-1089 corrected a third later: the script tells the
+reader to use a Vercel preview deployment, and since PR #140 a pull request has none. Read this
+file as edited-from-the-run, not as machine output.
 
 Review §9's Windows measurement kit (`web/bench/windows/`, `pnpm windows-kit`) remains what covers
 the rows this machine cannot: every engine below is macOS, and PRD 7.1.2 asks for Windows too.
@@ -86,8 +87,11 @@ every subresource URL is already `https` and the directive is a no-op. The evide
 is this table — the archived script serves `dist/` over a real HTTPS origin with
 `securityHeaders({ dev: false })`, the same function that generates `vercel.json`, and WebKit
 passes every check. **The practical consequence is for anyone checking Safari locally:**
-`pnpm preview` will show them a blank page, and the reason will not be visible. Use a Vercel
-preview deployment, or this script.
+`pnpm preview` will show them a blank page, and the reason will not be visible. A pull request
+has no Vercel preview to try instead: since PR #140 (DEC-1066), Vercel builds `main` only. A Safari
+check over HTTPS has two routes. After the merge, check production. Before the merge, restore this
+script from the tag as in "To reproduce" above, and run it with `--engines webkit,safari --no-out`.
+`--no-out` prints each engine's result and leaves this file unchanged.
 
 **No engine differed on the GPU self-check.** Metal through ANGLE, Gecko and WebKit agree with the
 CPU motion mirror to well under half the tolerance, at both float16 and float32. PRD risk 6
