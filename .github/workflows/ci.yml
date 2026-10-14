@@ -465,16 +465,35 @@ jobs:
           path: unity-bench-smoke
           lfs: true
       # PRD v4 8.8.6: a bench that shares the GPU with another editor is not a figure for this
-      # machine. `pgrep` sees every account's processes, so an editor the owner left open counts.
-      # It waits for an editor or a built player to exit, looking every 15 s for up to 15 minutes:
-      # a pointer-test run is under two minutes and a draw about four a run, and a run that waits
-      # longer than that is better failed and rerun.
+      # machine, and neither is one beside Blender (`docs/ci-runner.md` section 3). `pgrep` sees
+      # every account's processes, so an editor the owner left open counts. It waits for an editor,
+      # a built player or Blender to exit, looking every 15 s for up to 15 minutes: a pointer-test
+      # run is under two minutes, a draw about four a run and a Blender cut of a kit under half a
+      # minute, and a run that waits longer than that is better failed and rerun. The log names a
+      # process by its pid and its executable, never by its arguments: the log is public, and
+      # `pgrep -f` also matches a shell line that only quotes the player's path. `pgrep` exits 1
+      # when it matches nothing; 2 or 3 is an error, which fails the step instead of passing as a
+      # quiet machine.
       - name: No other Unity process is running
         run: |
+          look() {
+            code=0
+            pids=$(pgrep "$@") || code=$?
+            if [ "$code" -gt 1 ]; then
+              echo "::error::pgrep $* exited $code, so this step cannot tell what is running. Re-run this job."
+              exit 1
+            fi
+            for pid in $pids; do
+              # A process gone since pgrep saw it prints nothing, and is not waited for.
+              seen="$seen$(ps -o pid=,comm= -p "$pid" | sed 's/^ *//' || true)"$'\n'
+            done
+          }
           for wait in $(seq 0 60); do
-            editor=$(pgrep -lx Unity || true)
-            player=$(pgrep -fl 'MacOS/[E]ternities' || true)
-            seen=$(printf '%s\n' "$editor" "$player" | sed '/^$/d')
+            seen=
+            look -x Unity
+            look -f 'MacOS/[E]ternities'
+            look -x Blender
+            seen=$(printf '%s' "$seen" | sed '/^$/d')
             if [ -z "$seen" ]; then
               exit 0
             fi
@@ -483,7 +502,7 @@ jobs:
               sleep 15
             fi
           done
-          echo "::error::Another Unity process is running on the reference machine. Close it and re-run this job."
+          echo "::error::A Unity editor, a built player or Blender is still running on the reference machine after 15 minutes. Close it and re-run this job."
           echo "$seen"
           exit 1
       # The editor host of the bench (unity/Eternities/README.md): play mode, off screen at the
