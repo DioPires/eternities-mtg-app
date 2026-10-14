@@ -20,9 +20,11 @@ from typing import Any
 import pytest
 
 from eternities import cli
-from eternities.layout import build, cards, emit, fixtures, report, trig
+from eternities.layout import build, cards, check, emit, fixtures, geometry, report, trig
 from eternities.layout.build import Built, VolumesError
 from eternities.layout.constants import PAD_RADIUS, STONE_ACROSS, STONE_ALONG
+from eternities.layout.exact import SCALE
+from eternities.lore import LoreIndex
 from eternities.lore.vocabulary import load_hero_entries
 
 from layout_kit import directions
@@ -75,6 +77,16 @@ def test_a_planes_cards_are_read_from_the_v3_pack():
         assert card.order_key == bytes.fromhex(card.oracle_id.replace("-", ""))
 
 
+def test_dominarias_cards_from_the_pack_are_the_lore_indexs_with_the_same_first_sets():
+    # Departure 1 of pull request 1 (DEC-1091, N3): the cards are read from the v3 pack directly,
+    # and they are the cards and first sets that `LoreIndex` gives the tables' validation.
+    plane = cards.read_plane(PACK, "dominaria")
+    indexed = LoreIndex.from_pack(PACK).cards_on("dominaria")
+    read = {card.oracle_id: card.set_code for card in plane.cards}
+    assert len(read) == len(plane.cards) == len(indexed) == 6_271
+    assert read == {card.oracle_id: card.first_set for card in indexed}
+
+
 def test_a_swatch_is_the_mean_of_the_four_samples_rounded_half_up():
     assert cards.mean_swatch((0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF)) == 0xFFFF
     assert cards.mean_swatch((0, 0, 0, 0)) == 0
@@ -120,6 +132,20 @@ def test_stands_bin_has_the_v3_header_at_version_four_and_48_byte_records():
         assert (row[13], row[14], row[15]) == (card.swatch, card.shard, card.shard_slot)
         # A yaw is a whole count of the trig table.
         assert row[12] % 1_000 == 0 and 0 <= row[12] < 360_000_000
+
+
+def test_a_coordinate_is_rounded_once_as_a_world_value():
+    # 5.4.18 (3) rounds the world value q (DEC-1091, B4). A local z of 6,519.5 mm at a centre z of
+    # -100,000 mm is -93,480.5 mm in the world, and half away from zero gives -93,481. Rounding
+    # in the site's frame first gives 6,520 - 100,000 = -93,480.
+    blob = geometry.polygon([(0, 0), (2_000, 0), (0, 13_039)], 2)
+    assert emit._rounded(blob, (0, -100_000)) == [[0, -100_000], [1_000, -100_000], [0, -93_481]]
+    # The stands, the site stone and the cluster centres take the same rule, over 2^30.
+    half = 6_519 * SCALE + SCALE // 2
+    assert emit._placed(half, SCALE, -100_000) == -93_481
+    assert emit._placed(half, SCALE, 100_000) == 106_520
+    assert emit._placed(-half, SCALE, 100_000) == 93_481
+    assert emit._placed(-half, SCALE, -100_000) == -106_520
 
 
 def test_the_stand_index_joins_a_record_to_its_corridor_vertex():
@@ -580,6 +606,41 @@ def test_layout_build_writes_the_files_the_report_and_the_checkers_document(
     assert not (out / "lore").exists()
     assert (tmp_path / "rabiah.md").read_text().startswith("# Layout report: Rabiah")
     assert json.loads((tmp_path / "rabiah.check.json").read_text())["result"] == "pass"
+
+
+def test_layout_build_writes_no_pack_file_when_the_checker_fails(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+):
+    # DEC-1091, N16: a build that the checker fails leaves nothing in the player's folder; its
+    # report and the checker's document still name the violation.
+    def failed(built: Built, table: trig.TrigTable) -> check.CheckResult:
+        passed = check_built(built, table)
+        return check.CheckResult(
+            violations=("card-plane: a planted violation",),
+            violation_count=1,
+            assertions=passed.assertions,
+            figures=passed.figures,
+        )
+
+    check_built = build.check_built
+    monkeypatch.setattr(build, "check_built", failed)
+    out = tmp_path / "data" / "pack"
+    report_file = tmp_path / "rabiah.md"
+    code = cli.main(["layout", "build", "rabiah", "--out", str(out), "--report", str(report_file)])
+    printed = capsys.readouterr()
+    assert code == 1
+    assert "the first: card-plane: a planted violation. No file was written to" in printed.err
+    assert not (tmp_path / "data").exists()
+    assert "- card-plane: a planted violation" in report_file.read_text(encoding="utf-8")
+    assert json.loads((tmp_path / "rabiah.check.json").read_text())["result"] == "fail"
+    # With the checker green the files go to their place, and no temporary folder stays beside it.
+    monkeypatch.setattr(build, "check_built", check_built)
+    assert (
+        cli.main(["layout", "build", "rabiah", "--out", str(out), "--report", str(report_file)])
+        == 0
+    )
+    assert [path.name for path in (tmp_path / "data").iterdir()] == ["pack"]
+    assert (out / "stands.bin").read_bytes() == rabiah().emitted.stands_bin
 
 
 def test_layout_build_fails_naming_the_subject(tmp_path: Path, capsys: pytest.CaptureFixture[str]):

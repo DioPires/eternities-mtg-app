@@ -11,13 +11,17 @@ import json
 import re
 import shutil
 import sys
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Final, cast
+from typing import TYPE_CHECKING, Any, Final, cast
 
 from .contract import write_dataset
 from .contract.enums import CONTRACT_VERSION, PIPELINE_VERSION
 from .fixtures import SCALE, SMALL, FixtureSpec, build
+
+if TYPE_CHECKING:
+    from .layout.emit import Emitted
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 WEB_DATA_ROOT = REPO_ROOT / "web" / "public" / "data"
@@ -416,7 +420,6 @@ def _cmd_layout_build(args: argparse.Namespace) -> int:
         return 1
     result = build.check_built(built, table)
     document = result.document()
-    written = built.emitted.write(out, slug)
     report_file.parent.mkdir(parents=True, exist_ok=True)
     report_file.write_text(report.render(built, document, directions), encoding="utf-8")
     check_file = report_file.with_suffix(".check.json")
@@ -426,17 +429,38 @@ def _cmd_layout_build(args: argparse.Namespace) -> int:
         f"{slug}: {len(built.emitted.stands):,} stands at {len(layout.sites)} sites; "
         f"R = {layout.radius:,} mm after {layout.passes} passes"
     )
-    for path in (*written, report_file, check_file):
-        print(f"wrote {_display(path)}")
     if not result.ok:
+        for path in (report_file, check_file):
+            print(f"wrote {_display(path)}")
         print(
             f"layout build failed — the independent checker found {result.violation_count} "
-            f"violations; the first: {result.violations[0]}",
+            f"violations; the first: {result.violations[0]}. No file was written to "
+            f"{_display(out)}",
             file=sys.stderr,
         )
         return 1
+    written = _write_pack(built.emitted, out, slug)
+    for path in (*written, report_file, check_file):
+        print(f"wrote {_display(path)}")
     print("the independent checker passes (PRD v4 3.2)")
     return 0
+
+
+def _write_pack(emitted: Emitted, out: Path, slug: str) -> list[Path]:
+    """Write a checked world's files under ``out``: first into a temporary folder beside it, then
+    each moved into place, so ``out`` never holds a file of a build that the checker failed."""
+    out.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=f".{out.name}-", dir=out.parent))
+    try:
+        written: list[Path] = []
+        for path in emitted.write(staging, slug):
+            target = out / path.relative_to(staging)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            path.replace(target)
+            written.append(target)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    return written
 
 
 def _cmd_layout_fixtures(args: argparse.Namespace) -> int:

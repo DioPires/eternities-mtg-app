@@ -11,8 +11,10 @@ fixtures:
   line is its ``tau``, a multiplier of the table direction (5.4.18 (7)). Shortening, trimming and
   a run's length are sums and differences of ``tau``.
 - A blob edge crosses a sweep line when exactly one of its ends lies strictly below the line.
-- A chord end that a half-turn joins is shortened by 15 m, so the half-turn lies inside the blob
-  (CEO ruling of 2026-10-13 on DEC-1004, rule 1). With ``m`` the sweep count before any drop:
+- A chord end that a half-turn joins is shortened by 15 m, more than h / 2, so the half-turn
+  lies inside the rectangle between its two trimmed chord ends and the points h / 2 beyond them,
+  and so within 1.2 r_s of the site's centre (5.4.8, containment; CEO ruling of 2026-10-13 on
+  DEC-1004, rule 1, written into the PRD by erratum 4). With ``m`` the sweep count before any drop:
   the head end of sweep 0 by 1.5 m, the head end of every later sweep and the far end of every
   sweep but the last by 15 m, the far end of sweep ``m - 1`` by 4.5 m.
 - Every chord is shortened, then every join trims its two chords, and only then is the first

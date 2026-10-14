@@ -74,7 +74,8 @@ CHORD_SHORTENING: Final = 4_500
 HEAD_SHORTENING: Final = 1_500
 JOINED_SHORTENING: Final = 15_000
 """A chord end that a half-turn joins: 4.5 m plus the turn's radius h / 2, so the half-turn lies
-inside the blob (CEO ruling of 2026-10-13 on DEC-1004, rule 1)."""
+within 1.2 r_s of the site's centre (5.4.8, containment; CEO ruling of 2026-10-13 on DEC-1004,
+rule 1)."""
 SWEEP_WOBBLE: Final = 3_000
 SWEEP_WAVELENGTH: Final = (24_000, 40_000)
 SWEEP_TAPER: Final = 6_000

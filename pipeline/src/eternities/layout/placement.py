@@ -4,8 +4,7 @@ The work is done in the site's frame, after every site has capacity and the trai
 Each candidate takes its jitter, is displaced, faces a vertex of its path, and its footprint,
 apron and corridor are tested on that final geometry with the 2 mm margin.
 
-Two rules are the CEO's ruling 2 of 2026-10-13 on DEC-1004, which wins over the letter of 5.4.10
-until the next erratum writes them into the PRD:
+Two rules are the CEO's ruling 2 of 2026-10-13 on DEC-1004, which erratum 4 wrote into 5.4.10:
 
 - **V, the vertex of the window that fits.** A candidate is tried at the vertices of its slot's
   6 m window, in order of distance from its lattice point (ties by the lower vertex index). It

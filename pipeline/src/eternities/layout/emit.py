@@ -5,8 +5,12 @@ records beside the slice's pinned v3 pack. ``docs/data-contract-v4.md`` has the 
 departure from the full contract v4, which is Wave 5.
 
 Every coordinate is rounded here, once, by the rule of 5.4.18 (3); the polylines were rounded
-when they were built (5.4.18 (5)) and are written as they are. A site's geometry is moved to the
-world by its centre, a whole number of millimetres, so moving and rounding commute.
+when they were built (5.4.18 (5)) and are written as they are. A site's geometry is built in the
+site's frame. An exact coordinate is moved to the world by the site's centre, a whole number of
+millimetres, and the world value is rounded: rounding half away from zero does not commute with
+the move. A local z of 6,519.5 mm at a centre z of -100,000 mm is -93,480.5 mm in the world and
+is emitted as -93,481; rounding in the site's frame first would give 6,520 - 100,000 = -93,480.
+A coordinate that is already whole (a rounded polyline, a pad, a lattice point) is moved as it is.
 
 The JSON files are written in the canonical form of Appendix F.2 (keys sorted by code point, no
 white space, UTF-8 as itself) and end with one line feed, so their bytes are stable.
@@ -91,14 +95,17 @@ def to_json(document: dict[str, Any]) -> str:
     return canonical(document) + "\n"
 
 
+def _placed(num: int, den: int, centre: int) -> int:
+    """The world coordinate of the exact site-frame value ``num / den``: moved, then rounded once
+    (5.4.18 (3))."""
+    return round_half_away(num + centre * den, den)
+
+
 def _rounded(shape: Shape, centre: Pt = (0, 0)) -> list[list[int]]:
-    """A shape's vertices as whole millimetres, with no vertex repeated in a row."""
+    """A shape's vertices as whole millimetres in the world, with no vertex repeated in a row."""
     out: list[list[int]] = []
     for x, z in shape.pts:
-        point = [
-            round_half_away(x, shape.den) + centre[0],
-            round_half_away(z, shape.den) + centre[1],
-        ]
+        point = [_placed(x, shape.den, centre[0]), _placed(z, shape.den, centre[1])]
         if not out or out[-1] != point:
             out.append(point)
     if shape.closed and len(out) > 1 and out[0] == out[-1]:
@@ -147,8 +154,8 @@ def emit(
                     clusters[stand.slot],
                     card.order_key,
                     card,
-                    round_half_away(stand.x, SCALE) + cx,
-                    round_half_away(stand.z, SCALE) + cz,
+                    _placed(stand.x, SCALE, cx),
+                    _placed(stand.z, SCALE, cz),
                     stand.yaw * MICRO_PER_COUNT,
                     stand.vertex,
                     site.local.arcs[stand.vertex],
@@ -229,8 +236,8 @@ def _world(
         for stand in placement.stands:
             counts[clusters[stand.slot]] += 1
         pad = (local.pad[0] + cx, local.pad[1] + cz)
-        stone_x = round_half_away(local.stone[0], SCALE)
-        stone_z = round_half_away(local.stone[1], SCALE)
+        stone_x = _placed(local.stone[0], SCALE, cx)
+        stone_z = _placed(local.stone[1], SCALE, cz)
         stone_yaw = directions.count_of(
             local.pad[0] * SCALE - local.stone[0], local.pad[1] * SCALE - local.stone[1]
         )
@@ -277,15 +284,15 @@ def _world(
                 "approachPoint": [local.approach_point[0] + cx, local.approach_point[1] + cz],
                 "stone": {
                     "kind": _stone_kind(site),
-                    "x": stone_x + cx,
-                    "z": stone_z + cz,
+                    "x": stone_x,
+                    "z": stone_z,
                     "yaw": stone_yaw * MICRO_PER_COUNT,
                 },
                 "clusters": [
                     {
                         "centre": [
-                            round_half_away(slot.centre[0], slot.den) + cx,
-                            round_half_away(slot.centre[1], slot.den) + cz,
+                            _placed(slot.centre[0], slot.den, cx),
+                            _placed(slot.centre[1], slot.den, cz),
                         ],
                         "arc": slot.arc,
                         "stands": counts[clusters[position]],

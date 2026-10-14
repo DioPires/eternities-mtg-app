@@ -16,8 +16,8 @@ is reached. It is the only allocator (8.3.3): the engine reads its output.
   that meets the same inputs again reads the earlier result instead of computing it again.
 - The arrival point is the plaza's centre, the world's origin. The return portal's pad is the
   disc of radius 1.5 m centred 1.5 m north of the portal, between the portal and the centre.
-- A hero volume is used as its file gives it. 5.4.11 says "clipped to the world"; no test reads
-  the ground outside the world polygon, so no step clips it, and it is emitted whole.
+- A hero volume is used as its file gives it, as 5.4.11 says since erratum 4 ("used as given");
+  no step clips it to the world polygon, and it is emitted whole.
 - The partition is computed on every pass and its degeneracy test with it. The partition has
   the same shape at every R (5.4.5), so the test of the first pass is the test of every pass.
 - A site is exhausted at placement when two void slots in a row cut its path, or its kept slots
