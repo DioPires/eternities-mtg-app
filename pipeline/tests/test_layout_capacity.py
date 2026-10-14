@@ -178,3 +178,49 @@ def test_a_slot_with_fewer_than_three_candidates_is_void_except_on_a_small_site(
     # A corridor's reservation rejects a candidate the same way.
     walled = capacity.capacity_of(built, SITE, 30, directions(), corridor_foreign=blocks)
     assert len(walled.slots[0].candidates) <= len(first.candidates)
+
+
+# --- DEC-1091 kill case (O6) ------------------------------------------------------------------
+
+
+def test_the_window_holds_a_vertex_exactly_six_metres_past_the_slot():
+    # 5.4.9 (b): the window holds every vertex whose arc length lies within 6 m of the slot's,
+    # 6 m included. Slot 1 lies at 9,000 mm; the vertex at (12 m, 3 m) lies at 15,000 mm and is
+    # the nearest vertex of the window for the lattice point 3.6 m north of it.
+    from eternities.layout.geometry import SegmentIndex, disc, polygon, strip
+    from eternities.layout.local import Local, arc_lengths, bounding_radius
+
+    path = ((0, 0), (9_000, 0), (12_000, 0), (12_000, 3_000), (20_000, 3_000))
+    held = directions()
+    pad, approach = (-1_500, 0), (-11_500, 0)
+    stone = (-4_000 * SCALE, 3_000 * SCALE)
+    site = Local(
+        radius=40_000,
+        bounding=bounding_radius(40_000),
+        blob=polygon([(-20_000, -20_000), (40_000, -20_000), (40_000, 30_000), (-20_000, 30_000)]),
+        path=path,
+        arcs=arc_lengths(path),
+        turn=(0, 0, 0, 0),
+        first_run=len(path),
+        head_count=180_000,
+        pad=pad,
+        approach_point=approach,
+        stone=stone,
+        stone_side=1,
+        sweep_count=0,
+        tries=1,
+        failures=(),
+        sweeps=1,
+        state=1,
+        index=SegmentIndex(path),
+        path_strip=strip(path, 1_500),
+        pad_disc=disc(held.disc, pad[0], pad[1], 1, 1_500),
+        approach_strip=strip([pad, approach], 1_500),
+        stone_disc=disc(held.disc, stone[0], stone[1], SCALE, 500),
+    )
+    assert site.arcs == (0, 9_000, 12_000, 15_000, 23_000)
+    # The global lattice point (10,500, 7,797) is (12,000, 6,600) in the site's frame.
+    found = capacity.capacity_of(site, (-1_500, 1_197), 3, held)
+    (slot,) = [slot for slot in found.slots if slot.number == 1]
+    (point,) = [c for c in slot.candidates if (c.x, c.z) == (12_000, 6_600)]
+    assert point.vertex == 3

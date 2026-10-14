@@ -356,3 +356,33 @@ def test_a_start_cell_whose_centre_lies_within_a_half_width_of_a_blob_has_no_mov
     assert cell_centre(row, col)[1] - edge == 1_466
     assert all(world.blocked(row + dr, col + dc) for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)))
     assert trail.route(world, (row, col), grid_cell(432_000, 100_000)) is None
+
+
+# --- DEC-1091 kill cases (A4, O1) -------------------------------------------------------------
+
+
+def test_a_leg_that_meets_a_sites_pad_fails_the_check():
+    # 5.4.11: the leg check tests every site's pad. The leg runs from 2.5 m past the pad's centre
+    # out to the approach point, so its strip covers the pad's outer metre and keeps a metre from
+    # the stone. The pad is tested before the stone and the blob.
+    held = directions()
+    site = local.build(11_979, "eternities-v4|probe3|set:y0", held)
+    assert site is not None
+    world = probe_world(site)
+    (px, pz), (ax, az) = site.pad, site.approach_point
+    cx, cz = PROBE_CENTRE
+    polyline = [((3 * px + ax) // 4 + cx, (3 * pz + az) // 4 + cz), (ax + cx, az + cz)]
+    assert trail.meets(world, polyline) == ("pad", 0)
+
+
+def test_the_leg_check_keeps_the_two_millimetre_margin():
+    # 5.4.11 and 5.4.18 (4): a leg 1,501 mm from a hero volume meets it; 1,502 mm is clear.
+    held = directions()
+    site = local.build(11_979, "eternities-v4|probe3|set:y0", held)
+    assert site is not None
+    volume = polygon(
+        [(100_000, 100_000), (110_000, 100_000), (110_000, 110_000), (100_000, 110_000)]
+    )
+    world = probe_world(site, [volume])
+    assert trail.meets(world, [(95_000, 98_499), (115_000, 98_499)]) == ("hero volume", 0)
+    assert trail.meets(world, [(95_000, 98_498), (115_000, 98_498)]) is None
