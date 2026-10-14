@@ -247,13 +247,15 @@ The protocol is Appendix A, marked there as not applied. Its three parts, in sho
   prints nothing, the Actions queue has no run that is not completed, and the lock directory can be
   made. A watch repeats the second and third while the session lives.
 - **The failure path.** If a job starts while a session is open, the runner closes the session
-  before the job's first step; if that fails the watch closes it; if that fails the bench job fails
-  on its own check, and the session's agent closes the session and re-runs the job.
+  before the job's first step; if that fails the watch closes it; if that fails the bench job waits
+  on its own check, and fails only if the session outlives 15 minutes. The session's agent then
+  closes the session and re-runs the job.
 
-PRD v4 8.8.6 is not weakened. The job's check is untouched and no job waits for a session. Only
-the session changes: it is built to be closed. The runner's script closes editors under
+PRD v4 8.8.6 is not weakened. The protocol does not change the job's check, which waits for every
+`Unity` process, a session included, and fails the job if one outlives 15 minutes. Only the
+session changes: it is built to be closed. The runner's script closes editors under
 `~/eternities-bridge/` and no other, so an editor of the owner's or a batchmode run of an agent's
-still fails the bench as it does today.
+still holds the bench until it exits, and fails it after 15 minutes.
 
 What the evaluation measured for it. (Tested, all five.)
 
@@ -523,11 +525,12 @@ installed on the runner. The issue that adopts the bridge installs it, runs the 
 records the run in `docs/ci-runner.md` section 6. Until then no agent opens a bridge session on this
 machine.
 
-The rule this appendix serves does not change: `unity-bench-smoke` fails before it starts if any
-process named `Unity` is running (`docs/ci-runner.md` section 3; PRD v4 8.8.6). A bridge session is
-a process named `Unity`. The protocol does not teach the job to wait for a session or to overlook
-one. It makes the session give way: a session holds nothing that is kept, so a job, a reviewer's
-bench, the owner's editor and the session's own push each end it without asking.
+The rule this appendix serves does not change: `unity-bench-smoke` does not bench beside another
+process named `Unity`, a built player or Blender. It waits, looking every 15 s, and fails if one is
+still running after 15 minutes (`docs/ci-runner.md` section 3; PRD v4 8.8.6). A bridge session is
+a process named `Unity`. The job waits for every `Unity` process, a session included, and overlooks
+none. The protocol still makes the session give way: a session holds nothing that is kept, so a
+job, a reviewer's bench, the owner's editor and the session's own push each end it without asking.
 
 ### A.1 Where a session lives
 
@@ -560,8 +563,9 @@ All four must hold. If one does not, no session starts.
 1. `pgrep -x Unity` prints nothing: no editor of the owner's, no batchmode run of an agent's, no
    bench.
 2. `pgrep -x Runner.Worker` prints nothing: the runner has no job in hand. Match the process name
-   with `-x`. A pattern matched against whole command lines (`pgrep -f`) also matches the shell that
-   runs the check, and closed a session of the evaluation for no reason.
+   with `-x`. On this Mac `pgrep` leaves out itself and its ancestors (`man pgrep`, `-a`), but a
+   pattern matched against whole command lines (`pgrep -f`) matches every other shell whose command
+   line holds the words, and closed a session of the evaluation for no reason.
 3. No run is queued or in progress:
 
    ```sh
@@ -605,8 +609,9 @@ the verdict. So does the owner. Nobody asks first.
 Measured on run [38262725056](https://github.com/DioPires/eternities-mtg-app/actions/runs/38262725056)
 (2026-10-12, another agent's pull request): the run was created at 14:24:51Z, `unity-bench-smoke`
 was the first of the four jobs to start, at 14:25:02Z, and its step "No other Unity process is
-running" ran at 14:25:09Z. A session therefore has seven seconds from the start of the job, and
-eighteen from the push, and the push may be any agent's.
+running" ran at 14:25:09Z. The step therefore first looks seven seconds after the start of the
+job, and eighteen after the push, and the push may be any agent's. It then gives a session up to
+15 minutes more to exit before the job fails.
 
 Three things stand between a session and that step, in this order:
 
@@ -615,11 +620,11 @@ Three things stand between a session and that step, in this order:
    session had been open.
 2. **The watch closes it** (A.3), within about three seconds of the job starting. This is the only
    one of the two that close a session that exists without the change of A.5.
-3. **The job fails**, exactly as `docs/ci-runner.md` section 3 says, if a `Unity` process is still
-   alive. The agent named in `session/issue` closes the session, re-runs the job with
-   `gh run rerun <run id> --failed`, and reports the run on its issue. An editor of the owner's or
-   a batchmode run of an agent's is never closed by the runner: for those the job fails as it
-   always has.
+3. **The job waits, then fails**, as `docs/ci-runner.md` section 3 says: it looks every 15 s, and
+   fails if a `Unity` process is still alive after 15 minutes. The agent named in `session/issue`
+   closes the session, re-runs the job with `gh run rerun <run id> --failed`, and reports the run
+   on its issue. An editor of the owner's or a batchmode run of an agent's is never closed by the
+   runner: the job waits for it to exit, and fails if it outlives 15 minutes.
 
 ### A.5 The change to the runner recipe, and its control
 
@@ -682,5 +687,6 @@ What was tried on 2026-10-12, and what was not:
 section 6: open a session; push a commit that touches `unity/` on a branch made for it; the job log
 of `unity-bench-smoke` shows the script's line "closing the bridge session" before the checkout; the
 session's editor is gone; the four jobs end `success`. Then the opposite: with an agent's ordinary
-batchmode run alive on a worktree, the same push ends with `unity-bench-smoke` failed on its own
-check, which shows the script closes nothing but a session.
+batchmode run alive on a worktree, the same push shows `unity-bench-smoke` waiting on its own
+check, with the run's pid in each wait line, which shows the script closes nothing but a session.
+The job fails only if that batchmode run outlives 15 minutes.

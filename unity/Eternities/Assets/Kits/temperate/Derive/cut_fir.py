@@ -7,9 +7,11 @@ The tool is Blender 5.2.2 LTS, run from the command line with no window (`cutlib
 Poly Haven publishes of the same fir has no texture coordinates.
 
 A fir as published is a trunk and boughs of bark, and its needles: every tuft of needles is a strip
-of four or eight triangles of its own, 44,000 to 812,000 tufts a tree, each showing one thin strip
-of the twig photograph. The same photograph holds seven sprays photographed whole, which the
-published model does not draw. This writes the fir as four meshes, `<fir>_LOD0` to `<fir>_LOD3`,
+of triangles of its own, each showing one thin strip of the twig photograph. A tall fir's tuft is
+four triangles and a sapling's eight. Counted as connected parts in the sources, `fir_tree_01_a`
+has 804,651 tufts and `fir_tree_01_b` 432,704; `fir_sapling_medium_a`, `_b` and `_c` have 70,052,
+43,154 and 43,850. The same photograph holds seven sprays photographed whole, which the published
+model does not draw. This writes the fir as four meshes, `<fir>_LOD0` to `<fir>_LOD3`,
 and beside the model a report of what it kept. No texture is read or written.
 
 What the cut does:
@@ -71,7 +73,8 @@ FIRS.update({
     } for fir in "ab"
 })
 
-# A cell with fewer tufts than this gets no card.
+# A cell with fewer triangles of tufts than this gets no card. This and `count` in `cards` count
+# triangles, not tufts: three triangles are less than one tuft.
 FEW = 3
 # A card is this many times as long as its cell is wide, so that neighbours overlap: a spray's
 # photograph is mostly air.
@@ -165,7 +168,8 @@ draws = np.random.default_rng(SEED)
 
 
 def gathered(width):
-    """The tufts by cell: for each cell with tufts enough, how many it holds and which they are."""
+    """The triangles of tufts by cell: the cells, the cell of each triangle, and how many triangles
+    each cell holds."""
     cell = np.floor(middle / width).astype(np.int64) + 4096
     key = (cell[:, 0] * 8192 + cell[:, 1]) * 8192 + cell[:, 2]
     cells, of, count = np.unique(key, return_inverse=True, return_counts=True)
@@ -209,7 +213,7 @@ def cards(budget):
     face /= np.maximum(np.linalg.norm(face, axis=1, keepdims=True), 1e-9)
     across = np.cross(face, along)
     spray = np.array(SPRAYS)[draws.integers(0, len(SPRAYS), k)]
-    # A cell with few tufts gets a smaller card than a full one.
+    # A cell with few triangles of tufts gets a smaller card than a full one.
     long = LONG * wide * np.clip((count / np.median(count)) ** (1 / 3), 0.75, 1.2)
     broad = long * (spray[:, 2] - spray[:, 0]) / (spray[:, 3] - spray[:, 1])
     base, tip = centre - 0.5 * long[:, None] * along, centre + 0.5 * long[:, None] * along
