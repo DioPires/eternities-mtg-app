@@ -4,5 +4,6 @@
   "expect": "layout",
   "productionPack": "a5846bec28d1447e",
   "productTables": true,
+  "tablesDigest": "sha256:59322664c8da5b437cf9c5c00a7126a12bdf0570c458cfd154a2680ee443b8d2",
   "heroVolumes": "volumes.json"
 }

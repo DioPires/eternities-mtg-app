@@ -15,7 +15,7 @@ The fixtures are the arbiter. `eternities layout fixtures --check` makes every f
 
 ## 1. Where the files stand
 
-`eternities layout build <slug>` writes one world's files into `unity/Eternities/Assets/StreamingAssets/data/<hash>/`, beside the copied v3 pack (4.13.1). Git ignores that directory. The committed copy of a world's files is its fixture (section 5).
+`eternities layout build <slug>` writes one world's files into `unity/Eternities/Assets/StreamingAssets/data/<hash>/`, beside the copied v3 pack (4.13.1), and only when the independent checker passes: the files go first to a temporary folder beside that directory and are then moved into place, so a build that the checker fails leaves no file there. Git ignores that directory. The committed copy of a world's files is its fixture (section 6).
 
 ```
 <out>/
@@ -29,7 +29,7 @@ The layout report and the checker's document are not part of the pack. The comma
 ## 2. Shared conventions
 
 - **Units.** Every length is a whole number of millimetres and every angle a whole number of micro-degrees (5.4.18 (1)). A position is `x`, `z` in the world frame: the plaza's centre is the origin and north is `+z`. A yaw is counter-clockwise from `+x`.
-- **Rounding.** A coordinate is the allocator's exact value rounded once, half away from zero (5.4.18 (3)). A polyline's vertices were rounded when the polyline was built (5.4.18 (5)).
+- **Rounding.** A coordinate is the allocator's exact world value rounded once, half away from zero (5.4.18 (3)). A site's shapes are built in the site's frame, so the exact value is moved by the site's centre first and then rounded: a local z of 6,519.5 mm at a centre z of −100,000 mm is emitted as −93,481, not as 6,520 − 100,000 = −93,480. A polyline's vertices were rounded when the polyline was built (5.4.18 (5)), and a whole coordinate (a polyline vertex, a pad's centre, a lattice point) is moved as it is.
 - **Arc length.** A polyline segment has the integer length `isqrt(dx² + dz²)`. The arc length to a vertex is the sum of the lengths before it. A reader that needs an arc length computes it this way.
 - **Discs.** A disc is the 72-gon of the trig table's directions of every 5 degrees times the radius (5.4.18 (13)). The files carry a disc as its centre; its radius is a constant of 5.4.1.
 - **The canonical JSON form.** A JSON file is one line: the keys of every object sorted by code point, no white space, non-ASCII text as itself in UTF-8, and one line feed at the end. This is the serialisation of Appendix F.2 (`eternities.lore.digest.canonical`), so one rule gives the acceptance digest and the pack's bytes.
@@ -128,10 +128,10 @@ Each fixture is a directory under `contract/test-vectors/v4/layout/`. Its manife
   failure.txt           # instead of the five outputs, for a fixture that must fail
 ```
 
-- `fixture.json`: `slug`; `productionPack` (a data hash under `web/public/data/`) or a `pack/` directory; `productTables` (true reads `pipeline/data/lore/<slug>/`) or `lore` (a directory inside the fixture); `loreFixture` (validate under `--fixture`, 5.4.14); `heroVolumes`; `expect` (`layout` or `failure`); `purpose`.
+- `fixture.json`: `slug`; `productionPack` (a data hash under `web/public/data/`) or a `pack/` directory; `productTables` (true reads `pipeline/data/lore/<slug>/`) or `lore` (a directory inside the fixture); `tablesDigest` (the Appendix F.2 digest of the tables read; a fixture that reads the product tables records it, and a run compares it before the layout and fails naming both digests); `loreFixture` (validate under `--fixture`, 5.4.14); `heroVolumes`; `expect` (`layout` or `failure`); `purpose`.
 - `check.json` is the independent checker's document: `result`, `violationCount`, `violations`, `assertions` (how many items each rule tested) and `figures` (the least distance between two stands, whether the path network is connected, and each site's three gaps and path length).
 - `failure.txt` is the failure's class and message, and one line feed.
-- `predicates/` holds the two predicate fixtures of 5.4.14 (the notch; the nested squares). Each is one document that states two shapes and the verdict, in a form both checkers read.
+- `predicates/` holds three predicate documents: the two predicate fixtures of 5.4.14 (the notch, `strip-inside-polygon`; the nested squares, `polygons-intersect`) and the notch vertex (`polygon-inside-polygon`: a square whose top edge runs across a notch whose sides meet two of its vertices is not inside). Each is one document that states two shapes, `verticesInside`, `edgeCrossings` (the pairs of edges that share a point, touching included) and the verdict, in a form both checkers read.
 - `pipeline/scripts/layout_fixture_inputs.py` writes the manifests and the synthetic inputs. `eternities layout fixtures` writes the outputs.
 
 **The hero-volumes file** is the minimal form for the fixture and for `--hero-volumes`. The owner's exporter is Wave 5.

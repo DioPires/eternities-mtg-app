@@ -96,6 +96,7 @@ The bounds of 5.4.10 are 18,000 mm, 18,000 mm and 10,000 mm.
 | apron-plaza | 0 |
 | apron-stone | 0 |
 | apron-volume | 0 |
+| card-plane | 2 |
 | card-set | 2 |
 | card-site | 2 |
 | card-stand | 4 |
@@ -150,6 +151,7 @@ The bounds of 5.4.10 are 18,000 mm, 18,000 mm and 10,000 mm.
 | stand-spacing | 0 |
 | stone-pad | 0 |
 | stone-path | 1 |
+| stone-place | 1 |
 | stone-plaza | 0 |
 | stone-stone | 0 |
 | stone-volume | 0 |

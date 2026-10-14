@@ -31,6 +31,8 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2] / "contract" / "test-vectors" / "v4" / "layout"
 PRODUCTION = "a5846bec28d1447e"
+DOMINARIA_TABLES = "sha256:59322664c8da5b437cf9c5c00a7126a12bdf0570c458cfd154a2680ee443b8d2"
+"""The digest of Dominaria's accepted tables (Appendix F.2); the owner accepted it on 2026-10-13."""
 SOURCE = "https://magic.wizards.com/en/story/fixture"
 
 
@@ -176,6 +178,7 @@ def production() -> None:
         "dominaria",
         productionPack=PRODUCTION,
         productTables=True,
+        tablesDigest=DOMINARIA_TABLES,
     )
     for slug, cards in (("rabiah", 75), ("zhalfir", 4), ("vryn", 2), ("shandalar", 1)):
         manifest(
@@ -192,6 +195,7 @@ def production() -> None:
         "dominaria",
         productionPack=PRODUCTION,
         productTables=True,
+        tablesDigest=DOMINARIA_TABLES,
         heroVolumes="volumes.json",
     )
 

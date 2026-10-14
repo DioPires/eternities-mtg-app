@@ -1,7 +1,8 @@
 """The allocator's predicates on filled shapes (PRD v4 5.4.18 (4), (10)).
 
 The checker has predicates of its own (``test_layout_check``). These are the allocator's, tested
-on the same two traps as the predicate fixtures of 5.4.14.
+on the same three traps as the predicate documents: the two predicate fixtures of 5.4.14 and the
+notch vertex.
 """
 
 from __future__ import annotations
@@ -214,18 +215,29 @@ PREDICATES = (
 )
 
 
-def test_the_allocators_predicates_judge_the_two_predicate_fixtures_as_the_checker_does():
-    # 5.4.14: the notch and the nested squares. The fixtures are for the two checkers; the
-    # allocator decides the same two cases with predicates of its own.
+@pytest.mark.parametrize("clearance", [1, MARGIN])
+def test_the_allocators_predicates_judge_the_three_predicate_documents_as_the_checker_does(
+    clearance: int,
+):
+    # 5.4.14 and DEC-1091 N19: the notch, the nested squares and the notch vertex. The documents
+    # are for the two checkers; the allocator decides the same cases with predicates of its own,
+    # at a clearance of 1 mm and at the margin of 2 mm.
     notch = json.loads((PREDICATES / "notch.json").read_text(encoding="utf-8"))
     blob = polygon([(x, z) for x, z in notch["polygon"]])
     line = [(x, z) for x, z in notch["polyline"]]
     assert notch["expected"] is False
     assert all(point_in_polygon(x, z, blob.pts) for x, z in line)
-    assert not inside(strip(line, notch["halfWidth"]), blob, 1)
+    assert not inside(strip(line, notch["halfWidth"]), blob, clearance)
     nested = json.loads((PREDICATES / "nested-squares.json").read_text(encoding="utf-8"))
     outer = polygon([(x, z) for x, z in nested["outer"]])
     inner = polygon([(x, z) for x, z in nested["inner"]])
     assert nested["expected"] is True
     assert touches(outer, inner) and touches(inner, outer)
-    assert not clear(outer, inner, 1)
+    assert not clear(outer, inner, clearance) and not clear(inner, outer, clearance)
+    vertex = json.loads((PREDICATES / "notch-vertex.json").read_text(encoding="utf-8"))
+    notched = polygon([(x, z) for x, z in vertex["outer"]])
+    held = polygon([(x, z) for x, z in vertex["inner"]])
+    assert vertex["expected"] is False
+    assert all(point_in_polygon(x, z, notched.pts) for x, z in held.pts)
+    assert not inside(held, notched, clearance)
+    assert touches(held, notched) and not clear(held, notched, clearance)

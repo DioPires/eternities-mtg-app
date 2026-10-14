@@ -28,11 +28,16 @@ polyline; a site's approach is the segment from its pad's centre to its approach
   the stand's cluster, ahead or behind. It need not be the nearest vertex.
 - *Withdrawn clusters* (the same ruling). No cluster has fewer than three stands, except a site's
   last cluster and a site of fewer than three stands.
-- *A polygon lies inside a polygon* (the footprint in the blob and in the cluster's disc) when
-  every vertex of the inner one lies inside the outer one, boundary counted inside, no edge of
-  the inner one crosses an edge of the outer one at a point interior to both, and no vertex of
-  the outer one lies strictly inside the inner one. 5.4.18 (10) gives the rule for a strip and
-  none for a polygon; this is the same rule with no half width.
+- *A polygon lies inside a polygon* (the footprint in the blob and in the cluster's disc, the
+  return pad in the plaza) by the exact rule of ``polygon_inside_polygon``: every vertex inside,
+  and the midpoint of every piece of an inner edge between the points where it meets the outer
+  boundary inside, boundary counted inside (CEO ruling on DEC-1004, 2026-10-14). 5.4.18 (10)
+  gives the rule for a strip; this is the rule for two filled polygons.
+- *The site stone's place* (5.4.8, invariant 9). The pad's centre is H + 1.5 m u_H, the approach
+  point H + 11.5 m u_H and the stone's centre H + 4 m u_H ± 3 m n_H, so the stone's centre lies
+  2,500 mm from the pad's centre along the direction to the approach point and 3,000 mm across
+  it, on either side. The three emitted points are each rounded once, so each figure is tested
+  within ``MARGIN``, as a point on a circle is.
 - *A chapter stone lies inside a cluster* when its centre, a lattice point, lies inside the disc
   of one of its site's clusters. A candidate lies up to 4.252 m from the cluster's centre
   (5.4.9), so the stone's own disc may pass the cluster's edge.
@@ -50,10 +55,13 @@ polyline; a site's approach is the segment from its pad's centre to its approach
   its approach and its stones' centres lie within the bounding radius less the half width or the
   radius of the shape, compared squared; the blob's vertices lie within the bounding radius.
 - *Whole words* (5.4.3). A keyword matches a face's name when the case-folded name holds the
-  case-folded keyword with a boundary on each side; a boundary is the string's end or a character
-  that is neither a letter nor a digit.
+  case-folded keyword with a boundary on each side; a boundary is the string's start or end, or a
+  code point whose Unicode general category is a separator (``Z*``) or punctuation (``P*``). A
+  letter, a digit, a combining mark, a symbol and a control character are not boundaries.
 - *Kit or hero.* A world checked with a lore document is a hero world, with era and regional
-  sites; one checked without is a kit world, with set sites. A record's set id is its card's.
+  sites; one checked without is a kit world, with set sites. A record's set id is its card's,
+  and its plane index is the world document's ``planeIndex`` (invariant 7: the stand stands in
+  the world of its plane).
 - *Regions* (invariant 11). A stand's centre lies inside the cell of its site's region, a site's
   region is a region of the world document, and an era site's region is its era's in the lore
   document. With invariant 7 this places every card in its keyword's region or its era's.
@@ -81,10 +89,12 @@ from __future__ import annotations
 
 import copy
 import struct
+import unicodedata
 import uuid
 from bisect import bisect_left, bisect_right, insort
 from collections.abc import Sequence
 from dataclasses import dataclass
+from functools import cmp_to_key
 from itertools import pairwise
 from math import isqrt
 from typing import Any, Final
@@ -116,6 +126,8 @@ from .constants import (
     PATH_HALF_WIDTH,
     PLAZA_EDGE_RADIUS,
     PLAZA_RADIUS,
+    STONE_ACROSS,
+    STONE_ALONG,
     STONE_RADIUS,
 )
 
@@ -142,6 +154,7 @@ RULES: Final = (
     "pad-list",
     "plaza-figures",
     # Invariant 7.
+    "card-plane",
     "card-stand",
     "card-set",
     "card-site",
@@ -167,6 +180,7 @@ RULES: Final = (
     "corridor-volume",
     "corridor-end",
     "pad-head",
+    "stone-place",
     "pad-plaza",
     "pad-pad",
     "pad-volume",
@@ -303,23 +317,6 @@ def segments_intersect(a: Pt, b: Pt, c: Pt, d: Pt) -> bool:
     return not ((side_c > 0 and side_d > 0) or (side_c < 0 and side_d < 0))
 
 
-def _cross_inside(a: Pt, b: Pt, c: Pt, d: Pt) -> bool:
-    """Whether ab and cd cross at one point interior to both."""
-    ax, az = a
-    fx = b[0] - ax
-    fz = b[1] - az
-    side_c = fx * (c[1] - az) - fz * (c[0] - ax)
-    side_d = fx * (d[1] - az) - fz * (d[0] - ax)
-    if not ((side_c > 0 and side_d < 0) or (side_c < 0 and side_d > 0)):
-        return False
-    cx, cz = c
-    ex = d[0] - cx
-    ez = d[1] - cz
-    side_a = ex * (az - cz) - ez * (ax - cx)
-    side_b = ex * (b[1] - cz) - ez * (b[0] - cx)
-    return (side_a > 0 and side_b < 0) or (side_a < 0 and side_b > 0)
-
-
 def _point_nearer(point: Pt, a: Pt, b: Pt, limit: int) -> bool:
     """Whether a point lies nearer to segment ab than the distance whose square is ``limit``."""
     ax, az = a
@@ -423,6 +420,11 @@ def _segments(polyline: Sequence[Pt]) -> list[tuple[Pt, Pt]]:
     return list(pairwise(polyline))
 
 
+def _edges(polygon: Sequence[Pt]) -> list[tuple[Pt, Pt]]:
+    """A polygon's edges, the closing edge first."""
+    return [(polygon[index - 1], polygon[index]) for index in range(len(polygon))]
+
+
 def polygons_intersect(a: Sequence[tuple[int, int]], b: Sequence[tuple[int, int]]) -> bool:
     """Two filled polygons intersect when an edge crosses an edge or a vertex of one lies inside
     the other, so a polygon nested in another intersects it (5.4.18 (10))."""
@@ -476,34 +478,91 @@ def strip_inside_polygon(
     return True
 
 
+def _order(first: tuple[int, int], second: tuple[int, int]) -> int:
+    """Compare two fractions (numerator, denominator), each denominator above zero."""
+    left = first[0] * second[1]
+    right = second[0] * first[1]
+    return (left > right) - (left < right)
+
+
+def _cuts(c: Pt, d: Pt, edges: Sequence[tuple[Pt, Pt]]) -> list[tuple[int, int]]:
+    """Where segment cd meets the given edges, as fractions of the way from c to d.
+
+    A crossing or a touch is one point. A shared stretch of two collinear segments gives its two
+    ends. Each fraction is (numerator, denominator) with the denominator above zero.
+    """
+    ex = d[0] - c[0]
+    ez = d[1] - c[1]
+    length = ex * ex + ez * ez
+    found: list[tuple[int, int]] = []
+    for a, b in edges:
+        if not segments_intersect(c, d, a, b):
+            continue
+        fx = b[0] - a[0]
+        fz = b[1] - a[1]
+        across = ex * fz - ez * fx
+        if across:
+            num = (a[0] - c[0]) * fz - (a[1] - c[1]) * fx
+            found.append((num, across) if across > 0 else (-num, -across))
+        else:
+            for px, pz in (a, b):
+                along = (px - c[0]) * ex + (pz - c[1]) * ez
+                found.append((min(max(along, 0), length), length))
+    return found
+
+
 def polygon_inside_polygon(
     inner: Sequence[tuple[int, int]], outer: Sequence[tuple[int, int]]
 ) -> bool:
-    """A polygon lies inside another by the reading of the module's docstring."""
+    """The filled polygon ``inner`` lies inside the filled polygon ``outer`` (5.4.18 (10)).
+
+    The rule, with the boundary counted inside: every vertex of the inner polygon lies inside the
+    outer polygon; each edge of the inner polygon is cut at every point where it meets the outer
+    polygon's boundary (an outer vertex on the edge, a crossing point, the two ends of a shared
+    stretch); and the midpoint of each piece lies inside the outer polygon. A piece meets the
+    outer boundary at its ends at most, so it lies wholly inside or wholly outside the outer
+    polygon, and its midpoint tells which. The inner boundary then lies in the filled outer
+    polygon. When the outer polygon is simple, as a blob, a 72-gon and the plaza are, the inner
+    polygon's interior does too: the outside of a simple polygon is connected and unbounded, and
+    it meets no point of the inner boundary. An edge that meets the outer boundary nowhere lies
+    inside, because its ends do. Exact: the cuts are fractions compared by cross-multiplication,
+    and a midpoint is tested against the outer polygon scaled by its denominator.
+    """
     if any(_locate(point, outer) == _OUT for point in inner):
         return False
     x0 = min(x for x, _ in inner)
     x1 = max(x for x, _ in inner)
     z0 = min(z for _, z in inner)
     z1 = max(z for _, z in inner)
-    a = outer[-1]
-    for b in outer:
-        bx, bz = b
-        # An outer edge wholly to one side of the inner polygon's box crosses none of its edges.
+    # An outer edge wholly to one side of the inner polygon's box meets none of its edges.
+    near = [
+        (a, b)
+        for a, b in _edges(outer)
         if not (
-            (a[0] < x0 and bx < x0)
-            or (a[0] > x1 and bx > x1)
-            or (a[1] < z0 and bz < z0)
-            or (a[1] > z1 and bz > z1)
-        ):
-            c = inner[-1]
-            for d in inner:
-                if _cross_inside(a, b, c, d):
-                    return False
-                c = d
-        if x0 < bx < x1 and z0 < bz < z1 and _locate(b, inner) == _IN:
-            return False
-        a = b
+            (a[0] < x0 and b[0] < x0)
+            or (a[0] > x1 and b[0] > x1)
+            or (a[1] < z0 and b[1] < z0)
+            or (a[1] > z1 and b[1] > z1)
+        )
+    ]
+    for c, d in _edges(inner):
+        if c == d:
+            continue
+        cuts = _cuts(c, d, near)
+        if not cuts:
+            continue
+        cuts.extend(((0, 1), (1, 1)))
+        cuts.sort(key=cmp_to_key(_order))
+        ex = d[0] - c[0]
+        ez = d[1] - c[1]
+        for first, second in pairwise(cuts):
+            if _order(first, second) == 0:
+                continue
+            num = first[0] * second[1] + second[0] * first[1]
+            den = 2 * first[1] * second[1]
+            middle = (den * c[0] + num * ex, den * c[1] + num * ez)
+            if _locate(middle, [(den * x, den * z) for x, z in outer]) == _OUT:
+                return False
     return True
 
 
@@ -529,6 +588,33 @@ def _on_circle(point: Pt, centre: Pt, radius: int) -> bool:
     low = max(radius - MARGIN, 0)
     high = radius + MARGIN
     return low * low <= apart <= high * high
+
+
+_STONE_AHEAD: Final = STONE_ALONG - PAD_RADIUS
+"""From the pad's centre to the site stone's centre along the approach (5.4.8): 2,500 mm."""
+
+
+def _near_figure(product: int, figure: int, square: int) -> bool:
+    """Whether ``product`` / sqrt(``square``) lies within ``MARGIN`` of ``figure``, compared
+    squared; ``product`` must not be negative."""
+    low = max(figure - MARGIN, 0)
+    high = figure + MARGIN
+    return product >= 0 and low * low * square <= product * product <= high * high * square
+
+
+def _beside_approach(stone: Pt, pad: Pt, approach: Pt) -> bool:
+    """Whether a site stone stands where 5.4.8 puts it beside its pad's approach (the module's
+    docstring): the distance along the approach and across it, each within ``MARGIN``."""
+    dx = approach[0] - pad[0]
+    dz = approach[1] - pad[1]
+    square = dx * dx + dz * dz
+    if not square:
+        return False
+    wx = stone[0] - pad[0]
+    wz = stone[1] - pad[1]
+    along = wx * dx + wz * dz
+    across = abs(dx * wz - dz * wx)
+    return _near_figure(along, _STONE_AHEAD, square) and _near_figure(across, STONE_ACROSS, square)
 
 
 def _scaled(points: Sequence[Pt]) -> tuple[Pt, ...]:
@@ -713,6 +799,7 @@ class _Record:
     index: int
     """The stand index: the record's position in ``stands.bin``."""
     oracle: bytes
+    plane: int
     mask: int
     colour_class: int
     site: int
@@ -778,6 +865,7 @@ class _Leg:
 
 @dataclass(frozen=True, slots=True)
 class _World:
+    plane_index: int
     stand_count: int
     plaza_radius: int
     plaza_edge: int
@@ -894,6 +982,7 @@ def _read_world(world: dict[str, Any]) -> _World:
     approach = plaza["approach"]
     stands = world["stands"]
     return _World(
+        plane_index=_whole(world["planeIndex"]),
         stand_count=_whole(world["standCount"]),
         plaza_radius=_whole(plaza["radius"]),
         plaza_edge=_whole(plaza["edgeRadius"]),
@@ -982,6 +1071,7 @@ def _decode(data: bytes, report: _Report) -> list[_Record] | None:
             _Record(
                 index=index,
                 oracle=fields[0],
+                plane=fields[1],
                 mask=fields[2],
                 colour_class=fields[3],
                 site=fields[7],
@@ -1074,6 +1164,11 @@ class _Sets:
         self.parent[self.find(a)] = self.find(b)
 
 
+def _splits_words(char: str) -> bool:
+    """Whether a code point is a word boundary of 5.4.3: a separator or punctuation."""
+    return unicodedata.category(char)[0] in "ZP"
+
+
 def _holds_word(text: str, word: str) -> bool:
     """Whether case-folded ``text`` holds case-folded ``word`` as a whole word (5.4.3)."""
     if not word:
@@ -1081,8 +1176,8 @@ def _holds_word(text: str, word: str) -> bool:
     start = text.find(word)
     while start >= 0:
         end = start + len(word)
-        if (start == 0 or not text[start - 1].isalnum()) and (
-            end == len(text) or not text[end].isalnum()
+        if (start == 0 or _splits_words(text[start - 1])) and (
+            end == len(text) or _splits_words(text[end])
         ):
             return True
         start = text.find(word, start + 1)
@@ -1481,6 +1576,15 @@ class _Checker:
 
     def cards_and_sites(self) -> None:
         report = self.report
+        plane = self.world.plane_index
+        for stand in self.stands:
+            report.tested("card-plane")
+            if stand.record.plane != plane:
+                report.fail(
+                    "card-plane",
+                    f"{stand.name} records plane index {stand.record.plane}; the world file is "
+                    f"the world of plane index {plane}",
+                )
         held: dict[str, list[_Stand]] = {}
         for stand in self.stands:
             held.setdefault(stand.oracle, []).append(stand)
@@ -1547,9 +1651,9 @@ class _Checker:
         key = site.key
 
         def held(what: str, points: Sequence[Pt], less: int) -> None:
-            report.tested("site-bounds", len(points))
             bound = site.bounding - less
             for index, point in enumerate(points):
+                report.tested("site-bounds")
                 apart = _squared(point, site.centre)
                 if bound < 0 or apart > bound * bound:
                     which = f" (vertex {index})" if len(points) > 1 else ""
@@ -1584,6 +1688,14 @@ class _Checker:
                 f"the path of site {key} begins at {site.path[0]}, "
                 f"{isqrt(_squared(site.path[0], site.pad))} mm from its pad's centre {site.pad}; "
                 f"a path begins on its pad's edge, {PAD_RADIUS} mm from the centre",
+            )
+        report.tested("stone-place")
+        if not _beside_approach(site.stone, site.pad, site.approach):
+            report.fail(
+                "stone-place",
+                f"the stone of site {key} at {site.stone} does not stand {_STONE_AHEAD} mm from "
+                f"its pad's centre {site.pad} towards its approach point {site.approach} and "
+                f"{STONE_ACROSS} mm to one side",
             )
         report.tested("approach-length")
         if not _on_circle(site.approach, site.pad, APPROACH_LENGTH):
@@ -2213,14 +2325,11 @@ def check_world(
 
 STRIP_INSIDE_POLYGON: Final = "strip-inside-polygon"
 POLYGONS_INTERSECT: Final = "polygons-intersect"
+POLYGON_INSIDE_POLYGON: Final = "polygon-inside-polygon"
 
 
 def _crossings(first: Sequence[tuple[Pt, Pt]], second: Sequence[tuple[Pt, Pt]]) -> int:
     return sum(1 for a, b in first for c, d in second if segments_intersect(a, b, c, d))
-
-
-def _edges(polygon: Sequence[Pt]) -> list[tuple[Pt, Pt]]:
-    return [(polygon[index - 1], polygon[index]) for index in range(len(polygon))]
 
 
 def check_predicates(document: dict[str, Any]) -> list[str]:
@@ -2228,8 +2337,10 @@ def check_predicates(document: dict[str, Any]) -> list[str]:
 
     A fixture is one object: ``predicate`` names the rule; ``polyline``, ``halfWidth`` and
     ``polygon`` (a strip in a polygon) or ``outer`` and ``inner`` (two polygons) are the shapes,
-    in whole millimetres; ``verticesInside`` and ``edgeCrossings`` are the two facts that make it
-    a trap; ``expected`` is the predicate's verdict. The list is empty when all three hold.
+    in whole millimetres; ``verticesInside`` (every vertex of the polyline or of the inner polygon
+    lies inside the other shape) and ``edgeCrossings`` (the pairs of edges that share a point,
+    touching included) are the two facts that make it a trap; ``expected`` is the predicate's
+    verdict. The list is empty when all three hold.
     """
     try:
         predicate = document["predicate"]
@@ -2245,6 +2356,12 @@ def check_predicates(document: dict[str, Any]) -> list[str]:
             inside = all(point_in_polygon(point, outer) for point in inner)
             crossings = _crossings(_edges(outer), _edges(inner))
             verdict = polygons_intersect(outer, inner)
+        elif predicate == POLYGON_INSIDE_POLYGON:
+            outer = _points(document["outer"], 3, "the outer polygon")
+            inner = _points(document["inner"], 3, "the inner polygon")
+            inside = all(point_in_polygon(point, outer) for point in inner)
+            crossings = _crossings(_edges(outer), _edges(inner))
+            verdict = polygon_inside_polygon(inner, outer)
         else:
             return [f"the predicate {predicate!r} is not one this checker has"]
         stated = (document["verticesInside"], document["edgeCrossings"], document["expected"])

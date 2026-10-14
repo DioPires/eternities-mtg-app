@@ -13,13 +13,18 @@ The manifest's fields:
   ``web/public/data/<hash>/``; or ``pack``: a synthetic contract v3 pack inside the fixture.
 - ``productTables``: true to read the entry's tables from ``pipeline/data/lore/<slug>/``; or
   ``lore``: a directory inside the fixture, named for the slug; neither for the kit law.
+- ``tablesDigest``: the digest of Appendix F.2 of the tables the fixture reads. A fixture that
+  reads the product tables records it, and every run compares it with the tables' digest before
+  the layout, so a changed table fails naming both digests, not as a difference of bytes.
 - ``loreFixture``: true to validate the tables under ``--fixture`` (5.4.14).
 - ``heroVolumes``: a hero-volumes file inside the fixture, or null.
 - ``expect``: ``layout`` or ``failure``.
 - ``purpose``: one sentence for the reader.
 
-The two predicate fixtures of 5.4.14 stand in ``predicates/`` and have no manifest: each is one
-document that the checker's own predicates must judge as the document says.
+The predicate documents stand in ``predicates/`` and have no manifest: the two predicate
+fixtures of 5.4.14 (the notch; the nested squares) and the notch vertex, a polygon whose top edge
+runs across a notch (CEO ruling on DEC-1004, 2026-10-14). Each is one document that the checker's
+own predicates must judge as the document says.
 """
 
 from __future__ import annotations
@@ -30,6 +35,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final, cast
 
+from ..lore import DigestError, digest_of_directory
 from . import build, check, emit, report, trig
 from .exact import Directions
 
@@ -85,6 +91,23 @@ def _load(directory: Path) -> Fixture:
         lore = PRODUCT_TABLES / slug
     elif manifest.get("lore"):
         lore = directory / str(manifest["lore"])
+    recorded = manifest.get("tablesDigest")
+    if manifest.get("productTables") and recorded is None:
+        raise FixtureError(
+            f"fixture {name}: a fixture that reads the product tables records their `tablesDigest`"
+        )
+    if recorded is not None:
+        if lore is None:
+            raise FixtureError(f"fixture {name}: `tablesDigest` is given and no tables are read")
+        try:
+            computed = digest_of_directory(lore)
+        except DigestError as error:
+            raise FixtureError(f"fixture {name}: the tables cannot be read ({error})") from None
+        if computed != recorded:
+            raise FixtureError(
+                f"fixture {name}: the tables under {lore.name} have the digest {computed}; the "
+                f"manifest records {recorded}"
+            )
     volumes = manifest.get("heroVolumes")
     return Fixture(
         name=name,
@@ -187,7 +210,7 @@ def write(fixture: Fixture, produced: dict[str, bytes]) -> None:
 
 
 def predicate_failures(root: Path = PREDICATES) -> list[str]:
-    """The predicate fixtures of 5.4.14 that the checker's predicates judge otherwise."""
+    """The predicate documents that the checker's predicates judge otherwise."""
     found: list[str] = []
     for path in sorted(root.glob("*.json")):
         document = cast("dict[str, Any]", json.loads(path.read_text(encoding="utf-8")))

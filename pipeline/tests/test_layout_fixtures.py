@@ -67,6 +67,7 @@ def test_every_fixture_in_scope_is_committed_with_its_manifest():
     assert all(fixture.purpose.endswith(".") for fixture in found().values())
     assert sorted(path.name for path in fixtures.PREDICATES.glob("*.json")) == [
         "nested-squares.json",
+        "notch-vertex.json",
         "notch.json",
     ]
 
@@ -299,6 +300,44 @@ def test_a_manifest_that_cannot_be_used_fails_naming_the_fixture(
         fixtures.discover(tmp_path)
 
 
+def test_a_changed_digest_of_the_product_tables_fails_naming_both_digests(tmp_path: Path):
+    # Departure 2 of pull request 1 (DEC-1091, B1): the manifest records the tables' digest, and
+    # a run compares it before the layout.
+    accepted = "sha256:59322664c8da5b437cf9c5c00a7126a12bdf0570c458cfd154a2680ee443b8d2"
+    for name in ("dominaria", "dominaria-hero-volumes"):
+        assert (
+            json.loads((found()[name].directory / "fixture.json").read_text("utf-8"))[
+                "tablesDigest"
+            ]
+            == accepted
+        )
+    directory = tmp_path / "dominaria"
+    directory.mkdir()
+    manifest = json.loads((found()["dominaria"].directory / "fixture.json").read_text("utf-8"))
+    changed = "sha256:" + "0" * 64
+    (directory / "fixture.json").write_text(
+        json.dumps({**manifest, "tablesDigest": changed}), encoding="utf-8"
+    )
+    with pytest.raises(FixtureError) as raised:
+        fixtures.discover(tmp_path)
+    assert str(raised.value) == (
+        f"fixture dominaria: the tables under dominaria have the digest {accepted}; the manifest "
+        f"records {changed}"
+    )
+    # A fixture that reads the product tables and records no digest cannot be used.
+    del manifest["tablesDigest"]
+    (directory / "fixture.json").write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(FixtureError, match="records their `tablesDigest`"):
+        fixtures.discover(tmp_path)
+    # A digest with no tables to compare it with cannot be used either.
+    shandalar = json.loads((found()["shandalar"].directory / "fixture.json").read_text("utf-8"))
+    (directory / "fixture.json").write_text(
+        json.dumps({**shandalar, "tablesDigest": accepted}), encoding="utf-8"
+    )
+    with pytest.raises(FixtureError, match="no tables are read"):
+        fixtures.discover(tmp_path)
+
+
 def test_the_fixtures_command_checks_and_names_a_difference(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ):
@@ -320,3 +359,23 @@ def test_the_fixtures_command_checks_and_names_a_difference(
     assert cli.main(["layout", "fixtures", "shandalar"]) == 0
     assert "shandalar: 4 files, written" in capsys.readouterr().out
     assert cli.main(["layout", "fixtures", "--check", "shandalar"]) == 0
+
+
+def test_the_hero_volume_moves_the_dark_and_the_leg_keeps_its_distance():
+    # The CEO's ruling on the re-centred volume (DEC-1091): the site's two centres, and the leg
+    # from `era:brothers-war` keeps at least 8,618 mm from the volume in the world with it.
+    from eternities.layout.geometry import clear, polygon, strip
+
+    free, held = world("dominaria"), world("dominaria-hero-volumes")
+    (volume,) = held["heroVolumes"]
+    centre = {site["key"]: site["centre"] for site in free["sites"]}
+    moved = {site["key"]: site["centre"] for site in held["sites"]}
+    assert (centre["era:the-dark"], moved["era:the-dark"]) == (
+        [240_000, -90_000],
+        [420_000, -70_000],
+    )
+    leg = next(leg for leg in held["trail"]["legs"] if leg["to"] == "era:the-dark")
+    assert leg["from"] == "era:brothers-war"
+    line = strip([tuple(point) for point in leg["polyline"]], 0)
+    square = polygon([tuple(point) for point in volume["polygon"]])
+    assert clear(line, square, 8_618) and not clear(line, square, 8_619)

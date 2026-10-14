@@ -31,6 +31,7 @@ from eternities.layout.constants import (
     CORRIDOR_ARC_WINDOW,
     FOOTPRINT_DEPTH,
     FOOTPRINT_WIDTH,
+    GAP_BETWEEN,
     GAP_TO_END,
     GAP_TO_FIRST,
     JITTER_RADIUS,
@@ -278,6 +279,23 @@ def test_a_polygon_inside_a_polygon():
     )
 
 
+def test_a_polygon_inside_a_polygon_is_decided_on_the_filled_shapes():
+    # 5.4.18 (10) and the CEO's ruling on DEC-1091, B6. The notch's sides meet the square at two
+    # of its vertices and the notch takes the top of the square: (5, 8) lies in the square and
+    # outside the outer polygon.
+    assert not check.polygon_inside_polygon(
+        SQUARE, [(-5, -5), (15, -5), (15, 15), (10, 15), (10, 5), (0, 5), (0, 15), (-5, 15)]
+    )
+    # The boundary counts inside: a square that shares an edge with the outer polygon, and one
+    # with a vertex on an outer edge, lie inside it.
+    assert check.polygon_inside_polygon(SQUARE, [(-5, 0), (15, 0), (15, 15), (-5, 15)])
+    assert check.polygon_inside_polygon(SQUARE, [(-5, -5), (15, -5), (15, 5), (5, 15), (-5, 15)])
+    # A notch whose tip touches the square's top edge from outside leaves the square inside.
+    assert check.polygon_inside_polygon(
+        SQUARE, [(-5, -5), (15, -5), (15, 15), (10, 15), (5, 10), (0, 15), (-5, 15)]
+    )
+
+
 def test_arc_lengths_are_sums_of_integer_roots():
     assert check.arc_lengths([(0, 0), (3, 4), (3, 14), (4, 15)]) == [0, 5, 15, 16]
     assert check.arc_lengths([(7, 7)]) == [0]
@@ -323,17 +341,31 @@ def test_a_keyword_matches_a_whole_word_of_any_face():
     assert check.selected_keyword(("Shiv2",), table) is None
 
 
-def test_the_two_predicate_fixtures_hold_and_are_in_canonical_form():
-    for name in ("notch.json", "nested-squares.json"):
+def test_a_word_boundary_is_a_separator_or_punctuation():
+    # 5.4.3, by Unicode general category (the CEO's ruling on DEC-1091, B3). A combining acute
+    # (U+0301) and a plus sign join the word; an apostrophe, an em dash (U+2014) and a no-break
+    # space (U+00A0) end it.
+    table = [("Benalia", "north")]
+    for name in ("Benalia\u0301n Knight", "Benalia+n Knight"):
+        assert check.selected_keyword((name,), table) is None
+    for name in ("Benalia's Knight", "Benalia\u2014Knight", "Benalia\u00a0Knight"):
+        assert check.selected_keyword((name,), table) == ("Benalia", "north")
+
+
+def test_the_three_predicate_fixtures_hold_and_are_in_canonical_form():
+    crossings = {"notch.json": 0, "nested-squares.json": 0, "notch-vertex.json": 6}
+    for name, count in crossings.items():
         text = (PREDICATES / name).read_text(encoding="utf-8")
         document = json.loads(text)
         assert check.check_predicates(document) == []
         assert document["verticesInside"] is True
-        assert document["edgeCrossings"] == 0
+        assert document["edgeCrossings"] == count
         canonical = json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
         assert text == canonical + "\n"
     assert json.loads((PREDICATES / "notch.json").read_text())["expected"] is False
     assert json.loads((PREDICATES / "nested-squares.json").read_text())["expected"] is True
+    vertex = json.loads((PREDICATES / "notch-vertex.json").read_text())
+    assert (vertex["predicate"], vertex["expected"]) == ("polygon-inside-polygon", False)
 
 
 def test_a_predicate_fixture_that_states_otherwise_is_reported():
@@ -345,6 +377,14 @@ def test_a_predicate_fixture_that_states_otherwise_is_reported():
     assert len(check.check_predicates({**document, "halfWidth": 1_000})) == 1
     assert len(check.check_predicates({**document, "predicate": "other"})) == 1
     assert len(check.check_predicates({"predicate": "polygons-intersect"})) == 1
+    document = json.loads((PREDICATES / "notch-vertex.json").read_text(encoding="utf-8"))
+    assert len(check.check_predicates({**document, "expected": True})) == 1
+    # Without the notch the square is inside, and the fixture is wrong.
+    whole = [[-5_000, -5_000], [15_000, -5_000], [15_000, 15_000], [-5_000, 15_000]]
+    assert check.check_predicates({**document, "outer": whole}) == [
+        "edgeCrossings is stated 6 and is 0",
+        "polygon-inside-polygon is expected False and is True",
+    ]
 
 
 def test_the_checker_shares_only_the_constants_and_the_trig_table_with_the_allocator():
@@ -384,6 +424,14 @@ def rabiah() -> tuple[bytes, dict[str, Any], tuple[CheckedCard, ...]]:
         for c in built.plane.cards
     )
     assert built.emitted.lore is None
+    return (built.emitted.stands_bin, json.loads(json.dumps(built.emitted.world)), cards)
+
+
+@cache
+def shandalar() -> tuple[bytes, dict[str, Any], tuple[CheckedCard, ...]]:
+    """Shandalar's emitted bytes, its world document and its card list: one stand."""
+    built = build.build_world("shandalar", PACK, build.load_directions())
+    cards = tuple(CheckedCard(c.oracle_id, c.set_id, (c.name,)) for c in built.plane.cards)
     return (built.emitted.stands_bin, json.loads(json.dumps(built.emitted.world)), cards)
 
 
@@ -609,7 +657,7 @@ def test_the_other_exclusions_of_invariant_9_are_asserted():
     result = run(rows, world, cards)
     assert any(f"stand {owner} " in line for line in under(result, "corridor-stone"))
     world["sites"][0]["stone"].update(x=0, z=PLAZA_EDGE_RADIUS - 100)
-    assert rules(run(rows, world, cards)) == {"stone-plaza", "site-bounds"}
+    assert rules(run(rows, world, cards)) == {"stone-plaza", "site-bounds", "stone-place"}
     # The return pad across the plaza's edge, and a plaza of another size.
     rows, world, cards = fresh()
     world["pads"][0]["z"] = -(PLAZA_RADIUS - 1_000)
@@ -622,6 +670,48 @@ def test_the_other_exclusions_of_invariant_9_are_asserted():
     rows, world, cards = fresh()
     world["sites"][0]["approachPoint"][0] += 5
     assert {"approach-length", "trail-leg", "site-reached"} <= rules(run(rows, world, cards))
+
+
+def test_a_record_of_another_plane_is_reported():
+    # Invariant 7: a stand stands in the world of its plane (DEC-1091, B5).
+    rows, world, cards = fresh()
+    assert {row[1] for row in rows} == {world["planeIndex"]} == {66}
+    rows[0][1] = 255
+    result = run(rows, world, cards)
+    assert rules(result) == {"card-plane"}
+    (line,) = under(result, "card-plane")
+    assert line.startswith("card-plane: stand 0 (")
+    assert "records plane index 255; the world file is the world of plane index 66" in line
+
+
+def test_the_site_stone_stands_beside_its_approach():
+    # 5.4.8 and invariant 9 (DEC-1091, B7): the stone's centre lies 2,500 mm from the pad's centre
+    # towards the approach point and 3,000 mm to one side, each within the 2 mm of rounding.
+    data, document, cards = shandalar()
+    rows = rows_of(data)
+    world = copy.deepcopy(document)
+    (site,) = world["sites"]
+    stone = site["stone"]
+    assert (stone["x"], stone["z"]) == (-24_274, -44_981)
+    assert run(rows, world, list(cards)).ok
+    stone["z"] = -39_981
+    (line,) = under(run(rows, world, list(cards)), "stone-place")
+    assert line == (
+        f"stone-place: the stone of site {site['key']} at (-24274, -39981) does not stand 2500 mm "
+        f"from its pad's centre ({site['pad']['x']}, {site['pad']['z']}) towards its approach "
+        f"point {tuple(site['approachPoint'])} and 3000 mm to one side"
+    )
+    # Mirrored across the approach's line, and rounded half away from zero: the other side.
+    pad = (site["pad"]["x"], site["pad"]["z"])
+    dx, dz = site["approachPoint"][0] - pad[0], site["approachPoint"][1] - pad[1]
+    wx, wz = -24_274 - pad[0], -44_981 - pad[1]
+    along = Fraction(wx * dx + wz * dz, dx * dx + dz * dz)
+    mirrored = [pad[0] + 2 * along * dx - wx, pad[1] + 2 * along * dz - wz]
+    stone["x"], stone["z"] = (
+        int(value + (1 if value > 0 else -1) * Fraction(1, 2)) for value in mirrored
+    )
+    assert (stone["x"], stone["z"]) == (-27_095, -50_275)
+    assert "stone-place" not in rules(run(rows, world, list(cards)))
 
 
 def test_a_record_with_a_site_index_out_of_range_is_reported():
@@ -1043,3 +1133,39 @@ def test_a_keyword_of_another_region_sends_a_card_to_that_regions_site():
     # The era's region is the lore document's.
     lore["eras"][0]["region"] = "far"
     assert "site-region" in rules(run(rows, world, cards, lore))
+
+
+# --- DEC-1091 kill cases (C3, C5) -------------------------------------------------------------
+
+
+def test_the_corridor_window_is_six_metres_to_the_millimetre():
+    # 5.4.9 and 5.4.10: a path vertex 6,000 mm from its slot along the path is in the window, and
+    # 6,001 mm is not, on either side of the slot.
+    rows, world, cards = fresh()
+    clusters = world["sites"][0]["clusters"]
+    index = members(rows, 0)[0]
+    arc = world["stands"]["arc"][index]
+
+    def named() -> bool:
+        lines = under(run(rows, world, cards), "corridor-window")
+        return any(f"stand {index} " in line for line in lines)
+
+    for slot, outside in (
+        (arc - CORRIDOR_ARC_WINDOW, False),
+        (arc - CORRIDOR_ARC_WINDOW - 1, True),
+        (arc + CORRIDOR_ARC_WINDOW, False),
+        (arc + CORRIDOR_ARC_WINDOW + 1, True),
+    ):
+        clusters[0]["arc"] = slot
+        assert named() is outside
+
+
+def test_two_clusters_more_than_eighteen_metres_apart_are_reported():
+    # 5.4.10: at most 18,000 mm between consecutive occupied slots; 18,001 mm is a violation.
+    rows, world, cards = fresh()
+    clusters = world["sites"][0]["clusters"]
+    clusters[1]["arc"] = clusters[0]["arc"] + GAP_BETWEEN
+    assert "gap-between" not in rules(run(rows, world, cards))
+    clusters[1]["arc"] = clusters[0]["arc"] + GAP_BETWEEN + 1
+    (line,) = under(run(rows, world, cards), "gap-between")
+    assert "clusters 0 and 1 of site" in line and f"{GAP_BETWEEN + 1} mm apart" in line
