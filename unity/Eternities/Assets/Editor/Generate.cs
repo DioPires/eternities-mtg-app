@@ -411,7 +411,11 @@ namespace Eternities.EditorTools
                 {
                     throw new InvalidDataException($"{file} is not a picture");
                 }
-                // The smallest level of a picture is its mean.
+                // The smallest level of a picture is about its mean, a little under it: each level of
+                // the mip chain cuts its mean down to a whole number. For `ground037_rough_1k.jpg` it
+                // reads a roughness of 113 of 255 where the file's mean is 118.0: about 0.02 more
+                // smoothness than the file has. At a range of 1, the cap of 0.25 (`GroundGloss`) is
+                // therefore about 0.23 of true gloss, and the test errs to the strict side.
                 Color32 mean = mask.GetPixels32(mask.mipmapCount - 1)[0];
                 float smoothness = 1 - (Path.GetFileName(file).Contains("_arm_") ? mean.g : mean.r) / 255f;
                 return Mathf.Lerp(layer.maskMapRemapMin.w, layer.maskMapRemapMax.w, smoothness);

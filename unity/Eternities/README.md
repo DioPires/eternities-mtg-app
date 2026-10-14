@@ -196,7 +196,8 @@ one's first lines say what its cut does.
   and of the cards one in so many stays, made larger. A tree comes out as four levels of about
   59,000, 10,000, 1,900 and 450 triangles, a bush as three of up to 10,000, 1,900 and 380.
 - **`cut_fir.py`** cuts a fir, from its glTF: the FBX of a Poly Haven fir has no texture
-  coordinates. A fir's needles are tufts of four or eight triangles each, up to 812,000 a tree.
+  coordinates. A fir's needles are tufts of four triangles each on a tall fir and eight on a
+  sapling: 804,651 and 432,704 tufts on the two tall firs, 43,154 to 70,052 on the three saplings.
   The tufts are gathered by place, and the tufts of a cell become one card that shows one of the
   seven sprays photographed in the fir's own texture, which the published model does not draw.
   Where the seven are in the photograph is a table in the script, `SPRAYS`; `sprays.py` measures
