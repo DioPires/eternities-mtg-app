@@ -1,0 +1,24 @@
+{
+  "plane": "eldraine",
+  "kind": "lore",
+  "eras": [
+    {
+      "id": "courts",
+      "name": "Courts",
+      "years": "Long before the first war",
+      "region": "near",
+      "sets": [
+        "el1"
+      ],
+      "headline": [],
+      "paragraphs": [
+        [
+          {
+            "text": "The first people came by sea.",
+            "source": "https://magic.wizards.com/en/story/fixture"
+          }
+        ]
+      ]
+    }
+  ]
+}

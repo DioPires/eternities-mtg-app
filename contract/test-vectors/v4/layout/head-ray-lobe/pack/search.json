@@ -1,0 +1,11 @@
+{
+  "contractVersion": 3,
+  "sets": [
+    {
+      "id": 1,
+      "code": "ha1",
+      "name": "Fixture set ha1",
+      "year": 2001
+    }
+  ]
+}
