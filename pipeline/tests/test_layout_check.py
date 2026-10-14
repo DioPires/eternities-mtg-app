@@ -684,7 +684,7 @@ def test_a_record_of_another_plane_is_reported():
     assert "records plane index 255; the world file is the world of plane index 66" in line
 
 
-def test_the_site_stone_stands_beside_its_approach():
+def test_a_site_stone_moved_off_its_place_is_reported():
     # 5.4.8 and invariant 9 (DEC-1091, B7): the stone's centre lies 2,500 mm from the pad's centre
     # towards the approach point and 3,000 mm to one side, each within the 2 mm of rounding.
     data, document, cards = shandalar()
@@ -701,6 +701,15 @@ def test_the_site_stone_stands_beside_its_approach():
         f"from its pad's centre ({site['pad']['x']}, {site['pad']['z']}) towards its approach "
         f"point {tuple(site['approachPoint'])} and 3000 mm to one side"
     )
+
+
+def test_a_site_stone_mirrored_across_its_approach_is_in_its_place():
+    # 5.4.8 and invariant 9 (DEC-1091, B7): either side of the approach is the stone's place.
+    data, document, cards = shandalar()
+    rows = rows_of(data)
+    world = copy.deepcopy(document)
+    (site,) = world["sites"]
+    stone = site["stone"]
     # Mirrored across the approach's line, and rounded half away from zero: the other side.
     pad = (site["pad"]["x"], site["pad"]["z"])
     dx, dz = site["approachPoint"][0] - pad[0], site["approachPoint"][1] - pad[1]
