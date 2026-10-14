@@ -519,14 +519,16 @@ def polygon_inside_polygon(
     The rule, with the boundary counted inside: every vertex of the inner polygon lies inside the
     outer polygon; each edge of the inner polygon is cut at every point where it meets the outer
     polygon's boundary (an outer vertex on the edge, a crossing point, the two ends of a shared
-    stretch); and the midpoint of each piece lies inside the outer polygon. A piece meets the
-    outer boundary at its ends at most, so it lies wholly inside or wholly outside the outer
-    polygon, and its midpoint tells which. The inner boundary then lies in the filled outer
-    polygon. When the outer polygon is simple, as a blob, a 72-gon and the plaza are, the inner
-    polygon's interior does too: the outside of a simple polygon is connected and unbounded, and
-    it meets no point of the inner boundary. An edge that meets the outer boundary nowhere lies
-    inside, because its ends do. Exact: the cuts are fractions compared by cross-multiplication,
-    and a midpoint is tested against the outer polygon scaled by its denominator.
+    stretch); and the midpoint of each piece lies inside the outer polygon. Each piece either runs
+    along the outer boundary, between the two ends of a shared stretch, or meets the boundary at
+    its ends at most and so lies wholly inside or wholly outside the outer polygon; in both cases
+    its midpoint tells which, the boundary counted inside. The inner boundary then lies in the
+    filled outer polygon. When the outer polygon is simple, as a blob, a 72-gon and the plaza are,
+    the inner polygon's interior does too: the outside of a simple polygon is connected and
+    unbounded, and it meets no point of the inner boundary. An edge that meets the outer boundary
+    nowhere lies inside, because its ends do, and an edge of zero length is skipped: its point is
+    a vertex, tested already. Exact: the cuts are fractions compared by cross-multiplication, and
+    a midpoint is tested against the outer polygon scaled by its denominator.
     """
     if any(_locate(point, outer) == _OUT for point in inner):
         return False

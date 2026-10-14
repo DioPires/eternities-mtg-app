@@ -664,3 +664,34 @@ def test_layout_build_fails_naming_the_subject(tmp_path: Path, capsys: pytest.Ca
     assert not (tmp_path / "stands.bin").exists()
     assert cli.main(["layout", "build", "atlantis", "--out", str(tmp_path)]) == 1
     assert "has no plane 'atlantis'" in capsys.readouterr().err
+
+
+# --- DEC-1091 delta re-read 1, kill case (D8 at the stands, the site stone and the clusters) ---
+
+
+def test_the_stands_the_site_stone_and_the_cluster_centres_round_the_world_value():
+    # 5.4.18 (3) at the three places of B4 where no fixture holds a tie (DEC-1091 delta re-read
+    # 1): a site-frame value that ends in half a millimetre and moves to a world value of the
+    # other sign is rounded half away from zero in the world, to 1 mm and not to 0.
+    from dataclasses import replace
+
+    built = rabiah()
+    site = built.layout.sites[0]
+    cx = site.centre[0]
+    assert cx != 0
+    sign = 1 if cx > 0 else -1
+    half = sign * SCALE // 2 - cx * SCALE
+    stand = replace(site.placement.stands[0], x=half)
+    slot = replace(site.capacity.slots[0], centre=(sign - 2 * cx, 0), den=2)
+    moved = replace(
+        site,
+        local=replace(site.local, stone=(half, site.local.stone[1])),
+        placement=replace(site.placement, stands=(stand, *site.placement.stands[1:])),
+        capacity=replace(site.capacity, slots=(slot, *site.capacity.slots[1:])),
+    )
+    layout = replace(built.layout, sites=(moved, *built.layout.sites[1:]))
+    emitted = emit.emit(layout, built.plane, built.assignment, None, (), directions())
+    first = site.plan.cards[0].oracle_id
+    (record,) = [stand for stand in emitted.stands if stand.card.oracle_id == first]
+    world = emitted.world["sites"][0]
+    assert (record.x, world["stone"]["x"], world["clusters"][0]["centre"][0]) == (sign, sign, sign)

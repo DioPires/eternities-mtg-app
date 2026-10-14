@@ -1192,3 +1192,49 @@ def test_two_clusters_more_than_eighteen_metres_apart_are_reported():
     clusters[1]["arc"] = clusters[0]["arc"] + GAP_BETWEEN + 1
     (line,) = under(run(rows, world, cards), "gap-between")
     assert "clusters 0 and 1 of site" in line and f"{GAP_BETWEEN + 1} mm apart" in line
+
+
+# --- DEC-1091 delta re-read 1, kill case (D3) --------------------------------------------------
+
+
+def test_a_site_stone_on_its_approach_is_reported():
+    # 5.4.8 and invariant 9: the stone's centre lies 3,000 mm to one side of the approach. A stone
+    # on the approach's line, 2,500 mm from the pad's centre, keeps the distance along it and is
+    # reported for the distance across.
+    data, document, cards = shandalar()
+    rows = rows_of(data)
+    world = copy.deepcopy(document)
+    (site,) = world["sites"]
+    pad = (site["pad"]["x"], site["pad"]["z"])
+    dx, dz = site["approachPoint"][0] - pad[0], site["approachPoint"][1] - pad[1]
+    site["stone"]["x"], site["stone"]["z"] = pad[0] + dx // 4, pad[1] + dz // 4
+    assert "stone-place" in rules(run(rows, world, list(cards)))
+
+
+# --- DEC-1091 delta re-read 1, kill case (M2) --------------------------------------------------
+
+
+def test_a_site_stone_behind_its_pad_is_reported():
+    # 5.4.8: the stone stands 2,500 mm from the pad's centre towards the approach point. The stone
+    # turned through the pad's centre lies 2,500 mm behind it, 3,000 mm to the other side, and is
+    # reported.
+    data, document, cards = shandalar()
+    rows = rows_of(data)
+    world = copy.deepcopy(document)
+    (site,) = world["sites"]
+    stone, pad = site["stone"], site["pad"]
+    stone["x"], stone["z"] = 2 * pad["x"] - stone["x"], 2 * pad["z"] - stone["z"]
+    assert "stone-place" in rules(run(rows, world, list(cards)))
+
+
+# --- DEC-1091 delta re-read 1, kill case (D5) --------------------------------------------------
+
+
+def test_an_outer_boundary_that_crosses_an_inner_edge_at_its_own_vertices_is_seen():
+    # 5.4.18 (10): the inner edge is cut where an outer vertex lies on it. The notch's sides meet
+    # the square's top edge at two of the notch's own vertices, (7, 10) and (3, 10), and the notch
+    # takes the piece between them: (5, 9) lies in the square and outside the outer polygon.
+    assert not check.polygon_inside_polygon(
+        SQUARE,
+        [(-5, -5), (15, -5), (15, 15), (7, 15), (7, 10), (5, 8), (3, 10), (3, 15), (-5, 15)],
+    )
