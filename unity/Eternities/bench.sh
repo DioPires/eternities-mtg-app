@@ -8,8 +8,9 @@
 #
 #   unity/Eternities/bench.sh <path to Eternities.app> -bench warm -benchQuality high -benchScale 1 -benchOut <path>
 #
-# It refuses to start while a Unity editor is running on this machine (PRD v4 8.8.6), and exits
-# with the player's exit code: 0 only if the path completed.
+# It refuses to start while a Unity editor is running on this machine (PRD v4 8.8.6), or a process
+# named Blender in any letter case (`docs/ci-runner.md` section 3). It exits with the player's exit
+# code: 0 only if the path completed.
 #
 # It also writes `<benchOut>.others`: what else was busy on the machine during the run, sampled
 # every 5 s. A locked, idle Mac is when macOS does its own work, and its media analysis decodes
@@ -46,6 +47,10 @@ if [ -z "$out" ]; then
 fi
 if pgrep -x Unity > /dev/null; then
     echo "bench.sh: a Unity editor is running on this machine; close it first" >&2
+    exit 2
+fi
+if pgrep -ix Blender > /dev/null; then
+    echo "bench.sh: Blender is running on this machine; nothing was started" >&2
     exit 2
 fi
 if [ -n "$locked_only" ] && ! screen_locked; then
