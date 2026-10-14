@@ -7,7 +7,11 @@ site per set with first printings on the plane, in release order.
 **What the code defines where the PRD leaves a choice** (5.4.18 (12)):
 
 - A keyword matches a face's name when the case-folded keyword occurs in the case-folded name
-  with no letter or digit beside it at either end. So ``Benalia`` matches ``Benalia's Knight``.
+  with a word boundary at either end. A boundary is the string's start or end, or a code point
+  whose Unicode general category is a separator (``Z*``) or punctuation (``P*``): the spaces and
+  punctuation of 5.4.3 (CEO ruling on DEC-1004, 2026-10-14). So ``Benalia`` matches
+  ``Benalia's Knight`` and ``Benalia—Knight``, and not ``Benalian``, ``Benalia+n`` or
+  ``Benalia`` followed by a combining mark.
 - An era site lists the era's sets that have first printings on the plane, in release order.
 - A headline name of the era row (F.2) resolves to the card of that name first printed in one of
   the era's sets, the lowest ``oracle_id`` when the name is shared.
@@ -17,6 +21,7 @@ This module computes no position.
 
 from __future__ import annotations
 
+import unicodedata
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any, Final, cast
@@ -90,6 +95,11 @@ class Assignment:
     """``oracle_id`` to the selected keyword, for the cards that have one."""
 
 
+def _boundary(char: str) -> bool:
+    """A space or punctuation (5.4.3): Unicode general category ``Z*`` or ``P*``."""
+    return unicodedata.category(char)[0] in "ZP"
+
+
 def matches(keyword: str, name: str) -> bool:
     """The keyword occurs in the name as a whole word (5.4.3 (b))."""
     word = keyword.casefold()
@@ -97,8 +107,8 @@ def matches(keyword: str, name: str) -> bool:
     start = text.find(word)
     while start >= 0:
         end = start + len(word)
-        before = start == 0 or not text[start - 1].isalnum()
-        after = end == len(text) or not text[end].isalnum()
+        before = start == 0 or _boundary(text[start - 1])
+        after = end == len(text) or _boundary(text[end])
         if before and after:
             return True
         start = text.find(word, start + 1)

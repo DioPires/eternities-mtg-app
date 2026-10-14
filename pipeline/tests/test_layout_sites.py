@@ -105,6 +105,13 @@ def keywords(*rows: tuple[str, str]) -> dict[str, Any]:
         ("Urza", "Kurza", False),
         ("Keld", "Keldon Warlord // Keld", True),
         ("STRASSE", "Straße", True),
+        # The boundary of 5.4.3 is a separator or punctuation, by Unicode general category (the
+        # CEO's ruling on DEC-1091, B3): a combining mark and a symbol join the word.
+        ("Benalia", "Benalia\u0301n Knight", False),
+        ("Benalia", "Benalia+n Knight", False),
+        ("Benalia", "Benalia's Knight", True),
+        ("Benalia", "Benalia\u2014Knight", True),
+        ("Benalia", "Benalia\u00a0Knight", True),
     ],
 )
 def test_a_keyword_matches_a_whole_word_whatever_the_case(keyword: str, name: str, found: bool):
