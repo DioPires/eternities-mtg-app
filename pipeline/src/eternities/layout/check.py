@@ -69,13 +69,23 @@ polyline; a site's approach is the segment from its pad's centre to its approach
   segments, or have no length at the leg's end, so testing the polyline tests them (5.4.11).
 - *Own shapes.* A stand's footprint, apron and corridor touch one another by construction and are
   never tested against each other. Corridors may cross each other, a pad's edge and a path.
+- *Facing* (invariant 9, erratum 5). A stand faces its path vertex when the direction from its
+  emitted position to that vertex lies within 0.1 degree of its yaw: between the table directions
+  100 counts either side of the yaw's count, boundary included, and on the yaw's side (5.4.18
+  (13): the table's directions are the unit vectors). The allocator's yaw is the count nearest the
+  direction from the exact position, and rounding the two points moves that direction by less
+  than 0.03 degree, so a laid-out stand passes with room.
+- *The trail's order* (invariant 10, erratum 5). In leg order, the trail legs end at the era sites
+  (a hero world) or the set sites (a kit world) in site order, and the spurs at the regional sites
+  in site order, each site once.
+- *A chapter stone's cluster* (invariant 11, erratum 5). The cluster that holds a chapter's first
+  stand is the lowest cluster index among the chapter's stands; the stone's centre lies inside
+  that cluster's disc or the disc of the cluster before it.
 
 **Not asserted.** The acceptance order inside a cluster cannot be read from the files (a
-cluster's records are sorted by ``oracle_id``), nor can the kit's props. A yaw is emitted as the
-table count nearest the direction from the exact position, so the rounded position does not show
-whether it faces its path vertex to the count. The crossing angle of two corridors and a
-corridor's lying inside its blob are rules of placement (5.4.9, 5.4.10) that invariant 9 does not
-list. The order in which the trail visits the sites (5.4.11) is not a rule of invariant 10.
+cluster's records are sorted by ``oracle_id``), nor can the kit's props. The crossing angle of two
+corridors and a corridor's lying inside its blob are rules of placement (5.4.9, 5.4.10) that
+invariant 9 does not list.
 
 **The report.** A violation is one line: the rule's name, then both subjects. Violations come in a
 fixed order, so the first line names the first violating pair; the first ``VIOLATION_LIMIT`` are
@@ -104,9 +114,11 @@ from .constants import (
     APPROACH_LENGTH,
     APRON_DEPTH,
     APRON_WIDTH,
+    CAP_MAX,
     CLUSTER_RADIUS,
     CORRIDOR_ARC_WINDOW,
     CORRIDOR_HALF_WIDTH,
+    COUNTS_PER_TURN,
     DISC_STEP_COUNTS,
     DISC_VERTICES,
     FOOTPRINT_DEPTH,
@@ -195,10 +207,13 @@ RULES: Final = (
     "footprint-blob",
     "footprint-cluster",
     "site-bounds",
+    "cluster-cap",
+    "stand-yaw",
     # Invariant 10.
     "plaza-approach",
     "trail-leg",
     "spur",
+    "trail-order",
     "leg-attachment",
     "approach-length",
     "site-reached",
@@ -207,6 +222,7 @@ RULES: Final = (
     "chapter-order",
     "chapter-first",
     "chapter-stone",
+    "chapter-cluster",
     "site-region",
     "stand-region",
     # The rulings on DEC-1004 and the gap bounds of 5.4.10.
@@ -217,6 +233,7 @@ RULES: Final = (
     "gap-first",
     "gap-between",
     "gap-end",
+    "path-empty",
 )
 """Every rule's name, in the order the checker applies them."""
 
@@ -255,6 +272,9 @@ _FOOT_ACROSS: Final = _half(FOOTPRINT_WIDTH)
 _APRON_ACROSS: Final = _half(APRON_WIDTH)
 _APRON_FRONT: Final = _FOOT_ALONG + APRON_DEPTH
 """From the stand's centre to the apron's front edge, where the corridor starts."""
+_FACING_COUNTS: Final = 100
+"""0.1 degree in counts of the trig table: how far a stand's yaw may turn from its path vertex
+(invariant 9)."""
 
 
 # The predicates of 5.4.18 (10). Coordinates are integers in any one unit; a half width is in the
@@ -617,6 +637,24 @@ def _beside_approach(stone: Pt, pad: Pt, approach: Pt) -> bool:
     along = wx * dx + wz * dz
     across = abs(dx * wz - dz * wx)
     return _near_figure(along, _STONE_AHEAD, square) and _near_figure(across, STONE_ACROSS, square)
+
+
+def faces(yaw: int, centre: Pt, target: Pt, table: trig.TrigTable) -> bool:
+    """Whether a stand at ``centre`` with ``yaw`` faces ``target`` within 0.1 degree (invariant 9).
+
+    The direction to the target lies between the table directions ``_FACING_COUNTS`` counts either
+    side of the yaw's count, boundary included, and on the yaw's side of the perpendicular. The
+    cone is narrower than a half-turn, so the three signs decide it exactly.
+    """
+    count = divmod(yaw % MICRO_PER_TURN, MICRO_PER_COUNT)[0]
+    vx = target[0] - centre[0]
+    vz = target[1] - centre[1]
+    low = (count - _FACING_COUNTS) % COUNTS_PER_TURN
+    high = (count + _FACING_COUNTS) % COUNTS_PER_TURN
+    ahead = table.cos(count) * vx + table.sin(count) * vz
+    from_low = table.cos(low) * vz - table.sin(low) * vx
+    to_high = vx * table.sin(high) - vz * table.cos(high)
+    return ahead > 0 and from_low >= 0 and to_high >= 0
 
 
 def _scaled(points: Sequence[Pt]) -> tuple[Pt, ...]:
@@ -1713,6 +1751,14 @@ class _Checker:
         key = site.key
         length = site.arcs[-1]
         arcs = [cluster.arc for cluster in site.clusters]
+        if not self.residents[site.index]:
+            report.tested("path-empty")
+            if len(site.path) != 2:
+                report.fail(
+                    "path-empty",
+                    f"site {key} has no stand and its path has {len(site.path)} vertices; the "
+                    "path of a site with no stand ends at its second vertex",
+                )
         if not arcs:
             return {
                 "key": key,
@@ -1783,6 +1829,13 @@ class _Checker:
                     "cluster-size",
                     f"cluster {number} of site {site.key} holds {len(held)} stands; a cluster "
                     f"under {MIN_CLUSTER} is the site's last or does not exist",
+                )
+            report.tested("cluster-cap")
+            if len(held) > CAP_MAX:
+                report.fail(
+                    "cluster-cap",
+                    f"cluster {number} of site {site.key} holds {len(held)} stands; a cluster "
+                    f"holds at most {CAP_MAX}",
                 )
 
     def _chapters(self, site: _Site) -> None:
@@ -1891,14 +1944,29 @@ class _Checker:
                     f"the stone of {what} at {stone} is not a point of the hexagonal lattice",
                 )
             centre = (stone[0] << _SHIFT, stone[1] << _SHIFT)
+            spot = (stone[0], stone[1], stone[0], stone[1])
             if not any(
-                not _apart(disc.box, (stone[0], stone[1], stone[0], stone[1]), 1)
-                and point_in_polygon(centre, disc.polygon)
+                not _apart(disc.box, spot, 1) and point_in_polygon(centre, disc.polygon)
                 for disc in discs
             ):
                 report.fail(
                     "chapter-stone",
                     f"the stone of {what} at {stone} lies inside no cluster disc of the site",
+                )
+            if not held[number]:
+                continue
+            report.tested("chapter-cluster")
+            first = min(stand.record.cluster for stand in held[number])
+            near = [discs[other] for other in (first - 1, first) if 0 <= other < len(discs)]
+            if not any(
+                not _apart(disc.box, spot, 1) and point_in_polygon(centre, disc.polygon)
+                for disc in near
+            ):
+                report.fail(
+                    "chapter-cluster",
+                    f"the stone of {what} at {stone} lies inside neither the disc of cluster "
+                    f"{first}, which holds the chapter's first stand, nor the disc of the cluster "
+                    "before it",
                 )
 
     def _stands_of(
@@ -1947,6 +2015,15 @@ class _Checker:
                             f"the corridor of {stand.name} ends at arc length {arc} mm and its "
                             f"cluster's slot lies at {slot} mm, over {CORRIDOR_ARC_WINDOW} mm away",
                         )
+                report.tested("stand-yaw")
+                target = site.path[stand.vertex]
+                if not faces(stand.record.yaw, stand.centre, target, self.table):
+                    report.fail(
+                        "stand-yaw",
+                        f"{stand.name} at {stand.centre} has the yaw {stand.record.yaw} and does "
+                        f"not face its path vertex {stand.vertex} at {target} within "
+                        f"{_FACING_COUNTS * MICRO_PER_COUNT} micro-degrees",
+                    )
             report.tested("footprint-blob")
             if not polygon_inside_polygon(stand.footprint, blob):
                 report.fail(
@@ -2186,6 +2263,12 @@ class _Checker:
         before_name = "the far end of the plaza approach"
         before_key = "plaza"
         seen: set[Pt] = set()
+        # The sites each kind of leg visits, in site order (invariant 10).
+        visits = {
+            "trail": [site for site in world.sites if site.kind in ("era", "set")],
+            "spur": [site for site in world.sites if site.kind == "region"],
+        }
+        visited = {"trail": 0, "spur": 0}
         for leg in world.legs:
             name = f"leg {leg.id} ({leg.kind}, {leg.start} to {leg.end})"
             first = leg.polyline[0]
@@ -2193,6 +2276,23 @@ class _Checker:
             for a, b in _segments(leg.polyline):
                 sets.join(at(a), at(b))
             site = self.sites_by_key.get(leg.end)
+            if leg.kind in visits:
+                report.tested("trail-order")
+                order = visited[leg.kind]
+                targets = visits[leg.kind]
+                visited[leg.kind] = order + 1
+                if order >= len(targets):
+                    report.fail(
+                        "trail-order",
+                        f"{name} is {leg.kind} {order + 1}, and the world has "
+                        f"{len(targets)} sites for its {leg.kind}s to visit",
+                    )
+                elif leg.end != targets[order].key:
+                    report.fail(
+                        "trail-order",
+                        f"{name} ends at {leg.end}; {leg.kind} {order + 1} visits "
+                        f"{targets[order].key}, the next such site in site order",
+                    )
             if leg.kind == "trail":
                 report.tested("trail-leg")
                 if leg.start != before_key:
@@ -2246,6 +2346,15 @@ class _Checker:
                     "polyline's last segment",
                 )
             seen.update(leg.polyline)
+        report.tested("trail-order")
+        for kind, what in (("trail", "era or set sites"), ("spur", "regional sites")):
+            if visited[kind] < len(visits[kind]):
+                report.fail(
+                    "trail-order",
+                    f"the trail's {kind}s visit {visited[kind]} of the world's "
+                    f"{len(visits[kind])} {what}; the first not visited is "
+                    f"{visits[kind][visited[kind]].key}",
+                )
         reached = True
         for site in world.sites:
             pad = ("pad", site.index, 0)
