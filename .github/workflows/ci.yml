@@ -496,7 +496,7 @@ jobs:
             seen=
             look -x Unity
             look -f 'MacOS/[E]ternities'
-            look -x Blender
+            look -ix Blender
             seen=$(printf '%s' "$seen" | sed '/^$/d')
             if [ -z "$seen" ]; then
               exit 0
