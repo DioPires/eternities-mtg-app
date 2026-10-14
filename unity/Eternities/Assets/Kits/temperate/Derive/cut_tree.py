@@ -88,7 +88,8 @@ LIMB = 1000
 # A twig is cut to no less than this share of its triangles: under it a twig is a sliver.
 TWIG = 0.2
 # A kept card is larger than its leaf by the square root of how many leaves it stands for, times
-# this: cards overlap more than leaves do.
+# this: cards overlap more than leaves do. Measured, the kept cards' summed area is about 1.32
+# times the summed area of all the leaves' quads, at every level.
 OVER = 1.15
 SEED = 1003
 

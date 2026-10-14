@@ -8,7 +8,7 @@ covers. `cut_fir.py` carries seven of those rectangles as `SPRAYS`, the sprays i
 photograph of Poly Haven's firs: this is how they were measured, on
 `Props/fir_sapling_medium_twigs_alpha_1k.png` with 0.14 as `from u`, and how a reviewer measures
 them again. Which regions are sprays, and not single needles or a bare twig, is read off the
-photograph by eye. It makes no file.
+photograph by eye. It makes no file. It ran on Blender 5.2.2 LTS, the cuts' tool (`cutlib.TOOL`).
 """
 import sys
 

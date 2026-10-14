@@ -46,7 +46,10 @@ still an owner gate — it is not.**
 3. Framework preset: **Vite** (it will detect this). Leave the build and install commands alone —
    `vercel.json` sets them.
 4. Node.js version: **22.x**, matching `web/package.json`'s `engines` and CI.
-5. Production branch: **`main`**. Preview deployments for every pull request are on by default.
+5. Production branch: **`main`**. Vercel builds no other branch, so a pull request gets no preview
+   deployment (PR #140, DEC-1066). The rule is `git.deploymentEnabled` in `vercelConfig()`, in
+   `web/security-headers.mjs`. `web/vercel.json` is generated from that function, and
+   `node scripts/write-vercel-json.mjs --check`, run from `web/`, compares the two.
 6. Deploy.
 
 Nothing else is needed: no environment variables, no secrets, no integrations. PRD 8.10 has no

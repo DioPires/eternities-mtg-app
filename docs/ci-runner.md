@@ -145,9 +145,17 @@ workflow has to change with it.
 - **Runner concurrency 1.** One runner takes one job at a time, and this machine has one runner.
   That is the whole mechanism: a bench never shares the GPU with another job. Do not register a
   second runner here.
-- **No other editor during a bench.** `unity-bench-smoke` fails before it starts if any process
-  named `Unity` is running: the owner's editor, or an agent's batchmode run. Close it and re-run
-  the job.
+- **No other editor, player or Blender during a bench.** Before the bench, `unity-bench-smoke`
+  waits while a process named `Unity` (the owner's editor, or an agent's batchmode run), a built
+  player or a process named `Blender` is running. It looks every 15 s for up to 15 minutes, and
+  each wait line names what it saw by pid and executable. If one is still running at the limit,
+  the job fails: close it and re-run the job. A `pgrep` error fails the job too. The wait has three
+  gaps. `unity-compile`, `unity-editmode` and `unity-playmode` have no gate. Nothing looks again
+  after the gate passes. The gate does not see a player started by a relative path such as
+  `./Eternities`, or by a path in another letter case, so a player starts through `bench.sh`.
+- **Blender only when no job runs.** Make a derived binary again (PRD v4 8.12) only when no runner
+  job runs. `unity/Eternities/Assets/Kits/temperate/derive.sh` waits for the runner before each
+  Blender start, and the bench gate waits for Blender.
 - **One workspace per job, in a directory of the runner's own.** Each job checks out into
   `~/actions-work/eternities-mtg-app/eternities-mtg-app/<job>/`. That is never an agent's checkout
   and never a project the owner has open in the editor, so a `Library` lock is never shared, and a
