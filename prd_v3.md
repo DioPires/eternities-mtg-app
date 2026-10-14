@@ -602,7 +602,7 @@ The Blind Eternities is one row of the plane table like any other, with the iden
 
 ### 8.8 Deployment
 
-1. Vercel with the GitHub integration: production from `main`, preview deployments for every pull request.
+1. Vercel with the GitHub integration: production from `main`. Since PR #140 (2026-10-14, DEC-1066), Vercel builds `main` only, so a pull request has no preview deployment; before it, every pull request had one.
 2. `vercel.json`: rewrite all non-asset routes to `/index.html`; `Cache-Control: public, max-age=31536000, immutable` for `/data/**` and Vite's hashed assets.
 3. Data refresh flow: run `eternities build` locally; commit the new `web/public/data/<hash>/` and `pipeline/reports/<date>.md` in a pull request titled with the Scryfall bulk timestamp; review the report diff; merge.
 

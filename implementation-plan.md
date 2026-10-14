@@ -27,10 +27,10 @@ So the plan is: scaffold and freeze both contracts, then run the pipeline, the s
 - **Fixture datasets**, committed under hash-style directories (so the immutable `/data/**` cache rule of 8.8.2 stays honest): `fixture-small` (3–4 planes, ~500 cards, one Blind Eternities shard) for semantic and decoder tests, and `fixture-scale` (all 82 Appendix A planes including zero-card planes, ~30k synthetic stars, sharded Blind Eternities) generated with the seeded layout rules of 8.6, for performance and label-collision work. Web work never waits on the pipeline, and bench numbers mean something from the first shader commit.
 - **Scryfall policy and CORS verification** (risk 1, open question 5): read the current Scryfall imagery/API policy, and confirm the image CDN sends CORS headers that allow `createImageBitmap` + WebGL texture upload with `crossOrigin` set. This is a zero-cost check that the whole card tier depends on; it happens before any dependent code, and is re-confirmed at Phase 6. If it fails, the PRD's 4.11.3/8.10 constraints leave no compliant fallback — the board hears about it now, not at launch.
 - CI skeleton (GitHub Actions): pipeline tests, web type-check, build, payload-budget check wired to the PRD 7.2 table (plus the A1 shard row) from day one, measuring **encoded transferred size**, not disk size (`.bin` may not be edge-compressed; the check must see what the browser sees).
-- Vercel project connected: production from `main`, preview per PR, `vercel.json` with SPA rewrites, immutable caching for `/data/**` (8.8), **and the CSP headers of 7.6.1 from day one** — `connect-src` must include Scryfall's image CDN because 8.5.8 fetches images rather than using `<img>`. All later work develops under the real policy; Phase 5 only audits it.
+- Vercel project connected: production from `main`, preview per PR (since PR #140, 2026-10-14, DEC-1066, Vercel builds `main` only, and a pull request has no preview), `vercel.json` with SPA rewrites, immutable caching for `/data/**` (8.8), **and the CSP headers of 7.6.1 from day one** — `connect-src` must include Scryfall's image CDN because 8.5.8 fetches images rather than using `<img>`. All later work develops under the real policy; Phase 5 only audits it.
 - Build step that injects the current data-directory hash into `index.html` (8.3).
 
-**Exit:** a hello-scene (sky + background starfield) deploys to a Vercel preview under the real CSP; both fixture datasets decode in the browser; the navigation stub type-checks against a demo caller; CI is green; Scryfall policy/CORS verdict recorded.
+**Exit:** a hello-scene (sky + background starfield) deploys to a Vercel preview under the real CSP (met at M0; since PR #140 a pull request has no preview, so this check now reads production); both fixture datasets decode in the browser; the navigation stub type-checks against a demo caller; CI is green; Scryfall policy/CORS verdict recorded.
 
 ### Phase 1 — Data pipeline (parallel with 2a/2b/4)
 
@@ -159,7 +159,7 @@ Rules, per the issue-routing protocol: reviewer is never the implementer; each p
 
 | Milestone | What the owner sees | Gate |
 |---|---|---|
-| M0 | Hello-scene on a Vercel preview URL; Scryfall policy/CORS verdict | none |
+| M0 | Hello-scene on a Vercel preview URL (since PR #140, production only); Scryfall policy/CORS verdict | none |
 | M1 | First pipeline report: counts, Blind Eternities baseline, verification answers (Q4/Q10/Q12, roster diff) | owner reviews report |
 | M2 | Multiverse + plane levels, real data, motion, attract mode | visual review gate #1 |
 | M3 | Full journey to card level | visual review gate #2 |
