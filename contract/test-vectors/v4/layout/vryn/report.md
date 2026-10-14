@@ -3,17 +3,18 @@
 - Dataset: `a5846bec28d1447e`. Plane index (v3 `planes.json`): 83.
 - Law: the kit law. One set site for each set with first printings (5.4.2).
 - Stands: 2. Sites: 1 (0 era, 0 regional, 1 set). Regions: 1. Hero volumes: 0.
-- R₀ = 86,600 mm. R = 95,260 mm after 2 of 20 passes, so the world is 190,520 mm across. Restarts at step (4): 1.
+- R₀ = 86,600 mm. R = 95,260 mm after 2 of 20 passes, so the world is 190,520 mm across. Restarts at step (4): 1 (0 after a redraw, 0 after a widening at placement, 1 where a widened site no longer fits at its centre).
 - Site widenings: 2 (2 for capacity, 0 for no path and approach, 0 where the kept slots ran out, 0 where two void slots in a row cut the path).
+- Redraws at the same radius: 0, at most 1 at a radius. Sites laid out at the radius of a redraw (a = 1): 0 of 1.
 - Trig table: sha256 `fa33d5685b879e0f63d26d684e0e39585ce1b6e291b7f1f3543c82949f7bf777` (5.4.18 (6)).
 - Independent checker (3.2): pass, 0 violations.
 
 ## Passes over R
 
-| Pass | R (mm) | Site widenings | Restarts | Region | Site | Result |
-|---|---|---|---|---|---|---|
-| 1 | 86,600 | 0 | 0 | the world | `set:mom` | R is widened: region 'the world' cannot hold site 'set:mom' |
-| 2 | 95,260 | 2 | 1 | none | none | the world is laid out |
+| Pass | R (mm) | Site widenings | Redraws | Restarts | Restarts by cause: a redraw / a widening at placement / a site that no longer fits | Region | Site | Result |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 86,600 | 0 | 0 | 0 | 0 / 0 / 0 | the world | `set:mom` | R is widened: region 'the world' cannot hold site 'set:mom' |
+| 2 | 95,260 | 2 | 0 | 1 | 0 / 0 / 1 | none | none | the world is laid out |
 
 ## Regions
 
@@ -23,9 +24,9 @@
 
 ## Sites
 
-| # | Site | Region | Stands | Clusters | Chapter stones | Base r_s (mm) | Final r_s (mm) | b_s (mm) | Widenings | By cause: capacity / no path / slots ran out / cut | Sweep-direction tries | Sweeps | Capacity | Centre (mm) |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 0 | `set:mom` | the world | 2 | 1 | 0 | 9,000 | 10,890 | 28,068 | 2 | 2 / 0 / 0 / 0 | 1 | 1 | 5 | -20,000, -50,000 |
+| # | Site | Region | Stands | Clusters | Chapter stones | Base r_s (mm) | Final r_s (mm) | b_s (mm) | Widenings | By cause: capacity / no path / slots ran out / cut | Redraws | Final a | Sweep-direction tries | Sweeps | Capacity | Centre (mm) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 0 | `set:mom` | the world | 2 | 1 | 0 | 9,000 | 10,890 | 28,068 | 2 | 2 / 0 / 0 / 0 | 0 | 0 | 1 | 1 | 5 | -20,000, -50,000 |
 
 ## Site widenings in order
 
@@ -33,6 +34,10 @@
 |---|---|---|---|---|---|
 | 1 | 2 | `set:mom` | capacity | capacity 0 for 2 | 9,900 |
 | 2 | 2 | `set:mom` | capacity | capacity 0 for 2 | 10,890 |
+
+## Redraws in order
+
+No site is redrawn.
 
 ## Sweep-direction tries (5.4.8)
 

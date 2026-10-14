@@ -3,18 +3,19 @@
 - Dataset: `pack`. Plane index (v3 `planes.json`): 0.
 - Law: the plane's lore tables (lore). Digest `sha256:59ad3a3da2d3d790141e9d4923fff5fabdd0d2b06c5ab9060f077de6923b92b9`; acceptance status: absent.
 - Stands: 12. Sites: 1 (1 era, 0 regional, 0 set). Regions: 1. Hero volumes: 0.
-- R₀ = 93,144 mm. R = 112,705 mm after 3 of 20 passes, so the world is 225,410 mm across. Restarts at step (4): 3.
+- R₀ = 93,144 mm. R = 112,705 mm after 3 of 20 passes, so the world is 225,410 mm across. Restarts at step (4): 3 (0 after a redraw, 0 after a widening at placement, 3 where a widened site no longer fits at its centre).
 - Site widenings: 4 (4 for capacity, 0 for no path and approach, 0 where the kept slots ran out, 0 where two void slots in a row cut the path).
+- Redraws at the same radius: 0, at most 1 at a radius. Sites laid out at the radius of a redraw (a = 1): 0 of 1.
 - Trig table: sha256 `fa33d5685b879e0f63d26d684e0e39585ce1b6e291b7f1f3543c82949f7bf777` (5.4.18 (6)).
 - Independent checker (3.2): pass, 0 violations.
 
 ## Passes over R
 
-| Pass | R (mm) | Site widenings | Restarts | Region | Site | Result |
-|---|---|---|---|---|---|---|
-| 1 | 93,144 | 0 | 0 | `towabara` | `era:kami-war` | R is widened: region 'towabara' cannot hold site 'era:kami-war' |
-| 2 | 102,459 | 3 | 2 | `towabara` | `era:kami-war` | R is widened: region 'towabara' cannot hold site 'era:kami-war' |
-| 3 | 112,705 | 1 | 1 | none | none | the world is laid out |
+| Pass | R (mm) | Site widenings | Redraws | Restarts | Restarts by cause: a redraw / a widening at placement / a site that no longer fits | Region | Site | Result |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 93,144 | 0 | 0 | 0 | 0 / 0 / 0 | `towabara` | `era:kami-war` | R is widened: region 'towabara' cannot hold site 'era:kami-war' |
+| 2 | 102,459 | 3 | 0 | 2 | 0 / 0 / 2 | `towabara` | `era:kami-war` | R is widened: region 'towabara' cannot hold site 'era:kami-war' |
+| 3 | 112,705 | 1 | 0 | 1 | 0 / 0 / 1 | none | none | the world is laid out |
 
 ## Regions
 
@@ -24,9 +25,9 @@
 
 ## Sites
 
-| # | Site | Region | Stands | Clusters | Chapter stones | Base r_s (mm) | Final r_s (mm) | b_s (mm) | Widenings | By cause: capacity / no path / slots ran out / cut | Sweep-direction tries | Sweeps | Capacity | Centre (mm) |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 0 | `era:kami-war` | `towabara` | 12 | 3 | 0 | 11,726 | 17,165 | 35,598 | 4 | 4 / 0 / 0 / 0 | 1 | 1 | 15 | -10,000, -60,000 |
+| # | Site | Region | Stands | Clusters | Chapter stones | Base r_s (mm) | Final r_s (mm) | b_s (mm) | Widenings | By cause: capacity / no path / slots ran out / cut | Redraws | Final a | Sweep-direction tries | Sweeps | Capacity | Centre (mm) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 0 | `era:kami-war` | `towabara` | 12 | 3 | 0 | 11,726 | 17,165 | 35,598 | 4 | 4 / 0 / 0 / 0 | 0 | 0 | 1 | 1 | 15 | -10,000, -60,000 |
 
 ## Site widenings in order
 
@@ -36,6 +37,10 @@
 | 2 | 2 | `era:kami-war` | capacity | capacity 4 for 12 | 14,187 |
 | 3 | 2 | `era:kami-war` | capacity | capacity 10 for 12 | 15,605 |
 | 4 | 3 | `era:kami-war` | capacity | capacity 9 for 12 | 17,165 |
+
+## Redraws in order
+
+No site is redrawn.
 
 ## Sweep-direction tries (5.4.8)
 

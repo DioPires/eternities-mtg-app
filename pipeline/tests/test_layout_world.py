@@ -11,6 +11,7 @@ import json
 import re
 import shutil
 import struct
+from collections import Counter
 from functools import cache
 from math import isqrt
 from pathlib import Path
@@ -503,6 +504,7 @@ def test_the_report_is_a_pure_function_of_the_layout():
         "## Regions",
         "## Sites",
         "## Site widenings in order",
+        "## Redraws in order",
         "## Sweep-direction tries (5.4.8)",
         "## Site paths and gaps (mm)",
         "## Slots on the final layout (on runs / on half-turns)",
@@ -513,6 +515,19 @@ def test_the_report_is_a_pure_function_of_the_layout():
     ):
         assert heading in text
     assert "## Keyword assignments" not in text
+    # The redraws of ruling 3: per site and in all, and the restarts by cause.
+    redraws = [event for event in layout.events if event.kind == "redraw"]
+    assert redraws
+    assert f"- Redraws at the same radius: {len(redraws)}, at most 1 at a radius." in text
+    restarts = Counter(event.cause for event in layout.events if event.kind == "restart")
+    assert sum(restarts.values()) == layout.restarts
+    assert (
+        f"Restarts at step (4): {layout.restarts} ({restarts['a redraw']} after a redraw, "
+        f"{restarts['a widening at placement']} after a widening at placement, "
+        f"{restarts['a widened site no longer fits']} where" in text
+    )
+    site = layout.sites[0]
+    assert f"| {len(redraws)} | {site.redraws} | {site.local.tries} |" in text
     # Every figure is printed from its integer: no decimal point stands between two digits,
     # apart from the PRD's section numbers.
     body = re.sub(r"\(?\b\d+(\.\d+)+\b( \(\d+\))?\)?", "", text.replace("5.4.18 (6)", ""))

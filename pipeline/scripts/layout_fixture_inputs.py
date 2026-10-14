@@ -348,7 +348,7 @@ def volumes() -> None:
     )
 
 
-THE_DARK = (480_000, -30_000)
+THE_DARK = (240_000, -90_000)
 """The centre of ``era:the-dark`` in the ``dominaria`` fixture's ``worlds/dominaria.json``."""
 
 

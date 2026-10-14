@@ -20,9 +20,14 @@ from a hero volume, from the plaza with its edge path or from a site's blob.
   it, and when it goes the next vertex is tested against the same kept vertex.
 - A vertex of a leg that equals the vertex before it is dropped, so an attachment segment whose
   anchor point is its cell's centre has no length.
-- A leg is not tested against the pads and the stones when it is reserved. 5.4.11 holds that
-  none can meet one; the independent checker tests every pair on the final geometry (5.4.12,
-  step (8)), and a leg that met one would fail the build there.
+- Every leg is checked when it is reserved (:func:`meets`; the CEO's ruling 3 of 2026-10-14 on
+  DEC-1004): its strip, attachment segments included, after the wobble and the rounding, with
+  the 2 mm margin, against the hero volumes, then every site's pad, stone and blob in site order.
+  Invariant 9 keeps a path from a stone and from a hero volume; the pad and the blob are tested
+  because a leg that passes a site can meet its pad (law note 15), and a spur that starts in a
+  blocked cell can meet a blob (law note 20). A leg that fails the check has no route, and the
+  world is short. Other legs, the approaches and the site paths are not tested: a path may cross
+  a path (invariant 9).
 - A spur starts at the vertex of the legs reserved so far that is nearest the regional site's
   approach point: by squared distance, then by leg, then by vertex.
 - The plaza approach runs from the rounded point 15 m from the origin to the rounded point 25 m
@@ -72,7 +77,7 @@ from .exact import (
     grid_cell,
     round_half_away,
 )
-from .geometry import Shape, boxes_apart, clear, inside, polygon, strip
+from .geometry import SegmentIndex, Shape, boxes_apart, clear, inside, polygon, strip
 from .local import Local
 
 type Cell = tuple[int, int]
@@ -484,3 +489,37 @@ def nearest_vertex(legs: Sequence[Leg], target: Pt) -> Pt:
             if best is None or key < best:
                 best, point = key, (x, z)
     return point
+
+
+def meets(obstacles: Obstacles, polyline: Sequence[Pt]) -> tuple[str, int] | None:
+    """The first earlier shape that a leg's strip meets when it is reserved, or None.
+
+    The polyline is the leg as reserved: wobbled, rounded, its attachment segments included. The
+    strip is tested with the 2 mm margin of 5.4.18 (4) against the hero volumes in file order,
+    then against every site in site order: its pad, its stone and its blob. The answer is the
+    kind of the shape met (``hero volume``, ``pad``, ``stone`` or ``blob``) and its index among
+    the volumes or among the sites.
+    """
+    index = SegmentIndex(polyline)
+    shape = strip(polyline, PATH_HALF_WIDTH)
+    reach = PATH_HALF_WIDTH + MARGIN + 1
+
+    def met(other: Shape) -> bool:
+        near = index.near(other.box, reach)
+        return bool(near) and not clear(shape, other, MARGIN, near)
+
+    for number, volume in enumerate(obstacles.volumes):
+        if met(volume):
+            return "hero volume", number
+    for number, (local, (cx, cz)) in enumerate(obstacles.sites):
+        bounding = local.bounding
+        if not index.near((cx - bounding, cz - bounding, cx + bounding, cz + bounding), reach):
+            continue
+        for kind, other in (
+            ("pad", local.pad_disc),
+            ("stone", local.stone_disc),
+            ("blob", local.blob),
+        ):
+            if met(other.translated(cx, cz)):
+                return kind, number
+    return None

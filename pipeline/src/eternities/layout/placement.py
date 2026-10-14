@@ -228,20 +228,15 @@ def place_site(
     chapters: Sequence[int],
     directions: Directions,
     foreign: Foreign | None = None,
-    jitter: Prng | None = None,
 ) -> Placement:
     """5.4.10 for one site. ``chapters`` is the stand count of each chapter, in order.
 
     A site with no chapters of its own (a regional site, a set site) passes one count. The
-    jitter draws continue the site's stream from the state after its slots' draws (5.4.9);
-    ``jitter`` gives another stream in its place, which only a measured reading does
-    (``allocate.allocate``, ``redraw_scope="jitter"``).
+    jitter draws continue the site's stream from the state after its slots' draws (5.4.9).
     """
     foreign = foreign or Foreign()
     prng = Prng(0)
     prng.state = capacity.state
-    if jitter is not None:
-        prng = jitter
     total = sum(chapters)
     small = total < MIN_CLUSTER
     index = _Index()

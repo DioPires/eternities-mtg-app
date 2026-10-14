@@ -3,18 +3,19 @@
 - Dataset: `pack`. Plane index (v3 `planes.json`): 0.
 - Law: the plane's lore tables (lore). Digest `sha256:4965f9d966f286c6a753f0de30fcc5e7b5c8a9ee0564dac6a80c2639ded754a1`; acceptance status: absent.
 - Stands: 10. Sites: 2 (1 era, 1 regional, 0 set). Regions: 2. Hero volumes: 0.
-- R₀ = 89,372 mm. R = 108,141 mm after 3 of 20 passes, so the world is 216,282 mm across. Restarts at step (4): 3.
+- R₀ = 89,372 mm. R = 108,141 mm after 3 of 20 passes, so the world is 216,282 mm across. Restarts at step (4): 3 (0 after a redraw, 0 after a widening at placement, 3 where a widened site no longer fits at its centre).
 - Site widenings: 8 (8 for capacity, 0 for no path and approach, 0 where the kept slots ran out, 0 where two void slots in a row cut the path).
+- Redraws at the same radius: 0, at most 1 at a radius. Sites laid out at the radius of a redraw (a = 1): 0 of 2.
 - Trig table: sha256 `fa33d5685b879e0f63d26d684e0e39585ce1b6e291b7f1f3543c82949f7bf777` (5.4.18 (6)).
 - Independent checker (3.2): pass, 0 violations.
 
 ## Passes over R
 
-| Pass | R (mm) | Site widenings | Restarts | Region | Site | Result |
-|---|---|---|---|---|---|---|
-| 1 | 89,372 | 0 | 0 | `north` | `era:landfall` | R is widened: region 'north' cannot hold site 'era:landfall' |
-| 2 | 98,310 | 3 | 2 | `north` | `era:landfall` | R is widened: region 'north' cannot hold site 'era:landfall' |
-| 3 | 108,141 | 5 | 1 | none | none | the world is laid out |
+| Pass | R (mm) | Site widenings | Redraws | Restarts | Restarts by cause: a redraw / a widening at placement / a site that no longer fits | Region | Site | Result |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 89,372 | 0 | 0 | 0 | 0 / 0 / 0 | `north` | `era:landfall` | R is widened: region 'north' cannot hold site 'era:landfall' |
+| 2 | 98,310 | 3 | 0 | 2 | 0 / 0 / 2 | `north` | `era:landfall` | R is widened: region 'north' cannot hold site 'era:landfall' |
+| 3 | 108,141 | 5 | 0 | 1 | 0 / 0 / 1 | none | none | the world is laid out |
 
 ## Regions
 
@@ -25,10 +26,10 @@
 
 ## Sites
 
-| # | Site | Region | Stands | Clusters | Chapter stones | Base r_s (mm) | Final r_s (mm) | b_s (mm) | Widenings | By cause: capacity / no path / slots ran out / cut | Sweep-direction tries | Sweeps | Capacity | Centre (mm) |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 0 | `era:landfall` | `north` | 9 | 2 | 0 | 10,155 | 14,866 | 32,840 | 4 | 4 / 0 / 0 / 0 | 1 | 1 | 11 | -30,000, 50,000 |
-| 1 | `region:south` | `south` | 1 | 1 | 0 | 9,000 | 13,176 | 30,812 | 4 | 4 / 0 / 0 / 0 | 1 | 1 | 4 | -30,000, -50,000 |
+| # | Site | Region | Stands | Clusters | Chapter stones | Base r_s (mm) | Final r_s (mm) | b_s (mm) | Widenings | By cause: capacity / no path / slots ran out / cut | Redraws | Final a | Sweep-direction tries | Sweeps | Capacity | Centre (mm) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 0 | `era:landfall` | `north` | 9 | 2 | 0 | 10,155 | 14,866 | 32,840 | 4 | 4 / 0 / 0 / 0 | 0 | 0 | 1 | 1 | 11 | -30,000, 50,000 |
+| 1 | `region:south` | `south` | 1 | 1 | 0 | 9,000 | 13,176 | 30,812 | 4 | 4 / 0 / 0 / 0 | 0 | 0 | 1 | 1 | 4 | -30,000, -50,000 |
 
 ## Site widenings in order
 
@@ -42,6 +43,10 @@
 | 6 | 3 | `region:south` | capacity | capacity 0 for 1 | 10,890 |
 | 7 | 3 | `region:south` | capacity | capacity 0 for 1 | 11,979 |
 | 8 | 3 | `region:south` | capacity | capacity 0 for 1 | 13,176 |
+
+## Redraws in order
+
+No site is redrawn.
 
 ## Sweep-direction tries (5.4.8)
 

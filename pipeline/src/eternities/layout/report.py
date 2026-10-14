@@ -19,9 +19,20 @@ from collections.abc import Sequence
 from typing import Any, Final
 
 from . import local as local_step
-from .allocate import CAPACITY, CUT, NO_PATH, RAN_OUT, Event, Layout, SiteLayout
+from .allocate import (
+    CAPACITY,
+    CUT,
+    NO_FIT,
+    NO_PATH,
+    RAN_OUT,
+    REDRAWN,
+    WIDENED,
+    Event,
+    Layout,
+    SiteLayout,
+)
 from .build import Built
-from .constants import APPROACH_LENGTH, MICRO_PER_COUNT, PLAZA_APPROACH_LENGTH
+from .constants import APPROACH_LENGTH, MICRO_PER_COUNT, PLAZA_APPROACH_LENGTH, REDRAW_LIMIT
 from .exact import SCALE, Directions, round_half_away
 from .placement import yaw_gap
 from .regions import doubled_area
@@ -63,32 +74,43 @@ def site_gaps(site: SiteLayout) -> tuple[int, int, int]:
 
 def _passes(events: Sequence[Event]) -> list[list[object]]:
     rows: list[list[object]] = []
-    number = restarts = widenings = radius = 0
+    number = widenings = redraws = radius = 0
+    restarts = Counter[str | None]()
+
+    def row(region: str, site: str, result: str) -> list[object]:
+        causes = " / ".join(str(restarts[cause]) for cause in (REDRAWN, WIDENED, NO_FIT))
+        total = sum(restarts.values())
+        return [number, _mm(radius), widenings, redraws, total, causes, region, site, result]
+
     for event in events:
         if event.kind == "pass":
             number += 1
-            restarts = widenings = 0
+            widenings = redraws = 0
+            restarts.clear()
             radius = event.radius
         elif event.kind == "restart":
-            restarts += 1
+            restarts[event.cause] += 1
         elif event.kind == "widening":
             widenings += 1
+        elif event.kind == "redraw":
+            redraws += 1
         elif event.kind == "short":
             region = "the world" if event.region is None else f"`{event.region}`"
             site = "none" if event.site is None else f"`{event.site}`"
-            rows.append([number, _mm(radius), widenings, restarts, region, site, event.text])
-    rows.append([number, _mm(radius), widenings, restarts, "none", "none", "the world is laid out"])
+            rows.append(row(region, site, event.text))
+    rows.append(row("none", "none", "the world is laid out"))
     return rows
 
 
-def _widening_rows(events: Sequence[Event]) -> list[list[object]]:
-    """Every site widening in order: its pass over R, its site, its cause and what was found."""
+def _site_event_rows(events: Sequence[Event], kind: str) -> list[list[object]]:
+    """Every site widening, or every redraw, in order: its pass over R, its site, its cause and
+    what was found."""
     rows: list[list[object]] = []
     number = 0
     for event in events:
         if event.kind == "pass":
             number += 1
-        elif event.kind == "widening":
+        elif event.kind == kind:
             detail = event.text.split(": ", 1)[1].rsplit("; ", 1)[0]
             rows.append(
                 [len(rows) + 1, number, f"`{event.site}`", event.cause, detail, _mm(event.radius)]
@@ -123,6 +145,10 @@ def _widenings(layout: Layout) -> dict[str, Counter[str]]:
         if event.kind == "widening" and event.site is not None and event.cause is not None:
             found[event.site][event.cause] += 1
     return found
+
+
+def _redraws(layout: Layout) -> Counter[str]:
+    return Counter(event.site for event in layout.events if event.kind == "redraw" and event.site)
 
 
 def _slot_rows(layout: Layout) -> list[list[object]]:
@@ -176,6 +202,8 @@ def render(built: Built, check: dict[str, Any] | None, directions: Directions) -
     total_widenings = Counter[str]()
     for counter in widenings.values():
         total_widenings.update(counter)
+    redraws = _redraws(layout)
+    restarts = Counter(event.cause for event in layout.events if event.kind == "restart")
     lines: list[str] = [f"# Layout report: {plane.display_name} (`{plane.slug}`)", ""]
     lines.append(
         f"- Dataset: `{plane.data_hash}`. Plane index (v3 `planes.json`): {plane.plane_index}."
@@ -195,13 +223,20 @@ def render(built: Built, check: dict[str, Any] | None, directions: Directions) -
     lines.append(
         f"- R₀ = {_mm(layout.initial_radius)} mm. R = {_mm(layout.radius)} mm after "
         f"{layout.passes} of 20 passes, so the world is {_mm(2 * layout.radius)} mm across. "
-        f"Restarts at step (4): {layout.restarts}."
+        f"Restarts at step (4): {layout.restarts} ({restarts[REDRAWN]} after a redraw, "
+        f"{restarts[WIDENED]} after a widening at placement, {restarts[NO_FIT]} where a widened "
+        "site no longer fits at its centre)."
     )
     lines.append(
         f"- Site widenings: {sum(total_widenings.values())} "
         f"({total_widenings[CAPACITY]} for capacity, {total_widenings[NO_PATH]} for no path and "
         f"approach, {total_widenings[RAN_OUT]} where the kept slots ran out, "
         f"{total_widenings[CUT]} where two void slots in a row cut the path)."
+    )
+    lines.append(
+        f"- Redraws at the same radius: {sum(redraws.values())}, at most {REDRAW_LIMIT} at a "
+        f"radius. Sites laid out at the radius of a redraw (a = {REDRAW_LIMIT}): "
+        f"{sum(1 for site in layout.sites if site.redraws)} of {len(layout.sites)}."
     )
     lines.append(f"- Trig table: sha256 `{directions.sha256}` (5.4.18 (6)).")
     if check is not None:
@@ -213,7 +248,17 @@ def render(built: Built, check: dict[str, Any] | None, directions: Directions) -
 
     lines += ["## Passes over R", ""]
     lines += _table(
-        ["Pass", "R (mm)", "Site widenings", "Restarts", "Region", "Site", "Result"],
+        [
+            "Pass",
+            "R (mm)",
+            "Site widenings",
+            "Redraws",
+            "Restarts",
+            "Restarts by cause: a redraw / a widening at placement / a site that no longer fits",
+            "Region",
+            "Site",
+            "Result",
+        ],
         _passes(layout.events),
     )
     lines.append("")
@@ -252,6 +297,8 @@ def render(built: Built, check: dict[str, Any] | None, directions: Directions) -
                 _mm(site.local.bounding),
                 site.widenings,
                 f"{causes[CAPACITY]} / {causes[NO_PATH]} / {causes[RAN_OUT]} / {causes[CUT]}",
+                redraws[site.plan.key],
+                site.redraws,
                 site.local.tries,
                 site.local.sweeps,
                 site.capacity.total,
@@ -271,6 +318,8 @@ def render(built: Built, check: dict[str, Any] | None, directions: Directions) -
             "b_s (mm)",
             "Widenings",
             "By cause: capacity / no path / slots ran out / cut",
+            "Redraws",
+            "Final a",
             "Sweep-direction tries",
             "Sweeps",
             "Capacity",
@@ -281,13 +330,21 @@ def render(built: Built, check: dict[str, Any] | None, directions: Directions) -
     lines.append("")
 
     lines += ["## Site widenings in order", ""]
-    widening_rows = _widening_rows(layout.events)
+    widening_rows = _site_event_rows(layout.events, "widening")
     if widening_rows:
         lines += _table(
             ["#", "Pass", "Site", "Cause", "What was found", "New r_s (mm)"], widening_rows
         )
     else:
         lines.append("No site is widened.")
+    lines.append("")
+
+    lines += ["## Redraws in order", ""]
+    redraw_rows = _site_event_rows(layout.events, "redraw")
+    if redraw_rows:
+        lines += _table(["#", "Pass", "Site", "Cause", "What was found", "r_s (mm)"], redraw_rows)
+    else:
+        lines.append("No site is redrawn.")
     lines.append("")
 
     lines += ["## Sweep-direction tries (5.4.8)", ""]

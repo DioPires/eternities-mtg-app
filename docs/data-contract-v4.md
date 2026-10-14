@@ -137,7 +137,7 @@ Each fixture is a directory under `contract/test-vectors/v4/layout/`. Its manife
 **The hero-volumes file** is the minimal form for the fixture and for `--hero-volumes`. The owner's exporter is Wave 5.
 
 ```json
-{"plane": "dominaria", "volumes": [{"id": "fixture-keep", "polygon": [[420000, -90000], [540000, -90000], [540000, 30000], [420000, 30000]]}]}
+{"plane": "dominaria", "volumes": [{"id": "fixture-keep", "polygon": [[180000, -150000], [300000, -150000], [300000, -30000], [180000, -30000]]}]}
 ```
 
 `plane` is the slug. A volume has an `id`, a slug that no other volume of the file has, and a `polygon` of three vertices or more, each `[x, z]` in whole millimetres in the world frame. The file holds nothing else. A volume is used as it is given: no step clips it to the world polygon, because no test reads the ground outside the world.

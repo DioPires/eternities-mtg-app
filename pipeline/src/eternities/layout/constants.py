@@ -97,6 +97,9 @@ BLOB_DEFORMATION_DIVISOR: Final = 5
 """The deformation is 0.2: one fifth of the weighted cosines."""
 BOUNDING_EXTRA: Final = 15_000
 SITE_WIDEN_LIMIT: Final = 20
+REDRAW_LIMIT: Final = 1
+"""Redraws of a site at one radius when placement exhausts it, before it is widened (reading X,
+the CEO's ruling 3 of 2026-10-14 on DEC-1004). A redraw adds ``|<a>`` to the site's seed string."""
 
 # Regions and site placement.
 ANCHOR_SCALE: Final = (4, 5_000)

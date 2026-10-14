@@ -21,18 +21,19 @@ is reached. It is the only allocator (8.3.3): the engine reads its output.
 - The partition is computed on every pass and its degeneracy test with it. The partition has
   the same shape at every R (5.4.5), so the test of the first pass is the test of every pass.
 - A site is exhausted at placement when two void slots in a row cut its path, or its kept slots
-  run out, while cards remain (the CEO's ruling 2 of 2026-10-13 on DEC-1004, W). It is widened
-  and the pass restarts at step (4).
+  run out, while cards remain (the CEO's ruling 2 of 2026-10-13 on DEC-1004, W). It is redrawn
+  or widened, and the pass restarts at step (4).
+- Every leg is checked when it is reserved (:func:`.trail.meets`); a leg that fails the check has
+  no route, and the world is short (the CEO's ruling 3 of 2026-10-14 on DEC-1004).
 
-**Reading X, measured and not the law.** ``allocate(..., redraw_limit=n)`` gives a site that is
-exhausted at placement up to ``n`` second attempts at the same radius before it is widened: its
-redraw count ``a`` goes up by one, its seed string gains ``|<a>``, and the pass restarts at
-step (4). A widening returns ``a`` to 0. The law is ``redraw_limit=0``, and every fixture is
-emitted under it. ``redraw_scope="jitter"`` is a second reading measured beside X: the site
-keeps its seed, so its blob, its path and its capacity stay, and only the jitter draws of
-placement take the stream of the seed string with ``|jitter|<a>``. The two parameters exist for
-``scripts/layout_redraw_reading.py`` and go, or one becomes the law, with the CEO's ruling on X
-(DEC-1004 ruling 2, item 9; DEC-1040 note 14).
+**The redraw (reading X; the CEO's ruling 3 of 2026-10-14 on DEC-1004).** Each site keeps a
+redraw count ``a``. It is 0 at the start and is kept across restarts and across passes over R.
+The site's seed string is that of 5.4.1 at ``a = 0`` and gains ``|<a>`` at ``a >= 1``; every draw
+of the site reads it (the blob, the sweep-direction tries, the slots and the jitter), and the
+world PRNG does not change. When placement exhausts a site at ``a`` under
+:data:`.constants.REDRAW_LIMIT`, ``a`` goes up by one, r_s stays and the pass restarts at step
+(4). At the limit the site is widened. A widening for any cause returns ``a`` to 0. So a site
+takes at most 20 widenings and 21 redraws, and a pass at most :func:`restart_bound` restarts.
 """
 
 from __future__ import annotations
@@ -52,6 +53,7 @@ from .constants import (
     PATH_HALF_WIDTH,
     PLAZA_EDGE_RADIUS,
     PLAZA_RADIUS,
+    REDRAW_LIMIT,
     RETURN_PORTAL_SOUTH,
     SITE_WIDEN_LIMIT,
     site_seed,
@@ -91,6 +93,21 @@ RAN_OUT = "the kept slots ran out"
 CUT = "two void slots in a row"
 WIDENING_CAUSES: tuple[str, ...] = (NO_PATH, CAPACITY, RAN_OUT, CUT)
 
+REDRAWN = "a redraw"
+WIDENED = "a widening at placement"
+NO_FIT = "a widened site no longer fits"
+RESTART_CAUSES: tuple[str, ...] = (REDRAWN, WIDENED, NO_FIT)
+
+
+def restart_bound(sites: int) -> int:
+    """The most restarts a pass can take (5.4.12, with the redraw of ruling 3).
+
+    Every restart follows a widening or a redraw of a site. A site takes at most 20 widenings,
+    and a redraw needs a count under the limit, which only the start and a widening give: at
+    most 21 redraws at a limit of 1. Both counts are kept across passes.
+    """
+    return (SITE_WIDEN_LIMIT + (SITE_WIDEN_LIMIT + 1) * REDRAW_LIMIT) * sites
+
 
 @dataclass(frozen=True, slots=True)
 class Event:
@@ -101,7 +118,8 @@ class Event:
     text: str
     site: str | None = None
     cause: str | None = None
-    """A widening's cause, one of :data:`WIDENING_CAUSES`."""
+    """A widening's or a redraw's cause, one of :data:`WIDENING_CAUSES`; a restart's, one of
+    :data:`RESTART_CAUSES`."""
     region: str | None = None
     radius: int = 0
     """R for a pass; the site's new r_s for a widening."""
@@ -116,7 +134,8 @@ class SiteLayout:
     centre: Pt
     widenings: int
     redraws: int
-    """Reading X's redraw count at the final layout; 0 under the law."""
+    """The site's redraw count ``a`` at the final layout: 0, or 1 when it lies at the radius of a
+    redraw."""
     capacity: Capacity
     placement: Placement
 
@@ -157,8 +176,6 @@ class _State:
     directions: Directions
     volumes: tuple[Volume, ...]
     radius: dict[str, int]
-    redraw_limit: int = 0
-    redraw_scope: str = "site"
     widenings: dict[str, int] = field(default_factory=dict)
     redraws: dict[str, int] = field(default_factory=dict)
     locals: dict[tuple[str, int, int], Local | None] = field(default_factory=dict)
@@ -190,44 +207,37 @@ class _State:
             )
         )
 
-    def exhausted(self, plan: SitePlan, cause: str, detail: str) -> None:
-        """A site is exhausted at placement: it is widened (5.4.10), or redrawn under reading X."""
-        if self.redraws[plan.key] < self.redraw_limit:
-            self.redraws[plan.key] += 1
-            self.events.append(
-                Event(
-                    kind="redraw",
-                    text=f"redraw {self.redraws[plan.key]} of `{plan.key}`: {detail}; "
-                    f"r_s = {self.radius[plan.key]:,} mm",
-                    site=plan.key,
-                    cause=cause,
-                    radius=self.radius[plan.key],
-                )
-            )
-            return
-        self.widen(plan, cause, detail)
+    def exhausted(self, plan: SitePlan, cause: str, detail: str) -> str:
+        """A site is exhausted at placement (5.4.10): it is redrawn under the limit, else widened.
 
-    def drawn(self, plan: SitePlan) -> int:
-        """The redraw count that the site's own stream reads: 0 under the law."""
-        return self.redraws[plan.key] if self.redraw_scope == "site" else 0
+        Returns the cause of the restart that follows.
+        """
+        if self.redraws[plan.key] == REDRAW_LIMIT:
+            self.widen(plan, cause, detail)
+            return WIDENED
+        self.redraws[plan.key] += 1
+        self.events.append(
+            Event(
+                kind="redraw",
+                text=f"redraw of `{plan.key}` (a = {self.redraws[plan.key]}): {detail}; "
+                f"r_s = {self.radius[plan.key]:,} mm",
+                site=plan.key,
+                cause=cause,
+                radius=self.radius[plan.key],
+            )
+        )
+        return REDRAWN
 
     def seed(self, plan: SitePlan) -> str:
-        """The site's seed string (5.4.1); under reading X it gains ``|<a>`` at a redraw."""
+        """The site's seed string (5.4.1), with ``|<a>`` at a redraw count ``a`` of 1 or more."""
         seed = site_seed(self.slug, plan.key)
-        redraw = self.drawn(plan)
+        redraw = self.redraws[plan.key]
         return seed if redraw == 0 else f"{seed}|{redraw}"
-
-    def jitter(self, plan: SitePlan) -> Prng | None:
-        """The jitter stream of the reading that redraws the jitter only; None under the law."""
-        redraw = self.redraws[plan.key] if self.redraw_scope == "jitter" else 0
-        if redraw == 0:
-            return None
-        return Prng.of(f"{site_seed(self.slug, plan.key)}|jitter|{redraw}")
 
     def local(self, plan: SitePlan) -> Local:
         """The site's local geometry at its radius, widening it while no try passes (5.4.8)."""
         while True:
-            key = (plan.key, self.radius[plan.key], self.drawn(plan))
+            key = (plan.key, self.radius[plan.key], self.redraws[plan.key])
             if key not in self.locals:
                 self.locals[key] = local_step.build(key[1], self.seed(plan), self.directions)
             found = self.locals[key]
@@ -236,7 +246,7 @@ class _State:
             self.widen(plan, NO_PATH, "no path and approach in eighteen tries")
 
     def capacity(self, plan: SitePlan, built: Local, centre: Pt) -> Capacity:
-        key = (plan.key, built.radius, self.drawn(plan), centre)
+        key = (plan.key, built.radius, self.redraws[plan.key], centre)
         found = self.capacities.get(key)
         if found is None:
             found = capacity_step.capacity_of(built, centre, plan.stands, self.directions)
@@ -250,15 +260,8 @@ def allocate(
     rows: Sequence[RegionRow] | None,
     volumes: Sequence[Volume],
     directions: Directions,
-    *,
-    redraw_limit: int = 0,
-    redraw_scope: str = "site",
 ) -> Layout:
-    """Lay one world out (5.4.12). ``rows`` is the region table, or None for a kit world.
-
-    ``redraw_limit`` and ``redraw_scope`` are the measured readings of the module's note; the
-    law is a limit of 0.
-    """
+    """Lay one world out (5.4.12). ``rows`` is the region table, or None for a kit world."""
     plans = tuple(plans)
     if rows is None:
         region_of = tuple(0 for _ in plans)
@@ -272,8 +275,6 @@ def allocate(
         directions=directions,
         volumes=tuple(volumes),
         radius={plan.key: local_step.base_radius(plan.stands) for plan in plans},
-        redraw_limit=redraw_limit,
-        redraw_scope=redraw_scope,
     )
     state.widenings = {plan.key: 0 for plan in plans}
     state.redraws = {plan.key: 0 for plan in plans}
@@ -342,7 +343,7 @@ def _pass(
     plans = state.plans
     ground = placing.Ground(state.directions, [volume.shape for volume in state.volumes])
     world_cells: dict[tuple[int, int], bool] = {}
-    while True:
+    for _ in range(restart_bound(len(plans)) + 1):
         # (4) Local geometry, then centres in site order.
         built = [state.local(plan) for plan in plans]
         placed: list[placing.Placed] = []
@@ -400,6 +401,7 @@ def _pass(
                 Event(
                     kind="restart",
                     text="restart at step (4): a widened site no longer fits at its centre",
+                    cause=NO_FIT,
                 )
             )
             continue
@@ -422,6 +424,7 @@ def _pass(
         # (7) Placement, chapter stones and the trim.
         indexes = [SegmentIndex(leg.polyline) for leg in legs]
         sites: list[SiteLayout] = []
+        restart_cause = ""
         for position, plan in enumerate(plans):
             centre = centres[position]
             foreign, signature = _foreign(state, built[position], centre, approach, legs, indexes)
@@ -435,7 +438,6 @@ def _pass(
                     chapters,
                     state.directions,
                     foreign,
-                    state.jitter(plan),
                 )
                 state.placements[key] = found_placement
             if found_placement.exhausted is not None:
@@ -445,7 +447,7 @@ def _pass(
                     where = f"{CUT} cut the path at slot {found_placement.exhausted}"
                 else:
                     cause, where = RAN_OUT, RAN_OUT
-                state.exhausted(
+                restart_cause = state.exhausted(
                     plan, cause, f"exhausted at {held} of {plan.stands} stands, {where}"
                 )
                 restart = True
@@ -465,10 +467,15 @@ def _pass(
         if restart:
             state.restarts += 1
             state.events.append(
-                Event(kind="restart", text="restart at step (4): a site is exhausted at placement")
+                Event(
+                    kind="restart",
+                    text="restart at step (4): a site is exhausted at placement",
+                    cause=restart_cause,
+                )
             )
             continue
         return sites, approach, legs
+    raise AssertionError("unreachable: a site fails after twenty widenings first")
 
 
 def _trail(
@@ -506,8 +513,9 @@ def _trail(
             prng,
             state.directions,
         )
-        if found is None:
-            return _Short(f"the trail leg from {name!r} to {key!r} has no route", key)
+        met = "" if found is None else _met(state, obstacles, found)
+        if found is None or met:
+            return _Short(f"the trail leg from {name!r} to {key!r} has no route{met}", key)
         legs.append(found)
         name, anchor = key, points[position]
     for position in spurs:
@@ -522,10 +530,22 @@ def _trail(
             prng,
             state.directions,
         )
-        if found is None:
-            return _Short(f"the spur from the trail to {key!r} has no route", key)
+        met = "" if found is None else _met(state, obstacles, found)
+        if found is None or met:
+            return _Short(f"the spur from the trail to {key!r} has no route{met}", key)
         legs.append(found)
     return approach, legs
+
+
+def _met(state: _State, obstacles: Obstacles, found: Leg) -> str:
+    """The leg check of ruling 3: an empty string, or the shape the leg meets, named."""
+    met = trail.meets(obstacles, found.polyline)
+    if met is None:
+        return ""
+    kind, number = met
+    if kind == "hero volume":
+        return f": its strip meets hero volume {state.volumes[number].id!r}"
+    return f": its strip meets the {kind} of site {state.plans[number].key!r}"
 
 
 def _foreign(

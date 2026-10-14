@@ -3,71 +3,69 @@
 - Dataset: `a5846bec28d1447e`. Plane index (v3 `planes.json`): 19.
 - Law: the plane's lore tables (lore). Digest `sha256:59322664c8da5b437cf9c5c00a7126a12bdf0570c458cfd154a2680ee443b8d2`; acceptance status: accepted.
 - Stands: 6,271. Sites: 26 (15 era, 11 regional, 0 set). Regions: 12. Hero volumes: 0.
-- R₀ = 572,633 mm. R = 1,115,904 mm after 8 of 20 passes, so the world is 2,231,808 mm across. Restarts at step (4): 91.
-- Site widenings: 105 (60 for capacity, 0 for no path and approach, 23 where the kept slots ran out, 22 where two void slots in a row cut the path).
+- R₀ = 572,633 mm. R = 838,394 mm after 5 of 20 passes, so the world is 1,676,788 mm across. Restarts at step (4): 116 (42 after a redraw, 31 after a widening at placement, 43 where a widened site no longer fits at its centre).
+- Site widenings: 89 (58 for capacity, 0 for no path and approach, 24 where the kept slots ran out, 7 where two void slots in a row cut the path).
+- Redraws at the same radius: 42, at most 1 at a radius. Sites laid out at the radius of a redraw (a = 1): 11 of 26.
 - Trig table: sha256 `fa33d5685b879e0f63d26d684e0e39585ce1b6e291b7f1f3543c82949f7bf777` (5.4.18 (6)).
 - Independent checker (3.2): pass, 0 violations.
 
 ## Passes over R
 
-| Pass | R (mm) | Site widenings | Restarts | Region | Site | Result |
-|---|---|---|---|---|---|---|
-| 1 | 572,633 | 0 | 0 | `benalia` | `era:renewal` | R is widened: region 'benalia' cannot hold site 'era:renewal' |
-| 2 | 629,897 | 1 | 1 | `shiv` | `era:second-invasion` | R is widened: region 'shiv' cannot hold site 'era:second-invasion' |
-| 3 | 692,887 | 7 | 7 | `terisiare` | `era:ice-age` | R is widened: region 'terisiare' cannot hold site 'era:ice-age' |
-| 4 | 762,176 | 58 | 45 | `terisiare` | `era:ice-age` | R is widened: region 'terisiare' cannot hold site 'era:ice-age' |
-| 5 | 838,394 | 5 | 4 | `terisiare` | `era:ice-age` | R is widened: region 'terisiare' cannot hold site 'era:ice-age' |
-| 6 | 922,234 | 1 | 1 | `terisiare` | `era:ice-age` | R is widened: region 'terisiare' cannot hold site 'era:ice-age' |
-| 7 | 1,014,458 | 1 | 1 | `terisiare` | `era:ice-age` | R is widened: region 'terisiare' cannot hold site 'era:ice-age' |
-| 8 | 1,115,904 | 32 | 32 | none | none | the world is laid out |
+| Pass | R (mm) | Site widenings | Redraws | Restarts | Restarts by cause: a redraw / a widening at placement / a site that no longer fits | Region | Site | Result |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 572,633 | 0 | 0 | 0 | 0 / 0 / 0 | `benalia` | `era:renewal` | R is widened: region 'benalia' cannot hold site 'era:renewal' |
+| 2 | 629,897 | 1 | 0 | 1 | 0 / 0 / 1 | `shiv` | `era:second-invasion` | R is widened: region 'shiv' cannot hold site 'era:second-invasion' |
+| 3 | 692,887 | 7 | 0 | 7 | 0 / 0 / 7 | `terisiare` | `era:ice-age` | R is widened: region 'terisiare' cannot hold site 'era:ice-age' |
+| 4 | 762,176 | 70 | 28 | 85 | 28 / 24 / 33 | `benalia` | `era:renewal` | R is widened: region 'benalia' cannot hold site 'era:renewal' |
+| 5 | 838,394 | 11 | 14 | 23 | 14 / 7 / 2 | none | none | the world is laid out |
 
 ## Regions
 
 | Region | Cell area (m²) | Sites | Bounding discs' area (m²) | Discs' share of the cell (percent, rounded down) |
 |---|---|---|---|---|
-| `benalia` | 263,314 | 2 | 32,132 | 12 |
-| `shiv` | 359,316 | 3 | 80,751 | 22 |
-| `llanowar` | 79,643 | 1 | 7,221 | 9 |
-| `yavimaya` | 73,812 | 1 | 7,221 | 9 |
-| `terisiare` | 580,587 | 4 | 285,977 | 49 |
-| `sarpadia` | 121,350 | 2 | 22,888 | 18 |
-| `tolaria` | 326,657 | 2 | 69,727 | 21 |
-| `caliman` | 116,953 | 1 | 16,363 | 13 |
-| `jamuraa` | 544,545 | 3 | 122,773 | 22 |
-| `urborg` | 407,143 | 2 | 72,031 | 17 |
-| `otaria` | 672,668 | 3 | 140,604 | 20 |
-| `keld` | 361,090 | 2 | 74,142 | 20 |
+| `benalia` | 148,633 | 2 | 32,132 | 21 |
+| `shiv` | 202,824 | 3 | 80,751 | 39 |
+| `llanowar` | 44,956 | 1 | 5,601 | 12 |
+| `yavimaya` | 41,665 | 1 | 5,601 | 13 |
+| `terisiare` | 327,726 | 4 | 127,647 | 38 |
+| `sarpadia` | 68,499 | 2 | 19,767 | 28 |
+| `tolaria` | 184,389 | 2 | 69,727 | 37 |
+| `caliman` | 66,017 | 1 | 19,059 | 28 |
+| `jamuraa` | 307,380 | 3 | 122,773 | 39 |
+| `urborg` | 229,821 | 2 | 84,667 | 36 |
+| `otaria` | 379,702 | 3 | 140,604 | 37 |
+| `keld` | 203,826 | 2 | 73,456 | 36 |
 
 ## Sites
 
-| # | Site | Region | Stands | Clusters | Chapter stones | Base r_s (mm) | Final r_s (mm) | b_s (mm) | Widenings | By cause: capacity / no path / slots ran out / cut | Sweep-direction tries | Sweeps | Capacity | Centre (mm) |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 0 | `era:first-ages` | `shiv` | 288 | 76 | 1 | 57,447 | 76,461 | 106,754 | 3 | 1 / 0 / 2 / 0 | 1 | 8 | 458 | 360,000, 440,000 |
-| 1 | `era:brothers-war` | `terisiare` | 366 | 94 | 2 | 64,761 | 94,815 | 128,778 | 4 | 2 / 0 / 1 / 1 | 1 | 9 | 722 | 390,000, 170,000 |
-| 2 | `era:the-dark` | `terisiare` | 119 | 30 | 0 | 36,927 | 54,062 | 79,875 | 4 | 1 / 0 / 1 / 2 | 1 | 5 | 226 | 480,000, -30,000 |
-| 3 | `era:fallen-empires` | `sarpadia` | 102 | 27 | 0 | 34,188 | 55,057 | 81,069 | 5 | 3 / 0 / 0 / 2 | 1 | 5 | 229 | 640,000, -580,000 |
-| 4 | `era:ice-age` | `terisiare` | 635 | 166 | 2 | 85,302 | 201,131 | 256,358 | 9 | 4 / 0 / 0 / 5 | 1 | 19 | 3434 | 770,000, -230,000 |
-| 5 | `era:urzas-academy` | `tolaria` | 565 | 150 | 2 | 80,463 | 107,094 | 143,513 | 3 | 1 / 0 / 1 / 1 | 1 | 10 | 920 | 390,000, -580,000 |
-| 6 | `era:legends` | `jamuraa` | 304 | 81 | 0 | 59,021 | 78,556 | 109,268 | 3 | 1 / 0 / 1 / 1 | 1 | 7 | 482 | -70,000, -550,000 |
-| 7 | `era:caliman` | `caliman` | 112 | 29 | 0 | 35,824 | 47,680 | 72,216 | 3 | 2 / 0 / 0 / 1 | 1 | 4 | 171 | -20,000, -840,000 |
-| 8 | `era:jamuraa-wars` | `jamuraa` | 615 | 159 | 3 | 83,948 | 122,906 | 162,488 | 4 | 1 / 0 / 1 / 2 | 1 | 13 | 1222 | -290,000, -740,000 |
-| 9 | `era:invasion` | `urborg` | 716 | 185 | 3 | 90,580 | 109,601 | 146,522 | 2 | 1 / 0 / 0 / 1 | 1 | 11 | 968 | -740,000, -250,000 |
-| 10 | `era:mirari` | `otaria` | 604 | 154 | 2 | 83,194 | 110,730 | 147,876 | 3 | 1 / 0 / 2 / 0 | 2 | 11 | 1001 | -440,000, 130,000 |
-| 11 | `era:karona` | `otaria` | 606 | 153 | 2 | 83,332 | 110,914 | 148,097 | 3 | 1 / 0 / 2 / 0 | 2 | 11 | 1013 | -500,000, 430,000 |
-| 12 | `era:time-rifts` | `keld` | 600 | 152 | 3 | 82,918 | 110,361 | 147,434 | 3 | 1 / 0 / 1 / 1 | 1 | 10 | 992 | -40,000, 750,000 |
-| 13 | `era:renewal` | `benalia` | 209 | 56 | 0 | 48,938 | 65,135 | 93,162 | 3 | 1 / 0 / 0 / 2 | 2 | 6 | 331 | 100,000, 240,000 |
-| 14 | `era:second-invasion` | `shiv` | 265 | 69 | 2 | 55,106 | 80,678 | 111,814 | 4 | 1 / 0 / 2 / 1 | 2 | 7 | 536 | 390,000, 670,000 |
-| 15 | `region:benalia` | `benalia` | 17 | 6 | 0 | 13,957 | 20,432 | 39,519 | 4 | 4 / 0 / 0 / 0 | 1 | 2 | 23 | 180,000, 120,000 |
-| 16 | `region:shiv` | `shiv` | 15 | 4 | 0 | 13,110 | 23,223 | 42,868 | 6 | 5 / 0 / 1 / 0 | 1 | 2 | 36 | 550,000, 630,000 |
-| 17 | `region:llanowar` | `llanowar` | 21 | 6 | 0 | 15,512 | 27,476 | 47,972 | 6 | 4 / 0 / 1 / 1 | 1 | 2 | 47 | 670,000, 330,000 |
-| 18 | `region:yavimaya` | `yavimaya` | 21 | 6 | 0 | 15,512 | 27,476 | 47,972 | 6 | 3 / 0 / 2 / 1 | 1 | 2 | 49 | 900,000, 210,000 |
-| 19 | `region:terisiare` | `terisiare` | 28 | 8 | 0 | 17,912 | 28,846 | 49,616 | 5 | 2 / 0 / 3 / 0 | 1 | 2 | 55 | 580,000, 210,000 |
-| 20 | `region:sarpadia` | `sarpadia` | 4 | 1 | 0 | 9,000 | 9,900 | 26,880 | 1 | 0 / 0 / 1 / 0 | 1 | 1 | 5 | 760,000, -540,000 |
-| 21 | `region:tolaria` | `tolaria` | 15 | 4 | 0 | 13,110 | 21,112 | 40,335 | 5 | 5 / 0 / 0 / 0 | 1 | 2 | 34 | 180,000, -370,000 |
-| 22 | `region:jamuraa` | `jamuraa` | 4 | 1 | 0 | 9,000 | 10,890 | 28,068 | 2 | 2 / 0 / 0 / 0 | 1 | 1 | 4 | -100,000, -310,000 |
-| 23 | `region:urborg` | `urborg` | 13 | 4 | 0 | 12,205 | 19,653 | 38,584 | 5 | 5 / 0 / 0 / 0 | 1 | 1 | 19 | -470,000, -120,000 |
-| 24 | `region:otaria` | `otaria` | 8 | 2 | 0 | 9,574 | 14,016 | 31,820 | 4 | 4 / 0 / 0 / 0 | 1 | 1 | 11 | -10,000, 370,000 |
-| 25 | `region:keld` | `keld` | 19 | 5 | 0 | 14,755 | 23,761 | 43,514 | 5 | 4 / 0 / 1 / 0 | 5 | 2 | 38 | 210,000, 670,000 |
+| # | Site | Region | Stands | Clusters | Chapter stones | Base r_s (mm) | Final r_s (mm) | b_s (mm) | Widenings | By cause: capacity / no path / slots ran out / cut | Redraws | Final a | Sweep-direction tries | Sweeps | Capacity | Centre (mm) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 0 | `era:first-ages` | `shiv` | 288 | 77 | 1 | 57,447 | 76,461 | 106,754 | 3 | 1 / 0 / 2 / 0 | 2 | 0 | 1 | 8 | 453 | 300,000, 360,000 |
+| 1 | `era:brothers-war` | `terisiare` | 366 | 93 | 2 | 64,761 | 86,196 | 118,436 | 3 | 2 / 0 / 1 / 0 | 1 | 0 | 1 | 8 | 613 | 310,000, 100,000 |
+| 2 | `era:the-dark` | `terisiare` | 119 | 31 | 0 | 36,927 | 49,148 | 73,978 | 3 | 1 / 0 / 2 / 0 | 3 | 1 | 2 | 5 | 177 | 240,000, -90,000 |
+| 3 | `era:fallen-empires` | `sarpadia` | 102 | 28 | 0 | 34,188 | 50,052 | 75,063 | 4 | 3 / 0 / 1 / 0 | 2 | 1 | 2 | 5 | 177 | 500,000, -460,000 |
+| 4 | `era:ice-age` | `terisiare` | 635 | 165 | 2 | 85,302 | 103,215 | 138,858 | 2 | 1 / 0 / 1 / 0 | 2 | 1 | 1 | 10 | 878 | 520,000, -220,000 |
+| 5 | `era:urzas-academy` | `tolaria` | 565 | 145 | 2 | 80,463 | 107,094 | 143,513 | 3 | 1 / 0 / 1 / 1 | 3 | 1 | 1 | 10 | 955 | 250,000, -460,000 |
+| 6 | `era:legends` | `jamuraa` | 304 | 80 | 0 | 59,021 | 78,556 | 109,268 | 3 | 1 / 0 / 1 / 1 | 2 | 0 | 1 | 7 | 488 | -80,000, -390,000 |
+| 7 | `era:caliman` | `caliman` | 112 | 31 | 0 | 35,824 | 52,448 | 77,938 | 4 | 2 / 0 / 2 / 0 | 2 | 0 | 1 | 5 | 184 | -30,000, -680,000 |
+| 8 | `era:jamuraa-wars` | `jamuraa` | 615 | 163 | 3 | 83,948 | 122,906 | 162,488 | 4 | 1 / 0 / 1 / 2 | 4 | 1 | 1 | 11 | 1253 | -300,000, -570,000 |
+| 9 | `era:invasion` | `urborg` | 716 | 183 | 3 | 90,580 | 120,561 | 159,674 | 3 | 1 / 0 / 2 / 0 | 2 | 0 | 1 | 12 | 1180 | -640,000, -190,000 |
+| 10 | `era:mirari` | `otaria` | 604 | 158 | 2 | 83,194 | 110,730 | 147,876 | 3 | 1 / 0 / 2 / 0 | 3 | 1 | 2 | 11 | 990 | -320,000, 140,000 |
+| 11 | `era:karona` | `otaria` | 606 | 151 | 2 | 83,332 | 110,914 | 148,097 | 3 | 1 / 0 / 1 / 1 | 2 | 0 | 2 | 11 | 1018 | -380,000, 440,000 |
+| 12 | `era:time-rifts` | `keld` | 600 | 155 | 3 | 82,918 | 110,361 | 147,434 | 3 | 2 / 0 / 0 / 1 | 1 | 0 | 1 | 10 | 985 | -60,000, 670,000 |
+| 13 | `era:renewal` | `benalia` | 209 | 56 | 0 | 48,938 | 65,135 | 93,162 | 3 | 1 / 0 / 2 / 0 | 2 | 0 | 2 | 6 | 326 | 70,000, 130,000 |
+| 14 | `era:second-invasion` | `shiv` | 265 | 70 | 2 | 55,106 | 80,678 | 111,814 | 4 | 1 / 0 / 2 / 1 | 3 | 0 | 2 | 7 | 522 | 340,000, 590,000 |
+| 15 | `region:benalia` | `benalia` | 17 | 6 | 0 | 13,957 | 20,432 | 39,519 | 4 | 4 / 0 / 0 / 0 | 0 | 0 | 1 | 2 | 24 | 110,000, -10,000 |
+| 16 | `region:shiv` | `shiv` | 15 | 4 | 0 | 13,110 | 23,223 | 42,868 | 6 | 5 / 0 / 1 / 0 | 1 | 0 | 1 | 2 | 36 | 500,000, 550,000 |
+| 17 | `region:llanowar` | `llanowar` | 21 | 6 | 0 | 15,512 | 22,709 | 42,251 | 4 | 4 / 0 / 0 / 0 | 1 | 1 | 1 | 2 | 34 | 550,000, 250,000 |
+| 18 | `region:yavimaya` | `yavimaya` | 21 | 6 | 0 | 15,512 | 22,709 | 42,251 | 4 | 3 / 0 / 1 / 0 | 2 | 1 | 1 | 2 | 38 | 700,000, 160,000 |
+| 19 | `region:terisiare` | `terisiare` | 28 | 8 | 0 | 17,912 | 23,840 | 43,608 | 3 | 2 / 0 / 1 / 0 | 2 | 1 | 1 | 2 | 45 | 480,000, 140,000 |
+| 20 | `region:sarpadia` | `sarpadia` | 4 | 1 | 0 | 9,000 | 9,000 | 25,800 | 0 | 0 / 0 / 0 / 0 | 0 | 0 | 1 | 1 | 4 | 610,000, -420,000 |
+| 21 | `region:tolaria` | `tolaria` | 15 | 4 | 0 | 13,110 | 21,112 | 40,335 | 5 | 5 / 0 / 0 / 0 | 0 | 0 | 1 | 2 | 31 | 140,000, -300,000 |
+| 22 | `region:jamuraa` | `jamuraa` | 4 | 1 | 0 | 9,000 | 10,890 | 28,068 | 2 | 2 / 0 / 0 / 0 | 1 | 1 | 1 | 1 | 4 | -80,000, -240,000 |
+| 23 | `region:urborg` | `urborg` | 13 | 4 | 0 | 12,205 | 19,653 | 38,584 | 5 | 5 / 0 / 0 / 0 | 0 | 0 | 1 | 1 | 20 | -370,000, -90,000 |
+| 24 | `region:otaria` | `otaria` | 8 | 2 | 0 | 9,574 | 14,016 | 31,820 | 4 | 4 / 0 / 0 / 0 | 0 | 0 | 1 | 1 | 12 | -30,000, 290,000 |
+| 25 | `region:keld` | `keld` | 19 | 6 | 0 | 14,755 | 21,601 | 40,922 | 4 | 4 / 0 / 0 / 0 | 1 | 1 | 1 | 2 | 27 | 160,000, 600,000 |
 
 ## Site widenings in order
 
@@ -127,98 +125,130 @@
 | 52 | 4 | `region:keld` | capacity | capacity 10 for 19 | 17,853 |
 | 53 | 4 | `region:keld` | capacity | capacity 16 for 19 | 19,638 |
 | 54 | 4 | `region:keld` | capacity | capacity 16 for 19 | 21,601 |
-| 55 | 4 | `era:first-ages` | the kept slots ran out | exhausted at 208 of 288 stands, the kept slots ran out | 69,510 |
-| 56 | 4 | `era:first-ages` | the kept slots ran out | exhausted at 266 of 288 stands, the kept slots ran out | 76,461 |
-| 57 | 4 | `era:brothers-war` | the kept slots ran out | exhausted at 340 of 366 stands, the kept slots ran out | 86,196 |
-| 58 | 4 | `era:the-dark` | two void slots in a row | exhausted at 48 of 119 stands, two void slots in a row cut the path at slot 17 | 44,680 |
-| 59 | 4 | `era:the-dark` | the kept slots ran out | exhausted at 106 of 119 stands, the kept slots ran out | 49,148 |
-| 60 | 4 | `era:fallen-empires` | two void slots in a row | exhausted at 78 of 102 stands, two void slots in a row cut the path at slot 26 | 50,052 |
-| 61 | 4 | `era:fallen-empires` | two void slots in a row | exhausted at 59 of 102 stands, two void slots in a row cut the path at slot 20 | 55,057 |
-| 62 | 4 | `era:ice-age` | two void slots in a row | exhausted at 465 of 635 stands, two void slots in a row cut the path at slot 137 | 103,215 |
-| 63 | 4 | `era:ice-age` | two void slots in a row | exhausted at 148 of 635 stands, two void slots in a row cut the path at slot 45 | 113,536 |
-| 64 | 4 | `era:ice-age` | capacity | capacity -2 for 635 | 124,889 |
-| 65 | 4 | `era:ice-age` | two void slots in a row | exhausted at 253 of 635 stands, two void slots in a row cut the path at slot 72 | 137,377 |
-| 66 | 4 | `era:ice-age` | capacity | capacity -2 for 635 | 151,114 |
-| 67 | 5 | `region:benalia` | capacity | capacity 16 for 17 | 18,575 |
-| 68 | 5 | `region:benalia` | capacity | capacity 15 for 17 | 20,432 |
-| 69 | 5 | `era:the-dark` | two void slots in a row | exhausted at 74 of 119 stands, two void slots in a row cut the path at slot 24 | 54,062 |
-| 70 | 5 | `era:ice-age` | two void slots in a row | exhausted at 0 of 635 stands, two void slots in a row cut the path at slot 2 | 166,225 |
-| 71 | 5 | `era:ice-age` | two void slots in a row | exhausted at 484 of 635 stands, two void slots in a row cut the path at slot 134 | 182,847 |
-| 72 | 6 | `era:ice-age` | capacity | capacity -2 for 635 | 201,131 |
-| 73 | 7 | `era:brothers-war` | two void slots in a row | exhausted at 42 of 366 stands, two void slots in a row cut the path at slot 13 | 94,815 |
-| 74 | 8 | `era:urzas-academy` | two void slots in a row | exhausted at 430 of 565 stands, two void slots in a row cut the path at slot 123 | 97,359 |
-| 75 | 8 | `era:urzas-academy` | the kept slots ran out | exhausted at 553 of 565 stands, the kept slots ran out | 107,094 |
-| 76 | 8 | `era:legends` | two void slots in a row | exhausted at 195 of 304 stands, two void slots in a row cut the path at slot 62 | 71,415 |
-| 77 | 8 | `era:legends` | the kept slots ran out | exhausted at 277 of 304 stands, the kept slots ran out | 78,556 |
-| 78 | 8 | `era:caliman` | two void slots in a row | exhausted at 46 of 112 stands, two void slots in a row cut the path at slot 16 | 47,680 |
-| 79 | 8 | `era:jamuraa-wars` | the kept slots ran out | exhausted at 477 of 615 stands, the kept slots ran out | 101,576 |
-| 80 | 8 | `era:jamuraa-wars` | two void slots in a row | exhausted at 483 of 615 stands, two void slots in a row cut the path at slot 142 | 111,733 |
-| 81 | 8 | `era:jamuraa-wars` | two void slots in a row | exhausted at 476 of 615 stands, two void slots in a row cut the path at slot 143 | 122,906 |
-| 82 | 8 | `era:invasion` | two void slots in a row | exhausted at 81 of 716 stands, two void slots in a row cut the path at slot 25 | 109,601 |
-| 83 | 8 | `era:mirari` | the kept slots ran out | exhausted at 488 of 604 stands, the kept slots ran out | 100,664 |
-| 84 | 8 | `era:mirari` | the kept slots ran out | exhausted at 590 of 604 stands, the kept slots ran out | 110,730 |
-| 85 | 8 | `era:karona` | the kept slots ran out | exhausted at 505 of 606 stands, the kept slots ran out | 100,831 |
-| 86 | 8 | `era:karona` | the kept slots ran out | exhausted at 604 of 606 stands, the kept slots ran out | 110,914 |
-| 87 | 8 | `era:time-rifts` | two void slots in a row | exhausted at 0 of 600 stands, two void slots in a row cut the path at slot 2 | 100,329 |
-| 88 | 8 | `era:time-rifts` | the kept slots ran out | exhausted at 595 of 600 stands, the kept slots ran out | 110,361 |
-| 89 | 8 | `era:renewal` | two void slots in a row | exhausted at 0 of 209 stands, two void slots in a row cut the path at slot 2 | 59,214 |
-| 90 | 8 | `era:renewal` | two void slots in a row | exhausted at 87 of 209 stands, two void slots in a row cut the path at slot 26 | 65,135 |
-| 91 | 8 | `era:second-invasion` | the kept slots ran out | exhausted at 192 of 265 stands, the kept slots ran out | 66,677 |
-| 92 | 8 | `era:second-invasion` | the kept slots ran out | exhausted at 239 of 265 stands, the kept slots ran out | 73,344 |
-| 93 | 8 | `era:second-invasion` | two void slots in a row | exhausted at 136 of 265 stands, two void slots in a row cut the path at slot 45 | 80,678 |
-| 94 | 8 | `region:shiv` | the kept slots ran out | exhausted at 12 of 15 stands, the kept slots ran out | 21,112 |
-| 95 | 8 | `region:shiv` | capacity | capacity 10 for 15 | 23,223 |
-| 96 | 8 | `region:llanowar` | the kept slots ran out | exhausted at 16 of 21 stands, the kept slots ran out | 24,979 |
-| 97 | 8 | `region:llanowar` | two void slots in a row | exhausted at 11 of 21 stands, two void slots in a row cut the path at slot 5 | 27,476 |
-| 98 | 8 | `region:yavimaya` | the kept slots ran out | exhausted at 14 of 21 stands, the kept slots ran out | 22,709 |
-| 99 | 8 | `region:yavimaya` | the kept slots ran out | exhausted at 18 of 21 stands, the kept slots ran out | 24,979 |
-| 100 | 8 | `region:yavimaya` | two void slots in a row | exhausted at 12 of 21 stands, two void slots in a row cut the path at slot 5 | 27,476 |
-| 101 | 8 | `region:terisiare` | the kept slots ran out | exhausted at 19 of 28 stands, the kept slots ran out | 23,840 |
-| 102 | 8 | `region:terisiare` | the kept slots ran out | exhausted at 19 of 28 stands, the kept slots ran out | 26,224 |
-| 103 | 8 | `region:terisiare` | the kept slots ran out | exhausted at 27 of 28 stands, the kept slots ran out | 28,846 |
-| 104 | 8 | `region:sarpadia` | the kept slots ran out | exhausted at 3 of 4 stands, the kept slots ran out | 9,900 |
-| 105 | 8 | `region:keld` | the kept slots ran out | exhausted at 18 of 19 stands, the kept slots ran out | 23,761 |
+| 55 | 4 | `era:first-ages` | the kept slots ran out | exhausted at 225 of 288 stands, the kept slots ran out | 69,510 |
+| 56 | 4 | `era:first-ages` | the kept slots ran out | exhausted at 269 of 288 stands, the kept slots ran out | 76,461 |
+| 57 | 4 | `era:brothers-war` | the kept slots ran out | exhausted at 335 of 366 stands, the kept slots ran out | 86,196 |
+| 58 | 4 | `era:the-dark` | the kept slots ran out | exhausted at 69 of 119 stands, the kept slots ran out | 44,680 |
+| 59 | 4 | `era:the-dark` | the kept slots ran out | exhausted at 94 of 119 stands, the kept slots ran out | 49,148 |
+| 60 | 4 | `era:fallen-empires` | the kept slots ran out | exhausted at 92 of 102 stands, the kept slots ran out | 50,052 |
+| 61 | 4 | `era:ice-age` | the kept slots ran out | exhausted at 546 of 635 stands, the kept slots ran out | 103,215 |
+| 62 | 4 | `era:urzas-academy` | the kept slots ran out | exhausted at 472 of 565 stands, the kept slots ran out | 97,359 |
+| 63 | 4 | `era:urzas-academy` | two void slots in a row | exhausted at 220 of 565 stands, two void slots in a row cut the path at slot 60 | 107,094 |
+| 64 | 4 | `era:legends` | two void slots in a row | exhausted at 43 of 304 stands, two void slots in a row cut the path at slot 13 | 71,415 |
+| 65 | 4 | `era:legends` | the kept slots ran out | exhausted at 270 of 304 stands, the kept slots ran out | 78,556 |
+| 66 | 4 | `era:caliman` | the kept slots ran out | exhausted at 83 of 112 stands, the kept slots ran out | 47,680 |
+| 67 | 4 | `era:jamuraa-wars` | two void slots in a row | exhausted at 44 of 615 stands, two void slots in a row cut the path at slot 17 | 101,576 |
+| 68 | 4 | `era:jamuraa-wars` | the kept slots ran out | exhausted at 595 of 615 stands, the kept slots ran out | 111,733 |
+| 69 | 4 | `era:jamuraa-wars` | two void slots in a row | exhausted at 475 of 615 stands, two void slots in a row cut the path at slot 130 | 122,906 |
+| 70 | 4 | `era:invasion` | the kept slots ran out | exhausted at 555 of 716 stands, the kept slots ran out | 109,601 |
+| 71 | 4 | `era:invasion` | the kept slots ran out | exhausted at 701 of 716 stands, the kept slots ran out | 120,561 |
+| 72 | 4 | `era:mirari` | the kept slots ran out | exhausted at 469 of 604 stands, the kept slots ran out | 100,664 |
+| 73 | 4 | `era:mirari` | the kept slots ran out | exhausted at 589 of 604 stands, the kept slots ran out | 110,730 |
+| 74 | 4 | `era:karona` | the kept slots ran out | exhausted at 505 of 606 stands, the kept slots ran out | 100,831 |
+| 75 | 4 | `era:karona` | two void slots in a row | exhausted at 539 of 606 stands, two void slots in a row cut the path at slot 163 | 110,914 |
+| 76 | 4 | `era:time-rifts` | two void slots in a row | exhausted at 25 of 600 stands, two void slots in a row cut the path at slot 11 | 100,329 |
+| 77 | 4 | `era:renewal` | the kept slots ran out | exhausted at 146 of 209 stands, the kept slots ran out | 59,214 |
+| 78 | 4 | `era:renewal` | the kept slots ran out | exhausted at 181 of 209 stands, the kept slots ran out | 65,135 |
+| 79 | 5 | `era:time-rifts` | capacity | capacity -3 for 600 | 110,361 |
+| 80 | 5 | `region:benalia` | capacity | capacity 16 for 17 | 18,575 |
+| 81 | 5 | `region:benalia` | capacity | capacity 16 for 17 | 20,432 |
+| 82 | 5 | `era:caliman` | the kept slots ran out | exhausted at 83 of 112 stands, the kept slots ran out | 52,448 |
+| 83 | 5 | `era:second-invasion` | the kept slots ran out | exhausted at 193 of 265 stands, the kept slots ran out | 66,677 |
+| 84 | 5 | `era:second-invasion` | the kept slots ran out | exhausted at 224 of 265 stands, the kept slots ran out | 73,344 |
+| 85 | 5 | `era:second-invasion` | two void slots in a row | exhausted at 34 of 265 stands, two void slots in a row cut the path at slot 11 | 80,678 |
+| 86 | 5 | `region:shiv` | the kept slots ran out | exhausted at 11 of 15 stands, the kept slots ran out | 21,112 |
+| 87 | 5 | `region:shiv` | capacity | capacity 10 for 15 | 23,223 |
+| 88 | 5 | `region:yavimaya` | the kept slots ran out | exhausted at 20 of 21 stands, the kept slots ran out | 22,709 |
+| 89 | 5 | `region:terisiare` | the kept slots ran out | exhausted at 22 of 28 stands, the kept slots ran out | 23,840 |
+
+## Redraws in order
+
+| # | Pass | Site | Cause | What was found | r_s (mm) |
+|---|---|---|---|---|---|
+| 1 | 4 | `era:first-ages` | the kept slots ran out | exhausted at 208 of 288 stands, the kept slots ran out | 63,191 |
+| 2 | 4 | `era:first-ages` | the kept slots ran out | exhausted at 266 of 288 stands, the kept slots ran out | 69,510 |
+| 3 | 4 | `era:brothers-war` | the kept slots ran out | exhausted at 340 of 366 stands, the kept slots ran out | 78,360 |
+| 4 | 4 | `era:the-dark` | two void slots in a row | exhausted at 48 of 119 stands, two void slots in a row cut the path at slot 17 | 40,619 |
+| 5 | 4 | `era:the-dark` | the kept slots ran out | exhausted at 106 of 119 stands, the kept slots ran out | 44,680 |
+| 6 | 4 | `era:fallen-empires` | two void slots in a row | exhausted at 78 of 102 stands, two void slots in a row cut the path at slot 26 | 45,502 |
+| 7 | 4 | `era:fallen-empires` | two void slots in a row | exhausted at 59 of 102 stands, two void slots in a row cut the path at slot 20 | 50,052 |
+| 8 | 4 | `era:ice-age` | two void slots in a row | exhausted at 465 of 635 stands, two void slots in a row cut the path at slot 137 | 93,832 |
+| 9 | 4 | `era:ice-age` | two void slots in a row | exhausted at 148 of 635 stands, two void slots in a row cut the path at slot 45 | 103,215 |
+| 10 | 4 | `era:urzas-academy` | two void slots in a row | exhausted at 430 of 565 stands, two void slots in a row cut the path at slot 125 | 88,509 |
+| 11 | 4 | `era:urzas-academy` | two void slots in a row | exhausted at 533 of 565 stands, two void slots in a row cut the path at slot 154 | 97,359 |
+| 12 | 4 | `era:legends` | the kept slots ran out | exhausted at 231 of 304 stands, the kept slots ran out | 64,923 |
+| 13 | 4 | `era:legends` | the kept slots ran out | exhausted at 279 of 304 stands, the kept slots ran out | 71,415 |
+| 14 | 4 | `era:caliman` | the kept slots ran out | exhausted at 90 of 112 stands, the kept slots ran out | 43,346 |
+| 15 | 4 | `era:jamuraa-wars` | the kept slots ran out | exhausted at 481 of 615 stands, the kept slots ran out | 92,342 |
+| 16 | 4 | `era:jamuraa-wars` | two void slots in a row | exhausted at 183 of 615 stands, two void slots in a row cut the path at slot 54 | 101,576 |
+| 17 | 4 | `era:jamuraa-wars` | two void slots in a row | exhausted at 365 of 615 stands, two void slots in a row cut the path at slot 106 | 111,733 |
+| 18 | 4 | `era:jamuraa-wars` | two void slots in a row | exhausted at 13 of 615 stands, two void slots in a row cut the path at slot 7 | 122,906 |
+| 19 | 4 | `era:invasion` | two void slots in a row | exhausted at 225 of 716 stands, two void slots in a row cut the path at slot 64 | 99,638 |
+| 20 | 4 | `era:invasion` | two void slots in a row | exhausted at 579 of 716 stands, two void slots in a row cut the path at slot 157 | 109,601 |
+| 21 | 4 | `era:mirari` | two void slots in a row | exhausted at 422 of 604 stands, two void slots in a row cut the path at slot 119 | 91,513 |
+| 22 | 4 | `era:mirari` | two void slots in a row | exhausted at 512 of 604 stands, two void slots in a row cut the path at slot 146 | 100,664 |
+| 23 | 4 | `era:mirari` | two void slots in a row | exhausted at 461 of 604 stands, two void slots in a row cut the path at slot 129 | 110,730 |
+| 24 | 4 | `era:karona` | the kept slots ran out | exhausted at 487 of 606 stands, the kept slots ran out | 91,665 |
+| 25 | 4 | `era:karona` | the kept slots ran out | exhausted at 598 of 606 stands, the kept slots ran out | 100,831 |
+| 26 | 4 | `era:time-rifts` | two void slots in a row | exhausted at 0 of 600 stands, two void slots in a row cut the path at slot 2 | 91,209 |
+| 27 | 4 | `era:renewal` | the kept slots ran out | exhausted at 150 of 209 stands, the kept slots ran out | 53,831 |
+| 28 | 4 | `era:renewal` | the kept slots ran out | exhausted at 195 of 209 stands, the kept slots ran out | 59,214 |
+| 29 | 5 | `era:the-dark` | two void slots in a row | exhausted at 74 of 119 stands, two void slots in a row cut the path at slot 24 | 49,148 |
+| 30 | 5 | `era:urzas-academy` | two void slots in a row | exhausted at 310 of 565 stands, two void slots in a row cut the path at slot 89 | 107,094 |
+| 31 | 5 | `era:caliman` | the kept slots ran out | exhausted at 107 of 112 stands, the kept slots ran out | 47,680 |
+| 32 | 5 | `era:second-invasion` | the kept slots ran out | exhausted at 195 of 265 stands, the kept slots ran out | 60,616 |
+| 33 | 5 | `era:second-invasion` | the kept slots ran out | exhausted at 237 of 265 stands, the kept slots ran out | 66,677 |
+| 34 | 5 | `era:second-invasion` | two void slots in a row | exhausted at 27 of 265 stands, two void slots in a row cut the path at slot 11 | 73,344 |
+| 35 | 5 | `region:shiv` | the kept slots ran out | exhausted at 12 of 15 stands, the kept slots ran out | 19,193 |
+| 36 | 5 | `region:llanowar` | the kept slots ran out | exhausted at 17 of 21 stands, the kept slots ran out | 22,709 |
+| 37 | 5 | `region:yavimaya` | the kept slots ran out | exhausted at 15 of 21 stands, the kept slots ran out | 20,645 |
+| 38 | 5 | `region:yavimaya` | two void slots in a row | exhausted at 11 of 21 stands, two void slots in a row cut the path at slot 6 | 22,709 |
+| 39 | 5 | `region:terisiare` | the kept slots ran out | exhausted at 16 of 28 stands, the kept slots ran out | 21,673 |
+| 40 | 5 | `region:terisiare` | the kept slots ran out | exhausted at 19 of 28 stands, the kept slots ran out | 23,840 |
+| 41 | 5 | `region:jamuraa` | the kept slots ran out | exhausted at 3 of 4 stands, the kept slots ran out | 10,890 |
+| 42 | 5 | `region:keld` | the kept slots ran out | exhausted at 16 of 19 stands, the kept slots ran out | 21,601 |
 
 ## Sweep-direction tries (5.4.8)
 
 | Site | The try that passes | Why each earlier try fails, in try order |
 |---|---|---|
+| `era:the-dark` | 2 | the attachment square lies within 5 m of the blob |
+| `era:fallen-empires` | 2 | the attachment square lies within 5 m of the blob |
 | `era:mirari` | 2 | the attachment square lies within 5 m of the blob |
 | `era:karona` | 2 | the attachment square lies within 5 m of the blob |
 | `era:renewal` | 2 | the attachment square lies within 5 m of the blob |
 | `era:second-invasion` | 2 | the attachment square lies within 5 m of the blob |
-| `region:keld` | 5 | the stone test fails; the attachment square lies within 5 m of the blob; the stone test fails; the attachment square lies within 5 m of the blob |
 
 ## Site paths and gaps (mm)
 
 | Site | Path as built | Cut at capacity | Path after the cut | Path after the trim | Pad to first cluster | Largest gap between clusters | Last cluster to the path's end |
 |---|---|---|---|---|---|---|---|
-| `era:first-ages` | 852,082 | none | 852,082 | 760,740 | 9,000 | 18,000 | 4,740 |
-| `era:brothers-war` | 1,358,516 | none | 1,358,516 | 913,725 | 9,000 | 18,000 | 4,725 |
-| `era:the-dark` | 410,154 | none | 410,154 | 311,910 | 9,000 | 18,000 | 5,910 |
-| `era:fallen-empires` | 443,782 | none | 443,782 | 292,524 | 9,000 | 18,000 | 4,524 |
-| `era:ice-age` | 6,211,187 | none | 6,211,187 | 1,561,583 | 9,000 | 18,000 | 4,583 |
-| `era:urzas-academy` | 1,786,454 | none | 1,786,454 | 1,462,862 | 9,000 | 18,000 | 4,862 |
-| `era:legends` | 926,061 | none | 926,061 | 842,046 | 9,000 | 18,000 | 5,046 |
-| `era:caliman` | 306,607 | none | 306,607 | 293,840 | 9,000 | 18,000 | 5,840 |
-| `era:jamuraa-wars` | 2,266,194 | none | 2,266,194 | 1,561,820 | 9,000 | 18,000 | 4,820 |
-| `era:invasion` | 1,795,382 | none | 1,795,382 | 1,787,012 | 9,000 | 18,000 | 5,012 |
-| `era:mirari` | 1,861,732 | none | 1,861,732 | 1,490,906 | 9,000 | 18,000 | 5,906 |
-| `era:karona` | 1,849,807 | none | 1,849,807 | 1,490,045 | 9,000 | 18,000 | 5,045 |
-| `era:time-rifts` | 1,820,169 | none | 1,820,169 | 1,444,646 | 9,000 | 18,000 | 4,646 |
-| `era:renewal` | 627,064 | none | 627,064 | 580,930 | 9,000 | 18,000 | 4,930 |
-| `era:second-invasion` | 991,647 | none | 991,647 | 679,989 | 9,000 | 18,000 | 4,989 |
+| `era:first-ages` | 852,082 | none | 852,082 | 780,106 | 9,000 | 18,000 | 6,106 |
+| `era:brothers-war` | 1,107,225 | none | 1,107,225 | 958,844 | 9,000 | 18,000 | 4,844 |
+| `era:the-dark` | 338,379 | none | 338,379 | 337,712 | 9,000 | 18,000 | 4,712 |
+| `era:fallen-empires` | 320,998 | none | 320,998 | 319,785 | 9,000 | 18,000 | 4,785 |
+| `era:ice-age` | 1,649,943 | none | 1,649,943 | 1,633,681 | 9,000 | 18,000 | 4,681 |
+| `era:urzas-academy` | 1,762,279 | none | 1,762,279 | 1,417,806 | 9,000 | 18,000 | 4,806 |
+| `era:legends` | 926,061 | none | 926,061 | 816,925 | 9,000 | 18,000 | 6,925 |
+| `era:caliman` | 385,164 | none | 385,164 | 330,009 | 9,000 | 18,000 | 6,009 |
+| `era:jamuraa-wars` | 2,282,978 | none | 2,282,978 | 1,543,899 | 9,000 | 18,000 | 4,899 |
+| `era:invasion` | 2,187,622 | none | 2,187,622 | 1,778,982 | 9,000 | 18,000 | 5,982 |
+| `era:mirari` | 1,912,887 | none | 1,912,887 | 1,552,810 | 9,000 | 18,000 | 4,810 |
+| `era:karona` | 1,849,807 | none | 1,849,807 | 1,462,800 | 9,000 | 18,000 | 4,800 |
+| `era:time-rifts` | 1,820,169 | none | 1,820,169 | 1,489,649 | 9,000 | 18,000 | 4,649 |
+| `era:renewal` | 627,064 | none | 627,064 | 573,909 | 9,000 | 18,000 | 6,909 |
+| `era:second-invasion` | 991,647 | none | 991,647 | 688,974 | 9,000 | 18,000 | 4,974 |
 | `region:benalia` | 68,713 | none | 68,713 | 67,840 | 9,000 | 18,000 | 4,840 |
 | `region:shiv` | 69,133 | none | 69,133 | 51,990 | 9,000 | 18,000 | 6,990 |
-| `region:llanowar` | 95,220 | none | 95,220 | 77,538 | 9,000 | 18,000 | 5,538 |
-| `region:yavimaya` | 92,375 | none | 92,375 | 76,941 | 9,000 | 18,000 | 4,941 |
-| `region:terisiare` | 100,692 | none | 100,692 | 85,869 | 9,000 | 18,000 | 4,869 |
-| `region:sarpadia` | 14,599 | none | 14,599 | 14,310 | 9,000 | 0 | 5,310 |
+| `region:llanowar` | 82,766 | none | 82,766 | 76,693 | 9,000 | 18,000 | 4,693 |
+| `region:yavimaya` | 78,918 | none | 78,918 | 76,791 | 9,000 | 18,000 | 4,791 |
+| `region:terisiare` | 83,403 | none | 83,403 | 83,403 | 9,000 | 18,000 | 2,403 |
+| `region:sarpadia` | 12,795 | none | 12,795 | 12,795 | 9,000 | 0 | 3,795 |
 | `region:tolaria` | 67,418 | none | 67,418 | 50,498 | 9,000 | 18,000 | 5,498 |
-| `region:jamuraa` | 16,265 | none | 16,265 | 14,208 | 9,000 | 0 | 5,208 |
+| `region:jamuraa` | 18,643 | none | 18,643 | 14,559 | 9,000 | 0 | 5,559 |
 | `region:urborg` | 37,938 | none | 37,938 | 37,938 | 9,000 | 9,000 | 1,938 |
 | `region:otaria` | 24,305 | none | 24,305 | 22,978 | 9,000 | 9,000 | 4,978 |
-| `region:keld` | 84,223 | none | 84,223 | 50,869 | 9,000 | 9,000 | 5,869 |
+| `region:keld` | 73,824 | none | 73,824 | 67,505 | 9,000 | 18,000 | 4,505 |
 
 The bounds of 5.4.10 are 18,000 mm, 18,000 mm and 10,000 mm.
 
@@ -226,108 +256,108 @@ The bounds of 5.4.10 are 18,000 mm, 18,000 mm and 10,000 mm.
 
 | Site | Kept at capacity | Void: the disc is not inside the blob | Void: under 3 candidates | Withdrawn at placement | Occupied |
 |---|---|---|---|---|---|
-| `era:first-ages` | 64 / 27 | 3 / 0 | 0 / 0 | 0 / 7 | 60 / 16 |
-| `era:brothers-war` | 118 / 30 | 2 / 0 | 0 / 0 | 0 / 5 | 81 / 13 |
-| `era:the-dark` | 31 / 13 | 1 / 0 | 0 / 0 | 0 / 4 | 24 / 6 |
-| `era:fallen-empires` | 32 / 14 | 3 / 0 | 0 / 0 | 0 / 4 | 21 / 6 |
-| `era:ice-age` | 620 / 67 | 3 / 0 | 0 / 0 | 0 / 7 | 154 / 12 |
-| `era:urzas-academy` | 158 / 34 | 6 / 0 | 0 / 0 | 2 / 7 | 131 / 19 |
-| `era:legends` | 79 / 20 | 3 / 0 | 0 / 0 | 1 / 9 | 70 / 11 |
-| `era:caliman` | 22 / 11 | 1 / 0 | 0 / 0 | 0 / 3 | 21 / 8 |
-| `era:jamuraa-wars` | 201 / 44 | 6 / 0 | 0 / 0 | 0 / 11 | 141 / 18 |
-| `era:invasion` | 163 / 34 | 2 / 0 | 0 / 0 | 1 / 11 | 162 / 23 |
-| `era:mirari` | 170 / 36 | 0 / 0 | 0 / 0 | 2 / 9 | 135 / 19 |
-| `era:karona` | 166 / 37 | 2 / 0 | 0 / 0 | 2 / 9 | 135 / 18 |
-| `era:time-rifts` | 163 / 35 | 4 / 0 | 0 / 0 | 1 / 6 | 131 / 21 |
-| `era:renewal` | 48 / 19 | 2 / 0 | 0 / 0 | 0 / 6 | 43 / 13 |
-| `era:second-invasion` | 88 / 21 | 1 / 0 | 0 / 0 | 1 / 5 | 61 / 8 |
+| `era:first-ages` | 64 / 27 | 3 / 0 | 0 / 0 | 0 / 8 | 61 / 16 |
+| `era:brothers-war` | 96 / 24 | 3 / 0 | 0 / 0 | 3 / 8 | 81 / 12 |
+| `era:the-dark` | 22 / 14 | 1 / 0 | 0 / 0 | 0 / 5 | 22 / 9 |
+| `era:fallen-empires` | 19 / 16 | 0 / 0 | 0 / 0 | 0 / 7 | 19 / 9 |
+| `era:ice-age` | 145 / 34 | 4 / 0 | 0 / 0 | 1 / 12 | 143 / 22 |
+| `era:urzas-academy` | 161 / 33 | 1 / 0 | 0 / 0 | 1 / 11 | 131 / 14 |
+| `era:legends` | 79 / 20 | 3 / 0 | 0 / 0 | 1 / 7 | 68 / 12 |
+| `era:caliman` | 25 / 15 | 2 / 0 | 0 / 0 | 0 / 4 | 23 / 8 |
+| `era:jamuraa-wars` | 213 / 38 | 2 / 0 | 0 / 0 | 0 / 8 | 145 / 18 |
+| `era:invasion` | 199 / 41 | 3 / 0 | 0 / 0 | 2 / 11 | 165 / 18 |
+| `era:mirari` | 171 / 35 | 6 / 0 | 0 / 0 | 3 / 8 | 139 / 19 |
+| `era:karona` | 166 / 37 | 2 / 0 | 0 / 0 | 0 / 10 | 135 / 16 |
+| `era:time-rifts` | 163 / 35 | 4 / 0 | 0 / 0 | 0 / 9 | 137 / 18 |
+| `era:renewal` | 48 / 19 | 2 / 0 | 0 / 0 | 1 / 4 | 42 / 14 |
+| `era:second-invasion` | 88 / 21 | 1 / 0 | 0 / 0 | 0 / 6 | 63 / 7 |
 | `region:benalia` | 2 / 4 | 1 / 0 | 0 / 0 | 0 / 0 | 2 / 4 |
 | `region:shiv` | 3 / 4 | 0 / 0 | 0 / 0 | 0 / 1 | 2 / 2 |
-| `region:llanowar` | 5 / 4 | 1 / 0 | 0 / 0 | 0 / 2 | 4 / 2 |
-| `region:yavimaya` | 6 / 3 | 1 / 0 | 0 / 0 | 0 / 2 | 5 / 1 |
-| `region:terisiare` | 7 / 4 | 0 / 0 | 0 / 0 | 0 / 1 | 5 / 3 |
+| `region:llanowar` | 3 / 4 | 2 / 0 | 0 / 0 | 0 / 1 | 3 / 3 |
+| `region:yavimaya` | 5 / 3 | 0 / 0 | 0 / 0 | 0 / 2 | 5 / 1 |
+| `region:terisiare` | 5 / 4 | 0 / 0 | 0 / 0 | 0 / 1 | 5 / 3 |
 | `region:sarpadia` | 1 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 1 / 0 |
 | `region:tolaria` | 3 / 4 | 0 / 0 | 0 / 0 | 0 / 1 | 2 / 2 |
-| `region:jamuraa` | 1 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 1 / 0 |
+| `region:jamuraa` | 1 / 0 | 1 / 0 | 0 / 0 | 0 / 0 | 1 / 0 |
 | `region:urborg` | 4 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 4 / 0 |
 | `region:otaria` | 2 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 2 / 0 |
-| `region:keld` | 4 / 4 | 1 / 0 | 0 / 0 | 0 / 0 | 3 / 2 |
+| `region:keld` | 4 / 3 | 1 / 0 | 0 / 0 | 0 / 1 | 4 / 2 |
 
 ## Clusters by size
 
 | Stands in the cluster | Clusters |
 |---|---|
-| 1 | 7 |
+| 1 | 9 |
 | 2 | 5 |
-| 3 | 522 |
-| 4 | 790 |
-| 5 | 296 |
-| 6 | 8 |
+| 3 | 518 |
+| 4 | 815 |
+| 5 | 284 |
+| 6 | 3 |
 
 ## The path vertex of each stand (ruling 2, V)
 
-3,118 of 6,271 stands face a vertex other than the nearest vertex of their window. The largest turn from the nearest vertex is 98,982,000 micro-degrees. The largest arc length between the two vertices is 11,820 mm.
+3,078 of 6,271 stands face a vertex other than the nearest vertex of their window. The largest turn from the nearest vertex is 84,117,000 micro-degrees. The largest arc length between the two vertices is 11,799 mm.
 
 | Rank of the path vertex in the window (0 is the nearest) | Stands |
 |---|---|
-| 0 | 3153 |
-| 1 | 396 |
-| 2 | 319 |
-| 3 | 301 |
-| 4 | 256 |
-| 5 | 246 |
-| 6 | 190 |
-| 7 | 201 |
-| 8 | 178 |
-| 9 | 185 |
-| 10 | 174 |
-| 11 | 131 |
-| 12 | 101 |
-| 13 | 112 |
-| 14 | 65 |
-| 15 | 59 |
-| 16 | 64 |
-| 17 | 42 |
-| 18 | 32 |
-| 19 | 26 |
-| 20 | 16 |
-| 21 | 18 |
-| 22 | 6 |
+| 0 | 3193 |
+| 1 | 405 |
+| 2 | 307 |
+| 3 | 343 |
+| 4 | 262 |
+| 5 | 237 |
+| 6 | 200 |
+| 7 | 182 |
+| 8 | 159 |
+| 9 | 175 |
+| 10 | 141 |
+| 11 | 128 |
+| 12 | 126 |
+| 13 | 87 |
+| 14 | 83 |
+| 15 | 64 |
+| 16 | 45 |
+| 17 | 40 |
+| 18 | 37 |
+| 19 | 24 |
+| 20 | 20 |
+| 21 | 8 |
+| 22 | 5 |
 
 ## The trail
 
 | Leg | Kind | From | To | Length (mm) | Cells routed | Start cell blocked |
 |---|---|---|---|---|---|---|
-| 0 | trail | plaza | `era:first-ages` | 645,976 | 95 | no |
-| 1 | trail | era:first-ages | `era:brothers-war` | 489,993 | 87 | no |
-| 2 | trail | era:brothers-war | `era:the-dark` | 238,881 | 44 | no |
-| 3 | trail | era:the-dark | `era:fallen-empires` | 651,132 | 113 | no |
-| 4 | trail | era:fallen-empires | `era:ice-age` | 749,032 | 122 | no |
-| 5 | trail | era:ice-age | `era:urzas-academy` | 1,048,611 | 186 | no |
-| 6 | trail | era:urzas-academy | `era:legends` | 507,684 | 83 | no |
-| 7 | trail | era:legends | `era:caliman` | 355,313 | 68 | no |
-| 8 | trail | era:caliman | `era:jamuraa-wars` | 319,588 | 50 | no |
-| 9 | trail | era:jamuraa-wars | `era:invasion` | 672,078 | 112 | no |
-| 10 | trail | era:invasion | `era:mirari` | 637,460 | 98 | no |
-| 11 | trail | era:mirari | `era:karona` | 340,873 | 60 | no |
-| 12 | trail | era:karona | `era:time-rifts` | 642,723 | 102 | no |
-| 13 | trail | era:time-rifts | `era:renewal` | 445,738 | 85 | no |
-| 14 | trail | era:renewal | `era:second-invasion` | 550,561 | 85 | no |
-| 15 | spur | trail | `region:benalia` | 64,572 | 11 | no |
-| 16 | spur | trail | `region:shiv` | 124,707 | 21 | no |
-| 17 | spur | trail | `region:llanowar` | 213,839 | 40 | no |
-| 18 | spur | trail | `region:yavimaya` | 218,847 | 38 | no |
-| 19 | spur | trail | `region:terisiare` | 47,684 | 9 | no |
-| 20 | spur | trail | `region:sarpadia` | 18,953 | 4 | no |
-| 21 | spur | trail | `region:tolaria` | 214,285 | 30 | no |
-| 22 | spur | trail | `region:jamuraa` | 231,815 | 40 | no |
-| 23 | spur | trail | `region:urborg` | 77,873 | 14 | no |
-| 24 | spur | trail | `region:otaria` | 133,141 | 26 | no |
-| 25 | spur | trail | `region:keld` | 173,320 | 31 | no |
+| 0 | trail | plaza | `era:first-ages` | 553,102 | 85 | no |
+| 1 | trail | era:first-ages | `era:brothers-war` | 467,308 | 84 | no |
+| 2 | trail | era:brothers-war | `era:the-dark` | 193,218 | 36 | no |
+| 3 | trail | era:the-dark | `era:fallen-empires` | 459,434 | 75 | no |
+| 4 | trail | era:fallen-empires | `era:ice-age` | 270,412 | 41 | no |
+| 5 | trail | era:ice-age | `era:urzas-academy` | 439,723 | 65 | no |
+| 6 | trail | era:urzas-academy | `era:legends` | 360,552 | 53 | no |
+| 7 | trail | era:legends | `era:caliman` | 340,854 | 65 | no |
+| 8 | trail | era:caliman | `era:jamuraa-wars` | 485,938 | 90 | no |
+| 9 | trail | era:jamuraa-wars | `era:invasion` | 489,499 | 80 | no |
+| 10 | trail | era:invasion | `era:mirari` | 466,247 | 75 | no |
+| 11 | trail | era:mirari | `era:karona` | 515,762 | 92 | no |
+| 12 | trail | era:karona | `era:time-rifts` | 462,695 | 74 | no |
+| 13 | trail | era:time-rifts | `era:renewal` | 475,592 | 91 | no |
+| 14 | trail | era:renewal | `era:second-invasion` | 568,806 | 93 | no |
+| 15 | spur | trail | `region:benalia` | 106,247 | 18 | no |
+| 16 | spur | trail | `region:shiv` | 123,976 | 21 | no |
+| 17 | spur | trail | `region:llanowar` | 160,427 | 30 | no |
+| 18 | spur | trail | `region:yavimaya` | 218,288 | 40 | no |
+| 19 | spur | trail | `region:terisiare` | 77,296 | 15 | no |
+| 20 | spur | trail | `region:sarpadia` | 118,627 | 18 | no |
+| 21 | spur | trail | `region:tolaria` | 132,005 | 21 | no |
+| 22 | spur | trail | `region:jamuraa` | 137,285 | 22 | no |
+| 23 | spur | trail | `region:urborg` | 105,355 | 18 | no |
+| 24 | spur | trail | `region:otaria` | 122,685 | 24 | no |
+| 25 | spur | trail | `region:keld` | 106,944 | 20 | no |
 
-- The trail's legs: 8,295,643 mm. The spurs: 1,519,036 mm.
-- From the plaza's edge path to the last site's pad on the trail: 8,315,643 mm (the plaza approach, 10,000 mm; the legs; the last approach, 10,000 mm). No site path is counted.
-- At `AvatarController.WalkSpeed` (3,000 mm/s): 46 min 12 s. At `AvatarController.RunSpeed` (6,000 mm/s): 23 min 06 s.
+- The trail's legs: 6,549,142 mm. The spurs: 1,409,135 mm.
+- From the plaza's edge path to the last site's pad on the trail: 6,569,142 mm (the plaza approach, 10,000 mm; the legs; the last approach, 10,000 mm). No site path is counted.
+- At `AvatarController.WalkSpeed` (3,000 mm/s): 36 min 30 s. At `AvatarController.RunSpeed` (6,000 mm/s): 18 min 15 s.
 
 ## Keyword assignments (5.4.3)
 
@@ -670,15 +700,15 @@ None.
 
 ## The independent checker (3.2, 5.4.10)
 
-- Result: pass. Violations: 0. Path network connected: yes. Least distance between two stands: 2,551 mm.
+- Result: pass. Violations: 0. Path network connected: yes. Least distance between two stands: 2,555 mm.
 
 | Assertion | Tested |
 |---|---|
 | approach-length | 26 |
-| apron-apron | 2 |
-| apron-corridor | 4,130 |
+| apron-apron | 1 |
+| apron-corridor | 3,963 |
 | apron-pad | 0 |
-| apron-path | 928 |
+| apron-path | 875 |
 | apron-plaza | 0 |
 | apron-stone | 0 |
 | apron-volume | 0 |
@@ -687,27 +717,27 @@ None.
 | card-stand | 12,542 |
 | chapter-first | 37 |
 | chapter-list | 6,191 |
-| chapter-order | 1,566 |
+| chapter-order | 1,571 |
 | chapter-stone | 37 |
-| cluster-arcs | 1,602 |
-| cluster-count | 1,628 |
-| cluster-size | 1,628 |
+| cluster-arcs | 1,608 |
+| cluster-count | 1,634 |
+| cluster-size | 1,634 |
 | corridor-end | 6,271 |
 | corridor-plaza | 0 |
-| corridor-stone | 13 |
+| corridor-stone | 17 |
 | corridor-volume | 0 |
 | corridor-window | 6,271 |
 | footprint-apron | 0 |
 | footprint-blob | 6,271 |
 | footprint-cluster | 6,271 |
-| footprint-corridor | 3,265 |
+| footprint-corridor | 3,015 |
 | footprint-footprint | 0 |
 | footprint-pad | 0 |
-| footprint-path | 2 |
+| footprint-path | 4 |
 | footprint-plaza | 0 |
 | footprint-stone | 0 |
 | footprint-volume | 0 |
-| gap-between | 1,602 |
+| gap-between | 1,608 |
 | gap-end | 26 |
 | gap-first | 26 |
 | header | 1 |
@@ -726,16 +756,16 @@ None.
 | record-site | 6,271 |
 | record-vertex | 6,271 |
 | record-yaw | 6,271 |
-| site-bounds | 27,118 |
+| site-bounds | 27,216 |
 | site-list | 63 |
 | site-reached | 26 |
 | site-region | 26 |
 | spur | 11 |
 | stand-count | 1 |
 | stand-region | 6,271 |
-| stand-spacing | 1,161 |
+| stand-spacing | 1,182 |
 | stone-pad | 0 |
-| stone-path | 19 |
+| stone-path | 13 |
 | stone-plaza | 0 |
 | stone-stone | 0 |
 | stone-volume | 0 |

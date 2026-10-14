@@ -3,17 +3,18 @@
 - Dataset: `pack`. Plane index (v3 `planes.json`): 0.
 - Law: the plane's lore tables (lore). Digest `sha256:8f4518ad310ffc338314ad7c8103936bbf1993262c4aee4dad5549d5e57b26ba`; acceptance status: absent.
 - Stands: 3. Sites: 1 (1 era, 0 regional, 0 set). Regions: 1. Hero volumes: 0.
-- R₀ = 86,600 mm. R = 95,260 mm after 2 of 20 passes, so the world is 190,520 mm across. Restarts at step (4): 1.
+- R₀ = 86,600 mm. R = 95,260 mm after 2 of 20 passes, so the world is 190,520 mm across. Restarts at step (4): 1 (0 after a redraw, 0 after a widening at placement, 1 where a widened site no longer fits at its centre).
 - Site widenings: 2 (2 for capacity, 0 for no path and approach, 0 where the kept slots ran out, 0 where two void slots in a row cut the path).
+- Redraws at the same radius: 0, at most 1 at a radius. Sites laid out at the radius of a redraw (a = 1): 0 of 1.
 - Trig table: sha256 `fa33d5685b879e0f63d26d684e0e39585ce1b6e291b7f1f3543c82949f7bf777` (5.4.18 (6)).
 - Independent checker (3.2): pass, 0 violations.
 
 ## Passes over R
 
-| Pass | R (mm) | Site widenings | Restarts | Region | Site | Result |
-|---|---|---|---|---|---|---|
-| 1 | 86,600 | 0 | 0 | `glen` | `era:elder-days` | R is widened: region 'glen' cannot hold site 'era:elder-days' |
-| 2 | 95,260 | 2 | 1 | none | none | the world is laid out |
+| Pass | R (mm) | Site widenings | Redraws | Restarts | Restarts by cause: a redraw / a widening at placement / a site that no longer fits | Region | Site | Result |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 86,600 | 0 | 0 | 0 | 0 / 0 / 0 | `glen` | `era:elder-days` | R is widened: region 'glen' cannot hold site 'era:elder-days' |
+| 2 | 95,260 | 2 | 0 | 1 | 0 / 0 / 1 | none | none | the world is laid out |
 
 ## Regions
 
@@ -23,9 +24,9 @@
 
 ## Sites
 
-| # | Site | Region | Stands | Clusters | Chapter stones | Base r_s (mm) | Final r_s (mm) | b_s (mm) | Widenings | By cause: capacity / no path / slots ran out / cut | Sweep-direction tries | Sweeps | Capacity | Centre (mm) |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 0 | `era:elder-days` | `glen` | 3 | 1 | 2 | 9,000 | 10,890 | 28,068 | 2 | 2 / 0 / 0 / 0 | 1 | 1 | 5 | -20,000, -50,000 |
+| # | Site | Region | Stands | Clusters | Chapter stones | Base r_s (mm) | Final r_s (mm) | b_s (mm) | Widenings | By cause: capacity / no path / slots ran out / cut | Redraws | Final a | Sweep-direction tries | Sweeps | Capacity | Centre (mm) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 0 | `era:elder-days` | `glen` | 3 | 1 | 2 | 9,000 | 10,890 | 28,068 | 2 | 2 / 0 / 0 / 0 | 0 | 0 | 1 | 1 | 5 | -20,000, -50,000 |
 
 ## Site widenings in order
 
@@ -33,6 +34,10 @@
 |---|---|---|---|---|---|
 | 1 | 2 | `era:elder-days` | capacity | capacity 1 for 3 | 9,900 |
 | 2 | 2 | `era:elder-days` | capacity | capacity 2 for 3 | 10,890 |
+
+## Redraws in order
+
+No site is redrawn.
 
 ## Sweep-direction tries (5.4.8)
 

@@ -208,6 +208,14 @@ def test_a_hero_volume_moves_a_site_and_the_trail_routes_round_it():
     routed = {leg["to"]: leg["polyline"] for leg in held["trail"]["legs"]}
     assert routed["era:the-dark"] != legs["era:the-dark"]
     assert routed["era:fallen-empires"] != legs["era:fallen-empires"]
+
+    # The leg from `era:brothers-war` crosses the volume's ground in the free world and keeps
+    # clear of it with the volume.
+    def inside(point: list[int]) -> bool:
+        return min(xs) <= point[0] <= max(xs) and min(zs) <= point[1] <= max(zs)
+
+    assert any(inside(point) for point in legs["era:the-dark"])
+    assert not any(inside(point) for point in routed["era:the-dark"])
     assert check("dominaria-hero-volumes")["result"] == "pass"
     assert held["standCount"] == 6_271
 
