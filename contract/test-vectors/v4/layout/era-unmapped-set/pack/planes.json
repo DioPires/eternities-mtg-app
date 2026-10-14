@@ -1,0 +1,31 @@
+{
+  "contractVersion": 3,
+  "shardSize": 2000,
+  "planes": [
+    {
+      "index": 0,
+      "slug": "theros",
+      "displayName": "Theros",
+      "cardCount": 7,
+      "starOffset": 0,
+      "starCount": 7,
+      "shardCount": 1,
+      "sets": [
+        {
+          "id": 1,
+          "code": "ta1",
+          "name": "Fixture set ta1",
+          "year": 2001,
+          "cardCount": 4
+        },
+        {
+          "id": 2,
+          "code": "ta2",
+          "name": "Fixture set ta2",
+          "year": 2002,
+          "cardCount": 3
+        }
+      ]
+    }
+  ]
+}

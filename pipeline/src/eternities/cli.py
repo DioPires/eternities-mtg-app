@@ -11,13 +11,17 @@ import json
 import re
 import shutil
 import sys
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Final, cast
+from typing import TYPE_CHECKING, Any, Final, cast
 
 from .contract import write_dataset
 from .contract.enums import CONTRACT_VERSION, PIPELINE_VERSION
 from .fixtures import SCALE, SMALL, FixtureSpec, build
+
+if TYPE_CHECKING:
+    from .layout.emit import Emitted
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 WEB_DATA_ROOT = REPO_ROOT / "web" / "public" / "data"
@@ -26,6 +30,10 @@ REPORTS_DIR = REPO_ROOT / "pipeline" / "reports"
 CACHE_DIR = REPO_ROOT / "pipeline" / ".cache" / "scryfall"
 SWATCH_CACHE_FILE = REPO_ROOT / "pipeline" / ".cache" / "swatches" / "swatches.jsonl"
 LORE_DIR = REPO_ROOT / "pipeline" / "data" / "lore"
+LAYOUT_REPORTS_DIR = REPO_ROOT / "pipeline" / ".cache" / "layout"
+"""Where ``layout build`` writes a world's report by default: beside no file that ships."""
+ENGINE_DATA_ROOT = REPO_ROOT / "unity" / "Eternities" / "Assets" / "StreamingAssets" / "data"
+"""PRD v4 4.13.1: the engine pack's home, ``<hash>/`` beside the copied v3 pack; git ignores it."""
 
 _FIXTURES: dict[str, FixtureSpec] = {"small": SMALL, "scale": SCALE}
 
@@ -380,6 +388,122 @@ def _cmd_lore_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_layout_build(args: argparse.Namespace) -> int:
+    """Lay one world out and write its files, its report and the checker's result (PRD v4 9.6)."""
+    from .layout import build, emit, report, trig
+    from .lore import LoreIndexError
+    from .lore.vocabulary import HeroEntriesError, load_hero_entries
+
+    slug = str(args.slug)
+    pack = Path(args.data).resolve() if args.data else _production_pack()
+    if pack is None:
+        print("layout build failed — web/datasets.json names no production pack; pass --data")
+        return 1
+    out = Path(args.out).resolve() if args.out else ENGINE_DATA_ROOT / pack.name
+    report_file = Path(args.report).resolve() if args.report else LAYOUT_REPORTS_DIR / f"{slug}.md"
+    lore_dir = Path(args.lore_root).resolve() / slug
+    try:
+        table = trig.load()
+        directions = build.load_directions()
+        built = build.build_world(
+            slug,
+            pack,
+            directions,
+            lore_dir=lore_dir,
+            hero_entries=load_hero_entries(),
+            fixture=bool(args.fixture),
+            volumes=Path(args.hero_volumes).resolve() if args.hero_volumes else None,
+            lore_display=_display(lore_dir),
+        )
+    except (*build.FAILURES, LoreIndexError, HeroEntriesError, trig.TrigTableError) as error:
+        print(f"layout build failed — {error}", file=sys.stderr)
+        return 1
+    result = build.check_built(built, table)
+    document = result.document()
+    report_file.parent.mkdir(parents=True, exist_ok=True)
+    report_file.write_text(report.render(built, document, directions), encoding="utf-8")
+    check_file = report_file.with_suffix(".check.json")
+    check_file.write_text(emit.to_json(document), encoding="utf-8")
+    layout = built.layout
+    print(
+        f"{slug}: {len(built.emitted.stands):,} stands at {len(layout.sites)} sites; "
+        f"R = {layout.radius:,} mm after {layout.passes} passes"
+    )
+    if not result.ok:
+        for path in (report_file, check_file):
+            print(f"wrote {_display(path)}")
+        print(
+            f"layout build failed — the independent checker found {result.violation_count} "
+            f"violations; the first: {result.violations[0]}. No file was written to "
+            f"{_display(out)}",
+            file=sys.stderr,
+        )
+        return 1
+    written = _write_pack(built.emitted, out, slug)
+    for path in (*written, report_file, check_file):
+        print(f"wrote {_display(path)}")
+    print("the independent checker passes (PRD v4 3.2)")
+    return 0
+
+
+def _write_pack(emitted: Emitted, out: Path, slug: str) -> list[Path]:
+    """Write a checked world's files under ``out``: first into a temporary folder beside it, then
+    each moved into place, so ``out`` never holds a file of a build that the checker failed."""
+    out.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=f".{out.name}-", dir=out.parent))
+    try:
+        written: list[Path] = []
+        for path in emitted.write(staging, slug):
+            target = out / path.relative_to(staging)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            path.replace(target)
+            written.append(target)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    return written
+
+
+def _cmd_layout_fixtures(args: argparse.Namespace) -> int:
+    """Make every layout fixture again and compare or write its bytes (PRD v4 5.4.14)."""
+    from .layout import build, fixtures, trig
+    from .lore.vocabulary import HeroEntriesError, load_hero_entries
+
+    wanted = set(cast("list[str]", args.names))
+    try:
+        table = trig.load()
+        directions = build.load_directions()
+        heroes = load_hero_entries()
+        found = [f for f in fixtures.discover() if not wanted or f.name in wanted]
+    except (fixtures.FixtureError, HeroEntriesError, trig.TrigTableError) as error:
+        print(f"layout fixtures failed — {error}", file=sys.stderr)
+        return 1
+    missing = wanted - {fixture.name for fixture in found}
+    if missing:
+        print(f"layout fixtures failed — no fixture named {sorted(missing)}", file=sys.stderr)
+        return 1
+    problems = [] if wanted else fixtures.predicate_failures()
+    for fixture in found:
+        produced = fixtures.produce(fixture, directions, table, heroes)
+        different = fixtures.differences(fixture, produced)
+        if args.check:
+            problems.extend(different)
+        else:
+            fixtures.write(fixture, produced)
+        state = "differs" if different else "matches"
+        if not args.check:
+            state = "written" if different else "unchanged"
+        # Flushed, so a log shows each fixture when it is done: Dominaria takes a minute or more.
+        print(f"{fixture.name}: {len(produced)} files, {state}", flush=True)
+    if not wanted:
+        print(f"predicates: {len(list(fixtures.PREDICATES.glob('*.json')))} documents")
+    for line in problems:
+        print(line, file=sys.stderr)
+    if problems:
+        print(f"layout fixtures failed — {len(problems)} differences", file=sys.stderr)
+        return 1
+    return 0
+
+
 def _today() -> str:
     return datetime.now(tz=UTC).date().isoformat()
 
@@ -526,6 +650,55 @@ def main(argv: list[str] | None = None) -> int:
         "--set-active", choices=["small", "scale"], help="point datasets.json at this fixture"
     )
     fixtures_cmd.set_defaults(func=_cmd_fixtures)
+
+    layout_cmd = sub.add_parser(
+        "layout", help="the world layout of PRD v4 5.4: lay a world out, and its fixtures"
+    )
+    layout_sub = layout_cmd.add_subparsers(dest="layout_command", required=True)
+    layout_build = layout_sub.add_parser(
+        "build",
+        help="lay one world out from a pack, write stands.bin, worlds/<slug>.json and "
+        "lore/<slug>.json, and run the independent checker",
+    )
+    layout_build.add_argument("slug", help="the plane's slug")
+    layout_build.add_argument(
+        "--out",
+        default=None,
+        help="output directory (default: unity/Eternities/Assets/StreamingAssets/data/<hash>/)",
+    )
+    layout_build.add_argument(
+        "--data", default=None, help="data pack directory (default: the production pack)"
+    )
+    layout_build.add_argument(
+        "--lore-root", default=str(LORE_DIR), help="the directory of the hero entries' tables"
+    )
+    layout_build.add_argument(
+        "--fixture",
+        action="store_true",
+        help="validate the tables as a synthetic fixture (5.4.14), as `lore validate --fixture`",
+    )
+    layout_build.add_argument(
+        "--hero-volumes", default=None, metavar="FILE", help="a hero-volumes file (5.4.11)"
+    )
+    layout_build.add_argument(
+        "--report",
+        default=None,
+        metavar="FILE",
+        help="the layout report (default: pipeline/.cache/layout/<slug>.md); the checker's "
+        "document is written beside it as <name>.check.json",
+    )
+    layout_build.set_defaults(func=_cmd_layout_build)
+    layout_fixtures = layout_sub.add_parser(
+        "fixtures",
+        help="make every fixture of contract/test-vectors/v4/layout again and write its output",
+    )
+    layout_fixtures.add_argument("names", nargs="*", help="fixture names (default: all)")
+    layout_fixtures.add_argument(
+        "--check",
+        action="store_true",
+        help="write nothing: compare the bytes with the committed fixtures, fail on a difference",
+    )
+    layout_fixtures.set_defaults(func=_cmd_layout_fixtures)
 
     vector_cmd = sub.add_parser("test-vector", help="regenerate contract/test-vectors/v3")
     vector_cmd.add_argument("--out", default=str(REPO_ROOT / "contract" / "test-vectors" / "v3"))

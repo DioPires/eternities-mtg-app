@@ -1,0 +1,26 @@
+{
+  "plane": "lorwyn",
+  "kind": "lore",
+  "eras": [
+    {
+      "id": "elder-days",
+      "name": "Elder Days",
+      "years": "Long before the first war",
+      "region": "glen",
+      "sets": [
+        "lw1",
+        "lw2",
+        "lw3"
+      ],
+      "headline": [],
+      "paragraphs": [
+        [
+          {
+            "text": "The first people came by sea.",
+            "source": "https://magic.wizards.com/en/story/fixture"
+          }
+        ]
+      ]
+    }
+  ]
+}

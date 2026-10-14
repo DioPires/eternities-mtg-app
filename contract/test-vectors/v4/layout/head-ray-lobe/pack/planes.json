@@ -1,0 +1,24 @@
+{
+  "contractVersion": 3,
+  "shardSize": 2000,
+  "planes": [
+    {
+      "index": 0,
+      "slug": "mercadia",
+      "displayName": "Mercadia",
+      "cardCount": 12,
+      "starOffset": 0,
+      "starCount": 12,
+      "shardCount": 1,
+      "sets": [
+        {
+          "id": 1,
+          "code": "ha1",
+          "name": "Fixture set ha1",
+          "year": 2001,
+          "cardCount": 12
+        }
+      ]
+    }
+  ]
+}

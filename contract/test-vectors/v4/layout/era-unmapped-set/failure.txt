@@ -1,0 +1,2 @@
+LoreValidationError: era-unmapped-set/theros breaks 1 lore table rule:
+  era-unmapped-set/theros/eras.json: eras: set 'ta2' has first printings on theros in dataset pack and no era lists it; every such set appears in exactly one era (4.16.2)

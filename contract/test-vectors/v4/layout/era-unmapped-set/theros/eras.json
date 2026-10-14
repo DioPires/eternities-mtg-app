@@ -1,0 +1,24 @@
+{
+  "plane": "theros",
+  "kind": "lore",
+  "eras": [
+    {
+      "id": "heroes",
+      "name": "Heroes",
+      "years": "Long before the first war",
+      "region": "meletis",
+      "sets": [
+        "ta1"
+      ],
+      "headline": [],
+      "paragraphs": [
+        [
+          {
+            "text": "The first people came by sea.",
+            "source": "https://magic.wizards.com/en/story/fixture"
+          }
+        ]
+      ]
+    }
+  ]
+}

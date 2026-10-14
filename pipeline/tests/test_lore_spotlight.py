@@ -171,6 +171,24 @@ def test_a_valid_sidecar_maps_each_id_to_its_card(tmp_path: Path):
     assert sidecar.by_set == {"aaa": 1, "ccc": 1, "ddd": 1}
 
 
+def test_a_flagged_reprint_counts_for_no_headline(tmp_path: Path):
+    """5.13.2, erratum 2: a flagged printing counts only in the card's first set."""
+    document = _document()
+    # Alpha One is first printed in `aaa`; this is its reprint in `ddd`.
+    document["printings"].append(
+        {"id": printing_id(101), "set": "ddd", "collector_number": "7", "name": "Alpha One"}
+    )
+    document["count"] = 4
+    sidecar = _validate(_write(tmp_path, document))
+
+    reprint = sidecar.printings[3]
+    assert (reprint.set_code, reprint.first_set, reprint.card_plane) == ("ddd", "aaa", "dominaria")
+    assert reprint in sidecar.on_plane
+    assert reprint not in sidecar.headline
+    assert [p.printing_id for p in sidecar.headline] == [printing_id(1), printing_id(3)]
+    assert sidecar.sets_with_cards == frozenset({"aaa", "ccc"})
+
+
 @pytest.mark.parametrize(
     "unknown",
     [printing_id(999), oracle(1)],

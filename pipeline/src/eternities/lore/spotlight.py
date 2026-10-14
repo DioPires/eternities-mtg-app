@@ -46,6 +46,8 @@ class SpotlightPrinting:
     back_name: str | None
     card_plane: str
     """The plane the card stands on, which is not always the sidecar's plane."""
+    first_set: str
+    """Set code of the card's first printing, which is not always this printing's set."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,9 +71,18 @@ class SpotlightSidecar:
         return dict(Counter(p.set_code for p in self.printings))
 
     @property
+    def headline(self) -> tuple[SpotlightPrinting, ...]:
+        """The printings that count for a headline (5.13.2, erratum 2): the card stands on the
+        plane, and the printing's set is the card's first set."""
+        return tuple(p for p in self.on_plane if p.set_code == p.first_set)
+
+    @property
     def sets_with_cards(self) -> frozenset[str]:
-        """Set codes that carry a flagged printing of a card of the plane (F.0's headline rule)."""
-        return frozenset(p.set_code for p in self.on_plane)
+        """Set codes that carry a headline printing of a card of the plane (F.0's headline rule).
+
+        A flagged reprint does not count: 5.13.2 reads the flag in the card's first set only.
+        """
+        return frozenset(p.set_code for p in self.headline)
 
 
 def validate_sidecar(
@@ -221,6 +232,7 @@ def _rows(
                 name=card.name,
                 back_name=card.back_name,
                 card_plane=card.plane,
+                first_set=card.first_set,
             )
         )
     return printings

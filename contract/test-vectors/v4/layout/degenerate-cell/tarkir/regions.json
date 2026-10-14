@@ -1,0 +1,41 @@
+{
+  "plane": "tarkir",
+  "regions": [
+    {
+      "id": "edge",
+      "name": "Edge",
+      "kit": "temperate",
+      "anchor": [
+        1000,
+        0
+      ],
+      "weight": 500,
+      "water": "river",
+      "sentence": {
+        "text": "A place of stone and wind.",
+        "source": "https://magic.wizards.com/en/story/fixture"
+      },
+      "sources": [
+        "https://magic.wizards.com/en/story/fixture"
+      ]
+    },
+    {
+      "id": "heavy",
+      "name": "Heavy",
+      "kit": "temperate",
+      "anchor": [
+        850,
+        0
+      ],
+      "weight": 2000,
+      "water": "river",
+      "sentence": {
+        "text": "A place of stone and wind.",
+        "source": "https://magic.wizards.com/en/story/fixture"
+      },
+      "sources": [
+        "https://magic.wizards.com/en/story/fixture"
+      ]
+    }
+  ]
+}

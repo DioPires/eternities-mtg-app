@@ -1,0 +1,7 @@
+{
+  "purpose": "One era of three sets of one card each: one cluster of three stands, and two chapter stones at two lattice points (5.4.10, 5.4.14). The era id `elder-days` was chosen by trial for that outcome.",
+  "slug": "lorwyn",
+  "expect": "layout",
+  "lore": "lorwyn",
+  "loreFixture": true
+}

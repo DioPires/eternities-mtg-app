@@ -1,0 +1,2 @@
+LoreValidationError: anchor-outside-unit-disc/eldraine breaks 1 lore table rule:
+  anchor-outside-unit-disc/eldraine/regions.json: regions[1] "far": anchor: [800, 700] lies outside the unit disc: u^2 + v^2 is 1,130,000, over 1,000,000 (4.16.2)

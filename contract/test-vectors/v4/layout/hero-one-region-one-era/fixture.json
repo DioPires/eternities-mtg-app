@@ -1,0 +1,7 @@
+{
+  "purpose": "A hero plane with one region and one era of one set: one era site, as the kit law's one set site (5.4.14).",
+  "slug": "kamigawa",
+  "expect": "layout",
+  "lore": "kamigawa",
+  "loreFixture": true
+}

@@ -1,0 +1,24 @@
+{
+  "plane": "ixalan",
+  "kind": "lore",
+  "eras": [
+    {
+      "id": "landfall",
+      "name": "Landfall",
+      "years": "Long before the first war",
+      "region": "north",
+      "sets": [
+        "ix1"
+      ],
+      "headline": [],
+      "paragraphs": [
+        [
+          {
+            "text": "The first people came by sea.",
+            "source": "https://magic.wizards.com/en/story/fixture"
+          }
+        ]
+      ]
+    }
+  ]
+}
