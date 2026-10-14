@@ -578,9 +578,13 @@ un-publish. That is a true statement about git; it has never been run against a 
 - **A same-day re-run is a no-op**, and looks alarmingly like a failed build. Check the hash.
 - **Safari cannot load `pnpm preview`.** PRD 7.6.1's CSP ends in `upgrade-insecure-requests` and
   WebKit applies it to loopback, so every subresource is upgraded to `https://localhost` and fails.
-  The page renders blank with no error. `pnpm cross-browser` used to serve it over real HTTPS, but
-  DEC-708 archived that script under the `review-tooling-2026-09` tag — use a Vercel preview
-  deployment instead. See `docs/cross-browser.md`.
+  The page renders blank with no error. A pull request has no Vercel preview either: since PR #140
+  (DEC-1066), Vercel builds `main` only. A Safari check over HTTPS has two routes. After the merge,
+  check production (§6). Before the merge, run the script that `pnpm cross-browser` ran until
+  DEC-708 archived it under the `review-tooling-2026-09` tag. From the repository root, restore it
+  with `git show review-tooling-2026-09:web/scripts/cross-browser.mjs > web/scripts/cross-browser.mjs`
+  and run `node web/scripts/cross-browser.mjs --engines webkit,safari --no-out`.
+  `docs/cross-browser.md` ("To reproduce") has the browser install and the clean-up.
 - **Do not skip step 4 because the report was clean.** They check different things: one reads the
   pipeline's own account of the run, the other decodes the artefacts in a browser.
 - **Do not skip 4.3 because 4.1 was green.** A refresh rebuilds the cell sheets and swatches, and
