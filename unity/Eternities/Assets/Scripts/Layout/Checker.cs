@@ -545,10 +545,11 @@ namespace Eternities.Layout
             return (footprint, apron, Corner(ApronFront, 0));
         }
 
-        // The table count whose direction is nearest the vector (vx, vz) (5.4.18 (7)): a binary
-        // search over the quarter turn that holds the vector for the last count whose direction
-        // lies at or clockwise of it, by the sign of the exact cross product; then, of that count
-        // and the next, the one on the vector's side of their sum, ties to the lower count.
+        // The count that 5.4.18 (7) picks: of the two counts that bracket the vector (vx, vz), the
+        // one on the vector's side of their directions' sum, ties to the lower count. A binary
+        // search over the quarter turn that holds the vector finds the last count whose direction
+        // lies at or clockwise of it, by the sign of the exact cross product; that count and the
+        // next bracket the vector.
         public static int CountOf(long vx, long vz, Trig table)
         {
             if (vx == 0 && vz == 0)

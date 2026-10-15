@@ -74,9 +74,9 @@ polyline; a site's approach is the segment from its pad's centre to its approach
   thousandths of a degree: the yaw's count is the emitted yaw divided by 1,000, and the
   direction's count is the one that 5.4.18 (7) finds for the vector, by the checker's own binary
   search over the table (``count_of``). The two counts differ by at most 100, the short way round
-  the circle. The allocator's yaw is the count nearest the direction from the exact position, and
-  rounding the two points moves that direction by less than 0.03 degree, so a laid-out stand
-  passes with room.
+  the circle. The allocator's yaw is the count that 5.4.18 (7) picks for the direction from the
+  exact position, and rounding the two points moves that direction by less than 0.03 degree, so a
+  laid-out stand passes with room.
 - *The trail's order* (invariant 10, erratum 5). In leg order, the trail legs end at the era sites
   (a hero world) or the set sites (a kit world) in site order, and the spurs at the regional sites
   in site order, each site once.
@@ -642,13 +642,14 @@ def _beside_approach(stone: Pt, pad: Pt, approach: Pt) -> bool:
 
 
 def count_of(vx: int, vz: int, table: trig.TrigTable) -> int:
-    """The table count whose direction is nearest the vector (vx, vz) (5.4.18 (7)).
+    """The count that 5.4.18 (7) picks: of the two counts that bracket the vector, the one on the
+    vector's side of their directions' sum, ties to the lower count.
 
     The vector's quadrant gives a quarter turn of counts. Inside it a binary search finds the last
     count whose direction lies at or clockwise of the vector, by the sign of the exact cross
-    product; the vector then lies between that count and the next. Of the two, the nearer is the
-    one on the vector's side of their sum, ties to the lower count. The zero vector has no
-    direction.
+    product; the vector then lies between that count and the next. Of the two, the count is the
+    one on the vector's side of their directions' sum, ties to the lower count. The zero vector
+    has no direction.
     """
     if vx == 0 and vz == 0:
         raise ValueError("the zero vector has no direction")

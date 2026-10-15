@@ -1289,7 +1289,8 @@ def test_a_stand_faces_its_path_vertex_within_a_tenth_of_a_degree():
     for count, facing in ((359_960, True), (359_950, True), (359_949, False)):
         target = (directions.cos(count), directions.sin(count))
         assert check.faces(50_000, (0, 0), target, directions) is facing
-    # The count of a vector is the table's nearest direction (5.4.18 (7)): a table direction is
+    # The count of a vector is the one that 5.4.18 (7) picks: of the two counts that bracket it,
+    # the one on its side of their directions' sum, ties to the lower count. A table direction is
     # its own count, the four axes are exact, and a vector half way between two counts takes the
     # lower.
     for count in (0, 1, 44_999, 90_000, 179_999, 270_000, 359_999):
@@ -1350,6 +1351,35 @@ def test_a_chapter_stone_far_from_its_chapters_first_cluster_is_reported():
             assert f"the disc of cluster {first}," in line
             return
     raise AssertionError("no free lattice point of the next cluster was found")
+
+
+def test_a_chapter_stone_two_clusters_before_its_first_is_reported():
+    rows, world, lore, cards = fresh_era()
+    site = world["sites"][0]
+    chapter = site["chapters"][1]
+    first = chapter["firstCluster"]
+    assert first >= 2
+
+    def centre(number: int) -> tuple[int, int]:
+        return (site["clusters"][number]["centre"][0], site["clusters"][number]["centre"][1])
+
+    def near(point: tuple[int, int], number: int) -> bool:
+        x, z = centre(number)
+        return (point[0] - x) ** 2 + (point[1] - z) ** 2 <= (CLUSTER_RADIUS + 10) ** 2
+
+    # A free lattice point of the disc two clusters before the chapter's first, outside the discs
+    # of the first and of the one before it: the rule's lower edge (DEC-1130 B1).
+    for point in lattice_points(centre(first - 2), CLUSTER_RADIUS - JITTER_RADIUS):
+        if near(point, first - 1) or near(point, first):
+            continue
+        chapter["stone"] = {"x": point[0], "z": point[1], "yaw": 0}
+        broken = rules(run(rows, world, cards, lore))
+        assert "chapter-cluster" in broken, point
+        if broken == {"chapter-cluster"}:
+            (line,) = under(run(rows, world, cards, lore), "chapter-cluster")
+            assert f"the disc of cluster {first}," in line
+            return
+    raise AssertionError("no free lattice point two clusters before the first was found")
 
 
 def test_the_path_of_a_site_with_no_stand_has_two_vertices(tmp_path: Path):

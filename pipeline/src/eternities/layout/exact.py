@@ -108,7 +108,8 @@ class Directions:
         return self._values[2 * count]
 
     def count_of(self, vx: int, vz: int) -> int:
-        """The count whose direction is nearest the vector (vx, vz), ties to the lower count.
+        """The count that 5.4.18 (7) picks: of the two counts that bracket the vector, the one on
+        the vector's side of their directions' sum, ties to the lower count.
 
         A binary search over one quadrant of the table on the sign of the exact cross product,
         then a choice between the two counts that bracket the vector by the side of their sum on

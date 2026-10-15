@@ -98,6 +98,12 @@ namespace Eternities.Tests
             Assert.That(Predicates.CrossSign(-big, big, big, -big), Is.Zero);
             Assert.That(Predicates.CrossSign(-big, big - 1, -big, big), Is.EqualTo(1));
             Assert.That(Predicates.CrossSign(0, 5, -3, 2), Is.EqualTo(1));
+            // Products past 2^63, whose sign a product in `long` gets wrong (DEC-1130 N3): 2^80 − 1
+            // reads 0 − 1 in 64 bits, 3 × 2^62 reads as negative, and 2^64 reads 0.
+            Assert.That(Predicates.CrossSign(1L << 40, 1L << 40, 1, 1), Is.EqualTo(1));
+            Assert.That(Predicates.CrossSign(1L << 62, 3, 0, 0), Is.EqualTo(1));
+            Assert.That(Predicates.CrossSign(0, 0, 1L << 62, 4), Is.EqualTo(-1));
+            Assert.That(Predicates.CrossSign(-(1L << 62), 3, 0, 0), Is.EqualTo(-1));
             Assert.That(Predicates.Isqrt(System.Numerics.BigInteger.Pow(10, 30) + 5), Is.EqualTo(1_000_000_000_000_000L));
         }
 
@@ -263,43 +269,71 @@ namespace Eternities.Tests
         // the chapter's first stand or of the cluster before it. Moved to a free lattice point of a
         // later cluster's disc, it breaks that rule and no other.
         [Test]
-        public void AChapterStoneFarFromItsChaptersFirstClusterIsReported()
+        public void AChapterStoneFarFromItsChaptersFirstClusterIsReported() => StoneMoved(2, reported: true);
+
+        // The rule's upper edge: the disc of the cluster after the chapter's first is not one of
+        // its two discs (DEC-1130 B1, mutant C4).
+        [Test]
+        public void AChapterStoneInTheDiscOfTheClusterAfterItsFirstIsReported() => StoneMoved(1, reported: true);
+
+        // The rule's lower edge: nor is the disc of the cluster two before the chapter's first.
+        [Test]
+        public void AChapterStoneTwoClustersBeforeItsFirstIsReported() => StoneMoved(-2, reported: true);
+
+        // The accepted side: a free point in the disc of the cluster before the chapter's first,
+        // clear of the first cluster's disc, passes.
+        [Test]
+        public void AChapterStoneInTheDiscOfTheClusterBeforeItsFirstPasses() => StoneMoved(-1, reported: false);
+
+        // Moves a Dominaria chapter's stone, in site and chapter order, to the lattice points of
+        // the disc of the cluster `offset` clusters from the chapter's first, one at a time. A point
+        // that a disc of the rule might hold is passed over: the first cluster's disc, and on the
+        // reported side the disc of the cluster before it. Every point tried is reported under
+        // `chapter-cluster`, or none is. A point where a stand or a path stands is not free; the
+        // search ends at the first free one, which breaks that rule and no other, or no rule at all.
+        static void StoneMoved(int offset, bool reported)
         {
             LayoutFixtures.Fixture fixture = LayoutFixtures.Named("dominaria");
             byte[] stands = fixture.Stands;
             object world = fixture.World, lore = fixture.Lore;
             List<Checker.CheckedCard> cards = LayoutFixtures.Cards(fixture);
-            List<object> sites = Json.Array(Json.Object(world)["sites"]);
-            // The first chapter stone whose chapter begins two clusters or more before its site's last.
-            (Dictionary<string, object> site, Dictionary<string, object> chapter) = sites.Select(Json.Object)
-                .SelectMany(row => Json.Array(row["chapters"]).Skip(1).Select(Json.Object).Select(item => (row, item)))
-                .First(pair => pair.item["stone"] != null && Json.Int(pair.item["firstCluster"]) + 2 < Json.Array(pair.row["clusters"]).Count);
-            int first = Json.Int(chapter["firstCluster"]);
             Assert.That(Checker.Check(stands, world, lore, cards, LayoutFixtures.Trig).Assertions["chapter-cluster"], Is.GreaterThan(0));
-            List<object> clusters = Json.Array(site["clusters"]);
-            P2 Centre(int number) => WorldDocument.Point(Json.Object(clusters[number])["centre"]);
-            // A point that the disc of the chapter's first cluster or of the one before it might hold
-            // is passed over: the test looks only where the rule must report the stone.
-            bool NearTheFirst(P2 point) => new[] { first - 1, first }.Where(number => number >= 0)
-                .Any(number => (point - Centre(number)).LengthSquared <= (LayoutConstants.ClusterRadius + 10) * (LayoutConstants.ClusterRadius + 10));
-            foreach (int number in Enumerable.Range(first + 2, clusters.Count - first - 2))
+            foreach (Dictionary<string, object> site in Json.Array(Json.Object(world)["sites"]).Select(Json.Object))
             {
-                foreach (P2 point in LatticePoints(Centre(number), LayoutConstants.ClusterRadius - LayoutConstants.JitterRadius).Where(point => !NearTheFirst(point)))
+                List<object> clusters = Json.Array(site["clusters"]);
+                P2 Centre(int number) => WorldDocument.Point(Json.Object(clusters[number])["centre"]);
+                foreach (Dictionary<string, object> chapter in Json.Array(site["chapters"]).Skip(1).Select(Json.Object).Where(item => item["stone"] != null))
                 {
-                    chapter["stone"] = new Dictionary<string, object> { ["x"] = (double)point.X, ["z"] = (double)point.Z, ["yaw"] = 0d };
-                    Checker.Result result = Checker.Check(stands, world, lore, cards, LayoutFixtures.Trig);
-                    HashSet<string> broken = Rules(result);
-                    // A point where a stand or a path stands is not free; the first free one is
-                    // reported under this rule and no other.
-                    Assert.That(broken, Is.Not.Empty, $"the stone at {point}, in the disc of cluster {number}, passes; the chapter's first stand is in cluster {first}");
-                    if (broken.SetEquals(new[] { "chapter-cluster" }))
+                    int first = Json.Int(chapter["firstCluster"]), number = first + offset;
+                    if (number < 0 || number >= clusters.Count)
                     {
-                        StringAssert.Contains($"the disc of cluster {first},", Under(result, "chapter-cluster").Single());
-                        return;
+                        continue;
                     }
+                    int[] passedOver = reported ? new[] { first - 1, first } : new[] { first };
+                    bool Near(P2 point) => passedOver.Where(other => other >= 0)
+                        .Any(other => (point - Centre(other)).LengthSquared <= (LayoutConstants.ClusterRadius + 10) * (LayoutConstants.ClusterRadius + 10));
+                    object stone = chapter["stone"];
+                    foreach (P2 point in LatticePoints(Centre(number), LayoutConstants.ClusterRadius - LayoutConstants.JitterRadius).Where(point => !Near(point)))
+                    {
+                        chapter["stone"] = new Dictionary<string, object> { ["x"] = (double)point.X, ["z"] = (double)point.Z, ["yaw"] = 0d };
+                        Checker.Result result = Checker.Check(stands, world, lore, cards, LayoutFixtures.Trig);
+                        HashSet<string> broken = Rules(result);
+                        string where = $"the stone of set id {Json.Int(chapter["setId"])} in {Json.Text(site["key"])} at {point}, in the disc of cluster {number}; the chapter's first stand is in cluster {first}";
+                        Assert.That(broken.Contains("chapter-cluster"), Is.EqualTo(reported), where);
+                        if (reported ? broken.SetEquals(new[] { "chapter-cluster" }) : broken.Count == 0)
+                        {
+                            if (reported)
+                            {
+                                StringAssert.Contains($"the disc of cluster {first},", Under(result, "chapter-cluster").Single());
+                            }
+                            TestContext.Out.WriteLine(where);
+                            return;
+                        }
+                    }
+                    chapter["stone"] = stone;
                 }
             }
-            Assert.Fail("no free lattice point of a later cluster was found");
+            Assert.Fail($"no free lattice point of a cluster {offset} from a chapter's first was found");
         }
 
         // The points of the hexagonal lattice of 5.4.18 (8) within `radius` of `centre`.

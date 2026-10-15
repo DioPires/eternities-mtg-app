@@ -151,7 +151,7 @@ Leg 1 lays one world out beside the slice's pinned v3 pack. Where a field of 4.1
 
 1. **The plane index** is the plane's position in v3 `planes.json`, not in a v4 `planes.json`.
 2. **The set id** is v3's global set id, the one v3 `search.json` lists. v3 numbers sets by release date, ties by code, so the order of the ids is the release order of 5.4.2 and 5.4.3.
-3. **`stands.bin` holds one world's records**, not all 28,603. The header's `recordCount` is that world's stand count.
+3. **`stands.bin` holds one world's records**, not all 28,603. The header's `recordCount` is that world's stand count. While the file holds one world, the decoder refuses a record of another plane at world entry; the Wave 5 file, which holds every world, drops that assertion.
 4. **The swatch** is one RGB565 colour: the mean, channel by channel and rounded half up, of the four samples of the card's v3 `swatches.bin` record. A synthetic pack has no `swatches.bin`, and its stands have the swatch 0.
 5. **The shard index and the index within the shard** are the card's position in the plane's v3 shards, which are in v3's star order and not in stand order.
 6. **The mask, the class, the rarity class, the type mask and the back-image flag** are derived from the card's v3 shard row by the v3 contract's own functions. A meld component counts as having a back image (4.13.3).

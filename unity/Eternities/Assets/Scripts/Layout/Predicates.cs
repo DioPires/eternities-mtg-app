@@ -8,19 +8,23 @@ namespace Eternities.Layout
     // the C# checker's own, written from the text and from the pipeline checker's docstrings
     // (`pipeline/src/eternities/layout/check.py`), and they compute no position (5.4.18 (12)).
     //
-    // A point's coordinates are integers in any one unit, a long each; a vertex of a rebuilt shape
-    // is a millimetre times 2^30 plus a radius times a table value, about 2^51 at most. A product of
-    // two coordinate differences can pass 2^63, and a product of two such products is compared, so
-    // every product is a `BigInteger`.
+    // A point's coordinates are integers in any one unit, a long each. A vertex of a rebuilt shape
+    // is a millimetre times 2^30 plus a radius times a table value: at the int32 coordinates that
+    // 4.13.3 gives a stand's x and z, about 2^62 at most, and a difference of two such values stays
+    // under 2^63. The world document's integers have no stated width yet (4.13.5); erratum 7 states
+    // it (DEC-1132), and both checkers take the refusal of a wider value with it. A product of two
+    // coordinate differences can pass 2^63, and a product of two such products is compared, so
+    // every product is a `BigInteger`, or a sign of 128-bit products (`CrossSign`).
     public static class Predicates
     {
         public const int Out = 0, On = 1, In = 2;
 
         static BigInteger Mul(long a, long b) => (BigInteger)a * b;
 
-        // The sign of a × b − c × d, exact. Each factor is a long well inside its range (a
-        // coordinate difference is under 2^53), so each product is formed in 128 bits from 32-bit
-        // halves, with no allocation: this is the cross product of every orientation test.
+        // The sign of a × b − c × d, exact. Each factor is a long whose negation fits (a coordinate
+        // difference is under 2^63 at the int32 coordinates of 4.13.3), so each product is formed
+        // in 128 bits from 32-bit halves, with no allocation: this is the cross product of every
+        // orientation test.
         public static int CrossSign(long a, long b, long c, long d)
         {
             int first = Product(a, b, out ulong firstHigh, out ulong firstLow);
