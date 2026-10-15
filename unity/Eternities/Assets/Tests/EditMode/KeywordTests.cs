@@ -41,9 +41,10 @@ namespace Eternities.Tests
         }
 
         // 5.4.3 (erratum 5): where the runtime lacks the pipeline's Unicode tables (full case
-        // folding, the categories of Unicode 15.1), a test compares the decoder's selected keyword
-        // with the pack's for every stand of every hero world the player ships. The pack's choice
-        // is the pipeline's report of Dominaria: every card with a selected keyword, by name.
+        // folding, the categories of Unicode 15.1), a test runs the decoder's recomputation for
+        // every stand of every hero world the player ships and compares each card's site with the
+        // site that the stand's record names. The test also compares each selected keyword with the
+        // pipeline's report of Dominaria, which lists every card with a selected keyword, by name.
         [Test]
         public void TheDecoderSelectsThePipelinesKeywordForEveryDominariaStand()
         {
@@ -80,6 +81,22 @@ namespace Eternities.Tests
                 }
                 Assert.That(found, Is.EquivalentTo(expected));
                 Assert.That(found.Count(row => row.Site.StartsWith("region:")), Is.EqualTo(165));
+
+                // Each stand's site by 5.4.3: the era whose sets hold the card's first set, unless
+                // the selected keyword names another region, whose regional site then holds it.
+                var eraOfSet = lore.Eras.SelectMany(era => era.SetIds.Select(set => (set, era))).ToDictionary(pair => pair.set, pair => pair.era);
+                int moved = 0;
+                for (int stand = 0; stand < world.StandCount; stand++)
+                {
+                    PackCard card = world.CardAt(stand);
+                    LoreEra era = eraOfSet[card.Printings[0].SetId];
+                    string[] names = card.Back == null ? new[] { card.Name } : new[] { card.Name, card.Back.Name };
+                    Keywords.Row? keyword = Keywords.Selected(names, lore.Keywords);
+                    string site = keyword != null && keyword.Value.Region != era.Region ? $"region:{keyword.Value.Region}" : $"era:{era.Id}";
+                    moved += site.StartsWith("region:") ? 1 : 0;
+                    Assert.That(site, Is.EqualTo(layout.Sites[world.Site(stand)].Key), $"stand {stand}, {card.Name}");
+                }
+                Assert.That(moved, Is.EqualTo(165));
             }
         }
     }
