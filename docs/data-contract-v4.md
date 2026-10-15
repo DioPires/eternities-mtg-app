@@ -9,7 +9,8 @@
 | The allocator and the emission (Python) | `pipeline/src/eternities/layout/` |
 | The independent checker (Python) | `pipeline/src/eternities/layout/check.py` |
 | The fixtures | `contract/test-vectors/v4/layout/` |
-| The decoder and the second checker (C#) | pull request 2 of leg 1 |
+| The decoder (C#) | `unity/Eternities/Assets/Scripts/Data/`: `StandsFile.cs` (`stands.bin` into structure-of-arrays native collections), `WorldDocument.cs` (the world and lore documents) and `WorldFiles.cs` (`WorldData`, with the assertions of PRD 4.13.3) |
+| The second checker (C#) | `unity/Eternities/Assets/Scripts/Layout/Checker.cs`, with the predicates of `Predicates.cs`; the EditMode tests compare its document with every fixture's `check.json` |
 
 The fixtures are the arbiter. `eternities layout fixtures --check` makes every fixture again and compares its bytes; the hosted `pipeline` job runs it on every pull request.
 
@@ -23,6 +24,8 @@ The fixtures are the arbiter. `eternities layout fixtures --check` makes every f
   worlds/<slug>.json    # the world's geometry
   lore/<slug>.json      # a hero world's resolved lore tables; no file for a kit world
 ```
+
+The Unity project's generation entry point fills the same directory without Python: it copies the committed fixture's three files beside the copied v3 pack and decodes them once (`unity/Eternities/README.md`).
 
 The layout report and the checker's document are not part of the pack. The command writes them to `pipeline/.cache/layout/<slug>.md` and `<slug>.check.json`, or where `--report` says.
 

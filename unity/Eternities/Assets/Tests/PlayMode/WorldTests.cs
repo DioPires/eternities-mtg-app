@@ -128,86 +128,45 @@ namespace Eternities.Tests
             Assert.That(app.Place, Is.EqualTo(Place.World));
             Assert.That(app.LastTravelSeconds, Is.GreaterThanOrEqualTo(App.TransitionSeconds));
             Assert.That(app.Stands.Stands, Is.EqualTo(6271));
-            Assert.That(app.Stands.Sites, Is.EqualTo(233));
-            Assert.That(app.Ground.terrainData.heightmapResolution, Is.EqualTo(2049));
+            Assert.That(app.Stands.Sites, Is.EqualTo(26));
             // Dominaria's sun (PRD v4 Appendix C): 35 degrees up, warm, and to the visitor's left.
             Assert.That(Elevation(app.Sun), Is.EqualTo(35).Within(0.01f));
             Assert.That(app.Sun.colorTemperature, Is.LessThan(5600), "a warm sun");
             Assert.That(Vector3.Dot(-app.Sun.transform.forward, Vector3.left), Is.GreaterThan(0.5f), "the sun stands to the west");
-            // The ground wears the kit's three textures, not the plain colours that stand in for them,
-            // and the world's tones as a fourth layer (PRD v4 5.6.3).
-            Assert.That(System.Array.ConvertAll(app.Ground.terrainData.terrainLayers, layer => layer.diffuseTexture.name),
-                Is.EqualTo(new[] { "leafy_grass_diff_2k", "dirt_floor_diff_2k", "ganges_river_pebbles_diff_2k", "ground tones" }));
-            Assert.That(app.Ground.terrainData.size.x, Is.GreaterThanOrEqualTo(2 * app.World.Layout.WorldRadius / 1000f));
+            // The greybox (PRD v4 9.6, leg 1): flat ground as wide as the world, every site path,
+            // site approach, trail leg and the plaza approach as a strip, every pad, every region's
+            // boundary, and every stone; no props, no water and no sound.
+            WorldDocument layout = app.World.Layout;
+            Assert.That(app.Greybox.GroundRadius, Is.GreaterThan(layout.Radius / 1000f));
+            Assert.That(app.Ground.sharedMaterials.Length, Is.EqualTo(4));
+            Assert.That(app.Greybox.Strips, Is.EqualTo(2 * layout.Sites.Length + layout.Legs.Length + 1));
+            Assert.That(app.Greybox.Pads, Is.EqualTo(layout.Pads.Length));
+            Assert.That(app.Greybox.Lines, Is.EqualTo(12));
+            Assert.That(app.Greybox.Stones, Is.EqualTo(26 + 22), "a stone a site and a chapter stone a chapter after the first");
+            Assert.That(app.Props, Is.Null);
+            Assert.That(app.Water, Is.Null);
+            Assert.That(app.Sound, Is.Null);
             // The arrival point, facing north, on the ground.
             yield return new WaitForFixedUpdate();
             yield return null;
             Assert.That(app.Avatar.transform.position.magnitude, Is.LessThan(0.3f));
             Assert.That(Vector3.Angle(app.Avatar.transform.forward, Vector3.forward), Is.LessThan(1));
 
-            // A stand is where its layout says: straight down onto it is the top of its slab, and a
-            // step in front of it, on its apron, is the ground.
-            LayoutStand stand = app.World.Layout.Stands[0];
-            Vector3 at = StandField.Ground(stand.Position);
+            // A stand is where the pack says: straight down onto it is the top of its slab, and a
+            // step in front of it, on its apron, is the ground. It faces its path vertex.
+            Vector3 at = StandField.Ground(app.World.Position(0));
             Assert.That(Physics.Raycast(at + 10 * Vector3.up, Vector3.down, out RaycastHit hit, 20));
             Assert.That(hit.point.y, Is.EqualTo(StandField.SlabTop).Within(0.005f));
-            Vector3 apron = at + StandField.Facing(stand) * Vector3.forward;
+            Vector3 apron = at + StandField.Facing(app.World, 0) * Vector3.forward;
             Assert.That(Physics.Raycast(apron + 10 * Vector3.up, Vector3.down, out hit, 20));
             Assert.That(hit.point.y, Is.EqualTo(0).Within(0.01f));
-
-            // The paths are visible as ground (PRD v4 9.5): the plaza is the path layer, and the
-            // meadow begins behind a stand.
-            float[,,] plaza = app.Ground.terrainData.GetAlphamaps(app.Ground.terrainData.alphamapResolution / 2, app.Ground.terrainData.alphamapResolution / 2, 1, 1);
-            Assert.That(plaza[0, 0, GroundPlan.Path], Is.EqualTo(1));
-            Vector3 behind = at - StandField.Facing(stand) * Vector3.forward * 0.8f - app.Ground.transform.position;
-            Vector3 size = app.Ground.terrainData.size;
-            int n = app.Ground.terrainData.alphamapResolution;
-            float[,,] meadow = app.Ground.terrainData.GetAlphamaps((int)(behind.x / size.x * n), (int)(behind.z / size.z * n), 1, 1);
-            // Between the paths the ground is its wedge's tone for a share and the meadow for the rest (PRD v4 5.6.3).
-            Assert.That(meadow[0, 0, GroundPlan.Path], Is.EqualTo(0));
-            Assert.That(meadow[0, 0, GroundPlan.Tone], Is.EqualTo(GroundPlan.ToneShare).Within(0.01f));
-
-            // PRD v4 8.4.2: the kit's props are in the world, each of them an object of its kind's
-            // mesh on the ground, and a tree stops what walks into its trunk.
-            Assert.That(app.Props.Count, Is.EqualTo(app.PropPlan.Props.Count));
-            Assert.That(app.Props.Count, Is.GreaterThan(3000));
-            Assert.That(app.Props.transform.childCount, Is.EqualTo(app.Props.Count));
-            int oak = app.PropPlan.Props.FindIndex(prop => prop.Kind == Temperate.Oak);
-            Transform tree = app.Props.transform.GetChild(oak);
-            Assert.That(tree.GetComponent<MeshFilter>().sharedMesh.name, Is.EqualTo("tree_oak"));
-            Assert.That(tree.GetComponent<MeshRenderer>().sharedMaterials, Has.All.Not.Null);
-            Assert.That(tree.GetComponent<CapsuleCollider>(), Is.Not.Null);
-            RaycastHit[] met = Physics.RaycastAll(tree.position + new Vector3(2, 1.5f, 0), Vector3.left, 2);
-            Assert.That(Array.Exists(met, at => at.collider.transform == tree), "a ray at chest height meets the trunk");
-
-            // PRD v4 9.5: one river and one lake of the HDRP water system, over the bed the ground
-            // carries, when water is on in the HDRP asset in force; nothing while it is off.
-            Assert.That(app.Water != null, Is.EqualTo(WorldWater.Supported));
-            if (app.Water != null)
-            {
-                var surfaces = app.Water.GetComponentsInChildren<UnityEngine.Rendering.HighDefinition.WaterSurface>();
-                Assert.That(surfaces.Length, Is.EqualTo(2));
-                foreach (var surface in surfaces)
-                {
-                    Assert.That(surface.transform.position.y, Is.EqualTo(GroundPlan.WaterLevel).Within(1e-4f));
-                    Assert.That(app.GroundPlan.HeightAt(surface.transform.position.x, surface.transform.position.z), Is.LessThan(GroundPlan.WaterLevel), "the bed under the middle of the water is below it");
-                }
-            }
-
-            // PRD v4 5.12: one ambient bed, and the river as a positional source that is heard before
-            // it is seen. From the plaza it is silent; at the rim it is at the water, north of the
-            // avatar, and within earshot.
-            Assert.That(app.Sound.Bed.clip, Is.Not.Null);
-            Assert.That(app.Sound.Bed.spatialBlend, Is.EqualTo(0));
-            Assert.That(app.Sound.River.clip, Is.Not.Null);
-            Assert.That(app.Sound.River.spatialBlend, Is.EqualTo(1));
-            float rim = app.World.Layout.WorldRadius / 1000f;
-            Assert.That(Vector3.Distance(app.Sound.NearestOnRiver(Vector3.zero), Vector3.zero), Is.GreaterThan(Eternities.Audio.WorldSound.RiverFar), "the river is out of earshot of the plaza");
-            Vector3 atTheRim = new Vector3(0, 0, rim);
-            Vector3 nearest = app.Sound.NearestOnRiver(atTheRim);
-            Assert.That(nearest.z, Is.GreaterThan(rim));
-            Assert.That(Vector3.Distance(nearest, atTheRim), Is.LessThan(Eternities.Audio.WorldSound.RiverFar / 4), "at the rim the river is close");
-            Assert.That(Vector3.Distance(app.Sound.NearestOnRiver(new Vector3(0, 0, rim - 100)), new Vector3(0, 0, rim - 100)), Is.LessThan(Eternities.Audio.WorldSound.RiverFar), "100 m short of the rim it is already heard");
+            Vector3 vertex = StandField.Ground(layout.Sites[app.World.Site(0)].Path[layout.StandVertex[0]]);
+            Assert.That(Vector3.Angle(StandField.Facing(app.World, 0) * Vector3.forward, vertex - at), Is.LessThan(0.2f), "the stand faces its path vertex");
+            // A reading stone stands 2 m tall at its place.
+            WorldSite era = Array.Find(layout.Sites, site => site.StoneKind == "reading");
+            Vector3 stone = StandField.Ground(era.Stone.Position);
+            Assert.That(Physics.Raycast(stone + 10 * Vector3.up, Vector3.down, out hit, 20));
+            Assert.That(hit.point.y, Is.EqualTo(Greybox.ReadingHeight).Within(0.01f));
 
             Texture2DArray images = app.Images.Array;
             Assert.That(images.depth, Is.EqualTo(Eternities.CardView.StandImages.Slots));
@@ -246,156 +205,6 @@ namespace Eternities.Tests
             Assert.That(App.StartLevel(new[] { "Eternities", "-benchQuality", "low", "-quality", "medium" }, names), Is.EqualTo(1), "the visitor's argument comes first");
             Assert.That(App.StartLevel(new[] { "Eternities", "-quality", "ultra" }, names), Is.EqualTo(0));
             Assert.That(App.StartLevel(new[] { "Eternities", "-quality" }, names), Is.EqualTo(0));
-        }
-
-        // PRD v4 9.5: the river is seen from the rim, where the north radial path ends: the frame
-        // from there changes when the water is taken away, by more than it changes by itself.
-        [UnityTest]
-        public IEnumerator TheRiverIsSeenFromTheRim()
-        {
-            yield return Hub();
-            App app = App.Instance;
-            TowardThePortal();
-            yield return Until(() => app.WorldReady, 60, "the arrival");
-            hands.WorldMove = Vector3.zero;
-            Assert.That(WorldWater.Supported, Is.True, "water is on in the HDRP asset of this quality level (PRD v4 8.1.1)");
-            Assert.That(app.Water, Is.Not.Null);
-
-            const int width = 1280, height = 720;
-            var target = new RenderTexture(width, height, 24, UnityEngine.Experimental.Rendering.GraphicsFormat.R8G8B8A8_SRGB);
-            Camera view = Camera.main;
-            view.targetTexture = target;
-            ((Behaviour)view.GetComponent("CinemachineBrain")).enabled = false;
-            float rim = app.World.Layout.WorldRadius / 1000f;
-            app.Avatar.Place(new Vector3(0, 0, rim - 6), Quaternion.identity);
-            view.transform.SetPositionAndRotation(new Vector3(0, 1.6f, rim), Quaternion.Euler(8, 0, 0));
-
-            Color32[] read = null;
-            IEnumerator Read(double seconds)
-            {
-                double until = Time.realtimeSinceStartupAsDouble + seconds;
-                for (int i = 0; i < 12 || Time.realtimeSinceStartupAsDouble < until; i++)
-                {
-                    yield return null;
-                }
-                var request = UnityEngine.Rendering.AsyncGPUReadback.Request(target, 0, UnityEngine.Experimental.Rendering.GraphicsFormat.R8G8B8A8_SRGB);
-                yield return Until(() => request.done, 20, "the readback");
-                read = request.GetData<Color32>().ToArray();
-            }
-            int Changed(Color32[] a, Color32[] b)
-            {
-                int count = 0;
-                for (int i = 0; i < a.Length; i++)
-                {
-                    count += Math.Abs(a[i].r - b[i].r) + Math.Abs(a[i].g - b[i].g) + Math.Abs(a[i].b - b[i].b) > 24 ? 1 : 0;
-                }
-                return count;
-            }
-            void Dump(string file)
-            {
-                string dump = Environment.GetEnvironmentVariable("ETERNITIES_TEST_DUMP");
-                if (!string.IsNullOrEmpty(dump))
-                {
-                    Directory.CreateDirectory(dump);
-                    File.WriteAllBytes(Path.Combine(dump, file), ImageConversion.EncodeArrayToPNG(read, UnityEngine.Experimental.Rendering.GraphicsFormat.R8G8B8A8_SRGB, width, height));
-                }
-            }
-
-            // The view has just come from the hub, which is dark, and the exposure takes a second
-            // or two to come down to daylight. A frame read meanwhile differs from the next one
-            // in every pixel, whatever is in it, so the view is first left to settle, without the
-            // water. Settled, it still changes a little between two reads: the clouds move.
-            app.Water.SetActive(false);
-            Color32[] without = null;
-            var drift = new System.Collections.Generic.List<int>();
-            for (int tries = 0; ; tries++)
-            {
-                yield return Read(0.5);
-                if (without != null)
-                {
-                    drift.Add(Changed(without, read));
-                    if (drift[drift.Count - 1] < width * height / 100)
-                    {
-                        break;
-                    }
-                }
-                Assert.That(tries, Is.LessThan(40), $"the view from the rim settles; pixels changed between reads half a second apart: {string.Join(", ", drift)}");
-                without = read;
-            }
-            without = read;
-            app.Water.SetActive(true);
-            yield return Read(0.5);
-            Color32[] withWater = read;
-            Dump("river.png");
-            int changed = Changed(withWater, without);
-
-            // For whoever looks at the frames: the lake from the shore nearest the world, where a
-            // visitor comes to it, with its far shore across the water.
-            if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ETERNITIES_TEST_DUMP")))
-            {
-                Vector2 lake = app.GroundPlan.LakeCentre;
-                Vector2 shore = lake - lake.normalized * (GroundPlan.LakeRadius + GroundPlan.Bank + 4);
-                var eye = new Vector3(shore.x, 0, shore.y);
-                eye.y = app.Ground.SampleHeight(eye) + app.Ground.transform.position.y + 1.6f;
-                view.transform.SetPositionAndRotation(eye, Quaternion.LookRotation(new Vector3(lake.x, 0.5f, lake.y) - eye));
-                yield return Read(2);
-                Dump("lake.png");
-                // And each wedge's ground, from just beyond the plaza, out along the middle of the
-                // wedge (PRD v4 5.6.3: the ground under a wedge reads as its colour).
-                WorldLayout layout = app.World.Layout;
-                for (int c = 0; c < ColourClasses.WedgeCount; c++)
-                {
-                    if (layout.WedgeSpan[c] <= 0)
-                    {
-                        continue;
-                    }
-                    double bearing = (layout.WedgeFrom[c] + layout.WedgeSpan[c] / 2) / 1e6 * Math.PI / 180;
-                    var along = new Vector3((float)Math.Sin(bearing), 0, (float)Math.Cos(bearing));
-                    view.transform.SetPositionAndRotation(along * (layout.PlazaRadius / 1000f + 12) + Vector3.up * 1.6f, Quaternion.LookRotation(along) * Quaternion.Euler(6, 0, 0));
-                    yield return Read(1);
-                    Dump($"wedge-{(ColourClass)c}.png");
-                }
-            }
-            view.targetTexture = null;
-            target.Release();
-            UnityEngine.Object.Destroy(target);
-
-            int still = drift[drift.Count - 1];
-            Debug.Log($"TheRiverIsSeenFromTheRim: {changed} pixels of {width * height} change with the water, {still} with nothing changed; before the view settled: {string.Join(", ", drift)}");
-            Assert.That(changed - still, Is.GreaterThan(width * height / 100), "the water is at least a hundredth of the view from the rim, beyond what changes there by itself");
-        }
-
-        // The owner tunes the water by changing its prefab while the game plays (DEC-953): in the
-        // editor the river takes a change of its prefab's without a new arrival. The prefab is
-        // changed in memory only, and put back.
-        [UnityTest]
-        public IEnumerator InTheEditorTheRiverFollowsItsPrefab()
-        {
-            yield return Hub();
-            App app = App.Instance;
-            TowardThePortal();
-            yield return Until(() => app.WorldReady, 60, "the arrival");
-            hands.WorldMove = Vector3.zero;
-            var prefab = app.RiverPrefab.GetComponent<WaterSurface>();
-            var river = app.Water.transform.Find("River").GetComponent<WaterSurface>();
-            Assert.That(river, Is.Not.SameAs(prefab));
-            float speed = prefab.largeCurrentSpeedValue;
-            Color colour = prefab.refractionColor;
-            Assert.That(river.largeCurrentSpeedValue, Is.EqualTo(speed));
-            prefab.largeCurrentSpeedValue = speed + 2;
-            prefab.refractionColor = Color.red;
-            try
-            {
-                yield return Until(() => river.largeCurrentSpeedValue == speed + 2 && river.refractionColor == Color.red, 5, "the river to take its prefab's change");
-            }
-            finally
-            {
-                prefab.largeCurrentSpeedValue = speed;
-                prefab.refractionColor = colour;
-            }
-            yield return Until(() => river.largeCurrentSpeedValue == speed && river.refractionColor == colour, 5, "the river to take the change back");
-            // What places the river is the world's, not the prefab's.
-            Assert.That(river.transform.localScale.z, Is.GreaterThan(100));
         }
 
         // PRD v4 9.3: the avatar's footing is physical, with no sliding. While a foot of the
@@ -605,37 +414,20 @@ namespace Eternities.Tests
             yield return Until(() => app.Place == Place.Hub && !app.InTransition, 60, "the arrival in the hub");
         }
 
-        // DEC-1033: a step kept at the world's limit is a step like any other. An avatar pushed
-        // along the limit stands on dry ground there, and a step from there into the water is not
-        // taken: it stays at the edge. Before, it went back to the last dry ground it had stood on
-        // inside the limit, however far away. The lake lies across the limit, and the limit does
-        // not lead into it.
+        // The world's edge (PRD v4 5.1.5): until the kit makes it natural, a step past the world's
+        // radius R is kept on it, and a step inside it is taken.
         [UnityTest]
-        public IEnumerator AStepIntoWaterFromTheWorldsEdgeStaysAtTheEdge()
+        public IEnumerator AStepPastTheWorldsEdgeStaysAtTheEdge()
         {
             yield return World();
             App app = App.Instance;
-            GroundPlan plan = app.GroundPlan;
-            float limit = app.World.Layout.WorldRadius / 1000f + GroundPlan.Margin - 20;
-            Vector3 OnLimit(float bearing) => new Vector3(Mathf.Sin(bearing), 0, Mathf.Cos(bearing)) * limit;
-            bool Wet(Vector3 at) => plan.Wet(at.x, at.z);
-
-            // West along the limit from the lake's bearing, half a metre at a time, to dry ground.
-            var lake = new Vector3(plan.LakeCentre.x, 0, plan.LakeCentre.y);
-            float inLake = Mathf.Atan2(lake.x, lake.z), dry = inLake;
-            Assert.That(Wet(OnLimit(inLake)), "the lake's wet ground lies across the world's limit");
-            while (Wet(OnLimit(dry)))
-            {
-                dry -= 0.5f / limit;
-            }
-
-            // The avatar's own step is kept each frame, so every call here is in one frame.
-            Vector3 edge = app.Avatar.Keep(OnLimit(dry) * 1.01f);
-            Assert.That(Vector3.Distance(edge, OnLimit(dry)), Is.LessThan(0.01f), "5 m beyond the limit is kept on the limit");
-            Vector3 water = edge + (lake - edge).normalized * 1.5f;
-            Assert.That(Wet(water) && water.magnitude < limit, "a step of 1.5 m toward the lake ends in the water, inside the limit");
-            Assert.That(Vector3.Distance(app.Avatar.Keep(water), edge), Is.LessThan(1e-3f), "the step into the water is not taken: the avatar stays where it was, at the edge");
-            Assert.That(Vector3.Distance(app.Avatar.Keep(OnLimit(inLake) * 1.01f), edge), Is.LessThan(1e-3f), "and a step along the limit into the lake is not taken either");
+            float limit = app.World.Layout.Radius / 1000f;
+            var outside = new Vector3(0.6f, 0, 0.8f) * (limit * 1.01f);
+            Vector3 kept = app.Avatar.Keep(outside);
+            Assert.That(new Vector2(kept.x, kept.z).magnitude, Is.EqualTo(limit).Within(0.01f), "a step past R is kept on it");
+            Assert.That(Vector3.Angle(kept, outside), Is.LessThan(0.01f), "on the same bearing");
+            var inside = new Vector3(0.6f, 0, 0.8f) * (limit - 1);
+            Assert.That(Vector3.Distance(app.Avatar.Keep(inside), inside), Is.LessThan(1e-4f), "a step inside the world is taken");
         }
 
         // DEC-989: the swept check reads the opening in the portal's own space, from either side:

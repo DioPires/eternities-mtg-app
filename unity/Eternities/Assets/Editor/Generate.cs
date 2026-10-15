@@ -20,7 +20,9 @@ namespace Eternities.EditorTools
     //
     // - not committed: the part of the pack the slice reads, copied from `web/public/data/<hash>/`
     //   to `StreamingAssets/data/<hash>/` with every file checked against the pack's manifest, and
-    //   each world's layout beside it, `layout/<slug>.txt` (`WorldFiles.Generate`);
+    //   each world's three files of contract v4 beside it, copied from the world's committed
+    //   fixture under `contract/test-vectors/v4/layout/<slug>/` and decoded once
+    //   (`WorldFiles.Generate`; the pipeline lays the world out, PRD v4 8.3.3);
     // - committed: the slice's plain materials under `Assets/Kits/core/Materials/` and
     //   `Assets/Kits/temperate/Materials/`, the kit's prop prefabs under
     //   `Assets/Kits/temperate/Prefabs/`, the persistent scene, `Assets/Scenes/Hub.unity`, and
@@ -41,7 +43,7 @@ namespace Eternities.EditorTools
             string reportOut = CommandLine.Optional("-reportOut");
             foreach (WorldFiles.Result world in Everything(CommandLine.Require("-packHash")))
             {
-                Debug.Log($"Generate: {world.Layout.Input.PlaneSlug}\n{world.Report}");
+                Debug.Log($"Generate: {world.Slug}\n{world.Report}");
                 if (reportOut != null)
                 {
                     File.WriteAllText(reportOut, world.Report);
@@ -55,7 +57,7 @@ namespace Eternities.EditorTools
         {
             foreach (WorldFiles.Result world in Everything(ManifestHash()))
             {
-                Debug.Log($"Generate: {world.Layout.Input.PlaneSlug}\n{world.Report}");
+                Debug.Log($"Generate: {world.Slug}\n{world.Report}");
             }
         }
 
@@ -170,6 +172,22 @@ namespace Eternities.EditorTools
             changed |= Set(Lit("portal-frame", new Color(0.12f, 0.11f, 0.10f), 0.6f, 0.5f), app.PortalFrameMaterial, m => app.PortalFrameMaterial = m);
             changed |= Set(Unlit("portal-surface", new Color(0.35f, 0.75f, 1f, 1f), transparent: false), app.PortalSurfaceMaterial, m => app.PortalSurfaceMaterial = m);
             changed |= Set(Unlit("veil", new Color(0, 0, 0, 1), transparent: true), app.VeilMaterial, m => app.VeilMaterial = m);
+            // The greybox's (PRD v4 9.6, leg 1), in the order of `Greybox`'s constants: a muted
+            // ground, paths a lighter tan, pads and the plaza pale stone, region lines yellow so the
+            // regions read from the paths, and the stones grey. Matt, as the hub's floor is.
+            Material[] greybox =
+            {
+                Lit("greybox-ground", new Color(0.30f, 0.33f, 0.27f), 0f, 0.05f),
+                Lit("greybox-path", new Color(0.62f, 0.56f, 0.45f), 0f, 0.05f),
+                Lit("greybox-pad", new Color(0.75f, 0.73f, 0.68f), 0f, 0.05f),
+                Lit("greybox-region-line", new Color(0.85f, 0.78f, 0.25f), 0f, 0.05f),
+                Lit("greybox-stone", new Color(0.45f, 0.44f, 0.42f), 0f, 0.2f),
+            };
+            if (app.GreyboxMaterials == null || !greybox.SequenceEqual(app.GreyboxMaterials))
+            {
+                app.GreyboxMaterials = greybox;
+                changed = true;
+            }
             changed |= Set(Unlit("image-surface-cutout", Color.white, transparent: false, cutout: true), app.ImageSurfaceMaterial, m => app.ImageSurfaceMaterial = m);
             foreach ((string name, Shader held, System.Action<Shader> assign) in new (string, Shader, System.Action<Shader>)[]
             {

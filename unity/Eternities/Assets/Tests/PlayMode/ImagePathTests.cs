@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.IO;
+using System.Linq;
 using Eternities.Avatar;
 using Eternities.CardView;
 using Eternities.Data;
@@ -35,7 +36,15 @@ namespace Eternities.Tests
     {
         const int Width = 1280, Height = 720, CardWidth = 244, CardHeight = 340;
         const int Left = Width / 2 - CardWidth / 2, Bottom = Height / 2 - CardHeight / 2;
-        const int Stand = 100, StandWithoutAnImage = 2000;
+        // Set when the world's files are made. The stand is the one nearest the arrival point,
+        // and the stand without an image the next nearest. Depth of field (D) looks across the
+        // stand within 150 m of the arrival point with the most stands behind it, for the greybox
+        // has little else behind a card to blur. The first slice's stands 100 and 2000 stood within
+        // its world's 412 m; under the journey law they stand 498 m and 492 m out, where up to 187
+        // of the card's pixels are off by up to 3, and across that stand of D the card is off in
+        // the frames of motion (DEC-1004, pull request 2's hand-back).
+        static int Stand = -1, StandWithoutAnImage = -1, StandBeforeAField = -1;
+        const float NearTheArrival = 150;
 
         sealed class PatternImages : IImageSource
         {
@@ -123,6 +132,27 @@ namespace Eternities.Tests
             string packDirectory = App.PackDirectory();
             string source = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "..", "..", "web", "public", "data", Path.GetFileName(packDirectory)));
             WorldFiles.Generate(source, packDirectory, App.HomeWorld);
+            using (WorldData world = WorldData.Load(packDirectory, App.HomeWorld))
+            {
+                Vector3 At(int stand) => StandField.Ground(world.Position(stand));
+                int[] all = Enumerable.Range(0, world.StandCount).ToArray();
+                int[] near = all.Where(stand => At(stand).magnitude <= NearTheArrival).ToArray();
+                // How many stands stand behind a stand, 6 m to 150 m away and within 20 degrees of
+                // straight behind it: the view across the card.
+                int Behind(int stand)
+                {
+                    Vector3 back = StandField.Facing(world, stand) * Vector3.back;
+                    return all.Count(other =>
+                    {
+                        Vector3 to = At(other) - At(stand);
+                        return other != stand && to.magnitude >= 6 && to.magnitude <= 150 && Vector3.Angle(to, back) <= 20;
+                    });
+                }
+                int[] nearest = near.OrderBy(stand => At(stand).magnitude).ToArray();
+                Stand = nearest[0];
+                StandWithoutAnImage = nearest[1];
+                StandBeforeAField = near.Where(stand => stand != StandWithoutAnImage).OrderByDescending(Behind).ThenBy(stand => stand).First();
+            }
             App.ImageSourceForTests = () => new WorldTests.NoImages();
             expected = Half();
         }
@@ -155,7 +185,7 @@ namespace Eternities.Tests
                 yield return Until(() => App.Instance.WorldReady, 90, "the arrival");
                 hands.WorldMove = Vector3.zero;
                 ((Behaviour)Camera.main.GetComponent("CinemachineBrain")).enabled = false;
-                Images.Without = ImageUrls.Front(App.Instance.World.Cards[App.Instance.World.Layout.Stands[StandWithoutAnImage].Card], ImageSize.Normal);
+                Images.Without = ImageUrls.Front(App.Instance.World.CardAt(StandWithoutAnImage), ImageSize.Normal);
             }
             App app = App.Instance;
             Camera view = Camera.main;
@@ -185,7 +215,7 @@ namespace Eternities.Tests
                     }
                 }
                 // The product's last block is the one a cut-out surface reads: it stays transparent.
-                int cut = app.World.Layout.Stands.Count;
+                int cut = app.World.StandCount;
                 for (int i = 0; i < 4; i++)
                 {
                     texels[(2 * (cut / StandImages.AtlasBlocks) + (i >> 1)) * products.width + 2 * (cut % StandImages.AtlasBlocks) + (i & 1)] = new Color32(0, 0, 0, 0);
@@ -209,13 +239,12 @@ namespace Eternities.Tests
         {
             App app = App.Instance;
             Camera view = Camera.main;
-            LayoutStand placed = app.World.Layout.Stands[stand];
-            Quaternion facing = StandField.Facing(placed);
-            Vector3 centre = StandField.Ground(placed.Position) + new Vector3(0, StandField.PlinthHeight + StandImages.SurfaceHeight / 2, 0) + facing * Vector3.forward * (StandField.SlabDepth / 2 + StandImages.Proud);
+            Quaternion facing = StandField.Facing(app.World, stand);
+            Vector3 centre = StandField.Ground(app.World.Position(stand)) + new Vector3(0, StandField.PlinthHeight + StandImages.SurfaceHeight / 2, 0) + facing * Vector3.forward * (StandField.SlabDepth / 2 + StandImages.Proud);
             float distance = Height * StandImages.SurfaceHeight / (CardHeight * 2 * Mathf.Tan(view.fieldOfView * Mathf.Deg2Rad / 2));
             cameraHome = centre + facing * Vector3.forward * distance;
             view.transform.SetPositionAndRotation(cameraHome, facing * Quaternion.Euler(0, 180, 0));
-            Vector3 behind = StandField.Ground(placed.Position) + facing * Vector3.forward * (distance + 3);
+            Vector3 behind = StandField.Ground(app.World.Position(stand)) + facing * Vector3.forward * (distance + 3);
             app.Avatar.Place(new Vector3(behind.x, 0, behind.z), facing * Quaternion.Euler(0, 180, 0));
         }
 
@@ -588,6 +617,12 @@ namespace Eternities.Tests
                 return sum;
             }
 
+            if (StandBeforeAField != Stand)
+            {
+                Before(StandBeforeAField);
+                App app = App.Instance;
+                yield return Until(() => app.Images.CoverageOf(StandBeforeAField) >= 1 && app.Images.Idle, 60, "the image of the stand before the field");
+            }
             Color32[] sharp = null, blurred = null;
             yield return Read(pixels => sharp = pixels);
             DepthOfFieldOn();

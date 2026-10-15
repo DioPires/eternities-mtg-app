@@ -116,7 +116,7 @@ namespace Eternities.CardView
         {
             world = data;
             array = images;
-            int count = world.Layout.Stands.Count;
+            int count = world.StandCount;
             slotOfStand = new int[count];
             coverage = new float[count];
             requested = new bool[count];
@@ -148,7 +148,7 @@ namespace Eternities.CardView
                 int x = 2 * (stand % AtlasBlocks), y = 2 * (stand / AtlasBlocks);
                 for (int sample = 0; sample < 4; sample++)
                 {
-                    world.Swatch(world.Layout.Stands[stand].Card, sample, out byte r, out byte g, out byte b);
+                    world.Swatch(world.CardOf[stand], sample, out byte r, out byte g, out byte b);
                     // Samples are in reading order and a texture's first row is its bottom one.
                     pixels[(y + (sample < 2 ? 1 : 0)) * atlas.width + x + (sample & 1)] = new Color32(r, g, b, 255);
                 }
@@ -161,12 +161,11 @@ namespace Eternities.CardView
             half = new RenderTexture(Width, Height, 0, GraphicsFormat.R8G8B8A8_SRGB) { name = "stand image, half size", useMipMap = true, autoGenerateMips = false, filterMode = FilterMode.Bilinear };
             half.Create();
 
-            var bySite = new List<int>[world.Layout.Sites.Count];
+            var bySite = new List<int>[world.Layout.Sites.Length];
             for (int stand = 0; stand < count; stand++)
             {
-                LayoutStand placed = world.Layout.Stands[stand];
-                (bySite[placed.Site] ??= new List<int>()).Add(stand);
-                positions[stand] = StandField.Ground(placed.Position);
+                (bySite[world.Site(stand)] ??= new List<int>()).Add(stand);
+                positions[stand] = StandField.Ground(world.Position(stand));
                 long key = Key(positions[stand]);
                 if (!grid.TryGetValue(key, out List<int> cell))
                 {
@@ -179,24 +178,24 @@ namespace Eternities.CardView
             var image = new List<Vector2>();
             var triangles = new List<int>();
             double sliceStarted = Time.realtimeSinceStartupAsDouble;
-            foreach (LayoutSite layoutSite in world.Layout.Sites)
+            for (int siteIndex = 0; siteIndex < world.Layout.Sites.Length; siteIndex++)
             {
-                if (bySite[layoutSite.Index] == null)
+                WorldSite layoutSite = world.Layout.Sites[siteIndex];
+                if (bySite[siteIndex] == null)
                 {
                     continue;
                 }
-                var site = sites[layoutSite.Index] = new Site();
+                var site = sites[siteIndex] = new Site();
                 vertices.Clear();
                 image.Clear();
                 triangles.Clear();
                 Vector3 origin = StandField.Ground(layoutSite.Centre);
-                foreach (int stand in bySite[layoutSite.Index])
+                foreach (int stand in bySite[siteIndex])
                 {
-                    LayoutStand placed = world.Layout.Stands[stand];
-                    Quaternion facing = StandField.Facing(placed);
+                    Quaternion facing = StandField.Facing(world, stand);
                     Vector3 centre = positions[stand] - origin + new Vector3(0, StandField.PlinthHeight + SurfaceHeight / 2, 0) + facing * new Vector3(0, 0, StandField.SlabDepth / 2 + Proud);
                     Vector3 right = facing * Vector3.right * (SurfaceWidth / 2), up = Vector3.up * (SurfaceHeight / 2);
-                    siteOfStand[stand] = layoutSite.Index;
+                    siteOfStand[stand] = siteIndex;
                     firstVertexOfStand[stand] = vertices.Count;
                     int first = vertices.Count;
                     SwatchOf(stand, out float u, out float v, out float du, out float dv);
@@ -218,7 +217,7 @@ namespace Eternities.CardView
                         triangles.Add(first + i);
                     }
                 }
-                site.Mesh = new Mesh { name = $"image surfaces {world.Layout.Input.SetCodes[layoutSite.Set]} {ColourClasses.SeedNames[(int)layoutSite.Class]}" };
+                site.Mesh = new Mesh { name = $"image surfaces {layoutSite.Key}" };
                 site.Mesh.indexFormat = vertices.Count > ushort.MaxValue ? IndexFormat.UInt32 : IndexFormat.UInt16;
                 site.Mesh.MarkDynamic();
                 site.Mesh.SetVertices(vertices);
@@ -297,7 +296,7 @@ namespace Eternities.CardView
             }
             swatchHidden[stand] = !swatchShown;
             Site site = sites[siteOfStand[stand]];
-            SwatchOf(swatchShown ? stand : world.Layout.Stands.Count, out float u, out float v, out float du, out float dv);
+            SwatchOf(swatchShown ? stand : world.StandCount, out float u, out float v, out float du, out float dv);
             int first = firstVertexOfStand[stand];
             for (int i = 0; i < VerticesPerStand; i++)
             {
@@ -307,7 +306,7 @@ namespace Eternities.CardView
         }
 
         // The `normal` image of the first printing of a stand's card (PRD v4 5.5.1).
-        public string UrlOf(int stand) => ImageUrls.Front(world.Cards[world.Layout.Stands[stand].Card], ImageSize.Normal);
+        public string UrlOf(int stand) => ImageUrls.Front(world.CardAt(stand), ImageSize.Normal);
 
         // The stand nearest a point on the ground and no farther than `within` metres, or -1.
         public int Nearest(Vector3 position, float within)
@@ -349,7 +348,7 @@ namespace Eternities.CardView
         {
             get
             {
-                SwatchOf(world.Layout.Stands.Count, out float u, out float v, out _, out _);
+                SwatchOf(world.StandCount, out float u, out float v, out _, out _);
                 return new Vector2(u, v);
             }
         }

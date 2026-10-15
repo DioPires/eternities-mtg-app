@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Eternities.Avatar;
 using Eternities.CardView;
 using Eternities.Data;
@@ -22,14 +23,16 @@ namespace Eternities.Bench
     // given `-bench`, walks the path, writes `eternities.bench.v1` to `-benchOut` and ends the
     // process: exit 0 only if the path completed.
     //
-    // The path so far: the hub (capture 2), the walk into Dominaria's portal, the arrival (capture
-    // 3), the walk along the north radial path to the rim, where the river crosses just beyond the
-    // path's end (capture 6, and what the listener hears there), the run along the outermost ring path,
-    // the nearest stand's apron (capture 4), card view there, travel by the menu to a named card and
-    // its card view, the card flipped to its back (capture 5), the return to the hub, and the same
-    // arrival with reduced motion (capture 9). A warm run first visits the world once; a cold run
-    // first empties the image cache. A prices run goes no further than the arrival and one travel:
-    // it draws up the price list of `BenchPrices.cs` at both.
+    // The path so far, the journey law's in its smallest form (CEO ruling 4 on DEC-1004): the hub
+    // (capture 2), the walk into Dominaria's portal, the arrival (capture 3), the run along the
+    // plaza approach and the trail's first leg to the first era site's pad, the run along that
+    // site's path to its end and back, the nearest stand's apron (capture 4), card view there,
+    // travel by the menu to a named card and its card view, the card flipped to its back (capture
+    // 5), the return to the hub, and the same arrival with reduced motion (capture 9). The river of
+    // capture 6 and its sound have no place in the greybox: a run with captures writes both as not
+    // run, with the reason. A warm run first visits the world once; a cold run first empties the
+    // image cache. A prices run goes no further than the arrival and one travel: it draws up the
+    // price list of `BenchPrices.cs` at both.
     public sealed partial class BenchRunner : MonoBehaviour
     {
         public const string Schema = "eternities.bench.v1";
@@ -83,7 +86,7 @@ namespace Eternities.Bench
         };
         readonly Dictionary<string, object> pathSeen = new Dictionary<string, object>
         {
-            ["radialPathId"] = null, ["radialMetres"] = 0, ["ringMetres"] = 0, ["siteCard"] = null, ["siteImageShown"] = false,
+            ["trailSite"] = null, ["trailMetres"] = 0, ["sitePathMetres"] = 0, ["siteCard"] = null, ["siteImageShown"] = false,
             ["travelCard"] = null, ["travelCardBackShown"] = false,
         };
         // The exhibit pass and its composite on and off at the arrival point: an addition to the
@@ -96,7 +99,6 @@ namespace Eternities.Bench
         Vector3 lastPosition;
         App app;
         ScryfallImages scryfall;
-        const float RingArc = 150;
         // Every sampled frame this long is listed in the JSON with what the application was doing,
         // so "what was that frame" has an answer without another build. The first 64 of a run.
         const float LongFrameMs = 50;
@@ -292,15 +294,15 @@ namespace Eternities.Bench
             {
                 timings["portalToWorldReadyMs"] = Math.Round(app.LastTravelSeconds * 1000);
                 timings["holdMs"] = Math.Round(app.LastHoldSeconds * 1000);
-                WorldLayout layout = app.World.Layout;
+                WorldDocument layout = app.World.Layout;
                 // What the main camera renders at, read from the pipeline and not worked out.
                 HDCamera rendering = HDCamera.GetOrCreate(Camera.main);
                 renderWidth = rendering.actualWidth;
                 renderHeight = rendering.actualHeight;
                 worldSeen = new Dictionary<string, object>
                 {
-                    ["slug"] = app.World.Plane.Slug, ["stands"] = layout.Stands.Count, ["sites"] = layout.Sites.Count,
-                    ["diameterMm"] = 2 * layout.WorldRadius, ["props"] = app.Props != null ? app.Props.Count : 0,
+                    ["slug"] = app.World.Plane.Slug, ["stands"] = app.World.StandCount, ["sites"] = layout.Sites.Length,
+                    ["diameterMm"] = 2 * layout.Radius, ["props"] = app.Props != null ? app.Props.Count : 0,
                 };
 
                 // Step 3: stand at the arrival point, facing north, until the images in reach are in.
@@ -333,7 +335,7 @@ namespace Eternities.Bench
                 if (run.Mode == "prices")
                 {
                     yield return Prices("the arrival point");
-                    int far = layout.Stands.FindIndex(stand => app.World.Cards[stand.Card].Name == TravelCard);
+                    int far = StandOf(TravelCard);
                     app.TravelTo(far);
                     yield return null;
                     yield return Step("prices", 30, () => !app.InTransition || app.Failure != null);
@@ -348,63 +350,56 @@ namespace Eternities.Bench
                     yield break;
                 }
 
-                // Step 4: walk north along the radial path at 0 degrees, from the plaza to where it
-                // meets the outermost ring path.
-                LayoutPath radial = layout.Paths.Find(p => p.Kind == PathKind.Radial && p.Angle == 0);
-                LayoutPath rim = layout.Paths.FindLast(p => p.Kind == PathKind.Ring);
-                float ringRadius = (rim.Inner + rim.Outer) / 2000f;
-                pathSeen["radialPathId"] = radial?.Id;
-                Begin("radial", dominaria);
-                yield return Walk("radial", new Vector3(0, 0, ringRadius), ringRadius / AvatarController.WalkSpeed + 30, run: false);
-                pathSeen["radialMetres"] = Math.Round(segment.Metres, 2);
+                // Step 4: run from the arrival point along the plaza approach and the trail's first
+                // leg to the first era site's pad (the first site of a world with none).
+                WorldSite site = Array.Find(layout.Sites, candidate => candidate.Kind == "era") ?? layout.Sites[0];
+                TrailLeg leg = Array.Find(layout.Legs, candidate => candidate.Kind == "trail" && candidate.To == site.Key);
+                pathSeen["trailSite"] = site.Key;
+                var trail = new List<Vector3> { StandField.Ground(layout.Arrival.Position) };
+                trail.AddRange(layout.PlazaApproach.Concat(leg.Polyline).Select(StandField.Ground));
+                trail.Add(StandField.Ground(site.Pad.Position));
+                Begin("trail", dominaria);
+                yield return Follow("trail", trail, run: true);
+                pathSeen["trailMetres"] = Math.Round(segment.Metres, 2);
 
-                // Checkpoint 6 of PRD v4 9.3, a water body with its sound: at the path's end the
-                // river is ahead. Only a run with captures stops for it.
+                // Checkpoint 6 of PRD v4 9.3, a water body with its sound, has no place in the
+                // greybox, which has no water: a run with captures writes both as not run.
                 if (Ok && run.Captures != null)
                 {
-                    yield return Capture(6, "checkpoint-6-river.png");
-                    yield return RiverSound("checkpoint-6-river.wav");
+                    const string NoRiver = "not run: the greybox of PRD v4 9.6 (leg 1) has no water; the river of the first slice retired with the wheel law (CEO ruling 4 on DEC-1004)";
+                    captures.Add(new Dictionary<string, object> { ["checkpoint"] = 6, ["file"] = null, ["atSeconds"] = null, ["notRun"] = NoRiver });
+                    sound = new Dictionary<string, object> { ["checkpoint"] = 6, ["file"] = null, ["notRun"] = NoRiver };
                 }
 
-                // Step 5: turn clockwise and run along that ring path, across the wedge, for 150 m
-                // of arc or to the next radial path.
+                // Step 5: run along that site's path from its head on the pad's edge to its end, and
+                // back to its head.
                 if (Ok)
                 {
-                    Begin("ring", dominaria);
-                    float arc = Mathf.Min(RingArc, layout.WedgeSpan[0] > 0 ? layout.WedgeSpan[0] / 1e6f * Mathf.Deg2Rad * ringRadius : RingArc);
-                    hands.Run = true;
-                    yield return Step("ring", arc / AvatarController.RunSpeed + 30, () =>
-                    {
-                        Vector3 at = app.Avatar.transform.position;
-                        var outward = new Vector3(at.x, 0, at.z).normalized;
-                        // Along the circle, and back onto its centre line when it drifts off.
-                        hands.WorldMove = (new Vector3(outward.z, 0, -outward.x) + outward * Mathf.Clamp(ringRadius - new Vector2(at.x, at.z).magnitude, -1, 1)).normalized;
-                        return segment.Metres >= arc || app.Failure != null;
-                    });
-                    hands.WorldMove = Vector3.zero;
-                    hands.Run = false;
-                    pathSeen["ringMetres"] = Math.Round(segment.Metres, 2);
+                    Begin("site-path", dominaria);
+                    List<Vector3> there = site.Path.Select(StandField.Ground).ToList();
+                    yield return Follow("site-path", there.Concat(Enumerable.Reverse(there)).ToList(), run: true);
+                    pathSeen["sitePathMetres"] = Math.Round(segment.Metres, 2);
                 }
 
-                // Step 6: walk up the corridor of the nearest stand to its apron, and wait for its image.
+                // Step 6: walk up the corridor of the site's nearest stand to its apron, and wait for its image.
                 if (Ok)
                 {
                     Begin("site", dominaria);
                     Vector3 here = app.Avatar.transform.position;
-                    LayoutStand nearest = null;
-                    foreach (LayoutStand stand in layout.Stands)
+                    int siteIndex = Array.IndexOf(layout.Sites, site), nearest = -1;
+                    for (int stand = 0; stand < app.World.StandCount; stand++)
                     {
-                        if (stand.Path == rim.Id && (nearest == null || (StandField.Ground(stand.PathPoint) - here).sqrMagnitude < (StandField.Ground(nearest.PathPoint) - here).sqrMagnitude))
+                        if (app.World.Site(stand) == siteIndex && (nearest < 0 || (CorridorEnd(stand) - here).sqrMagnitude < (CorridorEnd(nearest) - here).sqrMagnitude))
                         {
                             nearest = stand;
                         }
                     }
-                    PackCard card = app.World.Cards[nearest.Card];
+                    PackCard card = app.World.CardAt(nearest);
                     pathSeen["siteCard"] = new Dictionary<string, object> { ["name"] = card.Name, ["oracleId"] = card.OracleId };
-                    Vector3 apron = StandField.Ground(nearest.Position) + StandField.Facing(nearest) * Vector3.forward * (LayoutConstants.FootprintHalfDepth + LayoutConstants.ApronDepth / 2) / 1000f;
-                    yield return Walk("site", StandField.Ground(nearest.PathPoint), 60, run: false);
+                    Vector3 apron = StandField.Ground(app.World.Position(nearest)) + StandField.Facing(app.World, nearest) * Vector3.forward * (LayoutConstants.FootprintDepth / 2 + LayoutConstants.ApronDepth / 2) / 1000f;
+                    yield return Walk("site", CorridorEnd(nearest), 60, run: false);
                     yield return Walk("site", apron, 30, run: false);
-                    int index = layout.Stands.IndexOf(nearest);
+                    int index = nearest;
                     // Scryfall may be out of reach of the machine the bench runs on: the path goes on without the image.
                     for (double until = Now + 8; Now < until && app.Images.CoverageOf(index) < 1;)
                     {
@@ -435,8 +430,8 @@ namespace Eternities.Bench
                 if (Ok)
                 {
                     Begin("travel", dominaria);
-                    int target = app.World.Layout.Stands.FindIndex(stand => app.World.Cards[stand.Card].Name == TravelCard);
-                    PackCard card = app.World.Cards[app.World.Layout.Stands[target].Card];
+                    int target = StandOf(TravelCard);
+                    PackCard card = app.World.CardAt(target);
                     pathSeen["travelCard"] = new Dictionary<string, object> { ["name"] = card.Name, ["oracleId"] = card.OracleId };
                     double opened = Now;
                     hands.TravelMenu = true;
@@ -520,6 +515,54 @@ namespace Eternities.Bench
             hands.WorldMove = toPortal.normalized;
             yield return Step(step, 120, () => (app.Place == Place.World && !app.InTransition) || app.Failure != null);
             hands.WorldMove = Vector3.zero;
+        }
+
+        // The stand of the card of that name.
+        int StandOf(string name)
+        {
+            for (int stand = 0; stand < app.World.StandCount; stand++)
+            {
+                if (app.World.CardAt(stand).Name == name)
+                {
+                    return stand;
+                }
+            }
+            return -1;
+        }
+
+        // Where a stand's corridor ends: the vertex of its site's path that the world names (4.13.5).
+        Vector3 CorridorEnd(int stand) => StandField.Ground(app.World.Layout.Sites[app.World.Site(stand)].Path[app.World.Layout.StandVertex[stand]]);
+
+        // Walks or runs along a line of points on the ground, through the avatar's own input: towards
+        // the first point more than a metre ahead, to the last.
+        IEnumerator Follow(string step, List<Vector3> points, bool run)
+        {
+            float length = 0;
+            for (int i = 1; i < points.Count; i++)
+            {
+                length += Vector3.Distance(points[i - 1], points[i]);
+            }
+            int next = 0;
+            hands.Run = run;
+            yield return Step(step, 1.5 * length / (run ? AvatarController.RunSpeed : AvatarController.WalkSpeed) + 30, () =>
+            {
+                Vector3 at = app.Avatar.transform.position;
+                Vector3 toGo;
+                while (true)
+                {
+                    toGo = points[next] - at;
+                    toGo.y = 0;
+                    if (next == points.Count - 1 || toGo.magnitude > 1)
+                    {
+                        break;
+                    }
+                    next++;
+                }
+                hands.WorldMove = toGo.magnitude > 0.2f ? toGo.normalized : Vector3.zero;
+                return (next == points.Count - 1 && toGo.magnitude <= 0.2f) || app.Failure != null;
+            });
+            hands.WorldMove = Vector3.zero;
+            hands.Run = false;
         }
 
         // Walks or runs straight to a point on the ground, through the avatar's own input.

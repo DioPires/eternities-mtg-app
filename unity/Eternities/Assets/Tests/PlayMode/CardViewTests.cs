@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Eternities.Avatar;
 using Eternities.CardView;
 using Eternities.Data;
@@ -89,7 +90,7 @@ namespace Eternities.Tests
         static int StandOf(Predicate<PackCard> card)
         {
             App app = App.Instance;
-            return app.World.Layout.Stands.FindIndex(stand => StandField.Ground(stand.Position).magnitude > 100 && card(app.World.Cards[stand.Card]));
+            return Enumerable.Range(0, app.World.StandCount).ToList().FindIndex(stand => StandField.Ground(app.World.Position(stand)).magnitude > 100 && card(app.World.CardAt(stand)));
         }
 
         IEnumerator TravelTo(int stand)
@@ -111,8 +112,8 @@ namespace Eternities.Tests
         {
             App app = App.Instance;
             int stand = StandOf(card => card.Printings.Length >= 3 && !card.HasBackImage);
-            PackCard card = app.World.Cards[app.World.Layout.Stands[stand].Card];
-            LayoutStand placed = app.World.Layout.Stands[stand];
+            PackCard card = app.World.CardAt(stand);
+            P2 placed = app.World.Position(stand);
 
             // The travel menu opens on T and closes on Esc without leaving the world.
             hands.TravelMenu = true;
@@ -123,8 +124,8 @@ namespace Eternities.Tests
 
             // PRD v4 5.9.4: the avatar arrives on the stand's apron, facing the stand.
             yield return TravelTo(stand);
-            Quaternion facing = StandField.Facing(placed);
-            Vector3 apron = StandField.Ground(placed.Position) + facing * Vector3.forward * 0.9f;
+            Quaternion facing = StandField.Facing(app.World, stand);
+            Vector3 apron = StandField.Ground(placed) + facing * Vector3.forward * 0.9f;
             Vector3 at = app.Avatar.transform.position;
             Assert.That(new Vector2(at.x - apron.x, at.z - apron.z).magnitude, Is.LessThan(0.1f));
             Assert.That(Vector3.Angle(app.Avatar.transform.forward, facing * Vector3.back), Is.LessThan(2));
@@ -159,7 +160,7 @@ namespace Eternities.Tests
                 for (bool there = false; frames < 10 || (!there && Time.realtimeSinceStartup - began < 60); frames++)
                 {
                     yield return null;
-                    Vector3 top = Camera.main.WorldToScreenPoint(StandField.Ground(placed.Position) + Vector3.up * StandField.SlabTop);
+                    Vector3 top = Camera.main.WorldToScreenPoint(StandField.Ground(placed) + Vector3.up * StandField.SlabTop);
                     over = app.Hud.ViewToPanel(new Vector2(top.x, view.height - top.y));
                     label = app.Hud.HoverBounds;
                     panel = app.Hud.PanelBounds;
@@ -180,7 +181,7 @@ namespace Eternities.Tests
             }
 
             // PRD v4 6.1.3: a click on the stand enters card view, and a click beside it does not.
-            Vector3 surface = Camera.main.WorldToScreenPoint(StandField.Ground(placed.Position) + Vector3.up * (StandField.PlinthHeight + StandField.SurfaceHeight / 2));
+            Vector3 surface = Camera.main.WorldToScreenPoint(StandField.Ground(placed) + Vector3.up * (StandField.PlinthHeight + StandField.SurfaceHeight / 2));
             hands.Pointer = new Vector2(2, 2);
             hands.Click = true;
             yield return null;
@@ -215,7 +216,7 @@ namespace Eternities.Tests
             }
             Assert.That(app.Hud.CardShown);
             Assert.That(app.Hud.HoverText, Is.Null, "the HUD hides in card view except for the panel");
-            Vector3 eye = Camera.main.transform.position - StandField.Ground(placed.Position);
+            Vector3 eye = Camera.main.transform.position - StandField.Ground(placed);
             Assert.That(Vector3.Dot(eye, facing * Vector3.forward), Is.InRange(0.5f, 1.65f), "the camera is inside the apron, in front of the stand");
             Assert.That(Vector3.Angle(Camera.main.transform.forward, facing * Vector3.back), Is.LessThan(1));
             Assert.That(app.Avatar.GetComponentInChildren<Renderer>().enabled, Is.False, "the avatar is out of the frame");
@@ -226,7 +227,7 @@ namespace Eternities.Tests
             // first card view a build drew with a pointer on the screen had lost a corner so.
             Transform solid = app.CardView.CardTransform.Find("Solid");
             Vector3[] body = solid.GetComponent<MeshFilter>().sharedMesh.vertices;
-            Vector3 slabFront = StandField.Ground(placed.Position) + facing * Vector3.forward * (StandField.SlabDepth / 2 + StandImages.Proud);
+            Vector3 slabFront = StandField.Ground(placed) + facing * Vector3.forward * (StandField.SlabDepth / 2 + StandImages.Proud);
             foreach (Vector2 pointer in new[] { new Vector2(0, 0), new Vector2(0, 1), new Vector2(1, 1), new Vector2(1, 0) })
             {
                 app.CardView.PointerForTests = pointer;
@@ -293,7 +294,7 @@ namespace Eternities.Tests
         {
             App app = App.Instance;
             int stand = StandOf(card => card.Name == "Invasion of Dominaria");
-            PackCard card = app.World.Cards[app.World.Layout.Stands[stand].Card];
+            PackCard card = app.World.CardAt(stand);
             yield return TravelTo(stand);
             yield return Until(() => app.HoveredStand == stand, 5, "the hover label");
             hands.Interact = true;

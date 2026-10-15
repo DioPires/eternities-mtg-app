@@ -1897,6 +1897,12 @@ MonoBehaviour:
         - {fileID: 2100000, guid: f148fbd3b98c84011915a3e899445fa6, type: 2}
         - {fileID: 2100000, guid: b9fba25c87c8a4d4ea9d67eefa1655b4, type: 2}
         Until: 0.0001
+  greyboxMaterials:
+  - {fileID: 2100000, guid: acea181cb0b234b819b1958153761fe2, type: 2}
+  - {fileID: 2100000, guid: 3832b8a3bc1ca4d59a7c7f001f8998a5, type: 2}
+  - {fileID: 2100000, guid: 8c6e99b696996472d8836fbfa73275bd, type: 2}
+  - {fileID: 2100000, guid: 0ed8e79904b8d44dfab5edd5823ea97e, type: 2}
+  - {fileID: 2100000, guid: df901fb34312e4e1ba5d37db4355c3f0, type: 2}
   ReducedMotion: 0
   LoadDelayForTests: 0
 --- !u!4 &1400825462

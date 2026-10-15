@@ -60,11 +60,13 @@ namespace Eternities.Data
     public sealed class Pack
     {
         public const int SwatchHeader = 16, SwatchRecord = 8;
+        public const int ShardSize = 2000;     // cards a shard, in star order (docs/data-contract.md)
 
         public readonly string Directory;
         public readonly string Hash;
         public readonly PackPlane[] Planes;
         readonly Dictionary<string, (long Bytes, string Sha256)> files = new Dictionary<string, (long, string)>();
+        readonly bool verified = true;
 
         public Pack(string directory)
         {
@@ -76,7 +78,23 @@ namespace Eternities.Data
                 var file = Json.Object(entry);
                 files[Json.Text(file["path"])] = (Json.Long(file["bytes"]), Json.Text(file["sha256"]));
             }
+            Planes = ReadPlanes();
+        }
 
+        Pack(string directory, bool verified)
+        {
+            Directory = directory;
+            Hash = Path.GetFileName(directory);
+            this.verified = verified;
+            Planes = ReadPlanes();
+        }
+
+        // A synthetic pack of a layout fixture (PRD v4 5.4.14): text files with no manifest, read
+        // as they are, for tests.
+        public static Pack OfFixture(string directory) => new Pack(directory, verified: false);
+
+        PackPlane[] ReadPlanes()
+        {
             var planes = new List<PackPlane>();
             foreach (object entry in Json.Array(Json.Object(Json.Parse(ReadText("planes.json")))["planes"]))
             {
@@ -94,7 +112,7 @@ namespace Eternities.Data
                     Sets = sets.ToArray(), FirstYear = plane.TryGetValue("firstYear", out object year) && year != null ? Json.Int(year) : 0,
                 });
             }
-            Planes = planes.ToArray();
+            return planes.ToArray();
         }
 
         public PackPlane Plane(string slug)
@@ -124,6 +142,10 @@ namespace Eternities.Data
         // A file of the pack, checked against the size and the SHA-256 the manifest lists for it.
         public byte[] Read(string path)
         {
+            if (!verified)
+            {
+                return File.ReadAllBytes(Path.Combine(Directory, path));
+            }
             if (!files.TryGetValue(path, out var listed))
             {
                 throw new InvalidDataException($"the manifest of pack {Hash} does not list {path}");

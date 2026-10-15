@@ -118,7 +118,7 @@ builds for Windows.
 | `Assets/Editor/` | `Eternities.Editor`, editor only: the batchmode entry points below. |
 | `Assets/Tests/EditMode/`, `Assets/Tests/PlayMode/` | The two test assemblies, namespace `Eternities.Tests`. CI requires a passed test in that namespace, because a package's own test also runs. |
 | `Assets/Settings/` | The HDRP assets: one per quality level with that level's volume profile, the global settings and the default volume profiles. |
-| `Assets/Scenes/Hub.unity` | The persistent scene (PRD v4 8.4.1): the template's camera, sun and sky, and the `Eternities` object. Kit worlds have no scene; they are built at run time from the pack and the layout. |
+| `Assets/Scenes/Hub.unity` | The persistent scene (PRD v4 8.4.1): the template's camera, sun and sky, and the `Eternities` object. Kit worlds have no scene; they are built at run time from the pack. |
 | `Assets/Kits/core/` | What every world shares. `Materials/` holds the slice's plain materials (plinths by rarity, the mannequin, the hub, the portal, the image surface), and `UI/` the overlays' panel settings and theme; both are made by the generation entry point. `Shaders/` holds the two shaders of the isolated image path (PRD v4 8.4.4), written by hand. |
 | `Assets/Kits/temperate/` | The `temperate` kit. `Terrain/`, `Props/` and `Audio/` hold the files `sources.yaml` pins, in Git LFS, with a `CREDITS.md` row each; `fetch.sh` verifies them and fails on an unlisted file in those three folders. So what is made from them lives beside them: `TerrainLayers/` holds the kit's terrain layers, `Materials/` the materials of its props, `Prefabs/` one prefab a prop (Kit props, below) and `Water/` its two water prefabs, all made by the generation entry point. `Derive/` holds the scripts that make the kit's derived files and each file's report, and `derive.sh` makes the files again (Derived files, below). `Assets/Editor/KitMaskImport.cs` repacks each `_arm_` texture into HDRP's mask map layout as it is imported. |
 | `Assets/StreamingAssets/data/manifest.json` | Names the pinned pack hash. The pack itself is `data/<hash>/` beside it: written by the generation entry point, not committed. |
@@ -296,28 +296,22 @@ under `Assets/StreamingAssets/data/<hash>/`:
 - the files of the pack that the slice reads, copied from `web/public/data/<hash>/` and checked
   against the pack's manifest: `manifest.json`, `planes.json`, Dominaria's shards, `swatches.bin`
   and `search.json`, which holds the set dictionary;
-- `layout/dominaria.txt`, Dominaria's layout from the C# allocator (PRD v4 5.4), written only if the
-  independent checker passes it. The slice has no contract v4 pack, so this file stands where the
-  pack's positions will.
+- Dominaria's three files of contract v4 (`docs/data-contract-v4.md`): `stands.bin`,
+  `worlds/dominaria.json` and `lore/dominaria.json`, copied byte for byte from the committed
+  fixture `contract/test-vectors/v4/layout/dominaria/`. The pipeline lays a world out and its
+  checker passes it before the fixture is committed (PRD v4 5.4, 8.3.3), so this step needs no
+  Python, and the engine reads positions and computes none. The copy is decoded once with the
+  assertions of PRD v4 4.13.3, and a fixture of another pack fails here.
 
 It also completes what is committed, and changes nothing there on a second run: the slice's plain
 materials under `Assets/Kits/core/Materials/` and `Assets/Kits/temperate/Materials/`, and in
 `Assets/Scenes/Hub.unity` the one object, `Eternities`, that builds the hub and the world at run
 time. It makes each of the kit's prop prefabs under `Assets/Kits/temperate/Prefabs/`, once (Kit
 props, below), and names on that object what each prefab gives: the mesh, the materials, and where
-the mesh stands in the prefab. The world's
-prop scatter (PRD v4 8.4.2) is worked out at load from the layout, seeded by the plane, and the
-quality level in force sets how much of it is drawn (high all of it, medium 60%, low 35%; the
-table of what grows in which wedge is `Temperate` in `Assets/Scripts/Kits/PropPlan.cs`). No tree
-stands inside a rock's footprint: of the two, the one a lower density already draws stays. It makes
+the mesh stands in the prefab. It makes
 the kit's three terrain layers, `meadow`, `path` and `gravel` under
 `Assets/Kits/temperate/TerrainLayers/`, once: each has its texture's colour, normal and mask maps and
-a first tile size, and is tuned in its own file from then on. It names them on that object, and a
-ground without all three is painted in plain colours. A fourth layer is no file: it is made for each
-world at load, one picture laid once over the whole terrain, with each wedge in the tone the kit's
-table gives it (`Temperate.GroundTones`; PRD v4 5.6.3). Between the paths the ground is that tone
-for 45%, and for the rest the kit's layer for the wedge (`Temperate.GroundBase`): the meadow, and
-gravel in the red wedge and on the colourless ring; a path keeps its own colour. It also makes the
+a first tile size, and is tuned in its own file from then on. It names them on that object. It also makes the
 kit's two water prefabs, `Assets/Kits/temperate/Water/River.prefab` and `Lake.prefab`, once, from
 the water system's own
 presets: its river, running along the bed at 1.5 km/h, and its open sea calmed to a lake's light
@@ -326,8 +320,17 @@ tuned with the game playing in the editor: select the prefab in the Project wind
 Water Surface in the Inspector, and the world's river or lake takes the change within a quarter of
 a second (`WaterTuning`), while the editor saves it in the prefab's file. Other generated assets
 are not edited by hand. It makes each quality level's volume profile the same way (Quality levels,
-above). The world has its river and its lake only where water is on in the HDRP asset of the quality
-level in force, which it is at all three.
+above). The props, the terrain layers, the water and the kit's sound are leg 2's dressing (PRD v4
+9.6): the first slice placed them on the wheel law, which retired, and no world draws them yet.
+
+A world at run time is the greybox of PRD v4 9.6 (leg 1), built from the pack on flat ground
+(`Assets/Scripts/Kits/Greybox.cs`): a disc of the world's radius; every site path, site approach,
+trail leg and the plaza approach as a 3 m strip; the plaza with its edge path and every pad as
+discs; each region's cell boundary as a thin yellow line; every stone as a plain cylinder, 2 m tall
+for a reading stone and 1 m for the others; and at every stand the first slice's plinth by rarity,
+its slab and its image surface, facing the stand's path vertex. Its materials are five plain colours
+under `Assets/Kits/core/Materials/greybox-*.mat`, made once like the others. The avatar stops at the
+world's radius.
 
 With the project open in the editor, the menu item Eternities > Generate does the same. To walk the
 world, generate, open `Assets/Scenes/Hub.unity` and press Play: WASD walks, Shift runs, the mouse
@@ -343,7 +346,8 @@ zoom is settled (DEC-978), a player or an editor with a window writes every scro
 for each frame that did, with what the visitor was doing and where the frame left the camera, added
 to the file and never written over it (`ScrollLog`).
 
-It logs the world's figures (PRD v4 5.4.14), and writes them to `-reportOut` if that is given:
+It logs the world's figures as the pack holds them (the layout report's figures of PRD v4 9.6,
+read back from the three files), and writes them to `-reportOut` if that is given:
 
 ```sh
 unity/Eternities/batchmode.sh -quit -executeMethod Eternities.EditorTools.Generate.Run \
@@ -359,13 +363,15 @@ mode starts after about half a minute), and fifteen minutes after the command wh
 doing. A second thread holds both limits ten seconds later and ends the process, for an editor
 whose main thread hangs. It writes `eternities.bench.v1` JSON to `-benchOut` and, if
 `-benchCaptures` is given, the checkpoints as PNG files into that directory: 2, 3, 4, 5 and 9 of
-PRD v4 9.3, and 6, the river from the end of the north radial path, with what the listener hears
-there as `checkpoint-6-river.wav` (six seconds: the river ahead, then to one side, then to the
-other) and each ear's level in the JSON's `sound`. The path so far: the
-hub, the walk into Dominaria's portal, the arrival, the north radial path to the rim, 150 m of the
-outermost ring path at a run, the nearest stand's apron and its card view, travel by the menu to
-Invasion of Dominaria and its card view with the card flipped, Esc back to the hub, and the same
-arrival with reduced motion; about five minutes. A warm run visits the world once before it measures,
+PRD v4 9.3. Checkpoint 6, the river and what the listener hears there, has no place in the greybox,
+which has no water: a run with captures writes it into `captures` and `sound` as not run, with the
+reason. The path so far is the journey law's in its smallest form (CEO ruling 4 on DEC-1004): the
+hub, the walk into Dominaria's portal, the arrival, a run along the plaza approach and the trail's
+first leg to the first era site's pad, a run along that site's path to its end and back, the
+nearest stand's apron and its card view, travel by the menu to Invasion of Dominaria and its card
+view with the card flipped, Esc back to the hub, and the same arrival with reduced motion; about
+eight minutes. The JSON's `path` names the site (`trailSite`) and the metres of the two runs
+(`trailMetres`, `sitePathMetres`). A warm run visits the world once before it measures,
 and walks back to the hub's arrival point so that it stands there as a visitor arrives, facing the
 portal; a cold run empties the image cache first. A run ends at its first step, saying so, if the
 portal's ring is not in the middle of the view: the hub's capture of every warm run once looked the
@@ -475,8 +481,9 @@ company `DioPires`, product `Eternities`, bundle identifier `com.diopires.eterni
 14.0 (DEC-953). The image cache is under `~/Library/Application Support/DioPires/Eternities/images`.
 
 Both exit 1 if a required argument is missing. The generation entry point also exits 1 if a pack
-file does not match the manifest, if the allocator fails (PRD v4 5.4.11) or if the checker finds a
-violation.
+file does not match the manifest, or if a world's files fail one of the decoder's assertions of
+PRD v4 4.13.3 (a stand of another plane, a malformed join, an index out of range, or a card at a
+regional site that its keyword does not send there).
 
 Tests, as CI runs them. No `-quit`: with `-runTests` the editor exits when the run ends, 0 only if
 every test passed.

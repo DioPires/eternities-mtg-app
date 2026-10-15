@@ -1,86 +1,234 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Eternities.Layout;
 
 namespace Eternities.Data
 {
-    // What a world reads at run time and git does not hold: the part of the pack the slice uses and
-    // the world's layout, both under `StreamingAssets/data/<hash>/`. The generation entry point
-    // writes them (PRD v4 8.2.5), and so do the tests and the bench before they load a world.
+    // What a world reads at run time and git does not hold, under `StreamingAssets/data/<hash>/`:
+    // the part of the v3 pack the slice uses and the world's three files of contract v4
+    // (`stands.bin`, `worlds/<slug>.json`, `lore/<slug>.json`). The generation entry point writes
+    // them (PRD v4 8.2.5), and so do the tests and the bench before they load a world.
     public static class WorldFiles
     {
         public sealed class Result
         {
-            public WorldLayout Layout;
-            public Checker.Result Check;
-            public string LayoutPath, Digest, Report;
+            public string Slug, Report;
+            public int Stands, Sites;
         }
 
-        public static string LayoutPath(string packDirectory, string slug) => Path.Combine(packDirectory, "layout", slug + ".txt");
+        public static string StandsPath(string packDirectory) => Path.Combine(packDirectory, "stands.bin");
+        public static string WorldPath(string packDirectory, string slug) => Path.Combine(packDirectory, "worlds", slug + ".json");
+        public static string LorePath(string packDirectory, string slug) => Path.Combine(packDirectory, "lore", slug + ".json");
+
+        // The world's committed fixture beside the repository's pack: a pack is
+        // `<repository>/web/public/data/<hash>/`, and the fixture of a world laid out from it is
+        // `<repository>/contract/test-vectors/v4/layout/<slug>/` (PRD v4 5.4.14).
+        public static string FixtureOf(string repositoryPack, string slug) =>
+            Path.GetFullPath(Path.Combine(repositoryPack, "..", "..", "..", "..", "contract", "test-vectors", "v4", "layout", slug));
 
         // Copies the plane's files from the pack at `source` to `target`, each checked against the
-        // pack's manifest, then allocates the plane and writes its layout there. The slice has no
-        // contract v4 pack (PRD v4 9.5), so the C# allocator runs here, where the pipeline's will,
-        // and the engine only reads the result (PRD v4 5.4). A layout the checker fails is not
-        // written: PRD v4 5.4.10 makes that a build failure naming the first violation.
+        // pack's manifest, then the world's three files from its committed fixture. The pipeline
+        // lays a world out (PRD v4 5.4, 8.3.3) and its fixture is the committed copy of its output,
+        // so the generation entry point needs no Python, and the engine reads positions and
+        // computes none. The copy is decoded once with the assertions of 4.13.3 before this
+        // returns, so a fixture of another pack, or a broken one, fails here.
         public static Result Generate(string source, string target, string slug)
         {
+            string fixture = FixtureOf(source, slug);
             var pack = new Pack(source);
             PackPlane plane = pack.Plane(slug);
             Directory.CreateDirectory(Path.Combine(target, "planes"));
-            Directory.CreateDirectory(Path.Combine(target, "layout"));
             File.Copy(Path.Combine(source, "manifest.json"), Path.Combine(target, "manifest.json"), overwrite: true);
             foreach (string file in Pack.FilesOf(plane))
             {
                 File.WriteAllBytes(Path.Combine(target, file), pack.Read(file));
             }
-
-            WorldLayout layout = Allocator.Run(LayoutInputs.From(plane, pack.Cards(plane)));
-            Checker.Result check = Checker.Check(layout);
-            string text = LayoutFile.Write(layout);
-            var result = new Result { Layout = layout, Check = check, Digest = LayoutFile.Digest(text), LayoutPath = LayoutPath(target, slug) };
-            result.Report = LayoutReport.Write(layout, check, result.Digest);
-            if (!check.Passed)
+            // The first slice's allocator wrote `layout/<slug>.txt` here; nothing reads it now.
+            string retired = Path.Combine(target, "layout");
+            if (Directory.Exists(retired))
             {
-                throw new LayoutException($"the layout of {slug} fails the checker: {check.Violations[0]} ({check.ViolationCount} violations)\n{result.Report}");
+                Directory.Delete(retired, recursive: true);
             }
-            File.WriteAllText(result.LayoutPath, text);
-            return result;
+            Directory.CreateDirectory(Path.Combine(target, "worlds"));
+            File.Copy(StandsPath(fixture), StandsPath(target), overwrite: true);
+            File.Copy(WorldPath(fixture, slug), WorldPath(target, slug), overwrite: true);
+            if (File.Exists(LorePath(fixture, slug)))
+            {
+                Directory.CreateDirectory(Path.Combine(target, "lore"));
+                File.Copy(LorePath(fixture, slug), LorePath(target, slug), overwrite: true);
+            }
+            else if (File.Exists(LorePath(target, slug)))
+            {
+                File.Delete(LorePath(target, slug));
+            }
+            using (WorldData world = WorldData.Load(target, slug))
+            {
+                return new Result { Slug = slug, Stands = world.StandCount, Sites = world.Layout.Sites.Length, Report = LayoutReport.Of(world).Write() };
+            }
         }
     }
 
-    // One world as the engine holds it: the plane, its cards in star order, their swatches and the
-    // layout, read from a pack directory that `WorldFiles.Generate` filled.
-    public sealed class WorldData
+    // One world as the engine holds it: the plane and its cards from the v3 pack, the stands of
+    // `stands.bin` in structure-of-arrays native collections, and the world's geometry and lore,
+    // read from a pack directory that `WorldFiles.Generate` filled. Loading runs the decoder's
+    // assertions of PRD v4 4.13.3; a world that fails one is not loaded. Dispose it when the world
+    // is unloaded.
+    public sealed class WorldData : IDisposable
     {
         public Pack Pack;
         public PackPlane Plane;
-        public PackCard[] Cards;
+        public PackCard[] Cards;                // the plane's cards in v3 star order
         public Dictionary<int, PackSet> Sets;
-        public WorldLayout Layout;
+        public StandsFile Stands;
+        public WorldDocument Layout;
+        public LoreDocument Lore;               // null on a kit world
+        public int[] CardOf;                    // by stand index: the stand's card in `Cards`
         byte[] swatches;
+
+        public int StandCount => Stands.Count;
+        public P2 Position(int stand) => new P2(Stands.X[stand], Stands.Z[stand]);
+        public long Yaw(int stand) => Stands.Yaw[stand];
+        public int Site(int stand) => Stands.Site[stand];
+        public PackCard CardAt(int stand) => Cards[CardOf[stand]];
 
         public static WorldData Load(string packDirectory, string slug)
         {
             var pack = new Pack(packDirectory);
             PackPlane plane = pack.Plane(slug);
-            var world = new WorldData
+            WorldDocument layout = WorldDocument.Parse(File.ReadAllText(WorldFiles.WorldPath(packDirectory, slug)));
+            if (layout.DataHash != pack.Hash)
             {
-                Pack = pack, Plane = plane, Cards = pack.Cards(plane), Sets = pack.Sets(), swatches = pack.Swatches(),
-                Layout = LayoutFile.Read(File.ReadAllText(WorldFiles.LayoutPath(packDirectory, slug))),
-            };
-            if (world.Layout.Stands.Count != world.Cards.Length)
-            {
-                throw new InvalidDataException($"the layout of {slug} has {world.Layout.Stands.Count} stands for {world.Cards.Length} cards");
+                throw new InvalidDataException($"worlds/{slug}.json was laid out from pack {layout.DataHash}, not from pack {pack.Hash}");
             }
-            for (int i = 0; i < world.Cards.Length; i++)
+            string lorePath = WorldFiles.LorePath(packDirectory, slug);
+            LoreDocument lore = File.Exists(lorePath) ? LoreDocument.Parse(File.ReadAllText(lorePath)) : null;
+            WorldData world = Decode(pack.Planes, plane, pack.Cards(plane), File.ReadAllBytes(WorldFiles.StandsPath(packDirectory)), layout, lore);
+            world.Pack = pack;
+            world.Sets = pack.Sets();
+            world.swatches = pack.Swatches();
+            return world;
+        }
+
+        // The world's records with the assertions of PRD v4 4.13.3, against the planes of
+        // `planes.json`, the plane's cards in star order and the world's two documents.
+        public static WorldData Decode(IReadOnlyList<PackPlane> planes, PackPlane plane, PackCard[] cards, byte[] standsBin, WorldDocument layout, LoreDocument lore)
+        {
+            StandsFile stands = StandsFile.Read(standsBin);
+            try
             {
-                if (world.Layout.Stands[i].Card != i || world.Layout.Input.Cards[i].OracleId != world.Cards[i].OracleId)
+                var world = new WorldData { Plane = plane, Cards = cards, Stands = stands, Layout = layout, Lore = lore };
+                world.CardOf = Assert(planes, plane, cards, stands, layout, lore);
+                return world;
+            }
+            catch
+            {
+                stands.Dispose();
+                throw;
+            }
+        }
+
+        static string Named(StandsFile stands, int stand) => $"stand {stand} ({stands.OracleId(stand)})";
+
+        static int[] Assert(IReadOnlyList<PackPlane> planes, PackPlane plane, PackCard[] cards, StandsFile stands, WorldDocument layout, LoreDocument lore)
+        {
+            if (layout.Slug != plane.Slug)
+            {
+                throw new InvalidDataException($"worlds/{layout.Slug}.json is not the world of {plane.Slug}");
+            }
+            if (layout.Hero != (lore != null))
+            {
+                throw new InvalidDataException(layout.Hero ? $"the hero world {plane.Slug} has no lore/{plane.Slug}.json" : $"the kit world {plane.Slug} has a lore file");
+            }
+            // The plane index is the plane's position in planes.json (docs/data-contract-v4.md
+            // section 7, departure 1). The checker compares each record with the world document
+            // (`card-plane`); only a reader of planes.json can say that both name this plane
+            // (DEC-1091 N6).
+            int position = -1;
+            for (int i = 0; i < planes.Count; i++)
+            {
+                if (planes[i].Slug == plane.Slug)
                 {
-                    throw new InvalidDataException($"stand {i} of the layout of {slug} is not card {world.Cards[i].OracleId}: the layout is of another pack");
+                    position = i;
                 }
             }
-            return world;
+            if (position != plane.Index || layout.PlaneIndex != position)
+            {
+                throw new InvalidDataException($"worlds/{plane.Slug}.json names plane index {layout.PlaneIndex}; {plane.Slug} is plane {position} of planes.json");
+            }
+            if (layout.StandCount != stands.Count || layout.StandVertex.Length != stands.Count || layout.StandArc.Length != stands.Count)
+            {
+                throw new InvalidDataException($"stands.bin holds {stands.Count} records; worlds/{plane.Slug}.json counts {layout.StandCount} stands and lists "
+                    + $"{layout.StandVertex.Length} corridor vertices and {layout.StandArc.Length} arc lengths");
+            }
+            var eraOfSet = new Dictionary<int, LoreEra>();
+            if (lore != null)
+            {
+                foreach (LoreEra era in lore.Eras)
+                {
+                    foreach (int set in era.SetIds)
+                    {
+                        eraOfSet[set] = era;
+                    }
+                }
+            }
+            var cardOf = new int[stands.Count];
+            for (int stand = 0; stand < stands.Count; stand++)
+            {
+                // At launch: the plane index is in range and is this world's; the class agrees
+                // with the mask.
+                if (stands.Plane[stand] >= planes.Count || stands.Plane[stand] != layout.PlaneIndex)
+                {
+                    throw new InvalidDataException($"{Named(stands, stand)} records plane index {stands.Plane[stand]}; this is the world of plane {layout.PlaneIndex} of {planes.Count}");
+                }
+                if (Checker.ClassOf(stands.Mask[stand]) != stands.Class[stand])
+                {
+                    throw new InvalidDataException($"{Named(stands, stand)} records class {stands.Class[stand]} for the colour identity mask {stands.Mask[stand]}");
+                }
+                // At world entry: the site, the set, the cluster and the corridor's vertex.
+                int siteIndex = stands.Site[stand];
+                if (siteIndex >= layout.Sites.Length)
+                {
+                    throw new InvalidDataException($"{Named(stands, stand)} records site index {siteIndex}; the world has {layout.Sites.Length} sites");
+                }
+                WorldSite site = layout.Sites[siteIndex];
+                if (site.Kind != "region" && Array.IndexOf(site.SetIds, (int)stands.SetId[stand]) < 0)
+                {
+                    throw new InvalidDataException($"{Named(stands, stand)} records set id {stands.SetId[stand]}, which site {site.Key} does not list");
+                }
+                if (stands.Cluster[stand] >= site.Clusters.Length)
+                {
+                    throw new InvalidDataException($"{Named(stands, stand)} records cluster index {stands.Cluster[stand]}; site {site.Key} has {site.Clusters.Length} clusters");
+                }
+                if (layout.StandVertex[stand] < 0 || layout.StandVertex[stand] >= site.Path.Length)
+                {
+                    throw new InvalidDataException($"the corridor of {Named(stands, stand)} ends on vertex {layout.StandVertex[stand]}; the path of site {site.Key} has {site.Path.Length} vertices");
+                }
+                // At the shard load: the shard and the index resolve to the stand's own card.
+                int card = stands.CardIndex(stand, Pack.ShardSize);
+                if (card >= cards.Length || !string.Equals(cards[card].OracleId, stands.OracleId(stand), StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidDataException($"{Named(stands, stand)} joins shard {stands.Shard[stand]}, index {stands.ShardIndex[stand]}, which holds "
+                        + (card < cards.Length ? $"{cards[card].OracleId}" : "no card") + ": a malformed join");
+                }
+                cardOf[stand] = card;
+                // On a regional site, the card's selected keyword names the site's region, and the
+                // region of its era differs from it (5.4.3).
+                if (site.Kind == "region")
+                {
+                    PackCard held = cards[card];
+                    string[] names = held.Back == null ? new[] { held.Name } : new[] { held.Name, held.Back.Name };
+                    Keywords.Row? keyword = lore == null ? null : Keywords.Selected(names, lore.Keywords);
+                    eraOfSet.TryGetValue(stands.SetId[stand], out LoreEra era);
+                    if (keyword == null || keyword.Value.Region != site.RegionId || era == null || era.Region == site.RegionId)
+                    {
+                        throw new InvalidDataException($"{Named(stands, stand)}, {held.Name}, stands at the regional site {site.Key}; its selected keyword is "
+                            + (keyword == null ? "none" : $"'{keyword.Value.Word}' of region {keyword.Value.Region}") + $", and its era is {era?.Id ?? "none"} of region {era?.Region ?? "none"}");
+                    }
+                }
+            }
+            return cardOf;
         }
 
         // The card's swatch (docs/data-contract.md, section 5.1): sample 0 to 3 of its art at 2 x 2,
@@ -94,5 +242,7 @@ namespace Eternities.Data
             g = (byte)(g6 << 2 | g6 >> 4);
             b = (byte)(b5 << 3 | b5 >> 2);
         }
+
+        public void Dispose() => Stands?.Dispose();
     }
 }

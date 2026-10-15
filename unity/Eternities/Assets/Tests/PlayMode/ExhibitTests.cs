@@ -126,11 +126,10 @@ namespace Eternities.Tests
         static Vector3 LookAt(int stand, float distance)
         {
             App app = App.Instance;
-            LayoutStand placed = app.World.Layout.Stands[stand];
-            Quaternion facing = StandField.Facing(placed);
-            Vector3 centre = StandField.Ground(placed.Position) + new Vector3(0, StandField.PlinthHeight + StandImages.SurfaceHeight / 2, 0) + facing * Vector3.forward * (StandField.SlabDepth / 2 + StandImages.Proud);
+            Quaternion facing = StandField.Facing(app.World, stand);
+            Vector3 centre = StandField.Ground(app.World.Position(stand)) + new Vector3(0, StandField.PlinthHeight + StandImages.SurfaceHeight / 2, 0) + facing * Vector3.forward * (StandField.SlabDepth / 2 + StandImages.Proud);
             Camera.main.transform.SetPositionAndRotation(centre + facing * Vector3.forward * distance, facing * Quaternion.Euler(0, 180, 0));
-            Vector3 behind = StandField.Ground(placed.Position) + facing * Vector3.forward * (distance + 3);
+            Vector3 behind = StandField.Ground(app.World.Position(stand)) + facing * Vector3.forward * (distance + 3);
             app.Avatar.Place(new Vector3(behind.x, 0, behind.z), facing * Quaternion.Euler(0, 180, 0));
             return centre;
         }
