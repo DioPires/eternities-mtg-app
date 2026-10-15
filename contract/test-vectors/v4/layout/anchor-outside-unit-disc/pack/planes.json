@@ -1,0 +1,24 @@
+{
+  "contractVersion": 3,
+  "shardSize": 2000,
+  "planes": [
+    {
+      "index": 0,
+      "slug": "eldraine",
+      "displayName": "Eldraine",
+      "cardCount": 6,
+      "starOffset": 0,
+      "starCount": 6,
+      "shardCount": 1,
+      "sets": [
+        {
+          "id": 1,
+          "code": "el1",
+          "name": "Fixture set el1",
+          "year": 2001,
+          "cardCount": 6
+        }
+      ]
+    }
+  ]
+}

@@ -47,6 +47,10 @@ jobs:
         run: uv run basedpyright
       - name: pytest
         run: uv run pytest
+      # PRD v4 5.4.14, 8.8.5: every layout fixture is made again and compared byte for byte.
+      # pytest makes the small ones; this step also lays Dominaria out, twice.
+      - name: Layout fixtures (allocator and independent checker)
+        run: uv run eternities layout fixtures --check
 
   web:
     name: web (type-check, lint, test, build)
@@ -492,7 +496,7 @@ jobs:
             seen=
             look -x Unity
             look -f 'MacOS/[E]ternities'
-            look -x Blender
+            look -ix Blender
             seen=$(printf '%s' "$seen" | sed '/^$/d')
             if [ -z "$seen" ]; then
               exit 0

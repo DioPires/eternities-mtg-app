@@ -1,0 +1,7 @@
+{
+  "purpose": "The keyword `Sunspire` names the region `south`; one card of ten carries it and stands at the regional site `region:south` (5.4.3, 5.4.14).",
+  "slug": "ixalan",
+  "expect": "layout",
+  "lore": "ixalan",
+  "loreFixture": true
+}

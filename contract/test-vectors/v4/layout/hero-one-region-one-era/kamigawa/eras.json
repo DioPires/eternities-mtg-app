@@ -1,0 +1,24 @@
+{
+  "plane": "kamigawa",
+  "kind": "lore",
+  "eras": [
+    {
+      "id": "kami-war",
+      "name": "Kami War",
+      "years": "Long before the first war",
+      "region": "towabara",
+      "sets": [
+        "kx1"
+      ],
+      "headline": [],
+      "paragraphs": [
+        [
+          {
+            "text": "The first people came by sea.",
+            "source": "https://magic.wizards.com/en/story/fixture"
+          }
+        ]
+      ]
+    }
+  ]
+}

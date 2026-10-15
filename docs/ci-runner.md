@@ -152,10 +152,15 @@ workflow has to change with it.
   the job fails: close it and re-run the job. A `pgrep` error fails the job too. The wait has three
   gaps. `unity-compile`, `unity-editmode` and `unity-playmode` have no gate. Nothing looks again
   after the gate passes. The gate does not see a player started by a relative path such as
-  `./Eternities`, or by a path in another letter case, so a player starts through `bench.sh`.
+  `./Eternities`, or by a path in another letter case, so a player starts through `bench.sh`. The
+  gate sees Blender in any letter case: a Blender started by a lower-case path is named `blender`.
+  `bench.sh` refuses to start while a process named `Unity` runs, or Blender in any letter case,
+  or when `pgrep` fails.
 - **Blender only when no job runs.** Make a derived binary again (PRD v4 8.12) only when no runner
   job runs. `unity/Eternities/Assets/Kits/temperate/derive.sh` waits for the runner before each
-  Blender start, and the bench gate waits for Blender.
+  Blender start, and the bench gate waits for Blender. A first look that falls in the gap between
+  two jobs of one run finds no job, and Blender starts at once; the bench gate then waits for that
+  Blender if the next job is `unity-bench-smoke`.
 - **One workspace per job, in a directory of the runner's own.** Each job checks out into
   `~/actions-work/eternities-mtg-app/eternities-mtg-app/<job>/`. That is never an agent's checkout
   and never a project the owner has open in the editor, so a `Library` lock is never shared, and a

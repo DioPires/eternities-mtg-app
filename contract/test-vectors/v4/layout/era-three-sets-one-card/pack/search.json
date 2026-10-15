@@ -1,0 +1,23 @@
+{
+  "contractVersion": 3,
+  "sets": [
+    {
+      "id": 1,
+      "code": "lw1",
+      "name": "Fixture set lw1",
+      "year": 2001
+    },
+    {
+      "id": 2,
+      "code": "lw2",
+      "name": "Fixture set lw2",
+      "year": 2002
+    },
+    {
+      "id": 3,
+      "code": "lw3",
+      "name": "Fixture set lw3",
+      "year": 2003
+    }
+  ]
+}

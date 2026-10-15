@@ -1,0 +1,7 @@
+{
+  "purpose": "Region `edge` has the least weight and stands at the unit disc's edge, 150 thousandths from the heaviest region: its cell is empty and the build fails naming it (5.4.5).",
+  "slug": "tarkir",
+  "expect": "failure",
+  "lore": "tarkir",
+  "loreFixture": true
+}

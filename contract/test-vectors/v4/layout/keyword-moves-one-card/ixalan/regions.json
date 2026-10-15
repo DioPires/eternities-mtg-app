@@ -1,0 +1,41 @@
+{
+  "plane": "ixalan",
+  "regions": [
+    {
+      "id": "north",
+      "name": "North",
+      "kit": "temperate",
+      "anchor": [
+        0,
+        400
+      ],
+      "weight": 1000,
+      "water": "river",
+      "sentence": {
+        "text": "A place of stone and wind.",
+        "source": "https://magic.wizards.com/en/story/fixture"
+      },
+      "sources": [
+        "https://magic.wizards.com/en/story/fixture"
+      ]
+    },
+    {
+      "id": "south",
+      "name": "South",
+      "kit": "temperate",
+      "anchor": [
+        0,
+        -400
+      ],
+      "weight": 1000,
+      "water": "river",
+      "sentence": {
+        "text": "A place of stone and wind.",
+        "source": "https://magic.wizards.com/en/story/fixture"
+      },
+      "sources": [
+        "https://magic.wizards.com/en/story/fixture"
+      ]
+    }
+  ]
+}
