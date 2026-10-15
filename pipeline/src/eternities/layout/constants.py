@@ -1,7 +1,7 @@
 """The constants of PRD v4 5.4.1, in the integers the allocator and the checker compute with.
 
-Lengths are millimetres and angles micro-degrees (5.4.18 (1)). This module is the only one the
-independent checker shares with the allocator (8.3.3): a figure here is the nominal figure the
+Lengths are millimetres and angles micro-degrees (5.4.18 (1)). The independent checker shares two
+modules with the allocator, this one and ``trig`` (8.3.3): a figure here is the nominal figure the
 checker tests the emitted geometry against.
 """
 

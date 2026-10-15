@@ -1285,6 +1285,25 @@ def test_a_stand_faces_its_path_vertex_within_a_tenth_of_a_degree():
         count = (7_000 + turn) % 360_000
         target = (directions.cos(count), directions.sin(count))
         assert not check.faces(7_000_000, (0, 0), target, directions)
+    # The short way round the circle: a yaw of 50 counts faces 359,960 (90 apart), not 359,940.
+    for count, facing in ((359_960, True), (359_950, True), (359_949, False)):
+        target = (directions.cos(count), directions.sin(count))
+        assert check.faces(50_000, (0, 0), target, directions) is facing
+    # The count of a vector is the table's nearest direction (5.4.18 (7)): a table direction is
+    # its own count, the four axes are exact, and a vector half way between two counts takes the
+    # lower.
+    for count in (0, 1, 44_999, 90_000, 179_999, 270_000, 359_999):
+        assert check.count_of(directions.cos(count), directions.sin(count), directions) == count
+    assert [check.count_of(*v, directions) for v in ((3, 0), (0, 3), (-3, 0), (0, -3))] == [
+        0,
+        90_000,
+        180_000,
+        270_000,
+    ]
+    between = (directions.cos(10) + directions.cos(11), directions.sin(10) + directions.sin(11))
+    assert check.count_of(*between, directions) == 10
+    with pytest.raises(ValueError, match="zero vector"):
+        check.count_of(0, 0, directions)
     # A stand on its own vertex faces nothing.
     assert not check.faces(7_000_000, (5, 5), (5, 5), directions)
     # Stand 0 of Rabiah, turned a count at a time until it no longer faces its vertex.

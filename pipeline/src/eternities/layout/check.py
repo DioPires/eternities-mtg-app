@@ -69,12 +69,14 @@ polyline; a site's approach is the segment from its pad's centre to its approach
   segments, or have no length at the leg's end, so testing the polyline tests them (5.4.11).
 - *Own shapes.* A stand's footprint, apron and corridor touch one another by construction and are
   never tested against each other. Corridors may cross each other, a pad's edge and a path.
-- *Facing* (invariant 9, erratum 5). A stand faces its path vertex when the direction from its
-  emitted position to that vertex lies within 0.1 degree of its yaw: between the table directions
-  100 counts either side of the yaw's count, boundary included, and on the yaw's side (5.4.18
-  (13): the table's directions are the unit vectors). The allocator's yaw is the count nearest the
-  direction from the exact position, and rounding the two points moves that direction by less
-  than 0.03 degree, so a laid-out stand passes with room.
+- *Facing* (invariant 9, erratum 5). A stand faces its path vertex when its yaw lies within 0.1
+  degree of the direction from its emitted position to that vertex. Both are read as counts of
+  thousandths of a degree: the yaw's count is the emitted yaw divided by 1,000, and the
+  direction's count is the one that 5.4.18 (7) finds for the vector, by the checker's own binary
+  search over the table (``count_of``). The two counts differ by at most 100, the short way round
+  the circle. The allocator's yaw is the count nearest the direction from the exact position, and
+  rounding the two points moves that direction by less than 0.03 degree, so a laid-out stand
+  passes with room.
 - *The trail's order* (invariant 10, erratum 5). In leg order, the trail legs end at the era sites
   (a hero world) or the set sites (a kit world) in site order, and the spurs at the regional sites
   in site order, each site once.
@@ -639,22 +641,59 @@ def _beside_approach(stone: Pt, pad: Pt, approach: Pt) -> bool:
     return _near_figure(along, _STONE_AHEAD, square) and _near_figure(across, STONE_ACROSS, square)
 
 
+def count_of(vx: int, vz: int, table: trig.TrigTable) -> int:
+    """The table count whose direction is nearest the vector (vx, vz) (5.4.18 (7)).
+
+    The vector's quadrant gives a quarter turn of counts. Inside it a binary search finds the last
+    count whose direction lies at or clockwise of the vector, by the sign of the exact cross
+    product; the vector then lies between that count and the next. Of the two, the nearer is the
+    one on the vector's side of their sum, ties to the lower count. The zero vector has no
+    direction.
+    """
+    if vx == 0 and vz == 0:
+        raise ValueError("the zero vector has no direction")
+    quarter = COUNTS_PER_TURN // 4
+    # The quarter turn that holds the vector, its first direction included.
+    if vx > 0 and vz >= 0:
+        first = 0
+    elif vx <= 0 and vz > 0:
+        first = quarter
+    elif vx < 0 and vz <= 0:
+        first = 2 * quarter
+    else:
+        first = 3 * quarter
+    low, high = first, first + quarter - 1
+    while low < high:
+        middle = (low + high + 1) // 2
+        count = middle % COUNTS_PER_TURN
+        if table.cos(count) * vz - table.sin(count) * vx >= 0:
+            low = middle
+        else:
+            high = middle - 1
+    below = low % COUNTS_PER_TURN
+    above = (low + 1) % COUNTS_PER_TURN
+    side = (table.cos(below) + table.cos(above)) * vz - (table.sin(below) + table.sin(above)) * vx
+    if side > 0:
+        return above
+    if side < 0:
+        return below
+    return min(below, above)
+
+
 def faces(yaw: int, centre: Pt, target: Pt, table: trig.TrigTable) -> bool:
     """Whether a stand at ``centre`` with ``yaw`` faces ``target`` within 0.1 degree (invariant 9).
 
-    The direction to the target lies between the table directions ``_FACING_COUNTS`` counts either
-    side of the yaw's count, boundary included, and on the yaw's side of the perpendicular. The
-    cone is narrower than a half-turn, so the three signs decide it exactly.
+    The yaw's count and the count of the vector from the centre to the target differ by at most
+    ``_FACING_COUNTS``, the short way round the circle. A stand on its target faces nothing.
     """
-    count = divmod(yaw % MICRO_PER_TURN, MICRO_PER_COUNT)[0]
     vx = target[0] - centre[0]
     vz = target[1] - centre[1]
-    low = (count - _FACING_COUNTS) % COUNTS_PER_TURN
-    high = (count + _FACING_COUNTS) % COUNTS_PER_TURN
-    ahead = table.cos(count) * vx + table.sin(count) * vz
-    from_low = table.cos(low) * vz - table.sin(low) * vx
-    to_high = vx * table.sin(high) - vz * table.cos(high)
-    return ahead > 0 and from_low >= 0 and to_high >= 0
+    if vx == 0 and vz == 0:
+        return False
+    apart = (divmod(yaw % MICRO_PER_TURN, MICRO_PER_COUNT)[0] - count_of(vx, vz, table)) % (
+        COUNTS_PER_TURN
+    )
+    return min(apart, COUNTS_PER_TURN - apart) <= _FACING_COUNTS
 
 
 def _scaled(points: Sequence[Pt]) -> tuple[Pt, ...]:
