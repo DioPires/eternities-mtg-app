@@ -46,6 +46,42 @@ namespace Eternities.Tests
             }
         }
 
+        // World entry in the player (`App.Load`) uses the records that the launch read and asserted
+        // (`App.Start`), as PRD v4 8.3.2 reads `stands.bin` once at launch: it reads no
+        // `stands.bin`, and the world's disposal leaves the records to the app, which disposes
+        // them when it ends (DEC-1130 B2).
+        [Test]
+        public void WorldEntryUsesTheLaunchsRecordsAndLeavesThemToTheApp()
+        {
+            string target = Path.Combine(Path.GetTempPath(), "eternities-world-entry-" + System.Guid.NewGuid().ToString("N"));
+            try
+            {
+                WorldFiles.Generate(Generate.RepositoryPack(TestPack.Hash), target, "dominaria");
+                using (StandsFile launched = StandsFile.Read(File.ReadAllBytes(WorldFiles.StandsPath(target))))
+                {
+                    WorldData.AssertAtLaunch(launched, new Pack(target).Planes.Length);
+                    int yaw = launched.Yaw[6270];
+                    File.Delete(WorldFiles.StandsPath(target));
+                    Assert.Throws<FileNotFoundException>(() => WorldData.Load(target, "dominaria").Dispose(), "without the launch's records the file is read");
+                    using (WorldData world = WorldData.Load(target, "dominaria", launched))
+                    {
+                        Assert.That(world.Stands, Is.SameAs(launched));
+                        Assert.That(world.StandCount, Is.EqualTo(6271));
+                        Assert.That(world.CardAt(6270).OracleId, Is.EqualTo(launched.OracleId(6270)).IgnoreCase);
+                    }
+                    Assert.That(launched.X.IsCreated && launched.Oracle.IsCreated, Is.True, "the world's disposal leaves the launch's records");
+                    Assert.That(launched.Yaw[6270], Is.EqualTo(yaw));
+                }
+            }
+            finally
+            {
+                if (Directory.Exists(target))
+                {
+                    Directory.Delete(target, recursive: true);
+                }
+            }
+        }
+
         // The ground's materials are the scene's own, with HDRP's terrain shader, and between them
         // they name the variants a ground asks for at run time: none, a normal map, a normal map
         // and a mask map. A build holds a shader, and a variant of it, only if a material in it

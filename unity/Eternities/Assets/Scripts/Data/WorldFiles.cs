@@ -75,6 +75,15 @@ namespace Eternities.Data
     // read from a pack directory that `WorldFiles.Generate` filled. Loading runs the decoder's
     // assertions of PRD v4 4.13.3; a world that fails one is not loaded. Dispose it when the world
     // is unloaded.
+    //
+    // Where each assertion runs in the player: at launch, `App.Start` reads `stands.bin` once and
+    // runs `AssertAtLaunch` (the plane index is in range; the class agrees with the mask). At world
+    // entry, `App.Load` runs `AssertAtEntry` on those records: the world's documents against
+    // planes.json and the lore file, the record's plane (departure 7), the site, the set, the
+    // cluster and the corridor's vertex, and the shard-load assertions (the join and the keyword),
+    // since the v3 shards load at world entry. `Load(packDirectory, slug)` and `Decode` read the
+    // file themselves and run every assertion in one call, for the generation entry point and the
+    // tests.
     public sealed class WorldData : IDisposable
     {
         public Pack Pack;
@@ -86,6 +95,7 @@ namespace Eternities.Data
         public LoreDocument Lore;               // null on a kit world
         public int[] CardOf;                    // by stand index: the stand's card in `Cards`
         byte[] swatches;
+        bool ownsStands;                        // false when the records are the launch's (App.Start)
 
         public int StandCount => Stands.Count;
         public P2 Position(int stand) => new P2(Stands.X[stand], Stands.Z[stand]);
@@ -93,7 +103,15 @@ namespace Eternities.Data
         public int Site(int stand) => Stands.Site[stand];
         public PackCard CardAt(int stand) => Cards[CardOf[stand]];
 
-        public static WorldData Load(string packDirectory, string slug)
+        // The world with every assertion of 4.13.3, its `stands.bin` read here: for the generation
+        // entry point and the tests.
+        public static WorldData Load(string packDirectory, string slug) => Load(packDirectory, slug, null);
+
+        // World entry. With `launched`, the records that the launch read and asserted (`App.Start`)
+        // are used, `stands.bin` is not read again, and only the assertions at world entry and at the
+        // shard load run; the world does not own those records, and its disposal leaves them. With
+        // null, the file is read here and every assertion runs, as `Decode` runs them.
+        public static WorldData Load(string packDirectory, string slug, StandsFile launched)
         {
             var pack = new Pack(packDirectory);
             PackPlane plane = pack.Plane(slug);
@@ -104,22 +122,34 @@ namespace Eternities.Data
             }
             string lorePath = WorldFiles.LorePath(packDirectory, slug);
             LoreDocument lore = File.Exists(lorePath) ? LoreDocument.Parse(File.ReadAllText(lorePath)) : null;
-            WorldData world = Decode(pack.Planes, plane, pack.Cards(plane), File.ReadAllBytes(WorldFiles.StandsPath(packDirectory)), layout, lore);
+            WorldData world;
+            if (launched == null)
+            {
+                world = Decode(pack.Planes, plane, pack.Cards(plane), File.ReadAllBytes(WorldFiles.StandsPath(packDirectory)), layout, lore);
+            }
+            else
+            {
+                PackCard[] cards = pack.Cards(plane);
+                world = new WorldData { Plane = plane, Cards = cards, Stands = launched, Layout = layout, Lore = lore };
+                world.CardOf = AssertAtEntry(pack.Planes, plane, cards, launched, layout, lore);
+            }
             world.Pack = pack;
             world.Sets = pack.Sets();
             world.swatches = pack.Swatches();
             return world;
         }
 
-        // The world's records with the assertions of PRD v4 4.13.3, against the planes of
-        // `planes.json`, the plane's cards in star order and the world's two documents.
+        // The world's records with every assertion of PRD v4 4.13.3, against the planes of
+        // `planes.json`, the plane's cards in star order and the world's two documents: the
+        // assertions at launch, then those at world entry and at the shard load.
         public static WorldData Decode(IReadOnlyList<PackPlane> planes, PackPlane plane, PackCard[] cards, byte[] standsBin, WorldDocument layout, LoreDocument lore)
         {
             StandsFile stands = StandsFile.Read(standsBin);
             try
             {
-                var world = new WorldData { Plane = plane, Cards = cards, Stands = stands, Layout = layout, Lore = lore };
-                world.CardOf = Assert(planes, plane, cards, stands, layout, lore);
+                AssertAtLaunch(stands, planes.Count);
+                var world = new WorldData { Plane = plane, Cards = cards, Stands = stands, Layout = layout, Lore = lore, ownsStands = true };
+                world.CardOf = AssertAtEntry(planes, plane, cards, stands, layout, lore);
                 return world;
             }
             catch
@@ -131,7 +161,27 @@ namespace Eternities.Data
 
         static string Named(StandsFile stands, int stand) => $"stand {stand} ({stands.OracleId(stand)})";
 
-        static int[] Assert(IReadOnlyList<PackPlane> planes, PackPlane plane, PackCard[] cards, StandsFile stands, WorldDocument layout, LoreDocument lore)
+        // The assertions of 4.13.3 at launch, on every record of `stands.bin`: the plane index is
+        // within the count of planes.json, and the class agrees with the colour identity mask. The
+        // launch (`App.Start`) and `Decode` both call this.
+        public static void AssertAtLaunch(StandsFile stands, int planeCount)
+        {
+            for (int stand = 0; stand < stands.Count; stand++)
+            {
+                if (stands.Plane[stand] >= planeCount)
+                {
+                    throw new InvalidDataException($"{Named(stands, stand)} records plane index {stands.Plane[stand]}; planes.json holds {planeCount} planes");
+                }
+                if (Checker.ClassOf(stands.Mask[stand]) != stands.Class[stand])
+                {
+                    throw new InvalidDataException($"{Named(stands, stand)} records class {stands.Class[stand]} for the colour identity mask {stands.Mask[stand]}");
+                }
+            }
+        }
+
+        // The assertions of 4.13.3 at world entry and at the shard load, on records that passed
+        // `AssertAtLaunch`, and the world's documents against planes.json and the lore file.
+        static int[] AssertAtEntry(IReadOnlyList<PackPlane> planes, PackPlane plane, PackCard[] cards, StandsFile stands, WorldDocument layout, LoreDocument lore)
         {
             if (layout.Slug != plane.Slug)
             {
@@ -176,15 +226,11 @@ namespace Eternities.Data
             var cardOf = new int[stands.Count];
             for (int stand = 0; stand < stands.Count; stand++)
             {
-                // At launch: the plane index is in range and is this world's; the class agrees
-                // with the mask.
-                if (stands.Plane[stand] >= planes.Count || stands.Plane[stand] != layout.PlaneIndex)
+                // At world entry: the record is this world's plane, while `stands.bin` holds one
+                // world (docs/data-contract-v4.md section 7, item 3; the pull request's departure 7).
+                if (stands.Plane[stand] != layout.PlaneIndex)
                 {
-                    throw new InvalidDataException($"{Named(stands, stand)} records plane index {stands.Plane[stand]}; this is the world of plane {layout.PlaneIndex} of {planes.Count}");
-                }
-                if (Checker.ClassOf(stands.Mask[stand]) != stands.Class[stand])
-                {
-                    throw new InvalidDataException($"{Named(stands, stand)} records class {stands.Class[stand]} for the colour identity mask {stands.Mask[stand]}");
+                    throw new InvalidDataException($"{Named(stands, stand)} records plane index {stands.Plane[stand]}; this is the world of plane {layout.PlaneIndex}");
                 }
                 // At world entry: the site, the set, the cluster and the corridor's vertex.
                 int siteIndex = stands.Site[stand];
@@ -205,7 +251,8 @@ namespace Eternities.Data
                 {
                     throw new InvalidDataException($"the corridor of {Named(stands, stand)} ends on vertex {layout.StandVertex[stand]}; the path of site {site.Key} has {site.Path.Length} vertices");
                 }
-                // At the shard load: the shard and the index resolve to the stand's own card.
+                // At the shard load, which is world entry with the v3 shards: the shard and the
+                // index resolve to the stand's own card.
                 int card = stands.CardIndex(stand, Pack.ShardSize);
                 if (card >= cards.Length || !string.Equals(cards[card].OracleId, stands.OracleId(stand), StringComparison.OrdinalIgnoreCase))
                 {
@@ -243,6 +290,13 @@ namespace Eternities.Data
             b = (byte)(b5 << 3 | b5 >> 2);
         }
 
-        public void Dispose() => Stands?.Dispose();
+        // The records go with the world only when it read them; the launch's are the app's.
+        public void Dispose()
+        {
+            if (ownsStands)
+            {
+                Stands?.Dispose();
+            }
+        }
     }
 }

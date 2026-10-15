@@ -113,7 +113,7 @@ namespace Eternities.Tests
     public sealed class StandRecords
     {
         public const int Header = 16, Size = 48;
-        public const int PlaneAt = 16, SiteAt = 22, SetAt = 24, XAt = 28, ZAt = 32, YawAt = 36, ShardAt = 42, ShardIndexAt = 44, ClusterAt = 46;
+        public const int PlaneAt = 16, MaskAt = 17, ClassAt = 18, SiteAt = 22, SetAt = 24, XAt = 28, ZAt = 32, YawAt = 36, ShardAt = 42, ShardIndexAt = 44, ClusterAt = 46;
 
         readonly byte[] header;
         public readonly List<byte[]> Rows;

@@ -106,6 +106,43 @@ namespace Eternities.Tests
             Assert.That(app.WorldLoaded, Is.False, "no world loads until the avatar nears a portal's pad");
         }
 
+        // PRD v4 4.13.3, 8.3.2 and 7.4.1: the app reads `stands.bin` once at launch, and a record that
+        // fails an assertion at launch stops it there, with the stand named where the visitor looks
+        // and in the log. The hub is not built (DEC-1130 B2).
+        [UnityTest]
+        public IEnumerator AStandsFileThatFailsAtLaunchStopsTheAppBeforeTheHub()
+        {
+            string path = WorldFiles.StandsPath(App.PackDirectory());
+            byte[] good = File.ReadAllBytes(path);
+            byte[] broken = (byte[])good.Clone();
+            // Record 0's class, one past the class of its colour identity mask (4.13.3, offset 18).
+            int mask = broken[StandsFile.HeaderBytes + 17], wrong = (Checker.ClassOf(mask) + 1) % 7;
+            broken[StandsFile.HeaderBytes + 18] = (byte)wrong;
+            try
+            {
+                File.WriteAllBytes(path, broken);
+                LogAssert.Expect(LogType.Exception, new System.Text.RegularExpressions.Regex($"InvalidDataException: stand 0 \\([0-9a-f-]{{36}}\\) records class {wrong} for the colour identity mask {mask}"));
+                yield return SceneManager.LoadSceneAsync("Assets/Scenes/Hub.unity", LoadSceneMode.Single);
+                for (float until = Time.realtimeSinceStartup + 30; (App.Instance == null || App.Instance.Failure == null) && Time.realtimeSinceStartup < until;)
+                {
+                    yield return null;
+                }
+                App app = App.Instance;
+                Assert.That(app.Failure, Does.StartWith("stand 0 (").And.EndWith($"records class {wrong} for the colour identity mask {mask}"));
+                for (int frame = 0; frame < 10; frame++)
+                {
+                    yield return null;
+                }
+                Assert.That(app.HubReady, Is.False);
+                Assert.That(app.HubPortal, Is.Null, "the hub is not built");
+                Assert.That(app.Records, Is.Null, "the records that failed are not kept");
+            }
+            finally
+            {
+                File.WriteAllBytes(path, good);
+            }
+        }
+
         // How high the sun stands, in degrees above the horizon.
         static float Elevation(Light sun) => 90 - Vector3.Angle(-sun.transform.forward, Vector3.up);
 

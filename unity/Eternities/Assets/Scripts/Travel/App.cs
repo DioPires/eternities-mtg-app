@@ -96,6 +96,9 @@ namespace Eternities.Travel
         public Portal HubPortal { get; private set; }
         public Portal ReturnPortal { get; private set; }
         public WorldData World { get; private set; }
+        // `stands.bin`, read once at launch with the assertions of 4.13.3 at launch (PRD v4 8.3.2).
+        // World entry uses these records; the app disposes them when it ends.
+        public StandsFile Records { get; private set; }
         public StandField Stands { get; private set; }
         public StandImages Images { get; private set; }
         public Exhibit Exhibit { get; private set; }
@@ -136,6 +139,7 @@ namespace Eternities.Travel
 
         GameObject hubRoot, worldRoot;
         Coroutine loading;
+        Task<WorldData> reading;        // a world's read on its thread, which uses `Records`
         Renderer veil;
         readonly List<UnityEngine.Object> worldOwned = new List<UnityEngine.Object>();
         Texture2DArray standImages;     // every world's stand images, made once with the hub (`StandImages.NewArray`)
@@ -220,7 +224,22 @@ namespace Eternities.Travel
             Hud = Hud.Create(panelSettings, transform);
             try
             {
-                Pack = new Pack(PackDirectory());
+                string directory = PackDirectory();
+                Pack = new Pack(directory);
+                // PRD v4 4.13.3, 8.3.2: `stands.bin` is read once, here, and its records pass the
+                // assertions at launch before the hub is built. A file that fails one fails loudly
+                // (7.4.1), and the visitor sees no hub.
+                StandsFile records = StandsFile.Read(File.ReadAllBytes(WorldFiles.StandsPath(directory)));
+                try
+                {
+                    WorldData.AssertAtLaunch(records, Pack.Planes.Length);
+                }
+                catch
+                {
+                    records.Dispose();
+                    throw;
+                }
+                Records = records;
                 // The image cache lives under the application-support directory (PRD v4 4.15.3, 7.4.4).
                 ImageSource = ImageSourceForTests != null ? ImageSourceForTests() : ScryfallImages.Create(Path.Combine(Application.persistentDataPath, "images"), transform);
                 BuildHub();
@@ -247,6 +266,11 @@ namespace Eternities.Travel
                 Instance = null;
             }
             Destroy(standImages);
+            // The launch's records, once, when the app ends. A world still being read on its thread
+            // reads them, so that read ends first.
+            ((IAsyncResult)reading)?.AsyncWaitHandle.WaitOne();
+            Records?.Dispose();
+            Records = null;
         }
 
         void BuildHub()
@@ -610,7 +634,9 @@ namespace Eternities.Travel
         {
             LoadStage = "reading";
             string directory = PackDirectory();
-            Task<WorldData> read = Task.Run(() => WorldData.Load(directory, slug));
+            // World entry reads the records of the launch, not the file again (PRD v4 8.3.2).
+            StandsFile records = Records;
+            Task<WorldData> read = reading = Task.Run(() => WorldData.Load(directory, slug, records));
             while (!read.IsCompleted)
             {
                 yield return null;
