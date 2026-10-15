@@ -422,14 +422,14 @@ Two rules for an agent's runs on the reference machine (DEC-953):
   slice drew no ground, and no figure showed it.
 
 `bench.sh` starts the player with those arguments, refuses to start while a Unity editor or
-Blender runs, and exits with the player's exit code. It needs the player and nothing else, so it
-runs on a machine with no checkout: the build writes the commit it was built from, and whether the
-project held uncommitted changes, into the player, and the run's JSON carries both. It also
-answers the run's one question. A player that is not a development build has no counter for GPU
-memory and cannot start a process, so before it leaves the world the run asks for its own
-`footprint(1)`: the script runs the tool and the run writes the process's footprint, and the part
-of it the graphics driver holds, into the JSON's `memory` block. A player started without the
-script completes the path all the same and says in the JSON that nothing answered.
+Blender runs or when `pgrep` fails, and exits with the player's exit code. It needs the player and
+nothing else, so it runs on a machine with no checkout: the build writes the commit it was built
+from, and whether the project held uncommitted changes, into the player, and the run's JSON carries
+both. It also answers the run's one question. A player that is not a development build has no
+counter for GPU memory and cannot start a process, so before it leaves the world the run asks for
+its own `footprint(1)`: the script runs the tool and the run writes the process's footprint, and
+the part of it the graphics driver holds, into the JSON's `memory` block. A player started without
+the script completes the path all the same and says in the JSON that nothing answered.
 
 Beside the JSON the script writes `<benchOut>.others`: every process other than the player that
 used half a core or more during the run, and the system's video encoder and decoder whenever they
