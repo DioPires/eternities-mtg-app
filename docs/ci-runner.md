@@ -154,7 +154,8 @@ workflow has to change with it.
   after the gate passes. The gate does not see a player started by a relative path such as
   `./Eternities`, or by a path in another letter case, so a player starts through `bench.sh`. The
   gate sees Blender in any letter case: a Blender started by a lower-case path is named `blender`.
-  `bench.sh` refuses to start while a process named `Unity` runs, or Blender in any letter case.
+  `bench.sh` refuses to start while a process named `Unity` runs, or Blender in any letter case,
+  or when `pgrep` fails.
 - **Blender only when no job runs.** Make a derived binary again (PRD v4 8.12) only when no runner
   job runs. `unity/Eternities/Assets/Kits/temperate/derive.sh` waits for the runner before each
   Blender start, and the bench gate waits for Blender. A first look that falls in the gap between
