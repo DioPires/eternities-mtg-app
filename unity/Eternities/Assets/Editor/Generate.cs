@@ -403,6 +403,178 @@ namespace Eternities.EditorTools
             }, Folder);
         }
 
+        static bool SetObject(GameObject wanted, GameObject held, System.Action<GameObject> assign)
+        {
+            if (wanted == held)
+            {
+                return false;
+            }
+            assign(wanted);
+            return true;
+        }
+
+        // A kit prop as its prefab gives it (the prop conditioning rule, `PropRule`): the mesh, its
+        // materials, and where the mesh stands in the prefab. No model file is read here: a model
+        // becomes a prop in `KitPrefabs`, and the prefab is what the project draws.
+        static KitProp PropOf(string prefabName, bool tree)
+        {
+            string path = KitPrefabs.Path("temperate", prefabName);
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            MeshFilter[] filters = prefab == null ? new MeshFilter[0] : prefab.GetComponentsInChildren<MeshFilter>();
+            // A prop cut to levels of its own draws them through a `LODGroup`, one mesh a level,
+            // each standing where the first does.
+            LOD[] levels = prefab == null || prefab.GetComponent<LODGroup>() == null ? new LOD[0] : prefab.GetComponent<LODGroup>().GetLODs();
+            if (levels.Length > 0)
+            {
+                if (levels.Length != filters.Length || levels.Any(level => level.renderers.Length != 1 || level.renderers[0] == null))
+                {
+                    throw new InvalidDataException($"the kit's prop {path} has {levels.Length} levels for {filters.Length} meshes: one mesh a level");
+                }
+                filters = levels.Select(level => level.renderers[0].GetComponent<MeshFilter>()).ToArray();
+                Transform first = filters[0].transform;
+                if (filters.Any(filter => filter.transform.position != first.position || filter.transform.rotation != first.rotation || filter.transform.lossyScale != first.lossyScale))
+                {
+                    throw new InvalidDataException($"the levels of the kit's prop {path} do not stand in one place");
+                }
+            }
+            else if (filters.Length != 1)
+            {
+                throw new InvalidDataException($"the kit's prop {path} is not a prefab of one mesh");
+            }
+            if (filters.Any(filter => filter == null || filter.sharedMesh == null))
+            {
+                throw new InvalidDataException($"the kit's prop {path} has a level with no mesh");
+            }
+            Transform model = filters[0].transform;
+            bool upright = Quaternion.Angle(model.rotation, Quaternion.identity) < 0.01f;
+            if (tree && !upright)
+            {
+                throw new InvalidDataException($"{path} is a tree whose mesh does not stand on its own y axis, and its trunk's capsule would not stand either");
+            }
+            return new KitProp
+            {
+                Mesh = filters[0].sharedMesh, Materials = filters[0].GetComponent<MeshRenderer>().sharedMaterials,
+                Offset = model.position, Turn = upright ? Quaternion.identity : model.rotation, Scale = model.lossyScale.x,
+                From = Mathf.FloorToInt(filters[0].GetComponent<MeshRenderer>().meshLodSelectionBias),
+                First = levels.Length > 0 ? levels[0].screenRelativeTransitionHeight : 0,
+                Levels = filters.Skip(1).Select((filter, i) => new KitLevel
+                {
+                    Mesh = filter.sharedMesh, Materials = filter.GetComponent<MeshRenderer>().sharedMaterials, Until = levels[i + 1].screenRelativeTransitionHeight,
+                }).ToArray(),
+            };
+        }
+
+        static bool Same(KitProp wanted, KitProp held) => held != null && wanted.Mesh == held.Mesh && held.Materials != null && wanted.Materials.SequenceEqual(held.Materials)
+            && wanted.Offset == held.Offset && wanted.Turn == held.Turn && wanted.Scale == held.Scale && wanted.From == held.From
+            && wanted.First == held.First && held.Levels != null && wanted.Levels.Length == held.Levels.Length
+            && wanted.Levels.Zip(held.Levels, (level, other) => other != null && level.Mesh == other.Mesh && level.Until == other.Until
+                && other.Materials != null && level.Materials.SequenceEqual(other.Materials)).All(same => same);
+
+        public const string LayerFolder = "Assets/Kits/temperate/TerrainLayers";
+
+        // The photographed ground of the kit's variants (`Assets/Kits/temperate/CREDITS.md`): each
+        // texture is a terrain layer of its own name, at the size of its files and on a tile as
+        // wide, in metres, as its source's page says the photograph is. The last figure is the
+        // most gloss the layer draws: the top of the range its mask's smoothness is read into.
+        // It is 1, the mask as it is, for every ground but `ground037`. That file's roughness is
+        // 0.46 on average as ambientCG publishes it, where the six others' are 0.78 to 0.93, and
+        // with the mask as it is the meadow shone toward the sun as one pale sheet (DEC-1055, B1).
+        // At 0.25 its mean gloss is 0.13, the middle of the six others' 0.07 to 0.22.
+        static readonly Dictionary<string, (string size, float metres, float gloss)> Photographed = new Dictionary<string, (string, float, float)>
+        {
+            ["ground037"] = ("1k", 2.1f, 0.25f), ["forrest_ground_01"] = ("2k", 2, 1), ["forest_leaves_03"] = ("2k", 2.3f, 1),
+            ["brown_mud_leaves_01"] = ("2k", 1.3f, 1), ["mud_forest"] = ("2k", 2.3f, 1), ["dark_rock"] = ("2k", 2.4f, 1), ["dark_rock_02"] = ("2k", 2, 1),
+        };
+
+        // The top of the range a photographed ground's layer reads its mask's smoothness into.
+        public static float GlossRange(string layer) => Photographed[layer].gloss;
+
+        // The most gloss a variant's ground has, as `Gloss` measures it: dry ground is rough. The
+        // glossiest of the photographs as they are is the wood's leaf litter, at 0.22.
+        public const float GroundGloss = 0.25f;
+
+        // A layer's gloss: the mean smoothness of its mask, read into the layer's own range. The
+        // mean is taken from the mask's file: its roughness is the green of an `arm` file and the
+        // grey of a `rough` file (`KitMaskImport`), and smoothness is one minus it.
+        public static float Gloss(TerrainLayer layer)
+        {
+            string file = AssetDatabase.GetAssetPath(layer.maskMapTexture);
+            var mask = new Texture2D(2, 2, TextureFormat.RGBA32, true, true);
+            try
+            {
+                if (!mask.LoadImage(File.ReadAllBytes(file)))
+                {
+                    throw new InvalidDataException($"{file} is not a picture");
+                }
+                // The smallest level of a picture is about its mean, a little under it: each level of
+                // the mip chain cuts its mean down to a whole number. For `ground037_rough_1k.jpg` it
+                // reads a roughness of 113 of 255 where the file's mean is 118.0: about 0.02 more
+                // smoothness than the file has. At a range of 1, the cap of 0.25 (`GroundGloss`) is
+                // therefore about 0.23 of true gloss, and the test errs to the strict side.
+                Color32 mean = mask.GetPixels32(mask.mipmapCount - 1)[0];
+                float smoothness = 1 - (Path.GetFileName(file).Contains("_arm_") ? mean.g : mean.r) / 255f;
+                return Mathf.Lerp(layer.maskMapRemapMin.w, layer.maskMapRemapMax.w, smoothness);
+            }
+            finally
+            {
+                Object.DestroyImmediate(mask);
+            }
+        }
+
+        static TerrainLayer VariantLayer(string name)
+        {
+            var layer = AssetDatabase.LoadAssetAtPath<TerrainLayer>($"{LayerFolder}/{name}.terrainlayer");
+            if (layer == null)
+            {
+                throw new InvalidDataException($"a variant names the terrain layer {name}, which the kit has not");
+            }
+            return layer;
+        }
+
+        // A terrain layer of the temperate kit: one texture's colour, normal and mask maps. The mask
+        // is the kit's `arm` file, or its `rough` file where the source has no `arm`, as
+        // `KitMaskImport` packs it, so the layer's smoothness and occlusion are the texture's own.
+        static TerrainLayer KitLayer(string name, string texture, string size, float metres, Color tint, float gloss = 1)
+        {
+            string path = $"{LayerFolder}/{name}.terrainlayer";
+            var layer = AssetDatabase.LoadAssetAtPath<TerrainLayer>(path);
+            if (layer == null)
+            {
+                string Named(string kind) => $"Assets/Kits/temperate/Terrain/{texture}_{kind}_{size}.jpg";
+                Texture2D Map(string kind)
+                {
+                    string file = Named(kind);
+                    var map = AssetDatabase.LoadAssetAtPath<Texture2D>(file);
+                    if (map == null)
+                    {
+                        throw new InvalidDataException($"the kit's texture {file} is not in the project: run Assets/Kits/temperate/fetch.sh and git lfs pull");
+                    }
+                    return map;
+                }
+                if (AssetImporter.GetAtPath(Named("nor_gl")) is TextureImporter normals && normals.textureType != TextureImporterType.NormalMap)
+                {
+                    normals.textureType = TextureImporterType.NormalMap;
+                    normals.SaveAndReimport();
+                }
+                if (!AssetDatabase.IsValidFolder(LayerFolder))
+                {
+                    AssetDatabase.CreateFolder(Path.GetDirectoryName(LayerFolder), Path.GetFileName(LayerFolder));
+                }
+                layer = new TerrainLayer
+                {
+                    diffuseTexture = Map("diff"),
+                    normalMapTexture = Map("nor_gl"),
+                    maskMapTexture = Map(File.Exists(Named("arm")) ? "arm" : "rough"),
+                    tileSize = new Vector2(metres, metres),
+                    diffuseRemapMax = new Vector4(tint.r, tint.g, tint.b, 1),      // HDRP's terrain shader reads the tint here
+                    maskMapRemapMax = new Vector4(1, 1, 1, gloss),                  // and the mask's smoothness, its alpha, into 0 to this
+                };
+                AssetDatabase.CreateAsset(layer, path);
+                AssetDatabase.SaveAssets();
+            }
+            return layer;
+        }
+
         static GameObject WaterPrefab(string kit, string name, WaterSurfaceType type)
         {
             string folder = $"Assets/Kits/{kit}/Water";

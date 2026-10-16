@@ -11,7 +11,7 @@ these files lives beside `Audio/`, not inside it.
 
 The kit is at `standard: basic` (PRD v4 8.12.6). It holds only the loops of its ambient family
 (`volcanic`, PRD v4 5.12.1, Appendix C) so far: the second slice dresses Dominaria with the
-temperate kit alone (PRD v4 9.6), and Shiv, with the sound of its lava flows take this kit's sound (PRD v4 8.12.5; DEC-1005).
+temperate kit alone (PRD v4 9.6), and Shiv and its lava flows take this kit's sound (PRD v4 8.12.5; DEC-1005).
 
 ## Audio (Ogg Vorbis)
 
@@ -25,3 +25,7 @@ temperate kit alone (PRD v4 9.6), and Shiv, with the sound of its lava flows tak
 - **Audio files are Freesound's high-quality Ogg previews** of the CC0 sounds: the uploads need a
   Freesound login to download. A loop whose recording does not end where it begins is played into
   itself with a crossfade of three seconds (`WorldSound`), so no file is cut or made again here.
+- **`Materials/volcanic-lava.mat` is no binary and has no row.** `Generate` makes it as text: an
+  HDRP Lit material that glows by its own colour. A world copies it and draws its cracked crust
+  into the copy at run time from the plan's lava (`WorldWater.LavaFlow`), so no texture is
+  committed for it.

@@ -18,7 +18,7 @@ MonoBehaviour:
   River: {fileID: 0}
   Lake: {fileID: 0}
   Sea: {fileID: 0}
-  Lava: {fileID: 2100000, guid: 47aba8d8b2dea44f2bd46b8871937d67, type: 2}
+  Lava: {fileID: 2100000, guid: db6af806837134630b694f7a31515968, type: 2}
   Loops:
   - Name: volcanic
     Clip: {fileID: 8300000, guid: 9db673d40d19a45b9b6f53610764e5de, type: 3}
