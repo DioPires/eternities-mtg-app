@@ -51,6 +51,10 @@ namespace Eternities.Kits
             fog.albedo.Override(HazeAlbedo);
             fog.enableVolumetricFog.Override(true);
             fog.anisotropy.Override(0.7f);
+            // HDRP's low quality of volumetric fog, as the hub's. The pipeline keeps the largest
+            // volumetric buffers any frame has asked for, and at the medium quality they held about
+            // 0.4 GB at HDRP high (DEC-1005, the memory cut).
+            fog.quality.Override((int)ScalableSettingLevelParameter.Level.Low);
             return sky;
         }
 
