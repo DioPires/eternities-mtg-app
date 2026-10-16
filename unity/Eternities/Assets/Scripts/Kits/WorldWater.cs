@@ -117,11 +117,13 @@ namespace Eternities.Kits
             WaterTuning.Follow(instance, prefab, Own);
         }
 
-        // Squares of `Block` texels over every texel whose water `kind` takes, and one square more
-        // round them, at a level: rows of squares joined into one quad. With `skirt`, four quads
-        // reach from the ground's edge to the horizon.
+        // Squares of `Block` texels over every texel whose water `kind` takes, and two squares more
+        // round them, at a level: one grid whose squares share their corners, so the water's
+        // displaced vertices leave no crack between two squares. With `skirt`, four quads reach
+        // from the ground's edge to the horizon.
         static Mesh Blocks(DressPlan plan, Func<byte, bool> kind, float level, string name, bool skirt, List<Object> owned)
         {
+            const int Margin = 2;
             int blocks = plan.N / Block;
             var wet = new bool[blocks * blocks];
             bool any = false;
@@ -144,9 +146,9 @@ namespace Eternities.Kits
             {
                 for (int bx = 0; bx < blocks; bx++)
                 {
-                    for (int dz = -1; dz <= 1 && !grown[bz * blocks + bx]; dz++)
+                    for (int dz = -Margin; dz <= Margin && !grown[bz * blocks + bx]; dz++)
                     {
-                        for (int dx = -1; dx <= 1; dx++)
+                        for (int dx = -Margin; dx <= Margin; dx++)
                         {
                             int x = bx + dx, z = bz + dz;
                             if (x >= 0 && z >= 0 && x < blocks && z < blocks && wet[z * blocks + x])
@@ -159,43 +161,50 @@ namespace Eternities.Kits
                 }
             }
             var vertices = new List<Vector3>();
+            var uvs = new List<Vector2>();
             var triangles = new List<int>();
             float size = Block * plan.Grid.Texel, min = plan.Grid.Min;
-            void Quad(float x0, float z0, float x1, float z1)
+            // A corner's vertex, made once.
+            var corner = new Dictionary<int, int>();
+            int Corner(int cx, int cz)
             {
-                int first = vertices.Count;
-                vertices.Add(new Vector3(x0, level, z0));
-                vertices.Add(new Vector3(x0, level, z1));
-                vertices.Add(new Vector3(x1, level, z1));
-                vertices.Add(new Vector3(x1, level, z0));
-                triangles.AddRange(new[] { first, first + 1, first + 2, first, first + 2, first + 3 });
+                int key = cz * (blocks + 1) + cx;
+                if (!corner.TryGetValue(key, out int index))
+                {
+                    index = vertices.Count;
+                    vertices.Add(new Vector3(min + cx * size, level, min + cz * size));
+                    uvs.Add(new Vector2(min + cx * size, min + cz * size));     // in metres: lava's crust is laid in world space
+                    corner[key] = index;
+                }
+                return index;
             }
             for (int bz = 0; bz < blocks; bz++)
             {
                 for (int bx = 0; bx < blocks; bx++)
                 {
-                    if (!grown[bz * blocks + bx])
+                    if (grown[bz * blocks + bx])
                     {
-                        continue;
+                        int a = Corner(bx, bz), b = Corner(bx, bz + 1), c = Corner(bx + 1, bz + 1), d = Corner(bx + 1, bz);
+                        triangles.AddRange(new[] { a, b, c, a, c, d });
                     }
-                    int end = bx;
-                    while (end + 1 < blocks && grown[bz * blocks + end + 1])
-                    {
-                        end++;
-                    }
-                    // A long run is cut so that no quad is longer than four blocks: the water's
-                    // vertices carry its waves.
-                    for (int from = bx; from <= end; from += 4)
-                    {
-                        int to = Mathf.Min(end, from + 3);
-                        Quad(min + from * size, min + bz * size, min + (to + 1) * size, min + (bz + 1) * size);
-                    }
-                    bx = end;
                 }
             }
             if (skirt)
             {
                 float edge = -min, far = edge + Horizon;
+                void Quad(float x0, float z0, float x1, float z1)
+                {
+                    int first = vertices.Count;
+                    vertices.Add(new Vector3(x0, level, z0));
+                    vertices.Add(new Vector3(x0, level, z1));
+                    vertices.Add(new Vector3(x1, level, z1));
+                    vertices.Add(new Vector3(x1, level, z0));
+                    uvs.Add(new Vector2(x0, z0));
+                    uvs.Add(new Vector2(x0, z1));
+                    uvs.Add(new Vector2(x1, z1));
+                    uvs.Add(new Vector2(x1, z0));
+                    triangles.AddRange(new[] { first, first + 1, first + 2, first, first + 2, first + 3 });
+                }
                 Quad(-far, -far, far, -edge);
                 Quad(-far, edge, far, far);
                 Quad(-far, -edge, -edge, edge);
@@ -209,6 +218,7 @@ namespace Eternities.Kits
                 normals[i] = Vector3.up;
             }
             mesh.SetNormals(normals);
+            mesh.SetUVs(0, uvs);
             mesh.SetTriangles(triangles, 0);
             mesh.RecalculateBounds();
             owned.Add(mesh);
@@ -245,23 +255,26 @@ namespace Eternities.Kits
     public sealed class LavaFlow : MonoBehaviour
     {
         const int Side = 256;
-        const float Drift = 0.012f;     // tiles a second
+        const float Drift = 0.004f;     // tiles a second
+        const float Tiling = 0.04f;     // tiles a metre: the crust's pattern repeats every 25 m
 
-        Renderer lava;
-        MaterialPropertyBlock block;
+        Material material;
         Vector2 offset;
         public bool Still;
 
-        static readonly int Map = Shader.PropertyToID("_BaseColorMap"), MapST = Shader.PropertyToID("_BaseColorMap_ST");
+        static readonly int Map = Shader.PropertyToID("_BaseColorMap");
 
+        // The kit's material, copied for this world with the crust in it: a property block is not
+        // read by the pipeline's GPU-driven drawing of the renderer.
         public void Bind(Renderer renderer, DressPlan plan, List<Object> owned)
         {
-            lava = renderer;
-            block = new MaterialPropertyBlock();
             Texture2D crust = Crust(plan);
             owned.Add(crust);
-            block.SetTexture(Map, crust);
-            lava.SetPropertyBlock(block);
+            material = new Material(renderer.sharedMaterial) { name = "lava of this world" };
+            owned.Add(material);
+            material.SetTexture(Map, crust);
+            material.SetTextureScale(Map, Vector2.one * Tiling);
+            renderer.sharedMaterial = material;
         }
 
         // Cracks where two layers of noise cross a middle value, bright in the alpha and the
@@ -291,14 +304,12 @@ namespace Eternities.Kits
 
         void Update()
         {
-            if (lava == null || Still)
+            if (material == null || Still)
             {
                 return;
             }
             offset += new Vector2(Drift, Drift * 0.4f) * Time.deltaTime;
-            var tiling = new Vector4(0.08f, 0.08f, offset.x, offset.y);
-            block.SetVector(MapST, tiling);
-            lava.SetPropertyBlock(block);
+            material.SetTextureOffset(Map, offset);
         }
     }
 }

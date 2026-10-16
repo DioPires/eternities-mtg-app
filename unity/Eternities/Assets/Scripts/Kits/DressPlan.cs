@@ -378,15 +378,7 @@ namespace Eternities.Kits
                     {
                         h += share * ReliefOf(Regions[Other[texel]].Relief, x, z, hills, rough);
                     }
-                    // A sample is a corner of up to four texels, and is as near to anything flat as the nearest of them.
-                    float near = float.MaxValue;
-                    for (int r = Math.Max(row - 1, 0); r <= Math.Min(row, N - 1); r++)
-                    {
-                        for (int c = Math.Max(column - 1, 0); c <= Math.Min(column, N - 1); c++)
-                        {
-                            near = Math.Min(near, FromReserved[r * N + c]);
-                        }
-                    }
+                    float near = AtCorner(FromReserved, row, column);
                     h *= Mathf.SmoothStep(0, 1, (near - FlatApron) / Falloff);
                     float beyond = Mathf.Sqrt(x * x + z * z) - Radius;
                     if (beyond > -20 && Regions[Region[texel]].Water != WaterBody.Sea)
@@ -408,6 +400,21 @@ namespace Eternities.Kits
 
         // The land's height at a point between samples.
         public float LandAt(float x, float z) => Sample(land, x, z);
+
+        // A height sample is a corner of up to four texels, and is as near to anything as the
+        // nearest of them.
+        float AtCorner(float[] distance, int row, int column)
+        {
+            float near = float.MaxValue;
+            for (int r = Math.Max(row - 1, 0); r <= Math.Min(row, N - 1); r++)
+            {
+                for (int c = Math.Max(column - 1, 0); c <= Math.Min(column, N - 1); c++)
+                {
+                    near = Math.Min(near, distance[r * N + c]);
+                }
+            }
+            return near;
+        }
 
         // The ground's height at a point, the water carved, between samples.
         public float HeightAt(float x, float z) => Sample(Heights, x, z);

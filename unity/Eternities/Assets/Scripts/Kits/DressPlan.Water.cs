@@ -19,6 +19,12 @@ namespace Eternities.Kits
         // A bank rises at most this many metres a metre on average, out to `WidestBank`: under a
         // highland's hills a lake's shore is a slope and not a wall.
         const float BankSlope = 0.45f, WidestBank = 30;
+        // Across its region's boundary the sea's band narrows to nothing over this many metres.
+        const float SeaFade = 90;
+        // A ford reaches along its river at most this many metres each side of the crossing.
+        const float FordBox = 60;
+        // A river or a lava flow winds about its route: so far each side at most, so long a bend.
+        const float Meander = 9, MeanderFrom = 55, MeanderTo = 95;
 
         float[] fromSite;       // metres from anything reserved that is not the trail
 
@@ -94,14 +100,22 @@ namespace Eternities.Kits
                 for (int column = 0; column < N; column++)
                 {
                     int i = row * N + column;
-                    if (Region[i] != region)
+                    // The sea's region, and its neighbour's ground near the boundary, where the band
+                    // narrows to nothing over `SeaFade`: a cell's edge is straight, and a coast is not.
+                    float x = Grid.X(column), z = Grid.Z(row);
+                    float fade = Region[i] == region ? 1
+                        : Other[i] == region ? 1 - Mathf.SmoothStep(0, 1, (FromBoundary[i] + SeaFade * (Raster.Fractal(x / 60, z / 60, seed + 4, 2) - 0.5f)) / SeaFade) : 0;
+                    if (fade <= 0)
                     {
                         continue;
                     }
-                    float x = Grid.X(column), z = Grid.Z(row);
                     float inward = Radius - Mathf.Sqrt(x * x + z * z);
                     float angle = Mathf.Atan2(z, x);
-                    float band = SeaBand * (0.45f + 1.1f * Raster.Noise(Mathf.Cos(angle) * 4 + 11, Mathf.Sin(angle) * 4 + 11, seed));
+                    // The coast bends on three scales: bays a few hundred metres apart, coves, and
+                    // the points and inlets of a walk along it.
+                    float band = fade * (SeaBand * (0.4f + 0.85f * Raster.Noise(Mathf.Cos(angle) * 4 + 11, Mathf.Sin(angle) * 4 + 11, seed)
+                        + 0.35f * Raster.Noise(Mathf.Cos(angle) * 22 + 31, Mathf.Sin(angle) * 22 + 31, seed + 2))
+                        + 40 * (Raster.Fractal(x / 45, z / 45, seed + 3, 3) - 0.5f));
                     if (inward < band && Open(i, crossTrail: false) > WaterBuffer + Beach + 6 * Raster.Noise(x / 25, z / 25, seed + 1))
                     {
                         sea[i] = any = true;
@@ -241,7 +255,7 @@ namespace Eternities.Kits
             {
                 points = Chaikin(points);
             }
-            var body = new WaterBody { Kind = kind, Region = region, HalfWidth = half, Seed = seed, Line = Resample(points, 2) };
+            var body = new WaterBody { Kind = kind, Region = region, HalfWidth = half, Seed = seed, Line = Wind(Resample(points, 2), region, clearance, crossTrail, seed) };
             Water.Add(body);
             // The ponds: as large as the open ground about each end holds them.
             foreach ((Vector2 end, bool head) in new[] { (body.Line[0], true), (body.Line[body.Line.Count - 1], false) })
@@ -257,6 +271,54 @@ namespace Eternities.Kits
                     Water.Add(new WaterBody { Kind = kind == WaterBody.Lava ? WaterBody.Lava : WaterBody.Pond, Region = region, Centre = end, Radius = radius, Seed = seed + (head ? 1u : 2u) });
                 }
             }
+        }
+
+        // The line wound about itself: each point moved across the line by a wave of its own length
+        // and as far as the open ground lets it, the move tapered to nothing at the ends and eased
+        // along the line so that no bend is sharp. A point keeps `clearance` from what it must.
+        List<Vector2> Wind(List<Vector2> line, int region, float clearance, bool crossTrail, uint seed)
+        {
+            int count = line.Count;
+            var offset = new float[count];
+            float wave = Mathf.Lerp(MeanderFrom, MeanderTo, Raster.Hash(1, 2, seed)), phase = Raster.Hash(3, 4, seed) * Mathf.PI * 2;
+            var across = new Vector2[count];
+            for (int i = 0; i < count; i++)
+            {
+                Vector2 along = line[Mathf.Min(i + 1, count - 1)] - line[Mathf.Max(i - 1, 0)];
+                across[i] = along.sqrMagnitude > 0 ? Vector2.Perpendicular(along.normalized) : Vector2.zero;
+                float s = i * 2, taper = Mathf.Clamp01(Mathf.Min(s, (count - 1 - i) * 2) / 30);
+                float wanted = Meander * taper * (Mathf.Sin(s / wave * Mathf.PI * 2 + phase) + 0.35f * Mathf.Sin(s / wave * Mathf.PI * 5.3f + phase * 1.7f)) / 1.35f;
+                // As far as the ground lets it, in steps.
+                for (float share = 1; share > 0.05f; share *= 0.6f)
+                {
+                    Vector2 moved = line[i] + across[i] * (wanted * share);
+                    int t = Grid.At(moved.x, moved.y);
+                    if (Region[t] == region && FromBlob[t] >= clearance && (crossTrail ? fromSite[t] : FromReserved[t]) >= clearance)
+                    {
+                        offset[i] = wanted * share;
+                        break;
+                    }
+                }
+            }
+            // Eased along the line, over some 20 m.
+            var eased = new float[count];
+            for (int i = 0; i < count; i++)
+            {
+                float sum = 0, weight = 0;
+                for (int j = Mathf.Max(0, i - 10); j <= Mathf.Min(count - 1, i + 10); j++)
+                {
+                    float w = 1 - Mathf.Abs(j - i) / 11f;
+                    sum += offset[j] * w;
+                    weight += w;
+                }
+                eased[i] = Mathf.Abs(offset[i]) < Mathf.Abs(sum / weight) ? offset[i] : sum / weight;
+            }
+            var wound = new List<Vector2>(count);
+            for (int i = 0; i < count; i++)
+            {
+                wound.Add(line[i] + across[i] * eased[i]);
+            }
+            return wound;
         }
 
         // The open cell whose way from `from` is the longest, by a flood over the open cells.
@@ -428,6 +490,21 @@ namespace Eternities.Kits
             int r0 = Mathf.Max(0, Mathf.FloorToInt((z0 - Grid.Min) / Grid.Texel)), r1 = Mathf.Min(N, Mathf.CeilToInt((z1 - Grid.Min) / Grid.Texel));
             // Line bodies: the segments near each cell, so a point does not test the whole line.
             var segments = line ? new SegmentIndex(body.Line, reach) : null;
+            // Where a river crosses the trail, its ford sets the trail's height (`FordsOf`), and
+            // there a bank keeps clear of site ground only. Everywhere else a bank reaches the
+            // ground before anything reserved, so reserved ground stays flat at its level.
+            var crossings = new List<Vector2>();
+            if (body.Kind == WaterBody.River)
+            {
+                foreach (Vector2 p in body.Line)
+                {
+                    if (FromTrail[Grid.At(p.x, p.y)] <= LayoutConstants.PathHalfWidth / 1000f + half)
+                    {
+                        crossings.Add(p);
+                    }
+                }
+            }
+            float fordReach = FordBox + half + RiverBank + 1;
             for (int row = r0; row <= r1; row++)
             {
                 for (int column = c0; column <= c1; column++)
@@ -437,6 +514,15 @@ namespace Eternities.Kits
                     float inward = Inward(body, segments, new Vector2(x, z), out Vector2 _);
                     float ground = Heights[row * Samples + column];
                     float wide = Mathf.Clamp((ground - edge) / BankSlope, bank, WidestBank);
+                    if (inward < 0)
+                    {
+                        bool atFord = false;
+                        for (int k = 0; k < crossings.Count && !atFord; k++)
+                        {
+                            atFord = (crossings[k] - new Vector2(x, z)).sqrMagnitude < fordReach * fordReach;
+                        }
+                        wide = Mathf.Min(wide, -inward + AtCorner(atFord ? fromSite : FromReserved, row, column));
+                    }
                     float h = inward >= 0
                         ? Mathf.Lerp(edge, floor, Mathf.SmoothStep(0, 1, inward / (line ? half : Mathf.Max(4, body.Radius * 0.35f))))
                         : Mathf.Lerp(edge, ground, Mathf.SmoothStep(0, 1, -inward / wide));
@@ -568,12 +654,12 @@ namespace Eternities.Kits
                 var near = new List<int>();
                 for (int i = 0; i + 1 < river.Line.Count; i++)
                 {
-                    if (Vector2.Distance(river.Line[i], ford.At) < 60)
+                    if (Vector2.Distance(river.Line[i], ford.At) < FordBox)
                     {
                         near.Add(i);
                     }
                 }
-                float box = 60 + bankReach;
+                float box = FordBox + bankReach;
                 int c0 = Mathf.Max(0, Mathf.FloorToInt((ford.At.x - box - Grid.Min) / Grid.Texel)), c1 = Mathf.Min(N, Mathf.CeilToInt((ford.At.x + box - Grid.Min) / Grid.Texel));
                 int r0 = Mathf.Max(0, Mathf.FloorToInt((ford.At.y - box - Grid.Min) / Grid.Texel)), r1 = Mathf.Min(N, Mathf.CeilToInt((ford.At.y + box - Grid.Min) / Grid.Texel));
                 float radius = 0;
