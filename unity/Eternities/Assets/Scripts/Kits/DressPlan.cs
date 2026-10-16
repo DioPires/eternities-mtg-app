@@ -44,8 +44,26 @@ namespace Eternities.Kits
     public sealed class TileLayers
     {
         public int[] Layers;            // indices into `DressPlan.LayerNames`
-        public float[,,] Alphas;        // [row, column, layer], as Unity Terrain takes them
+        // [row, column, layer] in 255ths, each texel's summing to 255. Unity Terrain keeps 8 bits a
+        // layer, so a byte holds all it keeps, at a quarter of a float (DEC-1005, the memory cut).
+        public byte[] Weights;
         public int Dropped;             // layers the tile had and Unity Terrain's eight could not hold
+
+        // The weights as Unity Terrain takes them, into `alphas` [row, column, layer].
+        public void Alphas(float[,,] alphas)
+        {
+            int side = alphas.GetLength(0), layers = Layers.Length, at = 0;
+            for (int r = 0; r < side; r++)
+            {
+                for (int c = 0; c < side; c++)
+                {
+                    for (int k = 0; k < layers; k++)
+                    {
+                        alphas[r, c, k] = Weights[at++] / 255f;
+                    }
+                }
+            }
+        }
     }
 
     // A dressed world's ground, worked out from its pack on a worker thread before anything of it
@@ -85,12 +103,15 @@ namespace Eternities.Kits
         public float Radius;                // the world's, in metres
         public RegionDress[] Regions;       // by region index
         public byte[] Region, Other;        // by texel: its region, and the region across the nearest boundary
-        public float[] FromBoundary;        // metres to that boundary
-        public bool[] Path, Worn, Reserved, Blob, Cluster;
-        public float[] FromPath, FromWorn, FromReserved, FromBlob, FromTrail;
+        public Distances FromBoundary;      // metres to that boundary
+        public bool[] Reserved, Cluster;
+        public Distances FromPath, FromWorn, FromReserved, FromBlob, FromTrail;
         public float[] Heights;             // (N + 1)², metres from the ground level, row by row from the south-west corner
         public byte[] Wet;                  // by texel: `Dry`, or the kind of water that lies there
-        public float[] FlowX, FlowZ;        // by texel: the river's way where a river lies
+        // The rivers' current map, `CurrentSide` a side, as `WorldWater` draws it: red and green the
+        // way the water runs, from −1 to 1, and blue where a river runs.
+        public Color32[] Current;
+        public const int CurrentSide = 1024;
         public readonly List<WaterBody> Water = new List<WaterBody>();
         public readonly List<Ford> Fords = new List<Ford>();
         public string[] LayerNames;
@@ -141,7 +162,7 @@ namespace Eternities.Kits
                 });
             }
             var nearest = new int[count];
-            Grid.Distance(assigned, nearest);
+            Grid.Distance(assigned, nearest, scratch ??= new float[count]);
             for (int i = 0; i < count; i++)
             {
                 if (!assigned[i] && nearest[i] >= 0)
@@ -169,23 +190,28 @@ namespace Eternities.Kits
                     }
                 }
             }
-            float[] fromEdge = Grid.Distance(edge, nearest);
+            float[] fromEdge = Grid.Distance(edge, nearest, scratch);
             Other = new byte[count];
-            FromBoundary = new float[count];
             for (int i = 0; i < count; i++)
             {
                 int b = nearest[i];
                 if (b < 0)
                 {
                     Other[i] = Region[i];
-                    FromBoundary[i] = float.MaxValue;
+                    fromEdge[i] = float.MaxValue;
                     continue;
                 }
                 Other[i] = Region[b] != Region[i] ? Region[b] : across[b];
                 // A boundary texel's middle is half a texel from the boundary itself.
-                FromBoundary[i] = fromEdge[i] + Grid.Texel / 2;
+                fromEdge[i] += Grid.Texel / 2;
             }
+            FromBoundary = new Distances(fromEdge);
         }
+
+        // A mask's distances, worked out in the plan's scratch grid while the plan is made.
+        float[] scratch;
+
+        Distances DistanceTo(bool[] mask) => new Distances(Grid.Distance(mask, scratch ??= new float[Grid.Count]));
 
         // The other region's share of a texel's ground, under the 20 m blend, from 0 to a half.
         public float Share(int texel) => Other[texel] == Region[texel] ? 0 : 0.5f * (1 - Mathf.SmoothStep(0, 1, FromBoundary[texel] / Blend));
@@ -204,9 +230,9 @@ namespace Eternities.Kits
             float half = LayoutConstants.PathHalfWidth / 1000f + slack;
             float pathHalf = LayoutConstants.PathHalfWidth / 1000f;
             shapes = new ShapeIndex();
-            Path = new bool[count];
+            var path = new bool[count];
             var trail = new bool[count];
-            Grid.Disc(Path, Vector2.zero, Layout.PlazaEdgeRadius / 1000f + slack);
+            Grid.Disc(path, Vector2.zero, Layout.PlazaEdgeRadius / 1000f + slack);
             shapes.Disc(Vector2.zero, Layout.PlazaEdgeRadius / 1000f);
             if (Layout.PlazaApproach != null)
             {
@@ -226,18 +252,18 @@ namespace Eternities.Kits
             }
             foreach (WorldPad pad in Layout.Pads)
             {
-                Grid.Disc(Path, Metres(pad.Centre), pad.Radius / 1000f + slack);
+                Grid.Disc(path, Metres(pad.Centre), pad.Radius / 1000f + slack);
                 shapes.Disc(Metres(pad.Centre), pad.Radius / 1000f);
             }
-            Blob = new bool[count];
+            var blob = new bool[count];
             Cluster = new bool[count];
             foreach (WorldSite site in Layout.Sites)
             {
-                Grid.Strip(Path, Metres(site.Path), half);
-                Grid.Strip(Path, new[] { Metres(site.Pad.Position), Metres(site.ApproachPoint) }, half);
+                Grid.Strip(path, Metres(site.Path), half);
+                Grid.Strip(path, new[] { Metres(site.Pad.Position), Metres(site.ApproachPoint) }, half);
                 shapes.Strip(Metres(site.Path), pathHalf);
                 shapes.Strip(new[] { Metres(site.Pad.Position), Metres(site.ApproachPoint) }, pathHalf);
-                Grid.Polygon(Blob, Metres(site.Blob));
+                Grid.Polygon(blob, Metres(site.Blob));
                 foreach (SiteCluster cluster in site.Clusters)
                 {
                     if (cluster.Stands > 0)
@@ -248,7 +274,7 @@ namespace Eternities.Kits
             }
             // Each stand: its footprint, its apron in front of it and its corridor to its path vertex,
             // ground that is walked on and kept, but not a path.
-            Worn = new bool[count];
+            var worn = new bool[count];
             for (int stand = 0; stand < standX.Length; stand++)
             {
                 Vector2 at = new Vector2(standX[stand] / 1000f, standZ[stand] / 1000f);
@@ -256,7 +282,7 @@ namespace Eternities.Kits
                 Vector2 ahead = new Vector2(Mathf.Cos(yaw), Mathf.Sin(yaw)), side = new Vector2(-ahead.y, ahead.x);
                 float back = LayoutConstants.FootprintDepth / 2000f, front = back + LayoutConstants.ApronDepth / 1000f;
                 float wide = LayoutConstants.ApronWidth / 2000f;
-                Grid.Polygon(Worn, new[]
+                Grid.Polygon(worn, new[]
                 {
                     at - ahead * back - side * wide - (ahead + side) * slack, at - ahead * back + side * wide + (side - ahead) * slack,
                     at + ahead * front + side * wide + (ahead + side) * slack, at + ahead * front - side * wide + (ahead - side) * slack,
@@ -271,17 +297,17 @@ namespace Eternities.Kits
                 float yaw = standYaw[stand] / 1e6f * Mathf.Deg2Rad;
                 Vector2 ahead = new Vector2(Mathf.Cos(yaw), Mathf.Sin(yaw));
                 Vector2 start = at + ahead * (LayoutConstants.FootprintDepth / 2000f + LayoutConstants.ApronDepth / 1000f);
-                Grid.Segment(Worn, start, corridorEnds[stand], LayoutConstants.CorridorHalfWidth / 1000f + slack);
+                Grid.Segment(worn, start, corridorEnds[stand], LayoutConstants.CorridorHalfWidth / 1000f + slack);
                 shapes.Strip(new[] { start, corridorEnds[stand] }, LayoutConstants.CorridorHalfWidth / 1000f);
             }
             for (int i = 0; i < count; i++)
             {
-                Path[i] |= trail[i];
+                path[i] |= trail[i];
             }
             Reserved = new bool[count];
             for (int i = 0; i < count; i++)
             {
-                Reserved[i] = Path[i] || Worn[i];
+                Reserved[i] = path[i] || worn[i];
             }
             foreach (WorldSite site in Layout.Sites)
             {
@@ -301,11 +327,11 @@ namespace Eternities.Kits
                 Grid.Polygon(Reserved, Metres(volume.Polygon));
                 shapes.Polygon(Metres(volume.Polygon).ToArray());
             }
-            FromPath = Grid.Distance(Path);
-            FromWorn = Grid.Distance(Worn);
-            FromReserved = Grid.Distance(Reserved);
-            FromBlob = Grid.Distance(Blob);
-            FromTrail = Grid.Distance(trail);
+            FromPath = DistanceTo(path);
+            FromWorn = DistanceTo(worn);
+            FromReserved = DistanceTo(Reserved);
+            FromBlob = DistanceTo(blob);
+            FromTrail = DistanceTo(trail);
         }
 
         Vector2[] corridorEnds;     // by stand: the end of its corridor, its path vertex (4.13.5)
@@ -348,22 +374,54 @@ namespace Eternities.Kits
             plan.Relief();
             plan.WaterOf();
             plan.Paint();
+            plan.corridorEnds = null;
+            plan.scratch = null;
             return plan;
+        }
+
+        // A world's load lets the plan's grids go as soon as nothing more reads them, so that the
+        // grids of one stage are not in the heap beside the next stage's (DEC-1005, the memory cut).
+        // Once the plan is made: the reserved ground's mask, and the distances only the plan read.
+        public void ForTheBuild()
+        {
+            Reserved = null;
+            FromPath = FromWorn = FromBlob = FromTrail = null;
+        }
+
+        // Once the world is built: the tiles' layers and the rivers' current map. The walk reads
+        // the rest: the regions and their blend, the heights, the water, the reserved ground's
+        // distance and shapes, and the clusters (`Scatter`, `App`).
+        public void ForTheWalk()
+        {
+            ForTheBuild();
+            TileLayers = null;
+            Current = null;
+        }
+
+        // Everything, when the world is left: whatever still holds the plan then holds none of
+        // its grids, and the next visit's plan is not built beside them.
+        public void Release()
+        {
+            ForTheWalk();
+            Region = Other = Wet = null;
+            FromBoundary = FromReserved = null;
+            Heights = null;
+            Cluster = null;
+            shapes = null;
+            Layout = null;
         }
 
         // The seed of everything the dressing draws for a world: FNV-1a 64 of its own string, as
         // the allocator seeds its draws (5.4.1), so the same world is dressed alike on every machine.
         uint Seed(string what) => (uint)SplitMix64.Fnv1a64($"eternities-v4|{Layout.Slug}|dressing|{what}");
 
-        float[] land;       // the relief before the water: by sample, as `Heights`
-
         // The heights of the land: each region's relief, blended over `HeightBlend` across each
         // boundary, held at the ground level on and about everything reserved, and rising into
-        // hills past the world's edge where no sea lies.
+        // hills past the world's edge where no sea lies. The water carves its beds into them.
         void Relief()
         {
             int samples = Samples;
-            land = new float[samples * samples];
+            Heights = new float[samples * samples];
             uint hills = Seed("hills"), rough = Seed("rough"), edge = Seed("edge");
             Parallel.For(0, samples, row =>
             {
@@ -385,7 +443,7 @@ namespace Eternities.Kits
                     {
                         h += Mathf.SmoothStep(0, 1, (beyond + 20) / 90) * (10 + 22 * Raster.Fractal(x / 70, z / 70, edge, 3));
                     }
-                    land[row * samples + column] = h;
+                    Heights[row * samples + column] = h;
                 }
             });
         }
@@ -398,12 +456,9 @@ namespace Eternities.Kits
             return h + relief.Rough * Raster.Fractal(x / relief.RoughWidth, z / relief.RoughWidth, rough, 2);
         }
 
-        // The land's height at a point between samples.
-        public float LandAt(float x, float z) => Sample(land, x, z);
-
         // A height sample is a corner of up to four texels, and is as near to anything as the
         // nearest of them.
-        float AtCorner(float[] distance, int row, int column)
+        float AtCorner(Distances distance, int row, int column)
         {
             float near = float.MaxValue;
             for (int r = Math.Max(row - 1, 0); r <= Math.Min(row, N - 1); r++)

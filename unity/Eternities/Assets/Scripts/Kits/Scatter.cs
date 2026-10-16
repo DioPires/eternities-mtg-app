@@ -151,6 +151,14 @@ namespace Eternities.Kits
             }
         }
 
+        // Its places, when the world is left (DEC-1005, the memory cut).
+        public void Release()
+        {
+            Matrices = null;
+            Instances = null;
+            RunStart = RunCount = null;
+        }
+
         // A prop's place as the matrix that draws its prefab's mesh there: as `KitProp.Stand` places
         // an object, the base at the position, turned by its yaw, at its scale of the prefab.
         public static Matrix4x4 MatrixOf(PropShape shape, Instance prop)

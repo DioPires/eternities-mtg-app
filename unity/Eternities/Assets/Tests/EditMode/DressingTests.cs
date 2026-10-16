@@ -208,7 +208,7 @@ namespace Eternities.Tests
         }
 
         // Unity Terrain draws at most eight layers on a tile in HDRP: the plan gives none more, and
-        // each texel's weights sum to one.
+        // each texel's weights sum to one, in 255ths.
         [Test]
         public void EveryTilePaintsAtMostEightLayers()
         {
@@ -221,16 +221,47 @@ namespace Eternities.Tests
                 {
                     for (int c = 0; c < DressPlan.TileTexels; c += 13)
                     {
-                        float sum = 0;
+                        int sum = 0;
                         for (int k = 0; k < tile.Layers.Length; k++)
                         {
-                            sum += tile.Alphas[r, c, k];
+                            sum += tile.Weights[(r * DressPlan.TileTexels + c) * tile.Layers.Length + k];
                         }
-                        Assert.That(sum, Is.EqualTo(1).Within(1e-4f));
+                        Assert.That(sum, Is.EqualTo(255));
                     }
                 }
             }
             Debug.Log($"DressingTests: {plan.TileLayers.Sum(tile => tile.Layers.Length) / (float)plan.TileLayers.Length:F2} layers a tile; {dropped} dropped");
+        }
+
+        // The plan's distances (DEC-1005, the memory cut): the transform is exact on the grid, in
+        // a fresh grid or in one it reuses, and a grid held in 16 bits reads no more than that and
+        // less by under a 32nd of a metre, and `float.MaxValue` where nothing is marked.
+        [Test]
+        public void TheDistancesAreExactAndHeldRoundedDown()
+        {
+            var grid = new Raster(96, 64);
+            var mask = new bool[grid.Count];
+            var marked = new List<int>();
+            for (int i = 0; i < grid.Count; i++)
+            {
+                if (Raster.Hash(i, 7, 11) < 0.01f)
+                {
+                    mask[i] = true;
+                    marked.Add(i);
+                }
+            }
+            var reused = new float[grid.Count];
+            grid.Distance(new bool[grid.Count], reused);
+            float[] metres = grid.Distance(mask), again = grid.Distance(mask, reused);
+            var held = new Distances(metres);
+            for (int i = 0; i < grid.Count; i++)
+            {
+                int nearest = marked.Min(m => (m / grid.N - i / grid.N) * (m / grid.N - i / grid.N) + (m % grid.N - i % grid.N) * (m % grid.N - i % grid.N));
+                Assert.That(metres[i], Is.EqualTo((float)(Math.Sqrt(nearest) * grid.Texel)), $"texel {i}");
+                Assert.That(again[i], Is.EqualTo(metres[i]), $"texel {i}, in a grid reused");
+                Assert.That(held[i], Is.LessThanOrEqualTo(metres[i]).And.GreaterThan(metres[i] - Distances.Step), $"texel {i}, held");
+            }
+            Assert.That(new Distances(grid.Distance(new bool[grid.Count]))[0], Is.EqualTo(float.MaxValue));
         }
 
         // PRD v4 8.4.2, 5.4.1: no prop stands within 1 m and its own footprint of a stand's

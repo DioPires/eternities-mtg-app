@@ -26,21 +26,21 @@ namespace Eternities.Kits
         // A river or a lava flow winds about its route: so far each side at most, so long a bend.
         const float Meander = 9, MeanderFrom = 55, MeanderTo = 95;
 
-        float[] fromSite;       // metres from anything reserved that is not the trail
+        Distances fromSite;     // metres from anything reserved that is not the trail
+        float[] flowX, flowZ;   // by texel: the river's way where a river lies
 
         void WaterOf()
         {
             int count = Grid.Count;
-            Heights = (float[])land.Clone();
             Wet = new byte[count];
-            FlowX = new float[count];
-            FlowZ = new float[count];
+            flowX = new float[count];
+            flowZ = new float[count];
             var siteGround = new bool[count];
             for (int i = 0; i < count; i++)
             {
                 siteGround[i] = Reserved[i] && FromTrail[i] > 0;
             }
-            fromSite = Grid.Distance(siteGround);
+            fromSite = DistanceTo(siteGround);
 
             for (int r = 0; r < Regions.Length; r++)
             {
@@ -81,6 +81,27 @@ namespace Eternities.Kits
                     }
                 }
             }
+            Current = CurrentMap();
+            fromSite = null;
+            flowX = flowZ = null;
+        }
+
+        // The rivers' current map, from the rivers' way on every other texel or so. A pond is still.
+        Color32[] CurrentMap()
+        {
+            int side = CurrentSide, step = Mathf.Max(1, N / side);
+            var pixels = new Color32[side * side];
+            for (int row = 0; row < side; row++)
+            {
+                for (int column = 0; column < side; column++)
+                {
+                    int texel = Mathf.Min(row * step, N - 1) * N + Mathf.Min(column * step, N - 1);
+                    float x = flowX[texel], z = flowZ[texel];
+                    bool flows = x != 0 || z != 0;
+                    pixels[row * side + column] = new Color32((byte)Mathf.RoundToInt((0.5f + 0.5f * x) * 255), (byte)Mathf.RoundToInt((0.5f + 0.5f * z) * 255), (byte)(flows ? 255 : 0), 255);
+                }
+            }
+            return pixels;
         }
 
         // How far a texel lies from the ground a body of water keeps clear of: every site's blob and
@@ -544,8 +565,8 @@ namespace Eternities.Kits
                         Wet[t] = wet;
                         if (wet == WetRiver && line)
                         {
-                            FlowX[t] = along.x;
-                            FlowZ[t] = along.y;
+                            flowX[t] = along.x;
+                            flowZ[t] = along.y;
                         }
                     }
                 }

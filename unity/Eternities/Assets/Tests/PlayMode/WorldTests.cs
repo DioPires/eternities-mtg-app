@@ -181,7 +181,7 @@ namespace Eternities.Tests
             Assert.That(app.Dress.Grid.Side, Is.GreaterThan(2 * layout.Radius / 1000f));
             Assert.That(app.Greybox.Stones, Is.EqualTo(layout.Sites.Length + layout.Sites.Sum(site => site.Chapters.Count(chapter => chapter.Stone != null))),
                 "a stone a site and a chapter stone a chapter after the first");
-            Assert.That(app.Props.Count, Is.EqualTo(app.Scatter.Matrices.Length).And.GreaterThan(0));
+            Assert.That(app.Props.Count, Is.EqualTo(app.Scatter.Instances.Length).And.GreaterThan(0));
             Assert.That(app.Water, Is.Not.Null);
             foreach ((string water, string surface) in new[] { (WaterBody.River, "Rivers"), (WaterBody.Lake, "Lakes and pools"), (WaterBody.Sea, "Sea"), (WaterBody.Lava, "Lava") })
             {
@@ -216,6 +216,17 @@ namespace Eternities.Tests
             Assert.That(Physics.Raycast(stone + 10 * Vector3.up, Vector3.down, out hit, 20));
             Assert.That(hit.point.y, Is.EqualTo(Greybox.ReadingHeight).Within(0.01f));
 
+            // The walk holds what it reads of the plan, and nothing that only the build read
+            // (DEC-1005, the memory cut).
+            DressPlan plan = app.Dress;
+            Scatter placed = app.Scatter;
+            Assert.That(plan.Heights, Is.Not.Null);
+            Assert.That(plan.FromReserved, Is.Not.Null);
+            Assert.That(plan.TileLayers, Is.Null);
+            Assert.That(plan.Current, Is.Null);
+            Assert.That(plan.FromTrail, Is.Null);
+            Assert.That(placed.Matrices, Is.Null, "the props draw from their own copy");
+
             Texture2DArray images = app.Images.Array;
             Assert.That(images.depth, Is.EqualTo(Eternities.CardView.StandImages.Slots));
             hands.Back = true;
@@ -223,6 +234,10 @@ namespace Eternities.Tests
             Assert.That(app.World, Is.Null);
             Assert.That(app.WorldLoaded, Is.False);
             Assert.That(app.Dress, Is.Null);
+            // Whatever still holds the plan or the scatter holds none of their grids: after a first
+            // visit they stayed in the heap, and the next visit's plan was built beside them.
+            Assert.That(plan.Heights == null && plan.Region == null && plan.Wet == null && plan.FromReserved == null, "the plan's grids leave with the world");
+            Assert.That(placed.Instances == null && placed.RunStart == null, "the props' places leave with the world");
             Assert.That(app.Kits, Is.Empty, "the kits leave with the world (DEC-1055, N20)");
             Assert.That(Vector3.Distance(app.Avatar.transform.position, app.HubPortal.Pad), Is.LessThan(0.5f));
             Assert.That(Elevation(app.Sun), Is.EqualTo(45).Within(0.01f), "the hub has the scene's own sun again");

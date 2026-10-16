@@ -200,6 +200,7 @@ namespace Eternities.Kits
             batches = new Batch[byKind.Length * levels * 2];
             levelsPerKind = levels;
             statics = new NativeArray<Matrix4x4>(placed.Matrices, Allocator.Persistent);
+            placed.Matrices = null;     // the field draws from its own copy (DEC-1005, the memory cut)
             int cells = placed.Cells;
             cellBounds = new Bounds[cells * cells];
             for (int cell = 0; cell < cellBounds.Length; cell++)

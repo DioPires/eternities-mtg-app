@@ -38,6 +38,7 @@ namespace Eternities.Kits
             float metres = side * plan.Grid.Texel;
             var made = new Terrain[tiles * tiles];
             var heights = new float[HeightRows, samples];
+            var alphas = new float[DressPlan.TileLayersMost + 1][,,];     // by a tile's count of layers
             var root = new GameObject("Ground");
             root.transform.SetParent(parent, false);
             for (int tz = 0; tz < tiles; tz++)
@@ -77,8 +78,10 @@ namespace Eternities.Kits
                         }
                     }
                     data.SyncHeightmap();
-                    data.SetAlphamaps(0, 0, paint.Alphas);
-                    paint.Alphas = null;    // the terrain holds them now
+                    float[,,] weights = alphas[tileLayers.Length] ??= new float[side, side, tileLayers.Length];
+                    paint.Alphas(weights);
+                    data.SetAlphamaps(0, 0, weights);
+                    paint.Weights = null;   // the terrain holds them now
                     GameObject tile = Terrain.CreateTerrainGameObject(data);
                     tile.name = $"Ground {tx},{tz}";
                     tile.transform.SetParent(root.transform, false);

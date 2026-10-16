@@ -143,12 +143,16 @@ namespace Eternities.Kits
         // The distance in metres from every texel's middle to the middle of the nearest marked
         // texel, exact on the grid (Felzenszwalb and Huttenlocher's transform), and, when asked,
         // which texel that is. With no texel marked every distance is `float.MaxValue`.
-        public float[] Distance(bool[] mask, int[] nearest = null)
+        //
+        // A squared distance in texels is a whole number under 2 × 2048², so a float holds it
+        // exactly: the transform works in the array it returns, and a grid's distances cost that
+        // array and a few lines of scratch, not a grid of doubles and one of indices beside it.
+        public float[] Distance(bool[] mask, int[] nearest = null, float[] metres = null)
         {
             const double Far = 1e20;
             int n = N;
-            var squared = new double[n * n];
-            int[] from = nearest ?? new int[n * n];
+            metres ??= new float[n * n];
+            bool track = nearest != null;
             var f = new double[n];
             var d = new double[n];
             var fi = new int[n];
@@ -167,8 +171,11 @@ namespace Eternities.Kits
                 Pass(f, fi, d, di, v, z, n);
                 for (int column = 0; column < n; column++)
                 {
-                    squared[row * n + column] = d[column];
-                    from[row * n + column] = di[column];
+                    metres[row * n + column] = (float)d[column];
+                    if (track)
+                    {
+                        nearest[row * n + column] = di[column];
+                    }
                 }
             }
             // Along each column, over the rows' results.
@@ -176,23 +183,28 @@ namespace Eternities.Kits
             {
                 for (int row = 0; row < n; row++)
                 {
-                    f[row] = squared[row * n + column];
-                    fi[row] = from[row * n + column];
+                    f[row] = metres[row * n + column];
+                    fi[row] = track ? nearest[row * n + column] : -1;
                 }
                 Pass(f, fi, d, di, v, z, n);
                 for (int row = 0; row < n; row++)
                 {
-                    squared[row * n + column] = d[row];
-                    from[row * n + column] = di[row];
+                    metres[row * n + column] = (float)d[row];
+                    if (track)
+                    {
+                        nearest[row * n + column] = di[row];
+                    }
                 }
             }
-            var metres = new float[n * n];
             for (int i = 0; i < metres.Length; i++)
             {
-                metres[i] = squared[i] >= Far / 2 ? float.MaxValue : (float)(Math.Sqrt(squared[i]) * Texel);
+                metres[i] = metres[i] >= Far / 2 ? float.MaxValue : (float)(Math.Sqrt(metres[i]) * Texel);
             }
             return metres;
         }
+
+        // The same into `metres`, a grid of this raster's texels, when the caller reuses one.
+        public float[] Distance(bool[] mask, float[] metres) => Distance(mask, null, metres);
 
         // The lower envelope of the parabolas (q − p)² + f(q), along one line.
         static void Pass(double[] f, int[] fi, double[] d, int[] di, int[] v, double[] z, int n)
@@ -281,5 +293,37 @@ namespace Eternities.Kits
         }
 
         static float Smooth(float t) => t * t * (3 - 2 * t);
+    }
+
+    // A grid of distances in metres, held in 16 bits a texel (DEC-1005, the memory cut): rounded
+    // down to a 32nd of a metre, so a distance read is never more than the grid's, and held at
+    // `Most` beyond it. A texel with nothing marked on the grid reads `float.MaxValue`.
+    public sealed class Distances
+    {
+        public const float Step = 1 / 32f;
+        public const float Most = (ushort.MaxValue - 1) * Step;
+        const ushort None = ushort.MaxValue;
+        readonly ushort[] steps;
+
+        public Distances(float[] metres)
+        {
+            steps = new ushort[metres.Length];
+            for (int i = 0; i < metres.Length; i++)
+            {
+                float d = metres[i];
+                steps[i] = d == float.MaxValue ? None : (ushort)Math.Min(ushort.MaxValue - 1, (int)(d / Step));
+            }
+        }
+
+        public int Length => steps.Length;
+
+        public float this[int texel]
+        {
+            get
+            {
+                ushort d = steps[texel];
+                return d == None ? float.MaxValue : d * Step;
+            }
+        }
     }
 }

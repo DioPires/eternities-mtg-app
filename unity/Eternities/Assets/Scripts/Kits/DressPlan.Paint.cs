@@ -26,7 +26,7 @@ namespace Eternities.Kits
         }
 
         Mix[] mixes;            // by region
-        float[] fromShore;      // metres from water that has a gravel shore
+        Distances fromShore;    // metres from water that has a gravel shore
 
         void Paint()
         {
@@ -74,10 +74,17 @@ namespace Eternities.Kits
             {
                 shore[i] = Wet[i] == WetRiver || Wet[i] == WetSea || Wet[i] == WetStill;
             }
-            fromShore = Grid.Distance(shore);
+            fromShore = DistanceTo(shore);
 
+            // Each worker weighs its tiles in one scratch grid of every layer's weight.
             TileLayers = new TileLayers[Tiles * Tiles];
-            Parallel.For(0, Tiles * Tiles, tile => TileLayers[tile] = PaintTile(tile % Tiles, tile / Tiles, seed));
+            Parallel.For(0, Tiles * Tiles, () => new float[TileTexels * TileTexels * LayerNames.Length], (tile, _, all) =>
+            {
+                TileLayers[tile] = PaintTile(tile % Tiles, tile / Tiles, seed, all);
+                return all;
+            }, _ => { });
+            fromShore = null;
+            mixes = null;
         }
 
         static float MixNoise(float x, float z, uint seed) => 0.65f * Raster.Noise(x / 9, z / 9, seed) + 0.35f * Raster.Noise(x / 2.5f, z / 2.5f, seed + 1);
@@ -122,11 +129,11 @@ namespace Eternities.Kits
         }
 
         // One tile's alphamap: the layers it uses, at most eight, the least of them dropped if it
-        // uses more, and every texel's weights over them summing to one.
-        TileLayers PaintTile(int tileX, int tileZ, uint seed)
+        // uses more, and every texel's weights over them summing to one. `all` is scratch, every
+        // layer's weight on every texel of the tile.
+        TileLayers PaintTile(int tileX, int tileZ, uint seed, float[] all)
         {
             int side = TileTexels, layers = LayerNames.Length;
-            var all = new float[side * side * layers];
             var weights = new float[layers];
             var total = new double[layers];
             var most = new float[layers];
@@ -164,20 +171,38 @@ namespace Eternities.Kits
                 used.RemoveRange(TileLayersMost, dropped);
                 used.Sort();
             }
-            var tile = new TileLayers { Layers = used.ToArray(), Alphas = new float[side, side, used.Count], Dropped = dropped };
+            int count = used.Count;
+            var tile = new TileLayers { Layers = used.ToArray(), Weights = new byte[side * side * count], Dropped = dropped };
+            var rest = new float[count];
             for (int r = 0; r < side; r++)
             {
                 for (int c = 0; c < side; c++)
                 {
-                    int at = (r * side + c) * layers;
+                    int at = (r * side + c) * layers, to = (r * side + c) * count;
                     float sum = 0;
                     foreach (int k in used)
                     {
                         sum += all[at + k];
                     }
-                    for (int u = 0; u < used.Count; u++)
+                    // In 255ths, each rounded down, and what that leaves to the largest remainders.
+                    int given = 0;
+                    for (int u = 0; u < count; u++)
                     {
-                        tile.Alphas[r, c, u] = sum > 0 ? all[at + used[u]] / sum : (u == 0 ? 1 : 0);
+                        float share = 255 * (sum > 0 ? all[at + used[u]] / sum : (u == 0 ? 1 : 0));
+                        int whole = (int)share;
+                        tile.Weights[to + u] = (byte)whole;
+                        rest[u] = share - whole;
+                        given += whole;
+                    }
+                    for (; given < 255; given++)
+                    {
+                        int largest = 0;
+                        for (int u = 1; u < count; u++)
+                        {
+                            largest = rest[u] > rest[largest] ? u : largest;
+                        }
+                        tile.Weights[to + largest]++;
+                        rest[largest] = -1;
                     }
                 }
             }

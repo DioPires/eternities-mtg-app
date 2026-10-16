@@ -26,7 +26,7 @@ namespace Eternities.Kits
         // The sea reaches this far past the ground, in metres.
         public const float Horizon = 6000;
         // The current map's side, in texels.
-        public const int CurrentSide = 1024;
+        public const int CurrentSide = DressPlan.CurrentSide;
 
         // `owned` takes what is made here and belongs to no object: it leaves with the world.
         public static GameObject Build(DressPlan plan, GameObject riverPrefab, GameObject lakePrefab, GameObject seaPrefab, Material lava, Transform parent, List<Object> owned)
@@ -225,25 +225,14 @@ namespace Eternities.Kits
             return mesh;
         }
 
-        // The rivers' current map (HDRP's legacy current maps): red and green the way the water
-        // runs, from −1 to 1, and blue how much the map holds against the surface's own current.
-        // A pond is still.
+        // The rivers' current map (HDRP's legacy current maps), as the plan made it: red and green
+        // the way the water runs, from −1 to 1, and blue how much the map holds against the
+        // surface's own current. A pond is still.
         static Texture2D CurrentMap(DressPlan plan)
         {
-            int side = CurrentSide, step = Mathf.Max(1, plan.N / side);
-            var pixels = new Color32[side * side];
-            for (int row = 0; row < side; row++)
-            {
-                for (int column = 0; column < side; column++)
-                {
-                    int texel = Mathf.Min(row * step, plan.N - 1) * plan.N + Mathf.Min(column * step, plan.N - 1);
-                    float x = plan.FlowX[texel], z = plan.FlowZ[texel];
-                    bool flows = x != 0 || z != 0;
-                    pixels[row * side + column] = new Color32((byte)Mathf.RoundToInt((0.5f + 0.5f * x) * 255), (byte)Mathf.RoundToInt((0.5f + 0.5f * z) * 255), (byte)(flows ? 255 : 0), 255);
-                }
-            }
+            int side = CurrentSide;
             var map = new Texture2D(side, side, TextureFormat.RGBA32, mipChain: false, linear: true) { name = "rivers' current", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
-            map.SetPixels32(pixels);
+            map.SetPixels32(plan.Current);
             map.Apply(updateMipmaps: false, makeNoLongerReadable: true);
             return map;
         }

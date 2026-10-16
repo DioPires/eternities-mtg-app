@@ -672,7 +672,9 @@ namespace Eternities.Travel
             Task<(WorldData World, DressPlan Plan)> read = Task.Run(() =>
             {
                 WorldData world = WorldData.Load(directory, slug, records);
-                return (world, DressPlan.Compute(world));
+                DressPlan plan = DressPlan.Compute(world);
+                plan.ForTheBuild();
+                return (world, plan);
             });
             reading = read;
             yield return LoadKit("temperate");
@@ -686,6 +688,7 @@ namespace Eternities.Travel
                 yield break;
             }
             (World, Dress) = read.Result;
+            reading = null;     // the read is done: the field is for a read that still runs when the app ends (`OnDestroy`)
             worldRoot = new GameObject(World.Plane.DisplayName);
 
             // The kits of the world's ambient families and of its water (PRD v4 8.12.5).
@@ -778,6 +781,8 @@ namespace Eternities.Travel
             ReturnPortal = Portal.Build("Return portal", portalFrameMaterial, portalSurfaceMaterial, worldRoot.transform,
                 StandField.Ground(World.Layout.ReturnPortal.Position), StandField.Facing(World.Layout.ReturnPortal.Yaw));
             yield return null;
+            // The world is built: what only the build read goes (DEC-1005, the memory cut).
+            Dress.ForTheWalk();
             for (double waited = Now; Now - waited < LoadDelayForTests;)
             {
                 yield return null;
@@ -919,6 +924,11 @@ namespace Eternities.Travel
             worldOwned.Clear();
             World?.Dispose();
             World = null;
+            // The plan's grids and the props' places go with the world, whatever still holds the
+            // plan or the scatter: after a first visit they stayed in the heap, and the next
+            // visit's plan was built beside them (DEC-1005, the memory cut).
+            Dress?.Release();
+            Scatter?.Release();
             Greybox = null;
             Stands = null;
             Images = null;
