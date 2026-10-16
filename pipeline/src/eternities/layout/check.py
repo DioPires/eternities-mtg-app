@@ -109,7 +109,7 @@ from dataclasses import dataclass
 from functools import cmp_to_key
 from itertools import pairwise
 from math import isqrt
-from typing import Any, Final
+from typing import Any, Final, cast
 
 from . import trig
 from .constants import (
@@ -992,11 +992,11 @@ def _outside_int32(value: Any) -> tuple[list[str | int], int] | None:
     """
     if type(value) is int:
         return None if _INT32_LEAST <= value <= _INT32_MOST else ([], value)
-    members: Any
+    members: list[tuple[str | int, Any]]
     if isinstance(value, dict):
-        members = value.items()
+        members = [(str(key), member) for key, member in cast("dict[Any, Any]", value).items()]
     elif isinstance(value, list):
-        members = enumerate(value)
+        members = list(enumerate(cast("list[Any]", value)))
     else:
         return None
     for key, member in members:
