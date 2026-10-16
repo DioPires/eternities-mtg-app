@@ -171,9 +171,9 @@ The rule is `Assets/Editor/PropRule.cs`; the figures below are its constants.
      material has no gloss: with the photograph's gloss a crown shines as one mirror.
 8. **Credits.** The kit's `CREDITS.md` states its standard above its first table, as
    `standard: basic` or `standard: photographic`, and lists every prefab under "Props as drawn"
-   with the height and the triangles measured on it. In the temperate kit, which is at
-   `photographic`, the first slice's flat models of vegetation and rock are held at `basic` while
-   the first slice's scatter of Dominaria draws them; leg 2 of the second slice retires it.
+   with the height and the triangles measured on it. The first slice's flat models of vegetation
+   and rock retired with its scatter (PRD v4 9.6, leg 2), and every prop of the temperate kit is
+   held at its kit's standard.
 
 The caps are the proposal of 2026-10-12 on DEC-1003, from the measured figures of the candidate
 models; the owner sets them from PRD v4 7.2's kit rows. The first three rules of item 7 are the
@@ -252,17 +252,66 @@ a density. The temperate kit has four, `meadow`, `wood`, `marsh` and `highland`,
    growth's share of the prefab. More than one species of each vegetation type the variant uses,
    and rocks.
 4. **Density.** A quality level draws a share of it, and a lower level's props are among a higher
-   level's. Ground cover stands about the viewer only, thinning from 12 m to nothing at 26 m: a
-   tuft a hand high is a few pixels there. A growth that is seen across a field (`Growth.Far`)
-   also stands about the viewer, at its full density within 48 m, and from there it thins as 48 m
-   over the distance, out to the patch's edge. The ground that a clump hides from a walker's eye
-   grows with its distance, so the field stays as closed with fewer clumps. The meadow's tall
-   grass is such a growth: the kit's two sedges, in clumps. Other trees, bushes and rocks stand
-   on the patch, wherever the viewer is.
+   level's. Ground cover is drawn about the viewer only, thinning from 12 m to nothing at 26 m: a
+   tuft a hand high is a few pixels there. A growth that is seen across a field (`Growth.Far`) is
+   drawn at its full density within 48 m of the viewer, and from there it thins as 48 m over the
+   distance. The ground that a clump hides from a walker's eye grows with its distance, so the
+   field stays as closed with fewer clumps. The meadow's tall grass is such a growth: the kit's two
+   sedges, in clumps. In a world every prop has its place on the ground whoever looks at it
+   (`Scatter`): what the viewer's place changes is how many of a cell's are drawn.
 
-The scene holds each variant's layers and props, so a build carries them. Nothing draws a variant
-in a world yet: that is the dressing of a region (PRD v4 9.6, leg 2). The densities are a first
-setting for the owner's eye.
+Each kit's dressing is one asset under its `Resources/`, `kit-<kit>.asset` (`KitDressing`): the
+temperate kit's holds each variant's layers and props, its path and gravel layers, its river and
+lake prefabs and its loops; each other kit's holds its loops, and the coast's its sea and the
+volcanic kit's its lava. Nothing in the scene names them, so a build carries them and a world loads
+them as it is entered, not with the hub (DEC-1055, N20). The densities are a first setting for the
+owner's eye.
+
+## The dressed world
+
+A world at run time is its pack dressed by its region rows (PRD v4 5.6.3, 8.4.2, 8.4.5; 9.6 leg 2).
+`DressPlan` works it out on a worker thread from the pack alone, and the main thread builds it in
+slices:
+
+1. **Regions.** Each texel of the ground lies in the cell of one region row (4.13.5), and within
+   10 m of a boundary the region across it has a share of the ground, a half on the boundary
+   itself: the 20 m blend, baked into each tile's layer weights. A row's kit and variant dress it
+   (`Dressing`); `volcanic` takes the highland on its dark rock, sparser and higher, and `coast`
+   the meadow with the sea, until those kits exist.
+2. **The ground.** Unity Terrain in tiles of 256 texels, 2,049 samples across a world of more
+   than 260 m of radius (8.4.5), each tile with the layers its ground uses and at most eight. The
+   relief is each region's, and it is held at the ground level on and about everything the
+   allocator placed: paths, the trail, approaches, the plaza, pads, stones and every stand's
+   footprint, apron and corridor. Past the world's radius the ground rises into hills, or falls
+   into the sea.
+3. **The trail as a road.** Every path, pad, apron, corridor and the plaza is the kit's path
+   layer, and the trail has a worn verge.
+4. **Water** where each row names it, 3 m clear of everything reserved: a river across the region
+   between two ponds, crossing the trail only at a ford, where the trail goes into the water 0.2 m
+   deep; a lake on the region's most open ground; the sea in from the world's edge, past the ground
+   to the horizon; a marsh's pools in its hollows; and lava, which never crosses the trail. Three
+   water surfaces of HDRP's water system draw it, rivers, still water and the sea, each from its
+   prefab; the rivers flow by a current map the plan makes.
+5. **Props.** Trees, bushes and rocks have their places once for the world; ground cover and the
+   field's tall grass are made in cells about the walker. Each keeps 1 m and its own footprint
+   clear of everything reserved, stays out of water, and no tree stands in a cluster's disc.
+   `PropField` draws them instanced, by kind and level of detail, and puts colliders on the trunks
+   and rocks nearest the avatar.
+6. **Sound.** A bed for each ambient family the rows name, crossfaded at boundaries, and a source
+   on each body of water that rides its nearest point to the listener (`WorldSound`).
+7. **Sky and light.** The theme row's: the sun at 35° and warm, the scene's physically based sky
+   with each level's clouds, drifting, and a haze over the land (`WorldSky`).
+
+The stones are the greybox's plain cylinders until leg 2's third pull request. The avatar stops at
+the world's radius, and wades no deeper than 0.35 m.
+
+Pictures of a dressed world, from a walker's eye at the arrival, each region from its trail, each
+ford, each river, the lake, the sea, the lava, a site's path and a wood. No `-quit`: the editor
+exits by itself after the last picture.
+
+```sh
+unity/Eternities/batchmode.sh -executeMethod Eternities.EditorTools.WorldPictures.Run -picturesOut "$PWD/world-pictures" -picturesQuality medium
+```
 
 Pictures of the kit, for the owner's eye and a reviewer's, from the avatar's eye height under
 Dominaria's sun. No `-quit`: the editor exits by itself after the last picture.
@@ -307,30 +356,21 @@ It also completes what is committed, and changes nothing there on a second run: 
 materials under `Assets/Kits/core/Materials/` and `Assets/Kits/temperate/Materials/`, and in
 `Assets/Scenes/Hub.unity` the one object, `Eternities`, that builds the hub and the world at run
 time. It makes each of the kit's prop prefabs under `Assets/Kits/temperate/Prefabs/`, once (Kit
-props, below), and names on that object what each prefab gives: the mesh, the materials, and where
-the mesh stands in the prefab. It makes
-the kit's three terrain layers, `meadow`, `path` and `gravel` under
-`Assets/Kits/temperate/TerrainLayers/`, once: each has its texture's colour, normal and mask maps and
-a first tile size, and is tuned in its own file from then on. It names them on that object. It also makes the
-kit's two water prefabs, `Assets/Kits/temperate/Water/River.prefab` and `Lake.prefab`, once, from
-the water system's own
-presets: its river, running along the bed at 1.5 km/h, and its open sea calmed to a lake's light
-breeze, without foam. Those two are the owner's to tune and it never writes them again. They are
-tuned with the game playing in the editor: select the prefab in the Project window and change its
-Water Surface in the Inspector, and the world's river or lake takes the change within a quarter of
-a second (`WaterTuning`), while the editor saves it in the prefab's file. Other generated assets
-are not edited by hand. It makes each quality level's volume profile the same way (Quality levels,
-above). The props, the terrain layers, the water and the kit's sound are leg 2's dressing (PRD v4
-9.6): the first slice placed them on the wheel law, which retired, and no world draws them yet.
-
-A world at run time is the greybox of PRD v4 9.6 (leg 1), built from the pack on flat ground
-(`Assets/Scripts/Kits/Greybox.cs`): a disc of the world's radius; every site path, site approach,
-trail leg and the plaza approach as a 3 m strip; the plaza with its edge path and every pad as
-discs; each region's cell boundary as a thin yellow line; every stone as a plain cylinder, 2 m tall
-for a reading stone and 1 m for the others; and at every stand the first slice's plinth by rarity,
-its slab and its image surface, facing the stand's path vertex. Its materials are five plain colours
-under `Assets/Kits/core/Materials/greybox-*.mat`, made once like the others. The avatar stops at the
-world's radius.
+props, below), and each kit's dressing under its `Resources/` (Kit variants, above), which names
+what each prefab gives: the mesh, the materials, and where the mesh stands in the prefab. It turns
+on instancing in every material a prop draws with, which the world's props are drawn by. It makes
+the kit's terrain layers under `Assets/Kits/temperate/TerrainLayers/`, once: `path`, `gravel` and
+each variant's grounds, each with its texture's colour, normal and mask maps and a first tile size,
+and tuned in its own file from then on. It also makes the water prefabs once, from the water
+system's own presets: `Assets/Kits/temperate/Water/River.prefab`, running along its bed at
+1.5 km/h, `Lake.prefab`, an open sea calmed to a lake's light breeze without foam, and
+`Assets/Kits/coast/Water/Sea.prefab`, under a fresh breeze. Those are the owner's to tune and it
+never writes them again. They are tuned with the game playing in the editor: select the prefab in
+the Project window and change its Water Surface in the Inspector, and the world's water takes the
+change within a quarter of a second (`WaterTuning`), while the editor saves it in the prefab's file.
+Other generated assets are not edited by hand. It makes each quality level's volume profile the
+same way (Quality levels, above). The greybox of leg 1 (`Assets/Scripts/Kits/Greybox.cs`) is drawn
+only for its stones now (The dressed world, above).
 
 With the project open in the editor, the menu item Eternities > Generate does the same. To walk the
 world, generate, open `Assets/Scenes/Hub.unity` and press Play: WASD walks, Shift runs, the mouse

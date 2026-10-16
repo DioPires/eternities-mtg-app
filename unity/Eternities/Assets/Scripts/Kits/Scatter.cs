@@ -22,8 +22,8 @@ namespace Eternities.Kits
     // draws its props from its own coordinates, so the same ground holds the same props on every
     // machine and from every place the walker stands (DEC-1055, N17).
     //
-    // The trees, bushes, rocks and the growth seen across a field are placed once for the whole
-    // world, here. Ground cover is too many to place once: `PropField` asks for a cell's whenever
+    // The trees, bushes and rocks are placed once for the whole world, here. Ground cover and the
+    // growth seen across a field are too many to place once: `PropField` asks for a cell's whenever
     // the walker comes near it, from the same rule.
     public sealed class Scatter
     {
@@ -45,8 +45,9 @@ namespace Eternities.Kits
         // The static props stand in cells of this many metres, each kind's in a run of its own,
         // nearest-first by rank: a cell draws the first so many of a run (`PropField`).
         public const float Cell = 32;
-        // Ground cover is asked for by cells of this many metres.
-        public const float CoverCell = 4;
+        // Ground cover is asked for by cells of this many metres, and the growth seen across a
+        // field by cells of `FarCell`.
+        public const float CoverCell = 4, FarCell = 16;
         // The cells a growth's candidates are drawn in, in metres.
         const float DrawCell = 8;
         // Beyond the world's edge the wood thickens, so the world ends in trees (PRD v4 5.1.5).
@@ -114,7 +115,7 @@ namespace Eternities.Kits
                 {
                     Growth growth = variant.Grows[g];
                     int kind = KindOf(growth.Prefab);
-                    if (Kinds[kind].Low)
+                    if (Kinds[kind].Low || Kinds[kind].Far)
                     {
                         continue;
                     }
@@ -225,23 +226,46 @@ namespace Eternities.Kits
 
         // One cell's ground cover, about the walker (`PropField`): every low growth of the
         // variants that grow in the cell.
-        public void CoverIn(int cx, int cz, Action<int, Instance> found)
+        public void CoverIn(int cx, int cz, Action<int, Instance> found) => In(cx, cz, CoverCell, low: true, found);
+
+        // One cell's growth seen across a field, about the walker (`PropField`).
+        public void FarIn(int cx, int cz, Action<int, Instance> found) => In(cx, cz, FarCell, low: false, found);
+
+        static readonly Vector2[] Corners = { Vector2.zero, new Vector2(-1, -1), new Vector2(1, -1), new Vector2(-1, 1), new Vector2(1, 1) };
+        readonly List<Variant> variants = new List<Variant>(4);
+
+        // Not for two threads at once: it keeps its list of variants.
+        void In(int cx, int cz, float size, bool low, Action<int, Instance> found)
         {
-            float x = Plan.Grid.Min + (cx + 0.5f) * CoverCell, z = Plan.Grid.Min + (cz + 0.5f) * CoverCell;
+            float x = Plan.Grid.Min + (cx + 0.5f) * size, z = Plan.Grid.Min + (cz + 0.5f) * size;
             if (x <= Plan.Grid.Min || z <= Plan.Grid.Min || x >= -Plan.Grid.Min || z >= -Plan.Grid.Min)
             {
                 return;
             }
-            int texel = Plan.Grid.At(x, z);
-            Variant a = Plan.Regions[Plan.Region[texel]].Variant, b = Plan.Regions[Plan.Other[texel]].Variant;
-            foreach (Variant variant in a == b ? new[] { a } : new[] { a, b })
+            // The variants of the regions the cell's middle and corners lie in: a cell of 16 m can
+            // reach across a boundary's blend.
+            variants.Clear();
+            float reach = size / 2;
+            for (int corner = 0; corner < Corners.Length; corner++)
+            {
+                int texel = Plan.Grid.At(x + Corners[corner].x * reach, z + Corners[corner].y * reach);
+                for (int side = 0; side < 2; side++)
+                {
+                    Variant variant = Plan.Regions[side == 0 ? Plan.Region[texel] : Plan.Other[texel]].Variant;
+                    if (!variants.Contains(variant))
+                    {
+                        variants.Add(variant);
+                    }
+                }
+            }
+            foreach (Variant variant in variants)
             {
                 foreach (Growth growth in variant.Grows)
                 {
                     int kind = KindOf(growth.Prefab);
-                    if (Kinds[kind].Low)
+                    if (low ? Kinds[kind].Low : Kinds[kind].Far)
                     {
-                        Candidates(variant, growth, kind, cx, cz, CoverCell, prop => found(kind, prop));
+                        Candidates(variant, growth, kind, cx, cz, size, prop => found(kind, prop));
                     }
                 }
             }

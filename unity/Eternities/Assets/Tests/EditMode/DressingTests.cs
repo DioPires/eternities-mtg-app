@@ -283,6 +283,36 @@ namespace Eternities.Tests
                 Vector2 end = DressPlan.Metres(layout.Sites[world.Site(stand)].Path[layout.StandVertex[stand]]);
                 shapes.Line(new List<Vector2> { at + ahead * front, end }, LayoutConstants.CorridorHalfWidth / 1000f);
             }
+            // And the props made about the walker, in every cell along the first site's path and
+            // the first leg of the trail, where the 1 m means most.
+            var cells = new HashSet<(int, int, bool)>();
+            foreach (Vector2 point in layout.Sites[0].Path.Select(DressPlan.Metres).Concat(layout.Legs[0].Polyline.Select(DressPlan.Metres)))
+            {
+                cells.Add((Mathf.FloorToInt((point.x - plan.Grid.Min) / Scatter.CoverCell), Mathf.FloorToInt((point.y - plan.Grid.Min) / Scatter.CoverCell), true));
+                cells.Add((Mathf.FloorToInt((point.x - plan.Grid.Min) / Scatter.FarCell), Mathf.FloorToInt((point.y - plan.Grid.Min) / Scatter.FarCell), false));
+            }
+            int near = 0;
+            foreach ((int cx, int cz, bool low) in cells)
+            {
+                void Check(int kindIndex, Scatter.Instance prop)
+                {
+                    Scatter.Kind kind = scatter.Kinds[kindIndex];
+                    var at = new Vector2(prop.Position.x, prop.Position.z);
+                    float needed = DressPlan.PropClearance + kind.Shape.Footprint * prop.Scale;
+                    Assert.That(shapes.Clearance(at, needed + 0.5f), Is.GreaterThanOrEqualTo(needed), $"{kind.Prefab} at {at.x:F2}, {at.y:F2}");
+                    near++;
+                }
+                if (low)
+                {
+                    scatter.CoverIn(cx, cz, Check);
+                }
+                else
+                {
+                    scatter.FarIn(cx, cz, Check);
+                }
+            }
+            Assert.That(near, Is.GreaterThan(0), "cover and grass by the paths");
+
             var kindOf = new int[scatter.Instances.Length];
             for (int key = 0; key < scatter.RunStart.Length; key++)
             {
@@ -310,9 +340,9 @@ namespace Eternities.Tests
             Assert.That(checkedProps, Is.GreaterThan(0));
         }
 
-        // DEC-1055, N17: ground cover has its places on the ground, whoever looks at it. A cell's
-        // cover is the same however often and from wherever it is asked for, and a lower density's
-        // is among a higher density's.
+        // DEC-1055, N17: ground cover and the growth seen across a field have their places on the
+        // ground, whoever looks at them. A cell's are the same however often and from wherever they
+        // are asked for, and a lower density's are among a higher density's.
         [Test]
         public void GroundCoverStaysOnTheGround()
         {
@@ -332,11 +362,71 @@ namespace Eternities.Tests
                     low.CoverIn(cx, cz, (kind, prop) => fewer.Add((kind, prop.Position)));
                     CollectionAssert.AreEqual(once, again);
                     CollectionAssert.IsSubsetOf(fewer, once);
+                    once.Clear();
+                    again.Clear();
+                    fewer.Clear();
+                    scatter.FarIn(cx / 4, cz / 4, (kind, prop) => once.Add((kind, prop.Position)));
+                    scatter.FarIn(cx / 4, cz / 4, (kind, prop) => again.Add((kind, prop.Position)));
+                    low.FarIn(cx / 4, cz / 4, (kind, prop) => fewer.Add((kind, prop.Position)));
+                    CollectionAssert.AreEqual(once, again);
+                    CollectionAssert.IsSubsetOf(fewer, once);
                     tried++;
                     found += once.Count;
                 }
             }
             Assert.That(found, Is.GreaterThan(0), $"{tried} cells");
+        }
+
+        // DEC-1055, N14: the field's tall grass stands at its density over every cell of open
+        // meadow, to the edge of the meadow and not only about a viewer. On every cell of 16 m that
+        // lies in one meadow region, away from its boundary, from water and from anything reserved,
+        // the count is the growth's density over the cell's area, within the noise of its draws.
+        [Test]
+        public void TheFieldsGrassStandsAtItsDensityOverAllOpenMeadow()
+        {
+            Variant meadow = Dressing.VariantNamed("meadow");
+            Growth[] far = meadow.Grows.Where(growth => growth.Far).ToArray();
+            float expected = far.Sum(growth => growth.PerAre) / 100 * Scatter.FarCell * Scatter.FarCell * scatter.Density;
+            int cells = Mathf.CeilToInt(plan.Grid.Side / Scatter.FarCell), tested = 0;
+            for (int cz = 0; cz < cells; cz++)
+            {
+                for (int cx = 0; cx < cells; cx++)
+                {
+                    float x = plan.Grid.Min + (cx + 0.5f) * Scatter.FarCell, z = plan.Grid.Min + (cz + 0.5f) * Scatter.FarCell;
+                    if (!Open(x, z, Scatter.FarCell))
+                    {
+                        continue;
+                    }
+                    int count = 0;
+                    scatter.FarIn(cx, cz, (kind, prop) => count++);
+                    Assert.That(count, Is.InRange(expected * 0.6f, expected * 1.4f), $"the cell at {x:F0}, {z:F0}");
+                    tested++;
+                }
+            }
+            Assert.That(tested, Is.GreaterThan(100), "open meadow cells");
+        }
+
+        // Is a square of ground of one meadow region, every texel of it away from its boundary's
+        // blend, from water and from anything reserved?
+        static bool Open(float x, float z, float size)
+        {
+            RegionDress here = plan.RegionAt(x, z);
+            if (here.Variant.Name != "meadow" || here.Growth != 1)
+            {
+                return false;
+            }
+            int steps = Mathf.CeilToInt(size / plan.Grid.Texel);
+            for (int step = 0; step <= steps * steps + 2 * steps; step++)
+            {
+                float px = x - size / 2 + step % (steps + 1) * size / steps, pz = z - size / 2 + step / (steps + 1) * size / steps;
+                int texel = plan.Grid.At(px, pz);
+                if (plan.RegionAt(px, pz) != here || plan.FromBoundary[texel] < DressPlan.Blend + 1 || plan.FromReserved[texel] < 4 || plan.Wet[texel] != DressPlan.Dry
+                    || plan.HeightAt(px, pz) < DressPlan.WaterLevel + 0.3f || px * px + pz * pz > plan.Radius * plan.Radius)
+                {
+                    return false;
+                }
+            }
+            return true;
         }
 
         // The shapes of the allocator's placed ground, by cells of a few metres, for the clearance test.

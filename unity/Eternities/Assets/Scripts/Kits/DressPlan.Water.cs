@@ -16,6 +16,9 @@ namespace Eternities.Kits
         const float RouteCell = 4;
         // What a cell of the route near the trail costs, against 1 to 4 for a cell of open ground.
         const float TrailCost = 400;
+        // A bank rises at most this many metres a metre on average, out to `WidestBank`: under a
+        // highland's hills a lake's shore is a slope and not a wall.
+        const float BankSlope = 0.45f, WidestBank = 30;
 
         float[] fromSite;       // metres from anything reserved that is not the trail
 
@@ -399,7 +402,8 @@ namespace Eternities.Kits
             float edge = lava ? LavaLevel - 0.15f : WaterLevel - 0.1f;
             float floor = lava ? LavaLevel - 0.5f : body.Kind == WaterBody.Lake ? WaterLevel - 3.5f : body.Kind == WaterBody.Pond ? WaterLevel - 1.4f : WaterLevel - RiverDepth;
             byte wet = lava ? WetLava : body.Kind == WaterBody.Lake ? WetStill : WetRiver;
-            float reach = (line ? half : body.Radius * 1.2f) + bank + 1;
+            // Under high ground a bank is as wide as its slope needs, up to `WidestBank`.
+            float reach = (line ? half : body.Radius * 1.2f) + Mathf.Max(bank, WidestBank) + 1;
             float x0 = float.MaxValue, z0 = float.MaxValue, x1 = float.MinValue, z1 = float.MinValue;
             if (line)
             {
@@ -431,9 +435,11 @@ namespace Eternities.Kits
                     // A height sample at the corner, and the texel whose lower corner it is.
                     float x = Grid.Min + column * Grid.Texel, z = Grid.Min + row * Grid.Texel;
                     float inward = Inward(body, segments, new Vector2(x, z), out Vector2 _);
+                    float ground = Heights[row * Samples + column];
+                    float wide = Mathf.Clamp((ground - edge) / BankSlope, bank, WidestBank);
                     float h = inward >= 0
                         ? Mathf.Lerp(edge, floor, Mathf.SmoothStep(0, 1, inward / (line ? half : Mathf.Max(4, body.Radius * 0.35f))))
-                        : Mathf.Lerp(edge, Heights[row * Samples + column], Mathf.SmoothStep(0, 1, -inward / bank));
+                        : Mathf.Lerp(edge, ground, Mathf.SmoothStep(0, 1, -inward / wide));
                     int s = row * Samples + column;
                     Heights[s] = Mathf.Min(Heights[s], h);
                 }

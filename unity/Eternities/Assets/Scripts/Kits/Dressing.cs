@@ -51,7 +51,7 @@ namespace Eternities.Kits
         // flat with its hollows under water, the highland stands high and stony.
         public static readonly Relief Meadow = new Relief { Height = 3.5f, Width = 70, Rough = 0.25f, RoughWidth = 9 };
         public static readonly Relief Wood = new Relief { Height = 4.5f, Width = 55, Rough = 0.4f, RoughWidth = 8 };
-        public static readonly Relief Marsh = new Relief { Height = 1.4f, Width = 28, Rough = 0.15f, RoughWidth = 6, Sunken = 0.55f };
+        public static readonly Relief Marsh = new Relief { Height = 2.4f, Width = 26, Rough = 0.15f, RoughWidth = 6, Sunken = 0.6f };
         public static readonly Relief Highland = new Relief { Height = 10, Width = 90, Rough = 1.4f, RoughWidth = 14 };
         public static readonly Relief Volcanic = new Relief { Height = 13, Width = 110, Rough = 1.8f, RoughWidth = 11 };
 

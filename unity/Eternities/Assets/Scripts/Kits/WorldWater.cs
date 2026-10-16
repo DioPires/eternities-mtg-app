@@ -240,8 +240,8 @@ namespace Eternities.Kits
     }
 
     // Lava's crust, drifting along the flow: a texture of dark crust with glowing cracks, made once
-    // from noise, and moved a little every frame, under the kit's unlit lava material, whose colour
-    // is far brighter than daylight. Reduced motion stops it (PRD v4 5.11.2).
+    // from noise, and moved a little every frame. The kit's lava material glows by its colour, so
+    // the cracks glow and the crust is dark. Reduced motion stops it (PRD v4 5.11.2).
     public sealed class LavaFlow : MonoBehaviour
     {
         const int Side = 256;
@@ -252,7 +252,7 @@ namespace Eternities.Kits
         Vector2 offset;
         public bool Still;
 
-        static readonly int Map = Shader.PropertyToID("_UnlitColorMap"), MapST = Shader.PropertyToID("_UnlitColorMap_ST");
+        static readonly int Map = Shader.PropertyToID("_BaseColorMap"), MapST = Shader.PropertyToID("_BaseColorMap_ST");
 
         public void Bind(Renderer renderer, DressPlan plan, List<Object> owned)
         {

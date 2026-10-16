@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Linq;
 using System.IO;
 using Eternities.Avatar;
 using Eternities.Data;
@@ -170,19 +171,29 @@ namespace Eternities.Tests
             Assert.That(Elevation(app.Sun), Is.EqualTo(35).Within(0.01f));
             Assert.That(app.Sun.colorTemperature, Is.LessThan(5600), "a warm sun");
             Assert.That(Vector3.Dot(-app.Sun.transform.forward, Vector3.left), Is.GreaterThan(0.5f), "the sun stands to the west");
-            // The greybox (PRD v4 9.6, leg 1): flat ground as wide as the world, every site path,
-            // site approach, trail leg and the plaza approach as a strip, every pad, every region's
-            // boundary, and every stone; no props, no water and no sound.
+            // Dressed (PRD v4 9.6, leg 2): the ground in tiles of at most eight layers each, as wide
+            // as the world and its margin; every stone; the props; the water each region row names;
+            // a bed for each ambient family and a source on each body of water; and the sky.
             WorldDocument layout = app.World.Layout;
-            Assert.That(app.Greybox.GroundRadius, Is.GreaterThan(layout.Radius / 1000f));
-            Assert.That(app.Ground.sharedMaterials.Length, Is.EqualTo(4));
-            Assert.That(app.Greybox.Strips, Is.EqualTo(2 * layout.Sites.Length + layout.Legs.Length + 1));
-            Assert.That(app.Greybox.Pads, Is.EqualTo(layout.Pads.Length));
-            Assert.That(app.Greybox.Lines, Is.EqualTo(12));
-            Assert.That(app.Greybox.Stones, Is.EqualTo(26 + 22), "a stone a site and a chapter stone a chapter after the first");
-            Assert.That(app.Props, Is.Null);
-            Assert.That(app.Water, Is.Null);
-            Assert.That(app.Sound, Is.Null);
+            Assert.That(app.Tiles.Length, Is.EqualTo(app.Dress.Tiles * app.Dress.Tiles));
+            Assert.That(app.Tiles.All(tile => tile.terrainData.terrainLayers.Length is > 0 and <= DressPlan.TileLayersMost));
+            Assert.That(app.Tiles.Sum(tile => tile.terrainData.size.x) / app.Dress.Tiles, Is.EqualTo(app.Dress.Grid.Side).Within(0.01f));
+            Assert.That(app.Dress.Grid.Side, Is.GreaterThan(2 * layout.Radius / 1000f));
+            Assert.That(app.Greybox.Stones, Is.EqualTo(layout.Sites.Length + layout.Sites.Sum(site => site.Chapters.Count(chapter => chapter.Stone != null))),
+                "a stone a site and a chapter stone a chapter after the first");
+            Assert.That(app.Props.Count, Is.EqualTo(app.Scatter.Matrices.Length).And.GreaterThan(0));
+            Assert.That(app.Water, Is.Not.Null);
+            foreach ((string water, string surface) in new[] { (WaterBody.River, "Rivers"), (WaterBody.Lake, "Lakes and pools"), (WaterBody.Sea, "Sea"), (WaterBody.Lava, "Lava") })
+            {
+                if (app.Dress.Regions.Any(region => region.Water == water))
+                {
+                    Assert.That(app.Water.transform.Find(surface), Is.Not.Null, surface);
+                }
+            }
+            Assert.That(app.Sound.Beds, Is.EqualTo(app.Dress.Regions.Select(region => region.Ambient).Distinct().Count()));
+            Assert.That(app.Sound.Emitters, Is.EqualTo(app.Dress.Water.Count));
+            Assert.That(app.Sky, Is.Not.Null);
+            Assert.That(app.Kits.Keys, Does.Contain("temperate"));
             // The arrival point, facing north, on the ground.
             yield return new WaitForFixedUpdate();
             yield return null;
@@ -211,6 +222,8 @@ namespace Eternities.Tests
             yield return Until(() => app.Place == Place.Hub && !app.InTransition, 30, "the return to the hub");
             Assert.That(app.World, Is.Null);
             Assert.That(app.WorldLoaded, Is.False);
+            Assert.That(app.Dress, Is.Null);
+            Assert.That(app.Kits, Is.Empty, "the kits leave with the world (DEC-1055, N20)");
             Assert.That(Vector3.Distance(app.Avatar.transform.position, app.HubPortal.Pad), Is.LessThan(0.5f));
             Assert.That(Elevation(app.Sun), Is.EqualTo(45).Within(0.01f), "the hub has the scene's own sun again");
             Assert.That(app.Sun.colorTemperature, Is.EqualTo(6500));

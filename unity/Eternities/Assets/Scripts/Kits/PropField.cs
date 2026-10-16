@@ -120,11 +120,12 @@ namespace Eternities.Kits
         const float ColliderReach = 30, ColliderStep = 4;
         // The ground cover of so many cells is made in one frame at most, and in more while a
         // world is still behind the veil.
-        const int CoverCellsAFrame = 24;
+        const int CoverCellsAFrame = 24, FarCellsAFrame = 6;
 
         public int Count { get; private set; }      // the static props of the world
         public int Drawn { get; private set; }      // the props the last frame drew
-        public int CoverCells => cover.Count;
+        public int CoverCells => cover.Cells.Count;
+        public int FarCells => far.Cells.Count;
 
         Scatter scatter;
         KitProp[] models;                           // by kind
@@ -145,8 +146,10 @@ namespace Eternities.Kits
         Bounds[] cellBounds;
         readonly Plane[] planes = new Plane[6];
 
-        // Ground cover about the walker: a cell's props by kind, each kind's in rank order.
-        sealed class CoverCell
+        // The props about the walker that are too many to place once: a cell's by kind, each
+        // kind's in rank order. Ground cover in cells of `Scatter.CoverCell` within its reach, and
+        // the growth seen across a field in cells of `Scatter.FarCell` within its.
+        sealed class LazyCell
         {
             public int X, Z;
             public Matrix4x4[] Matrices = new Matrix4x4[256];
@@ -155,11 +158,18 @@ namespace Eternities.Kits
             public Bounds Bounds;
         }
 
-        readonly Dictionary<long, CoverCell> cover = new Dictionary<long, CoverCell>();
-        readonly Stack<CoverCell> spare = new Stack<CoverCell>();
+        sealed class Lazy
+        {
+            public float Size, Reach;
+            public bool Low;
+            public readonly Dictionary<long, LazyCell> Cells = new Dictionary<long, LazyCell>();
+            public readonly Stack<LazyCell> Spare = new Stack<LazyCell>();
+        }
+
+        Lazy cover, far;
+        Lazy[] lazies;
         readonly List<long> leaving = new List<long>();
         readonly List<(int Kind, Scatter.Instance Prop)> making = new List<(int, Scatter.Instance)>();
-        readonly List<CoverCell> wanted = new List<CoverCell>();
 
         CapsuleCollider[] trunks;
         BoxCollider[] blocks;
@@ -214,6 +224,14 @@ namespace Eternities.Kits
                     }
                 }
             }
+            float farReach = 0;
+            foreach (Scatter.Kind kind in placed.Kinds)
+            {
+                farReach = Mathf.Max(farReach, kind.Far ? Reach(kind) : 0);
+            }
+            cover = new Lazy { Size = Scatter.CoverCell, Reach = Variants.CoverFar, Low = true };
+            far = new Lazy { Size = Scatter.FarCell, Reach = farReach, Low = false };
+            lazies = new[] { cover, far };
             trunks = new CapsuleCollider[Trunks];
             blocks = new BoxCollider[Blocks];
             for (int i = 0; i < Trunks; i++)
@@ -252,12 +270,12 @@ namespace Eternities.Kits
             }
         }
 
-        // Makes the ground cover about the avatar's place at once, as a world is entered behind
-        // the veil, so the first frame there has it.
+        // Makes the props about the avatar's place at once, as a world is entered behind the
+        // veil, so the first frame there has them.
         public IEnumerator Warm(float budget)
         {
             double started = Time.realtimeSinceStartupAsDouble;
-            while (MakeCover(int.MaxValue) > 0)
+            while (Make(cover, int.MaxValue) + Make(far, int.MaxValue) > 0)
             {
                 if ((Time.realtimeSinceStartupAsDouble - started) * 1000 > budget)
                 {
@@ -278,21 +296,22 @@ namespace Eternities.Kits
             {
                 return;
             }
-            MakeCover(CoverCellsAFrame);
+            Make(cover, CoverCellsAFrame);
+            Make(far, FarCellsAFrame);
             Colliders();
             Draw(view);
         }
 
-        // Ground cover: the cells within its reach of the walker are made, the farthest of those
-        // out of reach given back, at most `most` made in a frame. Returns how many still want making.
-        int MakeCover(int most)
+        // The cells within a cache's reach of the walker are made, and those out of reach given
+        // back, at most `most` made in a frame. Returns how many still want making.
+        int Make(Lazy lazy, int most)
         {
             Vector3 at = walker.position;
-            float size = Scatter.CoverCell, reach = Variants.CoverFar + size;
-            int c0 = Mathf.FloorToInt((at.x - reach - scatter.Plan.Grid.Min) / size), c1 = Mathf.FloorToInt((at.x + reach - scatter.Plan.Grid.Min) / size);
-            int r0 = Mathf.FloorToInt((at.z - reach - scatter.Plan.Grid.Min) / size), r1 = Mathf.FloorToInt((at.z + reach - scatter.Plan.Grid.Min) / size);
+            float size = lazy.Size, reach = lazy.Reach + size, min = scatter.Plan.Grid.Min;
+            int c0 = Mathf.FloorToInt((at.x - reach - min) / size), c1 = Mathf.FloorToInt((at.x + reach - min) / size);
+            int r0 = Mathf.FloorToInt((at.z - reach - min) / size), r1 = Mathf.FloorToInt((at.z + reach - min) / size);
             leaving.Clear();
-            foreach (KeyValuePair<long, CoverCell> held in cover)
+            foreach (KeyValuePair<long, LazyCell> held in lazy.Cells)
             {
                 if (held.Value.X < c0 - 1 || held.Value.X > c1 + 1 || held.Value.Z < r0 - 1 || held.Value.Z > r1 + 1)
                 {
@@ -301,43 +320,59 @@ namespace Eternities.Kits
             }
             foreach (long key in leaving)
             {
-                spare.Push(cover[key]);
-                cover.Remove(key);
+                lazy.Spare.Push(lazy.Cells[key]);
+                lazy.Cells.Remove(key);
             }
             int made = 0, waiting = 0;
-            for (int r = r0; r <= r1; r++)
+            // Nearest first: the rings about the walker's own cell, outward.
+            int cx = Mathf.FloorToInt((at.x - min) / size), cz = Mathf.FloorToInt((at.z - min) / size), rings = Mathf.CeilToInt(reach / size);
+            for (int ring = 0; ring <= rings; ring++)
             {
-                for (int c = c0; c <= c1; c++)
+                for (int r = cz - ring; r <= cz + ring; r++)
                 {
-                    long key = ((long)r << 32) ^ (uint)c;
-                    if (cover.ContainsKey(key))
+                    for (int c = cx - ring; c <= cx + ring; c++)
                     {
-                        continue;
+                        if (Mathf.Max(Mathf.Abs(r - cz), Mathf.Abs(c - cx)) != ring)
+                        {
+                            continue;
+                        }
+                        long key = ((long)r << 32) ^ (uint)c;
+                        if (lazy.Cells.ContainsKey(key))
+                        {
+                            continue;
+                        }
+                        float x = min + (c + 0.5f) * size, z = min + (r + 0.5f) * size;
+                        if ((x - at.x) * (x - at.x) + (z - at.z) * (z - at.z) > reach * reach)
+                        {
+                            continue;
+                        }
+                        if (made >= most)
+                        {
+                            waiting++;
+                            continue;
+                        }
+                        lazy.Cells[key] = MakeCell(lazy, c, r);
+                        made++;
                     }
-                    float x = scatter.Plan.Grid.Min + (c + 0.5f) * size, z = scatter.Plan.Grid.Min + (r + 0.5f) * size;
-                    if ((new Vector2(x - at.x, z - at.z)).magnitude > reach)
-                    {
-                        continue;
-                    }
-                    if (made >= most)
-                    {
-                        waiting++;
-                        continue;
-                    }
-                    cover[key] = MakeCell(c, r);
-                    made++;
                 }
             }
             return waiting;
         }
 
-        CoverCell MakeCell(int c, int r)
+        LazyCell MakeCell(Lazy lazy, int c, int r)
         {
-            CoverCell cell = spare.Count > 0 ? spare.Pop() : new CoverCell { RunStart = new int[scatter.Kinds.Length], RunCount = new int[scatter.Kinds.Length] };
+            LazyCell cell = lazy.Spare.Count > 0 ? lazy.Spare.Pop() : new LazyCell { RunStart = new int[scatter.Kinds.Length], RunCount = new int[scatter.Kinds.Length] };
             cell.X = c;
             cell.Z = r;
             making.Clear();
-            scatter.CoverIn(c, r, (kind, prop) => making.Add((kind, prop)));
+            if (lazy.Low)
+            {
+                scatter.CoverIn(c, r, (kind, prop) => making.Add((kind, prop)));
+            }
+            else
+            {
+                scatter.FarIn(c, r, (kind, prop) => making.Add((kind, prop)));
+            }
             making.Sort((a, b) => a.Kind != b.Kind ? a.Kind.CompareTo(b.Kind) : a.Prop.Rank.CompareTo(b.Prop.Rank));
             if (cell.Matrices.Length < making.Count)
             {
@@ -355,11 +390,11 @@ namespace Eternities.Kits
                 }
                 cell.Matrices[i] = Scatter.MatrixOf(scatter.Kinds[kind].Shape, prop);
                 low = Mathf.Min(low, prop.Position.y);
-                high = Mathf.Max(high, prop.Position.y + 1.5f);
+                high = Mathf.Max(high, prop.Position.y + scatter.Kinds[kind].Shape.Height * prop.Scale);
             }
-            float size = Scatter.CoverCell;
+            float size = lazy.Size;
             var centre = new Vector3(scatter.Plan.Grid.Min + (c + 0.5f) * size, 0, scatter.Plan.Grid.Min + (r + 0.5f) * size);
-            cell.Bounds = making.Count == 0 ? new Bounds(centre, Vector3.zero) : new Bounds(new Vector3(centre.x, (low + high) / 2, centre.z), new Vector3(size + 1, high - low + 0.5f, size + 1));
+            cell.Bounds = making.Count == 0 ? new Bounds(centre, Vector3.zero) : new Bounds(new Vector3(centre.x, (low + high) / 2, centre.z), new Vector3(size + 2, high - low + 0.5f, size + 2));
             return cell;
         }
 
@@ -491,31 +526,36 @@ namespace Eternities.Kits
                 }
             }
 
-            // Ground cover about the walker, thinning from `CoverNear` to `CoverFar`.
-            foreach (CoverCell cell in cover.Values)
+            // Ground cover about the walker, thinning from `CoverNear` to `CoverFar`; and the growth
+            // seen across a field, thinning as `FieldNear` over the distance.
+            foreach (Lazy lazy in lazies)
             {
-                if (cell.Count == 0)
+                foreach (LazyCell cell in lazy.Cells.Values)
                 {
-                    continue;
-                }
-                float distance = Mathf.Sqrt(cell.Bounds.SqrDistance(walker.position));
-                float keep = 1 - Mathf.InverseLerp(Variants.CoverNear, Variants.CoverFar, distance);
-                if (keep <= 0 || !GeometryUtility.TestPlanesAABB(planes, cell.Bounds))
-                {
-                    continue;
-                }
-                float fromEye = Mathf.Sqrt(cell.Bounds.SqrDistance(eye));
-                for (int kind = 0; kind < kinds; kind++)
-                {
-                    int count = Mathf.RoundToInt(cell.RunCount[kind] * keep);
-                    if (count == 0)
+                    if (cell.Count == 0)
                     {
                         continue;
                     }
-                    int level = Level(kind, scatter.Kinds[kind].Shape.Height / (Mathf.Max(fromEye, 1) * lens));
-                    if (level >= 0)
+                    float fromEye = Mathf.Sqrt(cell.Bounds.SqrDistance(eye));
+                    float keep = lazy.Low ? 1 - Mathf.InverseLerp(Variants.CoverNear, Variants.CoverFar, Mathf.Sqrt(cell.Bounds.SqrDistance(walker.position)))
+                        : Mathf.Min(1, Variants.FieldNear / Mathf.Max(fromEye, 1));
+                    if (keep <= 0 || (fromEye > NearAlways && !GeometryUtility.TestPlanesAABB(planes, cell.Bounds)))
                     {
-                        Add(BatchOf(kind, level, false), cell.Matrices, cell.RunStart[kind], count, cell.Bounds);
+                        continue;
+                    }
+                    for (int kind = 0; kind < kinds; kind++)
+                    {
+                        int count = Mathf.RoundToInt(cell.RunCount[kind] * keep);
+                        Scatter.Kind of = scatter.Kinds[kind];
+                        if (count == 0 || (!lazy.Low && fromEye > Reach(of)))
+                        {
+                            continue;
+                        }
+                        int level = Level(kind, of.Shape.Height / (Mathf.Max(fromEye, 1) * lens));
+                        if (level >= 0)
+                        {
+                            Add(BatchOf(kind, level, !lazy.Low && fromEye < ShadowReach(of)), cell.Matrices, cell.RunStart[kind], count, cell.Bounds);
+                        }
                     }
                 }
             }

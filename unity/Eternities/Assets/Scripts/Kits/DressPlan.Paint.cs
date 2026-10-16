@@ -5,11 +5,12 @@ using UnityEngine;
 
 namespace Eternities.Kits
 {
-    // The ground's layers (PRD v4 5.6.3, 8.4.5): every path, pad, apron, corridor and the plaza in
-    // the kit's path layer, the trail with a worn verge so that it reads as a road; gravel in a
-    // river's bed, on its banks, at a lake's shore and on the sea's beach; and everywhere else each
-    // region's variant, its layers mixed by noise a few metres across, running into its
-    // neighbour's over 20 m. The weights are baked here, once, into each tile's alphamap.
+    // The ground's layers (PRD v4 5.6.3, 8.4.5): every path, approach, pad and the plaza in the
+    // kit's path layer, the trail with a worn verge so that it reads as a road, and each stand's
+    // apron and corridor worn into the region's own ground; gravel in a river's bed, on its banks,
+    // at a lake's shore and on the sea's beach; and everywhere else each region's variant, its
+    // layers mixed by noise a few metres across, running into its neighbour's over 20 m. The
+    // weights are baked here, once, into each tile's alphamap.
     public sealed partial class DressPlan
     {
         public const string PathLayer = "path", GravelLayer = "gravel";
@@ -91,6 +92,8 @@ namespace Eternities.Kits
             float gravel = fromShore[texel] > 9 ? 0 : (1 - Mathf.SmoothStep(0, 1, (above - 0.15f) / 0.65f)) * (1 - Mathf.SmoothStep(0, 1, (fromShore[texel] - 4) / 5));
             float path = 1 - Mathf.SmoothStep(0, 1, FromPath[texel] / 1.1f);
             path = Mathf.Max(path, 0.3f * (1 - Mathf.SmoothStep(0, 1, (FromTrail[texel] - 0.8f) / 1.8f)));
+            // A stand's apron and corridor are walked on: the ground there is worn, not a path.
+            path = Mathf.Max(path, 0.35f * (1 - Mathf.SmoothStep(0, 1, FromWorn[texel] / 0.8f)));
             weights[1] = gravel;
             weights[0] = (1 - gravel) * path;
             float rest = (1 - gravel) * (1 - path);

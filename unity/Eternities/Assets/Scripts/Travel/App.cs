@@ -602,6 +602,16 @@ namespace Eternities.Travel
             return stands;
         }
 
+        // Through the hub's portal at once, without the walk to it: for a tool that pictures a
+        // world (`WorldPictures`).
+        public void EnterWorld()
+        {
+            if (Place == Place.Hub && !InTransition && Failure == null && HubReady)
+            {
+                StartCoroutine(Through(HubPortal, Place.World, crossed: false));
+            }
+        }
+
         // Travel within the world (PRD v4 5.9.4): a portal opens 2 m in front of the avatar, facing
         // it; the avatar walks into it over a second, with no steering by the visitor, and arrives
         // on the stand's apron, facing the stand. The portal closes behind it.
@@ -757,7 +767,7 @@ namespace Eternities.Travel
             Kits.TryGetValue("coast", out KitDressing coast);
             if (WorldWater.Supported)
             {
-                Water = WorldWater.Build(Dress, temperate.River, temperate.Lake, temperate.Sea, volcanic != null ? volcanic.Lava : null, worldRoot.transform, worldOwned);
+                Water = WorldWater.Build(Dress, temperate.River, temperate.Lake, coast != null ? coast.Sea : null, volcanic != null ? volcanic.Lava : null, worldRoot.transform, worldOwned);
                 lavaFlow = Water.GetComponentInChildren<LavaFlow>();
             }
             Sound = BuildSound(Dress, Camera.main.transform);

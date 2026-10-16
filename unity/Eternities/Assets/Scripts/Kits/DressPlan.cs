@@ -86,8 +86,8 @@ namespace Eternities.Kits
         public RegionDress[] Regions;       // by region index
         public byte[] Region, Other;        // by texel: its region, and the region across the nearest boundary
         public float[] FromBoundary;        // metres to that boundary
-        public bool[] Path, Reserved, Blob, Cluster;
-        public float[] FromPath, FromReserved, FromBlob, FromTrail;
+        public bool[] Path, Worn, Reserved, Blob, Cluster;
+        public float[] FromPath, FromWorn, FromReserved, FromBlob, FromTrail;
         public float[] Heights;             // (N + 1)², metres from the ground level, row by row from the south-west corner
         public byte[] Wet;                  // by texel: `Dry`, or the kind of water that lies there
         public float[] FlowX, FlowZ;        // by texel: the river's way where a river lies
@@ -246,7 +246,9 @@ namespace Eternities.Kits
                     }
                 }
             }
-            // Each stand: its footprint, its apron in front of it and its corridor to its path vertex.
+            // Each stand: its footprint, its apron in front of it and its corridor to its path vertex,
+            // ground that is walked on and kept, but not a path.
+            Worn = new bool[count];
             for (int stand = 0; stand < standX.Length; stand++)
             {
                 Vector2 at = new Vector2(standX[stand] / 1000f, standZ[stand] / 1000f);
@@ -254,7 +256,7 @@ namespace Eternities.Kits
                 Vector2 ahead = new Vector2(Mathf.Cos(yaw), Mathf.Sin(yaw)), side = new Vector2(-ahead.y, ahead.x);
                 float back = LayoutConstants.FootprintDepth / 2000f, front = back + LayoutConstants.ApronDepth / 1000f;
                 float wide = LayoutConstants.ApronWidth / 2000f;
-                Grid.Polygon(Path, new[]
+                Grid.Polygon(Worn, new[]
                 {
                     at - ahead * back - side * wide - (ahead + side) * slack, at - ahead * back + side * wide + (side - ahead) * slack,
                     at + ahead * front + side * wide + (ahead + side) * slack, at + ahead * front - side * wide + (ahead - side) * slack,
@@ -269,14 +271,18 @@ namespace Eternities.Kits
                 float yaw = standYaw[stand] / 1e6f * Mathf.Deg2Rad;
                 Vector2 ahead = new Vector2(Mathf.Cos(yaw), Mathf.Sin(yaw));
                 Vector2 start = at + ahead * (LayoutConstants.FootprintDepth / 2000f + LayoutConstants.ApronDepth / 1000f);
-                Grid.Segment(Path, start, corridorEnds[stand], LayoutConstants.CorridorHalfWidth / 1000f + slack);
+                Grid.Segment(Worn, start, corridorEnds[stand], LayoutConstants.CorridorHalfWidth / 1000f + slack);
                 shapes.Strip(new[] { start, corridorEnds[stand] }, LayoutConstants.CorridorHalfWidth / 1000f);
             }
             for (int i = 0; i < count; i++)
             {
                 Path[i] |= trail[i];
             }
-            Reserved = (bool[])Path.Clone();
+            Reserved = new bool[count];
+            for (int i = 0; i < count; i++)
+            {
+                Reserved[i] = Path[i] || Worn[i];
+            }
             foreach (WorldSite site in Layout.Sites)
             {
                 Grid.Disc(Reserved, Metres(site.Stone.Position), LayoutConstants.StoneRadius / 1000f + slack);
@@ -296,6 +302,7 @@ namespace Eternities.Kits
                 shapes.Polygon(Metres(volume.Polygon).ToArray());
             }
             FromPath = Grid.Distance(Path);
+            FromWorn = Grid.Distance(Worn);
             FromReserved = Grid.Distance(Reserved);
             FromBlob = Grid.Distance(Blob);
             FromTrail = Grid.Distance(trail);
@@ -394,7 +401,9 @@ namespace Eternities.Kits
         static float ReliefOf(Relief relief, float x, float z, uint hills, uint rough)
         {
             float h = relief.Height * (Raster.Fractal(x / relief.Width, z / relief.Width, hills, 3) - relief.Sunken);
-            return h + relief.Rough * (Raster.Fractal(x / relief.RoughWidth, z / relief.RoughWidth, rough, 2) - 0.5f) * 2;
+            // The rough ground stands on the hills and never sinks below them: only a relief that
+            // is sunken (the marsh's) lies under the water's level anywhere.
+            return h + relief.Rough * Raster.Fractal(x / relief.RoughWidth, z / relief.RoughWidth, rough, 2);
         }
 
         // The land's height at a point between samples.
