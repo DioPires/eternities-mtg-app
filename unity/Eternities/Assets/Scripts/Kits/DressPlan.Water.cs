@@ -82,7 +82,7 @@ namespace Eternities.Kits
                 }
             }
             Current = CurrentMap();
-            fromSite = null;
+            fromSite = FromBlob = null;     // only the water reads them
             flowX = flowZ = null;
         }
 
@@ -148,13 +148,28 @@ namespace Eternities.Kits
                 return;
             }
             Water.Add(new WaterBody { Kind = WaterBody.Sea, Region = region, Seed = seed });
-            float[] fromSea = Grid.Distance(sea);
+            // The sea's bed under the sea, then the beach on the land, each from its own distances
+            // in the plan's scratch grid: a sample is under one or the other.
+            float[] fromSea = Grid.Distance(sea, scratch ??= new float[Grid.Count]);
+            for (int row = 0; row < Samples; row++)
+            {
+                for (int column = 0; column < Samples; column++)
+                {
+                    int texel = Math.Min(row, N - 1) * N + Math.Min(column, N - 1);
+                    int s = row * Samples + column;
+                    if (!sea[texel] && fromSea[texel] < 30)
+                    {
+                        // The beach: up from the water's edge at about five degrees.
+                        Heights[s] = Mathf.Min(Heights[s], WaterLevel + 0.1f + 0.09f * fromSea[texel]);
+                    }
+                }
+            }
             var land = new bool[Grid.Count];
             for (int i = 0; i < land.Length; i++)
             {
                 land[i] = !sea[i];
             }
-            float[] intoSea = Grid.Distance(land);
+            float[] intoSea = Grid.Distance(land, scratch);
             for (int row = 0; row < Samples; row++)
             {
                 for (int column = 0; column < Samples; column++)
@@ -164,11 +179,6 @@ namespace Eternities.Kits
                     if (sea[texel])
                     {
                         Heights[s] = Mathf.Min(Heights[s], WaterLevel - 0.25f - Mathf.Min(9, 0.11f * intoSea[texel]));
-                    }
-                    else if (fromSea[texel] < 30)
-                    {
-                        // The beach: up from the water's edge at about five degrees.
-                        Heights[s] = Mathf.Min(Heights[s], WaterLevel + 0.1f + 0.09f * fromSea[texel]);
                     }
                 }
             }
@@ -383,33 +393,41 @@ namespace Eternities.Kits
             return far;
         }
 
-        // The cheapest way between two cells, by A* over eight neighbours, or null.
+        // The cheapest way between two cells, by A* over eight neighbours, or null. The open cells
+        // come out least estimate first, ties by the lower cell; the search's state is in arrays
+        // of the route's grid, made once a search (DEC-1005, the memory cut).
         static List<int> Route(float[] cost, int cells, int from, int to)
         {
-            var g = new Dictionary<int, float> { [from] = 0 };
-            var came = new Dictionary<int, int>();
-            var open = new SortedSet<(float F, int Cell)>();
+            var g = new float[cost.Length];
+            var came = new int[cost.Length];
+            var closed = new bool[cost.Length];
+            for (int i = 0; i < g.Length; i++)
+            {
+                g[i] = float.PositiveInfinity;
+                came[i] = -1;
+            }
+            g[from] = 0;
+            var open = new OpenCells();
             float H(int cell) => Vector2.Distance(new Vector2(cell % cells, cell / cells), new Vector2(to % cells, to / cells));
             open.Add((H(from), from));
-            var closed = new HashSet<int>();
             while (open.Count > 0)
             {
-                (float _, int cell) = open.Min;
-                open.Remove(open.Min);
+                (float _, int cell) = open.Take();
                 if (cell == to)
                 {
                     var path = new List<int> { to };
-                    while (came.TryGetValue(path[path.Count - 1], out int before))
+                    while (came[path[path.Count - 1]] >= 0)
                     {
-                        path.Add(before);
+                        path.Add(came[path[path.Count - 1]]);
                     }
                     path.Reverse();
                     return path;
                 }
-                if (!closed.Add(cell))
+                if (closed[cell])
                 {
                     continue;
                 }
+                closed[cell] = true;
                 int cx = cell % cells, cz = cell / cells;
                 for (int dz = -1; dz <= 1; dz++)
                 {
@@ -421,13 +439,13 @@ namespace Eternities.Kits
                             continue;
                         }
                         int next = z * cells + x;
-                        if (float.IsInfinity(cost[next]) || closed.Contains(next))
+                        if (float.IsInfinity(cost[next]) || closed[next])
                         {
                             continue;
                         }
                         float step = (dx != 0 && dz != 0 ? 1.4142f : 1) * (cost[cell] + cost[next]) / 2;
                         float tentative = g[cell] + step;
-                        if (!g.TryGetValue(next, out float known) || tentative < known)
+                        if (tentative < g[next])
                         {
                             g[next] = tentative;
                             came[next] = cell;
@@ -437,6 +455,57 @@ namespace Eternities.Kits
                 }
             }
             return null;
+        }
+
+        // A binary heap of open cells, least first by estimate and then by cell.
+        sealed class OpenCells
+        {
+            readonly List<(float F, int Cell)> heap = new List<(float, int)>();
+
+            public int Count => heap.Count;
+
+            static bool Before((float F, int Cell) a, (float F, int Cell) b) => a.F < b.F || (a.F == b.F && a.Cell < b.Cell);
+
+            public void Add((float F, int Cell) item)
+            {
+                heap.Add(item);
+                for (int i = heap.Count - 1; i > 0;)
+                {
+                    int parent = (i - 1) / 2;
+                    if (!Before(heap[i], heap[parent]))
+                    {
+                        break;
+                    }
+                    (heap[i], heap[parent]) = (heap[parent], heap[i]);
+                    i = parent;
+                }
+            }
+
+            public (float F, int Cell) Take()
+            {
+                (float F, int Cell) least = heap[0];
+                heap[0] = heap[heap.Count - 1];
+                heap.RemoveAt(heap.Count - 1);
+                for (int i = 0; ;)
+                {
+                    int left = 2 * i + 1, right = left + 1, first = i;
+                    if (left < heap.Count && Before(heap[left], heap[first]))
+                    {
+                        first = left;
+                    }
+                    if (right < heap.Count && Before(heap[right], heap[first]))
+                    {
+                        first = right;
+                    }
+                    if (first == i)
+                    {
+                        break;
+                    }
+                    (heap[i], heap[first]) = (heap[first], heap[i]);
+                    i = first;
+                }
+                return least;
+            }
         }
 
         // Chaikin's corner cutting: the line, rounded once.

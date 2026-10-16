@@ -75,14 +75,11 @@ namespace Eternities.Kits
                 shore[i] = Wet[i] == WetRiver || Wet[i] == WetSea || Wet[i] == WetStill;
             }
             fromShore = DistanceTo(shore);
+            shore = null;
+            scratch = null;     // the plan's last distances are made
 
-            // Each worker weighs its tiles in one scratch grid of every layer's weight.
             TileLayers = new TileLayers[Tiles * Tiles];
-            Parallel.For(0, Tiles * Tiles, () => new float[TileTexels * TileTexels * LayerNames.Length], (tile, _, all) =>
-            {
-                TileLayers[tile] = PaintTile(tile % Tiles, tile / Tiles, seed, all);
-                return all;
-            }, _ => { });
+            Parallel.For(0, Tiles * Tiles, tile => TileLayers[tile] = PaintTile(tile % Tiles, tile / Tiles, seed));
             fromShore = null;
             mixes = null;
         }
@@ -129,9 +126,10 @@ namespace Eternities.Kits
         }
 
         // One tile's alphamap: the layers it uses, at most eight, the least of them dropped if it
-        // uses more, and every texel's weights over them summing to one. `all` is scratch, every
-        // layer's weight on every texel of the tile.
-        TileLayers PaintTile(int tileX, int tileZ, uint seed, float[] all)
+        // uses more, and every texel's weights over them summing to one. The tile is weighed twice,
+        // for the layers it uses and then for their weights, and holds no grid of every layer's
+        // weight between (DEC-1005, the memory cut).
+        TileLayers PaintTile(int tileX, int tileZ, uint seed)
         {
             int side = TileTexels, layers = LayerNames.Length;
             var weights = new float[layers];
@@ -142,10 +140,8 @@ namespace Eternities.Kits
                 for (int c = 0; c < side; c++)
                 {
                     Weigh(tileZ * side + r, tileX * side + c, seed, weights);
-                    int at = (r * side + c) * layers;
                     for (int k = 0; k < layers; k++)
                     {
-                        all[at + k] = weights[k];
                         total[k] += weights[k];
                         most[k] = Mathf.Max(most[k], weights[k]);
                     }
@@ -178,17 +174,18 @@ namespace Eternities.Kits
             {
                 for (int c = 0; c < side; c++)
                 {
-                    int at = (r * side + c) * layers, to = (r * side + c) * count;
+                    Weigh(tileZ * side + r, tileX * side + c, seed, weights);
+                    int to = (r * side + c) * count;
                     float sum = 0;
                     foreach (int k in used)
                     {
-                        sum += all[at + k];
+                        sum += weights[k];
                     }
                     // In 255ths, each rounded down, and what that leaves to the largest remainders.
                     int given = 0;
                     for (int u = 0; u < count; u++)
                     {
-                        float share = 255 * (sum > 0 ? all[at + used[u]] / sum : (u == 0 ? 1 : 0));
+                        float share = 255 * (sum > 0 ? weights[used[u]] / sum : (u == 0 ? 1 : 0));
                         int whole = (int)share;
                         tile.Weights[to + u] = (byte)whole;
                         rest[u] = share - whole;
