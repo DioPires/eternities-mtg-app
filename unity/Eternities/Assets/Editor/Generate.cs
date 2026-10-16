@@ -655,15 +655,19 @@ namespace Eternities.EditorTools
             }, folder);
         }
 
+        // A world's ground draws instanced (`WorldGround`), and a build keeps a shader's instancing
+        // variants only where a material asks for them: without them a player drew the terrain as
+        // its flat patches, with no heights and no layers, where the editor drew it right.
         static Material Ground(string name, params string[] keywords)
         {
             Material ground = Made(name, "HDRP/TerrainLit", material => { });
-            if (!keywords.All(ground.IsKeywordEnabled))
+            if (!keywords.All(ground.IsKeywordEnabled) || !ground.enableInstancing)
             {
                 foreach (string keyword in keywords)
                 {
                     ground.EnableKeyword(keyword);
                 }
+                ground.enableInstancing = true;
                 EditorUtility.SetDirty(ground);
                 AssetDatabase.SaveAssets();
             }

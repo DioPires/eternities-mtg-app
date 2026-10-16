@@ -89,7 +89,9 @@ namespace Eternities.Tests
         // they name the variants a ground asks for at run time: none, a normal map, a normal map
         // and a mask map, and those two on a tile of five to eight layers (`WorldGround`). A build
         // holds a shader, and a variant of it, only if a material in it says so, and the first
-        // built players had no terrain shader at all: their world had no ground.
+        // built players had no terrain shader at all: their world had no ground. The ground draws
+        // instanced, so each material asks for the instancing variants too: without them a player
+        // of leg 2 drew the terrain flat and without its layers (DEC-1005).
         [Test]
         public void TheGroundHasMaterialsOfItsOwnThatABuildCarries()
         {
@@ -105,6 +107,7 @@ namespace Eternities.Tests
                 var material = AssetDatabase.LoadAssetAtPath<Material>(path);
                 Assert.That(material, Is.Not.Null, path);
                 Assert.That(material.shader.name, Is.EqualTo("HDRP/TerrainLit"), path);
+                Assert.That(material.enableInstancing, Is.True, $"{path}: the instancing variants");
                 foreach (string keyword in new[] { "_TERRAIN_8_LAYERS", "_NORMALMAP", "_MASKMAP" })
                 {
                     Assert.That(material.IsKeywordEnabled(keyword), Is.EqualTo(System.Array.IndexOf(keywords, keyword) >= 0), $"{path}: {keyword}");

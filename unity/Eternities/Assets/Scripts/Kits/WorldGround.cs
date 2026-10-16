@@ -85,7 +85,7 @@ namespace Eternities.Kits
                     tile.transform.localPosition = new Vector3(plan.Grid.Min + tx * metres, Floor, plan.Grid.Min + tz * metres);
                     var terrain = tile.GetComponent<Terrain>();
                     terrain.materialTemplate = tileLayers.Length > 4 ? eightLayers : fourLayers;
-                    terrain.drawInstanced = true;
+                    terrain.drawInstanced = true;       // the ground's materials ask a build for the variants (`Generate.Ground`)
                     terrain.drawTreesAndFoliage = false;
                     terrain.heightmapPixelError = 4;
                     terrain.basemapDistance = 400;
