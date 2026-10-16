@@ -13,10 +13,9 @@ the merge). So whatever is made from these files (terrain layers, materials, pre
 
 The kit is at `standard: photographic` (PRD v4 8.12.6; DEC-1003): its vegetation, rocks and ground
 are photographic CC0 models and textures, as downloaded or as a committed script derives them
-(`Derive/`, PRD v4 7.6.4). The first slice's ten flat models of trees, bushes, rocks and wheat stay
-in the kit, held at the basic standard. Only the first slice's scatter of Dominaria draws them, and
-no variant grows them. Leg 2 retires that scatter when it dresses regions with the kit's variants
-(PRD v4 9.6). The structures are Kenney's.
+(`Derive/`, PRD v4 7.6.4). The first slice's ten flat models of trees, bushes, rocks and wheat
+and its meadow ground (`leafy_grass`) retired with its scatter when leg 2 dressed Dominaria's
+regions with the kit's variants (PRD v4 9.6; DEC-1005). The structures are Kenney's.
 A model reaches the world through one prefab under `Prefabs/<category>/`, in metres and with its
 base at its origin (the prop conditioning rule, `unity/Eternities/README.md`). "Props as drawn"
 lists each prefab with the height and the triangles measured on it; `PropRuleTests` holds the rule
@@ -26,9 +25,6 @@ and that table.
 
 | File | Source | Author | Licence | Fetched | Intended use |
 |---|---|---|---|---|---|
-| `Terrain/leafy_grass_diff_2k.jpg` | <https://polyhaven.com/a/leafy_grass> | Charlotte Baglioni | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | Meadow grass terrain layer; albedo |
-| `Terrain/leafy_grass_nor_gl_2k.jpg` | <https://polyhaven.com/a/leafy_grass> | Charlotte Baglioni | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | Meadow grass terrain layer; normal, OpenGL convention |
-| `Terrain/leafy_grass_arm_2k.jpg` | <https://polyhaven.com/a/leafy_grass> | Charlotte Baglioni | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | Meadow grass terrain layer; mask source, AO in R, roughness in G, metalness in B |
 | `Terrain/dirt_floor_diff_2k.jpg` | <https://polyhaven.com/a/dirt_floor> | eye-candy.xyz | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | Dirt path terrain layer (plaza, radial and ring paths); albedo |
 | `Terrain/dirt_floor_nor_gl_2k.jpg` | <https://polyhaven.com/a/dirt_floor> | eye-candy.xyz | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | Dirt path terrain layer (plaza, radial and ring paths); normal, OpenGL convention |
 | `Terrain/dirt_floor_arm_2k.jpg` | <https://polyhaven.com/a/dirt_floor> | eye-candy.xyz | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | Dirt path terrain layer (plaza, radial and ring paths); mask source, AO in R, roughness in G, metalness in B |
@@ -62,16 +58,6 @@ and that table.
 
 | File | Source | Author | Licence | Fetched | Intended use |
 |---|---|---|---|---|---|
-| `Props/tree_oak.fbx` | <https://kenney.nl/assets/nature-kit> | Kenney | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | Tree species 1 of 3, broadleaf (oak) |
-| `Props/tree_thin.fbx` | <https://kenney.nl/assets/nature-kit> | Kenney | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | Tree species 2 of 3, slender with a split crown (birch-like) |
-| `Props/tree_pineTallA.fbx` | <https://kenney.nl/assets/nature-kit> | Kenney | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | Tree species 3 of 3, conifer |
-| `Props/plant_bush.fbx` | <https://kenney.nl/assets/nature-kit> | Kenney | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | Bush 1 of 2, small |
-| `Props/plant_bushLarge.fbx` | <https://kenney.nl/assets/nature-kit> | Kenney | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | Bush 2 of 2, large |
-| `Props/rock_largeA.fbx` | <https://kenney.nl/assets/nature-kit> | Kenney | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | Rock 1 of 3, boulder with a grass cap |
-| `Props/stone_largeB.fbx` | <https://kenney.nl/assets/nature-kit> | Kenney | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | Rock 2 of 3, bare grey boulder |
-| `Props/stone_smallFlatA.fbx` | <https://kenney.nl/assets/nature-kit> | Kenney | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | Rock 3 of 3, small flat stone |
-| `Props/crops_wheatStageB.fbx` | <https://kenney.nl/assets/nature-kit> | Kenney | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | Reeds for the water edge (a clump of stalks with seed heads) |
-| `Props/stone_tallD.fbx` | <https://kenney.nl/assets/nature-kit> | Kenney | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | Standing stone, the reference shape for the stand plinth (PRD 5.5.1) |
 | `Props/statue_obelisk.fbx` | <https://kenney.nl/assets/nature-kit> | Kenney | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | Marker stone for sites under five stands (PRD 5.4.15) |
 | `Props/path_wood.fbx` | <https://kenney.nl/assets/nature-kit> | Kenney | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | Wooden ford planks where water crosses a path (PRD 8.4.2) |
 | `Props/bridge_wood.fbx` | <https://kenney.nl/assets/nature-kit> | Kenney | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | Wooden bridge where water crosses a path (PRD 8.4.2) |
@@ -273,8 +259,6 @@ the rows from the prefabs: the editor's menu, Eternities, "Kit props as drawn".
 | carex_dispalata | bush | `Props/carex_dispalata_clump.fbx` | 0.59 m | 9,600 to 800 | 2 |
 | carex_maximowiczii | bush | `Props/carex_maximowiczii_clump.fbx` | 0.34 m | 9,520 to 896 | 1 |
 | island_tree_02 | bush | `Props/island_tree_02_cut.fbx` | 2.05 m | 9,999 to 379 | 3 |
-| plant_bush | bush | `Props/plant_bush.fbx` | 1.04 m | 32 | 1 |
-| plant_bushLarge | bush | `Props/plant_bushLarge.fbx` | 1.46 m | 60 | 1 |
 | searsia_lucida_a | bush | `Props/searsia_lucida_a_cut.fbx` | 2.34 m | 9,598 to 280 | 1 |
 | searsia_lucida_b | bush | `Props/searsia_lucida_b_cut.fbx` | 2.00 m | 9,598 to 280 | 1 |
 | searsia_lucida_c | bush | `Props/searsia_lucida_c_cut.fbx` | 1.69 m | 9,599 to 280 | 1 |
@@ -286,7 +270,6 @@ the rows from the prefabs: the editor's menu, Eternities, "Kit props as drawn".
 | celandine_01_a | ground cover | `Props/celandine_01_1k.fbx` | 0.19 m | 622 to 64 | 1 |
 | celandine_01_b | ground cover | `Props/celandine_01_1k.fbx` | 0.14 m | 599 to 64 | 1 |
 | celandine_01_e | ground cover | `Props/celandine_01_1k.fbx` | 0.12 m | 442 to 64 | 1 |
-| crops_wheatStageB | ground cover | `Props/crops_wheatStageB.fbx` | 1.39 m | 360 | 2 |
 | dandelion_01_a | ground cover | `Props/dandelion_01_1k.fbx` | 0.16 m | 1,933 to 64 | 1 |
 | dandelion_01_b | ground cover | `Props/dandelion_01_1k.fbx` | 0.11 m | 1,873 to 64 | 1 |
 | dandelion_01_c | ground cover | `Props/dandelion_01_1k.fbx` | 0.10 m | 998 to 64 | 1 |
@@ -335,7 +318,6 @@ the rows from the prefabs: the editor's menu, Eternities, "Kit props as drawn".
 | weed_plant_02_e | ground cover | `Props/weed_plant_02_1k.fbx` | 0.04 m | 2,182 to 64 | 1 |
 | boulder_01 | rock | `Props/boulder_01_1k.fbx` | 1.00 m | 8,264 to 64 | 1 |
 | rock_07 | rock | `Props/rock_07_1k.fbx` | 0.14 m | 3,710 to 80 | 1 |
-| rock_largeA | rock | `Props/rock_largeA.fbx` | 0.65 m | 80 | 2 |
 | rock_moss_set_01_rock01 | rock | `Props/rock_moss_set_01_1k.fbx` | 1.47 m | 5,758 to 142 | 1 |
 | rock_moss_set_01_rock02 | rock | `Props/rock_moss_set_01_1k.fbx` | 1.26 m | 5,758 to 64 | 1 |
 | rock_moss_set_01_rock03 | rock | `Props/rock_moss_set_01_1k.fbx` | 1.10 m | 5,000 to 64 | 1 |
@@ -349,9 +331,6 @@ the rows from the prefabs: the editor's menu, Eternities, "Kit props as drawn".
 | rock_moss_set_02_rock11 | rock | `Props/rock_moss_set_02_1k.fbx` | 1.31 m | 8,000 to 64 | 1 |
 | rock_moss_set_02_rock12 | rock | `Props/rock_moss_set_02_1k.fbx` | 0.74 m | 7,999 to 64 | 1 |
 | rock_moss_set_02_rock13 | rock | `Props/rock_moss_set_02_1k.fbx` | 1.26 m | 7,928 to 64 | 1 |
-| stone_largeB | rock | `Props/stone_largeB.fbx` | 1.08 m | 85 | 2 |
-| stone_smallFlatA | rock | `Props/stone_smallFlatA.fbx` | 0.18 m | 20 | 1 |
-| stone_tallD | rock | `Props/stone_tallD.fbx` | 2.32 m | 38 | 2 |
 | bridge_wood | structure | `Props/bridge_wood.fbx` | 1.60 m | 220 | 3 |
 | path_wood | structure | `Props/path_wood.fbx` | 0.10 m | 60 | 2 |
 | statue_obelisk | structure | `Props/statue_obelisk.fbx` | 2.19 m | 38 | 2 |
@@ -362,10 +341,7 @@ the rows from the prefabs: the editor's menu, Eternities, "Kit props as drawn".
 | fir_tree_01_b | tree | `Props/fir_tree_01_b_cut.fbx` | 14.08 m | 58,031 to 417 | 3 |
 | island_tree_01 | tree | `Props/island_tree_01_cut.fbx` | 5.05 m | 58,998 to 429 | 3 |
 | jacaranda_tree | tree | `Props/jacaranda_tree_cut.fbx` | 19.48 m | 59,620 to 452 | 3 |
-| tree_oak | tree | `Props/tree_oak.fbx` | 7.97 m | 196 | 2 |
-| tree_pineTallA | tree | `Props/tree_pineTallA.fbx` | 9.94 m | 78 | 2 |
 | tree_small_02 | tree | `Props/tree_small_02_cut.fbx` | 4.58 m | 58,999 to 429 | 3 |
-| tree_thin | tree | `Props/tree_thin.fbx` | 8.57 m | 228 | 2 |
 
 ## Audio (Ogg Vorbis)
 
@@ -373,6 +349,7 @@ the rows from the prefabs: the editor's menu, Eternities, "Kit props as drawn".
 |---|---|---|---|---|---|
 | `Audio/meadow_songbirds_loop.ogg` | <https://freesound.org/people/DreamSavvyr/sounds/781115/> | DreamSavvyr | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | Ambient bed, meadow (PRD 5.12.1); seamless stereo loop, 60.0 s |
 | `Audio/river_splashy_loop.ogg` | <https://freesound.org/people/loopo/sounds/164039/> | loopo | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | River spatial emitter (PRD 5.12.3); seamless mono loop, 9.8 s |
+| `Audio/lake_lapping_loop.ogg` | <https://freesound.org/people/laughatlantic/sounds/528067/> | laughatlantic | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-16 | Lake and pond spatial emitter (PRD 5.12.3); mono, 22.6 s, looped with a crossfade in code |
 
 ## Notes
 
@@ -399,13 +376,13 @@ the rows from the prefabs: the editor's menu, Eternities, "Kit props as drawn".
   ambient occlusion, roughness and metalness; `Assets/Editor/KitMaskImport.cs` repacks it into the
   HDRP mask map as it is imported (smoothness is one minus roughness), so an `arm` texture is
   assigned as a mask map as it is.
-- **Props are the FBX members** of Kenney's Nature Kit 2.1 archive, not their GLB twins: Unity
-  imports FBX without a package, and glTF needs one that PRD 9.5's pinned list does not carry. They
-  are ASCII FBX 7.3 with flat colour materials and no textures, modelled in kit units (the trees are
-  1.2 to 1.5 units tall, the standing stone 0.77), so each prefab sets its own scale and its HDRP
-  material: `KitPrefabs` makes it once, at the middle of the range the first slice drew its model
-  at. The obelisk, the path boards and the bridge are drawn by nothing yet; their sizes are a first
-  setting for leg 2 of the second slice. Being text, they carry trailing whitespace: the repository's `trailing-whitespace` and
+- **The structures are the FBX members** of Kenney's Nature Kit 2.1 archive, not their GLB twins:
+  Unity imports FBX without a package, and glTF needs one that PRD 9.5's pinned list does not
+  carry. They are ASCII FBX 7.3 with flat colour materials and no textures, modelled in kit units,
+  so each prefab sets its own scale and its HDRP material: `KitPrefabs` makes it once. The obelisk,
+  the path boards and the bridge are drawn by nothing yet: where water crosses the trail, leg 2's
+  dressing makes a ford of the ground itself (PRD v4 5.4.11), and the stones are leg 2's third pull
+  request's. Being text, they carry trailing whitespace: the repository's `trailing-whitespace` and
   `end-of-file-fixer` hooks must exclude them, or a commit rewrites the bytes these checksums pin.
 - **Audio files are Freesound's high-quality Ogg previews** of the two CC0 sounds; the uploads (a
   24-bit WAV and an 88 kbps Ogg) need a Freesound login to download. Decoded, the meadow loop is

@@ -41,21 +41,11 @@ namespace Eternities.EditorTools
         // A bush's three: the nearest within 14 m of a bush 2 m tall.
         static readonly float[] BushLevels = { 0.12f, 0.04f, 0.0001f };
 
-        // The temperate kit's props (`Assets/Kits/temperate/CREDITS.md`). They are Kenney's models,
-        // which have no real unit: `Metres` is the middle of the range the first slice drew each
-        // at (`Temperate.Kinds`), and for the three it did not draw, a first setting.
+        // The temperate kit's structures (`Assets/Kits/temperate/CREDITS.md`). They are Kenney's models,
+        // which have no real unit: `Metres` is a first setting. The first slice's ten flat models of
+        // trees, bushes, rocks and wheat retired with its scatter (PRD v4 9.6, leg 2).
         public static readonly Source[] Temperate =
         {
-            new Source { Prefab = "Trees/tree_oak", Model = "tree_oak.fbx", Metres = 6.5f },
-            new Source { Prefab = "Trees/tree_thin", Model = "tree_thin.fbx", Metres = 5.75f },
-            new Source { Prefab = "Trees/tree_pineTallA", Model = "tree_pineTallA.fbx", Metres = 6.5f },
-            new Source { Prefab = "Bushes/plant_bush", Model = "plant_bush.fbx", Metres = 4.25f },
-            new Source { Prefab = "Bushes/plant_bushLarge", Model = "plant_bushLarge.fbx", Metres = 6 },
-            new Source { Prefab = "Rocks/rock_largeA", Model = "rock_largeA.fbx", Metres = 2.5f },
-            new Source { Prefab = "Rocks/stone_largeB", Model = "stone_largeB.fbx", Metres = 2.5f },
-            new Source { Prefab = "Rocks/stone_smallFlatA", Model = "stone_smallFlatA.fbx", Metres = 2.75f },
-            new Source { Prefab = "Rocks/stone_tallD", Model = "stone_tallD.fbx", Metres = 3 },
-            new Source { Prefab = "GroundCover/crops_wheatStageB", Model = "crops_wheatStageB.fbx", Metres = 2.6f },
             new Source { Prefab = "Structures/statue_obelisk", Model = "statue_obelisk.fbx", Metres = 2.5f },
             new Source { Prefab = "Structures/path_wood", Model = "path_wood.fbx", Metres = 2 },
             new Source { Prefab = "Structures/bridge_wood", Model = "bridge_wood.fbx", Metres = 4 },

@@ -251,6 +251,9 @@ _CONTRACT_VERSION: Final = 4
 _COLOUR_BITS: Final = 5
 _GOLD: Final = 5
 _COLOURLESS: Final = 6
+_INT32_LEAST: Final = -(1 << 31)
+_INT32_MOST: Final = (1 << 31) - 1
+"""Every integer of a world document lies in this range, the width of a stand's ``x`` (4.13.5)."""
 
 _CELL_SHIFT: Final = 12
 """The hash grid's cell is 2^12 mm, about 4.1 m."""
@@ -978,6 +981,35 @@ def _whole(value: Any) -> int:
     if type(value) is not int:
         raise ValueError(f"{value!r} is not a whole number")
     return value
+
+
+def _outside_int32(value: Any) -> tuple[list[str | int], int] | None:
+    """The first integer of a JSON value outside the int32 range, with the keys that lead to it.
+
+    Erratum 7 (4.13.5): every integer of a world document lies in the int32 range, read or not.
+    The C# checker reads a whole number up to 2^53 and computes in ``long``, so without this
+    the two checkers could read one document two ways.
+    """
+    if type(value) is int:
+        return None if _INT32_LEAST <= value <= _INT32_MOST else ([], value)
+    members: Any
+    if isinstance(value, dict):
+        members = value.items()
+    elif isinstance(value, list):
+        members = enumerate(value)
+    else:
+        return None
+    for key, member in members:
+        found = _outside_int32(member)
+        if found is not None:
+            found[0].insert(0, key)
+            return found
+    return None
+
+
+def _place(keys: list[str | int]) -> str:
+    """Keys as a place in a document: ``sites[0].centre[1]``."""
+    return "".join(f"[{key}]" if type(key) is int else f".{key}" for key in keys).lstrip(".")
 
 
 def _text(value: Any) -> str:
@@ -2442,6 +2474,15 @@ def check_world(
     if records is None:
         return report.result(_no_figures())
     report.tested("world-format")
+    outside = _outside_int32(world)
+    if outside is not None:
+        keys, value = outside
+        report.fail(
+            "world-format",
+            f"the world document holds {value} at {_place(keys) or 'its top'}, outside the int32 "
+            f"range of 4.13.5, {_INT32_LEAST} to {_INT32_MOST}",
+        )
+        return report.result(_no_figures())
     try:
         read = _read_world(world)
         tables = None if lore is None else _read_lore(lore)

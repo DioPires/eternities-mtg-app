@@ -159,8 +159,13 @@ namespace Eternities.EditorTools
             // The ground's. A terrain's shader takes `_NORMALMAP` and `_MASKMAP` from its layers at
             // run time, and a build holds only the variants that a material in it names: so there is
             // one material for layers that are colours only, one for layers with normal maps and
-            // one for layers with normal and mask maps. The first is the one the ground is given.
-            Material[] ground = { Ground("ground"), Ground("ground-normal", "_NORMALMAP"), Ground("ground-normal-mask", "_NORMALMAP", "_MASKMAP") };
+            // one for layers with normal and mask maps, and one more for a tile of five to eight
+            // such layers (`WorldGround`), in the order of `App`'s ground constants.
+            Material[] ground =
+            {
+                Ground("ground"), Ground("ground-normal", "_NORMALMAP"), Ground("ground-normal-mask", "_NORMALMAP", "_MASKMAP"),
+                Ground("ground-8-normal-mask", "_TERRAIN_8_LAYERS", "_NORMALMAP", "_MASKMAP"),
+            };
             if (app.GroundMaterials == null || !ground.SequenceEqual(app.GroundMaterials))
             {
                 app.GroundMaterials = ground;
@@ -233,61 +238,54 @@ namespace Eternities.EditorTools
                 changed = true;
             }
 
-            // The kit's two water prefabs (PRD v4 9.5): made once from the water system's own preset
-            // for a river and for a lake, and then the owner's to tune. A second run leaves them as
-            // they are.
-            changed |= SetObject(WaterPrefab("River", WaterSurfaceType.River), app.RiverPrefab, prefab => app.RiverPrefab = prefab);
-            changed |= SetObject(WaterPrefab("Lake", WaterSurfaceType.OceanSeaLake), app.LakePrefab, prefab => app.LakePrefab = prefab);
+            // The kits' dressings (`KitDressing`): under each kit's `Resources/`, and named by nothing
+            // in the scene, so the hub loads none of them (DEC-1055, N20).
+            KitDressings();
+            if (changed)
+            {
+                EditorUtility.SetDirty(app);
+            }
+            if (changed)
+            {
+                EditorSceneManager.MarkSceneDirty(scene);
+                EditorSceneManager.SaveScene(scene);
+            }
+        }
 
-            // The kit's props (PRD v4 8.4.2): each prop's prefab, made once from its model in the
-            // kit's own materials and then left alone, and each kind of the scatter as its prefab
-            // gives it.
+        // A kit's dressing as the generation entry point leaves it.
+        public static KitDressing Dressing(string kit) => AssetDatabase.LoadAssetAtPath<KitDressing>(DressingPath(kit));
+
+        public static string DressingPath(string kit) => $"Assets/Kits/{kit}/Resources/{KitDressing.ResourceOf(kit)}.asset";
+
+        // The kits whose dressing the generation entry point makes, and each one's loops: a family's
+        // bed by the family's name, and a body of water's by its kind (`KitLoops`).
+        public static readonly (string Kit, (string Name, string File)[] Loops)[] Kits =
+        {
+            ("temperate", new[] { ("meadow", "meadow_songbirds_loop"), ("river", "river_splashy_loop"), ("lake", "lake_lapping_loop") }),
+            ("forest", new[] { ("forest", "forest_woodland_loop") }),
+            ("coast", new[] { ("surf", "surf_shore_loop") }),
+            ("swamp", new[] { ("marsh", "marsh_swamp_loop") }),
+            ("mountain", new[] { ("alpine-wind", "alpine_wind_loop") }),
+            ("volcanic", new[] { ("volcanic", "volcanic_rumble_loop"), ("lava", "lava_bubbling_loop") }),
+        };
+
+        // Each kit's dressing, made or brought up to date. A second run changes nothing.
+        public static void KitDressings()
+        {
+            // The temperate kit's props (PRD v4 8.4.2): each prop's prefab, made once from its
+            // model in the kit's own materials and then left alone.
             KitPrefabs.Make("temperate", KitPrefabs.Temperate);
             KitPrefabs.Make("temperate", KitPrefabs.TemperatePhotographs);
-            KitProp[] props = Temperate.Kinds.Select(kind => PropOf(kind.Prefab, tree: kind.Trunk > 0)).ToArray();
-            if (app.KitProps == null || app.KitProps.Length != props.Length || !props.Zip(app.KitProps, Same).All(same => same))
-            {
-                app.KitProps = props;
-                changed = true;
-            }
 
-            // The kit's two loops (PRD v4 5.12): the ambient bed and the river.
-            foreach ((string file, AudioClip held, System.Action<AudioClip> assign) in new (string, AudioClip, System.Action<AudioClip>)[]
-            {
-                ("meadow_songbirds_loop", app.AmbientBed, clip => app.AmbientBed = clip),
-                ("river_splashy_loop", app.RiverLoop, clip => app.RiverLoop = clip),
-            })
-            {
-                var clip = AssetDatabase.LoadAssetAtPath<AudioClip>($"Assets/Kits/temperate/Audio/{file}.ogg");
-                if (clip == null)
-                {
-                    throw new InvalidDataException($"the kit's loop {file}.ogg is not in the project: run Assets/Kits/temperate/fetch.sh and git lfs pull");
-                }
-                if (clip != held)
-                {
-                    assign(clip);
-                    changed = true;
-                }
-            }
-
-            // The kit's three terrain layers (PRD v4 8.4.5), in the order `GroundPlan` paints them:
-            // each made once from the kit's textures and then tuned in its own file. A second run
-            // leaves them as they are. A tile is as wide as the ground its photograph shows, which
-            // its source states. The tints are Dominaria's (PRD v4 Appendix C): the meadow's
-            // texture is half leaf litter and reads as bare ground until it is pulled to green, and
-            // the path's is an orange that reads as sand.
+            // The kit's path and gravel layers (PRD v4 8.4.5): each made once from the kit's
+            // textures and then tuned in its own file. A tile is as wide as the ground its
+            // photograph shows, which its source states. The path's photograph is an orange that
+            // reads as sand until it is pulled to grey.
             TerrainLayer[] layers =
             {
-                KitLayer("meadow", "leafy_grass", "2k", 2f, new Color(0.6f, 1f, 0.62f)),
-                KitLayer("path", "dirt_floor", "2k", 2.07f, new Color(0.75f, 0.78f, 0.85f)),
-                KitLayer("gravel", "ganges_river_pebbles", "2k", 2.16f, Color.white),
+                KitLayer(DressPlan.PathLayer, "dirt_floor", "2k", 2.07f, new Color(0.75f, 0.78f, 0.85f)),
+                KitLayer(DressPlan.GravelLayer, "ganges_river_pebbles", "2k", 2.16f, Color.white),
             };
-            if (app.TerrainLayers == null || !layers.SequenceEqual(app.TerrainLayers))
-            {
-                app.TerrainLayers = layers;
-                changed = true;
-            }
-
             // The kit's variants (PRD v4 5.6.3, 8.12.1; DEC-1003): each one's ground layers and
             // props, as `Variants.Temperate` names them. A photographed ground is its photograph,
             // with no tint, on a tile as wide as the ground it shows.
@@ -301,29 +299,102 @@ namespace Eternities.EditorTools
                 Layers = variant.Ground.Select(ground => VariantLayer(ground.Layer)).ToArray(),
                 Props = variant.Grows.Select(growth => PropOf(growth.Prefab, tree: growth.Category == "Trees")).ToArray(),
             }).ToArray();
-            if (app.KitVariants == null || app.KitVariants.Length != variants.Length
-                || !variants.Zip(app.KitVariants, (wanted, held) => held != null && wanted.Name == held.Name && held.Layers != null && wanted.Layers.SequenceEqual(held.Layers)
-                    && held.Props != null && wanted.Props.Length == held.Props.Length && wanted.Props.Zip(held.Props, Same).All(same => same)).All(same => same))
+            // The props are drawn instanced (`PropField`), and a material draws so only if it says so.
+            foreach (KitProp prop in variants.SelectMany(variant => variant.Props))
             {
-                app.KitVariants = variants;
-                changed = true;
+                foreach (Material material in prop.Materials.Concat(prop.Levels.SelectMany(level => level.Materials)))
+                {
+                    if (material != null && !material.enableInstancing)
+                    {
+                        material.enableInstancing = true;
+                        EditorUtility.SetDirty(material);
+                    }
+                }
             }
-            if (changed)
+            AssetDatabase.SaveAssets();
+
+            foreach ((string kit, (string Name, string File)[] loops) in Kits)
             {
-                EditorUtility.SetDirty(app);
-            }
-            if (changed)
-            {
-                EditorSceneManager.MarkSceneDirty(scene);
-                EditorSceneManager.SaveScene(scene);
+                var wanted = ScriptableObject.CreateInstance<KitDressing>();
+                wanted.Kit = kit;
+                wanted.Loops = loops.Select(loop => new KitLoop { Name = loop.Name, Clip = KitAudio(kit, loop.File) }).ToArray();
+                if (kit == "temperate")
+                {
+                    wanted.Variants = variants;
+                    wanted.Layers = layers;
+                    // The kit's two water prefabs (PRD v4 5.6.3): made once from the water system's
+                    // own preset for a river and for a lake, and then the owner's to tune.
+                    wanted.River = WaterPrefab("temperate", "River", WaterSurfaceType.River);
+                    wanted.Lake = WaterPrefab("temperate", "Lake", WaterSurfaceType.OceanSeaLake);
+                }
+                else if (kit == "coast")
+                {
+                    wanted.Sea = WaterPrefab("coast", "Sea", WaterSurfaceType.OceanSeaLake);
+                }
+                else if (kit == "volcanic")
+                {
+                    wanted.Lava = Lava();
+                }
+                string path = DressingPath(kit);
+                var held = AssetDatabase.LoadAssetAtPath<KitDressing>(path);
+                if (held == null)
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(path));
+                    AssetDatabase.CreateAsset(wanted, path);
+                    AssetDatabase.SaveAssets();
+                    continue;
+                }
+                wanted.name = held.name;
+                if (EditorJsonUtility.ToJson(wanted) != EditorJsonUtility.ToJson(held))
+                {
+                    EditorUtility.CopySerialized(wanted, held);
+                    EditorUtility.SetDirty(held);
+                    AssetDatabase.SaveAssets();
+                }
+                Object.DestroyImmediate(wanted);
             }
         }
 
-        // The kit's variants as the persistent scene holds them, once it is complete.
-        public static KitVariant[] SceneVariants()
+        // A kit's loop (PRD v4 5.12), imported to load in the background (PRD v4 7.3.3: a loop's
+        // data read and decompressed on the main thread as a world was built was one frame of
+        // 73 ms, DEC-953), kept compressed in memory, and at no more than 48 kHz.
+        static AudioClip KitAudio(string kit, string file)
         {
-            PersistentScene();
-            return Object.FindAnyObjectByType<App>().KitVariants;
+            string path = $"Assets/Kits/{kit}/Audio/{file}.ogg";
+            var clip = AssetDatabase.LoadAssetAtPath<AudioClip>(path);
+            if (clip == null)
+            {
+                throw new InvalidDataException($"the kit's loop {path} is not in the project: run Assets/Kits/{kit}/fetch.sh and git lfs pull");
+            }
+            var importer = (AudioImporter)AssetImporter.GetAtPath(path);
+            AudioImporterSampleSettings settings = importer.defaultSampleSettings;
+            bool fast = clip.frequency > 48000;
+            if (!importer.loadInBackground || settings.loadType != AudioClipLoadType.CompressedInMemory || (fast && settings.sampleRateSetting != AudioSampleRateSetting.OverrideSampleRate))
+            {
+                importer.loadInBackground = true;
+                settings.loadType = AudioClipLoadType.CompressedInMemory;
+                if (fast)
+                {
+                    settings.sampleRateSetting = AudioSampleRateSetting.OverrideSampleRate;
+                    settings.sampleRateOverride = 48000;
+                }
+                importer.defaultSampleSettings = settings;
+                importer.SaveAndReimport();
+                clip = AssetDatabase.LoadAssetAtPath<AudioClip>(path);
+            }
+            return clip;
+        }
+
+        // Lava (PRD v4 5.6.3: Shiv's water): unlit, its colour far brighter than daylight so it
+        // glows, and its crust a texture the world makes from noise and moves (`LavaFlow`).
+        static Material Lava()
+        {
+            const string Folder = "Assets/Kits/volcanic/Materials";
+            return Made("volcanic-lava", "HDRP/Unlit", material =>
+            {
+                material.SetColor("_UnlitColor", new Color(1f, 0.42f, 0.12f) * 2400);
+                material.SetFloat("_SurfaceType", 0);
+            }, Folder);
         }
 
         static bool SetObject(GameObject wanted, GameObject held, System.Action<GameObject> assign)
@@ -498,9 +569,9 @@ namespace Eternities.EditorTools
             return layer;
         }
 
-        static GameObject WaterPrefab(string name, WaterSurfaceType type)
+        static GameObject WaterPrefab(string kit, string name, WaterSurfaceType type)
         {
-            const string folder = "Assets/Kits/temperate/Water";
+            string folder = $"Assets/Kits/{kit}/Water";
             Directory.CreateDirectory(folder);
             string path = $"{folder}/{name}.prefab";
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
@@ -514,6 +585,13 @@ namespace Eternities.EditorTools
                     // The water runs along the quad's long side, which is its own z (`WorldWater`),
                     // and the surface counts its angles from its own x.
                     surface.largeOrientationValue = 90;
+                }
+                else if (name == "Sea")
+                {
+                    // The open sea's preset, under a fresh breeze, with foam on its swell.
+                    Preset(surface, "ApplyWaterOceanPreset");
+                    surface.largeWindSpeed = 18;
+                    surface.scriptInteractions = false;
                 }
                 else
                 {
