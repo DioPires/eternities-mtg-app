@@ -24,3 +24,6 @@ temperate kit alone (PRD v4 9.6), and Urborg's marsh take this kit's sound (PRD 
 - **Audio files are Freesound's high-quality Ogg previews** of the CC0 sounds: the uploads need a
   Freesound login to download. A loop whose recording does not end where it begins is played into
   itself with a crossfade of three seconds (`WorldSound`), so no file is cut or made again here.
+- **Cooked size.** 1.2 MB on 2026-10-16 (DEC-1005, at `000732c`): its loop, as the build's
+  `Build: cooked by owner` counts it, in megabytes of 1,048,576 bytes. That is about 1.26 million bytes;
+  the build's figure has one decimal.

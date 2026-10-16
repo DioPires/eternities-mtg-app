@@ -29,3 +29,6 @@ temperate kit alone (PRD v4 9.6), and Shiv and its lava flows take this kit's so
   HDRP Lit material that glows by its own colour. A world copies it and draws its cracked crust
   into the copy at run time from the plan's lava (`WorldWater.LavaFlow`), so no texture is
   committed for it.
+- **Cooked size.** 1.0 MB on 2026-10-16 (DEC-1005, at `000732c`): its two loops and the lava material, as the build's
+  `Build: cooked by owner` counts it, in megabytes of 1,048,576 bytes. That is about 1.05 million bytes;
+  the build's figure has one decimal.

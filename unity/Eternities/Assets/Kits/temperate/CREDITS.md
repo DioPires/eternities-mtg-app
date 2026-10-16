@@ -353,11 +353,14 @@ the rows from the prefabs: the editor's menu, Eternities, "Kit props as drawn".
 
 ## Notes
 
-- **Cooked size.** 231.9 MB on 2026-10-13, against PRD 7.2's 250 MB for a kit at the
-  photographic standard: textures 184.0 MB, meshes 46.3 MB, audio 1.3 MB. It is what the assets
-  under this folder take in a macOS player's data, summed by the build from its own report
-  (`Build: cooked by owner`, `unity/Eternities/README.md`). A megabyte there is 1,048,576 bytes,
-  as in Unity's own build report; in megabytes of a million bytes the kit is 243.2. A normal or
+- **Cooked size.** 229.9 MB on 2026-10-16 (DEC-1005, at `000732c`), against PRD 7.2's 250 MB for a
+  kit at the photographic standard: textures 178.7 MB, meshes 49.4 MB, audio 1.6 MB. It was
+  231.9 MB on 2026-10-13: leg 2 retired the first slice's ten flat models, `leafy_grass` and the
+  `meadow` layer, and added the lake's loop. It is what the assets under this folder take in a
+  macOS player's data, summed by the build from its own report (`Build: cooked by owner`,
+  `unity/Eternities/README.md`). A megabyte there is 1,048,576 bytes, as in Unity's own build
+  report; in megabytes of a million bytes the kit is 241.1. The figures below are the 2026-10-13
+  build's. A normal or
   mask map cooks to a byte a texel and a third more for its smaller levels: 1.3 MB at 1K in that
   build, so 5.3 MB at 2K. A 2K colour cooks to 2.7 MB. So the 24 normal and mask maps that are
   2K files are imported at 1K (`maxTextureSize` in their `.meta`), and a colour stays at its
@@ -365,7 +368,8 @@ the rows from the prefabs: the editor's menu, Eternities, "Kit props as drawn".
   figure is the sum and was not built. A scan's photograph (`_diff_scan.jpg`) is imported at 1K,
   as every plant's photograph here is: at 2K the three cooked to 2.7 MB each, and the kit to
   237.9 MB.
-- **Size.** The kit's sources are 202 files and 250.5 MB. `fetch.sh` holds a model and a texture
+- **Size.** The kit's sources are 190 files and 235.6 MB (2026-10-16; 202 files and 250.5 MB
+  before leg 2 retired the first slice's flat models and ground). `fetch.sh` holds a model and a texture
   to 8 MB each and the kit's sources to 300 MB, the proposal on DEC-1003; the first
   slice's subset of 24 files and 39.2 MB was under DEC-952's limits of 200 KB a prop, 8 MB a
   texture and 60 MB in all. The cooked size against PRD 7.2 is the build's check (PRD 8.7.2), not
