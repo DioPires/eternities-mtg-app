@@ -11,32 +11,75 @@ namespace Eternities.Tests
     public class GenerateTests
     {
         // PRD v4 8.8.2: the scene generation entry point produces a world with the expected stand
-        // count. What it writes is what the engine reads, so the test reads it back from disk.
+        // count. What it writes is what the engine reads, so the test reads it back from disk: the
+        // three files of contract v4 are the committed Dominaria fixture's, byte for byte, and the
+        // engine's own loader decodes them beside the copied part of the pack.
         [Test]
         public void TheEntryPointWritesDominariaWithEveryStand()
         {
             WorldFiles.Result world = Generate.Build(TestPack.Hash, "dominaria");
-            Assert.That(world.Check.Passed);
-            StringAssert.Contains("checker: passed", world.Report);
+            Assert.That(world.Stands, Is.EqualTo(6271));
+            Assert.That(world.Sites, Is.EqualTo(26));
+            StringAssert.Contains("Stands: 6,271. Sites: 26 (15 era, 11 regional, 0 set).", world.Report);
 
-            string text = File.ReadAllText(world.LayoutPath);
-            Assert.That(LayoutFile.Digest(text), Is.EqualTo(LayoutTests.DominariaDigest));
-            WorldLayout layout = LayoutFile.Read(text);
-            Assert.That(layout.Stands.Count, Is.EqualTo(6271));
-            Assert.That(layout.WorldRadius, Is.EqualTo(LayoutTests.DominariaRadius));
+            string target = Generate.ProjectPack(TestPack.Hash);
+            string fixture = WorldFiles.FixtureOf(Generate.RepositoryPack(TestPack.Hash), "dominaria");
+            Assert.That(File.ReadAllBytes(WorldFiles.StandsPath(target)), Is.EqualTo(File.ReadAllBytes(WorldFiles.StandsPath(fixture))));
+            Assert.That(File.ReadAllBytes(WorldFiles.WorldPath(target, "dominaria")), Is.EqualTo(File.ReadAllBytes(WorldFiles.WorldPath(fixture, "dominaria"))));
+            Assert.That(File.ReadAllBytes(WorldFiles.LorePath(target, "dominaria")), Is.EqualTo(File.ReadAllBytes(WorldFiles.LorePath(fixture, "dominaria"))));
+            Assert.That(Directory.Exists(Path.Combine(target, "layout")), Is.False, "the first slice's layout file is gone");
 
             // The copied part of the pack opens by itself and holds the same cards.
-            var copy = new Pack(Generate.ProjectPack(TestPack.Hash));
+            var copy = new Pack(target);
             PackCard[] cards = copy.Cards(copy.Plane("dominaria"));
             Assert.That(cards.Length, Is.EqualTo(6271));
-            Assert.That(cards[layout.Stands[0].Card].OracleId, Is.EqualTo(layout.Input.Cards[layout.Stands[0].Card].OracleId));
             Assert.That(copy.Swatches().Length, Is.EqualTo(Pack.SwatchHeader + 28603 * Pack.SwatchRecord));
 
-            // And the engine's own loader takes the two together.
-            WorldData loaded = WorldData.Load(Generate.ProjectPack(TestPack.Hash), "dominaria");
-            Assert.That(loaded.Layout.Stands.Count, Is.EqualTo(6271));
-            loaded.Swatch(0, 0, out byte r, out byte g, out byte b);
-            Assert.That(r + g + b, Is.GreaterThan(0));
+            // And the engine's own loader takes them together.
+            using (WorldData loaded = WorldData.Load(target, "dominaria"))
+            {
+                Assert.That(loaded.StandCount, Is.EqualTo(6271));
+                Assert.That(loaded.Layout.Radius, Is.EqualTo(838_394));
+                Assert.That(loaded.CardAt(0).OracleId, Is.EqualTo(loaded.Stands.OracleId(0)).IgnoreCase);
+                loaded.Swatch(loaded.CardOf[0], 0, out byte r, out byte g, out byte b);
+                Assert.That(r + g + b, Is.GreaterThan(0));
+            }
+        }
+
+        // World entry in the player (`App.Load`) uses the records that the launch read and asserted
+        // (`App.Start`), as PRD v4 8.3.2 reads `stands.bin` once at launch: it reads no
+        // `stands.bin`, and the world's disposal leaves the records to the app, which disposes
+        // them when it ends (DEC-1130 B2).
+        [Test]
+        public void WorldEntryUsesTheLaunchsRecordsAndLeavesThemToTheApp()
+        {
+            string target = Path.Combine(Path.GetTempPath(), "eternities-world-entry-" + System.Guid.NewGuid().ToString("N"));
+            try
+            {
+                WorldFiles.Generate(Generate.RepositoryPack(TestPack.Hash), target, "dominaria");
+                using (StandsFile launched = StandsFile.Read(File.ReadAllBytes(WorldFiles.StandsPath(target))))
+                {
+                    WorldData.AssertAtLaunch(launched, new Pack(target).Planes.Length);
+                    int yaw = launched.Yaw[6270];
+                    File.Delete(WorldFiles.StandsPath(target));
+                    Assert.Throws<FileNotFoundException>(() => WorldData.Load(target, "dominaria").Dispose(), "without the launch's records the file is read");
+                    using (WorldData world = WorldData.Load(target, "dominaria", launched))
+                    {
+                        Assert.That(world.Stands, Is.SameAs(launched));
+                        Assert.That(world.StandCount, Is.EqualTo(6271));
+                        Assert.That(world.CardAt(6270).OracleId, Is.EqualTo(launched.OracleId(6270)).IgnoreCase);
+                    }
+                    Assert.That(launched.X.IsCreated && launched.Oracle.IsCreated, Is.True, "the world's disposal leaves the launch's records");
+                    Assert.That(launched.Yaw[6270], Is.EqualTo(yaw));
+                }
+            }
+            finally
+            {
+                if (Directory.Exists(target))
+                {
+                    Directory.Delete(target, recursive: true);
+                }
+            }
         }
 
         // The ground's materials are the scene's own, with HDRP's terrain shader, and between them

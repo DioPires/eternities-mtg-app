@@ -11,6 +11,7 @@ from __future__ import annotations
 import ast
 import copy
 import json
+import shutil
 import struct
 import uuid
 from fractions import Fraction
@@ -22,7 +23,8 @@ from typing import Any
 
 import pytest
 
-from eternities.layout import build, check, trig
+from eternities.layout import build, check, emit, fixtures, trig
+from eternities.layout.cards import read_plane
 from eternities.layout.check import CheckedCard, CheckResult
 from eternities.layout.constants import (
     APRON_DEPTH,
@@ -44,6 +46,7 @@ from eternities.layout.constants import (
     PLAZA_EDGE_RADIUS,
     PLAZA_RADIUS,
 )
+from eternities.lore.vocabulary import load_hero_entries
 
 REPO = Path(__file__).resolve().parents[2]
 PACK = REPO / "web" / "public" / "data" / "a5846bec28d1447e"
@@ -740,8 +743,16 @@ def test_a_stand_in_a_site_that_5_4_3_does_not_assign_it_is_reported():
     world["sites"].append(twin)
     world["pads"].append({**world["pads"][1], "owner": "set:twin"})
     doubled = rules(run(rows, world, cards))
-    # The twin's pad and stone lie on the first site's, and its one cluster is empty.
-    assert doubled == {"pad-pad", "stone-stone", "cluster-count", "gap-end"}
+    # The twin's pad and stone lie on the first site's, and its one cluster is empty. It has no
+    # stand and keeps the first site's whole path, and no leg of the trail visits it.
+    assert doubled == {
+        "pad-pad",
+        "stone-stone",
+        "cluster-count",
+        "gap-end",
+        "path-empty",
+        "trail-order",
+    }
     moved = rows[0][ORACLE]
     rows[0][SITE] = 1
     rows = in_order(rows, world)
@@ -1013,8 +1024,9 @@ def lattice_points(centre: tuple[int, int], radius: int) -> list[tuple[int, int]
 def era_world() -> tuple[bytes, dict[str, Any], dict[str, Any], tuple[CheckedCard, ...]]:
     """Rabiah as one era of two sets: the second chapter begins half way along the path.
 
-    The chapter stone stands on the first lattice point of the second chapter's clusters that
-    the checker finds clear of everything.
+    The chapter stone stands on the first lattice point that the checker finds clear of
+    everything in the disc of the cluster before the chapter's first, or of the first (invariant
+    11).
     """
     rows, world, cards = fresh()
     site = world["sites"][0]
@@ -1051,7 +1063,7 @@ def era_world() -> tuple[bytes, dict[str, Any], dict[str, Any], tuple[CheckedCar
         "regions": [{"id": "land"}, {"id": "far"}],
         "keywords": [],
     }
-    for cluster in site["clusters"][split:]:
+    for cluster in site["clusters"][split - 1 : split + 1]:
         centre = (cluster["centre"][0], cluster["centre"][1])
         for x, z in lattice_points(centre, CLUSTER_RADIUS - JITTER_RADIUS):
             site["chapters"][1]["stone"] = {"x": x, "z": z, "yaw": 0}
@@ -1087,10 +1099,12 @@ def test_a_chapter_order_broken_across_clusters_is_reported():
         CheckedCard(c.oracle_id, second_set, c.names) if c.oracle_id == oracle else c for c in cards
     ]
     result = run(rows, world, cards, lore)
-    assert rules(result) == {"chapter-order", "chapter-first"}
+    # The chapter's first stand now stands in cluster 0, far from the chapter's stone.
+    assert rules(result) == {"chapter-order", "chapter-first", "chapter-cluster"}
     (line,) = under(result, "chapter-order")
     assert f"stand {index} " in line and "holds chapter 1" in line and "holds chapter 0" in line
     assert "names cluster" in under(result, "chapter-first")[0]
+    assert "disc of cluster 0," in under(result, "chapter-cluster")[0]
 
 
 def test_the_chapter_list_and_the_chapter_stones_are_asserted():
@@ -1237,4 +1251,207 @@ def test_an_outer_boundary_that_crosses_an_inner_edge_at_its_own_vertices_is_see
     assert not check.polygon_inside_polygon(
         SQUARE,
         [(-5, -5), (15, -5), (15, 15), (7, 15), (7, 10), (5, 8), (3, 10), (3, 15), (-5, 15)],
+    )
+
+
+# The rules of erratum 5 (PRD v4 3.2, invariants 9 to 11, and 5.4.10): each fails on a world
+# changed to break it.
+
+
+def test_a_cluster_of_nine_stands_is_reported():
+    rows, world, cards = fresh()
+    clusters = world["sites"][0]["clusters"]
+    target = max(range(len(clusters)), key=lambda number: clusters[number]["stands"])
+    others = [index for index, row in enumerate(rows) if row[CLUSTER] != target]
+    while len(members(rows, target)) < 8:
+        rows[others.pop()][CLUSTER] = target
+    assert "cluster-cap" not in rules(run(in_order(rows, world), world, cards))
+    rows[others.pop()][CLUSTER] = target
+    rows = in_order(rows, world)
+    assert len(members(rows, target)) == 9
+    result = run(rows, world, cards)
+    (line,) = under(result, "cluster-cap")
+    assert f"cluster {target} of site" in line and "holds 9 stands" in line
+
+
+def test_a_stand_faces_its_path_vertex_within_a_tenth_of_a_degree():
+    directions = table()
+    # Along the table direction 100 counts either side of the yaw: on the boundary, and inside.
+    for turn in (-100, 100):
+        ahead = ((7_000 + turn) % 360_000, 0)
+        target = (directions.cos(ahead[0]), directions.sin(ahead[0]))
+        assert check.faces(7_000_000, (0, 0), target, directions)
+    for turn in (-101, 101, 180_000):
+        count = (7_000 + turn) % 360_000
+        target = (directions.cos(count), directions.sin(count))
+        assert not check.faces(7_000_000, (0, 0), target, directions)
+    # The short way round the circle: a yaw of 50 counts faces 359,960 (90 apart), not 359,940.
+    for count, facing in ((359_960, True), (359_950, True), (359_949, False)):
+        target = (directions.cos(count), directions.sin(count))
+        assert check.faces(50_000, (0, 0), target, directions) is facing
+    # The count of a vector is the one that 5.4.18 (7) picks: of the two counts that bracket it,
+    # the one on its side of their directions' sum, ties to the lower count. A table direction is
+    # its own count, the four axes are exact, and a vector half way between two counts takes the
+    # lower.
+    for count in (0, 1, 44_999, 90_000, 179_999, 270_000, 359_999):
+        assert check.count_of(directions.cos(count), directions.sin(count), directions) == count
+    assert [check.count_of(*v, directions) for v in ((3, 0), (0, 3), (-3, 0), (0, -3))] == [
+        0,
+        90_000,
+        180_000,
+        270_000,
+    ]
+    between = (directions.cos(10) + directions.cos(11), directions.sin(10) + directions.sin(11))
+    assert check.count_of(*between, directions) == 10
+    with pytest.raises(ValueError, match="zero vector"):
+        check.count_of(0, 0, directions)
+    # A stand on its own vertex faces nothing.
+    assert not check.faces(7_000_000, (5, 5), (5, 5), directions)
+    # Stand 0 of Rabiah, turned a count at a time until it no longer faces its vertex.
+    rows, world, cards = fresh()
+    assert run(rows, world, cards).assertions["stand-yaw"] == len(rows)
+    turned = 0
+    while not under(run(rows, world, cards), "stand-yaw"):
+        rows[0][YAW] = (rows[0][YAW] + 1_000) % 360_000_000
+        turned += 1
+    assert 1 <= turned <= 101
+    (line,) = under(run(rows, world, cards), "stand-yaw")
+    assert line.startswith("stand-yaw: stand 0 ") and "does not face its path vertex" in line
+
+
+def test_a_trail_that_visits_a_site_out_of_order_is_reported():
+    rows, world, cards = fresh()
+    world["trail"]["legs"][0]["to"] = "set:elsewhere"
+    assert "trail-order" in rules(run(rows, world, cards))
+    # Dominaria's spurs, two of them swapped: every other rule still holds.
+    data, world, lore, held = dominaria()
+    legs = world["trail"]["legs"]
+    spurs = [number for number, leg in enumerate(legs) if leg["kind"] == "spur"]
+    assert len(spurs) == 11
+    legs[spurs[0]], legs[spurs[1]] = legs[spurs[1]], legs[spurs[0]]
+    result = check.check_world(data, world, lore, held, table())
+    assert rules(result) == {"trail-order"}
+    assert len(under(result, "trail-order")) == 2
+    assert "spur 1 visits region:benalia" in under(result, "trail-order")[0]
+
+
+def test_a_chapter_stone_far_from_its_chapters_first_cluster_is_reported():
+    rows, world, lore, cards = fresh_era()
+    site = world["sites"][0]
+    chapter = site["chapters"][1]
+    first = chapter["firstCluster"]
+    assert run(rows, world, cards, lore).assertions["chapter-cluster"] == 1
+    # A free lattice point of the next cluster's disc, outside the discs of the two before it.
+    cluster = site["clusters"][first + 1]
+    centre = (cluster["centre"][0], cluster["centre"][1])
+    for x, z in lattice_points(centre, CLUSTER_RADIUS - JITTER_RADIUS):
+        chapter["stone"] = {"x": x, "z": z, "yaw": 0}
+        if rules(run(rows, world, cards, lore)) == {"chapter-cluster"}:
+            (line,) = under(run(rows, world, cards, lore), "chapter-cluster")
+            assert f"the disc of cluster {first}," in line
+            return
+    raise AssertionError("no free lattice point of the next cluster was found")
+
+
+def test_a_chapter_stone_two_clusters_before_its_first_is_reported():
+    rows, world, lore, cards = fresh_era()
+    site = world["sites"][0]
+    chapter = site["chapters"][1]
+    first = chapter["firstCluster"]
+    assert first >= 2
+
+    def centre(number: int) -> tuple[int, int]:
+        return (site["clusters"][number]["centre"][0], site["clusters"][number]["centre"][1])
+
+    def near(point: tuple[int, int], number: int) -> bool:
+        x, z = centre(number)
+        return (point[0] - x) ** 2 + (point[1] - z) ** 2 <= (CLUSTER_RADIUS + 10) ** 2
+
+    # A free lattice point of the disc two clusters before the chapter's first, outside the discs
+    # of the first and of the one before it: the rule's lower edge (DEC-1130 B1).
+    for point in lattice_points(centre(first - 2), CLUSTER_RADIUS - JITTER_RADIUS):
+        if near(point, first - 1) or near(point, first):
+            continue
+        chapter["stone"] = {"x": point[0], "z": point[1], "yaw": 0}
+        broken = rules(run(rows, world, cards, lore))
+        assert "chapter-cluster" in broken, point
+        if broken == {"chapter-cluster"}:
+            (line,) = under(run(rows, world, cards, lore), "chapter-cluster")
+            assert f"the disc of cluster {first}," in line
+            return
+    raise AssertionError("no free lattice point two clusters before the first was found")
+
+
+def test_the_path_of_a_site_with_no_stand_has_two_vertices(tmp_path: Path):
+    data, world, lore, held = empty_era(tmp_path)
+    era = world["sites"][0]
+    assert era["clusters"] == [] and len(era["path"]) == 2
+    result = check.check_world(data, world, lore, held, table())
+    assert result.ok and result.assertions["path-empty"] == 1
+    (a, b) = era["path"]
+    era["path"] = [a, [(a[0] + b[0]) // 2, (a[1] + b[1]) // 2], b]
+    result = check.check_world(data, world, lore, held, table())
+    assert rules(result) == {"path-empty"}
+    assert "has no stand and its path has 3 vertices" in under(result, "path-empty")[0]
+
+
+@cache
+def dominaria() -> tuple[bytes, dict[str, Any], dict[str, Any], list[CheckedCard]]:
+    """The committed Dominaria fixture's files and the plane's cards from the pinned pack."""
+    data, world, lore, held = _dominaria()
+    return (data, copy.deepcopy(world), copy.deepcopy(lore), list(held))
+
+
+@cache
+def _dominaria() -> tuple[bytes, dict[str, Any], dict[str, Any], tuple[CheckedCard, ...]]:
+    directory = REPO / "contract" / "test-vectors" / "v4" / "layout" / "dominaria"
+    plane = read_plane(PACK, "dominaria")
+    held = tuple(
+        CheckedCard(
+            c.oracle_id, c.set_id, (c.name,) if c.back_name is None else (c.name, c.back_name)
+        )
+        for c in plane.cards
+    )
+    return (
+        (directory / "stands.bin").read_bytes(),
+        json.loads((directory / "worlds" / "dominaria.json").read_text(encoding="utf-8")),
+        json.loads((directory / "lore" / "dominaria.json").read_text(encoding="utf-8")),
+        held,
+    )
+
+
+def empty_era(tmp_path: Path) -> tuple[bytes, dict[str, Any], dict[str, Any], list[CheckedCard]]:
+    """The fixture of the keyword that moves one card, cut down to that card: its era site keeps
+    no stand (5.4.2, 5.4.10)."""
+    fixture = next(found for found in fixtures.discover() if found.name == "keyword-moves-one-card")
+    shutil.copytree(fixture.directory, tmp_path / "moved")
+    shard = tmp_path / "moved" / "pack" / "planes" / "ixalan.0.json"
+    rows = json.loads(shard.read_text(encoding="utf-8"))
+    rows["cards"] = [card for card in rows["cards"] if card["n"] == "Sunspire Lookout"]
+    shard.write_text(json.dumps(rows), encoding="utf-8")
+    planes = tmp_path / "moved" / "pack" / "planes.json"
+    listed = json.loads(planes.read_text(encoding="utf-8"))
+    listed["planes"][0]["cardCount"] = listed["planes"][0]["starCount"] = 1
+    planes.write_text(json.dumps(listed), encoding="utf-8")
+    built = build.build_world(
+        "ixalan",
+        tmp_path / "moved" / "pack",
+        build.load_directions(),
+        lore_dir=tmp_path / "moved" / "ixalan",
+        hero_entries=load_hero_entries(),
+        fixture=True,
+    )
+    emitted = built.emitted
+    held = [
+        CheckedCard(
+            c.oracle_id, c.set_id, (c.name,) if c.back_name is None else (c.name, c.back_name)
+        )
+        for c in built.plane.cards
+    ]
+    assert emitted.lore is not None
+    return (
+        emitted.stands_bin,
+        json.loads(emit.to_json(emitted.world)),
+        json.loads(emit.to_json(emitted.lore)),
+        held,
     )

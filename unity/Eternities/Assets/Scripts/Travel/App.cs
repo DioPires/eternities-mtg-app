@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Eternities.Audio;
 using Eternities.Avatar;
@@ -57,6 +58,11 @@ namespace Eternities.Travel
         [SerializeField] GameObject riverPrefab, lakePrefab;
         [SerializeField] KitProp[] props = new KitProp[0];
         [SerializeField] KitVariant[] variants = new KitVariant[0];
+        // The greybox's materials (PRD v4 9.6, leg 1), in the order of `Greybox`'s constants: the
+        // ground, the paths, the pads, the region lines and the stones. The kit's terrain layers,
+        // ground materials, props, variants, water and sound above are leg 2's dressing, which the
+        // greybox does not draw.
+        [SerializeField] Material[] greyboxMaterials = new Material[0];
 
         public static App Instance { get; private set; }
 
@@ -82,6 +88,7 @@ namespace Eternities.Travel
         public GameObject LakePrefab { get => lakePrefab; set => lakePrefab = value; }
         public KitProp[] KitProps { get => props; set => props = value; }
         public KitVariant[] KitVariants { get => variants; set => variants = value; }
+        public Material[] GreyboxMaterials { get => greyboxMaterials; set => greyboxMaterials = value; }
 
         public Pack Pack { get; private set; }
         public AvatarController Avatar { get; private set; }
@@ -89,13 +96,18 @@ namespace Eternities.Travel
         public Portal HubPortal { get; private set; }
         public Portal ReturnPortal { get; private set; }
         public WorldData World { get; private set; }
+        // `stands.bin`, read once at launch with the assertions of 4.13.3 at launch (PRD v4 8.3.2).
+        // World entry uses these records; the app disposes them when it ends.
+        public StandsFile Records { get; private set; }
         public StandField Stands { get; private set; }
         public StandImages Images { get; private set; }
         public Exhibit Exhibit { get; private set; }
+        public Greybox Greybox { get; private set; }
+        // Leg 2's dressing: null in the greybox, which has no props, no sound and no water.
         public PropField Props { get; private set; }
         public PropPlan PropPlan { get; private set; }
         public WorldSound Sound { get; private set; }
-        public GameObject Water { get; private set; }       // null while water is off in the HDRP asset
+        public GameObject Water { get; private set; }
         public Hud Hud { get; private set; }
         public CardViewer CardView { get; private set; }
         public int HoveredStand { get; private set; } = -1;
@@ -105,8 +117,8 @@ namespace Eternities.Travel
         public IImageSource ImageSource;    // where stand images come from; set before a world loads
         // Tests name a source of their own here, so that no test run reaches Scryfall.
         public static Func<IImageSource> ImageSourceForTests;
-        public Terrain Ground { get; private set; }
-        public GroundPlan GroundPlan => plan;
+        // The greybox's flat ground, with its paths, pads and region lines.
+        public Renderer Ground { get; private set; }
 
         public Place Place { get; private set; }
         public bool HubReady { get; private set; }
@@ -127,6 +139,7 @@ namespace Eternities.Travel
 
         GameObject hubRoot, worldRoot;
         Coroutine loading;
+        Task<WorldData> reading;        // a world's read on its thread, which uses `Records`
         Renderer veil;
         readonly List<UnityEngine.Object> worldOwned = new List<UnityEngine.Object>();
         Texture2DArray standImages;     // every world's stand images, made once with the hub (`StandImages.NewArray`)
@@ -211,7 +224,22 @@ namespace Eternities.Travel
             Hud = Hud.Create(panelSettings, transform);
             try
             {
-                Pack = new Pack(PackDirectory());
+                string directory = PackDirectory();
+                Pack = new Pack(directory);
+                // PRD v4 4.13.3, 8.3.2: `stands.bin` is read once, here, and its records pass the
+                // assertions at launch before the hub is built. A file that fails one fails loudly
+                // (7.4.1), and the visitor sees no hub.
+                StandsFile records = StandsFile.Read(File.ReadAllBytes(WorldFiles.StandsPath(directory)));
+                try
+                {
+                    WorldData.AssertAtLaunch(records, Pack.Planes.Length);
+                }
+                catch
+                {
+                    records.Dispose();
+                    throw;
+                }
+                Records = records;
                 // The image cache lives under the application-support directory (PRD v4 4.15.3, 7.4.4).
                 ImageSource = ImageSourceForTests != null ? ImageSourceForTests() : ScryfallImages.Create(Path.Combine(Application.persistentDataPath, "images"), transform);
                 BuildHub();
@@ -238,6 +266,11 @@ namespace Eternities.Travel
                 Instance = null;
             }
             Destroy(standImages);
+            // The launch's records, once, when the app ends. A world still being read on its thread
+            // reads them, so that read ends first.
+            ((IAsyncResult)reading)?.AsyncWaitHandle.WaitOne();
+            Records?.Dispose();
+            Records = null;
         }
 
         void BuildHub()
@@ -338,23 +371,13 @@ namespace Eternities.Travel
         }
 
         // The world's edge is the kit's to make natural (PRD v4 5.1.5). Until it does, the avatar
-        // stops where the ground's margin begins.
+        // stops at the world's radius R, the edge of its 72-gon's circle (4.13.5).
         Vector3 KeepInWorld(Vector3 position)
         {
-            float limit = World.Layout.WorldRadius / 1000f + GroundPlan.Margin - 20;
+            float limit = World.Layout.Radius / 1000f;
             var flat = new Vector3(position.x, 0, position.z);
-            if (flat.magnitude > limit)
-            {
-                position = flat.normalized * limit + Vector3.up * position.y;
-            }
-            // The water is an edge too: a step that would end in it is not taken. A step kept at the
-            // limit is a step like any other: `lastDry` follows the avatar along the limit, and the
-            // limit does not lead into a lake that lies across it (DEC-1033).
-            return plan.Wet(position.x, position.z) && !plan.Wet(lastDry.x, lastDry.z) ? lastDry : (lastDry = position);
+            return flat.magnitude > limit ? flat.normalized * limit + Vector3.up * position.y : position;
         }
-
-        GroundPlan plan;
-        Vector3 lastDry;
 
         void Veil(float opacity)
         {
@@ -445,8 +468,7 @@ namespace Eternities.Travel
             HoveredStand = Images != null ? Images.Nearest(at, InteractDistance) : -1;
             if (HoveredStand >= 0)
             {
-                LayoutStand stand = World.Layout.Stands[HoveredStand];
-                Vector3 top = StandField.Ground(stand.Position) + Vector3.up * StandField.SlabTop;
+                Vector3 top = StandField.Ground(World.Position(HoveredStand)) + Vector3.up * StandField.SlabTop;
                 Camera view = Camera.main;
                 Vector3 screen = view.WorldToScreenPoint(top);
                 if (labelled != HoveredStand)
@@ -455,7 +477,7 @@ namespace Eternities.Travel
                     label = CardViewer.Label(World, labelled = HoveredStand);
                 }
                 Hud.Hover(screen.z > 0 ? label : null, new Vector2(screen.x, view.pixelHeight - screen.y));
-                if (input.Interact || (input.Click && Over(stand, view, input.Pointer)))
+                if (input.Interact || (input.Click && Over(World, HoveredStand, view, input.Pointer)))
                 {
                     CardView.Enter(HoveredStand);
                     return true;
@@ -472,15 +494,15 @@ namespace Eternities.Travel
         string label;
 
         // Is a point of the view on a stand, its plinth or its slab, as the camera sees it?
-        static bool Over(LayoutStand stand, Camera view, Vector2 pointer)
+        static bool Over(WorldData world, int stand, Camera view, Vector2 pointer)
         {
-            Vector3 foot = StandField.Ground(stand.Position);
-            Quaternion facing = StandField.Facing(stand);
+            Vector3 foot = StandField.Ground(world.Position(stand));
+            Quaternion facing = StandField.Facing(world, stand);
             Vector2 low = new Vector2(float.MaxValue, float.MaxValue), high = -low;
             for (int corner = 0; corner < 8; corner++)
             {
-                var local = new Vector3(((corner & 1) == 0 ? -1 : 1) * LayoutConstants.FootprintHalfWidth / 1000f, (corner & 2) == 0 ? 0 : StandField.SlabTop,
-                    ((corner & 4) == 0 ? -1 : 1) * LayoutConstants.FootprintHalfDepth / 1000f);
+                var local = new Vector3(((corner & 1) == 0 ? -1 : 1) * LayoutConstants.FootprintWidth / 2000f, (corner & 2) == 0 ? 0 : StandField.SlabTop,
+                    ((corner & 4) == 0 ? -1 : 1) * LayoutConstants.FootprintDepth / 2000f);
                 Vector3 seen = view.WorldToScreenPoint(foot + facing * local);
                 if (seen.z <= 0)
                 {
@@ -513,33 +535,48 @@ namespace Eternities.Travel
             Hud.ShowCard(CardView.Sheet(), CardView.Show, CardView.Flip, () => Application.OpenURL(CardView.PageUrl()), CardView.Leave);
         }
 
-        // The slice's travel menu: this world's sites, and the cards of the one chosen.
+        // The slice's travel menu: this world's sites in site order, and the cards of the one chosen.
         void OpenTravel()
         {
             var sites = new List<string>();
-            foreach (LayoutSite site in World.Layout.Sites)
+            foreach (WorldSite site in World.Layout.Sites)
             {
-                PackSet set = World.Plane.Sets[site.Set];
-                string wedge = new[] { "White", "Blue", "Black", "Red", "Green", "Gold", "Colourless" }[(int)site.Class];
-                sites.Add($"{set.Name}, {set.Year} · {wedge} · {site.Stands}");
+                sites.Add($"{SiteName(World, site)} · {site.Clusters.Sum(cluster => cluster.Stands)}");
             }
             Hud.Hover(null, default);
-            Hud.ShowTravel(World.Plane.DisplayName, sites, site => StandsOf(site).ConvertAll(stand => World.Cards[World.Layout.Stands[stand].Card].Name),
+            Hud.ShowTravel(World.Plane.DisplayName, sites, site => StandsOf(site).ConvertAll(stand => World.CardAt(stand).Name),
                 (site, card) => TravelTo(StandsOf(site)[card]), Hud.HideTravel);
+        }
+
+        // A site's name in the travel menu: an era's name and years, a region's name, or a set's name
+        // and year (4.13.5, 4.16.3).
+        public static string SiteName(WorldData world, WorldSite site)
+        {
+            if (site.Kind == "era" && world.Lore != null)
+            {
+                LoreEra era = Array.Find(world.Lore.Eras, row => row.Id == site.EraId);
+                return era == null ? site.Key : $"{era.Name}, {era.Years}";
+            }
+            if (site.Kind == "region" && world.Lore != null)
+            {
+                LoreRegion region = Array.Find(world.Lore.Regions, row => row.Id == site.RegionId);
+                return region == null ? site.Key : region.Name;
+            }
+            return site.SetIds.Length == 1 && world.Sets.TryGetValue(site.SetIds[0], out PackSet set) ? $"{set.Name}, {set.Year}" : site.Key;
         }
 
         // A site's stands, by the name of their card.
         public List<int> StandsOf(int site)
         {
             var stands = new List<int>();
-            for (int stand = 0; stand < World.Layout.Stands.Count; stand++)
+            for (int stand = 0; stand < World.StandCount; stand++)
             {
-                if (World.Layout.Stands[stand].Site == site)
+                if (World.Site(stand) == site)
                 {
                     stands.Add(stand);
                 }
             }
-            stands.Sort((a, b) => string.CompareOrdinal(World.Cards[World.Layout.Stands[a].Card].Name, World.Cards[World.Layout.Stands[b].Card].Name));
+            stands.Sort((a, b) => string.CompareOrdinal(World.CardAt(a).Name, World.CardAt(b).Name));
             return stands;
         }
 
@@ -573,10 +610,9 @@ namespace Eternities.Travel
             Veil(1);
             Avatar.Walk = Vector3.zero;
 
-            LayoutStand placed = World.Layout.Stands[stand];
-            Quaternion facing = StandField.Facing(placed);
-            Vector3 apron = StandField.Ground(placed.Position) + facing * Vector3.forward * ((LayoutConstants.FootprintHalfDepth + LayoutConstants.ApronDepth / 2) / 1000f);
-            Avatar.Place(lastDry = apron, facing * Quaternion.Euler(0, 180, 0));
+            Quaternion facing = StandField.Facing(World, stand);
+            Vector3 apron = StandField.Ground(World.Position(stand)) + facing * Vector3.forward * ((LayoutConstants.FootprintDepth / 2 + LayoutConstants.ApronDepth / 2) / 1000f);
+            Avatar.Place(apron, facing * Quaternion.Euler(0, 180, 0));
             View.Behind();
             Destroy(portal.gameObject);
             yield return null;
@@ -591,19 +627,16 @@ namespace Eternities.Travel
             InTransition = false;
         }
 
-        // A world, built whole while the visitor is elsewhere: the pack's shards and the layout are
-        // read and the ground planned on another thread, and the main thread builds in slices.
+        // A world, built whole while the visitor is elsewhere: the pack's shards and the world's
+        // files are read and decoded on another thread, and the main thread builds the greybox
+        // (PRD v4 9.6, leg 1) in slices.
         IEnumerator Load(string slug)
         {
             LoadStage = "reading";
             string directory = PackDirectory();
-            float density = Temperate.Density(QualitySettings.names[QualitySettings.GetQualityLevel()]);
-            Task<(WorldData, GroundPlan, PropPlan)> read = Task.Run(() =>
-            {
-                WorldData world = WorldData.Load(directory, slug);
-                GroundPlan ground = GroundPlan.Compute(world.Layout);
-                return (world, ground, PropPlan.Compute(world.Layout, ground, density));
-            });
+            // World entry reads the records of the launch, not the file again (PRD v4 8.3.2).
+            StandsFile records = Records;
+            Task<WorldData> read = reading = Task.Run(() => WorldData.Load(directory, slug, records));
             while (!read.IsCompleted)
             {
                 yield return null;
@@ -613,19 +646,19 @@ namespace Eternities.Travel
                 Fail(read.Exception.GetBaseException());
                 yield break;
             }
-            (World, plan, PropPlan) = read.Result;
+            World = read.Result;
             worldRoot = new GameObject(World.Plane.DisplayName);
             yield return null;
-            LoadStage = "ground";
 
-            Material groundMaterial = groundMaterials.Length > 0 ? groundMaterials[0] : null;
-            if (!WorldGround.Drawable(groundMaterial))
+            LoadStage = "ground and paths";
+            if (greyboxMaterials.Length != Greybox.Materials)
             {
-                Fail(new InvalidOperationException("the ground has no material this build can draw; run the generation entry point (unity/Eternities/README.md)"));
+                Fail(new InvalidOperationException("the greybox has no materials; run the generation entry point (unity/Eternities/README.md)"));
                 yield break;
             }
-            TerrainLayer[] layers = WorldGround.Layers(terrainLayers, plan, worldOwned);
-            yield return WorldGround.Build(plan, layers, groundMaterial, World.Plane.Slug, worldRoot.transform, LoadBudgetMs, worldOwned, terrain => Ground = terrain);
+            Greybox = Greybox.Create(worldRoot.transform);
+            yield return Greybox.Fill(World, greyboxMaterials, LoadBudgetMs);
+            Ground = Greybox.Ground;
             yield return null;
 
             LoadStage = "stands";
@@ -639,28 +672,11 @@ namespace Eternities.Travel
             Exhibit.SetImages(Images.Array);
             CardView.Bind(World, Images, ImageSource);
 
-            // The kit's props (PRD v4 8.4.2), where the scene names a model for every kind.
-            if (props.Length == Temperate.Kinds.Length)
-            {
-                LoadStage = "props";
-                Props = PropField.Create(worldRoot.transform);
-                yield return Props.Fill(PropPlan, props, LoadBudgetMs);
-            }
-
-            LoadStage = "water, sound and the return portal";
-            if (WorldWater.Supported && riverPrefab != null && lakePrefab != null)
-            {
-                Water = WorldWater.Build(plan, riverPrefab, lakePrefab, worldRoot.transform, worldOwned);
-            }
-
-            // The ambient bed and the river (PRD v4 5.12). The river's source follows the listener
-            // along the water, at the water's level.
-            Sound = WorldSound.Create(worldRoot.transform, ambientBed, riverLoop,
-                new Vector3(plan.RiverFrom.x, GroundPlan.WaterLevel, plan.RiverFrom.y), new Vector3(plan.RiverTo.x, GroundPlan.WaterLevel, plan.RiverTo.y), Camera.main.transform);
-
-            // The return portal, 8 m south of the centre and facing it (PRD v4 5.4.5).
+            // The return portal, at the pose the world names: 8 m south of the centre, facing it
+            // (PRD v4 5.4.5, 4.13.5).
+            LoadStage = "the return portal";
             ReturnPortal = Portal.Build("Return portal", portalFrameMaterial, portalSurfaceMaterial, worldRoot.transform,
-                new Vector3(0, 0, -ReturnPortalSouth), Quaternion.identity);
+                StandField.Ground(World.Layout.ReturnPortal.Position), StandField.Facing(World.Layout.ReturnPortal.Yaw));
             yield return null;
             for (double waited = Now; Now - waited < LoadDelayForTests;)
             {
@@ -693,13 +709,11 @@ namespace Eternities.Travel
                 Destroy(owned);
             }
             worldOwned.Clear();
+            World?.Dispose();
             World = null;
+            Greybox = null;
             Stands = null;
             Images = null;
-            Props = null;
-            PropPlan = null;
-            Sound = null;
-            Water = null;
             Ground = null;
             ReturnPortal = null;
             WorldLoaded = false;
@@ -774,8 +788,8 @@ namespace Eternities.Travel
             {
                 if (destination == Place.World)
                 {
-                    // The arrival point, facing north (PRD v4 5.4.5).
-                    Avatar.Place(lastDry = StandField.Ground(World.Layout.Arrival), Quaternion.identity);
+                    // The arrival point, facing north (PRD v4 5.4.5): the pose the world names.
+                    Avatar.Place(StandField.Ground(World.Layout.Arrival.Position), StandField.Facing(World.Layout.Arrival.Yaw));
                     Avatar.Keep = KeepInWorld;
                 }
                 else

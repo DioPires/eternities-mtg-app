@@ -44,9 +44,13 @@ namespace Eternities.Kits
 
         public static Vector3 Ground(P2 millimetres) => new Vector3(millimetres.X / 1000f, 0, millimetres.Z / 1000f);
 
-        // The way a stand's image surface faces: its yaw is clockwise from north, which is a turn
-        // about the engine's up axis from +z.
-        public static Quaternion Facing(LayoutStand stand) => Quaternion.Euler(0, stand.Yaw / 1e6f, 0);
+        // The way a pose of the pack faces: its yaw is counter-clockwise from +x, east
+        // (docs/data-contract-v4.md section 2), and the engine turns clockwise about its up axis
+        // from +z, north.
+        public static Quaternion Facing(long yaw) => Quaternion.Euler(0, 90 - yaw / 1e6f, 0);
+
+        // The way a stand's image surface faces: towards its path vertex (PRD v4 3.2, invariant 9).
+        public static Quaternion Facing(WorldData world, int stand) => Facing(world.Yaw(stand));
 
         // `materials`: the four plinth materials by rarity, then the slab's.
         public static StandField Build(WorldData world, Material[] materials, Transform parent)
@@ -70,10 +74,10 @@ namespace Eternities.Kits
         // milliseconds on them, so a world loads behind a portal without stopping the frame.
         public IEnumerator Fill(WorldData world, Material[] materials, float budget)
         {
-            var bySite = new List<LayoutStand>[world.Layout.Sites.Count];
-            foreach (LayoutStand stand in world.Layout.Stands)
+            var bySite = new List<int>[world.Layout.Sites.Length];
+            for (int stand = 0; stand < world.StandCount; stand++)
             {
-                (bySite[stand.Site] ??= new List<LayoutStand>()).Add(stand);
+                (bySite[world.Site(stand)] ??= new List<int>()).Add(stand);
             }
             var vertices = new List<Vector3>();
             var normals = new List<Vector3>();
@@ -83,9 +87,10 @@ namespace Eternities.Kits
                 triangles[m] = new List<int>();
             }
             double sliceStarted = Time.realtimeSinceStartupAsDouble;
-            foreach (LayoutSite site in world.Layout.Sites)
+            for (int index = 0; index < world.Layout.Sites.Length; index++)
             {
-                if (bySite[site.Index] == null)
+                WorldSite site = world.Layout.Sites[index];
+                if (bySite[index] == null)
                 {
                     continue;
                 }
@@ -97,12 +102,12 @@ namespace Eternities.Kits
                 }
                 // Vertices are relative to the site's centre, so a far site keeps its precision.
                 Vector3 origin = Ground(site.Centre);
-                foreach (LayoutStand stand in bySite[site.Index])
+                foreach (int stand in bySite[index])
                 {
-                    Vector3 at = Ground(stand.Position) - origin;
-                    Quaternion facing = Facing(stand);
-                    float footprintHalfWidth = LayoutConstants.FootprintHalfWidth / 1000f, footprintHalfDepth = LayoutConstants.FootprintHalfDepth / 1000f;
-                    List<int> plinth = triangles[Mathf.Clamp(world.Cards[stand.Card].Rarity, 0, Rarities - 1)];
+                    Vector3 at = Ground(world.Position(stand)) - origin;
+                    Quaternion facing = Facing(world, stand);
+                    float footprintHalfWidth = LayoutConstants.FootprintWidth / 2000f, footprintHalfDepth = LayoutConstants.FootprintDepth / 2000f;
+                    List<int> plinth = triangles[Mathf.Clamp(world.Stands.Rarity[stand], 0, Rarities - 1)];
                     for (int level = 0; level + 1 < Pedestal.Length; level++)
                     {
                         Sides(vertices, normals, plinth, at, facing,
@@ -115,7 +120,7 @@ namespace Eternities.Kits
                         at + new Vector3(0, PlinthHeight + SurfaceHeight / 2, 0), facing, new Vector3(SlabWidth / 2, SlabHeight / 2, SlabDepth / 2));
                 }
 
-                var mesh = new Mesh { name = $"stands {world.Layout.Input.SetCodes[site.Set]} {ColourClasses.SeedNames[(int)site.Class]}" };
+                var mesh = new Mesh { name = $"stands {site.Key}" };
                 mesh.SetVertices(vertices);
                 mesh.SetNormals(normals);
                 mesh.subMeshCount = materials.Length;
@@ -135,7 +140,7 @@ namespace Eternities.Kits
                 renderer.shadowCastingMode = ShadowCastingMode.On;
                 siteObject.AddComponent<MeshCollider>().sharedMesh = mesh;
                 Sites++;
-                Stands += bySite[site.Index].Count;
+                Stands += bySite[index].Count;
 
                 if ((Time.realtimeSinceStartupAsDouble - sliceStarted) * 1000 > budget)
                 {

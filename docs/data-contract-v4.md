@@ -9,7 +9,8 @@
 | The allocator and the emission (Python) | `pipeline/src/eternities/layout/` |
 | The independent checker (Python) | `pipeline/src/eternities/layout/check.py` |
 | The fixtures | `contract/test-vectors/v4/layout/` |
-| The decoder and the second checker (C#) | pull request 2 of leg 1 |
+| The decoder (C#) | `unity/Eternities/Assets/Scripts/Data/`: `StandsFile.cs` (`stands.bin` into structure-of-arrays native collections), `WorldDocument.cs` (the world and lore documents) and `WorldFiles.cs` (`WorldData`, with the assertions of PRD 4.13.3) |
+| The second checker (C#) | `unity/Eternities/Assets/Scripts/Layout/Checker.cs`, with the predicates of `Predicates.cs`; the EditMode tests compare its document with every fixture's `check.json` |
 
 The fixtures are the arbiter. `eternities layout fixtures --check` makes every fixture again and compares its bytes; the hosted `pipeline` job runs it on every pull request.
 
@@ -23,6 +24,8 @@ The fixtures are the arbiter. `eternities layout fixtures --check` makes every f
   worlds/<slug>.json    # the world's geometry
   lore/<slug>.json      # a hero world's resolved lore tables; no file for a kit world
 ```
+
+The Unity project's generation entry point fills the same directory without Python: it copies the committed fixture's three files beside the copied v3 pack and decodes them once (`unity/Eternities/README.md`).
 
 The layout report and the checker's document are not part of the pack. The command writes them to `pipeline/.cache/layout/<slug>.md` and `<slug>.check.json`, or where `--report` says.
 
@@ -148,7 +151,7 @@ Leg 1 lays one world out beside the slice's pinned v3 pack. Where a field of 4.1
 
 1. **The plane index** is the plane's position in v3 `planes.json`, not in a v4 `planes.json`.
 2. **The set id** is v3's global set id, the one v3 `search.json` lists. v3 numbers sets by release date, ties by code, so the order of the ids is the release order of 5.4.2 and 5.4.3.
-3. **`stands.bin` holds one world's records**, not all 28,603. The header's `recordCount` is that world's stand count.
+3. **`stands.bin` holds one world's records**, not all 28,603. The header's `recordCount` is that world's stand count. While the file holds one world, the decoder refuses a record of another plane at world entry; the Wave 5 file, which holds every world, drops that assertion.
 4. **The swatch** is one RGB565 colour: the mean, channel by channel and rounded half up, of the four samples of the card's v3 `swatches.bin` record. A synthetic pack has no `swatches.bin`, and its stands have the swatch 0.
 5. **The shard index and the index within the shard** are the card's position in the plane's v3 shards, which are in v3's star order and not in stand order.
 6. **The mask, the class, the rarity class, the type mask and the back-image flag** are derived from the card's v3 shard row by the v3 contract's own functions. A meld component counts as having a back image (4.13.3).

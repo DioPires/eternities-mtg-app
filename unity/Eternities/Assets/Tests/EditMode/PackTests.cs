@@ -45,12 +45,17 @@ namespace Eternities.Tests
             PackCard[] cards = pack.Cards(plane);
             Assert.That(cards.Length, Is.EqualTo(6271));
 
-            // The counts of PRD v4 5.4.14: 753 gold cards and 564 colourless.
-            LayoutInput input = LayoutInputs.From(plane, cards);
+            // The colour classes of 4.13.3 (one colour, gold for two or more, colourless for none):
+            // 753 gold cards and 564 colourless.
             var byClass = new int[7];
-            foreach (LayoutCard card in input.Cards)
+            foreach (PackCard card in cards)
             {
-                byClass[(int)card.Class]++;
+                int mask = 0;
+                foreach (char colour in card.ColourIdentity)
+                {
+                    mask |= 1 << "WUBRG".IndexOf(colour);
+                }
+                byClass[Checker.ClassOf(mask)]++;
             }
             Assert.That(byClass, Is.EqualTo(new[] { 990, 992, 1000, 996, 976, 753, 564 }));
 

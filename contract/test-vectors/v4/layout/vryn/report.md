@@ -100,11 +100,13 @@ The bounds of 5.4.10 are 18,000 mm, 18,000 mm and 10,000 mm.
 | card-set | 2 |
 | card-site | 2 |
 | card-stand | 4 |
+| chapter-cluster | 0 |
 | chapter-first | 0 |
 | chapter-list | 1 |
 | chapter-order | 0 |
 | chapter-stone | 0 |
 | cluster-arcs | 0 |
+| cluster-cap | 1 |
 | cluster-count | 1 |
 | cluster-size | 1 |
 | corridor-end | 2 |
@@ -132,6 +134,7 @@ The bounds of 5.4.10 are 18,000 mm, 18,000 mm and 10,000 mm.
 | pad-pad | 0 |
 | pad-plaza | 1 |
 | pad-volume | 0 |
+| path-empty | 0 |
 | plaza-approach | 1 |
 | plaza-figures | 1 |
 | record-class | 2 |
@@ -149,6 +152,7 @@ The bounds of 5.4.10 are 18,000 mm, 18,000 mm and 10,000 mm.
 | stand-count | 1 |
 | stand-region | 2 |
 | stand-spacing | 0 |
+| stand-yaw | 2 |
 | stone-pad | 0 |
 | stone-path | 1 |
 | stone-place | 1 |
@@ -156,6 +160,7 @@ The bounds of 5.4.10 are 18,000 mm, 18,000 mm and 10,000 mm.
 | stone-stone | 0 |
 | stone-volume | 0 |
 | trail-leg | 1 |
+| trail-order | 2 |
 | volume-arrival | 0 |
 | volume-path | 0 |
 | volume-site | 0 |

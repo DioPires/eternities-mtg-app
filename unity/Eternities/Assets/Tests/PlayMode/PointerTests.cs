@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Eternities.Avatar;
 using Eternities.Data;
 using Eternities.Kits;
@@ -200,7 +201,7 @@ namespace Eternities.Tests
 
             // A stand well away from the arrival point, by the travel portal, and the camera has
             // the pointer again: there is none to put on the stand.
-            int stand = app.World.Layout.Stands.FindIndex(placed => StandField.Ground(placed.Position).magnitude > 100);
+            int stand = Enumerable.Range(0, app.World.StandCount).First(placed => StandField.Ground(app.World.Position(placed)).magnitude > 100);
             app.TravelTo(stand);
             yield return Until(() => !app.InTransition, 15, "the arrival on the apron");
             yield return Until(() => app.HoveredStand == stand, 5, "the hover label");

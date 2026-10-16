@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.IO;
+using System.Linq;
 using Eternities.Avatar;
 using Eternities.CardView;
 using Eternities.Data;
@@ -111,12 +112,13 @@ namespace Eternities.Tests
             App app = App.Instance;
             // Two stands far from the arrival point and far from each other: a stand within 25 m of
             // where the avatar has been has had its image asked for.
-            var stands = app.World.Layout.Stands;
-            int cached = stands.FindIndex(stand => StandField.Ground(stand.Position).magnitude > 100 && !app.World.Cards[stand.Card].HasBackImage);
-            int uncached = stands.FindIndex(stand => StandField.Ground(stand.Position).magnitude > 100 && !app.World.Cards[stand.Card].HasBackImage
-                && Vector3.Distance(StandField.Ground(stand.Position), StandField.Ground(stands[cached].Position)) > 100);
+            WorldData world = app.World;
+            var stands = Enumerable.Range(0, world.StandCount).ToList();
+            int cached = stands.FindIndex(stand => StandField.Ground(world.Position(stand)).magnitude > 100 && !world.CardAt(stand).HasBackImage);
+            int uncached = stands.FindIndex(stand => StandField.Ground(world.Position(stand)).magnitude > 100 && !world.CardAt(stand).HasBackImage
+                && Vector3.Distance(StandField.Ground(world.Position(stand)), StandField.Ground(world.Position(cached))) > 100);
             Assert.That(cached >= 0 && uncached >= 0);
-            PackPrinting first = app.World.Cards[stands[cached].Card].Printings[0];
+            PackPrinting first = world.CardAt(cached).Printings[0];
             string large = ImageUrls.Face(first.Id, first.ImageTs, ImageSize.Large);
 
             // With the network up, the first card is seen on its stand and in card view.
@@ -141,9 +143,9 @@ namespace Eternities.Tests
             yield return Until(() => app.Hud.Sheet != null && app.Hud.Sheet.Notice != null, 10, "the notice");
             Assert.That(app.Hud.Sheet.Notice, Is.EqualTo(CardViewer.NoImage));
             Assert.That(app.CardView.FrontShown, Is.False);
-            PackPrinting other = app.World.Cards[stands[uncached].Card].Printings[0];
+            PackPrinting other = world.CardAt(uncached).Printings[0];
             Assert.That(loader.Policy.IsFinal(ImageUrls.Face(other.Id, other.ImageTs, ImageSize.Large)), Is.False, "the image is still wanted: it comes when the network does");
-            Assert.That(app.Hud.Sheet.Printings.Count, Is.EqualTo(app.World.Cards[stands[uncached].Card].Printings.Length), "the panel is whole without the image");
+            Assert.That(app.Hud.Sheet.Printings.Count, Is.EqualTo(world.CardAt(uncached).Printings.Length), "the panel is whole without the image");
             yield return Leave();
 
             // The cached card again: its stand's image and its card view's come from the disk.

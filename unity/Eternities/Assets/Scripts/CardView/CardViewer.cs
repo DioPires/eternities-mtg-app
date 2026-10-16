@@ -62,7 +62,7 @@ namespace Eternities.CardView
         public string Notice { get; private set; }      // one line when an image could not be shown
         public bool FrontShown => front != null && frontPrinting == Printing;
         public bool BackShown => back != null;
-        public PackCard Card => world.Cards[world.Layout.Stands[Stand].Card];
+        public PackCard Card => world.CardAt(Stand);
         public Transform CardTransform => card != null ? card.transform : null;
         // A run without a pointer has none to tilt the card with: a test says where one is.
         public Vector2? PointerForTests;
@@ -135,9 +135,8 @@ namespace Eternities.CardView
             Notice = null;
             frontPrinting = -1;
             frontRefused = false;
-            LayoutStand placed = world.Layout.Stands[stand];
-            Quaternion facing = StandField.Facing(placed);
-            Vector3 centre = StandField.Ground(placed.Position) + new Vector3(0, StandField.PlinthHeight + CardHeight / 2, 0) + facing * Vector3.forward * (StandField.SlabDepth / 2 + Lift);
+            Quaternion facing = StandField.Facing(world, stand);
+            Vector3 centre = StandField.Ground(world.Position(stand)) + new Vector3(0, StandField.PlinthHeight + CardHeight / 2, 0) + facing * Vector3.forward * (StandField.SlabDepth / 2 + Lift);
 
             Build(centre, facing);
             // Where the card is `CardFraction` of the view's height, in the middle of what the panel leaves.
@@ -410,8 +409,7 @@ namespace Eternities.CardView
             }
             tilt = Vector2.SmoothDamp(tilt, want, ref tiltVelocity, 0.15f);
             turned = ReducedMotion ? turn : Mathf.SmoothDamp(turned, turn, ref turnVelocity, FlipSeconds / 3);
-            LayoutStand placed = world.Layout.Stands[Stand];
-            card.transform.rotation = StandField.Facing(placed) * Quaternion.Euler(tilt.y, turned - tilt.x, 0);
+            card.transform.rotation = StandField.Facing(world, Stand) * Quaternion.Euler(tilt.y, turned - tilt.x, 0);
 
             // PRD v4 7.4.3: while the printing's image is not to be had, one line says so, and says
             // what the face shows instead. With the network down the source goes on trying and
@@ -469,7 +467,7 @@ namespace Eternities.CardView
         // The hover label of a stand (PRD v4 5.5.3): card name, set, year and artist.
         public static string Label(WorldData data, int stand)
         {
-            PackCard card = data.Cards[data.Layout.Stands[stand].Card];
+            PackCard card = data.CardAt(stand);
             data.Sets.TryGetValue(card.Printings[0].SetId, out PackSet set);
             return $"{card.Name} · {set?.Name}, {set?.Year} · {card.Printings[0].Artist}";
         }

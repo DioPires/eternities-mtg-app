@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Text;
 
 namespace Eternities.Data
@@ -26,8 +27,21 @@ namespace Eternities.Data
         public static Dictionary<string, object> Object(object value) => (Dictionary<string, object>)value;
         public static List<object> Array(object value) => (List<object>)value;
         public static string Text(object value) => (string)value;
-        public static int Int(object value) => checked((int)(double)value);
-        public static long Long(object value) => checked((long)(double)value);
+        public static int Int(object value) => checked((int)Whole(value));
+        public static long Long(object value) => Whole(value);
+
+        // A whole number: a JSON number with no fraction, within the range a double holds exactly,
+        // as the checker's `Whole` reads one. Anything else is refused with the value named, not
+        // cut to a whole number (PRD v4 7.4.1; DEC-1130 N4).
+        static long Whole(object value)
+        {
+            if (value is double d && d == Math.Floor(d) && Math.Abs(d) <= 9_007_199_254_740_992d)
+            {
+                return (long)d;
+            }
+            string shown = value is double number ? number.ToString("R", CultureInfo.InvariantCulture) : value is string text ? $"'{text}'" : value?.ToString() ?? "null";
+            throw new InvalidDataException($"JSON: {shown} is not a whole number");
+        }
 
         // The same values as text: an object's members in the order they were added, two spaces a
         // level. A number is written the shortest way that reads back as itself.
