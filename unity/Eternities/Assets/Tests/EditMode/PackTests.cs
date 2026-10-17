@@ -32,6 +32,43 @@ namespace Eternities.Tests
             Assert.Throws<System.FormatException>(() => Json.Parse("[1] 2"));
         }
 
+        // DEC-1186 N3: the reader keeps the grammar of RFC 8259, as Python's `json` does. A leading
+        // `+`, a leading zero, a point with no digit after it or before it, a raw control character
+        // in a string (in the plain run and after an escape) and a `\u` escape that is not four
+        // hexadecimal digits are refused, alone and inside an object.
+        [Test]
+        public void TheJsonReaderRefusesWhatRfc8259Refuses()
+        {
+            foreach (string text in new[] { "+5", "05", "-05", "00", "5.", ".5", "\"a\u0001b\"", "\"\\n\u0001\"", "\"\\u 041\"" })
+            {
+                Assert.Throws<System.FormatException>(() => Json.Parse(text), text);
+                Assert.Throws<System.FormatException>(() => Json.Parse($"{{\"a\": [{text}]}}"), text);
+            }
+            // A leading zero is named where it stands, not as the text after a `0`.
+            foreach (string text in new[] { "05", "-05", "00" })
+            {
+                StringAssert.Contains("a number has a leading zero, at character 1 ", Assert.Throws<System.FormatException>(() => Json.Parse($"[{text}]")).Message);
+            }
+        }
+
+        // What RFC 8259 allows reads the same value as before: an integer token as a long, any other
+        // number as a double, and a string as its text. An integer token that a long cannot hold is
+        // a double, as every number was before.
+        [Test]
+        public void TheJsonReaderReadsWhatRfc8259AllowsAsBefore()
+        {
+            Assert.That(Json.Parse("0"), Is.EqualTo(0L).And.TypeOf<long>());
+            Assert.That(Json.Parse("-0"), Is.EqualTo(0L).And.TypeOf<long>());
+            Assert.That(Json.Parse("5"), Is.EqualTo(5L).And.TypeOf<long>());
+            Assert.That(Json.Parse("-5"), Is.EqualTo(-5L).And.TypeOf<long>());
+            Assert.That(Json.Parse("5.5"), Is.EqualTo(5.5).And.TypeOf<double>());
+            Assert.That(Json.Parse("5e3"), Is.EqualTo(5000.0).And.TypeOf<double>());
+            Assert.That(Json.Parse("\"A\""), Is.EqualTo("A"));
+            Assert.That(Json.Parse("\"\\u0041\""), Is.EqualTo("A"));
+            Assert.That(Json.Parse("-9223372036854775808"), Is.EqualTo(long.MinValue).And.TypeOf<long>());
+            Assert.That(Json.Parse("9223372036854775808"), Is.EqualTo(9.223372036854775808e18).And.TypeOf<double>());
+        }
+
         // PRD v4 9.5: the slice reads Dominaria through the v3 pack's files.
         [Test]
         public void DominariaReadsFromThePinnedPack()

@@ -8,8 +8,10 @@ namespace Eternities.Data
 {
     // A reader for the pack's JSON files. The shards hold printings as tuples of mixed types
     // (docs/data-contract.md, section 9), which the engine's JsonUtility cannot read, and the project
-    // carries no JSON package. An object is a Dictionary<string, object>, an array a List<object>, a
-    // number a double, and the rest are string, bool and null.
+    // carries no JSON package. An object is a Dictionary<string, object>, an array a List<object>, an
+    // integer token a long, any other number a double, and the rest are string, bool and null. It
+    // reads the grammar of RFC 8259 and refuses what Python's `json` refuses, so the pipeline and
+    // the engine read one file one way (DEC-1186 N3).
     public static class Json
     {
         public static object Parse(string text)
@@ -30,11 +32,15 @@ namespace Eternities.Data
         public static int Int(object value) => checked((int)Whole(value));
         public static long Long(object value) => Whole(value);
 
-        // A whole number: a JSON number with no fraction, within the range a double holds exactly,
-        // as the checker's `Whole` reads one. Anything else is refused with the value named, not
-        // cut to a whole number (PRD v4 7.4.1; DEC-1130 N4).
+        // A whole number: an integer token, or a number with no fraction within the range a double
+        // holds exactly, as the checker's `Whole` reads one. Anything else is refused with the value
+        // named, not cut to a whole number (PRD v4 7.4.1; DEC-1130 N4).
         static long Whole(object value)
         {
+            if (value is long l)
+            {
+                return l;
+            }
             if (value is double d && d == Math.Floor(d) && Math.Abs(d) <= 9_007_199_254_740_992d)
             {
                 return (long)d;
@@ -197,18 +203,73 @@ namespace Eternities.Data
                     Word(s, ref at, "null");
                     return null;
                 default:
+                    return Number(s, ref at);
+            }
+        }
+
+        // A number token of RFC 8259, `-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?`, so `+5`, `05`,
+        // `5.` and `.5` are refused, as Python's `json` refuses them. A token with no `.`, `e` or `E`
+        // is a long and any other a double, so a reader can tell `5` from `5.0` and `5e0` (PRD v4
+        // 4.13.5, erratum 8). An integer token that a long cannot hold is a double, as every number
+        // was before.
+        static object Number(string s, ref int at)
+        {
+            int start = at;
+            Take(s, ref at, '-');
+            if (!Digit(s, at))
+            {
+                throw Bad(s, start, "not a value");
+            }
+            if (Take(s, ref at, '0'))
+            {
+                if (Digit(s, at))
                 {
-                    int start = at;
-                    while (at < s.Length && "+-0123456789.eE".IndexOf(s[at]) >= 0)
-                    {
-                        at++;
-                    }
-                    if (at == start || !double.TryParse(s.Substring(start, at - start), NumberStyles.Float, CultureInfo.InvariantCulture, out double number))
-                    {
-                        throw Bad(s, start, "not a value");
-                    }
-                    return number;
+                    throw Bad(s, start, "a number has a leading zero");
                 }
+            }
+            else
+            {
+                Digits(s, ref at, start);
+            }
+            bool integer = true;
+            if (Take(s, ref at, '.'))
+            {
+                integer = false;
+                Digits(s, ref at, start);
+            }
+            if (Take(s, ref at, 'e') || Take(s, ref at, 'E'))
+            {
+                integer = false;
+                if (!Take(s, ref at, '+'))
+                {
+                    Take(s, ref at, '-');
+                }
+                Digits(s, ref at, start);
+            }
+            string token = s.Substring(start, at - start);
+            if (integer && long.TryParse(token, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out long whole))
+            {
+                return whole;
+            }
+            if (!double.TryParse(token, NumberStyles.Float, CultureInfo.InvariantCulture, out double number))
+            {
+                throw Bad(s, start, "not a value");
+            }
+            return number;
+        }
+
+        static bool Digit(string s, int at) => at < s.Length && s[at] >= '0' && s[at] <= '9';
+
+        // One digit or more, which a number's whole part, fraction and exponent each need.
+        static void Digits(string s, ref int at, int start)
+        {
+            if (!Digit(s, at))
+            {
+                throw Bad(s, start, "a number lacks a digit");
+            }
+            while (Digit(s, at))
+            {
+                at++;
             }
         }
 
@@ -216,7 +277,7 @@ namespace Eternities.Data
         {
             Expect(s, ref at, '"');
             int start = at;
-            while (at < s.Length && s[at] != '"' && s[at] != '\\')
+            while (at < s.Length && s[at] != '"' && s[at] != '\\' && s[at] >= ' ')
             {
                 at++;
             }
@@ -236,6 +297,10 @@ namespace Eternities.Data
                 {
                     return text.ToString();
                 }
+                if (c < ' ')
+                {
+                    throw Bad(s, at - 1, "a string holds a control character, which RFC 8259 writes as an escape");
+                }
                 if (c != '\\')
                 {
                     text.Append(c);
@@ -254,11 +319,11 @@ namespace Eternities.Data
                     case 'b': text.Append('\b'); break;
                     case 'f': text.Append('\f'); break;
                     case 'u':
-                        if (at + 4 > s.Length || !ushort.TryParse(s.Substring(at, 4), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out ushort unit))
+                        if (!FourHex(s, at))
                         {
                             throw Bad(s, at, "a \\u escape needs four hexadecimal digits");
                         }
-                        text.Append((char)unit);
+                        text.Append((char)ushort.Parse(s.Substring(at, 4), NumberStyles.HexNumber, CultureInfo.InvariantCulture));
                         at += 4;
                         break;
                     case '"':
@@ -270,6 +335,24 @@ namespace Eternities.Data
                         throw Bad(s, at - 1, "an unknown escape");
                 }
             }
+        }
+
+        // Four hexadecimal digits and nothing else: `HexNumber` alone also takes white space at
+        // either end, so `\u 041` read as `\u0041` (DEC-1186 N3).
+        static bool FourHex(string s, int at)
+        {
+            if (at + 4 > s.Length)
+            {
+                return false;
+            }
+            for (int i = at; i < at + 4; i++)
+            {
+                if (!Uri.IsHexDigit(s[i]))
+                {
+                    return false;
+                }
+            }
+            return true;
         }
 
         static void Blank(string s, ref int at)

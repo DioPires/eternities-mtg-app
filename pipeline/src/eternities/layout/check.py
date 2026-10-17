@@ -109,7 +109,7 @@ from dataclasses import dataclass
 from functools import cmp_to_key
 from itertools import pairwise
 from math import isqrt
-from typing import Any, Final
+from typing import Any, Final, cast
 
 from . import trig
 from .constants import (
@@ -251,6 +251,8 @@ _CONTRACT_VERSION: Final = 4
 _COLOUR_BITS: Final = 5
 _GOLD: Final = 5
 _COLOURLESS: Final = 6
+_SET_ID_MOST: Final = (1 << 16) - 1
+"""Every set id of an era lies in 0 to this, the width of a stand's set id (4.16.3)."""
 
 _CELL_SHIFT: Final = 12
 """The hash grid's cell is 2^12 mm, about 4.1 m."""
@@ -980,6 +982,50 @@ def _whole(value: Any) -> int:
     return value
 
 
+def _set_id(value: Any) -> int:
+    """An era's set id: a whole number in the uint16 range of a stand's set id (4.16.3).
+
+    Erratum 8: ``json`` takes any whole number and the C# reader none beyond a ``long``, so without
+    this the two checkers could read one lore document two ways.
+    """
+    number = _whole(value)
+    if not 0 <= number <= _SET_ID_MOST:
+        raise ValueError(
+            f"the set id {number} lies outside the uint16 range of 4.16.3, 0 to {_SET_ID_MOST}"
+        )
+    return number
+
+
+def _first_float(value: Any) -> tuple[list[str | int], float] | None:
+    """The first ``float`` of a JSON value, with the keys that lead to it.
+
+    Erratum 8 (4.13.5): no number token of the world or lore document holds a ``.``, an ``e`` or
+    an ``E``, read or not. ``json`` reads exactly those tokens as a ``float``, and ``NaN``,
+    ``Infinity`` and ``-Infinity`` too. The C# checker took ``5.0`` and ``5e0`` as 5, so without
+    this the two checkers could read one document two ways.
+    """
+    if type(value) is float:
+        return ([], value)
+    members: list[tuple[str | int, Any]]
+    if isinstance(value, dict):
+        members = [(str(key), member) for key, member in cast("dict[Any, Any]", value).items()]
+    elif isinstance(value, list):
+        members = list(enumerate(cast("list[Any]", value)))
+    else:
+        return None
+    for key, member in members:
+        found = _first_float(member)
+        if found is not None:
+            found[0].insert(0, key)
+            return found
+    return None
+
+
+def _place(keys: list[str | int]) -> str:
+    """Keys as a place in a document: ``sites[0].centre[1]``."""
+    return "".join(f"[{key}]" if type(key) is int else f".{key}" for key in keys).lstrip(".")
+
+
 def _text(value: Any) -> str:
     if not isinstance(value, str):
         raise ValueError(f"{value!r} is not a string")
@@ -1098,7 +1144,7 @@ def _read_lore(lore: dict[str, Any]) -> _Lore:
             _Era(
                 id=_text(row["id"]),
                 region=_text(row["region"]),
-                set_ids=tuple(_whole(item) for item in row["setIds"]),
+                set_ids=tuple(_set_id(item) for item in row["setIds"]),
             )
             for row in lore["eras"]
         ),
@@ -2442,6 +2488,16 @@ def check_world(
     if records is None:
         return report.result(_no_figures())
     report.tested("world-format")
+    for name, document in (("world", world), ("lore", lore)):
+        found = _first_float(document)
+        if found is not None:
+            keys, value = found
+            report.fail(
+                "world-format",
+                f"the {name} document holds {value!r} at {_place(keys) or 'its top'}, a number "
+                "token with a '.', an 'e' or an 'E', which 4.13.5 refuses",
+            )
+            return report.result(_no_figures())
     try:
         read = _read_world(world)
         tables = None if lore is None else _read_lore(lore)

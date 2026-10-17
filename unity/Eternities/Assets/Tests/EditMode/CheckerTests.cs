@@ -315,7 +315,7 @@ namespace Eternities.Tests
                     object stone = chapter["stone"];
                     foreach (P2 point in LatticePoints(Centre(number), LayoutConstants.ClusterRadius - LayoutConstants.JitterRadius).Where(point => !Near(point)))
                     {
-                        chapter["stone"] = new Dictionary<string, object> { ["x"] = (double)point.X, ["z"] = (double)point.Z, ["yaw"] = 0d };
+                        chapter["stone"] = new Dictionary<string, object> { ["x"] = point.X, ["z"] = point.Z, ["yaw"] = 0L };
                         Checker.Result result = Checker.Check(stands, world, lore, cards, LayoutFixtures.Trig);
                         HashSet<string> broken = Rules(result);
                         string where = $"the stone of set id {Json.Int(chapter["setId"])} in {Json.Text(site["key"])} at {point}, in the disc of cluster {number}; the chapter's first stand is in cluster {first}";
@@ -369,7 +369,7 @@ namespace Eternities.Tests
             Dictionary<string, object> stands = Json.Object(Json.Object(world)["stands"]);
             stands["vertex"] = new List<object>();
             stands["arc"] = new List<object>();
-            Json.Object(world)["standCount"] = 0d;
+            Json.Object(world)["standCount"] = 0L;
             Dictionary<string, object> site = Json.Object(Json.Array(Json.Object(world)["sites"])[0]);
             site["clusters"] = new List<object>();
             List<object> path = Json.Array(site["path"]);
@@ -379,7 +379,7 @@ namespace Eternities.Tests
             Assert.That(result.Violations, Is.Empty);
             Assert.That(result.Assertions["path-empty"], Is.EqualTo(1));
             P2 a = WorldDocument.Point(path[0]), b = WorldDocument.Point(path[1]);
-            site["path"] = new List<object> { path[0], new List<object> { (double)((a.X + b.X) / 2), (double)((a.Z + b.Z) / 2) }, path[1] };
+            site["path"] = new List<object> { path[0], new List<object> { (a.X + b.X) / 2, (a.Z + b.Z) / 2 }, path[1] };
             result = Checker.Check(records.Bytes(), world, null, none, LayoutFixtures.Trig);
             Assert.That(Rules(result), Is.EquivalentTo(new[] { "path-empty" }));
             StringAssert.Contains("has no stand and its path has 3 vertices", Under(result, "path-empty").Single());
@@ -408,7 +408,7 @@ namespace Eternities.Tests
             Dictionary<string, object> site = Json.Object(Json.Array(Json.Object(world)["sites"])[0]);
             Dictionary<string, object> stone = Json.Object(site["stone"]);
             Assert.That(new[] { Json.Long(stone["x"]), Json.Long(stone["z"]) }, Is.EqualTo(new[] { -24_274L, -44_981L }));
-            stone["z"] = -39_981d;
+            stone["z"] = -39_981L;
             Assert.That(Rules(Checker.Check(fixture.Stands, world, null, cards, LayoutFixtures.Trig)), Does.Contain("stone-place"));
             // Mirrored across the line from the pad's centre to the approach point.
             P2 pad = new P2(Json.Long(Json.Object(site["pad"])["x"]), Json.Long(Json.Object(site["pad"])["z"]));
@@ -416,8 +416,8 @@ namespace Eternities.Tests
             P2 at = new P2(-24_274, -44_981);
             double dx = approach.X - pad.X, dz = approach.Z - pad.Z, wx = at.X - pad.X, wz = at.Z - pad.Z;
             double along = (wx * dx + wz * dz) / (dx * dx + dz * dz);
-            stone["x"] = System.Math.Round(2 * (pad.X + along * dx) - at.X);
-            stone["z"] = System.Math.Round(2 * (pad.Z + along * dz) - at.Z);
+            stone["x"] = (long)System.Math.Round(2 * (pad.X + along * dx) - at.X);
+            stone["z"] = (long)System.Math.Round(2 * (pad.Z + along * dz) - at.Z);
             Assert.That(Rules(Checker.Check(fixture.Stands, world, null, cards, LayoutFixtures.Trig)), Does.Not.Contain("stone-place"));
         }
 
@@ -432,6 +432,94 @@ namespace Eternities.Tests
             Assert.That(Rules(result), Is.EquivalentTo(new[] { "header" }));
             Checker.Result cut = Checker.Check(fixture.Stands.Take(40).ToArray(), fixture.World, null, LayoutFixtures.Cards(fixture), LayoutFixtures.Trig);
             Assert.That(Rules(cut), Is.EquivalentTo(new[] { "record-count" }));
+        }
+
+        // Erratum 8 (4.16.3): every set id of an era lies in the uint16 range, the width of a
+        // stand's set id. One past either end is refused under `world-format`, and nothing else is
+        // tested.
+        [Test]
+        public void ALoreSetIdOutsideTheUint16RangeIsRefusedUnderWorldFormat()
+        {
+            LayoutFixtures.Fixture fixture = LayoutFixtures.Named("dominaria");
+            List<Checker.CheckedCard> cards = LayoutFixtures.Cards(fixture);
+            foreach (long value in new[] { 65_536L, -1L })
+            {
+                object lore = fixture.Lore;
+                Json.Array(Json.Object(Json.Array(Json.Object(lore)["eras"])[0])["setIds"]).Add(value);
+                Checker.Result result = Checker.Check(fixture.Stands, fixture.World, lore, cards, LayoutFixtures.Trig);
+                Assert.That(Rules(result), Is.EquivalentTo(new[] { "world-format" }));
+                StringAssert.Contains($"the set id {value} lies outside the uint16 range of 4.16.3, 0 to 65535", Under(result, "world-format").Single());
+            }
+        }
+
+        // The range's top passes that rule and every other. Its foot, 0, is Dominaria's first set id.
+        [Test]
+        public void ALoreSetIdAtTheTopOfTheUint16RangePassesWorldFormat()
+        {
+            LayoutFixtures.Fixture fixture = LayoutFixtures.Named("dominaria");
+            object lore = fixture.Lore;
+            List<object> setIds = Json.Array(Json.Object(Json.Array(Json.Object(lore)["eras"])[0])["setIds"]);
+            Assert.That(Json.Long(setIds[0]), Is.EqualTo(0L));
+            setIds.Add(65_535L);
+            Checker.Result result = Checker.Check(fixture.Stands, fixture.World, lore, LayoutFixtures.Cards(fixture), LayoutFixtures.Trig);
+            Assert.That(result.Violations, Is.Empty);
+            Assert.That(result.Assertions["world-format"], Is.EqualTo(1));
+        }
+
+        static readonly object[] StandCount = { "standCount" };
+        static readonly object[] DestinationYaw = { "sites", 0, "chapters", 0, "destination", "yaw" };
+
+        // The document as `Json.Parse` reads it with the number at `keys` written as `token`.
+        static object WithToken(object document, string token, params object[] keys)
+        {
+            object parent = document;
+            for (int i = 0; i < keys.Length - 1; i++)
+            {
+                parent = keys[i] is int index ? Json.Array(parent)[index] : Json.Object(parent)[(string)keys[i]];
+            }
+            if (keys[keys.Length - 1] is int last)
+            {
+                Json.Array(parent)[last] = "<token>";
+            }
+            else
+            {
+                Json.Object(parent)[(string)keys[keys.Length - 1]] = "<token>";
+            }
+            return Json.Parse(Json.Write(document).Replace("\"<token>\"", token));
+        }
+
+        // Erratum 8 (4.13.5): no number token of the world or lore document holds a `.`, an `e` or
+        // an `E`, read or not. Dominaria's stand count, which the checker reads, and its first
+        // chapter's destination yaw and an era's set id in its lore, which no rule reads before the
+        // walk, are each refused under `world-format`, and nothing else is tested.
+        [TestCase("5.0")]
+        [TestCase("5e0")]
+        [TestCase("5E0")]
+        public void ANumberTokenWithAFractionOrAnExponentIsRefusedReadOrNot(string token)
+        {
+            LayoutFixtures.Fixture fixture = LayoutFixtures.Named("dominaria");
+            List<Checker.CheckedCard> cards = LayoutFixtures.Cards(fixture);
+            foreach ((object[] keys, string place) in new[] { (StandCount, "standCount"), (DestinationYaw, "sites[0].chapters[0].destination.yaw") })
+            {
+                Checker.Result result = Checker.Check(fixture.Stands, WithToken(fixture.World, token, keys), fixture.Lore, cards, LayoutFixtures.Trig);
+                Assert.That(Rules(result), Is.EquivalentTo(new[] { "world-format" }), place);
+                StringAssert.Contains($"the world document holds 5 at {place}, a number token with a '.'", Under(result, "world-format").Single());
+            }
+            Checker.Result lore = Checker.Check(fixture.Stands, fixture.World, WithToken(fixture.Lore, token, "eras", 0, "setIds", 0), cards, LayoutFixtures.Trig);
+            Assert.That(Rules(lore), Is.EquivalentTo(new[] { "world-format" }));
+            StringAssert.Contains("the lore document holds 5 at eras[0].setIds[0],", Under(lore, "world-format").Single());
+        }
+
+        // The same places written as the integer token 5: the stand count is read and breaks its own
+        // rule, and the yaw passes.
+        [Test]
+        public void TheSamePlacesWrittenAsAnIntegerTokenPassWorldFormat()
+        {
+            LayoutFixtures.Fixture fixture = LayoutFixtures.Named("dominaria");
+            List<Checker.CheckedCard> cards = LayoutFixtures.Cards(fixture);
+            HashSet<string> broken = Rules(Checker.Check(fixture.Stands, WithToken(fixture.World, "5", StandCount), fixture.Lore, cards, LayoutFixtures.Trig));
+            Assert.That(broken, Does.Not.Contain("world-format").And.Contain("stand-count"));
+            Assert.That(Checker.Check(fixture.Stands, WithToken(fixture.World, "5", DestinationYaw), fixture.Lore, cards, LayoutFixtures.Trig).Violations, Is.Empty);
         }
     }
 }
