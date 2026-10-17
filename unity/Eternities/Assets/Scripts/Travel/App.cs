@@ -842,7 +842,8 @@ namespace Eternities.Travel
                 }
                 else if (body.Kind == WaterBody.Sea)
                 {
-                    List<Vector3> shore = Shore(plan, DressPlan.WetSea);
+                    // Each sea's own shore: one source a sea (DEC-1194 N9).
+                    List<Vector3> shore = Shore(plan, DressPlan.WetSea, body.Region);
                     if (shore.Count > 0)
                     {
                         sound.Water(name, clip, at => Nearest(shore, at), 15, 260, 1, 120);
@@ -861,12 +862,27 @@ namespace Eternities.Travel
                     }, lake ? 8 : 4, lake ? 120 : 50, lake ? 0.8f : 0.5f, 90);
                 }
             }
+            // A marsh's pools are no body of water, but they are heard as a lake's edge is: one
+            // source a marsh, riding the nearest of its pools' shores (PRD v4 5.12.3; DEC-1194 B1).
+            for (int r = 0; r < plan.Regions.Length; r++)
+            {
+                if (plan.Regions[r].Water != WaterBody.Marsh)
+                {
+                    continue;
+                }
+                List<Vector3> pools = Shore(plan, DressPlan.WetMarsh, r);
+                if (pools.Count > 0)
+                {
+                    sound.Water($"{WaterBody.Marsh} {index++}", Loop(KitLoops.OfWater(WaterBody.Marsh)), at => Nearest(pools, at), 4, 50, 0.5f, 90);
+                }
+            }
             sound.Settle();
             return sound;
         }
 
-        // The texels of a kind of water beside dry ground, every few metres, at the water's level.
-        static List<Vector3> Shore(DressPlan plan, byte kind)
+        // The texels of a kind of water in a region beside dry ground, every few metres, at the
+        // water's level.
+        static List<Vector3> Shore(DressPlan plan, byte kind, int region)
         {
             var shore = new List<Vector3>();
             int n = plan.N, step = Mathf.Max(1, Mathf.RoundToInt(6 / plan.Grid.Texel));
@@ -875,7 +891,7 @@ namespace Eternities.Travel
                 for (int column = step; column < n - step; column += step)
                 {
                     int i = row * n + column;
-                    if (plan.Wet[i] == kind && (plan.Wet[i - step] != kind || plan.Wet[i + step] != kind || plan.Wet[i - step * n] != kind || plan.Wet[i + step * n] != kind))
+                    if (plan.Wet[i] == kind && plan.Region[i] == region && (plan.Wet[i - step] != kind || plan.Wet[i + step] != kind || plan.Wet[i - step * n] != kind || plan.Wet[i + step * n] != kind))
                     {
                         shore.Add(new Vector3(plan.Grid.X(column), DressPlan.WaterLevel, plan.Grid.Z(row)));
                     }

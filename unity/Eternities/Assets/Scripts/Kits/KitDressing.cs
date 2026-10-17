@@ -65,6 +65,7 @@ namespace Eternities.Kits
             WaterBody.River => ("temperate", "river"),
             WaterBody.Pond => ("temperate", "lake"),
             WaterBody.Lake => ("temperate", "lake"),
+            WaterBody.Marsh => ("temperate", "lake"),       // a marsh's pools lap as a lake's edge
             WaterBody.Sea => ("coast", "surf"),
             WaterBody.Lava => ("volcanic", "lava"),
             _ => (null, null),

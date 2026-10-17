@@ -173,7 +173,8 @@ namespace Eternities.Tests
             Assert.That(Vector3.Dot(-app.Sun.transform.forward, Vector3.left), Is.GreaterThan(0.5f), "the sun stands to the west");
             // Dressed (PRD v4 9.6, leg 2): the ground in tiles of at most eight layers each, as wide
             // as the world and its margin; every stone; the props; the water each region row names;
-            // a bed for each ambient family and a source on each body of water; and the sky.
+            // a bed for each ambient family, a source on each body of water and one on each marsh's
+            // pools; and the sky.
             WorldDocument layout = app.World.Layout;
             Assert.That(app.Tiles.Length, Is.EqualTo(app.Dress.Tiles * app.Dress.Tiles));
             Assert.That(app.Tiles.All(tile => tile.terrainData.terrainLayers.Length is > 0 and <= DressPlan.TileLayersMost));
@@ -191,7 +192,7 @@ namespace Eternities.Tests
                 }
             }
             Assert.That(app.Sound.Beds, Is.EqualTo(app.Dress.Regions.Select(region => region.Ambient).Distinct().Count()));
-            Assert.That(app.Sound.Emitters, Is.EqualTo(app.Dress.Water.Count));
+            Assert.That(app.Sound.Emitters, Is.EqualTo(app.Dress.Water.Count + app.Dress.Regions.Count(region => region.Water == WaterBody.Marsh)));
             Assert.That(app.Sky, Is.Not.Null);
             Assert.That(app.Kits.Keys, Does.Contain("temperate"));
             // The arrival point, facing north, on the ground.
