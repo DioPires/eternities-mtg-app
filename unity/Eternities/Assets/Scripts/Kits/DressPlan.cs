@@ -423,6 +423,7 @@ namespace Eternities.Kits
             int samples = Samples;
             Heights = new float[samples * samples];
             uint hills = Seed("hills"), rough = Seed("rough"), edge = Seed("edge");
+            seaSeeds = Array.ConvertAll(Regions, region => Seed($"sea-{region.Id}"));
             Parallel.For(0, samples, row =>
             {
                 float z = Grid.Min + row * Grid.Texel;
@@ -445,9 +446,10 @@ namespace Eternities.Kits
                     float near = AtCorner(FromReserved, row, column);
                     h *= Mathf.SmoothStep(0, 1, (near - FlatApron) / Falloff);
                     float beyond = Mathf.Sqrt(x * x + z * z) - Radius;
-                    if (beyond > -20 && Regions[Region[texel]].Water != WaterBody.Sea)
+                    if (beyond > -20)
                     {
-                        h += Mathf.SmoothStep(0, 1, (beyond + 20) / 90) * (10 + 22 * Raster.Fractal(x / 70, z / 70, edge, 3));
+                        // As much as the sea leaves the edge to them (`SeaShare`).
+                        h += (1 - SeaShare(texel, x, z)) * Mathf.SmoothStep(0, 1, (beyond + 20) / 90) * (10 + 22 * Raster.Fractal(x / 70, z / 70, edge, 3));
                     }
                     Heights[row * samples + column] = h;
                 }

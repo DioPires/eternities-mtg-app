@@ -19,8 +19,9 @@ namespace Eternities.Kits
         // A bank rises at most this many metres a metre on average, out to `WidestBank`: under a
         // highland's hills a lake's shore is a slope and not a wall.
         const float BankSlope = 0.45f, WidestBank = 30;
-        // Across its region's boundary the sea's band narrows to nothing over this many metres.
-        const float SeaFade = 90;
+        // Toward its region's boundary the sea's band narrows to nothing over about this many
+        // metres, and the coast bends out this far past the world's edge (`SeaShare`).
+        const float SeaFade = 90, SeaOut = Margin + 40;
         // A ford reaches along its river at most this many metres each side of the crossing.
         const float FordBox = 60;
         // A lake's or a pond's shore keeps this many metres inside its region (8.4.2 item 2).
@@ -107,6 +108,21 @@ namespace Eternities.Kits
             return pixels;
         }
 
+        // How much of its region's sea band a texel takes: all of it away from the region's
+        // boundary, narrowing to nothing at the boundary over half to one and a half `SeaFade`, by a
+        // noise along it (a cell's edge is straight, and a coast is not); none outside a sea
+        // region. Where the band narrows the coast bends out past the world's edge, and the hills
+        // there rise as they do past any other region's edge (`Relief`): no sea meets a
+        // neighbour's hills at a boundary, and none lies in a neighbour (8.4.2 item 2).
+        float SeaShare(int texel, float x, float z)
+        {
+            int region = Region[texel];
+            return Regions[region].Water != WaterBody.Sea ? 0
+                : Mathf.SmoothStep(0, 1, FromBoundary[texel] / (SeaFade * (0.5f + Raster.Fractal(x / 60, z / 60, seaSeeds[region] + 4, 2))));
+        }
+
+        uint[] seaSeeds;    // by region: the seed of its sea
+
         // How far a texel lies from the ground a body of water keeps clear of: every site's blob and
         // everything reserved, the trail too unless the water may cross it.
         float Open(int texel, bool crossTrail) => Mathf.Min(FromBlob[texel], crossTrail ? fromSite[texel] : FromReserved[texel]);
@@ -124,11 +140,9 @@ namespace Eternities.Kits
                 for (int column = 0; column < N; column++)
                 {
                     int i = row * N + column;
-                    // The sea's region only (8.4.2 item 2), its band narrowing to nothing at the
-                    // region's boundary over half to one and a half `SeaFade`, by a noise along it:
-                    // a cell's edge is straight, and a coast is not.
+                    // The sea's region only (8.4.2 item 2), as much of the band as `SeaShare` gives.
                     float x = Grid.X(column), z = Grid.Z(row);
-                    float fade = Region[i] == region ? Mathf.SmoothStep(0, 1, FromBoundary[i] / (SeaFade * (0.5f + Raster.Fractal(x / 60, z / 60, seed + 4, 2)))) : 0;
+                    float fade = Region[i] == region ? SeaShare(i, x, z) : 0;
                     if (fade <= 0)
                     {
                         continue;
@@ -139,7 +153,7 @@ namespace Eternities.Kits
                     // the points and inlets of a walk along it.
                     float band = fade * (SeaBand * (0.4f + 0.85f * Raster.Noise(Mathf.Cos(angle) * 4 + 11, Mathf.Sin(angle) * 4 + 11, seed)
                         + 0.35f * Raster.Noise(Mathf.Cos(angle) * 22 + 31, Mathf.Sin(angle) * 22 + 31, seed + 2))
-                        + 40 * (Raster.Fractal(x / 45, z / 45, seed + 3, 3) - 0.5f));
+                        + 40 * (Raster.Fractal(x / 45, z / 45, seed + 3, 3) - 0.5f)) - (1 - fade) * SeaOut;
                     if (inward < band && Open(i, crossTrail: false) > WaterBuffer + Beach + 6 * Raster.Noise(x / 25, z / 25, seed + 1))
                     {
                         sea[i] = any = true;
@@ -160,10 +174,13 @@ namespace Eternities.Kits
                 {
                     int texel = Math.Min(row, N - 1) * N + Math.Min(column, N - 1);
                     int s = row * Samples + column;
-                    if (!sea[texel] && fromSea[texel] < 30)
+                    if (!sea[texel] && fromSea[texel] < 120)
                     {
-                        // The beach: up from the water's edge at about five degrees.
-                        Heights[s] = Mathf.Min(Heights[s], WaterLevel + 0.1f + 0.09f * fromSea[texel]);
+                        // The beach: up from the water's edge at about five degrees for 30 m, and
+                        // then no steeper than a slope that reaches some 30 degrees at 90 m, so the
+                        // hills past the world's edge rise behind a beach and stand on no wall.
+                        float d = fromSea[texel], past = Mathf.Max(0, d - 30);
+                        Heights[s] = Mathf.Min(Heights[s], WaterLevel + 0.1f + 0.09f * d + 0.004f * past * past);
                     }
                 }
             }
