@@ -6,8 +6,8 @@ using UnityEngine;
 namespace Eternities.Kits
 {
     // The water each region row names (PRD v4 5.6.3, 8.4.2, Appendix F.1), in the world's water
-    // zones: away from every site's ground and 3 m clear of everything reserved, crossing the
-    // trail only at a ford. A river runs across its region between two ponds; a lake lies where its
+    // zones: inside the regions whose rows name it, away from every site's ground and 3 m clear of
+    // everything reserved, crossing the trail only at a ford. A river runs across its region between two ponds; a lake lies where its
     // region has the most open ground; the sea comes in from the world's edge; a marsh's pools lie
     // in its hollows; a lava flow runs as a river does, and never across the trail.
     public sealed partial class DressPlan
@@ -23,6 +23,8 @@ namespace Eternities.Kits
         const float SeaFade = 90;
         // A ford reaches along its river at most this many metres each side of the crossing.
         const float FordBox = 60;
+        // A lake's or a pond's shore keeps this many metres inside its region (8.4.2 item 2).
+        const float ShoreInside = 3;
         // A river or a lava flow winds about its route: so far each side at most, so long a bend.
         const float Meander = 9, MeanderFrom = 55, MeanderTo = 95;
 
@@ -69,13 +71,14 @@ namespace Eternities.Kits
                 }
             }
             FordsOf();
-            // A marsh's pools: its hollows under the water's level.
+            // A marsh's pools: its hollows under the water's level, in a region whose row names a
+            // marsh. Its sunken relief blends into a neighbour's, but no pool lies there (`Relief`).
             for (int row = 0; row < N; row++)
             {
                 for (int column = 0; column < N; column++)
                 {
                     int i = row * N + column;
-                    if (Wet[i] == Dry && HeightAt(Grid.X(column), Grid.Z(row)) < WaterLevel)
+                    if (Wet[i] == Dry && Regions[Region[i]].Water == WaterBody.Marsh && HeightAt(Grid.X(column), Grid.Z(row)) < WaterLevel)
                     {
                         Wet[i] = WetMarsh;
                     }
@@ -121,11 +124,11 @@ namespace Eternities.Kits
                 for (int column = 0; column < N; column++)
                 {
                     int i = row * N + column;
-                    // The sea's region, and its neighbour's ground near the boundary, where the band
-                    // narrows to nothing over `SeaFade`: a cell's edge is straight, and a coast is not.
+                    // The sea's region only (8.4.2 item 2), its band narrowing to nothing at the
+                    // region's boundary over half to one and a half `SeaFade`, by a noise along it:
+                    // a cell's edge is straight, and a coast is not.
                     float x = Grid.X(column), z = Grid.Z(row);
-                    float fade = Region[i] == region ? 1
-                        : Other[i] == region ? 1 - Mathf.SmoothStep(0, 1, (FromBoundary[i] + SeaFade * (Raster.Fractal(x / 60, z / 60, seed + 4, 2) - 0.5f)) / SeaFade) : 0;
+                    float fade = Region[i] == region ? Mathf.SmoothStep(0, 1, FromBoundary[i] / (SeaFade * (0.5f + Raster.Fractal(x / 60, z / 60, seed + 4, 2)))) : 0;
                     if (fade <= 0)
                     {
                         continue;
@@ -191,6 +194,9 @@ namespace Eternities.Kits
             }
         }
 
+        // A lake's bank, in metres.
+        const float Bank = 8;
+
         // A lake where the region has the most open ground, as large as that ground holds it.
         void Lake(int region)
         {
@@ -200,16 +206,16 @@ namespace Eternities.Kits
             {
                 if (Region[i] == region && FromBoundary[i] > 20 && Inside(i, 40))
                 {
-                    float open = Open(i, crossTrail: false);
-                    if (open > most)
+                    // As large as the open ground holds it, and its shore inside the region.
+                    float room = Mathf.Min(Open(i, crossTrail: false) - WaterBuffer - Bank, FromBoundary[i] - ShoreInside);
+                    if (room > most)
                     {
-                        most = open;
+                        most = room;
                         best = i;
                     }
                 }
             }
-            const float Bank = 8;
-            float radius = Mathf.Min(75, (most - WaterBuffer - Bank) / 1.18f);
+            float radius = Mathf.Min(75, most / 1.18f);
             if (best < 0 || radius < 12)
             {
                 return;
@@ -286,7 +292,7 @@ namespace Eternities.Kits
             {
                 points = Chaikin(points);
             }
-            var body = new WaterBody { Kind = kind, Region = region, HalfWidth = half, Seed = seed, Line = Wind(Resample(points, 2), region, clearance, crossTrail, seed) };
+            var body = new WaterBody { Kind = kind, Region = region, HalfWidth = half, Seed = seed, Line = Wind(Resample(points, 2), region, half + bank, clearance, crossTrail, seed) };
             Water.Add(body);
             // The ponds: as large as the open ground about each end holds them.
             foreach ((Vector2 end, bool head) in new[] { (body.Line[0], true), (body.Line[body.Line.Count - 1], false) })
@@ -295,7 +301,8 @@ namespace Eternities.Kits
                 {
                     continue;
                 }
-                float room = Open(Grid.At(end.x, end.y), crossTrail: false) - WaterBuffer - bank;
+                int at = Grid.At(end.x, end.y);
+                float room = Mathf.Min(Open(at, crossTrail: false) - WaterBuffer - bank, FromBoundary[at] - ShoreInside);
                 float radius = Mathf.Min(kind == WaterBody.Lava ? 7 : 13, room / 1.18f);
                 if (radius > half + 1)
                 {
@@ -306,8 +313,9 @@ namespace Eternities.Kits
 
         // The line wound about itself: each point moved across the line by a wave of its own length
         // and as far as the open ground lets it, the move tapered to nothing at the ends and eased
-        // along the line so that no bend is sharp. A point keeps `clearance` from what it must.
-        List<Vector2> Wind(List<Vector2> line, int region, float clearance, bool crossTrail, uint seed)
+        // along the line so that no bend is sharp. A point keeps `clearance` from what it must, and
+        // `inside` from its region's boundary, as the route's cells do.
+        List<Vector2> Wind(List<Vector2> line, int region, float inside, float clearance, bool crossTrail, uint seed)
         {
             int count = line.Count;
             var offset = new float[count];
@@ -324,7 +332,7 @@ namespace Eternities.Kits
                 {
                     Vector2 moved = line[i] + across[i] * (wanted * share);
                     int t = Grid.At(moved.x, moved.y);
-                    if (Region[t] == region && FromBlob[t] >= clearance && (crossTrail ? fromSite[t] : FromReserved[t]) >= clearance)
+                    if (Region[t] == region && FromBoundary[t] > inside && FromBlob[t] >= clearance && (crossTrail ? fromSite[t] : FromReserved[t]) >= clearance)
                     {
                         offset[i] = wanted * share;
                         break;
@@ -550,7 +558,7 @@ namespace Eternities.Kits
             bool line = body.Line.Count > 1;
             bool lava = body.Kind == WaterBody.Lava;
             float half = line ? body.HalfWidth : 0;
-            float bank = lava ? LavaBank : body.Kind == WaterBody.Lake ? 8 : RiverBank;
+            float bank = lava ? LavaBank : body.Kind == WaterBody.Lake ? Bank : RiverBank;
             float edge = lava ? LavaLevel - 0.15f : WaterLevel - 0.1f;
             float floor = lava ? LavaLevel - 0.5f : body.Kind == WaterBody.Lake ? WaterLevel - 3.5f : body.Kind == WaterBody.Pond ? WaterLevel - 1.4f : WaterLevel - RiverDepth;
             byte wet = lava ? WetLava : body.Kind == WaterBody.Lake ? WetStill : WetRiver;
@@ -629,7 +637,7 @@ namespace Eternities.Kits
                     float tx = Grid.X(column), tz = Grid.Z(row);
                     float into = Inward(body, segments, new Vector2(tx, tz), out Vector2 along);
                     int t = row * N + column;
-                    if (into >= -bank && HeightAt(tx, tz) < level && (Wet[t] == Dry || wet == WetRiver))
+                    if (into >= -bank && HeightAt(tx, tz) < level && (Wet[t] == Dry || wet == WetRiver) && Region[t] == body.Region)
                     {
                         Wet[t] = wet;
                         if (wet == WetRiver && line)

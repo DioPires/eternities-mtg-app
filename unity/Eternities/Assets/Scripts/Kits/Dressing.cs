@@ -41,7 +41,7 @@ namespace Eternities.Kits
         // regions.json`). The pack carries a region's kit, variant and water (4.13.5) and not its
         // family, so the families are written here until it does; a row that names none takes the
         // theme row's (5.12.1). This is a departure of leg 2's first pull request (DEC-1005).
-        static readonly (string Id, string Ambient)[] DominariaFamilies =
+        internal static readonly (string Id, string Ambient)[] DominariaFamilies =
         {
             ("shiv", "volcanic"), ("llanowar", "forest"), ("yavimaya", "forest"), ("sarpadia", "forest"),
             ("tolaria", "surf"), ("caliman", "surf"), ("urborg", "marsh"), ("otaria", "forest"), ("keld", "alpine-wind"),

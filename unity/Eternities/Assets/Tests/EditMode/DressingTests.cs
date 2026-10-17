@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using Eternities.Data;
 using Eternities.EditorTools;
@@ -75,6 +76,33 @@ namespace Eternities.Tests
             }
         }
 
+        // 5.12.1: each region's ambient family is the one its row in the lore names, or the theme
+        // row's where the row names none. The pack does not carry the family yet, so the dressing
+        // writes Dominaria's down (`Dressing.DominariaFamilies`); this holds it to the rows
+        // (DEC-1194 N10).
+        [Test]
+        public void EveryRegionsFamilyIsItsLoreRows()
+        {
+            string path = Path.Combine(LayoutFixtures.Repository, "pipeline", "data", "lore", "dominaria", "regions.json");
+            List<object> rows = Json.Array(Json.Object(Json.Parse(File.ReadAllText(path)))["regions"]);
+            var named = new Dictionary<string, string>();
+            foreach (object row in rows)
+            {
+                Dictionary<string, object> fields = Json.Object(row);
+                named[Json.Text(fields["id"])] = fields.TryGetValue("ambient", out object family) ? Json.Text(family) : Dressing.ThemeAmbient;
+            }
+            Assert.That(plan.Regions.Select(region => region.Id), Is.EquivalentTo(named.Keys));
+            foreach (RegionDress region in plan.Regions)
+            {
+                Assert.That(region.Ambient, Is.EqualTo(named[region.Id]), region.Id);
+            }
+            foreach ((string id, string family) in Dressing.DominariaFamilies)
+            {
+                Assert.That(named.ContainsKey(id), $"{id} is no region of Dominaria's lore");
+                Assert.That(family, Is.EqualTo(named[id]), id);
+            }
+        }
+
         // 5.6.3: a region's ground runs into its neighbour's over 20 m, 10 m each side of the
         // boundary, and nowhere else: the other region's share is a half on the boundary and none
         // from 10 m on.
@@ -100,12 +128,16 @@ namespace Eternities.Tests
         }
 
         // Everything the allocator placed stands on flat ground at its level and stays dry (PRD v4
-        // 8.4.5), but the trail where it goes through a ford; and the water keeps its 3 m buffer
-        // from it (5.4.1), but at a ford.
+        // 8.4.5), but the trail where it goes through a ford. And every point of the water keeps
+        // its 3 m buffer from it (5.4.1), measured from the shapes themselves and not between
+        // texels' middles (DEC-1194 N8 b): from all of it, and at a ford a river from all of it but
+        // the trail, as the water's own rule does (N8 a).
         [Test]
         public void ReservedGroundIsFlatAndDryAndWaterKeepsItsBuffer()
         {
-            int wet = 0;
+            Shapes all = ReservedShapes(trail: true), offTrail = ReservedShapes(trail: false);
+            float needed = DressPlan.WaterBuffer + plan.Grid.Texel * 0.7072f;    // and a texel's middle to its corner
+            int wet = 0, atFords = 0;
             for (int row = 0; row < plan.N; row++)
             {
                 for (int column = 0; column < plan.N; column++)
@@ -117,21 +149,19 @@ namespace Eternities.Tests
                     {
                         Assert.That(plan.HeightAt(x, z), Is.EqualTo(0).Within(0.01f), $"reserved ground at {x:F1}, {z:F1}; {Near(x, z)}");
                     }
-                    if (plan.Wet[i] != DressPlan.Dry && plan.Wet[i] != DressPlan.WetLava)
+                    if (plan.Wet[i] == DressPlan.Dry)
                     {
-                        wet++;
-                        if (!ford)
-                        {
-                            Assert.That(plan.FromReserved[i], Is.GreaterThanOrEqualTo(DressPlan.WaterBuffer), $"water at {x:F1}, {z:F1} is {plan.FromReserved[i]:F2} m from reserved ground");
-                        }
+                        continue;
                     }
-                    if (plan.Wet[i] == DressPlan.WetLava)
-                    {
-                        Assert.That(plan.FromReserved[i], Is.GreaterThanOrEqualTo(DressPlan.WaterBuffer), $"lava at {x:F1}, {z:F1}");
-                    }
+                    wet++;
+                    bool crossing = ford && plan.Wet[i] == DressPlan.WetRiver;
+                    atFords += crossing ? 1 : 0;
+                    float clear = (crossing ? offTrail : all).Clearance(new Vector2(x, z), needed + 0.5f);
+                    Assert.That(clear, Is.GreaterThanOrEqualTo(needed), $"water ({plan.Wet[i]}) at {x:F1}, {z:F1} is {clear:F2} m from reserved ground{(crossing ? " other than the trail" : "")}; {Near(x, z)}");
                 }
             }
             Assert.That(wet, Is.GreaterThan(0));
+            Assert.That(atFords, Is.GreaterThan(0), "a river crosses the trail somewhere");
         }
 
         // The water near a point, for a failure's message.
@@ -171,14 +201,22 @@ namespace Eternities.Tests
         }
 
         // The water each region row names is there (Appendix F.1): a river in a river region, a
-        // lake in a lake region, the sea in a sea region, pools in a marsh and lava in lava's.
+        // lake in a lake region, the sea in a sea region, pools in a marsh and lava in lava's. And
+        // it is there only (8.4.2 item 2): every wet texel lies in a region whose row names its
+        // water, a ford's in its river's.
         [Test]
         public void EveryRowsWaterIsThere()
         {
+            string[] named = { null, WaterBody.River, WaterBody.Lake, WaterBody.Sea, WaterBody.Lava, WaterBody.Marsh };
             var counts = new int[plan.Regions.Length, 6];
             for (int i = 0; i < plan.Grid.Count; i++)
             {
-                counts[plan.Region[i], plan.Wet[i]]++;
+                byte wet = plan.Wet[i];
+                counts[plan.Region[i], wet]++;
+                if (wet != DressPlan.Dry && plan.Regions[plan.Region[i]].Water != named[wet])
+                {
+                    Assert.Fail($"{named[wet]} at {plan.Grid.X(i % plan.N):F1}, {plan.Grid.Z(i / plan.N):F1} in {plan.Regions[plan.Region[i]].Id}, whose row names {plan.Regions[plan.Region[i]].Water}");
+                }
             }
             for (int r = 0; r < plan.Regions.Length; r++)
             {
@@ -264,22 +302,19 @@ namespace Eternities.Tests
             Assert.That(new Distances(grid.Distance(new bool[grid.Count]))[0], Is.EqualTo(float.MaxValue));
         }
 
-        // PRD v4 8.4.2, 5.4.1: no prop stands within 1 m and its own footprint of a stand's
-        // footprint, apron or corridor, a path, the trail, a pad, the plaza or a stone, tested on
-        // the shapes themselves and not on the grid; none stands in water; and no tree stands in a
-        // cluster's disc.
-        [Test]
-        public void EveryPropKeepsItsClearance()
+        // The ground the allocator reserved, as its shapes: the plaza, the trail (or not), every
+        // pad, site path, approach and stone, and every stand's footprint, apron and corridor.
+        static Shapes ReservedShapes(bool trail)
         {
             var shapes = new Shapes();
             WorldDocument layout = plan.Layout;
             float half = LayoutConstants.PathHalfWidth / 1000f;
             shapes.Disc(Vector2.zero, layout.PlazaEdgeRadius / 1000f);
-            if (layout.PlazaApproach != null)
+            if (layout.PlazaApproach != null && trail)
             {
                 shapes.Line(layout.PlazaApproach.Select(DressPlan.Metres).ToList(), half);
             }
-            foreach (TrailLeg leg in layout.Legs)
+            foreach (TrailLeg leg in trail ? layout.Legs : new TrailLeg[0])
             {
                 shapes.Line(leg.Polyline.Select(DressPlan.Metres).ToList(), half);
                 shapes.Line(leg.StartAttachment.Select(DressPlan.Metres).ToList(), half);
@@ -314,6 +349,18 @@ namespace Eternities.Tests
                 Vector2 end = DressPlan.Metres(layout.Sites[world.Site(stand)].Path[layout.StandVertex[stand]]);
                 shapes.Line(new List<Vector2> { at + ahead * front, end }, LayoutConstants.CorridorHalfWidth / 1000f);
             }
+            return shapes;
+        }
+
+        // PRD v4 8.4.2, 5.4.1: no prop stands within 1 m and its own footprint of a stand's
+        // footprint, apron or corridor, a path, the trail, a pad, the plaza or a stone, tested on
+        // the shapes themselves and not on the grid; none stands in water; and no tree stands in a
+        // cluster's disc.
+        [Test]
+        public void EveryPropKeepsItsClearance()
+        {
+            Shapes shapes = ReservedShapes(trail: true);
+            WorldDocument layout = plan.Layout;
             // And the props made about the walker, in every cell along the first site's path and
             // the first leg of the trail, where the 1 m means most.
             var cells = new HashSet<(int, int, bool)>();
@@ -369,6 +416,62 @@ namespace Eternities.Tests
                 checkedProps++;
             }
             Assert.That(checkedProps, Is.GreaterThan(0));
+        }
+
+        // 8.4.2: the avatar walks round the trees and the large rocks nearest it. Where more trees
+        // stand within the colliders' reach than there are capsules, as at high density in a wood,
+        // the capsules and the boxes go on the nearest, not on the first in the cells' order
+        // (DEC-1194 N7).
+        [Test]
+        public void TheCollidersGoOnTheNearestTreesAndRocks()
+        {
+            var dense = new Scatter(plan, scatter.Kinds, Temperate.Density("high"));
+            dense.PlaceAll();
+            var kindOf = new int[dense.Instances.Length];
+            for (int key = 0; key < dense.RunStart.Length; key++)
+            {
+                for (int i = dense.RunStart[key]; i < dense.RunStart[key] + dense.RunCount[key]; i++)
+                {
+                    kindOf[i] = key % dense.Kinds.Length;
+                }
+            }
+            var trees = new List<(float Distance, int Prop, int Kind)>();
+            var rocks = new List<(float Distance, int Prop, int Kind)>();
+            // The place, at a tree, with the most trees within the reach.
+            Vector3 best = Vector3.zero;
+            int most = -1;
+            for (int i = 0; i < dense.Instances.Length; i += 7)
+            {
+                if (dense.Kinds[kindOf[i]].Category != "Trees")
+                {
+                    continue;
+                }
+                PropField.Nearest(dense, dense.Instances[i].Position, PropField.ColliderReach, trees, rocks);
+                if (trees.Count > most)
+                {
+                    most = trees.Count;
+                    best = dense.Instances[i].Position;
+                }
+            }
+            Assert.That(most, Is.GreaterThan(PropField.Trunks), "somewhere more trees stand within the reach than there are capsules");
+
+            PropField.Nearest(dense, best, PropField.ColliderReach, trees, rocks);
+            int treesWithin = 0, rocksWithin = 0;
+            for (int i = 0; i < dense.Instances.Length; i++)
+            {
+                Scatter.Kind kind = dense.Kinds[kindOf[i]];
+                if ((dense.Instances[i].Position - best).sqrMagnitude > PropField.ColliderReach * PropField.ColliderReach)
+                {
+                    continue;
+                }
+                treesWithin += kind.Category == "Trees" ? 1 : 0;
+                rocksWithin += kind.Category == "Rocks" && kind.Shape.Height > 0.6f ? 1 : 0;
+            }
+            Assert.That(trees.Count, Is.EqualTo(treesWithin), "every tree within the reach");
+            Assert.That(rocks.Count, Is.EqualTo(rocksWithin), "every large rock within the reach");
+            Assert.That(trees.Select(tree => tree.Distance), Is.Ordered, "the trees nearest first");
+            Assert.That(rocks.Select(rock => rock.Distance), Is.Ordered, "the rocks nearest first");
+            Debug.Log($"DressingTests: at high density, {most} trees and {rocks.Count} large rocks within {PropField.ColliderReach} m at the densest place; {PropField.Trunks} capsules and {PropField.Blocks} boxes");
         }
 
         // DEC-1055, N17: ground cover and the growth seen across a field have their places on the

@@ -435,6 +435,12 @@ namespace Eternities.Kits
                     if (share > 0)
                     {
                         h += share * ReliefOf(Regions[Other[texel]].Relief, x, z, hills, rough);
+                        // A marsh's sunken relief blends into its neighbour's, and stays over the
+                        // water's level there: no pool lies outside the marsh (8.4.2 item 2).
+                        if (Regions[Region[texel]].Water != WaterBody.Marsh)
+                        {
+                            h = Mathf.Max(h, WaterLevel + 0.2f);
+                        }
                     }
                     float near = AtCorner(FromReserved, row, column);
                     h *= Mathf.SmoothStep(0, 1, (near - FlatApron) / Falloff);

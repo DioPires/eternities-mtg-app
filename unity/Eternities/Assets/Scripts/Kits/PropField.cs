@@ -116,8 +116,9 @@ namespace Eternities.Kits
 
         // Colliders on the props nearest the avatar: so many, looked for within so far, and put
         // again when the avatar has moved so far.
-        const int Trunks = 48, Blocks = 32;
-        const float ColliderReach = 30, ColliderStep = 4;
+        internal const int Trunks = 48, Blocks = 32;
+        internal const float ColliderReach = 30;
+        const float ColliderStep = 4;
         // The ground cover of so many cells is made in one frame at most, and in more while a
         // world is still behind the veil.
         const int CoverCellsAFrame = 24, FarCellsAFrame = 6;
@@ -595,7 +596,9 @@ namespace Eternities.Kits
             Drawn = drawn;
         }
 
-        // The colliders, on the trees and the large rocks nearest the avatar.
+        // The colliders, on the trees and the large rocks nearest the avatar, nearest first: at
+        // high density some 85 trees stand within the reach, more than there are capsules
+        // (DEC-1194 N7). The work is done once each `ColliderStep`, not every frame.
         void Colliders()
         {
             Vector3 at = walker.position;
@@ -604,11 +607,52 @@ namespace Eternities.Kits
                 return;
             }
             collidersAt = at;
+            Nearest(scatter, at, ColliderReach, nearTrees, nearRocks);
             int trunk = 0, block = 0;
+            for (; trunk < trunks.Length && trunk < nearTrees.Count; trunk++)
+            {
+                Scatter.Instance prop = scatter.Instances[nearTrees[trunk].Prop];
+                CapsuleCollider capsule = trunks[trunk];
+                capsule.transform.position = prop.Position;
+                capsule.radius = 0.22f * prop.Scale;
+                capsule.height = 3;
+                capsule.center = new Vector3(0, 1.5f, 0);
+                capsule.enabled = true;
+            }
+            for (; block < blocks.Length && block < nearRocks.Count; block++)
+            {
+                (_, int index, int kind) = nearRocks[block];
+                Scatter.Instance prop = scatter.Instances[index];
+                BoxCollider box = blocks[block];
+                Vector3 extent = models[kind].Mesh.bounds.size * models[kind].Scale * prop.Scale * 0.8f;
+                box.transform.SetPositionAndRotation(prop.Position, Quaternion.Euler(0, prop.Yaw, 0));
+                box.size = extent;
+                box.center = new Vector3(0, extent.y / 2, 0);
+                box.enabled = true;
+            }
+            for (int i = trunk; i < trunks.Length; i++)
+            {
+                trunks[i].enabled = false;
+            }
+            for (int i = block; i < blocks.Length; i++)
+            {
+                blocks[i].enabled = false;
+            }
+        }
+
+        readonly List<(float Distance, int Prop, int Kind)> nearTrees = new List<(float, int, int)>(), nearRocks = new List<(float, int, int)>();
+        static readonly Comparison<(float Distance, int Prop, int Kind)> Nearer = (a, b) => a.Distance.CompareTo(b.Distance);
+
+        // The static trees and the rocks over 0.6 m within `reach` of a place, each list nearest
+        // first, by the squared distance.
+        internal static void Nearest(Scatter scatter, Vector3 at, float reach, List<(float Distance, int Prop, int Kind)> trees, List<(float Distance, int Prop, int Kind)> rocks)
+        {
+            trees.Clear();
+            rocks.Clear();
             int kinds = scatter.Kinds.Length, cells = scatter.Cells;
             float size = Scatter.Cell, min = scatter.Plan.Grid.Min;
-            int c0 = Mathf.Max(0, Mathf.FloorToInt((at.x - ColliderReach - min) / size)), c1 = Mathf.Min(cells - 1, Mathf.FloorToInt((at.x + ColliderReach - min) / size));
-            int r0 = Mathf.Max(0, Mathf.FloorToInt((at.z - ColliderReach - min) / size)), r1 = Mathf.Min(cells - 1, Mathf.FloorToInt((at.z + ColliderReach - min) / size));
+            int c0 = Mathf.Max(0, Mathf.FloorToInt((at.x - reach - min) / size)), c1 = Mathf.Min(cells - 1, Mathf.FloorToInt((at.x + reach - min) / size));
+            int r0 = Mathf.Max(0, Mathf.FloorToInt((at.z - reach - min) / size)), r1 = Mathf.Min(cells - 1, Mathf.FloorToInt((at.z + reach - min) / size));
             for (int r = r0; r <= r1; r++)
             {
                 for (int c = c0; c <= c1; c++)
@@ -624,41 +668,17 @@ namespace Eternities.Kits
                         int key = (r * cells + c) * kinds + kind;
                         for (int i = scatter.RunStart[key]; i < scatter.RunStart[key] + scatter.RunCount[key]; i++)
                         {
-                            Scatter.Instance prop = scatter.Instances[i];
-                            if ((prop.Position - at).sqrMagnitude > ColliderReach * ColliderReach)
+                            float distance = (scatter.Instances[i].Position - at).sqrMagnitude;
+                            if (distance <= reach * reach)
                             {
-                                continue;
-                            }
-                            if (tree && trunk < trunks.Length)
-                            {
-                                CapsuleCollider capsule = trunks[trunk++];
-                                capsule.transform.position = prop.Position;
-                                capsule.radius = 0.22f * prop.Scale;
-                                capsule.height = 3;
-                                capsule.center = new Vector3(0, 1.5f, 0);
-                                capsule.enabled = true;
-                            }
-                            else if (rock && block < blocks.Length)
-                            {
-                                BoxCollider box = blocks[block++];
-                                Vector3 extent = models[kind].Mesh.bounds.size * models[kind].Scale * prop.Scale * 0.8f;
-                                box.transform.SetPositionAndRotation(prop.Position, Quaternion.Euler(0, prop.Yaw, 0));
-                                box.size = extent;
-                                box.center = new Vector3(0, extent.y / 2, 0);
-                                box.enabled = true;
+                                (tree ? trees : rocks).Add((distance, i, kind));
                             }
                         }
                     }
                 }
             }
-            for (int i = trunk; i < trunks.Length; i++)
-            {
-                trunks[i].enabled = false;
-            }
-            for (int i = block; i < blocks.Length; i++)
-            {
-                blocks[i].enabled = false;
-            }
+            trees.Sort(Nearer);
+            rocks.Sort(Nearer);
         }
     }
 }
