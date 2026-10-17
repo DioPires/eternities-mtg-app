@@ -1,0 +1,16 @@
+# Sources of the `swamp` kit (PRD v4 5.6, 8.12): one entry per binary asset,
+# the same rows as CREDITS.md plus the download URL and the SHA-256 of the file.
+#
+# `./fetch.sh` reads this file line by line, not with a YAML parser. Keep the shape: one `key: value`
+# per line, the entry's first key is `file`, no nested values, no multi-line strings.
+kit: swamp
+assets:
+  - file: Audio/marsh_swamp_loop.ogg
+    url: https://cdn.freesound.org/previews/548/548629_1134415-hq.ogg
+    sha256: 5c8ad9853040ea6d47a4677ee3763913b84febd9f16f0304efb693a45e489445
+    source: https://freesound.org/people/Kostrava/sounds/548629/
+    author: Kostrava
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-16
+    use: "Ambient bed, `marsh` (PRD 5.12.1): frogs (*Bombina bombina*) and birds; stereo, 71.3 s, looped with a crossfade in code"

@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Linq;
 using System.IO;
 using Eternities.Avatar;
 using Eternities.Data;
@@ -165,24 +166,35 @@ namespace Eternities.Tests
             Assert.That(app.Place, Is.EqualTo(Place.World));
             Assert.That(app.LastTravelSeconds, Is.GreaterThanOrEqualTo(App.TransitionSeconds));
             Assert.That(app.Stands.Stands, Is.EqualTo(6271));
-            Assert.That(app.Stands.Sites, Is.EqualTo(26));
+            Assert.That(app.Stands.Sites, Is.EqualTo(app.World.Layout.Sites.Length));
             // Dominaria's sun (PRD v4 Appendix C): 35 degrees up, warm, and to the visitor's left.
             Assert.That(Elevation(app.Sun), Is.EqualTo(35).Within(0.01f));
             Assert.That(app.Sun.colorTemperature, Is.LessThan(5600), "a warm sun");
             Assert.That(Vector3.Dot(-app.Sun.transform.forward, Vector3.left), Is.GreaterThan(0.5f), "the sun stands to the west");
-            // The greybox (PRD v4 9.6, leg 1): flat ground as wide as the world, every site path,
-            // site approach, trail leg and the plaza approach as a strip, every pad, every region's
-            // boundary, and every stone; no props, no water and no sound.
+            // Dressed (PRD v4 9.6, leg 2): the ground in tiles of at most eight layers each, as wide
+            // as the world and its margin; every stone; the props; the water each region row names;
+            // a bed for each ambient family, a source on each body of water and one on each marsh's
+            // pools; and the sky.
             WorldDocument layout = app.World.Layout;
-            Assert.That(app.Greybox.GroundRadius, Is.GreaterThan(layout.Radius / 1000f));
-            Assert.That(app.Ground.sharedMaterials.Length, Is.EqualTo(4));
-            Assert.That(app.Greybox.Strips, Is.EqualTo(2 * layout.Sites.Length + layout.Legs.Length + 1));
-            Assert.That(app.Greybox.Pads, Is.EqualTo(layout.Pads.Length));
-            Assert.That(app.Greybox.Lines, Is.EqualTo(12));
-            Assert.That(app.Greybox.Stones, Is.EqualTo(26 + 22), "a stone a site and a chapter stone a chapter after the first");
-            Assert.That(app.Props, Is.Null);
-            Assert.That(app.Water, Is.Null);
-            Assert.That(app.Sound, Is.Null);
+            Assert.That(app.Tiles.Length, Is.EqualTo(app.Dress.Tiles * app.Dress.Tiles));
+            Assert.That(app.Tiles.All(tile => tile.terrainData.terrainLayers.Length is > 0 and <= DressPlan.TileLayersMost));
+            Assert.That(app.Tiles.Sum(tile => tile.terrainData.size.x) / app.Dress.Tiles, Is.EqualTo(app.Dress.Grid.Side).Within(0.01f));
+            Assert.That(app.Dress.Grid.Side, Is.GreaterThan(2 * layout.Radius / 1000f));
+            Assert.That(app.Greybox.Stones, Is.EqualTo(layout.Sites.Length + layout.Sites.Sum(site => site.Chapters.Count(chapter => chapter.Stone != null))),
+                "a stone a site and a chapter stone a chapter after the first");
+            Assert.That(app.Props.Count, Is.EqualTo(app.Scatter.Instances.Length).And.GreaterThan(0));
+            Assert.That(app.Water, Is.Not.Null);
+            foreach ((string water, string surface) in new[] { (WaterBody.River, "Rivers"), (WaterBody.Lake, "Lakes and pools"), (WaterBody.Sea, "Sea"), (WaterBody.Lava, "Lava") })
+            {
+                if (app.Dress.Regions.Any(region => region.Water == water))
+                {
+                    Assert.That(app.Water.transform.Find(surface), Is.Not.Null, surface);
+                }
+            }
+            Assert.That(app.Sound.Beds, Is.EqualTo(app.Dress.Regions.Select(region => region.Ambient).Distinct().Count()));
+            Assert.That(app.Sound.Emitters, Is.EqualTo(app.Dress.Water.Count + app.Dress.Regions.Count(region => region.Water == WaterBody.Marsh)));
+            Assert.That(app.Sky, Is.Not.Null);
+            Assert.That(app.Kits.Keys, Does.Contain("temperate"));
             // The arrival point, facing north, on the ground.
             yield return new WaitForFixedUpdate();
             yield return null;
@@ -205,12 +217,29 @@ namespace Eternities.Tests
             Assert.That(Physics.Raycast(stone + 10 * Vector3.up, Vector3.down, out hit, 20));
             Assert.That(hit.point.y, Is.EqualTo(Greybox.ReadingHeight).Within(0.01f));
 
+            // The walk holds what it reads of the plan, and nothing that only the build read
+            // (DEC-1005, the memory cut).
+            DressPlan plan = app.Dress;
+            Scatter placed = app.Scatter;
+            Assert.That(plan.Heights, Is.Not.Null);
+            Assert.That(plan.FromReserved, Is.Not.Null);
+            Assert.That(plan.TileLayers, Is.Null);
+            Assert.That(plan.Current, Is.Null);
+            Assert.That(plan.FromTrail, Is.Null);
+            Assert.That(placed.Matrices, Is.Null, "the props draw from their own copy");
+
             Texture2DArray images = app.Images.Array;
             Assert.That(images.depth, Is.EqualTo(Eternities.CardView.StandImages.Slots));
             hands.Back = true;
             yield return Until(() => app.Place == Place.Hub && !app.InTransition, 30, "the return to the hub");
             Assert.That(app.World, Is.Null);
             Assert.That(app.WorldLoaded, Is.False);
+            Assert.That(app.Dress, Is.Null);
+            // Whatever still holds the plan or the scatter holds none of their grids: after a first
+            // visit they stayed in the heap, and the next visit's plan was built beside them.
+            Assert.That(plan.Heights == null && plan.Region == null && plan.Wet == null && plan.FromReserved == null, "the plan's grids leave with the world");
+            Assert.That(placed.Instances == null && placed.RunStart == null, "the props' places leave with the world");
+            Assert.That(app.Kits, Is.Empty, "the kits leave with the world (DEC-1055, N20)");
             Assert.That(Vector3.Distance(app.Avatar.transform.position, app.HubPortal.Pad), Is.LessThan(0.5f));
             Assert.That(Elevation(app.Sun), Is.EqualTo(45).Within(0.01f), "the hub has the scene's own sun again");
             Assert.That(app.Sun.colorTemperature, Is.EqualTo(6500));

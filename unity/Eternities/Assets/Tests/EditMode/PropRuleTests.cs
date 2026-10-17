@@ -45,16 +45,14 @@ namespace Eternities.Tests
                     broken.Add($"{path}: it is not in a category's folder under `Prefabs/`: {string.Join(", ", PropRule.Folders.Keys)}");
                     continue;
                 }
-                broken.AddRange(PropRule.Violations(AssetDatabase.LoadAssetAtPath<GameObject>(path), category.Value, PropRule.Standard(kit, path), kit).Select(what => $"{path}: {what}"));
+                broken.AddRange(PropRule.Violations(AssetDatabase.LoadAssetAtPath<GameObject>(path), category.Value, PropRule.Standard(kit), kit).Select(what => $"{path}: {what}"));
             }
             Assert.That(broken, Is.Empty, string.Join("\n", broken));
-            Assert.That(props, Is.GreaterThanOrEqualTo(Temperate.Kinds.Length), "the kits' prefabs were found");
+            Assert.That(props, Is.GreaterThanOrEqualTo(KitPrefabs.TemperatePhotographs.Length), "the kits' prefabs were found");
         }
 
         // The kit's photographic props keep what the rule asks at the photographic standard, each
         // named: a prop missing from the kit fails here and not only in the scan of its folders.
-        // The first slice's flat models, which its scatter of Dominaria still draws, are held at
-        // the basic standard (`PropRule.Standard`).
         [Test]
         public void EveryPhotographicPropKeepsThePhotographicRule()
         {
@@ -70,32 +68,15 @@ namespace Eternities.Tests
             Assert.That(KitPrefabs.TemperatePhotographs, Is.Not.Empty);
         }
 
-        // The exception to the kit's standard is the ten flat models that the first slice's scatter
-        // of Dominaria draws, each by its name. A model is not held at the basic standard for
-        // being added to `Temperate.Kinds`: this list changes with it, in sight of a review.
-        [Test]
-        public void TheBasicStandardHoldsTheFirstSlicesTenFlatModelsOnly()
-        {
-            string[] ten =
-            {
-                "Trees/tree_oak", "Trees/tree_thin", "Trees/tree_pineTallA", "Bushes/plant_bush", "Bushes/plant_bushLarge",
-                "Rocks/rock_largeA", "Rocks/stone_largeB", "Rocks/stone_smallFlatA", "Rocks/stone_tallD", "GroundCover/crops_wheatStageB",
-            };
-            Assert.That(PropRule.Standard(Kit), Is.EqualTo(PropRule.Photographic));
-            CollectionAssert.AreEquivalent(ten, Temperate.Kinds.Select(kind => kind.Prefab));
-            CollectionAssert.AreEquivalent(ten.Select(name => KitPrefabs.Path("temperate", name)),
-                PropRule.Props().Where(prop => prop.Kit == Kit && PropRule.Standard(prop.Kit, prop.Path) == PropRule.Basic).Select(prop => prop.Path));
-        }
-
-        // One prefab a prop: every kind of the scatter has its prefab, and every model under a
+        // One prefab a prop: every growth of every variant has its prefab, and every model under a
         // kit's `Props/` is drawn by a prefab of that kit. And the generation entry point reads
         // prefabs: no model file is named in it.
         [Test]
         public void AModelReachesTheWorldThroughItsPrefabOnly()
         {
-            foreach (PropKind kind in Temperate.Kinds)
+            foreach (Growth growth in Variants.Temperate.SelectMany(variant => variant.Grows))
             {
-                Assert.That(AssetDatabase.LoadAssetAtPath<GameObject>(KitPrefabs.Path("temperate", kind.Prefab)), Is.Not.Null, kind.Prefab);
+                Assert.That(AssetDatabase.LoadAssetAtPath<GameObject>(KitPrefabs.Path("temperate", growth.Prefab)), Is.Not.Null, growth.Prefab);
             }
             var drawn = new HashSet<string>(PropRule.Props().SelectMany(prop => AssetDatabase.GetDependencies(prop.Path, false)));
             foreach (string guid in AssetDatabase.FindAssets("t:Model", new[] { "Assets/Kits" }))

@@ -8,33 +8,6 @@
 # and `sha256` is the checksum of the extracted file, not of the archive.
 kit: temperate
 assets:
-  - file: Terrain/leafy_grass_diff_2k.jpg
-    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/leafy_grass/leafy_grass_diff_2k.jpg
-    sha256: 8e1c6d21365d4b89bc5a35ab664da98a78dbc3ab9ba6100474881c8619a5b113
-    source: https://polyhaven.com/a/leafy_grass
-    author: Charlotte Baglioni
-    licence: CC0 1.0
-    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
-    fetched: 2026-10-10
-    use: "Meadow grass terrain layer; albedo"
-  - file: Terrain/leafy_grass_nor_gl_2k.jpg
-    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/leafy_grass/leafy_grass_nor_gl_2k.jpg
-    sha256: df0cf0ce96e653f033e5b934d5b12995464bda027aa53bd12e329be889aa9f45
-    source: https://polyhaven.com/a/leafy_grass
-    author: Charlotte Baglioni
-    licence: CC0 1.0
-    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
-    fetched: 2026-10-10
-    use: "Meadow grass terrain layer; normal, OpenGL convention"
-  - file: Terrain/leafy_grass_arm_2k.jpg
-    url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/leafy_grass/leafy_grass_arm_2k.jpg
-    sha256: 70d61c669fe9d186a84f5bb50e8a337083014d7e46534306a89d47d48fd5eb0e
-    source: https://polyhaven.com/a/leafy_grass
-    author: Charlotte Baglioni
-    licence: CC0 1.0
-    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
-    fetched: 2026-10-10
-    use: "Meadow grass terrain layer; mask source, AO in R, roughness in G, metalness in B"
   - file: Terrain/dirt_floor_diff_2k.jpg
     url: https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dirt_floor/dirt_floor_diff_2k.jpg
     sha256: 1afaf974bc016e5019f48f6590a53e3e3730f48ae2eb5a1717519ad89038f661
@@ -295,116 +268,6 @@ assets:
     licence_url: https://creativecommons.org/publicdomain/zero/1.0/
     fetched: 2026-10-12
     use: "Highland terrain layer, dark blocky rock (basalt ground for Shiv); mask source, AO in R, roughness in G, metalness in B"
-  - file: Props/tree_oak.fbx
-    url: https://kenney.nl/media/pages/assets/nature-kit/37ac38a37b-1677698939/kenney_nature-kit.zip
-    member: Models/FBX format/tree_oak.fbx
-    archive_sha256: fa7974a0d342bfe63c38664ba9f8ec1a4aab8ea25f099bdc56870e33588c4d9d
-    sha256: efa277f3467e6102cce7d35381a4e8256e2346f86c6ce83a0fd02f5586b7c9fe
-    source: https://kenney.nl/assets/nature-kit
-    author: Kenney
-    licence: CC0 1.0
-    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
-    fetched: 2026-10-10
-    use: "Tree species 1 of 3, broadleaf (oak)"
-  - file: Props/tree_thin.fbx
-    url: https://kenney.nl/media/pages/assets/nature-kit/37ac38a37b-1677698939/kenney_nature-kit.zip
-    member: Models/FBX format/tree_thin.fbx
-    archive_sha256: fa7974a0d342bfe63c38664ba9f8ec1a4aab8ea25f099bdc56870e33588c4d9d
-    sha256: e8faba407a3e04ac12faa099ccf11a3013dcdb4c4f614291886ed07f08602010
-    source: https://kenney.nl/assets/nature-kit
-    author: Kenney
-    licence: CC0 1.0
-    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
-    fetched: 2026-10-10
-    use: "Tree species 2 of 3, slender with a split crown (birch-like)"
-  - file: Props/tree_pineTallA.fbx
-    url: https://kenney.nl/media/pages/assets/nature-kit/37ac38a37b-1677698939/kenney_nature-kit.zip
-    member: Models/FBX format/tree_pineTallA.fbx
-    archive_sha256: fa7974a0d342bfe63c38664ba9f8ec1a4aab8ea25f099bdc56870e33588c4d9d
-    sha256: 46ba9b870e1845890d0c4d24422f0df12a25f5be6eae464b34a2c52993c17084
-    source: https://kenney.nl/assets/nature-kit
-    author: Kenney
-    licence: CC0 1.0
-    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
-    fetched: 2026-10-10
-    use: "Tree species 3 of 3, conifer"
-  - file: Props/plant_bush.fbx
-    url: https://kenney.nl/media/pages/assets/nature-kit/37ac38a37b-1677698939/kenney_nature-kit.zip
-    member: Models/FBX format/plant_bush.fbx
-    archive_sha256: fa7974a0d342bfe63c38664ba9f8ec1a4aab8ea25f099bdc56870e33588c4d9d
-    sha256: ddedd161e7d9475efddee7fa511b283b6f36f4624b388194d45fbc2bdcba7a0a
-    source: https://kenney.nl/assets/nature-kit
-    author: Kenney
-    licence: CC0 1.0
-    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
-    fetched: 2026-10-10
-    use: "Bush 1 of 2, small"
-  - file: Props/plant_bushLarge.fbx
-    url: https://kenney.nl/media/pages/assets/nature-kit/37ac38a37b-1677698939/kenney_nature-kit.zip
-    member: Models/FBX format/plant_bushLarge.fbx
-    archive_sha256: fa7974a0d342bfe63c38664ba9f8ec1a4aab8ea25f099bdc56870e33588c4d9d
-    sha256: 51860c0a7e4f438c83edc17845ed06ee4e5bde498a952f09db8c4dde889c51e5
-    source: https://kenney.nl/assets/nature-kit
-    author: Kenney
-    licence: CC0 1.0
-    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
-    fetched: 2026-10-10
-    use: "Bush 2 of 2, large"
-  - file: Props/rock_largeA.fbx
-    url: https://kenney.nl/media/pages/assets/nature-kit/37ac38a37b-1677698939/kenney_nature-kit.zip
-    member: Models/FBX format/rock_largeA.fbx
-    archive_sha256: fa7974a0d342bfe63c38664ba9f8ec1a4aab8ea25f099bdc56870e33588c4d9d
-    sha256: 92d499e82fcb27146ece915cea0ba09427553221124b63bf6193c5ece7dad3e5
-    source: https://kenney.nl/assets/nature-kit
-    author: Kenney
-    licence: CC0 1.0
-    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
-    fetched: 2026-10-10
-    use: "Rock 1 of 3, boulder with a grass cap"
-  - file: Props/stone_largeB.fbx
-    url: https://kenney.nl/media/pages/assets/nature-kit/37ac38a37b-1677698939/kenney_nature-kit.zip
-    member: Models/FBX format/stone_largeB.fbx
-    archive_sha256: fa7974a0d342bfe63c38664ba9f8ec1a4aab8ea25f099bdc56870e33588c4d9d
-    sha256: eae07eacbe5e6853d7d83ae088f06cfb43eea23a84e705ed65543dbd10717c22
-    source: https://kenney.nl/assets/nature-kit
-    author: Kenney
-    licence: CC0 1.0
-    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
-    fetched: 2026-10-10
-    use: "Rock 2 of 3, bare grey boulder"
-  - file: Props/stone_smallFlatA.fbx
-    url: https://kenney.nl/media/pages/assets/nature-kit/37ac38a37b-1677698939/kenney_nature-kit.zip
-    member: Models/FBX format/stone_smallFlatA.fbx
-    archive_sha256: fa7974a0d342bfe63c38664ba9f8ec1a4aab8ea25f099bdc56870e33588c4d9d
-    sha256: cd09d0fe5167fa3910848e95fb0814b6d10d695b526ebe878eaf6d0913977ba3
-    source: https://kenney.nl/assets/nature-kit
-    author: Kenney
-    licence: CC0 1.0
-    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
-    fetched: 2026-10-10
-    use: "Rock 3 of 3, small flat stone"
-  - file: Props/crops_wheatStageB.fbx
-    url: https://kenney.nl/media/pages/assets/nature-kit/37ac38a37b-1677698939/kenney_nature-kit.zip
-    member: Models/FBX format/crops_wheatStageB.fbx
-    archive_sha256: fa7974a0d342bfe63c38664ba9f8ec1a4aab8ea25f099bdc56870e33588c4d9d
-    sha256: 4b939a0fdd558184758ec83445faeaf5eda9e248311509162bc85227eb68bd79
-    source: https://kenney.nl/assets/nature-kit
-    author: Kenney
-    licence: CC0 1.0
-    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
-    fetched: 2026-10-10
-    use: "Reeds for the water edge (a clump of stalks with seed heads)"
-  - file: Props/stone_tallD.fbx
-    url: https://kenney.nl/media/pages/assets/nature-kit/37ac38a37b-1677698939/kenney_nature-kit.zip
-    member: Models/FBX format/stone_tallD.fbx
-    archive_sha256: fa7974a0d342bfe63c38664ba9f8ec1a4aab8ea25f099bdc56870e33588c4d9d
-    sha256: 3fa11b3898775b5303b623b333ab43abcfecde2d350fbd0f51d390a0209391ea
-    source: https://kenney.nl/assets/nature-kit
-    author: Kenney
-    licence: CC0 1.0
-    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
-    fetched: 2026-10-10
-    use: "Standing stone, the reference shape for the stand plinth (PRD 5.5.1)"
   - file: Props/statue_obelisk.fbx
     url: https://kenney.nl/media/pages/assets/nature-kit/37ac38a37b-1677698939/kenney_nature-kit.zip
     member: Models/FBX format/statue_obelisk.fbx
@@ -456,6 +319,15 @@ assets:
     licence_url: https://creativecommons.org/publicdomain/zero/1.0/
     fetched: 2026-10-10
     use: "River spatial emitter (PRD 5.12.3); seamless mono loop, 9.8 s"
+  - file: Audio/lake_lapping_loop.ogg
+    url: https://cdn.freesound.org/previews/528/528067_3713344-hq.ogg
+    sha256: 3f175de281d39f59516920053569758bf0722c094b7314456a770d9e53f3e3cd
+    source: https://freesound.org/people/laughatlantic/sounds/528067/
+    author: laughatlantic
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-16
+    use: "Lake and pond spatial emitter (PRD 5.12.3); mono, 22.6 s, looped with a crossfade in code"
   - file: Props/rock_moss_set_01_1k.fbx
     url: https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/rock_moss_set_01/rock_moss_set_01_1k.fbx
     sha256: 8fa2a2666ecc4591f59e1d45db05d86857115b55492c8522917f3de5e650e6f9

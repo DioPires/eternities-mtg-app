@@ -112,12 +112,13 @@ namespace Eternities.Tests
             Assert.That(variant.Grows.Count(growth => growth.Category == "Rocks"), Is.GreaterThan(0), "rocks");
         }
 
-        // The scene holds each variant's layers and props in the variant's own order, so a build
-        // carries them.
+        // The kit's dressing holds each variant's layers and props in the variant's own order, so a
+        // build carries them, and the world loads them with the kit (`KitDressing`).
         [Test]
-        public void TheSceneHoldsEveryVariant()
+        public void TheKitsDressingHoldsEveryVariant()
         {
-            KitVariant[] scene = Generate.SceneVariants();
+            Generate.KitDressings();
+            KitVariant[] scene = Generate.Dressing("temperate").Variants;
             Assert.That(scene.Length, Is.EqualTo(Variants.Temperate.Length));
             for (int i = 0; i < Variants.Temperate.Length; i++)
             {

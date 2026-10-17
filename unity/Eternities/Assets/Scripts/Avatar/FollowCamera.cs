@@ -65,6 +65,12 @@ namespace Eternities.Avatar
         }
 
         // With reduced motion the camera's smoothing is off (PRD v4 5.11.2): it is where the avatar is.
+        // How far the view reaches, in metres: a world sets its own (`WorldSky.FarClip`).
+        public float FarClip
+        {
+            set => rig.Lens.FarClipPlane = value;
+        }
+
         public bool ReducedMotion
         {
             set => orbit.TrackerSettings.PositionDamping = value ? Vector3.zero : new Vector3(0.1f, 0.1f, 0.1f);

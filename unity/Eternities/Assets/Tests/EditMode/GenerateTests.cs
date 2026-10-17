@@ -1,5 +1,8 @@
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Eternities.Data;
+using Eternities.Kits;
 using Eternities.EditorTools;
 using Eternities.Layout;
 using NUnit.Framework;
@@ -18,12 +21,16 @@ namespace Eternities.Tests
         public void TheEntryPointWritesDominariaWithEveryStand()
         {
             WorldFiles.Result world = Generate.Build(TestPack.Hash, "dominaria");
-            Assert.That(world.Stands, Is.EqualTo(6271));
-            Assert.That(world.Sites, Is.EqualTo(26));
-            StringAssert.Contains("Stands: 6,271. Sites: 26 (15 era, 11 regional, 0 set).", world.Report);
-
             string target = Generate.ProjectPack(TestPack.Hash);
             string fixture = WorldFiles.FixtureOf(Generate.RepositoryPack(TestPack.Hash), "dominaria");
+            // The sites and the radius are the fixture's, not today's layout written down
+            // (DEC-1194 B2).
+            WorldDocument expected = WorldDocument.Read(Json.Parse(File.ReadAllText(WorldFiles.WorldPath(fixture, "dominaria"))));
+            int era = expected.Sites.Count(site => site.Kind == "era"), regional = expected.Sites.Count(site => site.Kind == "region"), set = expected.Sites.Count(site => site.Kind == "set");
+            Assert.That(world.Stands, Is.EqualTo(6271));
+            Assert.That(world.Sites, Is.EqualTo(expected.Sites.Length).And.GreaterThan(0));
+            StringAssert.Contains($"Stands: 6,271. Sites: {expected.Sites.Length} ({era} era, {regional} regional, {set} set).", world.Report);
+
             Assert.That(File.ReadAllBytes(WorldFiles.StandsPath(target)), Is.EqualTo(File.ReadAllBytes(WorldFiles.StandsPath(fixture))));
             Assert.That(File.ReadAllBytes(WorldFiles.WorldPath(target, "dominaria")), Is.EqualTo(File.ReadAllBytes(WorldFiles.WorldPath(fixture, "dominaria"))));
             Assert.That(File.ReadAllBytes(WorldFiles.LorePath(target, "dominaria")), Is.EqualTo(File.ReadAllBytes(WorldFiles.LorePath(fixture, "dominaria"))));
@@ -39,7 +46,7 @@ namespace Eternities.Tests
             using (WorldData loaded = WorldData.Load(target, "dominaria"))
             {
                 Assert.That(loaded.StandCount, Is.EqualTo(6271));
-                Assert.That(loaded.Layout.Radius, Is.EqualTo(838_394));
+                Assert.That(loaded.Layout.Radius, Is.EqualTo(expected.Radius).And.GreaterThan(0));
                 Assert.That(loaded.CardAt(0).OracleId, Is.EqualTo(loaded.Stands.OracleId(0)).IgnoreCase);
                 loaded.Swatch(loaded.CardOf[0], 0, out byte r, out byte g, out byte b);
                 Assert.That(r + g + b, Is.GreaterThan(0));
@@ -84,9 +91,11 @@ namespace Eternities.Tests
 
         // The ground's materials are the scene's own, with HDRP's terrain shader, and between them
         // they name the variants a ground asks for at run time: none, a normal map, a normal map
-        // and a mask map. A build holds a shader, and a variant of it, only if a material in it
-        // says so, and the first built players had no terrain shader at all: their world had no
-        // ground.
+        // and a mask map, and those two on a tile of five to eight layers (`WorldGround`). A build
+        // holds a shader, and a variant of it, only if a material in it says so, and the first
+        // built players had no terrain shader at all: their world had no ground. The ground draws
+        // instanced, so each material asks for the instancing variants too: without them a player
+        // of leg 2 drew the terrain flat and without its layers (DEC-1005).
         [Test]
         public void TheGroundHasMaterialsOfItsOwnThatABuildCarries()
         {
@@ -94,6 +103,7 @@ namespace Eternities.Tests
             (string name, string[] keywords)[] wanted =
             {
                 ("ground", new string[0]), ("ground-normal", new[] { "_NORMALMAP" }), ("ground-normal-mask", new[] { "_NORMALMAP", "_MASKMAP" }),
+                ("ground-8-normal-mask", new[] { "_TERRAIN_8_LAYERS", "_NORMALMAP", "_MASKMAP" }),
             };
             foreach ((string name, string[] keywords) in wanted)
             {
@@ -101,7 +111,8 @@ namespace Eternities.Tests
                 var material = AssetDatabase.LoadAssetAtPath<Material>(path);
                 Assert.That(material, Is.Not.Null, path);
                 Assert.That(material.shader.name, Is.EqualTo("HDRP/TerrainLit"), path);
-                foreach (string keyword in new[] { "_NORMALMAP", "_MASKMAP" })
+                Assert.That(material.enableInstancing, Is.True, $"{path}: the instancing variants");
+                foreach (string keyword in new[] { "_TERRAIN_8_LAYERS", "_NORMALMAP", "_MASKMAP" })
                 {
                     Assert.That(material.IsKeywordEnabled(keyword), Is.EqualTo(System.Array.IndexOf(keywords, keyword) >= 0), $"{path}: {keyword}");
                 }
@@ -109,28 +120,37 @@ namespace Eternities.Tests
             }
         }
 
-        // The ground's three layers are the kit's (PRD v4 8.4.5): each has its texture's colour,
-        // normal and mask maps, and the persistent scene names the three in the order the ground is
-        // painted in. A ground without them is plain colours, which is what the owner first saw.
+        // The kit's path and gravel layers (PRD v4 8.4.5) are in its dressing: each has its
+        // texture's colour, normal and mask maps. The first slice's meadow layer is retired
+        // (DEC-1055, N13), and the persistent scene names no layer of the kit: the world loads
+        // them with the kit (N20).
         [Test]
-        public void TheGroundHasTheKitsThreeLayers()
+        public void TheKitsDressingHoldsItsPathAndGravelLayers()
         {
             string scene = File.ReadAllText("Assets/Scenes/Hub.unity");
-            (string name, string texture)[] wanted = { ("meadow", "leafy_grass"), ("path", "dirt_floor"), ("gravel", "ganges_river_pebbles") };
-            int last = -1;
+            KitDressing dressing = Generate.Dressing("temperate");
+            Assert.That(dressing, Is.Not.Null, "run the generation entry point");
+            (string name, string texture)[] wanted = { ("path", "dirt_floor"), ("gravel", "ganges_river_pebbles") };
+            CollectionAssert.AreEqual(wanted.Select(one => one.name), dressing.Layers.Select(layer => layer.name));
             foreach ((string name, string texture) in wanted)
             {
                 string path = $"{Generate.LayerFolder}/{name}.terrainlayer";
-                var layer = AssetDatabase.LoadAssetAtPath<TerrainLayer>(path);
-                Assert.That(layer, Is.Not.Null, path);
+                TerrainLayer layer = dressing.Layer(name);
+                Assert.That(AssetDatabase.GetAssetPath(layer), Is.EqualTo(path));
                 Assert.That(AssetDatabase.GetAssetPath(layer.diffuseTexture), Is.EqualTo($"Assets/Kits/temperate/Terrain/{texture}_diff_2k.jpg"), path);
                 Assert.That(AssetDatabase.GetAssetPath(layer.normalMapTexture), Is.EqualTo($"Assets/Kits/temperate/Terrain/{texture}_nor_gl_2k.jpg"), path);
                 Assert.That(AssetDatabase.GetAssetPath(layer.maskMapTexture), Is.EqualTo($"Assets/Kits/temperate/Terrain/{texture}_arm_2k.jpg"), path);
                 Assert.That(layer.tileSize.x, Is.InRange(0.5f, 20f), $"{path}: a tile is some metres wide");
                 Assert.That(layer.tileSize.y, Is.EqualTo(layer.tileSize.x), $"{path}: a tile is square");
-                int at = scene.IndexOf(AssetDatabase.AssetPathToGUID(path), System.StringComparison.Ordinal);
-                Assert.That(at, Is.GreaterThan(last), $"the persistent scene names {path}, after the layer painted before it");
-                last = at;
+            }
+            Assert.That(AssetDatabase.LoadAssetAtPath<TerrainLayer>($"{Generate.LayerFolder}/meadow.terrainlayer"), Is.Null, "the first slice's meadow layer is retired");
+            foreach (string guid in AssetDatabase.FindAssets("t:TerrainLayer", new[] { "Assets/Kits" }))
+            {
+                StringAssert.DoesNotContain(guid, scene, $"the persistent scene names {AssetDatabase.GUIDToAssetPath(guid)}");
+            }
+            foreach ((string kit, _) in Generate.Kits)
+            {
+                StringAssert.DoesNotContain(AssetDatabase.AssetPathToGUID(Generate.DressingPath(kit)), scene, $"the persistent scene names {kit}'s dressing");
             }
         }
 
@@ -138,13 +158,37 @@ namespace Eternities.Tests
         // first played, and that is as a session's first world is built behind the hub. On the
         // main thread it was one frame of 73 ms in a built player (DEC-953). The kit's loops are
         // imported to load in the background, and a source plays its loop once it is there.
-        [TestCase("meadow_songbirds_loop")]
-        [TestCase("river_splashy_loop")]
+        static IEnumerable<string> Loops() => Generate.Kits.SelectMany(kit => kit.Loops.Select(loop => $"{kit.Kit}/Audio/{loop.File}"));
+
+        [TestCaseSource(nameof(Loops))]
         public void AKitLoopLoadsAwayFromTheMainThread(string file)
         {
-            var importer = AssetImporter.GetAtPath($"Assets/Kits/temperate/Audio/{file}.ogg") as AudioImporter;
+            var importer = AssetImporter.GetAtPath($"Assets/Kits/{file}.ogg") as AudioImporter;
             Assert.That(importer, Is.Not.Null, "the kit's loop is in the project");
             Assert.That(importer.loadInBackground, Is.True);
+            Assert.That(importer.defaultSampleSettings.loadType, Is.EqualTo(AudioClipLoadType.CompressedInMemory));
+        }
+
+        // Every kit's dressing names its loops (PRD v4 5.12), and every ambient family that
+        // Dominaria's regions name has its bed in the kit that owns the family (8.12.5).
+        [Test]
+        public void EveryFamilyHasItsBedInItsKit()
+        {
+            foreach ((string kit, (string Name, string File)[] loops) in Generate.Kits)
+            {
+                KitDressing dressing = Generate.Dressing(kit);
+                Assert.That(dressing, Is.Not.Null, kit);
+                foreach ((string name, string file) in loops)
+                {
+                    Assert.That(AssetDatabase.GetAssetPath(dressing.Loop(name)), Is.EqualTo($"Assets/Kits/{kit}/Audio/{file}.ogg"), $"{kit}: {name}");
+                }
+            }
+            foreach (string family in new[] { Dressing.ThemeAmbient, "forest", "surf", "marsh", "alpine-wind", "volcanic" })
+            {
+                string kit = KitLoops.KitOf(family);
+                Assert.That(kit, Is.Not.Null, family);
+                Assert.That(Generate.Dressing(kit).Loop(family), Is.Not.Null, family);
+            }
         }
 
         // The pipeline's default materials are the editor's: in a player each is null. What draws
