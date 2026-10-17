@@ -1395,9 +1395,9 @@ def test_the_path_of_a_site_with_no_stand_has_two_vertices(tmp_path: Path):
     assert "has no stand and its path has 3 vertices" in under(result, "path-empty")[0]
 
 
-@cache
 def dominaria() -> tuple[bytes, dict[str, Any], dict[str, Any], list[CheckedCard]]:
-    """The committed Dominaria fixture's files and the plane's cards from the pinned pack."""
+    """The committed Dominaria fixture's files and the plane's cards from the pinned pack, free to
+    change."""
     data, world, lore, held = _dominaria()
     return (data, copy.deepcopy(world), copy.deepcopy(lore), list(held))
 
@@ -1455,3 +1455,69 @@ def empty_era(tmp_path: Path) -> tuple[bytes, dict[str, Any], dict[str, Any], li
         json.loads(emit.to_json(emitted.lore)),
         held,
     )
+
+
+# Erratum 8 (4.16.3): every set id of an era lies in the uint16 range, the width of a stand's set
+# id. One past either end is refused under `world-format`, and nothing else is tested.
+def test_a_lore_set_id_outside_the_uint16_range_is_refused_under_world_format():
+    for value in (65_536, -1):
+        data, world, lore, held = dominaria()
+        lore["eras"][0]["setIds"].append(value)
+        result = check.check_world(data, world, lore, held, table())
+        assert rules(result) == {"world-format"}
+        (line,) = under(result, "world-format")
+        assert f"the set id {value} lies outside the uint16 range of 4.16.3, 0 to 65535" in line
+
+
+# The range's top passes that rule and every other. Its foot, 0, is Dominaria's first set id.
+def test_a_lore_set_id_at_the_top_of_the_uint16_range_passes_world_format():
+    data, world, lore, held = dominaria()
+    assert lore["eras"][0]["setIds"][0] == 0
+    lore["eras"][0]["setIds"].append(65_535)
+    result = check.check_world(data, world, lore, held, table())
+    assert result.ok and result.assertions["world-format"] == 1
+
+
+def with_token(document: dict[str, Any], keys: list[str | int], token: str) -> dict[str, Any]:
+    """The document as ``json`` reads it with the number at ``keys`` written as ``token``."""
+    changed = copy.deepcopy(document)
+    parent: Any = changed
+    for key in keys[:-1]:
+        parent = parent[key]
+    parent[keys[-1]] = "<token>"
+    return json.loads(json.dumps(changed).replace('"<token>"', token))
+
+
+STAND_COUNT: list[str | int] = ["standCount"]
+DESTINATION_YAW: list[str | int] = ["sites", 0, "chapters", 0, "destination", "yaw"]
+
+
+# Erratum 8 (4.13.5): no number token of the world or lore document holds a `.`, an `e` or an
+# `E`, read or not. Dominaria's stand count, which the checker reads, and its first chapter's
+# destination yaw and an era's set id in its lore, which no rule reads before the walk, are each
+# refused under `world-format` and nothing else is tested.
+@pytest.mark.parametrize("token", ["5.0", "5e0", "5E0"])
+def test_a_number_token_with_a_fraction_or_an_exponent_is_refused_read_or_not(token: str):
+    data, world, lore, held = dominaria()
+    for keys, place in (
+        (STAND_COUNT, "standCount"),
+        (DESTINATION_YAW, "sites[0].chapters[0].destination.yaw"),
+    ):
+        result = check.check_world(data, with_token(world, keys, token), lore, held, table())
+        assert rules(result) == {"world-format"}
+        (line,) = under(result, "world-format")
+        assert f"the world document holds 5.0 at {place}, a number token with a '.'" in line
+    result = check.check_world(
+        data, world, with_token(lore, ["eras", 0, "setIds", 0], token), held, table()
+    )
+    assert rules(result) == {"world-format"}
+    assert "the lore document holds 5.0 at eras[0].setIds[0]," in under(result, "world-format")[0]
+
+
+# The same places written as the integer token 5: the stand count is read and breaks its own rule,
+# and the yaw passes.
+def test_the_same_places_written_as_an_integer_token_pass_world_format():
+    data, world, lore, held = dominaria()
+    result = check.check_world(data, with_token(world, STAND_COUNT, "5"), lore, held, table())
+    assert "world-format" not in rules(result) and "stand-count" in rules(result)
+    assert check.check_world(data, with_token(world, DESTINATION_YAW, "5"), lore, held, table()).ok

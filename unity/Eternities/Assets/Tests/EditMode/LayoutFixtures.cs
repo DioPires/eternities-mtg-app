@@ -170,14 +170,14 @@ namespace Eternities.Tests
             vertex.AddRange(vertices);
             arc.Clear();
             arc.AddRange(arcs);
-            Json.Object(world)["standCount"] = (double)Rows.Count;
+            Json.Object(world)["standCount"] = (long)Rows.Count;
             List<object> sites = Json.Array(Json.Object(world)["sites"]);
             for (int site = 0; site < sites.Count; site++)
             {
                 List<object> clusters = Json.Array(Json.Object(sites[site])["clusters"]);
                 for (int number = 0; number < clusters.Count; number++)
                 {
-                    Json.Object(clusters[number])["stands"] = (double)Enumerable.Range(0, Rows.Count).Count(i => Get16(i, SiteAt) == site && Get16(i, ClusterAt) == number);
+                    Json.Object(clusters[number])["stands"] = (long)Enumerable.Range(0, Rows.Count).Count(i => Get16(i, SiteAt) == site && Get16(i, ClusterAt) == number);
                 }
             }
         }
