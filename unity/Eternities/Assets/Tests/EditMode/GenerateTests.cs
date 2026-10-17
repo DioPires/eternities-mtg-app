@@ -21,12 +21,16 @@ namespace Eternities.Tests
         public void TheEntryPointWritesDominariaWithEveryStand()
         {
             WorldFiles.Result world = Generate.Build(TestPack.Hash, "dominaria");
-            Assert.That(world.Stands, Is.EqualTo(6271));
-            Assert.That(world.Sites, Is.EqualTo(26));
-            StringAssert.Contains("Stands: 6,271. Sites: 26 (15 era, 11 regional, 0 set).", world.Report);
-
             string target = Generate.ProjectPack(TestPack.Hash);
             string fixture = WorldFiles.FixtureOf(Generate.RepositoryPack(TestPack.Hash), "dominaria");
+            // The sites and the radius are the fixture's, not today's layout written down
+            // (DEC-1194 B2).
+            WorldDocument expected = WorldDocument.Read(Json.Parse(File.ReadAllText(WorldFiles.WorldPath(fixture, "dominaria"))));
+            int era = expected.Sites.Count(site => site.Kind == "era"), regional = expected.Sites.Count(site => site.Kind == "region"), set = expected.Sites.Count(site => site.Kind == "set");
+            Assert.That(world.Stands, Is.EqualTo(6271));
+            Assert.That(world.Sites, Is.EqualTo(expected.Sites.Length).And.GreaterThan(0));
+            StringAssert.Contains($"Stands: 6,271. Sites: {expected.Sites.Length} ({era} era, {regional} regional, {set} set).", world.Report);
+
             Assert.That(File.ReadAllBytes(WorldFiles.StandsPath(target)), Is.EqualTo(File.ReadAllBytes(WorldFiles.StandsPath(fixture))));
             Assert.That(File.ReadAllBytes(WorldFiles.WorldPath(target, "dominaria")), Is.EqualTo(File.ReadAllBytes(WorldFiles.WorldPath(fixture, "dominaria"))));
             Assert.That(File.ReadAllBytes(WorldFiles.LorePath(target, "dominaria")), Is.EqualTo(File.ReadAllBytes(WorldFiles.LorePath(fixture, "dominaria"))));
@@ -42,7 +46,7 @@ namespace Eternities.Tests
             using (WorldData loaded = WorldData.Load(target, "dominaria"))
             {
                 Assert.That(loaded.StandCount, Is.EqualTo(6271));
-                Assert.That(loaded.Layout.Radius, Is.EqualTo(838_394));
+                Assert.That(loaded.Layout.Radius, Is.EqualTo(expected.Radius).And.GreaterThan(0));
                 Assert.That(loaded.CardAt(0).OracleId, Is.EqualTo(loaded.Stands.OracleId(0)).IgnoreCase);
                 loaded.Swatch(loaded.CardOf[0], 0, out byte r, out byte g, out byte b);
                 Assert.That(r + g + b, Is.GreaterThan(0));

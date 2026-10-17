@@ -24,13 +24,16 @@ namespace Eternities.Tests
                 {
                     Greybox greybox = Greybox.Build(world, materials, root.transform);
                     // A strip for each site's path and approach, each trail leg and spur, and the
-                    // plaza approach; a disc for each pad; a line for each of the 12 regions; a
-                    // stone for each site and each chapter after a site's first.
-                    Assert.That(greybox.Strips, Is.EqualTo(2 * 26 + 26 + 1));
-                    Assert.That(greybox.Pads, Is.EqualTo(27));
-                    Assert.That(greybox.Lines, Is.EqualTo(12));
-                    Assert.That(greybox.Stones, Is.EqualTo(26 + 22));
-                    Assert.That(greybox.GroundRadius, Is.EqualTo(838.394f + Greybox.GroundMargin).Within(1e-3f));
+                    // plaza approach; a disc for each pad; a line for each region; a stone for each
+                    // site and each chapter after a site's first. Each figure is the fixture's, not
+                    // today's layout written down (DEC-1194 B2).
+                    WorldDocument layout = world.Layout;
+                    Assert.That(layout.Sites.Length, Is.GreaterThan(0));
+                    Assert.That(greybox.Strips, Is.EqualTo(2 * layout.Sites.Length + layout.Legs.Length + (layout.PlazaApproach != null ? 1 : 0)));
+                    Assert.That(greybox.Pads, Is.EqualTo(layout.Pads.Length));
+                    Assert.That(greybox.Lines, Is.EqualTo(layout.Regions.Length));
+                    Assert.That(greybox.Stones, Is.EqualTo(layout.Sites.Length + layout.Sites.Sum(site => site.Chapters.Count(chapter => chapter.Stone != null))));
+                    Assert.That(greybox.GroundRadius, Is.EqualTo(layout.Radius / 1000f + Greybox.GroundMargin).Within(1e-3f));
                     Mesh drawn = greybox.Ground.GetComponent<MeshFilter>().sharedMesh;
                     Assert.That(drawn.subMeshCount, Is.EqualTo(4));
                     Assert.That(greybox.Ground.sharedMaterials, Is.EqualTo(materials.Take(4).ToArray()));

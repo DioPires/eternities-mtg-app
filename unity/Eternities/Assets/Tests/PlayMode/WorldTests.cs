@@ -166,7 +166,7 @@ namespace Eternities.Tests
             Assert.That(app.Place, Is.EqualTo(Place.World));
             Assert.That(app.LastTravelSeconds, Is.GreaterThanOrEqualTo(App.TransitionSeconds));
             Assert.That(app.Stands.Stands, Is.EqualTo(6271));
-            Assert.That(app.Stands.Sites, Is.EqualTo(26));
+            Assert.That(app.Stands.Sites, Is.EqualTo(app.World.Layout.Sites.Length));
             // Dominaria's sun (PRD v4 Appendix C): 35 degrees up, warm, and to the visitor's left.
             Assert.That(Elevation(app.Sun), Is.EqualTo(35).Within(0.01f));
             Assert.That(app.Sun.colorTemperature, Is.LessThan(5600), "a warm sun");
