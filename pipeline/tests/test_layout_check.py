@@ -1490,9 +1490,10 @@ def empty_era(tmp_path: Path) -> tuple[bytes, dict[str, Any], dict[str, Any], li
 
 
 # Erratum 8 (4.16.3): every set id of an era lies in the uint16 range, the width of a stand's set
-# id. One past either end is refused under `world-format`, and nothing else is tested.
+# id. One past either end, and a 20-digit integer, are refused under `world-format`, and nothing
+# else is tested.
 def test_a_lore_set_id_outside_the_uint16_range_is_refused_under_world_format():
-    for value in (65_536, -1):
+    for value in (65_536, -1, 99_999_999_999_999_999_999):
         data, world, lore, held = dominaria()
         lore["eras"][0]["setIds"].append(value)
         result = check.check_world(data, world, lore, held, table())

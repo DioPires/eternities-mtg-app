@@ -203,6 +203,7 @@ namespace Eternities.Tests
             StringAssert.Contains("is not a whole number", Assert.Throws<InvalidDataException>(() => Json.Long(9_007_199_254_740_994d)).Message);
             StringAssert.Contains("JSON: '7' is not a whole number", Assert.Throws<InvalidDataException>(() => Json.Int("7")).Message);
             StringAssert.Contains("JSON: null is not a whole number", Assert.Throws<InvalidDataException>(() => Json.Long(null)).Message);
+            StringAssert.Contains("JSON: 9223372036854775808 is not a whole number", Assert.Throws<InvalidDataException>(() => Json.Long(Json.Parse("9223372036854775808"))).Message);
             Inputs inputs = Read(LayoutFixtures.Named("rabiah"));
             double half = Json.Long(Json.Object(inputs.World)["planeIndex"]) + 0.5;
             Json.Object(inputs.World)["planeIndex"] = half;

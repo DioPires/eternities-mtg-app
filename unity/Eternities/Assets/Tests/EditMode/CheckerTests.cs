@@ -471,8 +471,8 @@ namespace Eternities.Tests
         }
 
         // Erratum 8 (4.16.3): every set id of an era lies in the uint16 range, the width of a
-        // stand's set id. One past either end is refused under `world-format`, and nothing else is
-        // tested.
+        // stand's set id. One past either end, and a 20-digit integer, are refused under
+        // `world-format`, and nothing else is tested.
         [Test]
         public void ALoreSetIdOutsideTheUint16RangeIsRefusedUnderWorldFormat()
         {
@@ -486,6 +486,12 @@ namespace Eternities.Tests
                 Assert.That(Rules(result), Is.EquivalentTo(new[] { "world-format" }));
                 StringAssert.Contains($"the set id {value} lies outside the uint16 range of 4.16.3, 0 to 65535", Under(result, "world-format").Single());
             }
+            // A set id that only a BigInteger holds is refused by `Whole` (DEC-1203 B1).
+            object big = fixture.Lore;
+            Json.Array(Json.Object(Json.Array(Json.Object(big)["eras"])[0])["setIds"]).Add(Json.Parse("99999999999999999999"));
+            Checker.Result refused = Checker.Check(fixture.Stands, fixture.World, big, cards, LayoutFixtures.Trig);
+            Assert.That(Rules(refused), Is.EquivalentTo(new[] { "world-format" }));
+            StringAssert.Contains("99999999999999999999 is not a whole number", Under(refused, "world-format").Single());
         }
 
         // The range's top passes that rule and every other. Its foot, 0, is Dominaria's first set id.
