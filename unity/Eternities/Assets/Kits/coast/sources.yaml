@@ -1,0 +1,16 @@
+# Sources of the `coast` kit (PRD v4 5.6, 8.12): one entry per binary asset,
+# the same rows as CREDITS.md plus the download URL and the SHA-256 of the file.
+#
+# `./fetch.sh` reads this file line by line, not with a YAML parser. Keep the shape: one `key: value`
+# per line, the entry's first key is `file`, no nested values, no multi-line strings.
+kit: coast
+assets:
+  - file: Audio/surf_shore_loop.ogg
+    url: https://cdn.freesound.org/previews/829/829629_9250976-hq.ogg
+    sha256: f9b2af755ad2c2e325d5f7b3b811f65cb23bc28119704d2799d627f287cb5e98
+    source: https://freesound.org/people/Nox_Sound/sounds/829629/
+    author: Nox_Sound
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-16
+    use: "Ambient bed, `surf` (PRD 5.12.1), and the sea's spatial emitter (5.12.3); stereo, 60.0 s, its author's loop"

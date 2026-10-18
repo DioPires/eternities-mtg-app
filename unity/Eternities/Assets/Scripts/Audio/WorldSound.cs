@@ -1,84 +1,245 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Eternities.Audio
 {
-    // A world's sound in the slice (PRD v4 5.12, 8.6): one ambient bed, and the river as a positional
-    // source with distance attenuation, so it is heard before it is seen. The river is long and a
-    // source is a point, so the source rides the river: each frame it sits at the point of the
-    // river nearest the listener.
+    // A world's sound (PRD v4 5.12.1, 5.12.3, 8.6): the ambient bed, one loop per ambient family,
+    // crossfaded at region boundaries as the listener crosses them; and every body of water as a
+    // positional source with distance attenuation, so that a river is heard before it is seen. A
+    // body of water is long and a source is a point, so each source rides its water: each frame it
+    // sits at the point of the water nearest the listener.
+    //
+    // A loop is played into itself with a crossfade of `Overlap` seconds (as 5.12.2 loops music),
+    // on two sources a loop, so a recording that does not end where it begins has no seam.
     public sealed class WorldSound : MonoBehaviour
     {
-        // The river is at full level within 6 m of the water and silent past 140 m.
-        public const float RiverNear = 6, RiverFar = 140;
-        public const float BedVolume = 0.5f, RiverVolume = 0.9f;
+        public const float BedVolume = 0.55f;
+        // A family's share of the bed follows the listener's region at this pace: the 20 m blend of
+        // the ground is crossed in a few seconds at a walk.
+        public const float FadeSeconds = 1.5f;
+        public const float Overlap = 3;
 
-        Vector3 riverFrom, riverTo;
-        AudioSource river;
+        // One loop on two sources, crossfading into itself.
+        sealed class Loop
+        {
+            public AudioSource A, B;
+            public float Volume;            // what the loop plays at, before its own crossfade
+            bool onB;
+            double switched;
+
+            public bool Playing => A.isPlaying || B.isPlaying;
+
+            public void Start()
+            {
+                A.time = 0;
+                A.Play();
+                onB = false;
+                switched = AudioSettings.dspTime;
+            }
+
+            public void Stop()
+            {
+                A.Stop();
+                B.Stop();
+            }
+
+            public void Step()
+            {
+                AudioClip clip = A.clip;
+                AudioSource now = onB ? B : A, before = onB ? A : B;
+                float length = clip.length, fade = Mathf.Min(Overlap, length / 4);
+                if (now.isPlaying && now.time >= length - fade && !before.isPlaying)
+                {
+                    before.time = 0;
+                    before.Play();
+                    onB = !onB;
+                    switched = AudioSettings.dspTime;
+                    (now, before) = (before, now);
+                }
+                float into = Mathf.Clamp01((float)(AudioSettings.dspTime - switched) / fade);
+                now.volume = Volume * Mathf.Sin(into * Mathf.PI / 2);
+                if (before.isPlaying)
+                {
+                    before.volume = Volume * Mathf.Cos(into * Mathf.PI / 2);
+                    if (into >= 1)
+                    {
+                        before.Stop();
+                    }
+                }
+            }
+        }
+
+        // A positional source on a body of water.
+        sealed class Emitter
+        {
+            public Loop Sound;
+            public Func<Vector3, Vector3> Nearest;
+        }
+
+        readonly Dictionary<string, Loop> beds = new Dictionary<string, Loop>();
+        readonly List<Emitter> emitters = new List<Emitter>();
+        Func<Vector3, (string Here, string Across, float Share)> families;
         Transform listener;
+        bool started, riverFound;
 
-        public AudioSource Bed { get; private set; }
-        public AudioSource River => river;
+        // The first river's source, or the first water's where there is no river.
+        public AudioSource River { get; private set; }
+        public int Beds => beds.Count;
+        public int Emitters => emitters.Count;
 
-        public static WorldSound Create(Transform parent, AudioClip bed, AudioClip riverLoop, Vector3 riverFrom, Vector3 riverTo, Transform listener)
+        // `families` gives, at a place, the ambient family of its region, that of the region
+        // across the nearest boundary and that one's share, from 0 to a half.
+        public static WorldSound Create(Transform parent, Transform listener, Func<Vector3, (string, string, float)> families)
         {
             var holder = new GameObject("Sound");
             holder.transform.SetParent(parent, false);
             var sound = holder.AddComponent<WorldSound>();
-            sound.riverFrom = riverFrom;
-            sound.riverTo = riverTo;
             sound.listener = listener;
-
-            sound.Bed = holder.AddComponent<AudioSource>();
-            sound.Bed.clip = bed;
-            sound.Bed.loop = true;
-            sound.Bed.spatialBlend = 0;
-            sound.Bed.volume = BedVolume;
-            sound.Bed.playOnAwake = false;
-
-            var riverHolder = new GameObject("River sound");
-            riverHolder.transform.SetParent(holder.transform, false);
-            sound.river = riverHolder.AddComponent<AudioSource>();
-            sound.river.clip = riverLoop;
-            sound.river.loop = true;
-            sound.river.spatialBlend = 1;
-            sound.river.rolloffMode = AudioRolloffMode.Linear;
-            sound.river.minDistance = RiverNear;
-            sound.river.maxDistance = RiverFar;
-            sound.river.dopplerLevel = 0;
-            sound.river.spread = 60;    // a river is wider than a point
-            sound.river.volume = RiverVolume;
-            sound.river.playOnAwake = false;
-            sound.Follow();
-            if (bed != null)
-            {
-                sound.Bed.Play();
-            }
-            if (riverLoop != null)
-            {
-                sound.river.Play();
-            }
+            sound.families = families;
             return sound;
         }
 
-        // The point of the river nearest a position.
-        public Vector3 NearestOnRiver(Vector3 position)
+        AudioSource Source(string name, AudioClip clip, Transform parent)
         {
-            Vector3 along = riverTo - riverFrom;
-            float t = Mathf.Clamp01(Vector3.Dot(position - riverFrom, along) / along.sqrMagnitude);
-            return riverFrom + along * t;
+            var holder = new GameObject(name);
+            holder.transform.SetParent(parent, false);
+            var source = holder.AddComponent<AudioSource>();
+            source.clip = clip;
+            source.loop = false;
+            source.playOnAwake = false;
+            source.dopplerLevel = 0;
+            source.volume = 0;
+            return source;
         }
 
-        void Follow()
+        public void Bed(string family, AudioClip clip)
         {
-            if (listener != null)
+            if (clip == null || beds.ContainsKey(family))
             {
-                river.transform.position = NearestOnRiver(listener.position);
+                return;
+            }
+            var loop = new Loop { A = Source($"{family} bed", clip, transform), B = Source($"{family} bed", clip, transform) };
+            loop.A.spatialBlend = loop.B.spatialBlend = 0;
+            beds[family] = loop;
+        }
+
+        // A body of water's source: at full level within `near` metres of the water, and silent past `far`.
+        public void Water(string name, AudioClip clip, Func<Vector3, Vector3> nearest, float near, float far, float volume, float spread)
+        {
+            if (clip == null)
+            {
+                return;
+            }
+            var holder = new GameObject($"{name} sound");
+            holder.transform.SetParent(transform, false);
+            var loop = new Loop { A = Source(name, clip, holder.transform), B = Source(name, clip, holder.transform), Volume = volume };
+            foreach (AudioSource source in new[] { loop.A, loop.B })
+            {
+                source.spatialBlend = 1;
+                source.rolloffMode = AudioRolloffMode.Linear;
+                source.minDistance = near;
+                source.maxDistance = far;
+                source.spread = spread;
+            }
+            emitters.Add(new Emitter { Sound = loop, Nearest = nearest });
+            if (name.StartsWith("river", StringComparison.Ordinal) && !riverFound)
+            {
+                River = loop.A;
+                riverFound = true;
+            }
+            else if (River == null)
+            {
+                River = loop.A;
+            }
+        }
+
+        // The beds' shares at the listener now, at once: on arrival, where the bed starts as it is.
+        public void Settle()
+        {
+            Follow(snap: true);
+        }
+
+        void Follow(bool snap)
+        {
+            if (listener == null || families == null)
+            {
+                return;
+            }
+            (string here, string across, float share) = families(listener.position);
+            float k = snap ? 1 : 1 - Mathf.Exp(-Time.unscaledDeltaTime / FadeSeconds);
+            foreach (KeyValuePair<string, Loop> bed in beds)
+            {
+                float wanted = BedVolume * ((bed.Key == here ? 1 - share : 0) + (bed.Key == across ? share : 0));
+                bed.Value.Volume = Mathf.Lerp(bed.Value.Volume, wanted, k);
+                if (bed.Value.Volume > 0.002f && !bed.Value.Playing)
+                {
+                    bed.Value.Start();
+                }
+                else if (bed.Value.Volume <= 0.002f && bed.Value.Playing && wanted == 0)
+                {
+                    bed.Value.Stop();
+                }
+            }
+            foreach (Emitter emitter in emitters)
+            {
+                Vector3 at = emitter.Nearest(listener.position);
+                emitter.Sound.A.transform.parent.position = at;
+                float far = emitter.Sound.A.maxDistance;
+                bool heard = (at - listener.position).sqrMagnitude < far * far;
+                if (heard && !emitter.Sound.Playing)
+                {
+                    emitter.Sound.Start();
+                }
+                else if (!heard && emitter.Sound.Playing)
+                {
+                    emitter.Sound.Stop();
+                }
             }
         }
 
         void LateUpdate()
         {
-            Follow();
+            if (!started)
+            {
+                started = true;
+                Follow(snap: true);
+            }
+            Follow(snap: false);
+            foreach (Loop bed in beds.Values)
+            {
+                if (bed.Playing)
+                {
+                    bed.Step();
+                }
+            }
+            foreach (Emitter emitter in emitters)
+            {
+                if (emitter.Sound.Playing)
+                {
+                    emitter.Sound.Step();
+                }
+            }
+        }
+
+        // The point of a line nearest a position, on the ground's plane at the line's height.
+        public static Vector3 NearestOnLine(IReadOnlyList<Vector3> line, Vector3 position)
+        {
+            Vector3 best = line[0];
+            float bestDistance = float.MaxValue;
+            for (int i = 0; i + 1 < line.Count; i++)
+            {
+                Vector3 a = line[i], along = line[i + 1] - a;
+                float t = along.sqrMagnitude > 0 ? Mathf.Clamp01(Vector3.Dot(position - a, along) / along.sqrMagnitude) : 0;
+                Vector3 point = a + along * t;
+                float d = (point - position).sqrMagnitude;
+                if (d < bestDistance)
+                {
+                    bestDistance = d;
+                    best = point;
+                }
+            }
+            return best;
         }
     }
 }

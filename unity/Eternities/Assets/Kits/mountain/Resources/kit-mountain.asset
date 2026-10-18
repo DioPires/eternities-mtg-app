@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9c22e34f48e0341a490dde27ed54b9e6, type: 3}
+  m_Name: kit-mountain
+  m_EditorClassIdentifier: Eternities.Kits::Eternities.Kits.KitDressing
+  Kit: mountain
+  Variants: []
+  Layers: []
+  River: {fileID: 0}
+  Lake: {fileID: 0}
+  Sea: {fileID: 0}
+  Lava: {fileID: 0}
+  Loops:
+  - Name: alpine-wind
+    Clip: {fileID: 8300000, guid: 51b1d461697bb41f1ab3978a165dd96f, type: 3}

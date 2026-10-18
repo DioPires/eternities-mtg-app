@@ -535,6 +535,38 @@ def test_the_checker_reads_the_bytes_of_the_header_and_the_records():
     assert rules(run(rows, world, cards)) == {"world-format"}
 
 
+def test_an_integer_one_past_the_int32_range_is_refused_under_world_format():
+    """Erratum 7 (4.13.5): every integer of the world document lies in the int32 range.
+
+    The arrival's yaw is an integer that no rule reads, and a cluster's arc one that the rules
+    read: both are refused one past either end of the range, and nothing else is tested.
+    """
+    rows, world, cards = fresh()
+    world["arrival"]["yaw"] = 2**31
+    result = run(rows, world, cards)
+    assert rules(result) == {"world-format"}
+    (line,) = under(result, "world-format")
+    assert "2147483648 at arrival.yaw" in line
+    rows, world, cards = fresh()
+    world["sites"][0]["clusters"][0]["arc"] = -(2**31) - 1
+    result = run(rows, world, cards)
+    assert rules(result) == {"world-format"}
+    (line,) = under(result, "world-format")
+    assert "-2147483649 at sites[0].clusters[0].arc" in line
+
+
+def test_an_integer_at_either_end_of_the_int32_range_passes_world_format():
+    """The same document with 2^31 - 1 and -2^31 in the same places passes that rule."""
+    rows, world, cards = fresh()
+    world["arrival"]["yaw"] = 2**31 - 1
+    assert rules(run(rows, world, cards)) == set()
+    rows, world, cards = fresh()
+    world["sites"][0]["clusters"][0]["arc"] = -(2**31)
+    result = run(rows, world, cards)
+    assert "world-format" not in rules(result)
+    assert result.assertions["world-format"] == 1
+
+
 def test_two_stands_nearer_than_the_minimum_spacing_are_named():
     rows, world, cards = fresh()
     # Stand 1 is put beside stand 0, at the spacing exactly and then one millimetre nearer.

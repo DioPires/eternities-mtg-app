@@ -138,6 +138,13 @@ namespace Eternities.Layout
                 return report;
             }
             report.Tested("world-format");
+            (string Place, double Value)? outside = OutsideInt32(world);
+            if (outside != null)
+            {
+                report.Fail("world-format", $"the world document holds {outside.Value.Value.ToString("R", System.Globalization.CultureInfo.InvariantCulture)} at "
+                    + $"{(outside.Value.Place.Length == 0 ? "its top" : outside.Value.Place)}, outside the int32 range of 4.13.5, {int.MinValue} to {int.MaxValue}");
+                return report;
+            }
             World read;
             Lore tables;
             try
@@ -430,6 +437,45 @@ namespace Eternities.Layout
 
         static Dictionary<string, object> ObjectOf(object value) => (Dictionary<string, object>)value;
         static List<object> ListOf(object value) => (List<object>)value;
+
+        // Erratum 7 (4.13.5): every integer of a world document lies in the int32 range, read or
+        // not. `Whole` takes a whole number up to 2^53 and the checker computes in `long`, which
+        // wraps from about 2^32 mm, so without this the two checkers could read one document two
+        // ways. A number is a double here; the first whole one outside the range is returned with
+        // its place in the document, as `sites[0].centre[1]`, which is written only then.
+        static (string Place, double Value)? OutsideInt32(object value)
+        {
+            switch (value)
+            {
+                case double d:
+                    return d == Math.Floor(d) && (d < int.MinValue || d > int.MaxValue) ? ("", d) : ((string, double)?)null;
+                case Dictionary<string, object> members:
+                    foreach (KeyValuePair<string, object> member in members)
+                    {
+                        (string Place, double Value)? found = OutsideInt32(member.Value);
+                        if (found != null)
+                        {
+                            return (member.Key + Joined(found.Value.Place), found.Value.Value);
+                        }
+                    }
+                    return null;
+                case List<object> items:
+                    for (int i = 0; i < items.Count; i++)
+                    {
+                        (string Place, double Value)? found = OutsideInt32(items[i]);
+                        if (found != null)
+                        {
+                            return ($"[{i}]" + Joined(found.Value.Place), found.Value.Value);
+                        }
+                    }
+                    return null;
+                default:
+                    return null;
+            }
+        }
+
+        // What follows a key in a place: an index as it is, a member's name after a dot.
+        static string Joined(string inner) => inner.Length == 0 || inner[0] == '[' ? inner : "." + inner;
 
         // A whole number: a JSON number with no fraction, within the range a double holds exactly.
         static long Whole(object value)

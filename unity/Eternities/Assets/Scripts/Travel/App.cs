@@ -43,26 +43,24 @@ namespace Eternities.Travel
         static bool warmed;
 
         // Assigned by the generation entry point. The stand materials are the four plinths by
-        // rarity, then the slab. The terrain layers are the kit's meadow, path and gravel, or empty.
-        // The props are the kit's kinds, in their order. The variants are the kit's, in the order of
-        // `Variants.Temperate`; nothing draws them yet (PRD v4 9.6, leg 2).
+        // rarity, then the slab. A kit's layers, props, water and loops are not here: each kit's
+        // are an asset under its `Resources/` that a world loads when it is entered (`KitDressing`),
+        // so the hub holds none of them (DEC-1055, N20).
         [SerializeField] Material[] standMaterials = new Material[0];
         [SerializeField] Material avatarMaterial, hubGroundMaterial, portalFrameMaterial, portalSurfaceMaterial, veilMaterial;
-        [SerializeField] TerrainLayer[] terrainLayers = new TerrainLayer[0];
-        // The ground's material, and with it the variants of the terrain shader a build must hold.
+        // The ground's materials, and with them the variants of the terrain shader a build must
+        // hold: by `GroundMaterial`'s constants.
         [SerializeField] Material[] groundMaterials = new Material[0];
         [SerializeField] Material imageSurfaceMaterial;
         [SerializeField] Shader exhibitShader, exhibitCompositeShader;
-        [SerializeField] AudioClip ambientBed, riverLoop;
         [SerializeField] PanelSettings panelSettings;
-        [SerializeField] GameObject riverPrefab, lakePrefab;
-        [SerializeField] KitProp[] props = new KitProp[0];
-        [SerializeField] KitVariant[] variants = new KitVariant[0];
         // The greybox's materials (PRD v4 9.6, leg 1), in the order of `Greybox`'s constants: the
-        // ground, the paths, the pads, the region lines and the stones. The kit's terrain layers,
-        // ground materials, props, variants, water and sound above are leg 2's dressing, which the
-        // greybox does not draw.
+        // ground, the paths, the pads, the region lines and the stones. A dressed world draws only
+        // its stones, until the kit's stones replace them (leg 2's third pull request).
         [SerializeField] Material[] greyboxMaterials = new Material[0];
+
+        // The ground's materials: for a tile of up to four layers, and of more (`WorldGround`).
+        public const int FourLayerGround = 2, EightLayerGround = 3, GroundMaterialCount = 4;
 
         public static App Instance { get; private set; }
 
@@ -76,18 +74,11 @@ namespace Eternities.Travel
         public Material PortalFrameMaterial { get => portalFrameMaterial; set => portalFrameMaterial = value; }
         public Material PortalSurfaceMaterial { get => portalSurfaceMaterial; set => portalSurfaceMaterial = value; }
         public Material VeilMaterial { get => veilMaterial; set => veilMaterial = value; }
-        public TerrainLayer[] TerrainLayers { get => terrainLayers; set => terrainLayers = value; }
         public Material[] GroundMaterials { get => groundMaterials; set => groundMaterials = value; }
         public Material ImageSurfaceMaterial { get => imageSurfaceMaterial; set => imageSurfaceMaterial = value; }
         public Shader ExhibitShader { get => exhibitShader; set => exhibitShader = value; }
         public Shader ExhibitCompositeShader { get => exhibitCompositeShader; set => exhibitCompositeShader = value; }
-        public AudioClip AmbientBed { get => ambientBed; set => ambientBed = value; }
-        public AudioClip RiverLoop { get => riverLoop; set => riverLoop = value; }
         public PanelSettings PanelSettings { get => panelSettings; set => panelSettings = value; }
-        public GameObject RiverPrefab { get => riverPrefab; set => riverPrefab = value; }
-        public GameObject LakePrefab { get => lakePrefab; set => lakePrefab = value; }
-        public KitProp[] KitProps { get => props; set => props = value; }
-        public KitVariant[] KitVariants { get => variants; set => variants = value; }
         public Material[] GreyboxMaterials { get => greyboxMaterials; set => greyboxMaterials = value; }
 
         public Pack Pack { get; private set; }
@@ -102,12 +93,18 @@ namespace Eternities.Travel
         public StandField Stands { get; private set; }
         public StandImages Images { get; private set; }
         public Exhibit Exhibit { get; private set; }
+        // The stones, until the kit's stones replace them (PRD v4 9.6, leg 2).
         public Greybox Greybox { get; private set; }
-        // Leg 2's dressing: null in the greybox, which has no props, no sound and no water.
+        // The world's dressing (PRD v4 5.6.3, 8.4.2): its plan, its props, its sound, its water and its sky.
+        public DressPlan Dress { get; private set; }
+        public Scatter Scatter { get; private set; }
         public PropField Props { get; private set; }
-        public PropPlan PropPlan { get; private set; }
         public WorldSound Sound { get; private set; }
         public GameObject Water { get; private set; }
+        public WorldSky Sky { get; private set; }
+        public Terrain[] Tiles { get; private set; }
+        // The kits' dressings the world loaded, by kit.
+        public readonly Dictionary<string, KitDressing> Kits = new Dictionary<string, KitDressing>();
         public Hud Hud { get; private set; }
         public CardViewer CardView { get; private set; }
         public int HoveredStand { get; private set; } = -1;
@@ -117,7 +114,7 @@ namespace Eternities.Travel
         public IImageSource ImageSource;    // where stand images come from; set before a world loads
         // Tests name a source of their own here, so that no test run reaches Scryfall.
         public static Func<IImageSource> ImageSourceForTests;
-        // The greybox's flat ground, with its paths, pads and region lines.
+        // The ground's switch: the terrain's tiles follow its `enabled` (`GroundSwitch`).
         public Renderer Ground { get; private set; }
 
         public Place Place { get; private set; }
@@ -139,7 +136,7 @@ namespace Eternities.Travel
 
         GameObject hubRoot, worldRoot;
         Coroutine loading;
-        Task<WorldData> reading;        // a world's read on its thread, which uses `Records`
+        Task reading;                   // a world's read on its thread, which uses `Records`
         Renderer veil;
         readonly List<UnityEngine.Object> worldOwned = new List<UnityEngine.Object>();
         Texture2DArray standImages;     // every world's stand images, made once with the hub (`StandImages.NewArray`)
@@ -296,6 +293,7 @@ namespace Eternities.Travel
             Avatar.Place(HubOrigin, toPortal);      // the visitor arrives facing the home plane's portal (PRD v4 5.8.5)
             Avatar.Keep = KeepInHub;
             Camera view = Camera.main;
+            hubFarClip = view.farClipPlane;
             View = FollowCamera.Create(view, Avatar);
             Exhibit = Exhibit.Create(view, exhibitShader, exhibitCompositeShader);
             CardView = CardViewer.Create(view);
@@ -341,7 +339,15 @@ namespace Eternities.Travel
             Sun.useColorTemperature = true;
             Sun.transform.rotation = place == Place.World ? Temperate.Sun(Temperate.SunElevation, Temperate.SunAzimuth) : hubSun;
             Sun.colorTemperature = place == Place.World ? Temperate.SunKelvin : hubSunKelvin;
+            if (Sky != null)
+            {
+                Sky.Shown = place == Place.World;
+            }
+            // In a world the view reaches across it and over the sea; in the hub, as the scene has it.
+            View.FarClip = place == Place.World && Sky != null ? WorldSky.FarClip : hubFarClip;
         }
+
+        float hubFarClip = 1000;
 
         static Mesh GroundDisc(float radius, int around)
         {
@@ -370,10 +376,18 @@ namespace Eternities.Travel
             return flat.magnitude <= HubRadius - 1 ? position : HubOrigin + flat.normalized * (HubRadius - 1) + Vector3.up * (position.y - HubOrigin.y);
         }
 
-        // The world's edge is the kit's to make natural (PRD v4 5.1.5). Until it does, the avatar
-        // stops at the world's radius R, the edge of its 72-gon's circle (4.13.5).
+        // The avatar stops at the world's radius R, the edge of its 72-gon's circle (4.13.5), where
+        // the kit makes the edge natural (PRD v4 5.1.5): hills, a wood or the sea past it. And it
+        // wades no deeper than `WadeDepth`, which a ford is not, and never into lava: a step that
+        // would is not taken.
+        public const float WadeDepth = 0.35f;
+
         Vector3 KeepInWorld(Vector3 position)
         {
+            if (Dress != null && (Dress.DepthAt(position.x, position.z) > WadeDepth || Dress.LavaAt(position.x, position.z)))
+            {
+                return new Vector3(Avatar.StepFrom.x, position.y, Avatar.StepFrom.z);
+            }
             float limit = World.Layout.Radius / 1000f;
             var flat = new Vector3(position.x, 0, position.z);
             return flat.magnitude > limit ? flat.normalized * limit + Vector3.up * position.y : position;
@@ -431,6 +445,14 @@ namespace Eternities.Travel
             AvatarInput input = Avatar.Input;
             CardView.ReducedMotion = ReducedMotion;
             View.ReducedMotion = ReducedMotion;
+            if (Sky != null)
+            {
+                Sky.Still = ReducedMotion;
+            }
+            if (lavaFlow != null)
+            {
+                lavaFlow.Still = ReducedMotion;
+            }
             if (CardView.Active)
             {
                 // Esc, the back control or walking leaves card view (PRD v4 5.10.4).
@@ -580,6 +602,16 @@ namespace Eternities.Travel
             return stands;
         }
 
+        // Through the hub's portal at once, without the walk to it: for a tool that pictures a
+        // world (`WorldPictures`).
+        public void EnterWorld()
+        {
+            if (Place == Place.Hub && !InTransition && Failure == null && HubReady)
+            {
+                StartCoroutine(Through(HubPortal, Place.World, crossed: false));
+            }
+        }
+
         // Travel within the world (PRD v4 5.9.4): a portal opens 2 m in front of the avatar, facing
         // it; the avatar walks into it over a second, with no steering by the visitor, and arrives
         // on the stand's apron, facing the stand. The portal closes behind it.
@@ -628,15 +660,24 @@ namespace Eternities.Travel
         }
 
         // A world, built whole while the visitor is elsewhere: the pack's shards and the world's
-        // files are read and decoded on another thread, and the main thread builds the greybox
-        // (PRD v4 9.6, leg 1) in slices.
+        // files are read and decoded on another thread, where the world's dressing is planned too
+        // (`DressPlan`), while the kits the world names load (`KitDressing`); then the main thread
+        // builds the ground, the stands, the props, the water, the sound and the sky in slices.
         IEnumerator Load(string slug)
         {
             LoadStage = "reading";
             string directory = PackDirectory();
             // World entry reads the records of the launch, not the file again (PRD v4 8.3.2).
             StandsFile records = Records;
-            Task<WorldData> read = reading = Task.Run(() => WorldData.Load(directory, slug, records));
+            Task<(WorldData World, DressPlan Plan)> read = Task.Run(() =>
+            {
+                WorldData world = WorldData.Load(directory, slug, records);
+                DressPlan plan = DressPlan.Compute(world);
+                plan.ForTheBuild();
+                return (world, plan);
+            });
+            reading = read;
+            yield return LoadKit("temperate");
             while (!read.IsCompleted)
             {
                 yield return null;
@@ -646,19 +687,62 @@ namespace Eternities.Travel
                 Fail(read.Exception.GetBaseException());
                 yield break;
             }
-            World = read.Result;
+            (World, Dress) = read.Result;
+            reading = null;     // the read is done: the field is for a read that still runs when the app ends (`OnDestroy`)
             worldRoot = new GameObject(World.Plane.DisplayName);
-            yield return null;
 
-            LoadStage = "ground and paths";
-            if (greyboxMaterials.Length != Greybox.Materials)
+            // The kits of the world's ambient families and of its water (PRD v4 8.12.5).
+            LoadStage = "kits";
+            foreach (RegionDress region in Dress.Regions)
             {
-                Fail(new InvalidOperationException("the greybox has no materials; run the generation entry point (unity/Eternities/README.md)"));
+                yield return LoadKit(KitLoops.KitOf(region.Ambient));
+            }
+            foreach (WaterBody body in Dress.Water)
+            {
+                yield return LoadKit(KitLoops.OfWater(body.Kind).Kit);
+            }
+            KitDressing temperate = Kits.TryGetValue("temperate", out KitDressing held) ? held : null;
+            if (temperate == null || groundMaterials.Length != GroundMaterialCount || greyboxMaterials.Length != Greybox.Materials)
+            {
+                Fail(new InvalidOperationException("the world's kit or materials are missing; run the generation entry point (unity/Eternities/README.md)"));
                 yield break;
             }
-            Greybox = Greybox.Create(worldRoot.transform);
-            yield return Greybox.Fill(World, greyboxMaterials, LoadBudgetMs);
-            Ground = Greybox.Ground;
+
+            // The props' places, on another thread, from each kind's shape read here.
+            LoadStage = "props";
+            KitProp PropOf(Scatter.Kind kind) => temperate.Variant(Variants.Temperate[kind.Variant].Name).Props[kind.Growth];
+            Scatter.Kind[] kinds = Scatter.KindsOf(Variants.Temperate, (v, g) => temperate.Variant(Variants.Temperate[v].Name).Props[g].Shape());
+            var placed = new Scatter(Dress, kinds, Temperate.Density(QualitySettings.names[QualitySettings.GetQualityLevel()]));
+            Task place = Task.Run(placed.PlaceAll);
+            while (!place.IsCompleted)
+            {
+                yield return null;
+            }
+            if (place.IsFaulted)
+            {
+                Fail(place.Exception.GetBaseException());
+                yield break;
+            }
+            Scatter = placed;
+
+            LoadStage = "ground";
+            if (!WorldGround.Drawable(groundMaterials[FourLayerGround]) || !WorldGround.Drawable(groundMaterials[EightLayerGround]))
+            {
+                Fail(new InvalidOperationException("the ground has no material this build can draw; run the generation entry point (unity/Eternities/README.md)"));
+                yield break;
+            }
+            TerrainLayer LayerNamed(string name)
+            {
+                TerrainLayer layer = temperate.Layer(name);
+                foreach (KitVariant variant in temperate.Variants)
+                {
+                    layer ??= Array.Find(variant.Layers, candidate => candidate != null && candidate.name == name);
+                }
+                return layer;
+            }
+            yield return WorldGround.Build(Dress, LayerNamed, groundMaterials[FourLayerGround], groundMaterials[EightLayerGround], World.Plane.Slug,
+                worldRoot.transform, LoadBudgetMs, worldOwned, tiles => Tiles = tiles);
+            Ground = GroundSwitch.Create(worldRoot.transform, Tiles);
             yield return null;
 
             LoadStage = "stands";
@@ -672,12 +756,33 @@ namespace Eternities.Travel
             Exhibit.SetImages(Images.Array);
             CardView.Bind(World, Images, ImageSource);
 
+            LoadStage = "stones";
+            Greybox = Greybox.Create(worldRoot.transform);
+            yield return Greybox.Fill(World, greyboxMaterials, LoadBudgetMs, ground: false);
+
+            LoadStage = "props";
+            Props = PropField.Create(worldRoot.transform);
+            Props.Bind(Scatter, Array.ConvertAll(kinds, PropOf), Avatar.transform, Camera.main);
+            yield return null;
+
+            LoadStage = "water, sound, sky and the return portal";
+            Kits.TryGetValue("volcanic", out KitDressing volcanic);
+            Kits.TryGetValue("coast", out KitDressing coast);
+            if (WorldWater.Supported)
+            {
+                Water = WorldWater.Build(Dress, temperate.River, temperate.Lake, coast != null ? coast.Sea : null, volcanic != null ? volcanic.Lava : null, worldRoot.transform, worldOwned);
+                lavaFlow = Water.GetComponentInChildren<LavaFlow>();
+            }
+            Sound = BuildSound(Dress, Camera.main.transform);
+            Sky = WorldSky.Create(worldRoot.transform, worldOwned);
+
             // The return portal, at the pose the world names: 8 m south of the centre, facing it
             // (PRD v4 5.4.5, 4.13.5).
-            LoadStage = "the return portal";
             ReturnPortal = Portal.Build("Return portal", portalFrameMaterial, portalSurfaceMaterial, worldRoot.transform,
                 StandField.Ground(World.Layout.ReturnPortal.Position), StandField.Facing(World.Layout.ReturnPortal.Yaw));
             yield return null;
+            // The world is built: what only the build read goes (DEC-1005, the memory cut).
+            Dress.ForTheWalk();
             for (double waited = Now; Now - waited < LoadDelayForTests;)
             {
                 yield return null;
@@ -685,6 +790,130 @@ namespace Eternities.Travel
             WorldLoaded = true;
             loading = null;
             LoadStage = null;
+        }
+
+        LavaFlow lavaFlow;
+
+        // A kit's dressing, once a session world: loaded from its resource without stopping the frame.
+        IEnumerator LoadKit(string kit)
+        {
+            if (kit == null || Kits.ContainsKey(kit))
+            {
+                yield break;
+            }
+            ResourceRequest request = Resources.LoadAsync<KitDressing>(KitDressing.ResourceOf(kit));
+            while (!request.isDone)
+            {
+                yield return null;
+            }
+            Kits[kit] = request.asset as KitDressing;
+        }
+
+        // The ambient bed of every family the world's regions name, and a source on every body of
+        // water (PRD v4 5.12.1, 5.12.3): rivers, ponds and lakes, the sea along its shore, and lava.
+        WorldSound BuildSound(DressPlan plan, Transform listener)
+        {
+            WorldSound sound = WorldSound.Create(worldRoot.transform, listener, at =>
+            {
+                int texel = plan.Grid.At(at.x, at.z);
+                return (plan.Regions[plan.Region[texel]].Ambient, plan.Regions[plan.Other[texel]].Ambient, plan.Share(texel));
+            });
+            foreach (RegionDress region in plan.Regions)
+            {
+                string kit = KitLoops.KitOf(region.Ambient);
+                if (kit != null && Kits.TryGetValue(kit, out KitDressing dressing) && dressing != null)
+                {
+                    sound.Bed(region.Ambient, dressing.Loop(region.Ambient));
+                }
+            }
+            AudioClip Loop((string Kit, string Loop) of) => of.Kit != null && Kits.TryGetValue(of.Kit, out KitDressing dressing) && dressing != null ? dressing.Loop(of.Loop) : null;
+            float level = DressPlan.WaterLevel;
+            int index = 0;
+            foreach (WaterBody body in plan.Water)
+            {
+                AudioClip clip = Loop(KitLoops.OfWater(body.Kind));
+                string name = $"{body.Kind} {index++}";
+                if (body.Line.Count > 1)
+                {
+                    float height = body.Kind == WaterBody.Lava ? DressPlan.LavaLevel : level;
+                    var line = body.Line.ConvertAll(point => new Vector3(point.x, height, point.y));
+                    bool lava = body.Kind == WaterBody.Lava;
+                    sound.Water(name, clip, at => WorldSound.NearestOnLine(line, at), lava ? 5 : 6, lava ? 90 : 140, lava ? 0.8f : 0.9f, 60);
+                }
+                else if (body.Kind == WaterBody.Sea)
+                {
+                    // Each sea's own shore: one source a sea (DEC-1194 N9).
+                    List<Vector3> shore = Shore(plan, DressPlan.WetSea, body.Region);
+                    if (shore.Count > 0)
+                    {
+                        sound.Water(name, clip, at => Nearest(shore, at), 15, 260, 1, 120);
+                    }
+                }
+                else
+                {
+                    Vector3 centre = new Vector3(body.Centre.x, body.Kind == WaterBody.Lava ? DressPlan.LavaLevel : level, body.Centre.y);
+                    float radius = body.Radius;
+                    bool lake = body.Kind == WaterBody.Lake;
+                    sound.Water(name, clip, at =>
+                    {
+                        Vector3 away = at - centre;
+                        away.y = 0;
+                        return away.magnitude <= radius ? new Vector3(at.x, centre.y, at.z) : centre + away.normalized * radius;
+                    }, lake ? 8 : 4, lake ? 120 : 50, lake ? 0.8f : 0.5f, 90);
+                }
+            }
+            // A marsh's pools are no body of water, but they are heard as a lake's edge is: one
+            // source a marsh, riding the nearest of its pools' shores (PRD v4 5.12.3; DEC-1194 B1).
+            for (int r = 0; r < plan.Regions.Length; r++)
+            {
+                if (plan.Regions[r].Water != WaterBody.Marsh)
+                {
+                    continue;
+                }
+                List<Vector3> pools = Shore(plan, DressPlan.WetMarsh, r);
+                if (pools.Count > 0)
+                {
+                    sound.Water($"{WaterBody.Marsh} {index++}", Loop(KitLoops.OfWater(WaterBody.Marsh)), at => Nearest(pools, at), 4, 50, 0.5f, 90);
+                }
+            }
+            sound.Settle();
+            return sound;
+        }
+
+        // The texels of a kind of water in a region beside dry ground, every few metres, at the
+        // water's level.
+        static List<Vector3> Shore(DressPlan plan, byte kind, int region)
+        {
+            var shore = new List<Vector3>();
+            int n = plan.N, step = Mathf.Max(1, Mathf.RoundToInt(6 / plan.Grid.Texel));
+            for (int row = step; row < n - step; row += step)
+            {
+                for (int column = step; column < n - step; column += step)
+                {
+                    int i = row * n + column;
+                    if (plan.Wet[i] == kind && plan.Region[i] == region && (plan.Wet[i - step] != kind || plan.Wet[i + step] != kind || plan.Wet[i - step * n] != kind || plan.Wet[i + step * n] != kind))
+                    {
+                        shore.Add(new Vector3(plan.Grid.X(column), DressPlan.WaterLevel, plan.Grid.Z(row)));
+                    }
+                }
+            }
+            return shore;
+        }
+
+        static Vector3 Nearest(List<Vector3> points, Vector3 at)
+        {
+            Vector3 best = points[0];
+            float bestDistance = float.MaxValue;
+            foreach (Vector3 point in points)
+            {
+                float d = (point.x - at.x) * (point.x - at.x) + (point.z - at.z) * (point.z - at.z);
+                if (d < bestDistance)
+                {
+                    bestDistance = d;
+                    best = point;
+                }
+            }
+            return best;
         }
 
         void Unload()
@@ -711,12 +940,28 @@ namespace Eternities.Travel
             worldOwned.Clear();
             World?.Dispose();
             World = null;
+            // The plan's grids and the props' places go with the world, whatever still holds the
+            // plan or the scatter: after a first visit they stayed in the heap, and the next
+            // visit's plan was built beside them (DEC-1005, the memory cut).
+            Dress?.Release();
+            Scatter?.Release();
             Greybox = null;
             Stands = null;
             Images = null;
             Ground = null;
+            Tiles = null;
+            Dress = null;
+            Scatter = null;
+            Props = null;
+            Sound = null;
+            Water = null;
+            Sky = null;
+            lavaFlow = null;
             ReturnPortal = null;
             WorldLoaded = false;
+            // The kits leave with the world: the hub holds none of them (DEC-1055, N20).
+            Kits.Clear();
+            Resources.UnloadUnusedAssets();
         }
 
         // The portal transition (PRD v4 5.9.1, 5.9.2): the visitor's input is locked, the avatar
