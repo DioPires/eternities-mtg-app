@@ -318,6 +318,7 @@ def _world(
                 "kit": row.get("kit"),
                 "variant": row.get("variant"),
                 "water": row.get("water"),
+                "ambient": row.get("ambient"),
                 "cell": _rounded(cell),
                 "firstSite": first,
             }
