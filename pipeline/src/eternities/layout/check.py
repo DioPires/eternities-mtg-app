@@ -251,6 +251,9 @@ _CONTRACT_VERSION: Final = 4
 _COLOUR_BITS: Final = 5
 _GOLD: Final = 5
 _COLOURLESS: Final = 6
+_INT32_LEAST: Final = -(1 << 31)
+_INT32_MOST: Final = (1 << 31) - 1
+"""Every integer of a world document lies in this range, the width of a stand's ``x`` (4.13.5)."""
 _SET_ID_MOST: Final = (1 << 16) - 1
 """Every set id of an era lies in 0 to this, the width of a stand's set id (4.16.3)."""
 
@@ -994,6 +997,30 @@ def _set_id(value: Any) -> int:
             f"the set id {number} lies outside the uint16 range of 4.16.3, 0 to {_SET_ID_MOST}"
         )
     return number
+
+
+def _outside_int32(value: Any) -> tuple[list[str | int], int] | None:
+    """The first integer of a JSON value outside the int32 range, with the keys that lead to it.
+
+    Erratum 7 (4.13.5): every integer of a world document lies in the int32 range, read or not.
+    The C# checker reads a whole number up to 2^53 and computes in ``long``, so without this
+    the two checkers could read one document two ways.
+    """
+    if type(value) is int:
+        return None if _INT32_LEAST <= value <= _INT32_MOST else ([], value)
+    members: list[tuple[str | int, Any]]
+    if isinstance(value, dict):
+        members = [(str(key), member) for key, member in cast("dict[Any, Any]", value).items()]
+    elif isinstance(value, list):
+        members = list(enumerate(cast("list[Any]", value)))
+    else:
+        return None
+    for key, member in members:
+        found = _outside_int32(member)
+        if found is not None:
+            found[0].insert(0, key)
+            return found
+    return None
 
 
 def _first_float(value: Any) -> tuple[list[str | int], float] | None:
@@ -2488,6 +2515,15 @@ def check_world(
     if records is None:
         return report.result(_no_figures())
     report.tested("world-format")
+    outside = _outside_int32(world)
+    if outside is not None:
+        keys, value = outside
+        report.fail(
+            "world-format",
+            f"the world document holds {value} at {_place(keys) or 'its top'}, outside the int32 "
+            f"range of 4.13.5, {_INT32_LEAST} to {_INT32_MOST}",
+        )
+        return report.result(_no_figures())
     for name, document in (("world", world), ("lore", lore)):
         found = _first_float(document)
         if found is not None:

@@ -1,0 +1,16 @@
+# Sources of the `forest` kit (PRD v4 5.6, 8.12): one entry per binary asset,
+# the same rows as CREDITS.md plus the download URL and the SHA-256 of the file.
+#
+# `./fetch.sh` reads this file line by line, not with a YAML parser. Keep the shape: one `key: value`
+# per line, the entry's first key is `file`, no nested values, no multi-line strings.
+kit: forest
+assets:
+  - file: Audio/forest_woodland_loop.ogg
+    url: https://cdn.freesound.org/previews/160/160893_2337290-hq.ogg
+    sha256: ef4f260e890d5aa6380e8d1e70a66021744f5bec69be57c6e043926cbe5a7bde
+    source: https://freesound.org/people/ecfike/sounds/160893/
+    author: ecfike
+    licence: CC0 1.0
+    licence_url: https://creativecommons.org/publicdomain/zero/1.0/
+    fetched: 2026-10-16
+    use: "Ambient bed, `forest` (PRD 5.12.1); stereo, 59.1 s, its author's seamless loop"

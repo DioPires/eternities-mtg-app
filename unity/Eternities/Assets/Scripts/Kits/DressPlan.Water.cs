@@ -1,0 +1,810 @@
+using System;
+using System.Collections.Generic;
+using Eternities.Layout;
+using UnityEngine;
+
+namespace Eternities.Kits
+{
+    // The water each region row names (PRD v4 5.6.3, 8.4.2, Appendix F.1), in the world's water
+    // zones: inside the regions whose rows name it, away from every site's ground and 3 m clear of
+    // everything reserved, crossing the trail only at a ford. A river runs across its region between two ponds; a lake lies where its
+    // region has the most open ground; the sea comes in from the world's edge; a marsh's pools lie
+    // in its hollows; a lava flow runs as a river does, and never across the trail.
+    public sealed partial class DressPlan
+    {
+        // The route's grid, in metres a cell: four texels or so.
+        const float RouteCell = 4;
+        // What a cell of the route near the trail costs, against 1 to 4 for a cell of open ground.
+        const float TrailCost = 400;
+        // A bank rises at most this many metres a metre on average, out to `WidestBank`: under a
+        // highland's hills a lake's shore is a slope and not a wall.
+        const float BankSlope = 0.45f, WidestBank = 30;
+        // Toward its region's boundary the sea's band narrows to nothing over about this many
+        // metres, and the coast bends out this far past the world's edge (`SeaShare`).
+        const float SeaFade = 90, SeaOut = Margin + 40;
+        // A ford reaches along its river at most this many metres each side of the crossing.
+        const float FordBox = 60;
+        // A lake's or a pond's shore keeps this many metres inside its region (8.4.2 item 2).
+        const float ShoreInside = 3;
+        // A river or a lava flow winds about its route: so far each side at most, so long a bend.
+        const float Meander = 9, MeanderFrom = 55, MeanderTo = 95;
+
+        Distances fromSite;     // metres from anything reserved that is not the trail
+        float[] flowX, flowZ;   // by texel: the river's way where a river lies
+
+        void WaterOf()
+        {
+            int count = Grid.Count;
+            Wet = new byte[count];
+            flowX = new float[count];
+            flowZ = new float[count];
+            var siteGround = new bool[count];
+            for (int i = 0; i < count; i++)
+            {
+                siteGround[i] = Reserved[i] && FromTrail[i] > 0;
+            }
+            fromSite = DistanceTo(siteGround);
+
+            for (int r = 0; r < Regions.Length; r++)
+            {
+                switch (Regions[r].Water)
+                {
+                    case WaterBody.Sea:
+                        Sea(r);
+                        break;
+                    case WaterBody.Lake:
+                        Lake(r);
+                        break;
+                    case WaterBody.River:
+                        Flow(r, WaterBody.River, RiverHalfWidth, RiverBank, crossTrail: true);
+                        break;
+                    case WaterBody.Lava:
+                        Flow(r, WaterBody.Lava, LavaHalfWidth, LavaBank, crossTrail: false);
+                        break;
+                }
+            }
+            // The sea carved its own bed and beach; every other body carves its bed here.
+            foreach (WaterBody body in Water)
+            {
+                if (body.Kind != WaterBody.Sea)
+                {
+                    Carve(body);
+                }
+            }
+            FordsOf();
+            // A marsh's pools: its hollows under the water's level, in a region whose row names a
+            // marsh. Its sunken relief blends into a neighbour's, but no pool lies there (`Relief`).
+            for (int row = 0; row < N; row++)
+            {
+                for (int column = 0; column < N; column++)
+                {
+                    int i = row * N + column;
+                    if (Wet[i] == Dry && Regions[Region[i]].Water == WaterBody.Marsh && HeightAt(Grid.X(column), Grid.Z(row)) < WaterLevel)
+                    {
+                        Wet[i] = WetMarsh;
+                    }
+                }
+            }
+            Current = CurrentMap();
+            fromSite = FromBlob = null;     // only the water reads them
+            flowX = flowZ = null;
+        }
+
+        // The rivers' current map, from the rivers' way on every other texel or so. A pond is still.
+        Color32[] CurrentMap()
+        {
+            int side = CurrentSide, step = Mathf.Max(1, N / side);
+            var pixels = new Color32[side * side];
+            for (int row = 0; row < side; row++)
+            {
+                for (int column = 0; column < side; column++)
+                {
+                    int texel = Mathf.Min(row * step, N - 1) * N + Mathf.Min(column * step, N - 1);
+                    float x = flowX[texel], z = flowZ[texel];
+                    bool flows = x != 0 || z != 0;
+                    pixels[row * side + column] = new Color32((byte)Mathf.RoundToInt((0.5f + 0.5f * x) * 255), (byte)Mathf.RoundToInt((0.5f + 0.5f * z) * 255), (byte)(flows ? 255 : 0), 255);
+                }
+            }
+            return pixels;
+        }
+
+        // How much of its region's sea band a texel takes: all of it away from the region's
+        // boundary, narrowing to nothing at the boundary over half to one and a half `SeaFade`, by a
+        // noise along it (a cell's edge is straight, and a coast is not); none outside a sea
+        // region. Where the band narrows the coast bends out past the world's edge, and the hills
+        // there rise as they do past any other region's edge (`Relief`): no sea meets a
+        // neighbour's hills at a boundary, and none lies in a neighbour (8.4.2 item 2).
+        float SeaShare(int texel, float x, float z)
+        {
+            int region = Region[texel];
+            return Regions[region].Water != WaterBody.Sea ? 0
+                : Mathf.SmoothStep(0, 1, FromBoundary[texel] / (SeaFade * (0.5f + Raster.Fractal(x / 60, z / 60, seaSeeds[region] + 4, 2))));
+        }
+
+        uint[] seaSeeds;    // by region: the seed of its sea
+
+        // How far a texel lies from the ground a body of water keeps clear of: every site's blob and
+        // everything reserved, the trail too unless the water may cross it.
+        float Open(int texel, bool crossTrail) => Mathf.Min(FromBlob[texel], crossTrail ? fromSite[texel] : FromReserved[texel]);
+
+        // The sea (PRD v4 5.1.5: a natural edge): in a region whose row names it, from past the
+        // world's edge inward over a band that the noise widens and narrows, and never nearer
+        // anything reserved or any site than the water buffer and a beach.
+        void Sea(int region)
+        {
+            uint seed = Seed($"sea-{Regions[region].Id}");
+            var sea = new bool[Grid.Count];
+            bool any = false;
+            for (int row = 0; row < N; row++)
+            {
+                for (int column = 0; column < N; column++)
+                {
+                    int i = row * N + column;
+                    // The sea's region only (8.4.2 item 2), as much of the band as `SeaShare` gives.
+                    float x = Grid.X(column), z = Grid.Z(row);
+                    float fade = Region[i] == region ? SeaShare(i, x, z) : 0;
+                    if (fade <= 0)
+                    {
+                        continue;
+                    }
+                    float inward = Radius - Mathf.Sqrt(x * x + z * z);
+                    float angle = Mathf.Atan2(z, x);
+                    // The coast bends on three scales: bays a few hundred metres apart, coves, and
+                    // the points and inlets of a walk along it.
+                    float band = fade * (SeaBand * (0.4f + 0.85f * Raster.Noise(Mathf.Cos(angle) * 4 + 11, Mathf.Sin(angle) * 4 + 11, seed)
+                        + 0.35f * Raster.Noise(Mathf.Cos(angle) * 22 + 31, Mathf.Sin(angle) * 22 + 31, seed + 2))
+                        + 40 * (Raster.Fractal(x / 45, z / 45, seed + 3, 3) - 0.5f)) - (1 - fade) * SeaOut;
+                    if (inward < band && Open(i, crossTrail: false) > WaterBuffer + Beach + 6 * Raster.Noise(x / 25, z / 25, seed + 1))
+                    {
+                        sea[i] = any = true;
+                    }
+                }
+            }
+            if (!any)
+            {
+                return;
+            }
+            Water.Add(new WaterBody { Kind = WaterBody.Sea, Region = region, Seed = seed });
+            // The sea's bed under the sea, then the beach on the land, each from its own distances
+            // in the plan's scratch grid: a sample is under one or the other.
+            float[] fromSea = Grid.Distance(sea, scratch ??= new float[Grid.Count]);
+            for (int row = 0; row < Samples; row++)
+            {
+                for (int column = 0; column < Samples; column++)
+                {
+                    int texel = Math.Min(row, N - 1) * N + Math.Min(column, N - 1);
+                    int s = row * Samples + column;
+                    if (!sea[texel] && fromSea[texel] < 120)
+                    {
+                        // The beach: up from the water's edge at about five degrees for 30 m, and
+                        // then no steeper than a slope that reaches some 30 degrees at 90 m, so the
+                        // hills past the world's edge rise behind a beach and stand on no wall.
+                        float d = fromSea[texel], past = Mathf.Max(0, d - 30);
+                        Heights[s] = Mathf.Min(Heights[s], WaterLevel + 0.1f + 0.09f * d + 0.004f * past * past);
+                    }
+                }
+            }
+            var land = new bool[Grid.Count];
+            for (int i = 0; i < land.Length; i++)
+            {
+                land[i] = !sea[i];
+            }
+            float[] intoSea = Grid.Distance(land, scratch);
+            for (int row = 0; row < Samples; row++)
+            {
+                for (int column = 0; column < Samples; column++)
+                {
+                    int texel = Math.Min(row, N - 1) * N + Math.Min(column, N - 1);
+                    int s = row * Samples + column;
+                    if (sea[texel])
+                    {
+                        Heights[s] = Mathf.Min(Heights[s], WaterLevel - 0.25f - Mathf.Min(9, 0.11f * intoSea[texel]));
+                    }
+                }
+            }
+            for (int i = 0; i < sea.Length; i++)
+            {
+                if (sea[i])
+                {
+                    Wet[i] = WetSea;
+                }
+            }
+        }
+
+        // A lake's bank, in metres.
+        const float Bank = 8;
+
+        // A lake where the region has the most open ground, as large as that ground holds it.
+        void Lake(int region)
+        {
+            int best = -1;
+            float most = 0;
+            for (int i = 0; i < Grid.Count; i++)
+            {
+                if (Region[i] == region && FromBoundary[i] > 20 && Inside(i, 40))
+                {
+                    // As large as the open ground holds it, and its shore inside the region.
+                    float room = Mathf.Min(Open(i, crossTrail: false) - WaterBuffer - Bank, FromBoundary[i] - ShoreInside);
+                    if (room > most)
+                    {
+                        most = room;
+                        best = i;
+                    }
+                }
+            }
+            float radius = Mathf.Min(75, most / 1.18f);
+            if (best < 0 || radius < 12)
+            {
+                return;
+            }
+            Water.Add(new WaterBody
+            {
+                Kind = WaterBody.Lake, Region = region, Centre = new Vector2(Grid.X(best % N), Grid.Z(best / N)), Radius = radius, Seed = Seed($"lake-{Regions[region].Id}"),
+            });
+        }
+
+        bool Inside(int texel, float by)
+        {
+            float x = Grid.X(texel % N), z = Grid.Z(texel / N);
+            return x * x + z * z < (Radius - by) * (Radius - by);
+        }
+
+        // A river or a lava flow across its region: the longest way the open ground gives between
+        // two of its ends, found on a grid of `RouteCell`, round about the trail and over it only
+        // where it must. A river has a pond at each end; a lava flow a pool at its head.
+        void Flow(int region, string kind, float half, float bank, bool crossTrail)
+        {
+            float clearance = half + Mathf.Max(bank + FlatApron, WaterBuffer) + 1.5f;
+            int cells = Mathf.CeilToInt(Grid.Side / RouteCell);
+            float CellX(int c) => Grid.Min + (c + 0.5f) * RouteCell;
+            int TexelOf(int cell) => Grid.At(CellX(cell % cells), CellX(cell / cells));
+            uint seed = Seed($"{kind}-{Regions[region].Id}");
+            // The cost of each cell, or infinity where the water may not go.
+            var cost = new float[cells * cells];
+            int open = 0;
+            for (int cell = 0; cell < cost.Length; cell++)
+            {
+                int t = TexelOf(cell);
+                bool allowed = Region[t] == region && FromBoundary[t] > half + bank && Inside(t, half + bank + 25)
+                    && FromBlob[t] >= clearance && (crossTrail ? fromSite[t] : FromReserved[t]) >= clearance;
+                if (!allowed)
+                {
+                    cost[cell] = float.PositiveInfinity;
+                    continue;
+                }
+                float x = CellX(cell % cells), z = CellX(cell / cells);
+                // Near the trail a cell costs as much as a long way round, so a river crosses the
+                // trail square on, at one ford, or keeps away from it.
+                cost[cell] = 1 + 3 * Raster.Noise(x / 60, z / 60, seed) + (FromTrail[t] < clearance ? TrailCost : 0);
+                open++;
+            }
+            if (open < 50)
+            {
+                return;
+            }
+            // The two ends: the open cell farthest from where the region's open ground starts, and
+            // the one farthest from that, each by way of the open ground.
+            int start = -1;
+            float roomiest = -1;
+            for (int cell = 0; cell < cost.Length; cell++)
+            {
+                if (!float.IsInfinity(cost[cell]) && FromBlob[TexelOf(cell)] > roomiest)
+                {
+                    roomiest = FromBlob[TexelOf(cell)];
+                    start = cell;
+                }
+            }
+            int a = Farthest(cost, cells, start), b = Farthest(cost, cells, a);
+            List<int> route = Route(cost, cells, a, b);
+            if (route == null || route.Count < 12)
+            {
+                return;
+            }
+            var points = new List<Vector2>(route.Count);
+            foreach (int cell in route)
+            {
+                points.Add(new Vector2(CellX(cell % cells), CellX(cell / cells)));
+            }
+            for (int pass = 0; pass < 3; pass++)
+            {
+                points = Chaikin(points);
+            }
+            var body = new WaterBody { Kind = kind, Region = region, HalfWidth = half, Seed = seed, Line = Wind(Resample(points, 2), region, half + bank, clearance, crossTrail, seed) };
+            Water.Add(body);
+            // The ponds: as large as the open ground about each end holds them.
+            foreach ((Vector2 end, bool head) in new[] { (body.Line[0], true), (body.Line[body.Line.Count - 1], false) })
+            {
+                if (kind == WaterBody.Lava && !head)
+                {
+                    continue;
+                }
+                int at = Grid.At(end.x, end.y);
+                float room = Mathf.Min(Open(at, crossTrail: false) - WaterBuffer - bank, FromBoundary[at] - ShoreInside);
+                float radius = Mathf.Min(kind == WaterBody.Lava ? 7 : 13, room / 1.18f);
+                if (radius > half + 1)
+                {
+                    Water.Add(new WaterBody { Kind = kind == WaterBody.Lava ? WaterBody.Lava : WaterBody.Pond, Region = region, Centre = end, Radius = radius, Seed = seed + (head ? 1u : 2u) });
+                }
+            }
+        }
+
+        // The line wound about itself: each point moved across the line by a wave of its own length
+        // and as far as the open ground lets it, the move tapered to nothing at the ends and eased
+        // along the line so that no bend is sharp. A point keeps `clearance` from what it must, and
+        // `inside` from its region's boundary, as the route's cells do.
+        List<Vector2> Wind(List<Vector2> line, int region, float inside, float clearance, bool crossTrail, uint seed)
+        {
+            int count = line.Count;
+            var offset = new float[count];
+            float wave = Mathf.Lerp(MeanderFrom, MeanderTo, Raster.Hash(1, 2, seed)), phase = Raster.Hash(3, 4, seed) * Mathf.PI * 2;
+            var across = new Vector2[count];
+            for (int i = 0; i < count; i++)
+            {
+                Vector2 along = line[Mathf.Min(i + 1, count - 1)] - line[Mathf.Max(i - 1, 0)];
+                across[i] = along.sqrMagnitude > 0 ? Vector2.Perpendicular(along.normalized) : Vector2.zero;
+                float s = i * 2, taper = Mathf.Clamp01(Mathf.Min(s, (count - 1 - i) * 2) / 30);
+                float wanted = Meander * taper * (Mathf.Sin(s / wave * Mathf.PI * 2 + phase) + 0.35f * Mathf.Sin(s / wave * Mathf.PI * 5.3f + phase * 1.7f)) / 1.35f;
+                // As far as the ground lets it, in steps.
+                for (float share = 1; share > 0.05f; share *= 0.6f)
+                {
+                    Vector2 moved = line[i] + across[i] * (wanted * share);
+                    int t = Grid.At(moved.x, moved.y);
+                    if (Region[t] == region && FromBoundary[t] > inside && FromBlob[t] >= clearance && (crossTrail ? fromSite[t] : FromReserved[t]) >= clearance)
+                    {
+                        offset[i] = wanted * share;
+                        break;
+                    }
+                }
+            }
+            // Eased along the line, over some 20 m.
+            var eased = new float[count];
+            for (int i = 0; i < count; i++)
+            {
+                float sum = 0, weight = 0;
+                for (int j = Mathf.Max(0, i - 10); j <= Mathf.Min(count - 1, i + 10); j++)
+                {
+                    float w = 1 - Mathf.Abs(j - i) / 11f;
+                    sum += offset[j] * w;
+                    weight += w;
+                }
+                eased[i] = Mathf.Abs(offset[i]) < Mathf.Abs(sum / weight) ? offset[i] : sum / weight;
+            }
+            var wound = new List<Vector2>(count);
+            for (int i = 0; i < count; i++)
+            {
+                wound.Add(line[i] + across[i] * eased[i]);
+            }
+            return wound;
+        }
+
+        // The open cell whose way from `from` is the longest, by a flood over the open cells.
+        static int Farthest(float[] cost, int cells, int from)
+        {
+            var reach = new float[cost.Length];
+            for (int i = 0; i < reach.Length; i++)
+            {
+                reach[i] = float.PositiveInfinity;
+            }
+            var queue = new Queue<int>();
+            reach[from] = 0;
+            queue.Enqueue(from);
+            int far = from;
+            while (queue.Count > 0)
+            {
+                int cell = queue.Dequeue();
+                if (reach[cell] > reach[far])
+                {
+                    far = cell;
+                }
+                int cx = cell % cells, cz = cell / cells;
+                for (int dz = -1; dz <= 1; dz++)
+                {
+                    for (int dx = -1; dx <= 1; dx++)
+                    {
+                        int x = cx + dx, z = cz + dz;
+                        if ((dx == 0 && dz == 0) || x < 0 || z < 0 || x >= cells || z >= cells)
+                        {
+                            continue;
+                        }
+                        int next = z * cells + x;
+                        if (!float.IsInfinity(cost[next]) && float.IsInfinity(reach[next]))
+                        {
+                            reach[next] = reach[cell] + (dx != 0 && dz != 0 ? 1.4142f : 1);
+                            queue.Enqueue(next);
+                        }
+                    }
+                }
+            }
+            return far;
+        }
+
+        // The cheapest way between two cells, by A* over eight neighbours, or null. The open cells
+        // come out least estimate first, ties by the lower cell; the search's state is in arrays
+        // of the route's grid, made once a search (DEC-1005, the memory cut).
+        static List<int> Route(float[] cost, int cells, int from, int to)
+        {
+            var g = new float[cost.Length];
+            var came = new int[cost.Length];
+            var closed = new bool[cost.Length];
+            for (int i = 0; i < g.Length; i++)
+            {
+                g[i] = float.PositiveInfinity;
+                came[i] = -1;
+            }
+            g[from] = 0;
+            var open = new OpenCells();
+            float H(int cell) => Vector2.Distance(new Vector2(cell % cells, cell / cells), new Vector2(to % cells, to / cells));
+            open.Add((H(from), from));
+            while (open.Count > 0)
+            {
+                (float _, int cell) = open.Take();
+                if (cell == to)
+                {
+                    var path = new List<int> { to };
+                    while (came[path[path.Count - 1]] >= 0)
+                    {
+                        path.Add(came[path[path.Count - 1]]);
+                    }
+                    path.Reverse();
+                    return path;
+                }
+                if (closed[cell])
+                {
+                    continue;
+                }
+                closed[cell] = true;
+                int cx = cell % cells, cz = cell / cells;
+                for (int dz = -1; dz <= 1; dz++)
+                {
+                    for (int dx = -1; dx <= 1; dx++)
+                    {
+                        int x = cx + dx, z = cz + dz;
+                        if ((dx == 0 && dz == 0) || x < 0 || z < 0 || x >= cells || z >= cells)
+                        {
+                            continue;
+                        }
+                        int next = z * cells + x;
+                        if (float.IsInfinity(cost[next]) || closed[next])
+                        {
+                            continue;
+                        }
+                        float step = (dx != 0 && dz != 0 ? 1.4142f : 1) * (cost[cell] + cost[next]) / 2;
+                        float tentative = g[cell] + step;
+                        if (tentative < g[next])
+                        {
+                            g[next] = tentative;
+                            came[next] = cell;
+                            open.Add((tentative + H(next), next));
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+
+        // A binary heap of open cells, least first by estimate and then by cell.
+        sealed class OpenCells
+        {
+            readonly List<(float F, int Cell)> heap = new List<(float, int)>();
+
+            public int Count => heap.Count;
+
+            static bool Before((float F, int Cell) a, (float F, int Cell) b) => a.F < b.F || (a.F == b.F && a.Cell < b.Cell);
+
+            public void Add((float F, int Cell) item)
+            {
+                heap.Add(item);
+                for (int i = heap.Count - 1; i > 0;)
+                {
+                    int parent = (i - 1) / 2;
+                    if (!Before(heap[i], heap[parent]))
+                    {
+                        break;
+                    }
+                    (heap[i], heap[parent]) = (heap[parent], heap[i]);
+                    i = parent;
+                }
+            }
+
+            public (float F, int Cell) Take()
+            {
+                (float F, int Cell) least = heap[0];
+                heap[0] = heap[heap.Count - 1];
+                heap.RemoveAt(heap.Count - 1);
+                for (int i = 0; ;)
+                {
+                    int left = 2 * i + 1, right = left + 1, first = i;
+                    if (left < heap.Count && Before(heap[left], heap[first]))
+                    {
+                        first = left;
+                    }
+                    if (right < heap.Count && Before(heap[right], heap[first]))
+                    {
+                        first = right;
+                    }
+                    if (first == i)
+                    {
+                        break;
+                    }
+                    (heap[i], heap[first]) = (heap[first], heap[i]);
+                    i = first;
+                }
+                return least;
+            }
+        }
+
+        // Chaikin's corner cutting: the line, rounded once.
+        static List<Vector2> Chaikin(List<Vector2> points)
+        {
+            var round = new List<Vector2>(points.Count * 2) { points[0] };
+            for (int i = 0; i + 1 < points.Count; i++)
+            {
+                round.Add(Vector2.Lerp(points[i], points[i + 1], 0.25f));
+                round.Add(Vector2.Lerp(points[i], points[i + 1], 0.75f));
+            }
+            round.Add(points[points.Count - 1]);
+            return round;
+        }
+
+        // The line, a point every `step` metres along it and at its end.
+        static List<Vector2> Resample(List<Vector2> points, float step)
+        {
+            var even = new List<Vector2> { points[0] };
+            float carried = 0;
+            for (int i = 0; i + 1 < points.Count; i++)
+            {
+                Vector2 a = points[i], b = points[i + 1];
+                float length = Vector2.Distance(a, b), at = step - carried;
+                while (at <= length)
+                {
+                    even.Add(Vector2.Lerp(a, b, at / length));
+                    at += step;
+                }
+                carried = length - (at - step);
+            }
+            if (Vector2.Distance(even[even.Count - 1], points[points.Count - 1]) > step * 0.25f)
+            {
+                even.Add(points[points.Count - 1]);
+            }
+            return even;
+        }
+
+        // A body's bed into the heights, under its banks, and its water onto the texels.
+        void Carve(WaterBody body)
+        {
+            bool line = body.Line.Count > 1;
+            bool lava = body.Kind == WaterBody.Lava;
+            float half = line ? body.HalfWidth : 0;
+            float bank = lava ? LavaBank : body.Kind == WaterBody.Lake ? Bank : RiverBank;
+            float edge = lava ? LavaLevel - 0.15f : WaterLevel - 0.1f;
+            float floor = lava ? LavaLevel - 0.5f : body.Kind == WaterBody.Lake ? WaterLevel - 3.5f : body.Kind == WaterBody.Pond ? WaterLevel - 1.4f : WaterLevel - RiverDepth;
+            byte wet = lava ? WetLava : body.Kind == WaterBody.Lake ? WetStill : WetRiver;
+            // Under high ground a bank is as wide as its slope needs, up to `WidestBank`.
+            float reach = (line ? half : body.Radius * 1.2f) + Mathf.Max(bank, WidestBank) + 1;
+            float x0 = float.MaxValue, z0 = float.MaxValue, x1 = float.MinValue, z1 = float.MinValue;
+            if (line)
+            {
+                foreach (Vector2 p in body.Line)
+                {
+                    x0 = Mathf.Min(x0, p.x);
+                    z0 = Mathf.Min(z0, p.y);
+                    x1 = Mathf.Max(x1, p.x);
+                    z1 = Mathf.Max(z1, p.y);
+                }
+            }
+            else
+            {
+                x0 = x1 = body.Centre.x;
+                z0 = z1 = body.Centre.y;
+            }
+            x0 -= reach;
+            z0 -= reach;
+            x1 += reach;
+            z1 += reach;
+            int c0 = Mathf.Max(0, Mathf.FloorToInt((x0 - Grid.Min) / Grid.Texel)), c1 = Mathf.Min(N, Mathf.CeilToInt((x1 - Grid.Min) / Grid.Texel));
+            int r0 = Mathf.Max(0, Mathf.FloorToInt((z0 - Grid.Min) / Grid.Texel)), r1 = Mathf.Min(N, Mathf.CeilToInt((z1 - Grid.Min) / Grid.Texel));
+            // Line bodies: the segments near each cell, so a point does not test the whole line.
+            var segments = line ? new SegmentIndex(body.Line, reach) : null;
+            // Where a river crosses the trail, its ford sets the trail's height (`FordsOf`), and
+            // there a bank keeps clear of site ground only. Everywhere else a bank reaches the
+            // ground before anything reserved, so reserved ground stays flat at its level.
+            var crossings = new List<Vector2>();
+            if (body.Kind == WaterBody.River)
+            {
+                foreach (Vector2 p in body.Line)
+                {
+                    if (FromTrail[Grid.At(p.x, p.y)] <= LayoutConstants.PathHalfWidth / 1000f + half)
+                    {
+                        crossings.Add(p);
+                    }
+                }
+            }
+            float fordReach = FordBox + half + RiverBank + 1;
+            for (int row = r0; row <= r1; row++)
+            {
+                for (int column = c0; column <= c1; column++)
+                {
+                    // A height sample at the corner, and the texel whose lower corner it is.
+                    float x = Grid.Min + column * Grid.Texel, z = Grid.Min + row * Grid.Texel;
+                    float inward = Inward(body, segments, new Vector2(x, z), out Vector2 _);
+                    float ground = Heights[row * Samples + column];
+                    float wide = Mathf.Clamp((ground - edge) / BankSlope, bank, WidestBank);
+                    if (inward < 0)
+                    {
+                        bool atFord = false;
+                        for (int k = 0; k < crossings.Count && !atFord; k++)
+                        {
+                            atFord = (crossings[k] - new Vector2(x, z)).sqrMagnitude < fordReach * fordReach;
+                        }
+                        wide = Mathf.Min(wide, -inward + AtCorner(atFord ? fromSite : FromReserved, row, column));
+                    }
+                    float h = inward >= 0
+                        ? Mathf.Lerp(edge, floor, Mathf.SmoothStep(0, 1, inward / (line ? half : Mathf.Max(4, body.Radius * 0.35f))))
+                        : Mathf.Lerp(edge, ground, Mathf.SmoothStep(0, 1, -inward / wide));
+                    int s = row * Samples + column;
+                    Heights[s] = Mathf.Min(Heights[s], h);
+                }
+            }
+            // The water lies on every texel of the bed and the bank that is under its level.
+            float level = lava ? LavaLevel : WaterLevel;
+            for (int row = r0; row < Mathf.Min(r1, N); row++)
+            {
+                for (int column = c0; column < Mathf.Min(c1, N); column++)
+                {
+                    float tx = Grid.X(column), tz = Grid.Z(row);
+                    float into = Inward(body, segments, new Vector2(tx, tz), out Vector2 along);
+                    int t = row * N + column;
+                    if (into >= -bank && HeightAt(tx, tz) < level && (Wet[t] == Dry || wet == WetRiver) && Region[t] == body.Region)
+                    {
+                        Wet[t] = wet;
+                        if (wet == WetRiver && line)
+                        {
+                            flowX[t] = along.x;
+                            flowZ[t] = along.y;
+                        }
+                    }
+                }
+            }
+        }
+
+        // How far a point lies inside a body's water: positive inside, negative outside. For a line
+        // body, its half width less the distance to its middle, and the line's way there.
+        static float Inward(WaterBody body, SegmentIndex segments, Vector2 point, out Vector2 along)
+        {
+            along = Vector2.zero;
+            if (segments != null)
+            {
+                float best = float.MaxValue;
+                foreach (int i in segments.Near(point))
+                {
+                    Vector2 a = body.Line[i], b = body.Line[i + 1];
+                    float d2 = Raster.SquaredToSegment(point, a, b);
+                    if (d2 < best)
+                    {
+                        best = d2;
+                        along = (b - a).normalized;
+                    }
+                }
+                return best == float.MaxValue ? float.MinValue / 2 : body.HalfWidth - Mathf.Sqrt(best);
+            }
+            return body.ShoreAt(point) - Vector2.Distance(point, body.Centre);
+        }
+
+        // A line's segments by the cells of a coarse grid that each one's reach touches.
+        sealed class SegmentIndex
+        {
+            const float Cell = 16;
+            readonly Dictionary<long, List<int>> cells = new Dictionary<long, List<int>>();
+            static readonly List<int> None = new List<int>();
+
+            public SegmentIndex(List<Vector2> line, float reach)
+            {
+                for (int i = 0; i + 1 < line.Count; i++)
+                {
+                    Vector2 a = line[i], b = line[i + 1];
+                    int x0 = Mathf.FloorToInt((Mathf.Min(a.x, b.x) - reach) / Cell), x1 = Mathf.FloorToInt((Mathf.Max(a.x, b.x) + reach) / Cell);
+                    int z0 = Mathf.FloorToInt((Mathf.Min(a.y, b.y) - reach) / Cell), z1 = Mathf.FloorToInt((Mathf.Max(a.y, b.y) + reach) / Cell);
+                    for (int z = z0; z <= z1; z++)
+                    {
+                        for (int x = x0; x <= x1; x++)
+                        {
+                            long key = ((long)z << 32) ^ (uint)x;
+                            if (!cells.TryGetValue(key, out List<int> list))
+                            {
+                                cells[key] = list = new List<int>();
+                            }
+                            list.Add(i);
+                        }
+                    }
+                }
+            }
+
+            public List<int> Near(Vector2 point)
+            {
+                long key = ((long)Mathf.FloorToInt(point.y / Cell) << 32) ^ (uint)Mathf.FloorToInt(point.x / Cell);
+                return cells.TryGetValue(key, out List<int> list) ? list : None;
+            }
+        }
+
+        // Where a river crosses the trail: a ford, its bed raised under the trail to `FordDepth`
+        // below the water so that the trail goes through the water and not under it.
+        void FordsOf()
+        {
+            for (int index = 0; index < Water.Count; index++)
+            {
+                WaterBody river = Water[index];
+                if (river.Kind != WaterBody.River)
+                {
+                    continue;
+                }
+                int crossing = -1;
+                float nearest = float.MaxValue;
+                for (int i = 0; i <= river.Line.Count; i++)
+                {
+                    float onTrail = i < river.Line.Count ? FromTrail[Grid.At(river.Line[i].x, river.Line[i].y)] : float.MaxValue;
+                    if (onTrail <= LayoutConstants.PathHalfWidth / 1000f + river.HalfWidth)
+                    {
+                        if (onTrail < nearest)
+                        {
+                            nearest = onTrail;
+                            crossing = i;
+                        }
+                    }
+                    else if (crossing >= 0)
+                    {
+                        Vector2 at = river.Line[crossing];
+                        Vector2 along = river.Line[Mathf.Min(crossing + 1, river.Line.Count - 1)] - river.Line[Mathf.Max(crossing - 1, 0)];
+                        Fords.Add(new Ford { At = at, Along = along.normalized, River = index });
+                        crossing = -1;
+                        nearest = float.MaxValue;
+                    }
+                }
+            }
+            // The ford is wherever the river's bed or banks reach the trail about its crossing: there
+            // the trail goes into the water, its bed held at `FordDepth` under the water's level.
+            foreach (Ford ford in Fords)
+            {
+                WaterBody river = Water[ford.River];
+                float bankReach = river.HalfWidth + RiverBank + 1;
+                var near = new List<int>();
+                for (int i = 0; i + 1 < river.Line.Count; i++)
+                {
+                    if (Vector2.Distance(river.Line[i], ford.At) < FordBox)
+                    {
+                        near.Add(i);
+                    }
+                }
+                float box = FordBox + bankReach;
+                int c0 = Mathf.Max(0, Mathf.FloorToInt((ford.At.x - box - Grid.Min) / Grid.Texel)), c1 = Mathf.Min(N, Mathf.CeilToInt((ford.At.x + box - Grid.Min) / Grid.Texel));
+                int r0 = Mathf.Max(0, Mathf.FloorToInt((ford.At.y - box - Grid.Min) / Grid.Texel)), r1 = Mathf.Min(N, Mathf.CeilToInt((ford.At.y + box - Grid.Min) / Grid.Texel));
+                float radius = 0;
+                for (int row = r0; row <= r1; row++)
+                {
+                    for (int column = c0; column <= c1; column++)
+                    {
+                        int texel = Math.Min(row, N - 1) * N + Math.Min(column, N - 1);
+                        // The trail and a step of its verge each side.
+                        if (FromTrail[texel] > 2.5f)
+                        {
+                            continue;
+                        }
+                        var corner = new Vector2(Grid.Min + column * Grid.Texel, Grid.Min + row * Grid.Texel);
+                        float nearest = float.MaxValue;
+                        foreach (int i in near)
+                        {
+                            nearest = Mathf.Min(nearest, Raster.SquaredToSegment(corner, river.Line[i], river.Line[i + 1]));
+                        }
+                        if (nearest > bankReach * bankReach)
+                        {
+                            continue;
+                        }
+                        int s = row * Samples + column;
+                        Heights[s] = Mathf.Max(Heights[s], WaterLevel - FordDepth);
+                        radius = Mathf.Max(radius, Vector2.Distance(corner, ford.At));
+                    }
+                }
+                ford.Radius = radius + Grid.Texel;
+            }
+        }
+    }
+}

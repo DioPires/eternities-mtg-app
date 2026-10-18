@@ -421,6 +421,42 @@ namespace Eternities.Tests
             Assert.That(Rules(Checker.Check(fixture.Stands, world, null, cards, LayoutFixtures.Trig)), Does.Not.Contain("stone-place"));
         }
 
+        // Erratum 7 (4.13.5): every integer of the world document lies in the int32 range. The
+        // arrival's yaw is an integer that no rule reads, and a cluster's arc one that the rules
+        // read: both are refused one past either end of the range, and nothing else is tested.
+        [Test]
+        public void AnIntegerOnePastTheInt32RangeIsRefusedUnderWorldFormat()
+        {
+            LayoutFixtures.Fixture fixture = LayoutFixtures.Named("rabiah");
+            List<Checker.CheckedCard> cards = LayoutFixtures.Cards(fixture);
+            object world = fixture.World;
+            Json.Object(Json.Object(world)["arrival"])["yaw"] = 2_147_483_648L;
+            Checker.Result result = Checker.Check(fixture.Stands, world, null, cards, LayoutFixtures.Trig);
+            Assert.That(Rules(result), Is.EquivalentTo(new[] { "world-format" }));
+            StringAssert.Contains("2147483648 at arrival.yaw", Under(result, "world-format").Single());
+            world = fixture.World;
+            Json.Object(Json.Array(Json.Object(Json.Array(Json.Object(world)["sites"])[0])["clusters"])[0])["arc"] = -2_147_483_649L;
+            result = Checker.Check(fixture.Stands, world, null, cards, LayoutFixtures.Trig);
+            Assert.That(Rules(result), Is.EquivalentTo(new[] { "world-format" }));
+            StringAssert.Contains("-2147483649 at sites[0].clusters[0].arc", Under(result, "world-format").Single());
+        }
+
+        // The same document with 2^31 - 1 and -2^31 in the same places passes that rule.
+        [Test]
+        public void AnIntegerAtEitherEndOfTheInt32RangePassesWorldFormat()
+        {
+            LayoutFixtures.Fixture fixture = LayoutFixtures.Named("rabiah");
+            List<Checker.CheckedCard> cards = LayoutFixtures.Cards(fixture);
+            object world = fixture.World;
+            Json.Object(Json.Object(world)["arrival"])["yaw"] = 2_147_483_647L;
+            Assert.That(Rules(Checker.Check(fixture.Stands, world, null, cards, LayoutFixtures.Trig)), Is.Empty);
+            world = fixture.World;
+            Json.Object(Json.Array(Json.Object(Json.Array(Json.Object(world)["sites"])[0])["clusters"])[0])["arc"] = -2_147_483_648L;
+            Checker.Result result = Checker.Check(fixture.Stands, world, null, cards, LayoutFixtures.Trig);
+            Assert.That(Rules(result), Does.Not.Contain("world-format"));
+            Assert.That(result.Assertions["world-format"], Is.EqualTo(1));
+        }
+
         // 4.13.3: a file that is not a stands file is one violation, and nothing else is tested.
         [Test]
         public void AStandsFileOfAnotherVersionIsReported()

@@ -100,7 +100,7 @@ namespace Eternities.EditorTools
             if (named != null)
             {
                 App app = Object.FindAnyObjectByType<App>();
-                KitVariant[] scene = app.KitVariants;
+                KitVariant[] scene = Generate.Dressing("temperate").Variants;
                 bool any = false;
                 for (int i = 0; i < Variants.Temperate.Length; i++)
                 {
@@ -110,7 +110,7 @@ namespace Eternities.EditorTools
                         continue;
                     }
                     any = true;
-                    GameObject patch = Dress(variant, scene[i], app.GroundMaterials.Last(), Temperate.Density(quality));
+                    GameObject patch = Dress(variant, System.Array.Find(scene, held => held.Name == variant.Name), app.GroundMaterials[App.FourLayerGround], Temperate.Density(quality));
                     // Toward the sun: its azimuth is clockwise from north.
                     float toSun = Temperate.SunAzimuth * Mathf.Deg2Rad;
                     foreach ((string name, Vector3 ahead) in new[] { ("north", Vector3.forward), ("sun", new Vector3(Mathf.Sin(toSun), 0, Mathf.Cos(toSun))) })
@@ -280,10 +280,10 @@ namespace Eternities.EditorTools
             return patch;
         }
 
-        // The kit's meadow, as the world lays it: a plain 400 m across.
+        // The kit's meadow, its first ground (`Variants.Temperate`): a plain 400 m across.
         static void Ground()
         {
-            var layer = AssetDatabase.LoadAssetAtPath<TerrainLayer>($"{Generate.LayerFolder}/meadow.terrainlayer");
+            var layer = AssetDatabase.LoadAssetAtPath<TerrainLayer>($"{Generate.LayerFolder}/{Variants.Temperate[0].Ground[0].Layer}.terrainlayer");
             var material = new Material(Shader.Find("HDRP/Lit"));
             material.SetTexture("_BaseColorMap", layer.diffuseTexture);
             material.SetColor("_BaseColor", new Color(layer.diffuseRemapMax.x, layer.diffuseRemapMax.y, layer.diffuseRemapMax.z));

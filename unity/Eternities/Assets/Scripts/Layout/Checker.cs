@@ -139,6 +139,13 @@ namespace Eternities.Layout
                 return report;
             }
             report.Tested("world-format");
+            (string Place, long Value)? outside = OutsideInt32(world);
+            if (outside != null)
+            {
+                report.Fail("world-format", $"the world document holds {outside.Value.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)} at "
+                    + $"{(outside.Value.Place.Length == 0 ? "its top" : outside.Value.Place)}, outside the int32 range of 4.13.5, {int.MinValue} to {int.MaxValue}");
+                return report;
+            }
             foreach ((string name, object document) in new[] { ("world", world), ("lore", lore) })
             {
                 (string Place, double Value)? token = FirstDouble(document);
@@ -441,6 +448,43 @@ namespace Eternities.Layout
 
         static Dictionary<string, object> ObjectOf(object value) => (Dictionary<string, object>)value;
         static List<object> ListOf(object value) => (List<object>)value;
+
+        // Erratum 7 (4.13.5): every integer of a world document lies in the int32 range, read or
+        // not. `Whole` takes any long and the checker computes in `long`, which wraps from about
+        // 2^32 mm, so without this the two checkers could read one document two ways. An integer
+        // token is a long here, and any other number a double, which `FirstDouble` refuses; the
+        // first long outside the range is returned with its place in the document, as
+        // `sites[0].centre[1]`, which is written only then.
+        static (string Place, long Value)? OutsideInt32(object value)
+        {
+            switch (value)
+            {
+                case long l:
+                    return l < int.MinValue || l > int.MaxValue ? ("", l) : ((string, long)?)null;
+                case Dictionary<string, object> members:
+                    foreach (KeyValuePair<string, object> member in members)
+                    {
+                        (string Place, long Value)? found = OutsideInt32(member.Value);
+                        if (found != null)
+                        {
+                            return (member.Key + Joined(found.Value.Place), found.Value.Value);
+                        }
+                    }
+                    return null;
+                case List<object> items:
+                    for (int i = 0; i < items.Count; i++)
+                    {
+                        (string Place, long Value)? found = OutsideInt32(items[i]);
+                        if (found != null)
+                        {
+                            return ($"[{i}]" + Joined(found.Value.Place), found.Value.Value);
+                        }
+                    }
+                    return null;
+                default:
+                    return null;
+            }
+        }
 
         // Erratum 8 (4.13.5): no number token of the world or lore document holds a `.`, an `e` or
         // an `E`, read or not. `Json.Parse` reads exactly those tokens as a double, and an integer

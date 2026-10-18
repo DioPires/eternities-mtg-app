@@ -65,14 +65,15 @@ namespace Eternities.Tests
             }
         }
 
-        // The temperate kit has ten ground textures (CREDITS.md): nine with an `_arm_` file and one
-        // with its roughness and occlusion apart. And one mask for each photograph its props are
+        // The temperate kit has nine ground textures (CREDITS.md): eight with an `_arm_` file and
+        // one with its roughness and occlusion apart. The first slice's meadow ground retired with
+        // its scatter (PRD v4 9.6, leg 2). And one mask for each photograph its props are
         // coloured by, but for a scan's: a scan has its colour and nothing else (`KitPrefabs.Scan`).
         [Test]
         public void TheTemperateKitHasItsMaskSources()
         {
             var sources = new List<string>(MaskSources());
-            Assert.AreEqual(10, sources.FindAll(path => path.StartsWith("Assets/Kits/temperate/Terrain/")).Count);
+            Assert.AreEqual(9, sources.FindAll(path => path.StartsWith("Assets/Kits/temperate/Terrain/")).Count);
             Assert.AreEqual(1, sources.FindAll(path => KitMaskImport.OcclusionOf(path) != null).Count);
             foreach (string guid in AssetDatabase.FindAssets("t:Texture2D", new[] { "Assets/Kits/temperate/Props" }))
             {
