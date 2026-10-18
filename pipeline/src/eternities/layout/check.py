@@ -988,8 +988,8 @@ def _whole(value: Any) -> int:
 def _set_id(value: Any) -> int:
     """An era's set id: a whole number in the uint16 range of a stand's set id (4.16.3).
 
-    Erratum 8: ``json`` takes any whole number and the C# reader none beyond a ``long``, so without
-    this the two checkers could read one lore document two ways.
+    Erratum 8: ``json`` takes any whole number and the C# checker none beyond a ``long``, so
+    without this the two checkers could read one lore document two ways.
     """
     number = _whole(value)
     if not 0 <= number <= _SET_ID_MOST:

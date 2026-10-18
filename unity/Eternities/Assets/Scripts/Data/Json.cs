@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Numerics;
 using System.Text;
 
 namespace Eternities.Data
@@ -9,9 +10,14 @@ namespace Eternities.Data
     // A reader for the pack's JSON files. The shards hold printings as tuples of mixed types
     // (docs/data-contract.md, section 9), which the engine's JsonUtility cannot read, and the project
     // carries no JSON package. An object is a Dictionary<string, object>, an array a List<object>, an
-    // integer token a long, any other number a double, and the rest are string, bool and null. It
-    // reads the grammar of RFC 8259 and refuses what Python's `json` refuses, so the pipeline and
-    // the engine read one file one way (DEC-1186 N3).
+    // integer token a long, or a BigInteger when a long cannot hold it, any other number a double,
+    // and the rest are string, bool and null. These are the types of Python's `json` (int and
+    // float). It reads the grammar of RFC 8259 and refuses what Python's `json` refuses, so the
+    // pipeline and the engine read one file one way (DEC-1186 N3). It follows Python on purpose in
+    // two places: an integer token of more than 4,300 digits is refused, and a number beyond a
+    // double reads as infinity with its sign. It differs in one place: it refuses `NaN`, `Infinity`
+    // and `-Infinity`, which Python reads as a float. The checkers' token walks refuse those tokens
+    // in the world and lore documents anyway (PRD v4 4.13.5, erratum 8).
     public static class Json
     {
         public static object Parse(string text)
@@ -209,9 +215,8 @@ namespace Eternities.Data
 
         // A number token of RFC 8259, `-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?`, so `+5`, `05`,
         // `5.` and `.5` are refused, as Python's `json` refuses them. A token with no `.`, `e` or `E`
-        // is a long and any other a double, so a reader can tell `5` from `5.0` and `5e0` (PRD v4
-        // 4.13.5, erratum 8). An integer token that a long cannot hold is a double, as every number
-        // was before.
+        // is an integer, a long or else a BigInteger, and any other a double, so a reader can tell
+        // `5` from `5.0` and `5e0` (PRD v4 4.13.5, erratum 8).
         static object Number(string s, ref int at)
         {
             int start = at;
@@ -247,16 +252,32 @@ namespace Eternities.Data
                 Digits(s, ref at, start);
             }
             string token = s.Substring(start, at - start);
-            if (integer && long.TryParse(token, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out long whole))
+            if (integer)
             {
-                return whole;
+                if (long.TryParse(token, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out long whole))
+                {
+                    return whole;
+                }
+                if (token.Length - (token[0] == '-' ? 1 : 0) > MostDigits)
+                {
+                    throw Bad(s, start, $"an integer has more than {MostDigits} digits, the limit of Python's `json`");
+                }
+                return BigInteger.Parse(token, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
             }
+            // The grammar holds, so only the range can make the parse fail: a runtime that gives no
+            // infinity for a number beyond a double (.NET Framework) then reads what Python and
+            // .NET Core 3.0 and later read.
             if (!double.TryParse(token, NumberStyles.Float, CultureInfo.InvariantCulture, out double number))
             {
-                throw Bad(s, start, "not a value");
+                return token[0] == '-' ? double.NegativeInfinity : double.PositiveInfinity;
             }
             return number;
         }
+
+        // The most digits of an integer token, the sign not counted: Python's `json` refuses more
+        // with a ValueError (`sys.int_info.default_max_str_digits`), as the lore's tables do
+        // (`pipeline/src/eternities/lore/strict_json.py`).
+        const int MostDigits = 4_300;
 
         static bool Digit(string s, int at) => at < s.Length && s[at] >= '0' && s[at] <= '9';
 

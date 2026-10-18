@@ -124,8 +124,9 @@ namespace Eternities.Layout
 
         // Check one world's emitted files against invariants 7 to 11. `world` and `lore` are the
         // parsed documents (an object is a string-keyed dictionary, an array a list, an integer
-        // token a long and any other number a double, as `Json.Parse` reads them); `lore` is null
-        // on a kit world. `cards` is the plane's card list from the pack.
+        // token a long, or a BigInteger when a long cannot hold it, and any other number a double,
+        // as `Json.Parse` reads them); `lore` is null on a kit world. `cards` is the plane's card
+        // list from the pack.
         public static Result Check(byte[] standsBin, object world, object lore, IReadOnlyList<CheckedCard> cards, Trig table)
         {
             var report = new Result();
@@ -139,7 +140,7 @@ namespace Eternities.Layout
                 return report;
             }
             report.Tested("world-format");
-            (string Place, long Value)? outside = OutsideInt32(world);
+            (string Place, BigInteger Value)? outside = OutsideInt32(world);
             if (outside != null)
             {
                 report.Fail("world-format", $"the world document holds {outside.Value.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)} at "
@@ -452,19 +453,21 @@ namespace Eternities.Layout
         // Erratum 7 (4.13.5): every integer of a world document lies in the int32 range, read or
         // not. `Whole` takes any long and the checker computes in `long`, which wraps from about
         // 2^32 mm, so without this the two checkers could read one document two ways. An integer
-        // token is a long here, and any other number a double, which `FirstDouble` refuses; the
-        // first long outside the range is returned with its place in the document, as
-        // `sites[0].centre[1]`, which is written only then.
-        static (string Place, long Value)? OutsideInt32(object value)
+        // token is a long, or a BigInteger when a long cannot hold it, which lies outside the range
+        // in any case. The first one outside is returned exactly, with its place in the document,
+        // as `sites[0].centre[1]`, which is written only then.
+        static (string Place, BigInteger Value)? OutsideInt32(object value)
         {
             switch (value)
             {
                 case long l:
-                    return l < int.MinValue || l > int.MaxValue ? ("", l) : ((string, long)?)null;
+                    return l < int.MinValue || l > int.MaxValue ? ("", l) : ((string, BigInteger)?)null;
+                case BigInteger big:
+                    return ("", big);
                 case Dictionary<string, object> members:
                     foreach (KeyValuePair<string, object> member in members)
                     {
-                        (string Place, long Value)? found = OutsideInt32(member.Value);
+                        (string Place, BigInteger Value)? found = OutsideInt32(member.Value);
                         if (found != null)
                         {
                             return (member.Key + Joined(found.Value.Place), found.Value.Value);
@@ -474,7 +477,7 @@ namespace Eternities.Layout
                 case List<object> items:
                     for (int i = 0; i < items.Count; i++)
                     {
-                        (string Place, long Value)? found = OutsideInt32(items[i]);
+                        (string Place, BigInteger Value)? found = OutsideInt32(items[i]);
                         if (found != null)
                         {
                             return ($"[{i}]" + Joined(found.Value.Place), found.Value.Value);
@@ -488,10 +491,9 @@ namespace Eternities.Layout
 
         // Erratum 8 (4.13.5): no number token of the world or lore document holds a `.`, an `e` or
         // an `E`, read or not. `Json.Parse` reads exactly those tokens as a double, and an integer
-        // token as a long, so without this `Whole` would take `5.0` and `5e0` as 5 where the
-        // pipeline's checker refuses them. An integer token that a long cannot hold is a double too,
-        // and lies outside the int32 range of 4.13.5 in any case. The first double is returned with
-        // its place in the document, as `sites[0].centre[1]`, which is written only then.
+        // token as a long or a BigInteger, so without this `Whole` would take `5.0` and `5e0` as 5
+        // where the pipeline's checker refuses them. The first double is returned with its place in
+        // the document, as `sites[0].centre[1]`, which is written only then.
         static (string Place, double Value)? FirstDouble(object value)
         {
             switch (value)

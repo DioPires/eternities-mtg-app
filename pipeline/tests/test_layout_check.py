@@ -1522,12 +1522,15 @@ def with_token(document: dict[str, Any], keys: list[str | int], token: str) -> d
 
 STAND_COUNT: list[str | int] = ["standCount"]
 DESTINATION_YAW: list[str | int] = ["sites", 0, "chapters", 0, "destination", "yaw"]
+ERA_SET_ID: list[str | int] = ["eras", 0, "setIds", 0]
+HEADLINE: list[str | int] = ["eras", 0, "headline", 0]
 
 
 # Erratum 8 (4.13.5): no number token of the world or lore document holds a `.`, an `e` or an
-# `E`, read or not. Dominaria's stand count, which the checker reads, and its first chapter's
-# destination yaw and an era's set id in its lore, which no rule reads before the walk, are each
-# refused under `world-format` and nothing else is tested.
+# `E`, read or not. Dominaria's stand count, which the checker reads, its first chapter's
+# destination yaw, which no rule reads, an era's set id in its lore, which no rule reads before the
+# walk, and the era's first headline card, which no rule reads, are each refused under
+# `world-format` and nothing else is tested.
 @pytest.mark.parametrize("token", ["5.0", "5e0", "5E0"])
 def test_a_number_token_with_a_fraction_or_an_exponent_is_refused_read_or_not(token: str):
     data, world, lore, held = dominaria()
@@ -1539,11 +1542,11 @@ def test_a_number_token_with_a_fraction_or_an_exponent_is_refused_read_or_not(to
         assert rules(result) == {"world-format"}
         (line,) = under(result, "world-format")
         assert f"the world document holds 5.0 at {place}, a number token with a '.'" in line
-    result = check.check_world(
-        data, world, with_token(lore, ["eras", 0, "setIds", 0], token), held, table()
-    )
-    assert rules(result) == {"world-format"}
-    assert "the lore document holds 5.0 at eras[0].setIds[0]," in under(result, "world-format")[0]
+    for keys, place in ((ERA_SET_ID, "eras[0].setIds[0]"), (HEADLINE, "eras[0].headline[0]")):
+        result = check.check_world(data, world, with_token(lore, keys, token), held, table())
+        assert rules(result) == {"world-format"}
+        (line,) = under(result, "world-format")
+        assert f"the lore document holds 5.0 at {place}, a number token with a '.'" in line
 
 
 # The same places written as the integer token 5: the stand count is read and breaks its own rule,
@@ -1553,3 +1556,29 @@ def test_the_same_places_written_as_an_integer_token_pass_world_format():
     result = check.check_world(data, with_token(world, STAND_COUNT, "5"), lore, held, table())
     assert "world-format" not in rules(result) and "stand-count" in rules(result)
     assert check.check_world(data, with_token(world, DESTINATION_YAW, "5"), lore, held, table()).ok
+
+
+# An integer token of the world document outside the int32 range of 4.13.5 is refused under
+# `world-format` with its exact value: 2^53 + 1, which a double cannot hold, and a 20-digit
+# integer, which the C# reader holds only as a BigInteger (erratum 8; DEC-1203 B1 and N1).
+@pytest.mark.parametrize(
+    "token", ["9007199254740993", "99999999999999999999", "-99999999999999999999"]
+)
+def test_a_large_integer_token_is_refused_with_its_exact_value(token: str):
+    data, world, lore, held = dominaria()
+    result = check.check_world(data, with_token(world, STAND_COUNT, token), lore, held, table())
+    assert rules(result) == {"world-format"}
+    (line,) = under(result, "world-format")
+    assert (
+        f"the world document holds {token} at standCount, outside the int32 range of 4.13.5" in line
+    )
+
+
+# The lore document has no int32 rule: a 20-digit integer as the era's first headline card, which no
+# rule reads, passes `world-format` and every other rule, as in the C# checker (DEC-1203 B1).
+def test_a_large_integer_token_in_a_lore_field_that_no_rule_reads_passes():
+    data, world, lore, held = dominaria()
+    result = check.check_world(
+        data, world, with_token(lore, HEADLINE, "99999999999999999999"), held, table()
+    )
+    assert result.ok and result.assertions["world-format"] == 1

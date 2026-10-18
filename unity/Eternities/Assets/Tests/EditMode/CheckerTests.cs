@@ -504,6 +504,8 @@ namespace Eternities.Tests
 
         static readonly object[] StandCount = { "standCount" };
         static readonly object[] DestinationYaw = { "sites", 0, "chapters", 0, "destination", "yaw" };
+        static readonly object[] EraSetId = { "eras", 0, "setIds", 0 };
+        static readonly object[] Headline = { "eras", 0, "headline", 0 };
 
         // The document as `Json.Parse` reads it with the number at `keys` written as `token`.
         static object WithToken(object document, string token, params object[] keys)
@@ -525,9 +527,10 @@ namespace Eternities.Tests
         }
 
         // Erratum 8 (4.13.5): no number token of the world or lore document holds a `.`, an `e` or
-        // an `E`, read or not. Dominaria's stand count, which the checker reads, and its first
-        // chapter's destination yaw and an era's set id in its lore, which no rule reads before the
-        // walk, are each refused under `world-format`, and nothing else is tested.
+        // an `E`, read or not. Dominaria's stand count, which the checker reads, its first chapter's
+        // destination yaw, which no rule reads, an era's set id in its lore, which no rule reads
+        // before the walk, and the era's first headline card, which no rule reads, are each refused
+        // under `world-format`, and nothing else is tested.
         [TestCase("5.0")]
         [TestCase("5e0")]
         [TestCase("5E0")]
@@ -541,9 +544,12 @@ namespace Eternities.Tests
                 Assert.That(Rules(result), Is.EquivalentTo(new[] { "world-format" }), place);
                 StringAssert.Contains($"the world document holds 5 at {place}, a number token with a '.'", Under(result, "world-format").Single());
             }
-            Checker.Result lore = Checker.Check(fixture.Stands, fixture.World, WithToken(fixture.Lore, token, "eras", 0, "setIds", 0), cards, LayoutFixtures.Trig);
-            Assert.That(Rules(lore), Is.EquivalentTo(new[] { "world-format" }));
-            StringAssert.Contains("the lore document holds 5 at eras[0].setIds[0],", Under(lore, "world-format").Single());
+            foreach ((object[] keys, string place) in new[] { (EraSetId, "eras[0].setIds[0]"), (Headline, "eras[0].headline[0]") })
+            {
+                Checker.Result lore = Checker.Check(fixture.Stands, fixture.World, WithToken(fixture.Lore, token, keys), cards, LayoutFixtures.Trig);
+                Assert.That(Rules(lore), Is.EquivalentTo(new[] { "world-format" }), place);
+                StringAssert.Contains($"the lore document holds 5 at {place}, a number token with a '.'", Under(lore, "world-format").Single());
+            }
         }
 
         // The same places written as the integer token 5: the stand count is read and breaks its own
@@ -556,6 +562,34 @@ namespace Eternities.Tests
             HashSet<string> broken = Rules(Checker.Check(fixture.Stands, WithToken(fixture.World, "5", StandCount), fixture.Lore, cards, LayoutFixtures.Trig));
             Assert.That(broken, Does.Not.Contain("world-format").And.Contain("stand-count"));
             Assert.That(Checker.Check(fixture.Stands, WithToken(fixture.World, "5", DestinationYaw), fixture.Lore, cards, LayoutFixtures.Trig).Violations, Is.Empty);
+        }
+
+        // An integer token of the world document outside the int32 range of 4.13.5 is refused under
+        // `world-format` with its exact value: 2^53 + 1, which a double cannot hold, and a 20-digit
+        // integer, which only a BigInteger holds (erratum 8; DEC-1203 B1 and N1).
+        [TestCase("9007199254740993")]
+        [TestCase("99999999999999999999")]
+        [TestCase("-99999999999999999999")]
+        public void ALargeIntegerTokenIsRefusedWithItsExactValue(string token)
+        {
+            LayoutFixtures.Fixture fixture = LayoutFixtures.Named("dominaria");
+            Checker.Result result = Checker.Check(fixture.Stands, WithToken(fixture.World, token, StandCount), fixture.Lore, LayoutFixtures.Cards(fixture), LayoutFixtures.Trig);
+            Assert.That(Rules(result), Is.EquivalentTo(new[] { "world-format" }));
+            StringAssert.Contains($"the world document holds {token} at standCount, outside the int32 range of 4.13.5", Under(result, "world-format").Single());
+        }
+
+        // The lore document has no int32 rule: a 20-digit integer as the era's first headline card,
+        // which no rule reads, passes `world-format` and every other rule, as in the pipeline's
+        // checker (DEC-1203 B1).
+        [Test]
+        public void ALargeIntegerTokenInALoreFieldThatNoRuleReadsPasses()
+        {
+            LayoutFixtures.Fixture fixture = LayoutFixtures.Named("dominaria");
+            object lore = WithToken(fixture.Lore, "99999999999999999999", Headline);
+            Assert.That(Json.Array(Json.Object(Json.Array(Json.Object(lore)["eras"])[0])["headline"])[0], Is.InstanceOf<System.Numerics.BigInteger>());
+            Checker.Result result = Checker.Check(fixture.Stands, fixture.World, lore, LayoutFixtures.Cards(fixture), LayoutFixtures.Trig);
+            Assert.That(result.Violations, Is.Empty);
+            Assert.That(result.Assertions["world-format"], Is.EqualTo(1));
         }
     }
 }
