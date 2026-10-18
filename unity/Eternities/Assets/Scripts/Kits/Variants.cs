@@ -35,17 +35,6 @@ namespace Eternities.Kits
         public override string ToString() => Name;
     }
 
-    // A variant as the scene holds it, assigned by the generation entry point: its layers in the
-    // order of `Variant.Ground` and its props in the order of `Variant.Grows`. A build carries
-    // what the scene names, so the kit's cooked size counts every variant's assets.
-    [Serializable]
-    public sealed class KitVariant
-    {
-        public string Name;
-        public TerrainLayer[] Layers;
-        public KitProp[] Props;
-    }
-
     public static class Variants
     {
         // Ground cover is drawn about the viewer and not across a world: it thins out from
@@ -145,7 +134,8 @@ namespace Eternities.Kits
                     Each("Rocks/rock_07", 8, 1, 2, ""),
                     Each("Trees/island_tree_01", 0.04f, 0.6f, 1, ""),
                     Each("Trees/fir_sapling_medium_c", 0.04f, 0.5f, 0.9f, ""),
-                    Each("Bushes/searsia_lucida_", 0.6f, 0.7f, 1.1f, "f", "g"),
+                    // All seven of the bush's source, so no two stands of it look alike.
+                    Each("Bushes/searsia_lucida_", 1.2f, 0.7f, 1.1f, "a", "b", "c", "d", "e", "f", "g"),
                     Each("Bushes/island_tree_02", 0.08f, 0.85f, 1, "")),
             },
         };
@@ -264,8 +254,8 @@ namespace Eternities.Kits
         {
             int x0 = Mathf.FloorToInt(x), z0 = Mathf.FloorToInt(z);
             float u = Mathf.SmoothStep(0, 1, x - x0), v = Mathf.SmoothStep(0, 1, z - z0);
-            return Mathf.Lerp(Mathf.Lerp(GroundPlan.Hash(x0, z0, seed), GroundPlan.Hash(x0 + 1, z0, seed), u),
-                Mathf.Lerp(GroundPlan.Hash(x0, z0 + 1, seed), GroundPlan.Hash(x0 + 1, z0 + 1, seed), u), v);
+            return Mathf.Lerp(Mathf.Lerp(Raster.Hash(x0, z0, seed), Raster.Hash(x0 + 1, z0, seed), u),
+                Mathf.Lerp(Raster.Hash(x0, z0 + 1, seed), Raster.Hash(x0 + 1, z0 + 1, seed), u), v);
         }
     }
 }

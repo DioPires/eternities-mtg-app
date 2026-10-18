@@ -1,225 +1,141 @@
 using System;
 using System.Collections;
-using Eternities.Layout;
+using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Rendering;
 
 namespace Eternities.Kits
 {
-    // What a world's ground is made from: its heights, which of the kit's layers lies where, its
-    // tones and its water. The first slice worked it out from the wheel law's layout; that plan
-    // retired with the law (PRD v4 9.6, leg 1), and leg 2 makes a plan of the journey law's
-    // regions. The greybox draws no terrain (`Greybox`).
-    public sealed class GroundPlan
-    {
-        // The kit's three layers, and after them the world's own: its tones.
-        public const int Meadow = 0, Path = 1, Gravel = 2, KitLayers = 3, Tone = 3, Layers = 4;
-        // PRD v4 5.6.3: the kit varies its ground by wedge, so the ground under a wedge reads as its
-        // colour (9.3). One layer more holds a picture of the whole world, each wedge in its tone,
-        // and this share of the ground between the paths is that picture; the rest is the kit's own
-        // layer for the wedge, the meadow or bare stone. A layer for each wedge would be nine, and
-        // the pipeline's terrain shader draws four in its lighter variant.
-        public const float ToneShare = 0.45f;
-        // The picture's side in texels: about 2 m of Dominaria to a texel.
-        public const int ToneResolution = 512;
-        // Two wedges' tones run into each other within this many degrees of their boundary. Inside
-        // the world a radial path lies on it; beyond the rim nothing does.
-        public const double ToneBlend = 1.5;
-        public const float Margin = 120;
-        // The ground level of everything the allocator placed is 0. The terrain's own floor lies
-        // this far below it, so the kit can carve a river bed, and its ceiling as far above.
-        public const float Floor = 50, Height = 100;
-        // The relief keeps this far from anything flat, then rises to full height over the falloff.
-        public const float FlatApron = 1.5f, Falloff = 10;
-        // The bed is at its full depth within the half width or the radius, and rises to the ground
-        // level over the bank beyond it.
-        public const float WaterLevel = -0.6f, RiverDepth = 1.6f, RiverHalfWidth = 3.5f, LakeDepth = 3.5f, LakeRadius = 45, Bank = 5;
-
-        public float Radius, Side;      // metres
-        public int HeightResolution, AlphaResolution;
-        public float[,] Heights;        // [z, x], metres above the ground level
-        public float[,] Normalised;     // the same as Unity Terrain takes them: 0 at its floor, 1 at its ceiling
-        public float[,,] Alphas;        // [z, x, layer], as Unity Terrain takes them
-        public Color32[] Tones;         // [z * ToneResolution + x]: the tone layer's texture, with no alpha, so no gloss
-        // The slice's water (PRD v4 9.5): one river and one lake, in the margin beyond the ring,
-        // because inside the world the 3 m water buffer around paths, aprons and corridors leaves
-        // no zone (PRD v4 8.4.2). The river runs west to east past the end of the north radial path
-        // and into the lake. The lake lies as near the rim as the buffer lets it, so that ground
-        // is left behind its far shore for the wood that closes the view across it.
-        public Vector2 RiverFrom, RiverTo, LakeCentre;
-
-        // How deep below the ground level the water's bed is at a point: 0 away from the water.
-        public float Bed(float x, float z)
-        {
-            Vector2 p = new Vector2(x, z), along = RiverTo - RiverFrom;
-            float t = Mathf.Clamp01(Vector2.Dot(p - RiverFrom, along) / along.sqrMagnitude);
-            float river = RiverDepth * Mathf.SmoothStep(1, 0, (Vector2.Distance(p, RiverFrom + along * t) - RiverHalfWidth) / Bank);
-            float lake = LakeDepth * Mathf.SmoothStep(1, 0, (Vector2.Distance(p, LakeCentre) - LakeRadius) / Bank);
-            return Mathf.Max(river, lake);
-        }
-
-        // The height of the ground at a point, from the nearest sample.
-        public float HeightAt(float x, float z)
-        {
-            float texel = Side / AlphaResolution;
-            int column = Mathf.Clamp(Mathf.RoundToInt((x + Side / 2) / texel), 0, HeightResolution - 1);
-            int row = Mathf.Clamp(Mathf.RoundToInt((z + Side / 2) / texel), 0, HeightResolution - 1);
-            return Heights[row, column];
-        }
-
-        // Is a point in the water or on its bank? The avatar is kept out of it.
-        public bool Wet(float x, float z) => Bed(x, z) > -WaterLevel * 0.5f;
-
-        // PRD v4 8.4.5: 513 for worlds under 100 m of radius, 1,025 to 260 m, 2,049 beyond.
-        public static int HeightmapResolution(float worldRadius) => worldRadius < 100 ? 513 : worldRadius <= 260 ? 1025 : 2049;
-
-        // An integer hash of a cell, from 0 to 1, the same on every machine: the kit's variants draw
-        // their value noise from it.
-        internal static float Hash(int x, int z, uint seed)
-        {
-            unchecked
-            {
-                uint h = (uint)x * 0x85EBCA6Bu ^ (uint)z * 0xC2B2AE35u ^ seed * 0x27D4EB2Fu;
-                h ^= h >> 15;
-                h *= 0x2C1B3C6Du;
-                h ^= h >> 12;
-                h *= 0x297A2D39u;
-                h ^= h >> 15;
-                return (h & 0xFFFFFF) / (float)0x1000000;
-            }
-        }
-    }
-
-    // A world's ground: one Unity Terrain (PRD v4 8.4.5), square, centred on the arrival point, as
-    // wide as the world and a margin, with the plan's heights and the kit's layers painted from it.
+    // A world's ground (PRD v4 8.4.5): Unity Terrain in square tiles of `DressPlan.TileTexels`
+    // texels, each with the plan's heights and the layers that its part of the world uses, at
+    // most eight, as `DressPlan.Paint` weighed them. The tiles meet sample for sample and texel for
+    // texel, so no seam shows. A tile of more than four layers takes the terrain shader's
+    // eight-layer variant.
     public static class WorldGround
     {
+        // The terrain's floor and its height, in metres from the ground level: the sea's bed is
+        // above the floor and the hills past the world's edge are under the ceiling.
+        public const float Floor = -15, Height = 70;
 
-        // The ground's layers: the kit's three, or plain colours in their place while the kit has
-        // none, and the world's tones (PRD v4 5.6.3) as a fourth, one picture laid once over the
-        // whole terrain. `owned` takes what is made here, which leaves with the world.
-        public static TerrainLayer[] Layers(TerrainLayer[] kit, GroundPlan plan, System.Collections.Generic.List<UnityEngine.Object> owned)
-        {
-            var layers = new TerrainLayer[GroundPlan.Layers];
-            if (kit != null && kit.Length == GroundPlan.KitLayers && Array.TrueForAll(kit, layer => layer != null))
-            {
-                Array.Copy(kit, layers, GroundPlan.KitLayers);
-            }
-            else
-            {
-                // Without a mask map the terrain shader reads a layer's smoothness from its alpha:
-                // zero, or the ground mirrors the sky.
-                Color[] colours = { new Color(0.24f, 0.36f, 0.16f, 0), new Color(0.52f, 0.44f, 0.32f, 0), new Color(0.45f, 0.45f, 0.44f, 0) };
-                for (int i = 0; i < GroundPlan.KitLayers; i++)
-                {
-                    var texture = new Texture2D(2, 2, TextureFormat.RGBA32, mipChain: false) { name = "plain layer" };
-                    texture.SetPixels(new[] { colours[i], colours[i], colours[i], colours[i] });
-                    texture.Apply();
-                    layers[i] = new TerrainLayer { diffuseTexture = texture, tileSize = new Vector2(4, 4), smoothness = 0, metallic = 0 };
-                    owned.Add(texture);
-                    owned.Add(layers[i]);
-                }
-            }
-            var tones = new Texture2D(GroundPlan.ToneResolution, GroundPlan.ToneResolution, TextureFormat.RGBA32, mipChain: true) { name = "ground tones", wrapMode = TextureWrapMode.Clamp };
-            tones.SetPixels32(plan.Tones);
-            tones.Apply(updateMipmaps: true, makeNoLongerReadable: true);
-            layers[GroundPlan.Tone] = new TerrainLayer { diffuseTexture = tones, tileSize = new Vector2(plan.Side, plan.Side), smoothness = 0, metallic = 0 };
-            owned.Add(tones);
-            owned.Add(layers[GroundPlan.Tone]);
-            return layers;
-        }
-
-        // The scene's own material, with HDRP's terrain shader, is one a build can draw. The
+        // The scene's own materials, with HDRP's terrain shader, are ones a build can draw. The
         // pipeline's default terrain material is the editor's and is not in a build: a ground given
         // that one is drawn in the editor and is not there at all in a player.
         public static bool Drawable(Material material) => material != null && material.shader != null && material.shader.isSupported;
 
-        // Rows of the plan handed to the terrain in one step.
-        public const int HeightRows = 64, AlphaRows = 512;
+        // Heights handed to a tile in one step, in rows.
+        public const int HeightRows = 64;
 
-        // Builds the ground in steps, and yields whenever a frame has spent `budget` milliseconds
-        // on it, as the stands do (PRD v4 7.3.3). `done` takes the terrain. Handed to the terrain
-        // in one call, a heightmap of 2,049 took 110 ms, and the visitor walking up to the portal
-        // saw one frame of 150 ms (DEC-953). The heights and the layers go in by strips of rows,
-        // and the terrain's object is made last, so nothing draws or collides with a ground that
-        // is half there. Four steps cannot be cut smaller and are longer than a strip: making the
-        // heightmap, making the alphamap, the one pass that works out the terrain's levels of
-        // detail from all the heights, and any call that paints layers, however few rows it holds.
-        // `owned` takes the terrain's data at once: it belongs to no object, and a load that is
-        // stopped half-way must not leave it behind.
-        public static IEnumerator Build(GroundPlan plan, TerrainLayer[] layers, Material material, string name, Transform parent, float budget,
-            System.Collections.Generic.List<UnityEngine.Object> owned, Action<Terrain> done)
+        // Builds the tiles one after another, and yields whenever a frame has spent `budget`
+        // milliseconds on them (PRD v4 7.3.3). `layers` are the plan's layers by name;
+        // `fourLayers` and `eightLayers` the ground's materials for a tile of up to four layers and
+        // of more. `owned` takes each tile's data at once: it belongs to no object, and a load that
+        // is stopped half-way must not leave it behind. `done` takes the tiles.
+        public static IEnumerator Build(DressPlan plan, Func<string, TerrainLayer> layers, Material fourLayers, Material eightLayers, string name,
+            Transform parent, float budget, List<UnityEngine.Object> owned, Action<Terrain[]> done)
         {
             double sliceStarted = Time.realtimeSinceStartupAsDouble;
             bool Spent() => (Time.realtimeSinceStartupAsDouble - sliceStarted) * 1000 > budget;
-
-            var data = new TerrainData { name = name, heightmapResolution = plan.HeightResolution };
-            owned.Add(data);
-            if (Spent())
+            int tiles = plan.Tiles, side = DressPlan.TileTexels, samples = side + 1, all = plan.Samples;
+            float metres = side * plan.Grid.Texel;
+            var made = new Terrain[tiles * tiles];
+            var heights = new float[HeightRows, samples];
+            var alphas = new float[DressPlan.TileLayersMost + 1][,,];     // by a tile's count of layers
+            var root = new GameObject("Ground");
+            root.transform.SetParent(parent, false);
+            for (int tz = 0; tz < tiles; tz++)
             {
-                yield return null;
-                sliceStarted = Time.realtimeSinceStartupAsDouble;
-            }
-            data.alphamapResolution = plan.AlphaResolution;
-            data.size = new Vector3(plan.Side, GroundPlan.Height, plan.Side);      // after the resolutions, which reset it
-            data.terrainLayers = layers;
-            if (Spent())
-            {
-                yield return null;
-                sliceStarted = Time.realtimeSinceStartupAsDouble;
-            }
-
-            // A strip is copied out of the plan, because the terrain takes an array's own size.
-            int size = plan.HeightResolution;
-            float[,] heights = null;
-            for (int row = 0; row < size; row += HeightRows)
-            {
-                int count = Math.Min(HeightRows, size - row);
-                if (heights == null || heights.GetLength(0) != count)
+                for (int tx = 0; tx < tiles; tx++)
                 {
-                    heights = new float[count, size];
-                }
-                Buffer.BlockCopy(plan.Normalised, row * size * sizeof(float), heights, 0, count * size * sizeof(float));
-                // Without the levels of detail: worked out after every strip, they cost 9 ms a call.
-                data.SetHeightsDelayLOD(0, row, heights);
-                if (Spent())
-                {
+                    TileLayers paint = plan.TileLayers[tz * tiles + tx];
+                    var data = new TerrainData { name = $"{name} {tx},{tz}", heightmapResolution = samples };
+                    owned.Add(data);
+                    data.alphamapResolution = side;
+                    data.baseMapResolution = 256;
+                    data.size = new Vector3(metres, Height, metres);       // after the resolutions, which reset it
+                    var tileLayers = new TerrainLayer[paint.Layers.Length];
+                    for (int k = 0; k < tileLayers.Length; k++)
+                    {
+                        tileLayers[k] = layers(plan.LayerNames[paint.Layers[k]]);
+                    }
+                    data.terrainLayers = tileLayers;
+                    for (int row = 0; row < samples; row += HeightRows)
+                    {
+                        int count = Math.Min(HeightRows, samples - row);
+                        float[,] strip = count == HeightRows ? heights : new float[count, samples];
+                        for (int r = 0; r < count; r++)
+                        {
+                            int from = (tz * side + row + r) * all + tx * side;
+                            for (int c = 0; c < samples; c++)
+                            {
+                                strip[r, c] = Mathf.Clamp01((plan.Heights[from + c] - Floor) / Height);
+                            }
+                        }
+                        // Without the levels of detail: worked out after every strip, they cost 9 ms a call.
+                        data.SetHeightsDelayLOD(0, row, strip);
+                        if (Spent())
+                        {
+                            yield return null;
+                            sliceStarted = Time.realtimeSinceStartupAsDouble;
+                        }
+                    }
+                    data.SyncHeightmap();
+                    float[,,] weights = alphas[tileLayers.Length] ??= new float[side, side, tileLayers.Length];
+                    paint.Alphas(weights);
+                    data.SetAlphamaps(0, 0, weights);
+                    paint.Weights = null;   // the terrain holds them now
+                    GameObject tile = Terrain.CreateTerrainGameObject(data);
+                    tile.name = $"Ground {tx},{tz}";
+                    tile.transform.SetParent(root.transform, false);
+                    tile.transform.localPosition = new Vector3(plan.Grid.Min + tx * metres, Floor, plan.Grid.Min + tz * metres);
+                    var terrain = tile.GetComponent<Terrain>();
+                    terrain.materialTemplate = tileLayers.Length > 4 ? eightLayers : fourLayers;
+                    terrain.drawInstanced = true;       // the ground's materials ask a build for the variants (`Generate.Ground`)
+                    terrain.drawTreesAndFoliage = false;
+                    terrain.heightmapPixelError = 4;
+                    terrain.basemapDistance = 400;
+                    terrain.groupingID = 1;
+                    terrain.allowAutoConnect = true;
+                    made[tz * tiles + tx] = terrain;
                     yield return null;
                     sliceStarted = Time.realtimeSinceStartupAsDouble;
                 }
             }
-            data.SyncHeightmap();
-            if (Spent())
-            {
-                yield return null;
-                sliceStarted = Time.realtimeSinceStartupAsDouble;
-            }
+            Terrain.SetConnectivityDirty();
+            done(made);
+        }
+    }
 
-            int n = plan.AlphaResolution;
-            float[,,] alphas = null;
-            for (int row = 0; row < n; row += AlphaRows)
-            {
-                int count = Math.Min(AlphaRows, n - row);
-                if (alphas == null || alphas.GetLength(0) != count)
-                {
-                    alphas = new float[count, n, GroundPlan.Layers];
-                }
-                Buffer.BlockCopy(plan.Alphas, row * n * GroundPlan.Layers * sizeof(float), alphas, 0, count * n * GroundPlan.Layers * sizeof(float));
-                data.SetAlphamaps(0, row, alphas);
-                if (Spent())
-                {
-                    yield return null;
-                    sliceStarted = Time.realtimeSinceStartupAsDouble;
-                }
-            }
+    // The ground's switch: a renderer that draws nothing, whose `enabled` the world's terrain
+    // tiles follow. Whatever turns the ground off and on through a renderer (the bench's prices,
+    // `BenchPrices`) turns the terrain with it.
+    public sealed class GroundSwitch : MonoBehaviour
+    {
+        public Terrain[] Tiles = new Terrain[0];
+        Renderer own;
+        bool shown = true;
 
-            GameObject ground = Terrain.CreateTerrainGameObject(data);
-            ground.name = "Ground";
-            ground.transform.SetParent(parent, false);
-            ground.transform.localPosition = new Vector3(-plan.Side / 2, -GroundPlan.Floor, -plan.Side / 2);
-            var terrain = ground.GetComponent<Terrain>();
-            terrain.materialTemplate = material;
-            done(terrain);
+        public static Renderer Create(Transform parent, Terrain[] tiles)
+        {
+            var holder = new GameObject("Ground switch");
+            holder.transform.SetParent(parent, false);
+            var renderer = holder.AddComponent<MeshRenderer>();
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            var ground = holder.AddComponent<GroundSwitch>();
+            ground.Tiles = tiles;
+            ground.own = renderer;
+            return renderer;
+        }
+
+        void LateUpdate()
+        {
+            if (own.enabled == shown)
+            {
+                return;
+            }
+            shown = own.enabled;
+            foreach (Terrain tile in Tiles)
+            {
+                tile.drawHeightmap = shown;
+            }
         }
     }
 }

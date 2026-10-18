@@ -55,11 +55,27 @@ namespace Eternities.Kits
         public static Greybox Build(WorldData world, Material[] materials, Transform parent)
         {
             Greybox greybox = Create(parent);
-            IEnumerator fill = greybox.Fill(world, materials, float.PositiveInfinity);
-            while (fill.MoveNext())
-            {
-            }
+            RunAtOnce(greybox.Fill(world, materials, float.PositiveInfinity));
             return greybox;
+        }
+
+        // Runs a routine to its end now, with every routine it yields, as a coroutine would over frames.
+        public static void RunAtOnce(IEnumerator routine)
+        {
+            var stack = new Stack<IEnumerator>();
+            stack.Push(routine);
+            while (stack.Count > 0)
+            {
+                IEnumerator top = stack.Peek();
+                if (!top.MoveNext())
+                {
+                    stack.Pop();
+                }
+                else if (top.Current is IEnumerator inner)
+                {
+                    stack.Push(inner);
+                }
+            }
         }
 
         static Vector2 Metres(P2 millimetres) => new Vector2(millimetres.X / 1000f, millimetres.Z / 1000f);
@@ -74,10 +90,40 @@ namespace Eternities.Kits
 
         // `materials`: the ground's, the paths', the pads', the region lines' and the stones', in
         // the order of the constants above. Yields whenever a frame has spent `budget`
-        // milliseconds, so a world loads behind a portal without stopping the frame.
-        public IEnumerator Fill(WorldData world, Material[] materials, float budget)
+        // milliseconds, so a world loads behind a portal without stopping the frame. Without
+        // `ground`, only the stones: a dressed world stands them on its own ground until the
+        // kit's stones replace them (PRD v4 9.6, leg 2).
+        public IEnumerator Fill(WorldData world, Material[] materials, float budget, bool ground = true)
         {
             WorldDocument layout = world.Layout;
+            double sliceStarted = Time.realtimeSinceStartupAsDouble;
+            bool Spent() => (Time.realtimeSinceStartupAsDouble - sliceStarted) * 1000 > budget;
+            if (ground)
+            {
+                yield return FillGround(layout, materials, budget);
+                sliceStarted = Time.realtimeSinceStartupAsDouble;
+            }
+
+            foreach (WorldSite site in layout.Sites)
+            {
+                StoneOf($"stone of {site.Key}", site.Stone.Position, site.StoneKind == "reading" ? ReadingHeight : LowHeight, materials[StoneMaterial]);
+                foreach (SiteChapter chapter in site.Chapters)
+                {
+                    if (chapter.Stone != null)
+                    {
+                        StoneOf($"chapter stone of set id {chapter.SetId} in {site.Key}", chapter.Stone.Value.Position, LowHeight, materials[StoneMaterial]);
+                    }
+                }
+                if (Spent())
+                {
+                    yield return null;
+                    sliceStarted = Time.realtimeSinceStartupAsDouble;
+                }
+            }
+        }
+
+        IEnumerator FillGround(WorldDocument layout, Material[] materials, float budget)
+        {
             double sliceStarted = Time.realtimeSinceStartupAsDouble;
             bool Spent() => (Time.realtimeSinceStartupAsDouble - sliceStarted) * 1000 > budget;
 
@@ -154,24 +200,6 @@ namespace Eternities.Kits
                 layer.Triangles.Clear();
             }
             yield return null;
-            sliceStarted = Time.realtimeSinceStartupAsDouble;
-
-            foreach (WorldSite site in layout.Sites)
-            {
-                StoneOf($"stone of {site.Key}", site.Stone.Position, site.StoneKind == "reading" ? ReadingHeight : LowHeight, materials[StoneMaterial]);
-                foreach (SiteChapter chapter in site.Chapters)
-                {
-                    if (chapter.Stone != null)
-                    {
-                        StoneOf($"chapter stone of set id {chapter.SetId} in {site.Key}", chapter.Stone.Value.Position, LowHeight, materials[StoneMaterial]);
-                    }
-                }
-                if (Spent())
-                {
-                    yield return null;
-                    sliceStarted = Time.realtimeSinceStartupAsDouble;
-                }
-            }
         }
 
         void StoneOf(string name, P2 centre, float height, Material material)

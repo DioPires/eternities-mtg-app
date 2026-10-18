@@ -90,18 +90,6 @@ namespace Eternities.EditorTools
             return stated.Groups[1].Value;
         }
 
-        // A prop's standard: its kit's, but for the first slice's flat models of trees, bushes, rocks
-        // and wheat, which the first slice's scatter of Dominaria draws (`Temperate.Kinds`). Those
-        // are held at the basic standard until the dressing of regions with the kit's variants
-        // replaces that scatter (PRD v4 9.6, leg 2). No variant grows them (`VariantTests`).
-        public static string Standard(string kitFolder, string path)
-        {
-            string standard = Standard(kitFolder);
-            bool scattered = kitFolder == "Assets/Kits/temperate"
-                && Eternities.Kits.Temperate.Kinds.Any(kind => KitPrefabs.Path("temperate", kind.Prefab) == path);
-            return standard == Photographic && scattered ? Basic : standard;
-        }
-
         // Every prop prefab of every kit, with its kit's folder.
         public static IEnumerable<(string Kit, string Path)> Props()
         {
