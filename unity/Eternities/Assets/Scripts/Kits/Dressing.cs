@@ -37,16 +37,6 @@ namespace Eternities.Kits
         // so the row is written here, as the first slice wrote its sun (`Temperate.SunElevation`).
         public const string ThemeAmbient = "meadow";
 
-        // The ambient family each of Dominaria's region rows names (`pipeline/data/lore/dominaria/
-        // regions.json`). The pack carries a region's kit, variant and water (4.13.5) and not its
-        // family, so the families are written here until it does; a row that names none takes the
-        // theme row's (5.12.1). This is a departure of leg 2's first pull request (DEC-1005).
-        internal static readonly (string Id, string Ambient)[] DominariaFamilies =
-        {
-            ("shiv", "volcanic"), ("llanowar", "forest"), ("yavimaya", "forest"), ("sarpadia", "forest"),
-            ("tolaria", "surf"), ("caliman", "surf"), ("urborg", "marsh"), ("otaria", "forest"), ("keld", "alpine-wind"),
-        };
-
         // A variant's lie of the land. The meadow rolls, the wood is broken, the marsh is nearly
         // flat with its hollows under water, the highland stands high and stony.
         public static readonly Relief Meadow = new Relief { Height = 3.5f, Width = 70, Rough = 0.25f, RoughWidth = 9 };
@@ -61,21 +51,11 @@ namespace Eternities.Kits
         // A region's dressing from its row. The temperate kit dresses every region of Dominaria
         // (PRD v4 9.6): `volcanic` (Shiv) takes the highland with its dark rock for basalt, sparser
         // and higher, until the volcanic kit exists, and a `coast` row takes the meadow with the sea
-        // as its water.
-        public static RegionDress Of(string plane, WorldRegion region)
+        // as its water. Its ambient family is the one its row names (4.13.5), or the theme row's
+        // where the row names none (5.12.1).
+        public static RegionDress Of(WorldRegion region)
         {
-            string ambient = ThemeAmbient;
-            if (plane == "dominaria")
-            {
-                foreach ((string id, string family) in DominariaFamilies)
-                {
-                    if (id == region.Id)
-                    {
-                        ambient = family;
-                    }
-                }
-            }
-            var dress = new RegionDress { Id = region.Id, Name = region.Name, Water = region.Water ?? "none", Ambient = ambient };
+            var dress = new RegionDress { Id = region.Id, Name = region.Name, Water = region.Water ?? "none", Ambient = region.Ambient ?? ThemeAmbient };
             switch (region.Kit)
             {
                 case "temperate" when region.Variant != null:

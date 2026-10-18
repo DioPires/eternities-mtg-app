@@ -367,7 +367,7 @@ namespace Eternities.Kits
             plan.Regions = new RegionDress[layout.Regions.Length];
             for (int r = 0; r < layout.Regions.Length; r++)
             {
-                plan.Regions[r] = Dressing.Of(layout.Slug, layout.Regions[r]);
+                plan.Regions[r] = Dressing.Of(layout.Regions[r]);
             }
             plan.RegionsOnGrid();
             plan.Shapes(standX, standZ, standYaw);
