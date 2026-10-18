@@ -9,6 +9,7 @@ what their committed output says.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from functools import cache
 from pathlib import Path
@@ -142,6 +143,29 @@ def test_dominaria_is_laid_out_from_its_accepted_tables():
     legs = [leg["kind"] for leg in document["trail"]["legs"]]
     assert (legs.count("trail"), legs.count("spur")) == (15, 11)
     assert check("dominaria")["figures"]["minimumStandSpacing"] >= 2_500
+
+
+WALK_CEILING = 7_200_000
+"""Dominaria's walk at most, in mm: twenty minutes at the run of 6 m/s.
+
+PRD v4 5.4.15, 7.2, risk 22.
+"""
+
+WALK_LINE = re.compile(
+    r"^- From the plaza's edge path to the last site's pad on the trail: ([0-9,]+) mm ",
+    re.MULTILINE,
+)
+
+
+def test_dominarias_walk_is_within_the_owners_ceiling():
+    # An owner's figure for one world, not an invariant of the law, so neither checker reads it.
+    line = WALK_LINE.search(report("dominaria"))
+    assert line is not None
+    walk = int(line[1].replace(",", ""))
+    assert walk <= WALK_CEILING, (
+        f"Dominaria's walk is {walk:,} mm, over the owner's ceiling of {WALK_CEILING:,} mm: "
+        "the pull request does not merge until the owner decides (PRD v4 5.4.15, risk 22)"
+    )
 
 
 def test_the_small_worlds_of_5_4_13():
