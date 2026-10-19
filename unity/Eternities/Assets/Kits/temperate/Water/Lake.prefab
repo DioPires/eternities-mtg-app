@@ -161,9 +161,9 @@ MonoBehaviour:
   maxTessellationFactor: 3
   tessellationFactorFadeStart: 150
   tessellationFactorFadeRange: 1850
-  refractionColor: {r: 0.010022826, g: 0.21404114, b: 0.21404114, a: 1}
-  maxRefractionDistance: 0.5
-  absorptionDistance: 2.5
+  refractionColor: {r: 0.3, g: 0.52, b: 0.46, a: 1}
+  maxRefractionDistance: 1
+  absorptionDistance: 5
   scatteringColor: {r: 0.04, g: 0.2, b: 0.22, a: 1}
   ambientScattering: 0.2
   heightScattering: 0.2
