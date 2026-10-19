@@ -29,7 +29,8 @@ namespace Eternities.Travel
     //
     // The hub stands 4 km to the east of the world's centre, out of sight of it, so a world is built
     // in place, whole, while the visitor is still in the hub, and the cut of a portal is a move of
-    // the avatar.
+    // the avatar. The world's sky and water reach past its ground, to the hub: they show only while
+    // the visitor is in the world (`Sunlight`).
     public sealed class App : MonoBehaviour
     {
         public const string HomeWorld = "dominaria";
@@ -353,6 +354,10 @@ namespace Eternities.Travel
             if (Sky != null)
             {
                 Sky.Shown = place == Place.World;
+            }
+            if (Water != null)
+            {
+                WorldWater.Show(Water, place == Place.World);
             }
             // In a world the view reaches across it and over the sea; in the hub, as the scene has it.
             View.FarClip = place == Place.World && Sky != null ? WorldSky.FarClip : hubFarClip;
