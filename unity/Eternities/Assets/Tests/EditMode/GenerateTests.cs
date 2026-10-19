@@ -120,6 +120,44 @@ namespace Eternities.Tests
             }
         }
 
+        // The plinths' rims (PRD v4 5.5.1): a material a colour class, which the persistent scene
+        // names in class order. Each is its class's colour and glows by that colour at
+        // `Generate.RimGlow`, with an exposure weight of 0, so the exposure does not dim it at noon
+        // nor brighten it at dusk: the cue shows in every kit and at every time of day.
+        [Test]
+        public void EachClassHasARimThatShowsAtEveryTimeOfDay()
+        {
+            string scene = File.ReadAllText("Assets/Scenes/Hub.unity");
+            string[] classes = { "white", "blue", "black", "red", "green", "multicolour", "colourless" };
+            for (int c = 0; c < classes.Length; c++)
+            {
+                string path = $"Assets/Kits/core/Materials/rim-{classes[c]}.mat";
+                var material = AssetDatabase.LoadAssetAtPath<Material>(path);
+                Assert.That(material, Is.Not.Null, path);
+                Assert.That(material.shader.name, Is.EqualTo("HDRP/Lit"), path);
+                Color colour = StandField.ClassColours[c];
+                Assert.That((Vector4)material.GetColor("_BaseColor"), Is.EqualTo((Vector4)colour).Using(new ColourWithin(1e-3f)), $"{path}: its colour");
+                Assert.That((Vector4)material.GetColor("_EmissiveColor"), Is.EqualTo((Vector4)(colour.linear * Generate.RimGlow)).Using(new ColourWithin(1e-3f)), $"{path}: its glow");
+                Assert.That(material.GetFloat("_EmissiveExposureWeight"), Is.Zero, $"{path}: the exposure does not scale its glow");
+                StringAssert.Contains(AssetDatabase.AssetPathToGUID(path), scene, $"the persistent scene names {path}");
+            }
+        }
+
+        // Two colours are the same within a share in each channel but alpha.
+        sealed class ColourWithin : System.Collections.Generic.IEqualityComparer<Vector4>
+        {
+            readonly float within;
+
+            public ColourWithin(float within)
+            {
+                this.within = within;
+            }
+
+            public bool Equals(Vector4 a, Vector4 b) => Mathf.Abs(a.x - b.x) <= within && Mathf.Abs(a.y - b.y) <= within && Mathf.Abs(a.z - b.z) <= within;
+
+            public int GetHashCode(Vector4 value) => 0;
+        }
+
         // The kit's path and gravel layers (PRD v4 8.4.5) are in its dressing: each has its
         // texture's colour, normal and mask maps. The first slice's meadow layer is retired
         // (DEC-1055, N13), and the persistent scene names no layer of the kit: the world loads

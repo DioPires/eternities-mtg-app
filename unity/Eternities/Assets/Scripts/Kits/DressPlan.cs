@@ -500,6 +500,26 @@ namespace Eternities.Kits
 
         public bool LavaAt(float x, float z) => Wet[Grid.At(x, z)] == WetLava && HeightAt(x, z) < LavaLevel;
 
+        // The texels of a kind of water in a region beside dry ground, every few metres, at the
+        // water's level: the points a sea's or a marsh's sound rides (`App.BuildSound`).
+        public List<Vector3> Shore(byte kind, int region)
+        {
+            var shore = new List<Vector3>();
+            int n = N, step = Mathf.Max(1, Mathf.RoundToInt(6 / Grid.Texel));
+            for (int row = step; row < n - step; row += step)
+            {
+                for (int column = step; column < n - step; column += step)
+                {
+                    int i = row * n + column;
+                    if (Wet[i] == kind && Region[i] == region && (Wet[i - step] != kind || Wet[i + step] != kind || Wet[i - step * n] != kind || Wet[i + step * n] != kind))
+                    {
+                        shore.Add(new Vector3(Grid.X(column), WaterLevel, Grid.Z(row)));
+                    }
+                }
+            }
+            return shore;
+        }
+
         public RegionDress RegionAt(float x, float z) => Regions[Region[Grid.At(x, z)]];
     }
 }

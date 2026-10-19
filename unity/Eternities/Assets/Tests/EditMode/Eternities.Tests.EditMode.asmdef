@@ -11,7 +11,8 @@
         "Eternities.Layout",
         "Eternities.Bench",
         "Eternities.Kits",
-        "Eternities.CardView"
+        "Eternities.CardView",
+        "Eternities.Audio"
     ],
     "includePlatforms": [
         "Editor"

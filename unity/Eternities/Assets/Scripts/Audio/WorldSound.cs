@@ -10,6 +10,10 @@ namespace Eternities.Audio
     // body of water is long and a source is a point, so each source rides its water: each frame it
     // sits at the point of the water nearest the listener.
     //
+    // The attenuation is the inverse-distance law, faded to silence before the source's far
+    // distance (`Level`). It fell linearly at first, and a river 70 m away and out of sight still
+    // played at half its level: the owner's walk heard water where none could be seen (DEC-1005).
+    //
     // A loop is played into itself with a crossfade of `Overlap` seconds (as 5.12.2 loops music),
     // on two sources a loop, so a recording that does not end where it begins has no seam.
     public sealed class WorldSound : MonoBehaviour
@@ -19,6 +23,9 @@ namespace Eternities.Audio
         // the ground is crossed in a few seconds at a walk.
         public const float FadeSeconds = 1.5f;
         public const float Overlap = 3;
+        // The last share of the way to a source's far distance, over which its level fades to none.
+        public const float FadeShare = 0.4f;
+        public const int RolloffKeys = 32;
 
         // One loop on two sources, crossfading into itself.
         sealed class Loop
@@ -134,12 +141,14 @@ namespace Eternities.Audio
             var holder = new GameObject($"{name} sound");
             holder.transform.SetParent(transform, false);
             var loop = new Loop { A = Source(name, clip, holder.transform), B = Source(name, clip, holder.transform), Volume = volume };
+            AnimationCurve rolloff = Rolloff(near, far);
             foreach (AudioSource source in new[] { loop.A, loop.B })
             {
                 source.spatialBlend = 1;
-                source.rolloffMode = AudioRolloffMode.Linear;
+                source.rolloffMode = AudioRolloffMode.Custom;
                 source.minDistance = near;
                 source.maxDistance = far;
+                source.SetCustomCurve(AudioSourceCurveType.CustomRolloff, rolloff);
                 source.spread = spread;
             }
             emitters.Add(new Emitter { Sound = loop, Nearest = nearest });
@@ -152,6 +161,43 @@ namespace Eternities.Audio
             {
                 River = loop.A;
             }
+        }
+
+        // A water source's level at a distance, from 0 to 1: full within `near`, then `near` over
+        // the distance (the inverse-distance law), faded to none over the last `FadeShare` of the
+        // way to `far`.
+        public static float Level(float distance, float near, float far)
+        {
+            if (distance <= near)
+            {
+                return 1;
+            }
+            if (distance >= far)
+            {
+                return 0;
+            }
+            float fadeFrom = far * (1 - FadeShare);
+            float fade = distance <= fadeFrom ? 1 : 1 - Mathf.SmoothStep(0, 1, (distance - fadeFrom) / (far - fadeFrom));
+            return near / distance * fade;
+        }
+
+        // `Level` as the engine's custom roll-off, whose curve runs over the distance as a share of
+        // `far`: keys spaced evenly in the logarithm of the distance from `near` on, where the law
+        // bends most, each with its slope, so the curve does not step between them.
+        public static AnimationCurve Rolloff(float near, float far)
+        {
+            var keys = new Keyframe[RolloffKeys + 1];
+            keys[0] = new Keyframe(0, 1, 0, 0);
+            float start = Mathf.Log(near), span = Mathf.Log(far) - start;
+            for (int k = 1; k <= RolloffKeys; k++)
+            {
+                float distance = Mathf.Exp(start + span * (k - 1) / (RolloffKeys - 1));
+                float h = Mathf.Max(1e-3f, distance * 1e-3f);
+                float slope = (Level(Mathf.Min(far, distance + h), near, far) - Level(Mathf.Max(near, distance - h), near, far)) / (Mathf.Min(far, distance + h) - Mathf.Max(near, distance - h)) * far;
+                keys[k] = new Keyframe(distance / far, Level(distance, near, far), slope, slope);
+            }
+            keys[1].inTangent = 0;
+            return new AnimationCurve(keys);
         }
 
         // The beds' shares at the listener now, at once: on arrival, where the bed starts as it is.

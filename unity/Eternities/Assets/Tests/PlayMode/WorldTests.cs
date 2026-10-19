@@ -7,6 +7,7 @@ using Eternities.Data;
 using Eternities.Kits;
 using Eternities.Layout;
 using Eternities.Travel;
+using Eternities.UI;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.Rendering.HighDefinition;
@@ -519,6 +520,135 @@ namespace Eternities.Tests
             {
                 UnityEngine.Object.Destroy(portal.gameObject);
             }
+        }
+
+        // PRD v4 6.3.1 and 5.13.7 (8.8.3: "crossing a region boundary updates the HUD's region
+        // line and shows the sentence"): the line reads "The Hub" in the hub, names the plane and
+        // the plaza's region on arrival with that region's sentence, follows a walk along the trail
+        // across a boundary, and the sentence of the region crossed into shows for 4 s.
+        [UnityTest]
+        public IEnumerator TheLineFollowsTheWalkerAcrossARegionsBoundary()
+        {
+            yield return Hub();
+            App app = App.Instance;
+            Assert.That(app.Hud.PlaceText, Is.EqualTo(App.HubName));
+            yield return OneSlowStep(app.HubPortal);
+            yield return Until(() => app.WorldReady, 60, "the arrival");
+            yield return null;
+            WorldData world = app.World;
+            WorldDocument layout = world.Layout;
+            var where = new Whereabouts(layout);
+            int plaza = where.Region(layout.Arrival.Position);
+            Assert.That(app.Hud.PlaceText, Is.EqualTo(Whereabouts.Line(world, plaza, -1)));
+            Assert.That(app.Hud.SentenceText, Is.EqualTo(Whereabouts.Sentence(world, plaza)).And.Not.Null);
+
+            // A place on the trail 6 m before it crosses from one region into another, from the
+            // fixture's own trail: the trail is flat and dry, but at a ford, which a walker wades.
+            (Vector3 start, Vector3 end, int from, int into) = TrailCrossing(layout, where);
+            app.Avatar.Place(start, Quaternion.LookRotation(end - start));
+            yield return Until(() => app.ShownRegion == from, 5, "the line at the place before the boundary");
+            Assert.That(app.Hud.PlaceText, Does.StartWith($"{world.Plane.DisplayName} · {layout.Regions[from].Name}"));
+            hands.WorldMove = (end - start).normalized;
+            yield return Until(() => app.ShownRegion == into, 10, $"the walk from {layout.Regions[from].Id} into {layout.Regions[into].Id}");
+            float crossed = Time.unscaledTime;
+            hands.WorldMove = Vector3.zero;
+            Assert.That(app.Hud.PlaceText, Does.StartWith($"{world.Plane.DisplayName} · {layout.Regions[into].Name}"));
+            Assert.That(app.Hud.SentenceText, Is.EqualTo(Whereabouts.Sentence(world, into)));
+            yield return Until(() => app.Hud.SentenceText == null, Hud.SentenceSeconds + 2, "the sentence's end");
+            Assert.That(Time.unscaledTime - crossed, Is.InRange(Hud.SentenceSeconds - 0.5f, Hud.SentenceSeconds + 0.5f), "the sentence shows for 4 s");
+            Assert.That(app.Hud.PlaceText, Is.Not.Null, "the line stays");
+
+            hands.Back = true;
+            yield return Until(() => app.Place == Place.Hub && !app.InTransition, 30, "the return to the hub");
+            Assert.That(app.Hud.PlaceText, Is.EqualTo(App.HubName));
+            Assert.That(app.Hud.SentenceText, Is.Null);
+        }
+
+        // The first place on the trail's legs, sampled every 0.5 m, where 4 m of walking crosses
+        // from one region into another: from 6 m before that crossing to 6 m after it.
+        static (Vector3 Start, Vector3 End, int From, int Into) TrailCrossing(WorldDocument layout, Whereabouts where)
+        {
+            foreach (TrailLeg leg in layout.Legs)
+            {
+                P2[] line = leg.Polyline;
+                for (int i = 12; i + 20 < line.Length; i++)
+                {
+                    int from = where.Region(line[i]), into = where.Region(line[i + 8]);
+                    if (from >= 0 && into >= 0 && from != into && where.Region(line[i - 12]) == from && where.Region(line[i + 20]) == into)
+                    {
+                        return (StandField.Ground(line[i - 12]), StandField.Ground(line[i + 20]), from, into);
+                    }
+                }
+            }
+            Assert.Fail("no leg of the trail crosses a region's boundary");
+            return default;
+        }
+
+        // PRD v4 6.3.4: M opens the map of the world: its regions, the trail's legs, every site in
+        // site order with its stone and its outline, the return portal and every stand as a dot in
+        // its class colour. A click on a site's stone or its outline asks for that site, and on a
+        // region for its first site; the travel portal it opens arrives on the site's pad. M or
+        // Esc closes the map, and while it is open the pointer is the visitor's.
+        [UnityTest]
+        public IEnumerator TheMapShowsTheWorldAndAClickTravelsToASite()
+        {
+            yield return World();
+            App app = App.Instance;
+            WorldData world = app.World;
+            WorldDocument layout = world.Layout;
+            hands.Map = true;
+            yield return Until(() => app.Hud.MapOpen, 5, "the map");
+            Assert.That(app.Hud.Open, "the map is an overlay");
+            MapModel map = app.Map;
+            Assert.That(map.Regions.Count, Is.EqualTo(layout.Regions.Length));
+            Assert.That(map.Regions.Select(area => area.Name), Is.EqualTo(layout.Regions.Select(region => region.Name)));
+            Assert.That(map.Trail.Count, Is.EqualTo(layout.Legs.Length));
+            Assert.That(map.Sites.Count, Is.EqualTo(layout.Sites.Length));
+            Assert.That(map.Dots.Length, Is.EqualTo(world.StandCount));
+            Assert.That(map.Ground, Is.Not.Null);
+            Assert.That(map.Ground.width, Is.EqualTo(App.MapGroundSide));
+            Assert.That(map.HalfSide, Is.GreaterThan(layout.Radius / 1000f), "the map shows the whole world");
+            for (int stand = 0; stand < world.StandCount; stand += 97)
+            {
+                Assert.That(map.DotColours[stand], Is.EqualTo(StandField.ClassColours[StandField.ClassOf(world, stand)]));
+            }
+            for (int s = 0; s < layout.Sites.Length; s++)
+            {
+                Assert.That(map.Sites[s].Chapters.Length, Is.EqualTo(layout.Sites[s].Chapters.Count(chapter => chapter.Stone != null)), layout.Sites[s].Key);
+            }
+            yield return null;
+            yield return null;
+            MapView view = app.Hud.Map;
+            Assert.That(view.contentRect.width, Is.GreaterThan(50), "the map is laid out");
+            for (int s = 0; s < map.Sites.Count; s++)
+            {
+                Assert.That(view.SiteAt(view.ToView(map.Sites[s].Stone)), Is.EqualTo(s), $"a click on {layout.Sites[s].Key}'s stone");
+            }
+            foreach (MapModel.Area area in map.Regions)
+            {
+                if (area.Site < 0)
+                {
+                    Assert.That(view.SiteAt(view.ToView(area.Label)), Is.EqualTo(-1), $"{area.Name} has no site and offers no travel");
+                }
+            }
+
+            // A click on the last site travels to its pad.
+            int chosen = map.Sites.Count - 1;
+            view.Chosen(chosen);
+            Assert.That(app.Hud.MapOpen, Is.False, "the map closes as the travel begins");
+            yield return Until(() => !app.InTransition, 10, "the travel");
+            Vector3 pad = StandField.Ground(layout.Sites[chosen].Pad.Position);
+            Vector3 at = app.Avatar.transform.position;
+            Assert.That(Vector2.Distance(new Vector2(at.x, at.z), new Vector2(pad.x, pad.z)), Is.LessThan(0.3f), "on the site's pad");
+            yield return null;
+            Assert.That(app.ShownSite, Is.EqualTo(chosen));
+
+            // M opens it again, and M closes it.
+            hands.Map = true;
+            yield return Until(() => app.Hud.MapOpen, 5, "the map again");
+            hands.Map = true;
+            yield return Until(() => !app.Hud.MapOpen, 5, "the map closing");
+            Assert.That(app.Hud.Open, Is.False);
         }
 
         // DEC-989: a placement is not a step. An arrival, and a test, put the avatar somewhere

@@ -161,7 +161,12 @@ namespace Eternities.Tests
                 }
             }
             Assert.That(wet, Is.GreaterThan(0));
-            Assert.That(atFords, Is.GreaterThan(0), "a river crosses the trail somewhere");
+            // A layout whose rivers cross no path has no ford, and nothing to find at one
+            // (DEC-1194 N22).
+            if (plan.Fords.Count > 0)
+            {
+                Assert.That(atFords, Is.GreaterThan(0), "a river crosses the trail at each ford");
+            }
         }
 
         // The water near a point, for a failure's message.
@@ -243,6 +248,72 @@ namespace Eternities.Tests
                         break;
                 }
             }
+        }
+
+        // Each sea's sound rides its own shore (DEC-1194 N9, N23): every point a sea's source can
+        // stand on lies in that sea's region, on its water beside dry ground, and no two seas'
+        // sources share a point, so the surf never plays twice at one place.
+        [Test]
+        public void EachSeasSoundRidesItsOwnShore()
+        {
+            var taken = new Dictionary<Vector3, int>();
+            int seas = 0;
+            foreach (WaterBody body in plan.Water.Where(body => body.Kind == WaterBody.Sea))
+            {
+                seas++;
+                List<Vector3> shore = plan.Shore(DressPlan.WetSea, body.Region);
+                Assert.That(shore, Is.Not.Empty, plan.Regions[body.Region].Id);
+                foreach (Vector3 point in shore)
+                {
+                    int texel = plan.Grid.At(point.x, point.z);
+                    Assert.That(plan.Region[texel], Is.EqualTo(body.Region), $"a shore point of {plan.Regions[body.Region].Id}'s sea at {point.x:F1}, {point.z:F1}");
+                    Assert.That(plan.Wet[texel], Is.EqualTo(DressPlan.WetSea));
+                    Assert.That(taken.TryAdd(point, body.Region), $"{point.x:F1}, {point.z:F1} is a shore point of {plan.Regions[taken.GetValueOrDefault(point)].Id}'s sea and of {plan.Regions[body.Region].Id}'s");
+                }
+            }
+            Assert.That(seas, Is.EqualTo(plan.Regions.Count(region => region.Water == WaterBody.Sea)), "a sea a sea region");
+        }
+
+        // The map's picture of the ground (PRD v4 6.3.4) shows the water where the plan lays it and
+        // nowhere else: the sea in its colour, the lava in its, the fresh water in its, and the
+        // land in none of them; and it is dimmed past the world's edge.
+        [Test]
+        public void TheMapsGroundShowsTheWaterWhereItLies()
+        {
+            const int Side = 256;
+            float half = plan.Radius + 40;
+            Color32[] pixels = MapGround.Pixels(plan, Vector2.zero, half, Side);
+            Color32 sea = MapGround.Sea, lava = MapGround.Lava, fresh = MapGround.Fresh;
+            var seen = new int[6];
+            for (int row = 0; row < Side; row++)
+            {
+                for (int column = 0; column < Side; column++)
+                {
+                    float x = -half + (column + 0.5f) * 2 * half / Side, z = -half + (row + 0.5f) * 2 * half / Side;
+                    if (x * x + z * z > plan.Radius * plan.Radius)
+                    {
+                        continue;
+                    }
+                    byte wet = plan.Wet[plan.Grid.At(x, z)];
+                    Color32 pixel = pixels[row * Side + column];
+                    seen[wet]++;
+                    Color32 wanted = wet switch
+                    {
+                        DressPlan.WetSea => sea,
+                        DressPlan.WetLava => lava,
+                        DressPlan.Dry => pixel,
+                        _ => fresh,
+                    };
+                    Assert.That(pixel, Is.EqualTo(wanted), $"the map at {x:F0}, {z:F0}, where the water is {wet}");
+                    if (wet == DressPlan.Dry)
+                    {
+                        Assert.That(pixel, Is.Not.EqualTo(sea).And.Not.EqualTo(lava).And.Not.EqualTo(fresh), $"dry land at {x:F0}, {z:F0}");
+                    }
+                }
+            }
+            Assert.That(seen[DressPlan.WetSea] > 0 && seen[DressPlan.WetLava] > 0 && seen[DressPlan.Dry] > 0, $"the map shows sea, lava and land: {string.Join(", ", seen)}");
+            Color32 corner = pixels[0];
+            Assert.That(corner.r + corner.g + corner.b, Is.LessThan(255 * 3 * MapGround.PastTheEdge), "past the edge the map is dim");
         }
 
         // Unity Terrain draws at most eight layers on a tile in HDRP: the plan gives none more, and
