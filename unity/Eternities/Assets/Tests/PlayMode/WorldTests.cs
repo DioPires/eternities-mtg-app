@@ -10,6 +10,7 @@ using Eternities.Travel;
 using Eternities.UI;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.Rendering.HighDefinition;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
@@ -652,26 +653,57 @@ namespace Eternities.Tests
         }
 
         // DEC-1203 N4: a world is built while the visitor stands on the hub's pad, and its sea
-        // reaches past its ground to the hub. Its water shows only in the world: in the hub its
-        // volume weighs nothing, before the first visit and after a return, while the world stands
-        // built.
+        // reaches past its ground to the hub. Its water shows only in the world: in the hub the
+        // water system is off for the main camera, as HDRP reads it from the camera's volumes,
+        // before the first visit and after a return, while the world stands built.
         [UnityTest]
         public IEnumerator TheWorldsWaterShowsOnlyInTheWorld()
         {
+            // The water system's switch as HDRP blends it for the main camera each frame: HDRP's
+            // default profile, then every volume the camera's mask takes.
+            static bool Rendered()
+            {
+                Camera view = Camera.main;
+                if (!VolumeManager.instance.isInitialized)
+                {
+                    // A run with no window renders nothing on its own, and HDRP starts the volumes
+                    // with its first frame: one frame into a texture starts them.
+                    RenderTexture target = RenderTexture.GetTemporary(64, 64, 24);
+                    view.targetTexture = target;
+                    view.Render();
+                    view.targetTexture = null;
+                    RenderTexture.ReleaseTemporary(target);
+                }
+                VolumeStack stack = VolumeManager.instance.CreateStack();
+                try
+                {
+                    VolumeManager.instance.Update(stack, view.transform, view.GetComponent<HDAdditionalCameraData>().volumeLayerMask);
+                    return stack.GetComponent<WaterRendering>().enable.value;
+                }
+                finally
+                {
+                    VolumeManager.instance.DestroyStack(stack);
+                }
+            }
             yield return Hub();
             App app = App.Instance;
             app.Avatar.Place(app.HubPortal.Pad, app.HubPortal.transform.rotation);
             yield return Until(() => app.WorldLoaded, 60, "the world built from the pad");
+            yield return null;
+            yield return null;
             Assert.That(app.Place, Is.EqualTo(Place.Hub));
             Assert.That(app.Water, Is.Not.Null);
-            Assert.That(WorldWater.Shown(app.Water), Is.False, "built from the hub, the world's water is not drawn in the hub");
+            Assert.That(Rendered(), Is.False, "built from the hub, the world's water is not drawn in the hub");
             yield return OneSlowStep(app.HubPortal);
             yield return Until(() => app.WorldReady, 60, "the arrival");
-            Assert.That(WorldWater.Shown(app.Water), "in the world it is");
+            yield return null;
+            Assert.That(Rendered(), "in the world it is");
             hands.Back = true;
             yield return Until(() => app.Place == Place.Hub && !app.InTransition, 30, "the return to the hub");
             yield return Until(() => app.WorldLoaded, 60, "the world built again from the pad the return leaves the visitor on");
-            Assert.That(WorldWater.Shown(app.Water), Is.False, "and after a visit it is not drawn in the hub");
+            yield return null;
+            yield return null;
+            Assert.That(Rendered(), Is.False, "and after a visit it is not drawn in the hub");
         }
 
         // DEC-989: a placement is not a step. An arrival, and a test, put the avatar somewhere

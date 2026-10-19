@@ -31,11 +31,18 @@ namespace Eternities.Kits
         // The world's water shows only while the visitor is in the world, as its sky does
         // (`WorldSky.Shown`). A world is built while the visitor still stands in the hub, and the
         // hub stands on the sea's reach past the ground: with the water on, the hub's horizon was
-        // the world's sea after every visit (DEC-1203 N4). Its volume, which turns the water system
-        // on, weighs nothing in the hub; nothing is built or let go.
-        public static void Show(GameObject water, bool shown) => water.GetComponent<Volume>().weight = shown ? 1 : 0;
+        // the world's sea after every visit (DEC-1203 N4). The world's volume turns the water
+        // system off in the hub, over HDRP's default profile, which turns it on everywhere;
+        // nothing is built or let go.
+        public static void Show(GameObject water, bool shown)
+        {
+            if (water.GetComponent<Volume>().profile.TryGet(out WaterRendering rendering))
+            {
+                rendering.enable.value = shown;
+            }
+        }
 
-        public static bool Shown(GameObject water) => water.GetComponent<Volume>().weight > 0;
+        public static bool Shown(GameObject water) => water.GetComponent<Volume>().profile.TryGet(out WaterRendering rendering) && rendering.enable.value;
 
         // `owned` takes what is made here and belongs to no object: it leaves with the world.
         public static GameObject Build(DressPlan plan, GameObject riverPrefab, GameObject lakePrefab, GameObject seaPrefab, Material lava, Transform parent, List<Object> owned)
@@ -43,14 +50,13 @@ namespace Eternities.Kits
             var root = new GameObject("Water");
             root.transform.SetParent(parent, false);
 
-            // The water system renders only where a volume says so, and this one weighs nothing
-            // until the visitor is in the world (`Show`).
+            // The water system renders where the volumes say so. HDRP's default profile turns it on
+            // everywhere; this one turns it off until the visitor is in the world (`Show`).
             var volume = root.AddComponent<Volume>();
             volume.isGlobal = true;
             volume.priority = 1;
-            volume.weight = 0;
             volume.profile = ScriptableObject.CreateInstance<VolumeProfile>();
-            volume.profile.Add<WaterRendering>().enable.Override(true);
+            volume.profile.Add<WaterRendering>().enable.Override(false);
             owned.Add(volume.profile);
 
             if (riverPrefab != null)
