@@ -265,8 +265,9 @@ namespace Eternities.Data
                 return BigInteger.Parse(token, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
             }
             // The grammar holds, so only the range can make the parse fail: a runtime that gives no
-            // infinity for a number beyond a double (.NET Framework) then reads what Python and
-            // .NET Core 3.0 and later read.
+            // infinity for a number beyond a double then reads what Python and .NET Core 3.0 and
+            // later read. Unity's Mono 6.13 is such a runtime, so this branch is the one that runs
+            // in the editor and the player (DEC-1203 E5).
             if (!double.TryParse(token, NumberStyles.Float, CultureInfo.InvariantCulture, out double number))
             {
                 return token[0] == '-' ? double.NegativeInfinity : double.PositiveInfinity;

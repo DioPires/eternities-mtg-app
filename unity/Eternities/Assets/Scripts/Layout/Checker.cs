@@ -540,7 +540,10 @@ namespace Eternities.Layout
             return number;
         }
 
-        // A whole number: a JSON number with no fraction, within the range a double holds exactly.
+        // A whole number: any long, as the reader reads an integer token, or a double with no
+        // fraction within the range a double holds exactly. A document's number token with a `.`,
+        // an `e` or an `E` is refused before any reader runs (`Check`), so only a caller's own
+        // value takes the second case.
         static long Whole(object value)
         {
             switch (value)
