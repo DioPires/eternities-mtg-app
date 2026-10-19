@@ -44,6 +44,47 @@ namespace Eternities.Kits
 
         public static bool Shown(GameObject water) => water.GetComponent<Volume>().profile.TryGet(out WaterRendering rendering) && rendering.enable.value;
 
+        // The first draw of a kind of water in a session stalls frames for a few hundred
+        // milliseconds while HDRP's water passes start. Before DEC-1203 N4 that was the hub's view
+        // of the sea; then it was the first river on the trail (370 ms in CI's warm run 39314207746).
+        // So the first entry, behind the veil, turns the water on and a camera high over the world
+        // draws every surface once into a small texture, while the main camera, still in the hub,
+        // draws the sea's reach under it. `EndWarmUp` takes it all away again.
+        public static GameObject WarmUp(GameObject water, float radius)
+        {
+            Show(water, true);
+            var holder = new GameObject("Water warm-up");
+            holder.transform.SetParent(water.transform, false);
+            float height = 2 * radius + 50;
+            holder.transform.SetPositionAndRotation(new Vector3(0, height, 0), Quaternion.Euler(90, 0, 0));
+            var camera = holder.AddComponent<Camera>();
+            camera.fieldOfView = 2 * Mathf.Atan((radius + 50) / height) * Mathf.Rad2Deg;
+            camera.nearClipPlane = 1;
+            camera.farClipPlane = height + 100;
+            camera.targetTexture = new RenderTexture(WarmUpSide, WarmUpSide, 24) { name = "water warm-up" };
+            return holder;
+        }
+
+        public const int WarmUpSide = 256;
+
+        public static void EndWarmUp(GameObject water, GameObject warmUp)
+        {
+            if (warmUp == null)
+            {
+                return;     // the world went, and the warm-up with it
+            }
+            var camera = warmUp.GetComponent<Camera>();
+            RenderTexture target = camera.targetTexture;
+            camera.targetTexture = null;
+            Object.Destroy(warmUp);
+            target.Release();
+            Object.Destroy(target);
+            if (water != null)
+            {
+                Show(water, false);
+            }
+        }
+
         // `owned` takes what is made here and belongs to no object: it leaves with the world.
         public static GameObject Build(DressPlan plan, GameObject riverPrefab, GameObject lakePrefab, GameObject seaPrefab, Material lava, Transform parent, List<Object> owned)
         {
