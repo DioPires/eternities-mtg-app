@@ -123,8 +123,10 @@ namespace Eternities.Layout
         }
 
         // Check one world's emitted files against invariants 7 to 11. `world` and `lore` are the
-        // parsed documents (an object is a string-keyed dictionary, an array a list, a number a
-        // double); `lore` is null on a kit world. `cards` is the plane's card list from the pack.
+        // parsed documents (an object is a string-keyed dictionary, an array a list, an integer
+        // token a long, or a BigInteger when a long cannot hold it, and any other number a double,
+        // as `Json.Parse` reads them); `lore` is null on a kit world. `cards` is the plane's card
+        // list from the pack.
         public static Result Check(byte[] standsBin, object world, object lore, IReadOnlyList<CheckedCard> cards, Trig table)
         {
             var report = new Result();
@@ -138,12 +140,22 @@ namespace Eternities.Layout
                 return report;
             }
             report.Tested("world-format");
-            (string Place, double Value)? outside = OutsideInt32(world);
+            (string Place, BigInteger Value)? outside = OutsideInt32(world);
             if (outside != null)
             {
-                report.Fail("world-format", $"the world document holds {outside.Value.Value.ToString("R", System.Globalization.CultureInfo.InvariantCulture)} at "
+                report.Fail("world-format", $"the world document holds {outside.Value.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)} at "
                     + $"{(outside.Value.Place.Length == 0 ? "its top" : outside.Value.Place)}, outside the int32 range of 4.13.5, {int.MinValue} to {int.MaxValue}");
                 return report;
+            }
+            foreach ((string name, object document) in new[] { ("world", world), ("lore", lore) })
+            {
+                (string Place, double Value)? token = FirstDouble(document);
+                if (token != null)
+                {
+                    report.Fail("world-format", $"the {name} document holds {token.Value.Value.ToString("R", System.Globalization.CultureInfo.InvariantCulture)} at "
+                        + $"{(token.Value.Place.Length == 0 ? "its top" : token.Value.Place)}, a number token with a '.', an 'e' or an 'E', which 4.13.5 refuses");
+                    return report;
+                }
             }
             World read;
             Lore tables;
@@ -427,7 +439,7 @@ namespace Eternities.Layout
                 {
                     Eras = ListOf(lore["eras"]).Select(row => new Era
                     {
-                        Id = Text(ObjectOf(row)["id"]), Region = Text(ObjectOf(row)["region"]), SetIds = ListOf(ObjectOf(row)["setIds"]).Select(Whole).ToArray(),
+                        Id = Text(ObjectOf(row)["id"]), Region = Text(ObjectOf(row)["region"]), SetIds = ListOf(ObjectOf(row)["setIds"]).Select(SetId).ToArray(),
                     }).ToArray(),
                     Regions = ListOf(lore["regions"]).Select(row => Text(ObjectOf(row)["id"])).ToArray(),
                     Keywords = ListOf(lore["keywords"]).Select(row => new Keywords.Row(Text(ObjectOf(row)["word"]), Text(ObjectOf(row)["region"]))).ToArray(),
@@ -439,20 +451,23 @@ namespace Eternities.Layout
         static List<object> ListOf(object value) => (List<object>)value;
 
         // Erratum 7 (4.13.5): every integer of a world document lies in the int32 range, read or
-        // not. `Whole` takes a whole number up to 2^53 and the checker computes in `long`, which
-        // wraps from about 2^32 mm, so without this the two checkers could read one document two
-        // ways. A number is a double here; the first whole one outside the range is returned with
-        // its place in the document, as `sites[0].centre[1]`, which is written only then.
-        static (string Place, double Value)? OutsideInt32(object value)
+        // not. `Whole` takes any long and the checker computes in `long`, which wraps from about
+        // 2^32 mm, so without this the two checkers could read one document two ways. An integer
+        // token is a long, or a BigInteger when a long cannot hold it, which lies outside the range
+        // in any case. The first one outside is returned exactly, with its place in the document,
+        // as `sites[0].centre[1]`, which is written only then.
+        static (string Place, BigInteger Value)? OutsideInt32(object value)
         {
             switch (value)
             {
-                case double d:
-                    return d == Math.Floor(d) && (d < int.MinValue || d > int.MaxValue) ? ("", d) : ((string, double)?)null;
+                case long l:
+                    return l < int.MinValue || l > int.MaxValue ? ("", l) : ((string, BigInteger)?)null;
+                case BigInteger big:
+                    return ("", big);
                 case Dictionary<string, object> members:
                     foreach (KeyValuePair<string, object> member in members)
                     {
-                        (string Place, double Value)? found = OutsideInt32(member.Value);
+                        (string Place, BigInteger Value)? found = OutsideInt32(member.Value);
                         if (found != null)
                         {
                             return (member.Key + Joined(found.Value.Place), found.Value.Value);
@@ -462,7 +477,43 @@ namespace Eternities.Layout
                 case List<object> items:
                     for (int i = 0; i < items.Count; i++)
                     {
-                        (string Place, double Value)? found = OutsideInt32(items[i]);
+                        (string Place, BigInteger Value)? found = OutsideInt32(items[i]);
+                        if (found != null)
+                        {
+                            return ($"[{i}]" + Joined(found.Value.Place), found.Value.Value);
+                        }
+                    }
+                    return null;
+                default:
+                    return null;
+            }
+        }
+
+        // Erratum 8 (4.13.5): no number token of the world or lore document holds a `.`, an `e` or
+        // an `E`, read or not. `Json.Parse` reads exactly those tokens as a double, and an integer
+        // token as a long or a BigInteger, so without this `Whole` would take `5.0` and `5e0` as 5
+        // where the pipeline's checker refuses them. The first double is returned with its place in
+        // the document, as `sites[0].centre[1]`, which is written only then.
+        static (string Place, double Value)? FirstDouble(object value)
+        {
+            switch (value)
+            {
+                case double d:
+                    return ("", d);
+                case Dictionary<string, object> members:
+                    foreach (KeyValuePair<string, object> member in members)
+                    {
+                        (string Place, double Value)? found = FirstDouble(member.Value);
+                        if (found != null)
+                        {
+                            return (member.Key + Joined(found.Value.Place), found.Value.Value);
+                        }
+                    }
+                    return null;
+                case List<object> items:
+                    for (int i = 0; i < items.Count; i++)
+                    {
+                        (string Place, double Value)? found = FirstDouble(items[i]);
                         if (found != null)
                         {
                             return ($"[{i}]" + Joined(found.Value.Place), found.Value.Value);
@@ -476,6 +527,18 @@ namespace Eternities.Layout
 
         // What follows a key in a place: an index as it is, a member's name after a dot.
         static string Joined(string inner) => inner.Length == 0 || inner[0] == '[' ? inner : "." + inner;
+
+        // An era's set id: a whole number in the uint16 range of a stand's set id (4.16.3, erratum
+        // 8), since `Whole` takes any long.
+        static long SetId(object value)
+        {
+            long number = Whole(value);
+            if (number < 0 || number > ushort.MaxValue)
+            {
+                throw new InvalidDataException($"the set id {number} lies outside the uint16 range of 4.16.3, 0 to {ushort.MaxValue}");
+            }
+            return number;
+        }
 
         // A whole number: a JSON number with no fraction, within the range a double holds exactly.
         static long Whole(object value)
@@ -2104,8 +2167,8 @@ namespace Eternities.Layout
             {
                 found.Add($"verticesInside is stated {statedInside ?? "null"} and is {inside}");
             }
-            bool wholeCrossings = statedCrossings is double dc && dc == Math.Floor(dc);
-            if (!wholeCrossings || (long)(double)statedCrossings != crossings)
+            // An integer token, or a whole double as before (erratum 8).
+            if (!(statedCrossings is long sc ? sc == crossings : statedCrossings is double dc && dc == crossings))
             {
                 found.Add($"edgeCrossings is stated {statedCrossings ?? "null"} and is {crossings}");
             }

@@ -1427,9 +1427,9 @@ def test_the_path_of_a_site_with_no_stand_has_two_vertices(tmp_path: Path):
     assert "has no stand and its path has 3 vertices" in under(result, "path-empty")[0]
 
 
-@cache
 def dominaria() -> tuple[bytes, dict[str, Any], dict[str, Any], list[CheckedCard]]:
-    """The committed Dominaria fixture's files and the plane's cards from the pinned pack."""
+    """The committed Dominaria fixture's files and the plane's cards from the pinned pack, free to
+    change."""
     data, world, lore, held = _dominaria()
     return (data, copy.deepcopy(world), copy.deepcopy(lore), list(held))
 
@@ -1487,3 +1487,99 @@ def empty_era(tmp_path: Path) -> tuple[bytes, dict[str, Any], dict[str, Any], li
         json.loads(emit.to_json(emitted.lore)),
         held,
     )
+
+
+# Erratum 8 (4.16.3): every set id of an era lies in the uint16 range, the width of a stand's set
+# id. One past either end, and a 20-digit integer, are refused under `world-format`, and nothing
+# else is tested.
+def test_a_lore_set_id_outside_the_uint16_range_is_refused_under_world_format():
+    for value in (65_536, -1, 99_999_999_999_999_999_999):
+        data, world, lore, held = dominaria()
+        lore["eras"][0]["setIds"].append(value)
+        result = check.check_world(data, world, lore, held, table())
+        assert rules(result) == {"world-format"}
+        (line,) = under(result, "world-format")
+        assert f"the set id {value} lies outside the uint16 range of 4.16.3, 0 to 65535" in line
+
+
+# The range's top passes that rule and every other. Its foot, 0, is Dominaria's first set id.
+def test_a_lore_set_id_at_the_top_of_the_uint16_range_passes_world_format():
+    data, world, lore, held = dominaria()
+    assert lore["eras"][0]["setIds"][0] == 0
+    lore["eras"][0]["setIds"].append(65_535)
+    result = check.check_world(data, world, lore, held, table())
+    assert result.ok and result.assertions["world-format"] == 1
+
+
+def with_token(document: dict[str, Any], keys: list[str | int], token: str) -> dict[str, Any]:
+    """The document as ``json`` reads it with the number at ``keys`` written as ``token``."""
+    changed = copy.deepcopy(document)
+    parent: Any = changed
+    for key in keys[:-1]:
+        parent = parent[key]
+    parent[keys[-1]] = "<token>"
+    return json.loads(json.dumps(changed).replace('"<token>"', token))
+
+
+STAND_COUNT: list[str | int] = ["standCount"]
+DESTINATION_YAW: list[str | int] = ["sites", 0, "chapters", 0, "destination", "yaw"]
+ERA_SET_ID: list[str | int] = ["eras", 0, "setIds", 0]
+HEADLINE: list[str | int] = ["eras", 0, "headline", 0]
+
+
+# Erratum 8 (4.13.5): no number token of the world or lore document holds a `.`, an `e` or an
+# `E`, read or not. Dominaria's stand count, which the checker reads, its first chapter's
+# destination yaw, which no rule reads, an era's set id in its lore, which no rule reads before the
+# walk, and the era's first headline card, which no rule reads, are each refused under
+# `world-format` and nothing else is tested.
+@pytest.mark.parametrize("token", ["5.0", "5e0", "5E0"])
+def test_a_number_token_with_a_fraction_or_an_exponent_is_refused_read_or_not(token: str):
+    data, world, lore, held = dominaria()
+    for keys, place in (
+        (STAND_COUNT, "standCount"),
+        (DESTINATION_YAW, "sites[0].chapters[0].destination.yaw"),
+    ):
+        result = check.check_world(data, with_token(world, keys, token), lore, held, table())
+        assert rules(result) == {"world-format"}
+        (line,) = under(result, "world-format")
+        assert f"the world document holds 5.0 at {place}, a number token with a '.'" in line
+    for keys, place in ((ERA_SET_ID, "eras[0].setIds[0]"), (HEADLINE, "eras[0].headline[0]")):
+        result = check.check_world(data, world, with_token(lore, keys, token), held, table())
+        assert rules(result) == {"world-format"}
+        (line,) = under(result, "world-format")
+        assert f"the lore document holds 5.0 at {place}, a number token with a '.'" in line
+
+
+# The same places written as the integer token 5: the stand count is read and breaks its own rule,
+# and the yaw passes.
+def test_the_same_places_written_as_an_integer_token_pass_world_format():
+    data, world, lore, held = dominaria()
+    result = check.check_world(data, with_token(world, STAND_COUNT, "5"), lore, held, table())
+    assert "world-format" not in rules(result) and "stand-count" in rules(result)
+    assert check.check_world(data, with_token(world, DESTINATION_YAW, "5"), lore, held, table()).ok
+
+
+# An integer token of the world document outside the int32 range of 4.13.5 is refused under
+# `world-format` with its exact value: 2^53 + 1, which a double cannot hold, and a 20-digit
+# integer, which the C# reader holds only as a BigInteger (erratum 8; DEC-1203 B1 and N1).
+@pytest.mark.parametrize(
+    "token", ["9007199254740993", "99999999999999999999", "-99999999999999999999"]
+)
+def test_a_large_integer_token_is_refused_with_its_exact_value(token: str):
+    data, world, lore, held = dominaria()
+    result = check.check_world(data, with_token(world, STAND_COUNT, token), lore, held, table())
+    assert rules(result) == {"world-format"}
+    (line,) = under(result, "world-format")
+    assert (
+        f"the world document holds {token} at standCount, outside the int32 range of 4.13.5" in line
+    )
+
+
+# The lore document has no int32 rule: a 20-digit integer as the era's first headline card, which no
+# rule reads, passes `world-format` and every other rule, as in the C# checker (DEC-1203 B1).
+def test_a_large_integer_token_in_a_lore_field_that_no_rule_reads_passes():
+    data, world, lore, held = dominaria()
+    result = check.check_world(
+        data, world, with_token(lore, HEADLINE, "99999999999999999999"), held, table()
+    )
+    assert result.ok and result.assertions["world-format"] == 1
