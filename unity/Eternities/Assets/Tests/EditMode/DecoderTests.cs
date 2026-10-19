@@ -92,7 +92,7 @@ namespace Eternities.Tests
                 row[StandRecords.PlaneAt] = (byte)wrong;
             }
             inputs.Stands = records.Bytes();
-            Json.Object(inputs.World)["planeIndex"] = (double)wrong;
+            Json.Object(inputs.World)["planeIndex"] = (long)wrong;
             Checker.Result checker = Checker.Check(inputs.Stands, inputs.World, null, LayoutFixtures.Cards(fixture), LayoutFixtures.Trig);
             Assert.That(checker.Violations, Is.Empty, "the checker sees one index on both sides");
             Refused(inputs, $"names plane index {wrong}; rabiah is plane {wrong - 1} of planes.json");
@@ -119,10 +119,10 @@ namespace Eternities.Tests
             Refused(Changed(records => records.Set16(0, StandRecords.SetAt, 999)), "records set id 999, which site set:");
             Refused(Changed(records => records.Set16(0, StandRecords.ClusterAt, 500)), "records cluster index 500");
             Inputs vertex = Fresh();
-            Json.Array(Json.Object(Json.Object(vertex.World)["stands"])["vertex"])[0] = 1_000_000d;
+            Json.Array(Json.Object(Json.Object(vertex.World)["stands"])["vertex"])[0] = 1_000_000L;
             Refused(vertex, "ends on vertex 1000000");
             Inputs counted = Fresh();
-            Json.Object(counted.World)["standCount"] = 74d;
+            Json.Object(counted.World)["standCount"] = 74L;
             Refused(counted, "stands.bin holds 75 records");
             Inputs header = Fresh();
             header.Stands[5] = 3;
@@ -185,13 +185,16 @@ namespace Eternities.Tests
         }
 
         // A number with a fraction is refused, not cut (PRD v4 7.4.1; DEC-1130 N4): `Json.Int` and
-        // `Json.Long` take a whole number within the range a double holds exactly, as the checker's
-        // `Whole` does. Rabiah's world document with half a plane added to its plane index read as
-        // its own plane before.
+        // `Json.Long` take an integer token, or a whole number within the range a double holds
+        // exactly, as the checker's `Whole` does. Rabiah's world document with half a plane added
+        // to its plane index read as its own plane before.
         [Test]
         public void ANumberThatIsNotWholeIsRefused()
         {
             Assert.That(Json.Int(3d), Is.EqualTo(3));
+            Assert.That(Json.Int(3L), Is.EqualTo(3));
+            Assert.That(Json.Long(9_007_199_254_740_993L), Is.EqualTo(9_007_199_254_740_993L));
+            Assert.Throws<System.OverflowException>(() => Json.Int(2_147_483_648L));
             Assert.That(Json.Int(-7d), Is.EqualTo(-7));
             Assert.That(Json.Long(9_007_199_254_740_992d), Is.EqualTo(9_007_199_254_740_992L));
             Assert.That(Json.Long(-9_007_199_254_740_992d), Is.EqualTo(-9_007_199_254_740_992L));
@@ -200,8 +203,9 @@ namespace Eternities.Tests
             StringAssert.Contains("is not a whole number", Assert.Throws<InvalidDataException>(() => Json.Long(9_007_199_254_740_994d)).Message);
             StringAssert.Contains("JSON: '7' is not a whole number", Assert.Throws<InvalidDataException>(() => Json.Int("7")).Message);
             StringAssert.Contains("JSON: null is not a whole number", Assert.Throws<InvalidDataException>(() => Json.Long(null)).Message);
+            StringAssert.Contains("JSON: 9223372036854775808 is not a whole number", Assert.Throws<InvalidDataException>(() => Json.Long(Json.Parse("9223372036854775808"))).Message);
             Inputs inputs = Read(LayoutFixtures.Named("rabiah"));
-            double half = (double)Json.Object(inputs.World)["planeIndex"] + 0.5;
+            double half = Json.Long(Json.Object(inputs.World)["planeIndex"]) + 0.5;
             Json.Object(inputs.World)["planeIndex"] = half;
             Refused(inputs, $"JSON: {half.ToString("R", CultureInfo.InvariantCulture)} is not a whole number");
         }
