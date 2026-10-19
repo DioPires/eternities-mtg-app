@@ -805,7 +805,8 @@ namespace Eternities.Travel
             LoadStage = "props";
             KitProp PropOf(Scatter.Kind kind) => temperate.Variant(Variants.Temperate[kind.Variant].Name).Props[kind.Growth];
             Scatter.Kind[] kinds = Scatter.KindsOf(Variants.Temperate, (v, g) => temperate.Variant(Variants.Temperate[v].Name).Props[g].Shape());
-            var placed = new Scatter(Dress, kinds, Temperate.Density(QualitySettings.names[QualitySettings.GetQualityLevel()]));
+            string level = QualitySettings.names[QualitySettings.GetQualityLevel()];
+            var placed = new Scatter(Dress, kinds, Temperate.Density(level), Temperate.FarDensity(level));
             Task place = Task.Run(placed.PlaceAll);
             while (!place.IsCompleted)
             {

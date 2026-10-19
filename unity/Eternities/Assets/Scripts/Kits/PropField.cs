@@ -108,6 +108,26 @@ namespace Eternities.Kits
             _ => kind.Far ? 170 : 160,
         };
 
+        // Within these distances a cell draws all its props; past them, those that stand at the
+        // scatter's far density, the first by rank (DEC-1005, the props' lever at HDRP high). A
+        // scatter whose far density is its own, as at medium and low, draws all of them anywhere.
+        public static float Near(Scatter.Kind kind) => kind.Low ? NearCover : kind.Category switch
+        {
+            "Trees" => NearTrees,
+            "Rocks" => NearRocks,
+            _ => kind.Far ? NearField : NearBushes,
+        };
+
+        internal const float NearTrees = 80, NearRocks = 60, NearBushes = 40, NearField = 48, NearCover = Variants.CoverFar;
+
+        // How many of a run's props a cell draws at a distance from the eye: of its `count`, the
+        // first `far` of which stand at the scatter's far density.
+        internal static int Share(Scatter.Kind kind, int count, int far, float distance) => distance > Near(kind) ? far : count;
+
+        // The order of a lazy cell's props: by kind, and in a kind by rank.
+        internal static readonly Comparison<(int Kind, Scatter.Instance Prop)> InRunOrder =
+            (a, b) => a.Kind != b.Kind ? a.Kind.CompareTo(b.Kind) : a.Prop.Rank.CompareTo(b.Prop.Rank);
+
         // Shadows are cast within these distances: by trees from farther than by a bush or a rock.
         public static float ShadowReach(Scatter.Kind kind) => kind.Low ? 0 : kind.Category == "Trees" ? 140 : kind.Far ? 30 : 45;
 
@@ -155,7 +175,7 @@ namespace Eternities.Kits
             public int X, Z;
             public Matrix4x4[] Matrices = new Matrix4x4[256];
             public int Count;
-            public int[] RunStart, RunCount;
+            public int[] RunStart, RunCount, RunFar;
             public Bounds Bounds;
         }
 
@@ -363,7 +383,8 @@ namespace Eternities.Kits
 
         LazyCell MakeCell(Lazy lazy, int c, int r)
         {
-            LazyCell cell = lazy.Spare.Count > 0 ? lazy.Spare.Pop() : new LazyCell { RunStart = new int[scatter.Kinds.Length], RunCount = new int[scatter.Kinds.Length] };
+            int kinds = scatter.Kinds.Length;
+            LazyCell cell = lazy.Spare.Count > 0 ? lazy.Spare.Pop() : new LazyCell { RunStart = new int[kinds], RunCount = new int[kinds], RunFar = new int[kinds] };
             cell.X = c;
             cell.Z = r;
             making.Clear();
@@ -375,12 +396,13 @@ namespace Eternities.Kits
             {
                 scatter.FarIn(c, r, (kind, prop) => making.Add((kind, prop)));
             }
-            making.Sort((a, b) => a.Kind != b.Kind ? a.Kind.CompareTo(b.Kind) : a.Prop.Rank.CompareTo(b.Prop.Rank));
+            making.Sort(InRunOrder);
             if (cell.Matrices.Length < making.Count)
             {
                 cell.Matrices = new Matrix4x4[Mathf.NextPowerOfTwo(making.Count)];
             }
             Array.Clear(cell.RunCount, 0, cell.RunCount.Length);
+            Array.Clear(cell.RunFar, 0, cell.RunFar.Length);
             cell.Count = making.Count;
             float low = float.MaxValue, high = float.MinValue;
             for (int i = 0; i < making.Count; i++)
@@ -390,6 +412,7 @@ namespace Eternities.Kits
                 {
                     cell.RunStart[kind] = i;
                 }
+                cell.RunFar[kind] += prop.Rank < 1 ? 1 : 0;
                 cell.Matrices[i] = Scatter.MatrixOf(scatter.Kinds[kind].Shape, prop);
                 low = Mathf.Min(low, prop.Position.y);
                 high = Mathf.Max(high, prop.Position.y + scatter.Kinds[kind].Shape.Height * prop.Scale);
@@ -514,6 +537,7 @@ namespace Eternities.Kits
                         {
                             continue;
                         }
+                        count = Share(of, count, scatter.RunFar[key], distance);
                         if (of.Far && distance > Variants.FieldNear)
                         {
                             count = Mathf.RoundToInt(count * Variants.FieldNear / distance);
@@ -547,8 +571,8 @@ namespace Eternities.Kits
                     }
                     for (int kind = 0; kind < kinds; kind++)
                     {
-                        int count = Mathf.RoundToInt(cell.RunCount[kind] * keep);
                         Scatter.Kind of = scatter.Kinds[kind];
+                        int count = Mathf.RoundToInt(Share(of, cell.RunCount[kind], cell.RunFar[kind], fromEye) * keep);
                         if (count == 0 || (!lazy.Low && fromEye > Reach(of)))
                         {
                             continue;

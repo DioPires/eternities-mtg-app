@@ -20,7 +20,18 @@ namespace Eternities.Tests
     {
         static WorldData world;
         static DressPlan plan;
-        static Scatter scatter;
+        static Scatter scatter, high;
+
+        // The scatter at HDRP high, as the app makes it: its far share is medium's.
+        static Scatter High()
+        {
+            if (high == null)
+            {
+                high = new Scatter(plan, scatter.Kinds, Temperate.Density("high"), Temperate.FarDensity("high"));
+                high.PlaceAll();
+            }
+            return high;
+        }
 
         [OneTimeSetUp]
         public void Plan()
@@ -51,6 +62,7 @@ namespace Eternities.Tests
             world = null;
             plan = null;
             scatter = null;
+            high = null;
         }
 
         // 5.6.3: each region is dressed by the variant its row names, or, where its row names a
@@ -496,8 +508,7 @@ namespace Eternities.Tests
         [Test]
         public void TheCollidersGoOnTheNearestTreesAndRocks()
         {
-            var dense = new Scatter(plan, scatter.Kinds, Temperate.Density("high"));
-            dense.PlaceAll();
+            Scatter dense = High();
             var kindOf = new int[dense.Instances.Length];
             for (int key = 0; key < dense.RunStart.Length; key++)
             {
@@ -543,6 +554,113 @@ namespace Eternities.Tests
             Assert.That(trees.Select(tree => tree.Distance), Is.Ordered, "the trees nearest first");
             Assert.That(rocks.Select(rock => rock.Distance), Is.Ordered, "the rocks nearest first");
             Debug.Log($"DressingTests: at high density, {most} trees and {rocks.Count} large rocks within {PropField.ColliderReach} m at the densest place; {PropField.Trunks} capsules and {PropField.Blocks} boxes");
+        }
+
+        // The props' lever at HDRP high (DEC-1005): past a kind's near radius a cell at high draws
+        // the props that stand at medium's density, the first by rank, and within it all its own.
+        // So at no distance does high draw fewer of a cell's props than medium, nor others in their
+        // place: medium's are the first of high's. Medium draws all its props at every distance.
+        [Test]
+        public void HighDrawsMediumsPropsAndNoFewerAtEveryDistance()
+        {
+            Scatter dense = High();
+            int kinds = scatter.Kinds.Length;
+            float[] distances = { 0, 5, 10, 20, 30, 40, 48, 60, 80, 120, 170, 260, 400, 520 };
+            var drawn = new SortedDictionary<string, long[]>();
+            string CategoryOf(Scatter.Kind kind) => kind.Low ? "cover" : kind.Far ? "field" : kind.Category;
+            void Tally(Scatter.Kind kind, int at, int medium, int highs)
+            {
+                Assert.That(highs, Is.GreaterThanOrEqualTo(medium), $"{kind.Prefab} at {distances[at]} m");
+                if (!drawn.TryGetValue(CategoryOf(kind), out long[] sums))
+                {
+                    drawn[CategoryOf(kind)] = sums = new long[distances.Length * 2];
+                }
+                sums[at * 2] += medium;
+                sums[at * 2 + 1] += highs;
+            }
+
+            // The props placed once: by cell and kind, medium's run is the first `RunFar` of high's.
+            var mediums = new HashSet<Vector3>();
+            for (int key = 0; key < scatter.RunStart.Length; key++)
+            {
+                Scatter.Kind of = scatter.Kinds[key % kinds];
+                int count = scatter.RunCount[key], highs = dense.RunCount[key], far = dense.RunFar[key];
+                Assert.That(scatter.RunFar[key], Is.EqualTo(count), "medium draws all its props");
+                Assert.That(far, Is.EqualTo(count), $"{of.Prefab}: high's props at medium's density are medium's");
+                mediums.Clear();
+                for (int i = scatter.RunStart[key]; i < scatter.RunStart[key] + count; i++)
+                {
+                    mediums.Add(scatter.Instances[i].Position);
+                }
+                for (int i = dense.RunStart[key]; i < dense.RunStart[key] + far; i++)
+                {
+                    Assert.That(mediums.Contains(dense.Instances[i].Position), $"{of.Prefab} at {dense.Instances[i].Position} is not medium's");
+                }
+                for (int at = 0; at < distances.Length; at++)
+                {
+                    if (distances[at] <= PropField.Reach(of) && highs > 0)
+                    {
+                        Tally(of, at, PropField.Share(of, count, scatter.RunFar[key], distances[at]), PropField.Share(of, highs, far, distances[at]));
+                    }
+                }
+            }
+
+            // Ground cover and the field's growth, made about the walker: a lazy cell's props by
+            // kind in the order the field draws them, medium's the first of high's.
+            var ofMedium = new List<(int Kind, Scatter.Instance Prop)>();
+            var ofHigh = new List<(int Kind, Scatter.Instance Prop)>();
+            int cells = Mathf.CeilToInt(plan.Grid.Side / Scatter.CoverCell), tried = 0;
+            for (int cz = 3; cz < cells; cz += 37)
+            {
+                for (int cx = 3; cx < cells; cx += 37)
+                {
+                    for (int lazy = 0; lazy < 2; lazy++)
+                    {
+                        ofMedium.Clear();
+                        ofHigh.Clear();
+                        if (lazy == 0)
+                        {
+                            scatter.CoverIn(cx, cz, (kind, prop) => ofMedium.Add((kind, prop)));
+                            dense.CoverIn(cx, cz, (kind, prop) => ofHigh.Add((kind, prop)));
+                        }
+                        else
+                        {
+                            scatter.FarIn(cx / 4, cz / 4, (kind, prop) => ofMedium.Add((kind, prop)));
+                            dense.FarIn(cx / 4, cz / 4, (kind, prop) => ofHigh.Add((kind, prop)));
+                        }
+                        ofMedium.Sort(PropField.InRunOrder);
+                        ofHigh.Sort(PropField.InRunOrder);
+                        for (int kind = 0; kind < kinds; kind++)
+                        {
+                            Scatter.Kind of = scatter.Kinds[kind];
+                            List<Vector3> medium = ofMedium.Where(one => one.Kind == kind).Select(one => one.Prop.Position).ToList();
+                            List<(int Kind, Scatter.Instance Prop)> highs = ofHigh.Where(one => one.Kind == kind).ToList();
+                            int far = highs.Count(one => one.Prop.Rank < 1);
+                            if (highs.Count == 0)
+                            {
+                                Assert.That(medium, Is.Empty, $"{of.Prefab}: medium's props are among high's");
+                                continue;
+                            }
+                            CollectionAssert.AreEqual(medium, highs.Take(far).Select(one => one.Prop.Position).ToList(), $"{of.Prefab}: high's first props are medium's, in order");
+                            for (int at = 0; at < distances.Length; at++)
+                            {
+                                float d = distances[at];
+                                if (!of.Low && d > PropField.Reach(of))
+                                {
+                                    continue;
+                                }
+                                float keep = of.Low ? 1 - Mathf.InverseLerp(Variants.CoverNear, Variants.CoverFar, d) : Mathf.Min(1, Variants.FieldNear / Mathf.Max(d, 1));
+                                Tally(of, at, Mathf.RoundToInt(PropField.Share(of, medium.Count, medium.Count, d) * keep), Mathf.RoundToInt(PropField.Share(of, highs.Count, far, d) * keep));
+                            }
+                        }
+                        tried++;
+                    }
+                }
+            }
+            Assert.That(drawn.Keys, Is.SupersetOf(new[] { "Trees", "Rocks", "Bushes", "field", "cover" }), $"{tried} lazy cells");
+            Debug.Log("DressingTests: props drawn of the cells by distance, medium against high: " + string.Join("; ", drawn.Select(category =>
+                $"{category.Key} " + string.Join(", ", distances.Select((d, at) => (d, at)).Where(one => category.Value[one.at * 2 + 1] > 0)
+                    .Select(one => $"{one.d} m {category.Value[one.at * 2]}/{category.Value[one.at * 2 + 1]}")))));
         }
 
         // DEC-1055, N17: ground cover and the growth seen across a field have their places on the

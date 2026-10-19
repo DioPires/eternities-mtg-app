@@ -27,5 +27,10 @@ namespace Eternities.Kits
         // The share of the scatter a quality level draws (PRD v4 8.1.1: vegetation density is one of
         // the things a level changes). A lower level's props are among a higher level's.
         public static float Density(string qualityLevel) => qualityLevel == "low" ? 0.35f : qualityLevel == "medium" ? 0.6f : 1;
+
+        // The share a cell far from the walker draws at a quality level: at high, medium's; below
+        // it, the level's own (DEC-1005, the props' lever). Past `PropField.Near` a cell at high so
+        // shows medium's props, and never fewer.
+        public static float FarDensity(string qualityLevel) => Mathf.Min(Density(qualityLevel), Density("medium"));
     }
 }
