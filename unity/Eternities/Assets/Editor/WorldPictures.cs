@@ -25,6 +25,10 @@ namespace Eternities.EditorTools
     //   batchmode.sh -executeMethod Eternities.EditorTools.WorldPictures.Run -picturesOut <dir> [-picturesQuality medium] [-picturesSize 1920x1080] [-picturesOnly <name prefix>]
     //
     // The pictures are the main camera's, with the exhibit pass (the cards) and without the HUD.
+    // Three pictures after them show what pull request 2 added (DEC-1005): `hud`, the place line
+    // and the region's sentence at the first era site; `rims`, the plinths' rims from beside a
+    // cluster; and `map`, the map open there. The first and the last lay the overlays over the
+    // frame, as the bench's captures do.
     public static class WorldPictures
     {
         const string Key = "Eternities.WorldPictures";
@@ -34,6 +38,7 @@ namespace Eternities.EditorTools
         const int Settle = 90;
 
         static IEnumerator steps;
+        static readonly Stack<IEnumerator> running = new Stack<IEnumerator>();
 
         public static void Run()
         {
@@ -63,7 +68,20 @@ namespace Eternities.EditorTools
                 {
                     return;
                 }
-                if (!steps.MoveNext())
+                // A step that yields an enumerator runs it to its end before it goes on.
+                IEnumerator current = running.Count > 0 ? running.Peek() : steps;
+                if (current.MoveNext())
+                {
+                    if (current.Current is IEnumerator inner)
+                    {
+                        running.Push(inner);
+                    }
+                }
+                else if (running.Count > 0)
+                {
+                    running.Pop();
+                }
+                else
                 {
                     EditorApplication.update -= Step;
                     EditorApplication.Exit(0);
@@ -118,24 +136,47 @@ namespace Eternities.EditorTools
             app.Avatar.Shown = false;
             var target = new RenderTexture(width, height, 24, GraphicsFormat.R8G8B8A8_SRGB);
             camera.targetTexture = target;
+            // With no screen the overlays have nowhere to be drawn: they go into a texture of their
+            // own, which the pictures of the HUD and the map lay over the frame.
+            var overlays = new RenderTexture(width, height, 24, GraphicsFormat.R8G8B8A8_SRGB);
+            UnityEngine.UIElements.PanelSettings panel = app.Hud.Settings;
+            bool clearColour = panel.clearColor;
+            Color clearValue = panel.colorClearValue;
+            panel.targetTexture = overlays;
+            panel.clearColor = true;
+            panel.colorClearValue = new Color(0, 0, 0, 0);
 
-            foreach ((string name, Vector2 at, Vector2 toward) in Views(app.Dress).Concat(Aerials(app.Dress)).Where(view => view.Name.StartsWith(only, StringComparison.Ordinal)))
+            // One picture: the avatar at `at` facing `toward`, the camera at `eye` looking along
+            // `look`, held `Settle` frames; `before` runs a few frames before the picture.
+            IEnumerator Shoot(string name, Vector2 at, Vector2 toward, Vector3 eye, Vector3 look, bool withOverlays, Action before = null)
             {
-                // The avatar stands there too, so the props about the walker are the place's. An
-                // aerial view is 70 m over its place, looking down at 35 degrees.
-                bool aerial = name.StartsWith("aerial", StringComparison.Ordinal);
                 float ground = Mathf.Max(app.Dress.HeightAt(at.x, at.y), DressPlan.WaterLevel);
                 app.Avatar.Place(new Vector3(at.x, ground, at.y), Quaternion.LookRotation(new Vector3(toward.x, 0, toward.y)));
-                Vector3 eye = new Vector3(at.x, ground + (aerial ? 70 : Eye), at.y);
-                camera.transform.SetPositionAndRotation(eye, Quaternion.LookRotation(new Vector3(toward.x, aerial ? -0.7f : -0.06f, toward.y)));
+                camera.transform.SetPositionAndRotation(eye, Quaternion.LookRotation(look));
                 for (int frame = 0; frame < Settle; frame++)
                 {
+                    if (frame == Settle - 8)
+                    {
+                        before?.Invoke();
+                    }
                     yield return null;
                 }
-                AsyncGPUReadbackRequest request = AsyncGPUReadback.Request(target, 0, GraphicsFormat.R8G8B8A8_SRGB);
+                RenderTexture source = target, laid = null;
+                if (withOverlays)
+                {
+                    laid = RenderTexture.GetTemporary(width, height, 0, GraphicsFormat.R8G8B8A8_SRGB);
+                    Graphics.Blit(target, laid);
+                    app.Exhibit.Over(overlays, laid, flip: false);
+                    source = laid;
+                }
+                AsyncGPUReadbackRequest request = AsyncGPUReadback.Request(source, 0, GraphicsFormat.R8G8B8A8_SRGB);
                 while (!request.done)
                 {
                     yield return null;
+                }
+                if (laid != null)
+                {
+                    RenderTexture.ReleaseTemporary(laid);
                 }
                 string file = $"world-{name}-{quality}.png";
                 using (NativeArray<byte> png = ImageConversion.EncodeNativeArrayToPNG(request.GetData<byte>(), GraphicsFormat.R8G8B8A8_SRGB, (uint)width, (uint)height))
@@ -143,9 +184,58 @@ namespace Eternities.EditorTools
                     File.WriteAllBytes(Path.Combine(output, file), png.ToArray());
                 }
                 RegionDress region = app.Dress.RegionAt(at.x, at.y);
-                log.Add($"{file}: at {at.x:F1}, {at.y:F1}, looking {Mathf.Atan2(toward.x, toward.y) * Mathf.Rad2Deg:F0} degrees from north, in {region.Id} ({region.Variant.Name}); {app.Props.Drawn} props drawn");
+                log.Add($"{file}: at {at.x:F1}, {at.y:F1}, looking {Mathf.Atan2(look.x, look.z) * Mathf.Rad2Deg:F0} degrees from north, in {region.Id} ({region.Variant.Name}); {app.Props.Drawn} props drawn"
+                    + (withOverlays ? $"; the line reads \"{app.Hud.PlaceText}\"" : ""));
                 Debug.Log($"WorldPictures: {log[log.Count - 1]}");
             }
+
+            foreach ((string name, Vector2 at, Vector2 toward) in Views(app.Dress).Concat(Aerials(app.Dress)).Where(view => view.Name.StartsWith(only, StringComparison.Ordinal)))
+            {
+                // The avatar stands there too, so the props about the walker are the place's. An
+                // aerial view is 70 m over its place, looking down at 35 degrees.
+                bool aerial = name.StartsWith("aerial", StringComparison.Ordinal);
+                float ground = Mathf.Max(app.Dress.HeightAt(at.x, at.y), DressPlan.WaterLevel);
+                yield return Shoot(name, at, toward, new Vector3(at.x, ground + (aerial ? 70 : Eye), at.y), new Vector3(toward.x, aerial ? -0.7f : -0.06f, toward.y), withOverlays: false);
+            }
+
+            // Pull request 2's: the place line at the first era site's pad, with the region's
+            // sentence shown again just before the picture (it shows for 4 s after the crossing,
+            // and a view is held longer); the rims from 2.5 m in front of that site's tenth stand,
+            // looking down at its plinth's top; and the map, open at the pad.
+            WorldDocument layout = app.World.Layout;
+            int site = Array.FindIndex(layout.Sites, row => row.Kind == "era");
+            site = Math.Max(site, 0);
+            Vector2 pad = DressPlan.Metres(layout.Sites[site].Pad.Position), along = DressPlan.Metres(layout.Sites[site].Path[Mathf.Min(8, layout.Sites[site].Path.Length - 1)]) - pad;
+            along = along.sqrMagnitude > 0 ? along.normalized : Vector2.up;
+            float padGround = Mathf.Max(app.Dress.HeightAt(pad.x, pad.y), DressPlan.WaterLevel);
+            Vector3 padEye = new Vector3(pad.x, padGround + Eye, pad.y), padLook = new Vector3(along.x, -0.06f, along.y);
+            if ("hud".StartsWith(only, StringComparison.Ordinal))
+            {
+                yield return Shoot("hud", pad, along, padEye, padLook, withOverlays: true,
+                    before: () => app.Hud.Sentence(Whereabouts.Sentence(app.World, app.ShownRegion)));
+            }
+            int stand = Enumerable.Range(0, app.World.StandCount).Where(index => app.World.Site(index) == site).Skip(9).DefaultIfEmpty(0).First();
+            if ("rims".StartsWith(only, StringComparison.Ordinal))
+            {
+                Vector3 plinth = StandField.Ground(app.World.Position(stand));
+                Vector3 front = StandField.Facing(app.World, stand) * Vector3.forward;
+                Vector3 eye = plinth + front * 2.5f + Vector3.up * 1.9f + Vector3.Cross(Vector3.up, front) * 1.2f;
+                Vector2 at = new Vector2(eye.x, eye.z);
+                Vector3 look = plinth + Vector3.up * StandField.PlinthHeight - eye;
+                yield return Shoot("rims", at, new Vector2(-front.x, -front.z), eye, look, withOverlays: false);
+            }
+            if ("map".StartsWith(only, StringComparison.Ordinal))
+            {
+                app.Hud.ShowMap(app.Map, app.TravelToSite);
+                yield return Shoot("map", pad, along, padEye, padLook, withOverlays: true,
+                    before: () => app.Hud.Map.Walker(pad, Mathf.Atan2(along.x, along.y) * Mathf.Rad2Deg));
+                app.Hud.HideMap();
+            }
+
+            panel.targetTexture = null;
+            panel.clearColor = clearColour;
+            panel.colorClearValue = clearValue;
+            overlays.Release();
             camera.targetTexture = null;
             target.Release();
             File.WriteAllLines(Path.Combine(output, "pictures.txt"), log);

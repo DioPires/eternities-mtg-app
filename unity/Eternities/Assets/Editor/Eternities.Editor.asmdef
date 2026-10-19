@@ -10,7 +10,8 @@
         "Eternities.Bench",
         "Unity.RenderPipelines.Core.Runtime",
         "Unity.RenderPipelines.HighDefinition.Runtime",
-        "Eternities.UI"
+        "Eternities.UI",
+        "Eternities.CardView"
     ],
     "includePlatforms": [
         "Editor"
