@@ -442,6 +442,14 @@ MonoBehaviour:
   - {fileID: 2100000, guid: 821ddc8bf1ec9474abbe097efb8e7bbf, type: 2}
   - {fileID: 2100000, guid: 53db4b658905d4babb8a5f73caa62c45, type: 2}
   - {fileID: 2100000, guid: 6f5b30dec87ba41ebaaf7a92d723f146, type: 2}
+  rimMaterials:
+  - {fileID: 2100000, guid: ec10d8d9d645e4782b500011c23d46eb, type: 2}
+  - {fileID: 2100000, guid: 15d75978e68dd47679a09fa4e2568130, type: 2}
+  - {fileID: 2100000, guid: 0c9163cf0d6674545a99639fa606f3d7, type: 2}
+  - {fileID: 2100000, guid: d6114d35ebb964f26b5c2a61c5402787, type: 2}
+  - {fileID: 2100000, guid: d6254c5d029e24b0080c786de68b2779, type: 2}
+  - {fileID: 2100000, guid: 110c375566b7d40d8b790bdb6b6227ee, type: 2}
+  - {fileID: 2100000, guid: becbca3ed8391400390e6c31de1ff032, type: 2}
   avatarMaterial: {fileID: 2100000, guid: a2208cb8282974c91be7e299efae27ac, type: 2}
   hubGroundMaterial: {fileID: 2100000, guid: b087b348fb0d8498a9679baf5a65e37a, type: 2}
   portalFrameMaterial: {fileID: 2100000, guid: cef28231c077c4efdb83355e73c7c6d5, type: 2}

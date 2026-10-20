@@ -19,12 +19,16 @@ namespace Eternities.CardView
     // their exact texels, depth-tested against it, their alpha the surface's coverage.
     //
     // The composite blends that buffer over the main camera's target after the camera has
-    // finished, post-processing and upscaling included.
+    // finished, post-processing and upscaling included. On the screen the overlays are drawn into
+    // that target before it, so the composite leaves one rectangle alone, `Spared`: the hover
+    // label's, which the images of the stands behind it covered (DEC-1130 N10). The label is
+    // opaque, so it replaces every pixel of the placeholder there itself.
     public sealed class Exhibit : MonoBehaviour
     {
         public const int Layer = 6;                 // the image surfaces, and nothing else
         public const float OccluderDistance = 60;
         static readonly int ImagesId = Shader.PropertyToID("_ExhibitImages"), BufferId = Shader.PropertyToID("_ExhibitBuffer"), FlipId = Shader.PropertyToID("_ExhibitFlip");
+        static readonly int SparedId = Shader.PropertyToID("_ExhibitSpared");
 
         Camera main, exhibitCamera;
         Material surface, composite;
@@ -35,6 +39,8 @@ namespace Eternities.CardView
 
         public bool CompositeEnabled = true;        // a test turns it off to see the main camera's own pixels
         public bool PassEnabled = true;             // the bench turns the whole path off to measure what it costs
+        // Pixels of the view, from its bottom left, that the composite does not touch; empty for none.
+        public Rect Spared;
         public RTHandle Buffer => colour;
         public static readonly ProfilingSampler OccluderSampler = new ProfilingSampler("Exhibit occluder depth"), SurfaceSampler = new ProfilingSampler("Exhibit surfaces");
 
@@ -117,10 +123,25 @@ namespace Eternities.CardView
             blit.SetGlobalTexture(BufferId, colour);
             // A render texture and the screen disagree about which row is first.
             blit.SetGlobalFloat(FlipId, camera.targetTexture == null && SystemInfo.graphicsUVStartsAtTop ? 1 : 0);
+            // The overlays are in the frame only on the screen: a camera that draws into a texture
+            // has none in it, and a capture lays them over afterwards (`Over`).
+            blit.SetGlobalVector(SparedId, SparedInBuffer(camera.targetTexture == null ? Spared : Rect.zero, camera.pixelWidth, camera.pixelHeight));
             blit.SetRenderTarget(camera.targetTexture != null ? new RenderTargetIdentifier(camera.targetTexture) : new RenderTargetIdentifier(BuiltinRenderTextureType.CameraTarget));
             blit.DrawProcedural(Matrix4x4.identity, composite, 0, MeshTopology.Triangles, 3);
             context.ExecuteCommandBuffer(blit);
             context.Submit();
+        }
+
+        // A rectangle of the view in the buffer's texture coordinates, which run from the view's
+        // bottom left as a render texture's do: x and y of its low corner, then of its high one. An
+        // empty rectangle is one no coordinate lies in.
+        public static Vector4 SparedInBuffer(Rect pixels, float width, float height)
+        {
+            if (pixels.width <= 0 || pixels.height <= 0 || width <= 0 || height <= 0)
+            {
+                return new Vector4(2, 2, -1, -1);
+            }
+            return new Vector4(pixels.xMin / width, pixels.yMin / height, pixels.xMax / width, pixels.yMax / height);
         }
 
         // Blends one texture over another by its alpha, at once: how a capture puts the overlays,
@@ -130,6 +151,7 @@ namespace Eternities.CardView
             blit.Clear();
             blit.SetGlobalTexture(BufferId, source);
             blit.SetGlobalFloat(FlipId, flip ? 1 : 0);
+            blit.SetGlobalVector(SparedId, SparedInBuffer(Rect.zero, 0, 0));
             blit.SetRenderTarget(destination);
             blit.DrawProcedural(Matrix4x4.identity, composite, 0, MeshTopology.Triangles, 3);
             Graphics.ExecuteCommandBuffer(blit);

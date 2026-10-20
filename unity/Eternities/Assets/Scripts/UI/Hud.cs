@@ -18,26 +18,38 @@ namespace Eternities.UI
     }
 
     // Every overlay of the slice, in UI Toolkit (PRD v4 8.1.2): the stand's hover label, the
-    // printings panel of card view, the travel menu, a one-line notice in the panel and one line in
-    // the middle of the view. It is built in code; the
-    // only assets are the panel settings and the theme they name.
+    // printings panel of card view, the travel menu, the map, the place line at the top left with
+    // a region's sentence beneath it, a one-line notice in the panel and one line in the middle of
+    // the view. It is built in code; the only assets are the panel settings and the theme they
+    // name.
     public sealed class Hud : MonoBehaviour
     {
         static readonly Color Ink = new Color(0.93f, 0.92f, 0.88f), Dim = new Color(0.70f, 0.69f, 0.66f);
         static readonly Color Paper = new Color(0.07f, 0.07f, 0.09f, 0.90f), Accent = new Color(0.30f, 0.50f, 0.72f, 0.55f);
+        static readonly Color Veil = new Color(0.07f, 0.07f, 0.09f, 0.62f);
+        // How long a region's sentence stays beneath the place line (PRD v4 5.13.7, 6.3.1).
+        public const float SentenceSeconds = 4;
 
         UIDocument document;
-        Label hover, line;
-        VisualElement panel, travel;
+        Label hover, line, place, sentence, mapCaption;
+        VisualElement panel, travel, corner, map;
+        MapView mapView;
+        float sentenceUntil = float.NegativeInfinity;
         public PanelSettings Settings { get; private set; }
 
         public bool CardShown => panel.style.display == DisplayStyle.Flex;
         public bool TravelOpen => travel.style.display == DisplayStyle.Flex;
+        public bool MapOpen => map.style.display == DisplayStyle.Flex;
         public string HoverText => hover.style.display == DisplayStyle.Flex ? hover.text : null;
         public string Line => line.style.display == DisplayStyle.Flex ? line.text : null;
-        // An overlay is open (PRD v4 6.2.1): card view's panel, the travel menu, or the line in the
-        // middle of the view. The pointer is the visitor's for as long (`PointerLock`).
-        public bool Open => CardShown || TravelOpen || Line != null;
+        // The place line and the sentence beneath it, as they show now: null when hidden.
+        public string PlaceText => place.style.display == DisplayStyle.Flex && corner.style.display == DisplayStyle.Flex ? place.text : null;
+        public string SentenceText => sentence.style.display == DisplayStyle.Flex && corner.style.display == DisplayStyle.Flex ? sentence.text : null;
+        public MapView Map => mapView;
+        public string MapCaption => mapCaption.text;
+        // An overlay is open (PRD v4 6.2.1): card view's panel, the travel menu, the map, or the
+        // line in the middle of the view. The pointer is the visitor's for as long (`PointerLock`).
+        public bool Open => CardShown || TravelOpen || MapOpen || Line != null;
         public Rect HoverBounds => hover.worldBound;        // in the panel's units
         public Rect PanelBounds => document.rootVisualElement.worldBound;
         public Vector2 ViewToPanel(Vector2 viewPoint) => RuntimePanelUtils.ScreenToPanel(hover.panel, viewPoint);
@@ -64,7 +76,9 @@ namespace Eternities.UI
             // a place worked out from its size in the last frame's layout is wrong whenever the
             // text or the panel's scale has just changed.
             hud.hover.style.translate = new Translate(Length.Percent(-50), Length.Percent(-100));
-            hud.hover.style.backgroundColor = Paper;
+            // Opaque: on the screen the stands' images leave the label's rectangle to it, and it
+            // covers what the main camera drew there (DEC-1130 N10, PRD v4 8.4.4).
+            hud.hover.style.backgroundColor = new Color(Paper.r, Paper.g, Paper.b, 1);
             Pad(hud.hover, 6, 12);
             hud.hover.style.display = DisplayStyle.None;
             hud.hover.pickingMode = PickingMode.Ignore;
@@ -85,12 +99,117 @@ namespace Eternities.UI
             middle.Add(hud.line);
             root.Add(middle);
 
+            // The place line at the top left, and the region's sentence beneath it (PRD v4 6.3.1).
+            hud.corner = new VisualElement { pickingMode = PickingMode.Ignore };
+            hud.corner.style.position = Position.Absolute;
+            hud.corner.style.left = 24;
+            hud.corner.style.top = 20;
+            hud.corner.style.maxWidth = Length.Percent(40);
+            hud.corner.style.alignItems = Align.FlexStart;
+            hud.corner.style.display = DisplayStyle.Flex;
+            hud.place = Text("", 20, Ink);
+            hud.sentence = Text("", 16, Ink);
+            foreach (Label label in new[] { hud.place, hud.sentence })
+            {
+                label.style.backgroundColor = Veil;
+                label.style.marginLeft = label.style.marginRight = label.style.marginTop = 0;
+                label.style.marginBottom = 6;
+                Pad(label, 5, 10);
+                label.style.display = DisplayStyle.None;
+                label.pickingMode = PickingMode.Ignore;
+                hud.corner.Add(label);
+            }
+            root.Add(hud.corner);
+
             hud.panel = Side(right: true);
             root.Add(hud.panel);
             hud.travel = Side(right: false);
             root.Add(hud.travel);
+
+            // The map (PRD v4 6.3.4): over the whole view, the world in a square as tall as the
+            // view allows, and a line beneath it that says what a click there does.
+            hud.map = new VisualElement();
+            hud.map.style.position = Position.Absolute;
+            hud.map.style.left = hud.map.style.right = hud.map.style.top = hud.map.style.bottom = 0;
+            hud.map.style.backgroundColor = Paper;
+            hud.map.style.alignItems = Align.Center;
+            hud.map.style.justifyContent = Justify.Center;
+            hud.map.style.display = DisplayStyle.None;
+            hud.mapView = new MapView();
+            hud.map.Add(hud.mapView);
+            hud.map.RegisterCallback<GeometryChangedEvent>(_ =>
+            {
+                float side = Mathf.Max(1, Mathf.Min(hud.map.contentRect.width * 0.96f, hud.map.contentRect.height * 0.86f));
+                hud.mapView.style.width = hud.mapView.style.height = side;
+            });
+            hud.mapCaption = Text("", 16, Dim);
+            hud.mapCaption.style.marginTop = 8;
+            hud.mapCaption.pickingMode = PickingMode.Ignore;
+            hud.mapView.Hovered = text => hud.mapCaption.text = text ?? MapHint;
+            hud.map.Add(hud.mapCaption);
+            root.Add(hud.map);
             PointerLock.Overlays(hud);
             return hud;
+        }
+
+        const string MapHint = "Click a site, its stone or a region to travel there. M or Esc closes the map.";
+
+        void Update()
+        {
+            if (sentence.style.display == DisplayStyle.Flex && Time.unscaledTime >= sentenceUntil)
+            {
+                sentence.style.display = DisplayStyle.None;
+            }
+        }
+
+        // The place line (PRD v4 6.3.1): "Dominaria · Shiv · The First Ages", or "The Hub". Null
+        // hides it.
+        public void Place(string text)
+        {
+            place.text = text ?? "";
+            place.style.display = text != null ? DisplayStyle.Flex : DisplayStyle.None;
+        }
+
+        // A region's sentence beneath the place line, for `SentenceSeconds` (PRD v4 5.13.7). Null
+        // takes it away at once.
+        public void Sentence(string text)
+        {
+            sentence.text = text ?? "";
+            sentence.style.display = text != null ? DisplayStyle.Flex : DisplayStyle.None;
+            sentenceUntil = Time.unscaledTime + SentenceSeconds;
+        }
+
+        // The map over the view. `chosen` is told the site a click asks for.
+        public void ShowMap(MapModel model, Action<int> chosen)
+        {
+            mapView.Chosen = chosen;
+            mapView.Show(model);
+            mapCaption.text = MapHint;
+            map.style.display = DisplayStyle.Flex;
+            PointerLock.Release();
+        }
+
+        public void HideMap()
+        {
+            map.style.display = DisplayStyle.None;
+        }
+
+        // The hover label's rectangle in pixels of the view, from its bottom left, padded by
+        // `padding`: where the image surfaces must not be laid over the label (DEC-1130 N10). From
+        // the point it is placed over and its size as the layout last had it, so it is this
+        // frame's place even while the label moves. Empty when the label is hidden.
+        public Rect HoverPixels(Vector2 viewPoint, float viewWidth, float viewHeight, float padding)
+        {
+            Rect panelBox = PanelBounds;
+            if (HoverText == null || panelBox.width <= 0 || panelBox.height <= 0)
+            {
+                return Rect.zero;
+            }
+            float sx = viewWidth / panelBox.width, sy = viewHeight / panelBox.height;
+            Vector2 at = RuntimePanelUtils.ScreenToPanel(hover.panel, viewPoint);
+            float width = hover.resolvedStyle.width, height = hover.resolvedStyle.height;
+            float left = at.x - width / 2, top = at.y - 8 - height;
+            return Rect.MinMaxRect(left * sx - padding, viewHeight - (top + height) * sy - padding, (left + width) * sx + padding, viewHeight - top * sy + padding);
         }
 
         // Every size of text the overlays use, with every character a card is likely to carry, laid
@@ -114,7 +233,7 @@ namespace Eternities.UI
                 characters.Append(c);
             }
             characters.Append("·—–’“”…éáíóúâêôûäöüñç{}/");
-            foreach (int size in new[] { 28, 24, 20, 18, 16, 15, 14 })
+            foreach (int size in new[] { 28, 24, 20, 18, 16, 15, 14, 11 })
             {
                 warm.Add(Text(characters.ToString(), size, Ink));
             }
@@ -209,10 +328,12 @@ namespace Eternities.UI
             hover.style.top = at.y - 8;
         }
 
-        // The printings panel (PRD v4 5.10.3). `choose` is told the row that was clicked.
+        // The printings panel (PRD v4 5.10.3). `choose` is told the row that was clicked. The
+        // place line hides with the rest of the HUD in card view (PRD v4 6.3.5).
         public void ShowCard(CardSheet sheet, Action<int> choose, Action flip, Action open, Action leave)
         {
             Sheet = sheet;
+            corner.style.display = DisplayStyle.None;
             panel.Clear();
             panel.Add(Text(sheet.Name, 28, Ink));
             panel.Add(Text($"{sheet.ManaCost}   {sheet.TypeLine}", 16, Dim));
@@ -268,6 +389,7 @@ namespace Eternities.UI
         {
             Sheet = null;
             panel.style.display = DisplayStyle.None;
+            corner.style.display = DisplayStyle.Flex;
         }
 
         // The slice's travel menu (PRD v4 6.6.1, 9.5): this world's sites, and the cards of the one

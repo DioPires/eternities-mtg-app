@@ -28,18 +28,76 @@ namespace Eternities.Kits
         // The current map's side, in texels.
         public const int CurrentSide = DressPlan.CurrentSide;
 
+        // The world's water shows only while the visitor is in the world, as its sky does
+        // (`WorldSky.Shown`). A world is built while the visitor still stands in the hub, and the
+        // hub stands on the sea's reach past the ground: with the water on, the hub's horizon was
+        // the world's sea after every visit (DEC-1203 N4). The world's volume turns the water
+        // system off in the hub, over HDRP's default profile, which turns it on everywhere;
+        // nothing is built or let go.
+        public static void Show(GameObject water, bool shown)
+        {
+            if (water.GetComponent<Volume>().profile.TryGet(out WaterRendering rendering))
+            {
+                rendering.enable.value = shown;
+            }
+        }
+
+        public static bool Shown(GameObject water) => water.GetComponent<Volume>().profile.TryGet(out WaterRendering rendering) && rendering.enable.value;
+
+        // The first draw of a kind of water in a session stalls frames for a few hundred
+        // milliseconds while HDRP's water passes start. Before DEC-1203 N4 that was the hub's view
+        // of the sea; then it was the first river on the trail (370 ms in CI's warm run 39314207746).
+        // So the first entry, behind the veil, turns the water on and a camera high over the world
+        // draws every surface once into a small texture, while the main camera, still in the hub,
+        // draws the sea's reach under it. `EndWarmUp` takes it all away again.
+        public static GameObject WarmUp(GameObject water, float radius)
+        {
+            Show(water, true);
+            var holder = new GameObject("Water warm-up");
+            holder.transform.SetParent(water.transform, false);
+            float height = 2 * radius + 50;
+            holder.transform.SetPositionAndRotation(new Vector3(0, height, 0), Quaternion.Euler(90, 0, 0));
+            var camera = holder.AddComponent<Camera>();
+            camera.fieldOfView = 2 * Mathf.Atan((radius + 50) / height) * Mathf.Rad2Deg;
+            camera.nearClipPlane = 1;
+            camera.farClipPlane = height + 100;
+            camera.targetTexture = new RenderTexture(WarmUpSide, WarmUpSide, 24) { name = "water warm-up" };
+            return holder;
+        }
+
+        public const int WarmUpSide = 256;
+
+        public static void EndWarmUp(GameObject water, GameObject warmUp)
+        {
+            if (warmUp == null)
+            {
+                return;     // the world went, and the warm-up with it
+            }
+            var camera = warmUp.GetComponent<Camera>();
+            RenderTexture target = camera.targetTexture;
+            camera.targetTexture = null;
+            Object.Destroy(warmUp);
+            target.Release();
+            Object.Destroy(target);
+            if (water != null)
+            {
+                Show(water, false);
+            }
+        }
+
         // `owned` takes what is made here and belongs to no object: it leaves with the world.
         public static GameObject Build(DressPlan plan, GameObject riverPrefab, GameObject lakePrefab, GameObject seaPrefab, Material lava, Transform parent, List<Object> owned)
         {
             var root = new GameObject("Water");
             root.transform.SetParent(parent, false);
 
-            // The water system renders only where a volume says so.
+            // The water system renders where the volumes say so. HDRP's default profile turns it on
+            // everywhere; this one turns it off until the visitor is in the world (`Show`).
             var volume = root.AddComponent<Volume>();
             volume.isGlobal = true;
             volume.priority = 1;
             volume.profile = ScriptableObject.CreateInstance<VolumeProfile>();
-            volume.profile.Add<WaterRendering>().enable.Override(true);
+            volume.profile.Add<WaterRendering>().enable.Override(false);
             owned.Add(volume.profile);
 
             if (riverPrefab != null)

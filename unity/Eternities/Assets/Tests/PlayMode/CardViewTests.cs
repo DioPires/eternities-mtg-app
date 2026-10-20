@@ -171,6 +171,15 @@ namespace Eternities.Tests
                 Assert.That(label.center.x, Is.EqualTo(over.x).Within(3), $"the label is centred over the stand: {seen}");
                 Assert.That(label.yMax, Is.EqualTo(over.y - 8).Within(3), $"and stands just above its top: {seen}");
                 Assert.That(panel.Contains(label.min) && panel.Contains(label.max), $"the label is inside the panel: {seen}");
+                // The stands' images are laid over the frame with the label in it already, and they
+                // leave the label's rectangle alone (DEC-1130 N10): the composite's spared rectangle,
+                // in the view's pixels from its bottom left, holds the label and little more.
+                float sx = view.width / panel.width, sy = view.height / panel.height;
+                Rect pixels = Rect.MinMaxRect(label.xMin * sx, view.height - label.yMax * sy, label.xMax * sx, view.height - label.yMin * sy);
+                Rect spared = app.Exhibit.Spared;
+                Assert.That(spared.xMin <= pixels.xMin + 1 && spared.yMin <= pixels.yMin + 1 && spared.xMax >= pixels.xMax - 1 && spared.yMax >= pixels.yMax - 1,
+                    $"the images spare the label: {spared} holds {pixels}");
+                Assert.That(spared.width, Is.LessThan(pixels.width + 2 * App.LabelMargin + 4), $"and no more than the label: {spared} against {pixels}");
             }
             finally
             {

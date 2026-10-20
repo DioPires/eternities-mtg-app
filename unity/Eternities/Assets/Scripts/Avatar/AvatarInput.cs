@@ -15,7 +15,7 @@ namespace Eternities.Avatar
         public bool Run;
         public Vector2 Look;        // degrees to turn the camera this frame: x about the avatar, y up
         public float Zoom;          // metres to move the camera away this frame
-        public bool Interact, Back, TravelMenu;     // pressed this frame
+        public bool Interact, Back, TravelMenu, Map;    // pressed this frame
         public bool Click;          // the pointer was pressed this frame,
         public Vector2 Pointer;     // here: pixels from the view's bottom left
         public int Step;            // in card view: -1 the printing before, 1 the one after
@@ -27,7 +27,7 @@ namespace Eternities.Avatar
             Look = default;
             Zoom = 0;
             Step = 0;
-            Run = Interact = Back = TravelMenu = Click = false;
+            Run = Interact = Back = TravelMenu = Map = Click = false;
         }
     }
 
@@ -80,6 +80,7 @@ namespace Eternities.Avatar
                 input.Interact = keyboard.eKey.wasPressedThisFrame;
                 input.Back = keyboard.escapeKey.wasPressedThisFrame;
                 input.TravelMenu = keyboard.tKey.wasPressedThisFrame;
+                input.Map = keyboard.mKey.wasPressedThisFrame;
                 input.Step = (keyboard.rightBracketKey.wasPressedThisFrame || keyboard.pageDownKey.wasPressedThisFrame ? 1 : 0)
                     - (keyboard.leftBracketKey.wasPressedThisFrame || keyboard.pageUpKey.wasPressedThisFrame ? 1 : 0);
             }
@@ -132,6 +133,7 @@ namespace Eternities.Avatar
                 input.Interact |= pad.buttonSouth.wasPressedThisFrame;
                 input.Back |= pad.startButton.wasPressedThisFrame || pad.buttonEast.wasPressedThisFrame;
                 input.TravelMenu |= pad.buttonNorth.wasPressedThisFrame;
+                input.Map |= pad.selectButton.wasPressedThisFrame;
                 input.Step += (pad.dpad.right.wasPressedThisFrame ? 1 : 0) - (pad.dpad.left.wasPressedThisFrame ? 1 : 0);
                 if (!overlay)
                 {
@@ -177,7 +179,7 @@ namespace Eternities.Avatar
         public Vector3 WorldMove;
         public bool Run;
         public Vector2 Look;                        // degrees, passed on once
-        public bool Interact, Back, TravelMenu;     // each is passed on once, then cleared
+        public bool Interact, Back, TravelMenu, Map;    // each is passed on once, then cleared
         public bool Click;                          // and so is a press of the pointer,
         public Vector2 Pointer;                     // here
 
@@ -190,9 +192,10 @@ namespace Eternities.Avatar
             input.Interact = Interact;
             input.Back = Back;
             input.TravelMenu = TravelMenu;
+            input.Map = Map;
             input.Click = Click;
             input.Pointer = Pointer;
-            Interact = Back = TravelMenu = Click = false;
+            Interact = Back = TravelMenu = Map = Click = false;
         }
     }
 }

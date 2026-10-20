@@ -156,6 +156,16 @@ namespace Eternities.EditorTools
                 app.StandMaterials = stands;
                 changed = true;
             }
+            // The rims, one a colour class (PRD v4 5.5.1). They glow a little, by an emission that
+            // the exposure does not scale, so the colour cue shows in every kit and at every time
+            // of day: in a bright noon and at dusk alike.
+            string[] classes = { "white", "blue", "black", "red", "green", "multicolour", "colourless" };
+            Material[] rims = classes.Select((name, index) => Rim($"rim-{name}", StandField.ClassColours[index])).ToArray();
+            if (app.RimMaterials == null || !rims.SequenceEqual(app.RimMaterials))
+            {
+                app.RimMaterials = rims;
+                changed = true;
+            }
             // The ground's. A terrain's shader takes `_NORMALMAP` and `_MASKMAP` from its layers at
             // run time, and a build holds only the variants that a material in it names: so there is
             // one material for layers that are colours only, one for layers with normal maps and
@@ -653,6 +663,25 @@ namespace Eternities.EditorTools
                 material.SetFloat("_Metallic", metallic);
                 material.SetFloat("_Smoothness", smoothness);
             }, folder);
+        }
+
+        // A rim's share of glow: its emission against the colour it shows (`Rim`).
+        public const float RimGlow = 0.35f;
+
+        // A rim's material: its class's colour, lit, and the same colour as an emission at
+        // `RimGlow` of it that ignores the exposure (an exposure weight of 0).
+        static Material Rim(string name, Color colour)
+        {
+            return Made(name, "HDRP/Lit", material =>
+            {
+                material.SetColor("_BaseColor", colour);
+                material.SetFloat("_Metallic", 0);
+                material.SetFloat("_Smoothness", 0.5f);
+                material.SetFloat("_UseEmissiveIntensity", 0);
+                material.SetColor("_EmissiveColor", colour.linear * RimGlow);
+                material.SetColor("_EmissiveColorLDR", colour);
+                material.SetFloat("_EmissiveExposureWeight", 0);
+            });
         }
 
         // A world's ground draws instanced (`WorldGround`), and a build keeps a shader's instancing

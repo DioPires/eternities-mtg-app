@@ -29,7 +29,8 @@ namespace Eternities.Travel
     //
     // The hub stands 4 km to the east of the world's centre, out of sight of it, so a world is built
     // in place, whole, while the visitor is still in the hub, and the cut of a portal is a move of
-    // the avatar.
+    // the avatar. The world's sky and water reach past its ground, to the hub: they show only while
+    // the visitor is in the world (`Sunlight`).
     public sealed class App : MonoBehaviour
     {
         public const string HomeWorld = "dominaria";
@@ -47,6 +48,8 @@ namespace Eternities.Travel
         // are an asset under its `Resources/` that a world loads when it is entered (`KitDressing`),
         // so the hub holds none of them (DEC-1055, N20).
         [SerializeField] Material[] standMaterials = new Material[0];
+        // The plinths' rims, one a colour class in the order of `StandField.ClassColours` (PRD v4 5.5.1).
+        [SerializeField] Material[] rimMaterials = new Material[0];
         [SerializeField] Material avatarMaterial, hubGroundMaterial, portalFrameMaterial, portalSurfaceMaterial, veilMaterial;
         // The ground's materials, and with them the variants of the terrain shader a build must
         // hold: by `GroundMaterial`'s constants.
@@ -69,6 +72,7 @@ namespace Eternities.Travel
         float hubSunKelvin;
 
         public Material[] StandMaterials { get => standMaterials; set => standMaterials = value; }
+        public Material[] RimMaterials { get => rimMaterials; set => rimMaterials = value; }
         public Material AvatarMaterial { get => avatarMaterial; set => avatarMaterial = value; }
         public Material HubGroundMaterial { get => hubGroundMaterial; set => hubGroundMaterial = value; }
         public Material PortalFrameMaterial { get => portalFrameMaterial; set => portalFrameMaterial = value; }
@@ -106,6 +110,11 @@ namespace Eternities.Travel
         // The kits' dressings the world loaded, by kit.
         public readonly Dictionary<string, KitDressing> Kits = new Dictionary<string, KitDressing>();
         public Hud Hud { get; private set; }
+        // The map of the world that is loaded (PRD v4 6.3.4), made with it.
+        public MapModel Map { get; private set; }
+        // The region and the site the HUD's line names now (PRD v4 6.3.1), or -1.
+        public int ShownRegion { get; private set; } = -1;
+        public int ShownSite { get; private set; } = -1;
         public CardViewer CardView { get; private set; }
         public int HoveredStand { get; private set; } = -1;
         public readonly List<int> RecentlyVisited = new List<int>();     // the last 50 stands entered in card view (PRD v4 6.6.4)
@@ -326,8 +335,11 @@ namespace Eternities.Travel
             }
 
             Place = Place.Hub;
+            Hud.Place(HubName);
             HubReady = true;
         }
+
+        public const string HubName = "The Hub";      // the HUD's line in the hub (PRD v4 6.3.1)
 
         // The sun of the place the visitor is in: the world's own row, or the scene's for the hub.
         void Sunlight(Place place)
@@ -342,6 +354,10 @@ namespace Eternities.Travel
             if (Sky != null)
             {
                 Sky.Shown = place == Place.World;
+            }
+            if (Water != null)
+            {
+                WorldWater.Show(Water, place == Place.World);
             }
             // In a world the view reaches across it and over the sea; in the hub, as the scene has it.
             View.FarClip = place == Place.World && Sky != null ? WorldSky.FarClip : hubFarClip;
@@ -406,6 +422,10 @@ namespace Eternities.Travel
                 return;
             }
             Vector3 at = Avatar.transform.position;
+            if (Place == Place.World && World != null)
+            {
+                FollowWalker(at);
+            }
             // Did the avatar's step use the ring of the place it is in? A world reads this before
             // card view and the travel menu take the frame: they use the frame's input, and the
             // avatar takes its step all the same. A step that used the ring closes whatever is open
@@ -443,6 +463,8 @@ namespace Eternities.Travel
         bool Explore(Vector3 at)
         {
             AvatarInput input = Avatar.Input;
+            // Only the hover label, when it shows below, keeps the stands' images off its pixels.
+            Exhibit.Spared = Rect.zero;
             CardView.ReducedMotion = ReducedMotion;
             View.ReducedMotion = ReducedMotion;
             if (Sky != null)
@@ -479,9 +501,28 @@ namespace Eternities.Travel
                 }
                 return true;
             }
+            if (Hud.MapOpen)
+            {
+                if (input.Back || input.Map)
+                {
+                    Hud.HideMap();
+                }
+                else
+                {
+                    Hud.Map.Walker(new Vector2(at.x, at.z), Avatar.transform.eulerAngles.y);
+                }
+                return true;
+            }
             if (input.TravelMenu)
             {
                 OpenTravel();
+                return true;
+            }
+            if (input.Map && Map != null)
+            {
+                Hud.Hover(null, default);
+                Hud.ShowMap(Map, TravelToSite);
+                Hud.Map.Walker(new Vector2(at.x, at.z), Avatar.transform.eulerAngles.y);
                 return true;
             }
 
@@ -498,7 +539,12 @@ namespace Eternities.Travel
                     // Made once a stand, not once a frame (PRD v4 7.3.2).
                     label = CardViewer.Label(World, labelled = HoveredStand);
                 }
-                Hud.Hover(screen.z > 0 ? label : null, new Vector2(screen.x, view.pixelHeight - screen.y));
+                Vector2 anchor = new Vector2(screen.x, view.pixelHeight - screen.y);
+                Hud.Hover(screen.z > 0 ? label : null, anchor);
+                // The stands' images are laid over the finished frame, the label with it: they
+                // leave the label's rectangle alone, so it reads in front of the stands behind it
+                // (DEC-1130 N10).
+                Exhibit.Spared = screen.z > 0 ? Hud.HoverPixels(anchor, view.pixelWidth, view.pixelHeight, LabelMargin) : Rect.zero;
                 if (input.Interact || (input.Click && Over(World, HoveredStand, view, input.Pointer)))
                 {
                     CardView.Enter(HoveredStand);
@@ -512,8 +558,35 @@ namespace Eternities.Travel
             return false;
         }
 
+        // Pixels about the hover label that the stands' images leave alone too.
+        public const float LabelMargin = 1;
+
         int labelled = -1;
         string label;
+        Whereabouts whereabouts;
+        bool placeShown;        // the line names the world's place, not the hub
+
+        // The HUD's line follows the walker across boundaries, and crossing into a region shows the
+        // region's sentence (PRD v4 6.3.1, 5.13.7). The line is made only when the region or the
+        // site changes, so a frame that changes neither allocates nothing.
+        void FollowWalker(Vector3 at)
+        {
+            whereabouts ??= new Whereabouts(World.Layout);
+            P2 here = Whereabouts.Millimetres(at.x, at.z);
+            int region = whereabouts.Region(here), site = whereabouts.Site(here);
+            if (placeShown && region == ShownRegion && site == ShownSite)
+            {
+                return;
+            }
+            placeShown = true;
+            if (region != ShownRegion && region >= 0)
+            {
+                Hud.Sentence(Whereabouts.Sentence(World, region));
+            }
+            ShownRegion = region;
+            ShownSite = site;
+            Hud.Place(Whereabouts.Line(World, region, site));
+        }
 
         // Is a point of the view on a stand, its plinth or its slab, as the camera sees it?
         static bool Over(WorldData world, int stand, Camera view, Vector2 pointer)
@@ -620,11 +693,25 @@ namespace Eternities.Travel
             if (Place == Place.World && !InTransition)
             {
                 Hud.HideTravel();
-                StartCoroutine(Travel(stand));
+                Quaternion facing = StandField.Facing(World, stand);
+                Vector3 apron = StandField.Ground(World.Position(stand)) + facing * Vector3.forward * ((LayoutConstants.FootprintDepth / 2 + LayoutConstants.ApronDepth / 2) / 1000f);
+                StartCoroutine(Travel(apron, facing * Quaternion.Euler(0, 180, 0)));
             }
         }
 
-        IEnumerator Travel(int stand)
+        // Travel to a site's pad, from the map (PRD v4 6.3.4): the same portal, arriving on the pad
+        // in the way the pad's pose faces.
+        public void TravelToSite(int site)
+        {
+            if (Place == Place.World && !InTransition && site >= 0 && site < World.Layout.Sites.Length)
+            {
+                Hud.HideMap();
+                Eternities.Data.Pose pad = World.Layout.Sites[site].Pad;
+                StartCoroutine(Travel(StandField.Ground(pad.Position), StandField.Facing(pad.Yaw)));
+            }
+        }
+
+        IEnumerator Travel(Vector3 arrival, Quaternion heading)
         {
             InTransition = true;
             double entered = Now;
@@ -642,9 +729,7 @@ namespace Eternities.Travel
             Veil(1);
             Avatar.Walk = Vector3.zero;
 
-            Quaternion facing = StandField.Facing(World, stand);
-            Vector3 apron = StandField.Ground(World.Position(stand)) + facing * Vector3.forward * ((LayoutConstants.FootprintDepth / 2 + LayoutConstants.ApronDepth / 2) / 1000f);
-            Avatar.Place(apron, facing * Quaternion.Euler(0, 180, 0));
+            Avatar.Place(arrival, heading);
             View.Behind();
             Destroy(portal.gameObject);
             yield return null;
@@ -669,12 +754,13 @@ namespace Eternities.Travel
             string directory = PackDirectory();
             // World entry reads the records of the launch, not the file again (PRD v4 8.3.2).
             StandsFile records = Records;
-            Task<(WorldData World, DressPlan Plan)> read = Task.Run(() =>
+            Task<(WorldData World, DressPlan Plan, MapModel Map, Color32[] MapGround)> read = Task.Run(() =>
             {
                 WorldData world = WorldData.Load(directory, slug, records);
                 DressPlan plan = DressPlan.Compute(world);
                 plan.ForTheBuild();
-                return (world, plan);
+                MapModel map = MapOf(world);
+                return (world, plan, map, Eternities.Kits.MapGround.Pixels(plan, map.Centre, map.HalfSide, MapGroundSide));
             });
             reading = read;
             yield return LoadKit("temperate");
@@ -687,9 +773,16 @@ namespace Eternities.Travel
                 Fail(read.Exception.GetBaseException());
                 yield break;
             }
-            (World, Dress) = read.Result;
+            Color32[] mapGround;
+            (World, Dress, Map, mapGround) = read.Result;
             reading = null;     // the read is done: the field is for a read that still runs when the app ends (`OnDestroy`)
             worldRoot = new GameObject(World.Plane.DisplayName);
+            // The map's ground, uploaded with no copy kept on the CPU.
+            var ground = new Texture2D(MapGroundSide, MapGroundSide, TextureFormat.RGBA32, mipChain: false) { name = "map ground", wrapMode = TextureWrapMode.Clamp };
+            ground.SetPixelData(mapGround, 0);
+            ground.Apply(false, makeNoLongerReadable: true);
+            worldOwned.Add(ground);
+            Map.Ground = ground;
 
             // The kits of the world's ambient families and of its water (PRD v4 8.12.5).
             LoadStage = "kits";
@@ -702,7 +795,7 @@ namespace Eternities.Travel
                 yield return LoadKit(KitLoops.OfWater(body.Kind).Kit);
             }
             KitDressing temperate = Kits.TryGetValue("temperate", out KitDressing held) ? held : null;
-            if (temperate == null || groundMaterials.Length != GroundMaterialCount || greyboxMaterials.Length != Greybox.Materials)
+            if (temperate == null || groundMaterials.Length != GroundMaterialCount || greyboxMaterials.Length != Greybox.Materials || rimMaterials.Length != StandField.Classes)
             {
                 Fail(new InvalidOperationException("the world's kit or materials are missing; run the generation entry point (unity/Eternities/README.md)"));
                 yield break;
@@ -712,7 +805,8 @@ namespace Eternities.Travel
             LoadStage = "props";
             KitProp PropOf(Scatter.Kind kind) => temperate.Variant(Variants.Temperate[kind.Variant].Name).Props[kind.Growth];
             Scatter.Kind[] kinds = Scatter.KindsOf(Variants.Temperate, (v, g) => temperate.Variant(Variants.Temperate[v].Name).Props[g].Shape());
-            var placed = new Scatter(Dress, kinds, Temperate.Density(QualitySettings.names[QualitySettings.GetQualityLevel()]));
+            string level = QualitySettings.names[QualitySettings.GetQualityLevel()];
+            var placed = new Scatter(Dress, kinds, Temperate.Density(level), Temperate.FarDensity(level));
             Task place = Task.Run(placed.PlaceAll);
             while (!place.IsCompleted)
             {
@@ -747,7 +841,7 @@ namespace Eternities.Travel
 
             LoadStage = "stands";
             Stands = StandField.Create(worldRoot.transform);
-            yield return Stands.Fill(World, standMaterials, LoadBudgetMs);
+            yield return Stands.Fill(World, standMaterials, rimMaterials, LoadBudgetMs);
             LoadStage = "image surfaces";
             Images = StandImages.Create(worldRoot.transform);
             yield return Images.Fill(World, imageSurfaceMaterial, standImages, LoadBudgetMs);
@@ -794,6 +888,74 @@ namespace Eternities.Travel
 
         LavaFlow lavaFlow;
 
+        public const int MapGroundSide = 512;       // texels across the map's picture of the ground
+
+        // The map of a world (PRD v4 6.3.4), from the pack: its regions named at the middle of
+        // their cells, the trail's legs every few metres, the sites in site order with their
+        // outlines, stones, pads and chapter stones, the return portal and every stand in its
+        // class colour. It shows the world's disc and a margin past its edge.
+        public static MapModel MapOf(WorldData world)
+        {
+            WorldDocument layout = world.Layout;
+            var map = new MapModel { Centre = Vector2.zero, HalfSide = layout.Radius / 1000f + MapMargin };
+            static Vector2 At(P2 point) => new Vector2(point.X / 1000f, point.Z / 1000f);
+            foreach (WorldRegion region in layout.Regions)
+            {
+                Vector2[] outline = Array.ConvertAll(region.Cell, At);
+                map.Regions.Add(new MapModel.Area { Name = region.Name, Outline = outline, Label = Centroid(outline), Site = region.FirstSite ?? -1 });
+            }
+            foreach (TrailLeg leg in layout.Legs)
+            {
+                var points = new List<Vector2>();
+                foreach (P2 point in leg.Polyline)
+                {
+                    Vector2 at = At(point);
+                    if (points.Count == 0 || (at - points[points.Count - 1]).sqrMagnitude >= MapTrailStep * MapTrailStep)
+                    {
+                        points.Add(at);
+                    }
+                }
+                if (leg.Polyline.Length > 1)
+                {
+                    points.Add(At(leg.Polyline[leg.Polyline.Length - 1]));
+                }
+                map.Trail.Add(points.ToArray());
+            }
+            foreach (WorldSite site in layout.Sites)
+            {
+                map.Sites.Add(new MapModel.Site
+                {
+                    Name = Whereabouts.SiteTitle(world, site), Outline = Array.ConvertAll(site.Blob, At), Stone = At(site.Stone.Position), Pad = At(site.Pad.Position),
+                    Chapters = site.Chapters.Where(chapter => chapter.Stone != null).Select(chapter => At(chapter.Stone.Value.Position)).ToArray(),
+                });
+            }
+            map.ReturnPortal = At(layout.ReturnPortal.Position);
+            map.Dots = new Vector2[world.StandCount];
+            map.DotColours = new Color[world.StandCount];
+            for (int stand = 0; stand < world.StandCount; stand++)
+            {
+                map.Dots[stand] = At(world.Position(stand));
+                map.DotColours[stand] = StandField.ClassColours[StandField.ClassOf(world, stand)];
+            }
+            return map;
+        }
+
+        public const float MapMargin = 40, MapTrailStep = 4;
+
+        // The middle of a polygon's area.
+        static Vector2 Centroid(Vector2[] polygon)
+        {
+            double area = 0, x = 0, y = 0;
+            for (int i = 0, j = polygon.Length - 1; i < polygon.Length; j = i++)
+            {
+                double cross = (double)polygon[j].x * polygon[i].y - (double)polygon[i].x * polygon[j].y;
+                area += cross;
+                x += (polygon[j].x + polygon[i].x) * cross;
+                y += (polygon[j].y + polygon[i].y) * cross;
+            }
+            return area == 0 ? polygon[0] : new Vector2((float)(x / (3 * area)), (float)(y / (3 * area)));
+        }
+
         // A kit's dressing, once a session world: loaded from its resource without stopping the frame.
         IEnumerator LoadKit(string kit)
         {
@@ -815,6 +977,12 @@ namespace Eternities.Travel
         {
             WorldSound sound = WorldSound.Create(worldRoot.transform, listener, at =>
             {
+                // The world can be left in a frame before its sound goes (`Unload`): its plan has
+                // no grids then (DEC-1194 N27).
+                if (plan.Region == null)
+                {
+                    return (null, null, 0);
+                }
                 int texel = plan.Grid.At(at.x, at.z);
                 return (plan.Regions[plan.Region[texel]].Ambient, plan.Regions[plan.Other[texel]].Ambient, plan.Share(texel));
             });
@@ -843,7 +1011,7 @@ namespace Eternities.Travel
                 else if (body.Kind == WaterBody.Sea)
                 {
                     // Each sea's own shore: one source a sea (DEC-1194 N9).
-                    List<Vector3> shore = Shore(plan, DressPlan.WetSea, body.Region);
+                    List<Vector3> shore = plan.Shore(DressPlan.WetSea, body.Region);
                     if (shore.Count > 0)
                     {
                         sound.Water(name, clip, at => Nearest(shore, at), 15, 260, 1, 120);
@@ -870,7 +1038,7 @@ namespace Eternities.Travel
                 {
                     continue;
                 }
-                List<Vector3> pools = Shore(plan, DressPlan.WetMarsh, r);
+                List<Vector3> pools = plan.Shore(DressPlan.WetMarsh, r);
                 if (pools.Count > 0)
                 {
                     sound.Water($"{WaterBody.Marsh} {index++}", Loop(KitLoops.OfWater(WaterBody.Marsh)), at => Nearest(pools, at), 4, 50, 0.5f, 90);
@@ -878,26 +1046,6 @@ namespace Eternities.Travel
             }
             sound.Settle();
             return sound;
-        }
-
-        // The texels of a kind of water in a region beside dry ground, every few metres, at the
-        // water's level.
-        static List<Vector3> Shore(DressPlan plan, byte kind, int region)
-        {
-            var shore = new List<Vector3>();
-            int n = plan.N, step = Mathf.Max(1, Mathf.RoundToInt(6 / plan.Grid.Texel));
-            for (int row = step; row < n - step; row += step)
-            {
-                for (int column = step; column < n - step; column += step)
-                {
-                    int i = row * n + column;
-                    if (plan.Wet[i] == kind && plan.Region[i] == region && (plan.Wet[i - step] != kind || plan.Wet[i + step] != kind || plan.Wet[i - step * n] != kind || plan.Wet[i + step * n] != kind))
-                    {
-                        shore.Add(new Vector3(plan.Grid.X(column), DressPlan.WaterLevel, plan.Grid.Z(row)));
-                    }
-                }
-            }
-            return shore;
         }
 
         static Vector3 Nearest(List<Vector3> points, Vector3 at)
@@ -926,8 +1074,15 @@ namespace Eternities.Travel
             LoadStage = null;
             CardView.Bind(null, null, null);
             Hud.HideTravel();
+            Hud.HideMap();
             Hud.Hover(null, default);
+            Exhibit.Spared = Rect.zero;
             HoveredStand = labelled = -1;
+            // The sound stops reading the plan before the plan lets its grids go (DEC-1194 N27).
+            if (Sound != null)
+            {
+                Sound.enabled = false;
+            }
             RecentlyVisited.Clear();
             if (worldRoot != null)
             {
@@ -945,6 +1100,10 @@ namespace Eternities.Travel
             // visit's plan was built beside them (DEC-1005, the memory cut).
             Dress?.Release();
             Scatter?.Release();
+            Map = null;
+            whereabouts = null;
+            placeShown = false;
+            ShownRegion = ShownSite = -1;
             Greybox = null;
             Stands = null;
             Images = null;
@@ -1007,20 +1166,26 @@ namespace Eternities.Travel
                 }
                 yield return null;
             }
-            // The first time, what card view and the overlays will need is made ready here, behind
-            // the surface: the first use of depth of field and of each size of text otherwise stops
-            // a frame for most of a second, in the middle of the world.
+            // The first time, what card view, the overlays and the water will need is made ready
+            // here, behind the surface: the first use of depth of field, of each size of text and
+            // of each kind of water otherwise stops a frame for most of a second, in the middle of
+            // the world.
             if (destination == Place.World && Failure == null && !warmed)
             {
                 warmed = true;
                 CardView.Warm(true);
                 Hud.Warm(true);
+                GameObject waterWarmUp = Water != null ? WorldWater.WarmUp(Water, World.Layout.Radius / 1000f) : null;
                 for (int frame = 0; frame < 4; frame++)
                 {
                     yield return null;
                 }
                 CardView.Warm(false);
                 Hud.Warm(false);
+                if (waterWarmUp != null)
+                {
+                    WorldWater.EndWarmUp(Water, waterWarmUp);
+                }
             }
             if (HoldIndicator && Failure == null)
             {
@@ -1043,6 +1208,8 @@ namespace Eternities.Travel
                     Avatar.Place(HubPortal.Pad, HubPortal.transform.rotation);
                     Avatar.Keep = KeepInHub;
                     Unload();
+                    Hud.Place(HubName);
+                    Hud.Sentence(null);
                 }
                 Place = destination;
                 Sunlight(destination);

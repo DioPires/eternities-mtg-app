@@ -11,8 +11,9 @@ namespace Eternities.Kits
     // shaped as a pedestal, and, upright on it, the slab that carries the image surface, facing the
     // apron.
     // One mesh and one collider a site, so the engine culls and streams by site and nothing is one
-    // object a card. The plinth's material is the card's rarity; the image surface is drawn by the
-    // isolated path (PRD v4 8.4.4) and is not part of this mesh.
+    // object a card. The plinth's material is the card's rarity; a thin rim of its class's colour
+    // runs round the plinth's top edge (PRD v4 5.5.1, the colour cue); the image surface is drawn
+    // by the isolated path (PRD v4 8.4.4) and is not part of this mesh.
     public sealed class StandField : MonoBehaviour
     {
         public const float PlinthHeight = 1.1f, SurfaceHeight = 0.88f, SlabDepth = 0.02f;
@@ -22,11 +23,36 @@ namespace Eternities.Kits
         public const int Rarities = 4, SlabMaterial = 4;
         // The plinth's shape from the ground up: a base as wide as the footprint, a shaft set in
         // from it, and a cap as wide as the base again. Each level is a height and how far its
-        // edge is set in from the footprint's. A box 1.1 m tall read as a crate.
+        // edge is set in from the footprint's. A box 1.1 m tall read as a crate. The cap's last
+        // `RimHeight` is the rim's band.
         public static readonly (float Height, float Inset)[] Pedestal =
         {
-            (0f, 0f), (0.14f, 0f), (0.19f, 0.04f), (0.94f, 0.04f), (0.99f, 0f), (PlinthHeight, 0f),
+            (0f, 0f), (0.14f, 0f), (0.19f, 0.04f), (0.94f, 0.04f), (0.99f, 0f), (PlinthHeight - RimHeight, 0f), (PlinthHeight, 0f),
         };
+
+        // The rim (PRD v4 5.5.1): the cap's top band on its four sides, and a frame as wide as
+        // `RimWidth` round its top face, in the colour of the stand's class.
+        public const float RimHeight = 0.03f, RimWidth = 0.025f;
+
+        // The colour classes of `stands.bin` (docs/data-contract.md: 0 W, 1 U, 2 B, 3 R, 4 G, 5
+        // multicolour, 6 colourless), and the colour of each one's rim and of its dot on the map.
+        // They are the web edition's hue classes (`web/src/scene/tuning.ts`), but for black: a black
+        // rim would not show on a dark stone or at dusk, and the web edition's violet reads as the
+        // magenta of the image path's test placeholder (PRD v4 8.4.4), so black is an indigo.
+        // Multicolour is gold and colourless grey, as 5.5.1 names them.
+        public const int Classes = 7;
+        public static readonly Color[] ClassColours =
+        {
+            new Color(1.0f, 0.949f, 0.827f),        // W, warm ivory
+            new Color(0.322f, 0.639f, 1.0f),        // U, cerulean
+            new Color(0.50f, 0.42f, 0.95f),         // B, indigo
+            new Color(1.0f, 0.451f, 0.239f),        // R, ember orange
+            new Color(0.322f, 0.831f, 0.494f),      // G, viridian
+            new Color(1.0f, 0.812f, 0.361f),        // multicolour, gold
+            new Color(0.812f, 0.855f, 0.898f),      // colourless, grey
+        };
+
+        public static int ClassOf(WorldData world, int stand) => Mathf.Clamp(world.Stands.Class[stand], 0, Classes - 1);
 
         public int Stands { get; private set; }
         public int Sites { get; private set; }
@@ -52,11 +78,12 @@ namespace Eternities.Kits
         // The way a stand's image surface faces: towards its path vertex (PRD v4 3.2, invariant 9).
         public static Quaternion Facing(WorldData world, int stand) => Facing(world.Yaw(stand));
 
-        // `materials`: the four plinth materials by rarity, then the slab's.
-        public static StandField Build(WorldData world, Material[] materials, Transform parent)
+        // `materials`: the four plinth materials by rarity, then the slab's; `rims`: one a colour
+        // class, in the order of `ClassColours`.
+        public static StandField Build(WorldData world, Material[] materials, Material[] rims, Transform parent)
         {
             StandField field = Create(parent);
-            IEnumerator fill = field.Fill(world, materials, float.PositiveInfinity);
+            IEnumerator fill = field.Fill(world, materials, rims, float.PositiveInfinity);
             while (fill.MoveNext())
             {
             }
@@ -72,16 +99,21 @@ namespace Eternities.Kits
 
         // Builds the sites one after another, and yields whenever a frame has spent `budget`
         // milliseconds on them, so a world loads behind a portal without stopping the frame.
-        public IEnumerator Fill(WorldData world, Material[] materials, float budget)
+        public IEnumerator Fill(WorldData world, Material[] materials, Material[] rims, float budget)
         {
             var bySite = new List<int>[world.Layout.Sites.Length];
             for (int stand = 0; stand < world.StandCount; stand++)
             {
                 (bySite[world.Site(stand)] ??= new List<int>()).Add(stand);
             }
+            // A site's mesh has a submesh a material: the plinths by rarity, the slab, then the
+            // rims by class.
+            var all = new Material[materials.Length + rims.Length];
+            materials.CopyTo(all, 0);
+            rims.CopyTo(all, materials.Length);
             var vertices = new List<Vector3>();
             var normals = new List<Vector3>();
-            var triangles = new List<int>[materials.Length];
+            var triangles = new List<int>[all.Length];
             for (int m = 0; m < triangles.Length; m++)
             {
                 triangles[m] = new List<int>();
@@ -108,23 +140,30 @@ namespace Eternities.Kits
                     Quaternion facing = Facing(world, stand);
                     float footprintHalfWidth = LayoutConstants.FootprintWidth / 2000f, footprintHalfDepth = LayoutConstants.FootprintDepth / 2000f;
                     List<int> plinth = triangles[Mathf.Clamp(world.Stands.Rarity[stand], 0, Rarities - 1)];
+                    List<int> rim = triangles[materials.Length + ClassOf(world, stand)];
                     for (int level = 0; level + 1 < Pedestal.Length; level++)
                     {
-                        Sides(vertices, normals, plinth, at, facing,
+                        Sides(vertices, normals, level + 2 == Pedestal.Length ? rim : plinth, at, facing,
                             new Vector3(footprintHalfWidth - Pedestal[level].Inset, Pedestal[level].Height, footprintHalfDepth - Pedestal[level].Inset),
                             new Vector3(footprintHalfWidth - Pedestal[level + 1].Inset, Pedestal[level + 1].Height, footprintHalfDepth - Pedestal[level + 1].Inset));
                     }
-                    // The cap's top, which the slab stands on: a box of no height has that one face to show.
-                    Box(vertices, normals, plinth, at + new Vector3(0, PlinthHeight, 0), facing, new Vector3(footprintHalfWidth, 0, footprintHalfDepth), only: Vector3.up);
+                    // The cap's top, which the slab stands on: the rim's frame round its edge, and
+                    // the plinth's own face inside it. A box of no height has that one face to show.
+                    Vector3 top = at + new Vector3(0, PlinthHeight, 0);
+                    Frame(vertices, normals, rim, top, facing, footprintHalfWidth, footprintHalfDepth, RimWidth);
+                    Box(vertices, normals, plinth, top, facing, new Vector3(footprintHalfWidth - RimWidth, 0, footprintHalfDepth - RimWidth), only: Vector3.up);
                     Box(vertices, normals, triangles[SlabMaterial],
                         at + new Vector3(0, PlinthHeight + SurfaceHeight / 2, 0), facing, new Vector3(SlabWidth / 2, SlabHeight / 2, SlabDepth / 2));
                 }
 
-                var mesh = new Mesh { name = $"stands {site.Key}" };
+                // A site of more than about 470 stands passes the 65,535 vertices that 16-bit
+                // indices reach: Dominaria's `era:ice-age` holds 635, and its last plinths drew
+                // with other stands' vertices until the format followed the count.
+                var mesh = new Mesh { name = $"stands {site.Key}", indexFormat = vertices.Count > ushort.MaxValue ? IndexFormat.UInt32 : IndexFormat.UInt16 };
                 mesh.SetVertices(vertices);
                 mesh.SetNormals(normals);
-                mesh.subMeshCount = materials.Length;
-                for (int m = 0; m < materials.Length; m++)
+                mesh.subMeshCount = all.Length;
+                for (int m = 0; m < all.Length; m++)
                 {
                     mesh.SetTriangles(triangles[m], m);
                 }
@@ -136,7 +175,7 @@ namespace Eternities.Kits
                 siteObject.transform.localPosition = origin;
                 siteObject.AddComponent<MeshFilter>().sharedMesh = mesh;
                 var renderer = siteObject.AddComponent<MeshRenderer>();
-                renderer.sharedMaterials = materials;
+                renderer.sharedMaterials = all;
                 renderer.shadowCastingMode = ShadowCastingMode.On;
                 siteObject.AddComponent<MeshCollider>().sharedMesh = mesh;
                 Sites++;
@@ -174,6 +213,36 @@ namespace Eternities.Kits
                 for (int corner = 0; corner < 4; corner++)
                 {
                     normals.Add(normal);
+                }
+                triangles.Add(first);
+                triangles.Add(first + 1);
+                triangles.Add(first + 2);
+                triangles.Add(first);
+                triangles.Add(first + 2);
+                triangles.Add(first + 3);
+            }
+        }
+
+        // A flat frame facing up at `centre`: the ring between a rectangle of half extents
+        // `halfWidth` by `halfDepth` and the same rectangle set in by `width`, as four quads.
+        static void Frame(List<Vector3> vertices, List<Vector3> normals, List<int> triangles, Vector3 centre, Quaternion rotation, float halfWidth, float halfDepth, float width)
+        {
+            Vector3 up = rotation * Vector3.up;
+            for (int side = 0; side < 4; side++)
+            {
+                (float X, float Z) from = Round[side], to = Round[(side + 1) % 4];
+                // Round's order runs clockwise seen from above, so the outer edge a to b and then
+                // the inner edge c back to d wind clockwise too, which faces up.
+                Vector3 a = new Vector3(from.X * halfWidth, 0, from.Z * halfDepth), b = new Vector3(to.X * halfWidth, 0, to.Z * halfDepth);
+                Vector3 c = new Vector3(to.X * (halfWidth - width), 0, to.Z * (halfDepth - width)), d = new Vector3(from.X * (halfWidth - width), 0, from.Z * (halfDepth - width));
+                int first = vertices.Count;
+                vertices.Add(centre + rotation * a);
+                vertices.Add(centre + rotation * b);
+                vertices.Add(centre + rotation * c);
+                vertices.Add(centre + rotation * d);
+                for (int corner = 0; corner < 4; corner++)
+                {
+                    normals.Add(up);
                 }
                 triangles.Add(first);
                 triangles.Add(first + 1);

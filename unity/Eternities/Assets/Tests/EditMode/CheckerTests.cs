@@ -536,25 +536,29 @@ namespace Eternities.Tests
         // an `E`, read or not. Dominaria's stand count, which the checker reads, its first chapter's
         // destination yaw, which no rule reads, an era's set id in its lore, which no rule reads
         // before the walk, and the era's first headline card, which no rule reads, are each refused
-        // under `world-format`, and nothing else is tested.
+        // under `world-format`, and nothing else is tested. `5.5` is no whole number, so the stand
+        // count's reader would refuse it in words of its own: the message is the token walk's, so
+        // the walk runs before the readers (DEC-1203 N1, mutant C8).
         [TestCase("5.0")]
         [TestCase("5e0")]
         [TestCase("5E0")]
+        [TestCase("5.5")]
         public void ANumberTokenWithAFractionOrAnExponentIsRefusedReadOrNot(string token)
         {
             LayoutFixtures.Fixture fixture = LayoutFixtures.Named("dominaria");
             List<Checker.CheckedCard> cards = LayoutFixtures.Cards(fixture);
+            string value = double.Parse(token, System.Globalization.CultureInfo.InvariantCulture).ToString("R", System.Globalization.CultureInfo.InvariantCulture);
             foreach ((object[] keys, string place) in new[] { (StandCount, "standCount"), (DestinationYaw, "sites[0].chapters[0].destination.yaw") })
             {
                 Checker.Result result = Checker.Check(fixture.Stands, WithToken(fixture.World, token, keys), fixture.Lore, cards, LayoutFixtures.Trig);
                 Assert.That(Rules(result), Is.EquivalentTo(new[] { "world-format" }), place);
-                StringAssert.Contains($"the world document holds 5 at {place}, a number token with a '.'", Under(result, "world-format").Single());
+                StringAssert.Contains($"the world document holds {value} at {place}, a number token with a '.'", Under(result, "world-format").Single());
             }
             foreach ((object[] keys, string place) in new[] { (EraSetId, "eras[0].setIds[0]"), (Headline, "eras[0].headline[0]") })
             {
                 Checker.Result lore = Checker.Check(fixture.Stands, fixture.World, WithToken(fixture.Lore, token, keys), cards, LayoutFixtures.Trig);
                 Assert.That(Rules(lore), Is.EquivalentTo(new[] { "world-format" }), place);
-                StringAssert.Contains($"the lore document holds 5 at {place}, a number token with a '.'", Under(lore, "world-format").Single());
+                StringAssert.Contains($"the lore document holds {value} at {place}, a number token with a '.'", Under(lore, "world-format").Single());
             }
         }
 

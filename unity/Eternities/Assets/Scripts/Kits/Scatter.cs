@@ -39,7 +39,10 @@ namespace Eternities.Kits
         public struct Instance
         {
             public Vector3 Position;
-            public float Yaw, Scale, Rank;
+            public float Yaw, Scale;
+            // The order a run draws its props in: first those that stand at `FarDensity`, by their
+            // draw in [0, 1), then the rest, by their draw plus 1.
+            public float Rank;
         }
 
         // The static props stand in cells of this many metres, each kind's in a run of its own,
@@ -55,18 +58,22 @@ namespace Eternities.Kits
 
         public readonly DressPlan Plan;
         public readonly Kind[] Kinds;
-        public readonly float Density;
+        // The share of the growth placed, and the share a cell far from the walker draws, no more
+        // than it: at HDRP high, medium's (`Temperate.FarDensity`, DEC-1005, the props' lever).
+        public readonly float Density, FarDensity;
         public int Cells;                       // a side
         public Matrix4x4[] Matrices;            // every static prop, by cell, kind and rank
         public Instance[] Instances;            // the same, as places
         public int[] RunStart, RunCount;        // by `cell × Kinds.Length + kind`
+        public int[] RunFar;                    // the same: how many of the run stand at `FarDensity`
         public readonly int[] ByKind;
 
-        public Scatter(DressPlan plan, Kind[] kinds, float density)
+        public Scatter(DressPlan plan, Kind[] kinds, float density, float farDensity = float.PositiveInfinity)
         {
             Plan = plan;
             Kinds = kinds;
             Density = density;
+            FarDensity = Mathf.Min(density, farDensity);
             ByKind = new int[kinds.Length];
         }
 
@@ -136,6 +143,7 @@ namespace Eternities.Kits
             placed.Sort((a, b) => a.Key != b.Key ? a.Key.CompareTo(b.Key) : a.Prop.Rank.CompareTo(b.Prop.Rank));
             RunStart = new int[Cells * Cells * Kinds.Length];
             RunCount = new int[RunStart.Length];
+            RunFar = new int[RunStart.Length];
             Matrices = new Matrix4x4[placed.Count];
             Instances = new Instance[placed.Count];
             for (int i = 0; i < placed.Count; i++)
@@ -145,6 +153,7 @@ namespace Eternities.Kits
                 {
                     RunStart[key] = i;
                 }
+                RunFar[key] += prop.Rank < 1 ? 1 : 0;
                 Instances[i] = prop;
                 Matrices[i] = MatrixOf(Kinds[key % Kinds.Length].Shape, prop);
                 ByKind[key % Kinds.Length]++;
@@ -156,7 +165,7 @@ namespace Eternities.Kits
         {
             Matrices = null;
             Instances = null;
-            RunStart = RunCount = null;
+            RunStart = RunCount = RunFar = null;
         }
 
         // A prop's place as the matrix that draws its prefab's mesh there: as `KitProp.Stand` places
@@ -169,7 +178,8 @@ namespace Eternities.Kits
 
         // A growth's props in one cell of `size` metres, each from the cell's own draws: how many
         // stand there at full density, and for each its place, whether it stands at this density,
-        // its turn, its size and its rank. A lower density's props are among a higher density's.
+        // its turn, its size and its rank. A lower density's props are among a higher density's, and
+        // those that stand at `FarDensity` rank before the rest.
         public void Candidates(Variant variant, Growth growth, int kind, int cx, int cz, float size, Action<Instance> found)
         {
             float boost = Kinds[kind].Category == "Trees" || Kinds[kind].Category == "Bushes" ? 1 + EdgeBoost : 1;
@@ -199,6 +209,8 @@ namespace Eternities.Kits
                 {
                     continue;
                 }
+                // The same test as a scatter at `FarDensity` makes, so its props are these exactly.
+                float later = keep * boost < FarDensity * dress.Growth * here ? 0 : 1;
                 float scale = Mathf.Lerp(growth.ScaleFrom, growth.ScaleTo, Raster.Hash(cx, cz, s + 5));
                 if (!Allowed(Kinds[kind], texel, x, z, scale))
                 {
@@ -207,7 +219,7 @@ namespace Eternities.Kits
                 found(new Instance
                 {
                     Position = new Vector3(x, Plan.HeightAt(x, z) - 0.05f * Kinds[kind].Shape.Height * scale * 0.02f, z),
-                    Yaw = Raster.Hash(cx, cz, s + 6) * 360, Scale = scale, Rank = Raster.Hash(cx, cz, s + 7),
+                    Yaw = Raster.Hash(cx, cz, s + 6) * 360, Scale = scale, Rank = Raster.Hash(cx, cz, s + 7) + later,
                 });
             }
         }

@@ -1003,8 +1003,10 @@ def _outside_int32(value: Any) -> tuple[list[str | int], int] | None:
     """The first integer of a JSON value outside the int32 range, with the keys that lead to it.
 
     Erratum 7 (4.13.5): every integer of a world document lies in the int32 range, read or not.
-    The C# checker reads a whole number up to 2^53 and computes in ``long``, so without this
-    the two checkers could read one document two ways.
+    The C# reader reads an integer token as a ``long``, or as a ``BigInteger`` when a ``long``
+    cannot hold it; ``Checker.Whole`` takes any ``long``, and the C# checker computes in
+    ``long``, which wraps from about 2^32 mm. So without this the two checkers could read one
+    document two ways.
     """
     if type(value) is int:
         return None if _INT32_LEAST <= value <= _INT32_MOST else ([], value)
