@@ -81,7 +81,7 @@ One object. Every coordinate pair is `[x, z]`. A pose is `{"x", "z", "yaw"}`.
 | `plaza` | `radius` (12,000), `edgeRadius` (15,000) and `approach`: the two ends `[near, far]` of the plaza approach's centreline, or null for a world with no site |
 | `pads` | every pad: `owner` (`return` or a site key), `x`, `z`, `radius`. The return portal's pad is first |
 | `heroVolumes` | every hero volume: `id` and `polygon` |
-| `regions` | in region-table order: `id`, `name`, `kit`, `variant`, `water`, `cell` (the cell's polygon) and `firstSite` (the index of the region's first site, or null). A kit world has one region, the whole world, and its `id`, `name`, `kit`, `variant` and `water` are null |
+| `regions` | in region-table order: `id`, `name`, `kit`, `variant`, `water`, `ambient` (the region row's ambient family, or null when the row names none; the engine takes the theme row's family), `cell` (the cell's polygon) and `firstSite` (the index of the region's first site, or null). A kit world has one region, the whole world, and its `id`, `name`, `kit`, `variant`, `water` and `ambient` are null |
 | `sites` | in site order; see below |
 | `trail` | `legs` and `junctions`; see below |
 | `stands` | two arrays indexed by stand index: `vertex`, the index of the corridor's vertex on the site's `path`, and `arc`, that vertex's arc length along the path |

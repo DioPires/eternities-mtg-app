@@ -37,6 +37,7 @@ namespace Eternities.Data
     public sealed class WorldRegion
     {
         public string Id, Name, Kit, Variant, Water;    // all null in a kit world's one region
+        public string Ambient;      // the row's ambient family; null when the row names none, and in a kit world
         public P2[] Cell;
         public int? FirstSite;
     }
@@ -144,7 +145,8 @@ namespace Eternities.Data
                 Regions = Json.Array(Member(world, "regions")).Select(Json.Object).Select(row => new WorldRegion
                 {
                     Id = TextOrNull(Member(row, "id")), Name = TextOrNull(Member(row, "name")), Kit = TextOrNull(Member(row, "kit")),
-                    Variant = TextOrNull(Member(row, "variant")), Water = TextOrNull(Member(row, "water")), Cell = Points(Member(row, "cell")),
+                    Variant = TextOrNull(Member(row, "variant")), Water = TextOrNull(Member(row, "water")),
+                    Ambient = TextOrNull(Member(row, "ambient")), Cell = Points(Member(row, "cell")),
                     FirstSite = Member(row, "firstSite") == null ? (int?)null : Json.Int(row["firstSite"]),
                 }).ToArray(),
                 Sites = Json.Array(Member(world, "sites")).Select(Json.Object).Select(ReadSite).ToArray(),

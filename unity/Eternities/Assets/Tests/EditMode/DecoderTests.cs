@@ -223,5 +223,33 @@ namespace Eternities.Tests
             Json.Object(inputs.Lore)["keywords"] = new List<object>();
             Refused(inputs, "stands at the regional site region:");
         }
+
+        // A region's ambient family (PRD v4 4.13.5, erratum 9; DEC-1202) is the family that its row
+        // names, or null when the row names none; the engine then takes the theme row's family.
+        // Dominaria's twelve rows name nine families, and Benalia, Terisiare and Jamuraa name none.
+        // A kit world's one region has no row, and its family is null.
+        [TestCase("dominaria")]
+        [TestCase("dominaria-hero-volumes")]
+        public void EachRegionReadsTheFamilyOfItsRowOrNull(string name)
+        {
+            WorldDocument dominaria = WorldDocument.Read(LayoutFixtures.Named(name).World);
+            Assert.That(dominaria.Regions.Select(region => $"{region.Id}:{region.Ambient ?? "null"}"), Is.EqualTo(new[]
+            {
+                "benalia:null", "shiv:volcanic", "llanowar:forest", "yavimaya:forest", "terisiare:null", "sarpadia:forest",
+                "tolaria:surf", "caliman:surf", "jamuraa:null", "urborg:marsh", "otaria:forest", "keld:alpine-wind",
+            }));
+            WorldRegion kit = WorldDocument.Read(LayoutFixtures.Named("rabiah").World).Regions.Single();
+            Assert.That(new[] { kit.Id, kit.Kit, kit.Variant, kit.Water, kit.Ambient }, Is.All.Null);
+        }
+
+        // Every region record holds `ambient`, also as null: a region without the key is refused.
+        [Test]
+        public void ARegionWithoutAnAmbientFamilyIsRefused()
+        {
+            object world = LayoutFixtures.Named("rabiah").World;
+            Assert.That(Json.Object(Json.Array(Json.Object(world)["regions"])[0]).Remove("ambient"), Is.True);
+            var refused = Assert.Throws<InvalidDataException>(() => WorldDocument.Read(world));
+            Assert.That(refused.Message, Is.EqualTo("a world document's object has no `ambient`"));
+        }
     }
 }

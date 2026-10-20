@@ -77,9 +77,8 @@ namespace Eternities.Tests
         }
 
         // 5.12.1: each region's ambient family is the one its row in the lore names, or the theme
-        // row's where the row names none. The pack does not carry the family yet, so the dressing
-        // writes Dominaria's down (`Dressing.DominariaFamilies`); this holds it to the rows
-        // (DEC-1194 N10).
+        // row's where the row names none. The family reaches the dressing through the pack's world
+        // document (4.13.5); this holds what arrives to the rows (DEC-1194 N10, DEC-1202).
         [Test]
         public void EveryRegionsFamilyIsItsLoreRows()
         {
@@ -95,11 +94,6 @@ namespace Eternities.Tests
             foreach (RegionDress region in plan.Regions)
             {
                 Assert.That(region.Ambient, Is.EqualTo(named[region.Id]), region.Id);
-            }
-            foreach ((string id, string family) in Dressing.DominariaFamilies)
-            {
-                Assert.That(named.ContainsKey(id), $"{id} is no region of Dominaria's lore");
-                Assert.That(family, Is.EqualTo(named[id]), id);
             }
         }
 
