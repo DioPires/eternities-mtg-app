@@ -334,6 +334,9 @@ the rows from the prefabs: the editor's menu, Eternities, "Kit props as drawn".
 | bridge_wood | structure | `Props/bridge_wood.fbx` | 1.60 m | 220 | 3 |
 | path_wood | structure | `Props/path_wood.fbx` | 0.10 m | 60 | 2 |
 | statue_obelisk | structure | `Props/statue_obelisk.fbx` | 2.19 m | 38 | 2 |
+| chapter_stone | stone | `Props/boulder_01_1k.fbx` | 0.98 m | 8,264 to 64 | 1 |
+| reading_stone | stone | `Props/boulder_01_1k.fbx` | 2.10 m | 8,264 to 64 | 1 |
+| waystone | stone | `Props/boulder_01_1k.fbx` | 1.48 m | 8,264 to 64 | 1 |
 | fir_sapling_medium_a | tree | `Props/fir_sapling_medium_a_cut.fbx` | 8.88 m | 48,937 to 374 | 2 |
 | fir_sapling_medium_b | tree | `Props/fir_sapling_medium_b_cut.fbx` | 7.82 m | 45,430 to 369 | 2 |
 | fir_sapling_medium_c | tree | `Props/fir_sapling_medium_c_cut.fbx` | 5.96 m | 45,556 to 368 | 2 |

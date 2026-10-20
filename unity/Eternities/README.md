@@ -132,14 +132,16 @@ The prop conditioning rule (DEC-1003). It holds for every prop of every kit, and
 The rule is `Assets/Editor/PropRule.cs`; the figures below are its constants.
 
 1. **One prefab a prop**, `Assets/Kits/<kit>/Prefabs/<category>/<prop>.prefab`. The categories are
-   `Trees`, `Bushes`, `GroundCover`, `Rocks` and `Structures`. A model becomes a prop in
-   `Assets/Editor/KitPrefabs.cs` and nowhere else: the generation entry point and the scatter read
-   prefabs, never a model file, and every model under a kit's `Props/` is drawn by a prefab.
+   `Trees`, `Bushes`, `GroundCover`, `Rocks`, `Structures` and `Stones`. A model becomes a prop in
+   `Assets/Editor/KitPrefabs.cs`, or a site's stone in `Assets/Editor/KitStones.cs`, and nowhere
+   else: the generation entry point and the scatter read prefabs, never a model file, and every
+   model under a kit's `Props/` is drawn by a prefab.
 2. **Metres.** The prefab's root is at scale 1 and unturned, so the prop's size at scale 1 is its
-   size in the world. The mesh under it is scaled the same along every axis.
+   size in the world. The mesh under it is scaled the same along every axis. A stone is a rock
+   stood on end and stretched to its pose's disc by its child `Upright`, each axis by 0.5 to 2.
 3. **The base at the origin.** No point of the prop is more than 1 cm over its origin, the origin
    is under the prop, and at most a share of its height is below it: 5% of a tree, 10% of a bush,
-   25% of ground cover, 15% of a structure, 45% of a rock, which lies in the ground.
+   25% of ground cover, 15% of a structure, 10% of a stone, 45% of a rock, which lies in the ground.
 4. **Caps by category**, on the prop as its prefab draws it. The triangles are those of the nearest
    level of detail.
 
@@ -150,6 +152,7 @@ The rule is `Assets/Editor/PropRule.cs`; the figures below are its constants.
    | Ground cover | 2,500 | 1 | 0.02 to 2.5 m |
    | Rock | 10,000 | 1 | 0.05 to 5 m |
    | Structure | 5,000 | 3 | 0.05 to 12 m |
+   | Stone | 10,000 | 1 | 0.3 to 2.5 m |
 
    At the `basic` standard a prop of any category has up to 3 materials.
 5. **Levels of detail.** A prop over 2,000 triangles carries lighter levels, the farthest with at

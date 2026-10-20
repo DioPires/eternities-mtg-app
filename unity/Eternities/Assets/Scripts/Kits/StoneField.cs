@@ -22,7 +22,7 @@ namespace Eternities.Kits
         public const string Chapter = "chapter";
         public const string FaceName = "Face";
         // How deep a tablet is set into its stone, and how far its marks stand in front of it.
-        public const float TabletDepth = 0.05f, MarkLift = 0.0015f;
+        public const float TabletDepth = 0.15f, MarkLift = 0.0015f;
         // The marks: rows of words, each row as tall as a carved letter, under a taller first row.
         public const float RowHeight = 0.022f, TitleHeight = 0.034f, RowGap = 0.03f, WordGap = 0.026f, LetterGap = 0.3f, Margin = 0.07f;
 

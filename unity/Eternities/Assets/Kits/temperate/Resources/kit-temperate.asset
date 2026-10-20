@@ -1451,8 +1451,8 @@ MonoBehaviour:
   - Name: lake
     Clip: {fileID: 8300000, guid: 8424b5068294840f581045a66d9163a6, type: 3}
     Level: 1
-  ReadingStone: {fileID: 4449764787627337508, guid: f6c5cba356dde4f35b4cc3edd82d5541, type: 3}
-  Waystone: {fileID: 5695428642011802152, guid: 1cf502336db0b4c779122c7300ae22e1, type: 3}
-  ChapterStone: {fileID: 3881149110374444699, guid: 56d17d13337884aae95ec7430f418e9c, type: 3}
+  ReadingStone: {fileID: 7631493692920840410, guid: 9dbedfaf24192477a9a33fcaafde05b8, type: 3}
+  Waystone: {fileID: 5934793101746575261, guid: 808fa82f70b4646c0b2bfbf3aae1bc4e, type: 3}
+  ChapterStone: {fileID: 5478263839638978233, guid: ae0694a791b65478cb0b082f3496c895, type: 3}
   Tablet: {fileID: 2100000, guid: d2d68435129024e2bb47cb0fe1fb67d1, type: 2}
   Inscription: {fileID: 2100000, guid: 67bcecda4b93e40c08a857afa830344e, type: 2}

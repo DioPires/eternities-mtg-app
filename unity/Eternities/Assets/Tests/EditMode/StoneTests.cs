@@ -80,6 +80,26 @@ namespace Eternities.Tests
             }
         }
 
+        // The prop rule's guard of DEC-953: a photographic rock is drawn at 0.5 to 2 times its size.
+        // A stone stretches its rock axis by axis, and each axis is held to it.
+        [Test]
+        public void AStoneStretchedPastTwiceItsRockBreaksTheRule()
+        {
+            const string Kit = "Assets/Kits/temperate";
+            Assert.That(PropRule.Violations(kit.ReadingStone, PropCategory.Stone, PropRule.Photographic, Kit), Is.Empty);
+            GameObject made = Object.Instantiate(kit.ReadingStone);
+            try
+            {
+                Transform upright = made.transform.Find(PropRule.Upright);
+                upright.localScale = new Vector3(upright.localScale.x, 2.2f, upright.localScale.z);
+                Assert.That(PropRule.Violations(made, PropCategory.Stone, PropRule.Photographic, Kit), Has.Some.Contains("stretched by its child"));
+            }
+            finally
+            {
+                Object.DestroyImmediate(made);
+            }
+        }
+
         // 5.13.1: a reading stone is about 2 m with an inscription face, on its front, which its pose
         // turns to the pad. A waystone is lower, and a chapter stone lower still.
         [Test]

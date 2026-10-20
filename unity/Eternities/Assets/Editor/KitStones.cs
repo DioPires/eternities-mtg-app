@@ -6,16 +6,18 @@ using UnityEngine;
 
 namespace Eternities.EditorTools
 {
-    // The kit's stones (PRD v4 5.4.16, 5.13.1; the glossary's "Stone"), each one of the kit's CC0
-    // rocks stood on end and sized in its prefab (the parked Tripo trial's note on DEC-1005): a
-    // reading stone of about 2 m from the dark block `rock_07`, with a face for its inscription; a
-    // waystone from the bare `boulder_01`; and a low stone from the block again, for a chapter and
-    // for a marker. A stone draws its rock's own mesh and material, so the stones add no texture
-    // and no mesh to the kit. Each is made once, and then left alone, as the kit's props are.
+    // The kit's stones (PRD v4 5.4.16, 5.13.1; the glossary's "Stone"), each the kit's CC0 bare
+    // boulder `boulder_01` stood on end and sized in its prefab (the parked Tripo trial's note on
+    // DEC-1005): a reading stone of about 2 m, with a face for its inscription; a waystone of
+    // about 1.4 m; and a low stone, for a chapter and for a marker. Each turns another face out. A
+    // stone draws its rock's own mesh and material, so the stones add no texture and no mesh to
+    // the kit. Each is made once, and then left alone, as the kit's props are.
     //
     // A stone's box is its rock's, stretched to the stone's size in its own axes; its footprint
     // and its collider lie inside its pose's disc of 0.5 m (`LayoutConstants.StoneRadius`), which
-    // the layout's clearances assume.
+    // the layout's clearances assume. The boulder is 1.83 m long, so no axis is drawn at more than
+    // twice its size or less than half of it (`PropRule`, the trial of DEC-953). The dark block
+    // `rock_07`, 32 cm long, read as a stele, and was drawn at six times its size.
     public static class KitStones
     {
         public sealed class Stone
@@ -32,9 +34,9 @@ namespace Eternities.EditorTools
 
         public static readonly Stone[] Temperate =
         {
-            new Stone { Prefab = "reading_stone", Rock = "rock_07", Up = Vector3.forward, Size = new Vector3(0.80f, 2.10f, 0.42f), Sink = 0.08f, Face = new Vector2(0.56f, 0.86f), FaceAt = 1.28f },
-            new Stone { Prefab = "waystone", Rock = "boulder_01", Up = Vector3.forward, Size = new Vector3(0.72f, 1.48f, 0.50f), Sink = 0.08f },
-            new Stone { Prefab = "chapter_stone", Rock = "rock_07", Up = Vector3.forward, Spin = 180, Size = new Vector3(0.46f, 0.92f, 0.30f), Sink = 0.06f },
+            new Stone { Prefab = "reading_stone", Rock = "boulder_01", Up = Vector3.forward, Size = new Vector3(0.80f, 2.10f, 0.51f), Sink = 0.08f, Face = new Vector2(0.54f, 0.84f), FaceAt = 1.26f },
+            new Stone { Prefab = "waystone", Rock = "boulder_01", Up = Vector3.forward, Spin = 180, Size = new Vector3(0.72f, 1.48f, 0.51f), Sink = 0.08f },
+            new Stone { Prefab = "chapter_stone", Rock = "boulder_01", Up = Vector3.forward, Spin = 90, Size = new Vector3(0.66f, 0.98f, 0.66f), Sink = 0.06f },
         };
 
         public static string Path(string kit, string prefab) => KitPrefabs.Path(kit, $"Stones/{prefab}");
