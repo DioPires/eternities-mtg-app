@@ -30,6 +30,39 @@ namespace Eternities.Tests
             Assert.That(WorldSound.Level(70, Near, Far), Is.InRange(0.03f, 0.1f));
         }
 
+        // DEC-1214 N2: a body of water's source puts the law on both of the sources its loop plays
+        // on, as the engine's own roll-off, which reads it as a curve.
+        [Test]
+        public void AWaterSourcePlaysByTheLaw()
+        {
+            var root = new GameObject("sound test");
+            AudioClip clip = AudioClip.Create("water", 4410, 1, 44100, false);
+            try
+            {
+                WorldSound sound = WorldSound.Create(root.transform, root.transform, _ => (null, null, 0));
+                sound.Water("river 0", clip, at => at, Near, Far, 0.9f, 60);
+                Assert.That(sound.Emitters, Is.EqualTo(1));
+                AudioSource[] sources = sound.GetComponentsInChildren<AudioSource>();
+                Assert.That(sources.Length, Is.EqualTo(2), "a loop plays on two sources");
+                foreach (AudioSource source in sources)
+                {
+                    Assert.That(source.rolloffMode, Is.EqualTo(AudioRolloffMode.Custom));
+                    Assert.That(source.maxDistance, Is.EqualTo(Far));
+                    Assert.That(source.spatialBlend, Is.EqualTo(1), "heard from where it is");
+                    AnimationCurve curve = source.GetCustomCurve(AudioSourceCurveType.CustomRolloff);
+                    foreach (float distance in new[] { 0, Near, 2 * Near, 30, 70, 120, Far })
+                    {
+                        Assert.That(curve.Evaluate(distance / Far), Is.EqualTo(WorldSound.Level(distance, Near, Far)).Within(0.02f), $"at {distance} m");
+                    }
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+                Object.DestroyImmediate(clip);
+            }
+        }
+
         // The engine reads the law from a curve over the distance as a share of the far distance;
         // the curve is the law, between its keys too.
         [Test]

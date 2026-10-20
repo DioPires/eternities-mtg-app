@@ -210,6 +210,40 @@ namespace Eternities.Kits
                 : new[] { first, first + 2, first + 1, first, first + 3, first + 2 });
         }
 
+        // Where travel to a chapter arrives, and which way it faces (PRD v4 6.6.1): a first
+        // chapter's is its site's pad. A later chapter's stone stands among the chapter's stands,
+        // so the travel arrives on the site's path at the point nearest the stone, facing it: the
+        // path is reserved ground, where nothing stands. The pack's own destination is the stone's
+        // pose, inside the stone.
+        public static Vector3 ChapterArrival(WorldSite site, int chapter, out Quaternion heading)
+        {
+            SiteChapter row = site.Chapters[chapter];
+            if (row.Stone == null)
+            {
+                heading = Facing(site.Pad.Yaw);
+                return StandField.Ground(site.Pad.Position);
+            }
+            Vector3 stone = StandField.Ground(row.Stone.Value.Position);
+            Vector3 arrival = StandField.Ground(site.Path[0]);
+            float best = float.MaxValue;
+            for (int i = 0; i + 1 < site.Path.Length; i++)
+            {
+                Vector3 a = StandField.Ground(site.Path[i]), b = StandField.Ground(site.Path[i + 1]), along = b - a;
+                float t = along.sqrMagnitude > 0 ? Mathf.Clamp01(Vector3.Dot(stone - a, along) / along.sqrMagnitude) : 0;
+                Vector3 at = a + along * t;
+                if ((at - stone).sqrMagnitude < best)
+                {
+                    best = (at - stone).sqrMagnitude;
+                    arrival = at;
+                }
+            }
+            Vector3 toward = stone - arrival;
+            heading = toward.sqrMagnitude > 1e-6f ? Quaternion.LookRotation(toward) : Facing(row.Stone.Value.Yaw);
+            return arrival;
+        }
+
+        static Quaternion Facing(long yaw) => StandField.Facing(yaw);
+
         // The nearest stone within `within` metres of a point on the ground, or -1, and the square
         // of its distance; measured to its pose, as a stand's is to its own (`StandImages.Nearest`).
         public int Nearest(Vector3 position, float within, out float squared)

@@ -46,13 +46,26 @@ namespace Eternities.Tests
             Generate.KitDressings();
             KitDressing temperate = Generate.Dressing("temperate");
             Scatter.Kind[] kinds = Scatter.KindsOf(Variants.Temperate, (v, g) => temperate.Variant(Variants.Temperate[v].Name).Props[g].Shape());
-            scatter = new Scatter(plan, kinds, Temperate.Density("medium"));
+            // As the app builds medium's (`App.Load`): with its far density (DEC-1214 N1).
+            scatter = new Scatter(plan, kinds, Temperate.Density("medium"), Temperate.FarDensity("medium"));
             clock.Restart();
             scatter.PlaceAll();
             Debug.Log($"DressingTests: Dominaria planned in {planned} ms on {plan.N} x {plan.N} texels and {plan.Tiles} x {plan.Tiles} tiles; "
                 + $"{scatter.Matrices.Length} static props placed in {clock.ElapsedMilliseconds} ms; water: "
                 + string.Join(", ", plan.Water.GroupBy(body => body.Kind).Select(group => $"{group.Count()} {group.Key}")) + $"; {plan.Fords.Count} fords; props by kind: "
                 + string.Join(", ", kinds.Select((kind, k) => (kind.Prefab, scatter.ByKind[k])).Where(one => one.Item2 > 0).OrderByDescending(one => one.Item2).Select(one => $"{one.Prefab} {one.Item2}")));
+        }
+
+        // DEC-1214 N1: below high a far cell draws the level's own props, so medium and low draw
+        // all of theirs at every distance; at high a far cell draws medium's (the props' lever).
+        [Test]
+        public void BelowHighAFarCellDrawsTheLevelsOwnDensity()
+        {
+            foreach (string level in new[] { "medium", "low" })
+            {
+                Assert.That(Temperate.FarDensity(level), Is.EqualTo(Temperate.Density(level)), level);
+            }
+            Assert.That(Temperate.FarDensity("high"), Is.EqualTo(Temperate.Density("medium")));
         }
 
         [OneTimeTearDown]

@@ -824,33 +824,16 @@ namespace Eternities.Travel
             }
         }
 
-        // Travel to a chapter (PRD v4 6.6.1): a first chapter's is its site's pad. A later one's
-        // stone stands among the chapter's stands, so the travel arrives on the site's path at
-        // the point nearest the stone, facing it: the path is reserved ground, where nothing stands.
+        // Travel to a chapter (PRD v4 6.6.1): to its stone, or its site's pad for a first chapter
+        // (`StoneField.ChapterArrival`).
         public void TravelToChapter(int site, int chapter)
         {
             if (Place != Place.World || InTransition || site < 0 || site >= World.Layout.Sites.Length)
             {
                 return;
             }
-            Vector3 arrival = ChapterArrival(World.Layout.Sites[site], chapter, out Quaternion heading);
+            Vector3 arrival = StoneField.ChapterArrival(World.Layout.Sites[site], chapter, out Quaternion heading);
             StartCoroutine(Travel(arrival, heading));
-        }
-
-        public static Vector3 ChapterArrival(WorldSite site, int chapter, out Quaternion heading)
-        {
-            SiteChapter row = site.Chapters[chapter];
-            if (row.Stone == null)
-            {
-                heading = StandField.Facing(site.Pad.Yaw);
-                return StandField.Ground(site.Pad.Position);
-            }
-            Vector3 stone = StandField.Ground(row.Stone.Value.Position);
-            Vector3 arrival = WorldSound.NearestOnLine(Array.ConvertAll(site.Path, StandField.Ground), stone);
-            arrival.y = 0;
-            Vector3 toward = stone - arrival;
-            heading = toward.sqrMagnitude > 1e-6f ? Quaternion.LookRotation(toward) : StandField.Facing(row.Stone.Value.Yaw);
-            return arrival;
         }
 
         IEnumerator Travel(Vector3 arrival, Quaternion heading)
