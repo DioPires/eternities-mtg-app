@@ -252,15 +252,21 @@ namespace Eternities.EditorTools
         public static string DressingPath(string kit) => $"Assets/Kits/{kit}/Resources/{KitDressing.ResourceOf(kit)}.asset";
 
         // The kits whose dressing the generation entry point makes, and each one's loops: a family's
-        // bed by the family's name, and a body of water's by its kind (`KitLoops`).
-        public static readonly (string Kit, (string Name, string File)[] Loops)[] Kits =
+        // bed by the family's name, and a body of water's by its kind (`KitLoops`); and the share of
+        // its kind's volume each plays at (`KitLoop.Level`).
+        //
+        // The meadow's is light wind with a few distant birds (the owner's walk on DEC-1005, point
+        // 1). The importer raises a loop to its peak, and this recording's peak stands 15.0 dB over
+        // its mean where the songbirds' it replaced stood 20.1 dB over theirs: raised, it would
+        // play 5.1 dB louder than the bed it replaces. At 0.56 it plays as loud as that bed did.
+        public static readonly (string Kit, (string Name, string File, float Level)[] Loops)[] Kits =
         {
-            ("temperate", new[] { ("meadow", "meadow_songbirds_loop"), ("river", "river_splashy_loop"), ("lake", "lake_lapping_loop") }),
-            ("forest", new[] { ("forest", "forest_woodland_loop") }),
-            ("coast", new[] { ("surf", "surf_shore_loop") }),
-            ("swamp", new[] { ("marsh", "marsh_swamp_loop") }),
-            ("mountain", new[] { ("alpine-wind", "alpine_wind_loop") }),
-            ("volcanic", new[] { ("volcanic", "volcanic_rumble_loop"), ("lava", "lava_bubbling_loop") }),
+            ("temperate", new[] { ("meadow", "meadow_distant_birds_loop", 0.56f), ("river", "river_splashy_loop", 1f), ("lake", "lake_lapping_loop", 1f) }),
+            ("forest", new[] { ("forest", "forest_woodland_loop", 1f) }),
+            ("coast", new[] { ("surf", "surf_shore_loop", 1f) }),
+            ("swamp", new[] { ("marsh", "marsh_swamp_loop", 1f) }),
+            ("mountain", new[] { ("alpine-wind", "alpine_wind_loop", 1f) }),
+            ("volcanic", new[] { ("volcanic", "volcanic_rumble_loop", 1f), ("lava", "lava_bubbling_loop", 1f) }),
         };
 
         // Each kit's dressing, made or brought up to date. A second run changes nothing.
@@ -313,11 +319,11 @@ namespace Eternities.EditorTools
             }
             AssetDatabase.SaveAssets();
 
-            foreach ((string kit, (string Name, string File)[] loops) in Kits)
+            foreach ((string kit, (string Name, string File, float Level)[] loops) in Kits)
             {
                 var wanted = ScriptableObject.CreateInstance<KitDressing>();
                 wanted.Kit = kit;
-                wanted.Loops = loops.Select(loop => new KitLoop { Name = loop.Name, Clip = KitAudio(kit, loop.File) }).ToArray();
+                wanted.Loops = loops.Select(loop => new KitLoop { Name = loop.Name, Clip = KitAudio(kit, loop.File), Level = loop.Level }).ToArray();
                 if (kit == "temperate")
                 {
                     wanted.Variants = variants;

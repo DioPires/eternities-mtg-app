@@ -1120,7 +1120,7 @@ namespace Eternities.Travel
                 string kit = KitLoops.KitOf(region.Ambient);
                 if (kit != null && Kits.TryGetValue(kit, out KitDressing dressing) && dressing != null)
                 {
-                    sound.Bed(region.Ambient, dressing.Loop(region.Ambient));
+                    sound.Bed(region.Ambient, dressing.Loop(region.Ambient), dressing.LoopLevel(region.Ambient));
                 }
             }
             AudioClip Loop((string Kit, string Loop) of) => of.Kit != null && Kits.TryGetValue(of.Kit, out KitDressing dressing) && dressing != null ? dressing.Loop(of.Loop) : null;

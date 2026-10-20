@@ -347,7 +347,7 @@ the rows from the prefabs: the editor's menu, Eternities, "Kit props as drawn".
 
 | File | Source | Author | Licence | Fetched | Intended use |
 |---|---|---|---|---|---|
-| `Audio/meadow_songbirds_loop.ogg` | <https://freesound.org/people/DreamSavvyr/sounds/781115/> | DreamSavvyr | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | Ambient bed, meadow (PRD 5.12.1); seamless stereo loop, 60.0 s |
+| `Audio/meadow_distant_birds_loop.ogg` | <https://freesound.org/people/melissapons/sounds/157784/> | melissapons | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-20 | Ambient bed, meadow (PRD 5.12.1): light wind and occasional distant birds; stereo, 57.4 s, looped with a crossfade in code |
 | `Audio/river_splashy_loop.ogg` | <https://freesound.org/people/loopo/sounds/164039/> | loopo | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | River spatial emitter (PRD 5.12.3); seamless mono loop, 9.8 s |
 | `Audio/lake_lapping_loop.ogg` | <https://freesound.org/people/laughatlantic/sounds/528067/> | laughatlantic | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-16 | Lake and pond spatial emitter (PRD 5.12.3); mono, 22.6 s, looped with a crossfade in code |
 

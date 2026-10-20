@@ -19,6 +19,9 @@ namespace Eternities.Kits
     {
         public string Name;
         public AudioClip Clip;
+        // The share of its kind's volume it plays at: the importer raises every loop to its peak,
+        // so a recording whose peak stands far over its body would play louder for it.
+        public float Level = 1;
     }
 
     // What a kit gives a world (PRD v4 5.6.1, 8.12.5): its variants with their layers and props,
@@ -45,6 +48,8 @@ namespace Eternities.Kits
         public TerrainLayer Layer(string name) => Array.Find(Layers, layer => layer != null && layer.name == name);
 
         public AudioClip Loop(string name) => Array.Find(Loops, loop => loop.Name == name)?.Clip;
+
+        public float LoopLevel(string name) => Array.Find(Loops, loop => loop.Name == name)?.Level ?? 1;
 
         public KitVariant Variant(string name) => Array.Find(Variants, variant => variant.Name == name);
     }

@@ -301,13 +301,19 @@ slices:
    on each body of water that rides its nearest point to the listener (`WorldSound`).
 7. **Sky and light.** The theme row's: the sun at 35° and warm, the scene's physically based sky
    with each level's clouds, drifting, and a haze over the land (`WorldSky`).
+8. **Stones.** The kit's, each on its pose's disc of 0.5 m (5.4.16, 5.13.1): a reading stone of
+   about 2 m at each era site, cut from the block `rock_07`, with an inscribed tablet on its face to
+   the pad; a waystone from `boulder_01` at each regional site; and a low stone at each chapter after
+   an era's first. `KitStones` makes their prefabs and `StoneField` stands them and draws the
+   inscriptions.
 
-The stones are the greybox's plain cylinders until leg 2's third pull request. The avatar stops at
-the world's radius, and wades no deeper than 0.35 m.
+The avatar stops at the world's radius, and wades no deeper than 0.35 m.
 
 Pictures of a dressed world, from a walker's eye at the arrival, each region from its trail, each
-ford, each river, the lake, the sea, the lava, a site's path and a wood. No `-quit`: the editor
-exits by itself after the last picture.
+ford, each river, the lake, the sea, the lava, a site's path and a wood; then the HUD's line, the
+rims and the map; then a reading stone, a waystone and a chapter stone, the reading overlay with the
+time from its use to its text, a waystone's travel, and the travel menu's two sections. No `-quit`:
+the editor exits by itself after the last picture.
 
 ```sh
 unity/Eternities/batchmode.sh -executeMethod Eternities.EditorTools.WorldPictures.Run -picturesOut "$PWD/world-pictures" -picturesQuality medium
@@ -369,8 +375,8 @@ never writes them again. They are tuned with the game playing in the editor: sel
 the Project window and change its Water Surface in the Inspector, and the world's water takes the
 change within a quarter of a second (`WaterTuning`), while the editor saves it in the prefab's file.
 Other generated assets are not edited by hand. It makes each quality level's volume profile the
-same way (Quality levels, above). The greybox of leg 1 (`Assets/Scripts/Kits/Greybox.cs`) is drawn
-only for its stones now (The dressed world, above).
+same way (Quality levels, above). The greybox of leg 1 (`Assets/Scripts/Kits/Greybox.cs`) is no
+longer drawn: the kit's stones replaced its cylinders (The dressed world, above).
 
 With the project open in the editor, the menu item Eternities > Generate does the same. To walk the
 world, generate, open `Assets/Scenes/Hub.unity` and press Play: WASD walks, Shift runs, the mouse
@@ -379,7 +385,10 @@ click or movement key gives the pointer to the camera, which holds it and does n
 view, the travel menu, a notice or another application gives it back to the visitor, until the next
 click or movement key. Within 3 m of a stand its label shows and E or a click enters card view; E
 there flips a card that has a back image, `[` and `]` step through its printings, and Esc or walking
-leaves. T opens the travel menu. Esc in a world, outside card view, returns to the hub. Until the
+leaves. Within 3 m of a stone its label shows; E or a click at a reading stone opens its reading
+overlay, and at a waystone its travel, and Esc or walking closes either. The nearer of a stand and a
+stone in reach is the one used, the stand on a tie. T opens the travel menu, with the trail and the
+regions; M opens the map. Esc in a world, outside card view and the overlays, returns to the hub. Until the
 zoom is settled (DEC-978), a player or an editor with a window writes every scroll it reads to
 `scroll-parts.txt` under `Application.persistentDataPath`, on a Mac
 `~/Library/Application Support/DioPires/Eternities/`: a line for each run that scrolled and a line

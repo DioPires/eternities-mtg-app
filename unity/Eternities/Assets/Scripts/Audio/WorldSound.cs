@@ -85,6 +85,7 @@ namespace Eternities.Audio
         }
 
         readonly Dictionary<string, Loop> beds = new Dictionary<string, Loop>();
+        readonly Dictionary<string, float> levels = new Dictionary<string, float>();
         readonly List<Emitter> emitters = new List<Emitter>();
         Func<Vector3, (string Here, string Across, float Share)> families;
         Transform listener;
@@ -120,12 +121,14 @@ namespace Eternities.Audio
             return source;
         }
 
-        public void Bed(string family, AudioClip clip)
+        // A family's bed, at `level` of the bed's volume (`KitLoop.Level`).
+        public void Bed(string family, AudioClip clip, float level = 1)
         {
             if (clip == null || beds.ContainsKey(family))
             {
                 return;
             }
+            levels[family] = level;
             var loop = new Loop { A = Source($"{family} bed", clip, transform), B = Source($"{family} bed", clip, transform) };
             loop.A.spatialBlend = loop.B.spatialBlend = 0;
             beds[family] = loop;
@@ -216,7 +219,7 @@ namespace Eternities.Audio
             float k = snap ? 1 : 1 - Mathf.Exp(-Time.unscaledDeltaTime / FadeSeconds);
             foreach (KeyValuePair<string, Loop> bed in beds)
             {
-                float wanted = BedVolume * ((bed.Key == here ? 1 - share : 0) + (bed.Key == across ? share : 0));
+                float wanted = BedVolume * levels[bed.Key] * ((bed.Key == here ? 1 - share : 0) + (bed.Key == across ? share : 0));
                 bed.Value.Volume = Mathf.Lerp(bed.Value.Volume, wanted, k);
                 if (bed.Value.Volume > 0.002f && !bed.Value.Playing)
                 {
