@@ -17,11 +17,35 @@ namespace Eternities.UI
         public string Notice;       // one line, or null: the image could not be fetched
     }
 
-    // Every overlay of the slice, in UI Toolkit (PRD v4 8.1.2): the stand's hover label, the
-    // printings panel of card view, the travel menu, the map, the place line at the top left with
-    // a region's sentence beneath it, a one-line notice in the panel and one line in the middle of
-    // the view. It is built in code; the only assets are the panel settings and the theme they
-    // name.
+    // What a stone's overlay shows (PRD v4 5.13.1, 6.6.2): a reading stone's era, its years, its
+    // place, its paragraphs, its sets and headline cards, its sources and its travel; a waystone's
+    // name, years and count, and its travel. A set, a card or a choice of travel is a link when
+    // `Link` is true.
+    public sealed class StoneSheet
+    {
+        public string Name, Years, Place;
+        public readonly List<string> Paragraphs = new List<string>();
+        public readonly List<(string Text, bool Link)> Sets = new List<(string, bool)>(), Headlines = new List<(string, bool)>();
+        public readonly List<string> Sources = new List<string>();
+        public readonly List<string> Travel = new List<string>();
+    }
+
+    // A row of the travel menu (PRD v4 6.6.1): a section's heading, a site, an era's chapter or a
+    // region. `Travels` is whether choosing it opens a travel portal; `Site` is the site whose
+    // cards it can list, or -1.
+    public sealed class TravelRow
+    {
+        public string Text;
+        public bool Heading, Travels;
+        public int Depth;
+        public int Site = -1;
+    }
+
+    // Every overlay of the slice, in UI Toolkit (PRD v4 8.1.2): the stand's and the stone's hover
+    // label, the printings panel of card view, a stone's overlay, the travel menu, the map, the
+    // place line at the top left with a region's sentence beneath it, a one-line notice in the
+    // panel and one line in the middle of the view. It is built in code; the only assets are the
+    // panel settings and the theme they name.
     public sealed class Hud : MonoBehaviour
     {
         static readonly Color Ink = new Color(0.93f, 0.92f, 0.88f), Dim = new Color(0.70f, 0.69f, 0.66f);
@@ -32,7 +56,7 @@ namespace Eternities.UI
 
         UIDocument document;
         Label hover, line, place, sentence, mapCaption;
-        VisualElement panel, travel, corner, map;
+        VisualElement panel, travel, corner, map, stone;
         MapView mapView;
         float sentenceUntil = float.NegativeInfinity;
         public PanelSettings Settings { get; private set; }
@@ -40,16 +64,23 @@ namespace Eternities.UI
         public bool CardShown => panel.style.display == DisplayStyle.Flex;
         public bool TravelOpen => travel.style.display == DisplayStyle.Flex;
         public bool MapOpen => map.style.display == DisplayStyle.Flex;
+        public bool StoneOpen => stone.style.display == DisplayStyle.Flex;
+        // The stone's overlay as it shows now, or null: its sheet, and the element that holds its text.
+        public StoneSheet Stone { get; private set; }
+        public VisualElement StoneBody { get; private set; }
         public string HoverText => hover.style.display == DisplayStyle.Flex ? hover.text : null;
         public string Line => line.style.display == DisplayStyle.Flex ? line.text : null;
         // The place line and the sentence beneath it, as they show now: null when hidden.
         public string PlaceText => place.style.display == DisplayStyle.Flex && corner.style.display == DisplayStyle.Flex ? place.text : null;
         public string SentenceText => sentence.style.display == DisplayStyle.Flex && corner.style.display == DisplayStyle.Flex ? sentence.text : null;
         public MapView Map => mapView;
+        // The travel menu's list of sites and regions, while it is open.
+        public ScrollView TravelList { get; private set; }
         public string MapCaption => mapCaption.text;
-        // An overlay is open (PRD v4 6.2.1): card view's panel, the travel menu, the map, or the
-        // line in the middle of the view. The pointer is the visitor's for as long (`PointerLock`).
-        public bool Open => CardShown || TravelOpen || MapOpen || Line != null;
+        // An overlay is open (PRD v4 6.2.1): card view's panel, a stone's overlay, the travel menu,
+        // the map, or the line in the middle of the view. The pointer is the visitor's for as long
+        // (`PointerLock`).
+        public bool Open => CardShown || StoneOpen || TravelOpen || MapOpen || Line != null;
         public Rect HoverBounds => hover.worldBound;        // in the panel's units
         public Rect PanelBounds => document.rootVisualElement.worldBound;
         public Vector2 ViewToPanel(Vector2 viewPoint) => RuntimePanelUtils.ScreenToPanel(hover.panel, viewPoint);
@@ -125,6 +156,19 @@ namespace Eternities.UI
             root.Add(hud.panel);
             hud.travel = Side(right: false);
             root.Add(hud.travel);
+
+            // A stone's overlay (PRD v4 5.13.1): in the middle of the view, on its own scrim, so its
+            // text reads against any sky (6.10.4).
+            hud.stone = new VisualElement();
+            hud.stone.style.position = Position.Absolute;
+            hud.stone.style.left = Length.Percent(25);
+            hud.stone.style.right = Length.Percent(25);
+            hud.stone.style.top = Length.Percent(6);
+            hud.stone.style.bottom = Length.Percent(6);
+            hud.stone.style.backgroundColor = Paper;
+            Pad(hud.stone, 24, 28);
+            hud.stone.style.display = DisplayStyle.None;
+            root.Add(hud.stone);
 
             // The map (PRD v4 6.3.4): over the whole view, the world in a square as tall as the
             // view allows, and a line beneath it that says what a click there does.
@@ -238,6 +282,8 @@ namespace Eternities.UI
                 warm.Add(Text(characters.ToString(), size, Ink));
             }
             warm.Add(Action("Flip", () => { }));
+            warm.Add(Link("Sources", () => { }));
+            warm.Add(new Foldout { text = "Sources", value = false });
             warm.Add(new ScrollView());
             document.rootVisualElement.Add(warm);
         }
@@ -385,6 +431,127 @@ namespace Eternities.UI
             PointerLock.Release();
         }
 
+        // A stone's overlay (PRD v4 5.13.1, 6.6.2). Each of `set`, `headline` and `travel` is told
+        // the place in its list of the link chosen. Its first link takes the focus, so a keyboard
+        // or a gamepad moves through it from there (6.10.2).
+        public void ShowStone(StoneSheet sheet, Action<int> set, Action<int> headline, Action<int> travel, Action close)
+        {
+            Stone = sheet;
+            corner.style.display = DisplayStyle.None;
+            stone.Clear();
+            var body = new ScrollView();
+            body.style.flexGrow = 1;
+            StoneBody = body;
+            body.Add(Text(sheet.Name, 28, Ink));
+            if (sheet.Years != null)
+            {
+                body.Add(Text(sheet.Years, 16, Dim));
+            }
+            if (sheet.Place != null)
+            {
+                body.Add(Text(sheet.Place, 16, Dim));
+            }
+            foreach (string paragraph in sheet.Paragraphs)
+            {
+                Label words = Text(paragraph, 18, Ink);
+                words.style.marginTop = 12;
+                body.Add(words);
+            }
+            Button first = null;
+            void Links(string heading, List<(string Text, bool Link)> rows, Action<int> chosen)
+            {
+                if (rows.Count == 0)
+                {
+                    return;
+                }
+                Label title = Text(heading, 16, Dim);
+                title.style.marginTop = 16;
+                body.Add(title);
+                for (int i = 0; i < rows.Count; i++)
+                {
+                    int row = i;
+                    if (!rows[i].Link)
+                    {
+                        Label named = Text(rows[i].Text, 15, Dim);
+                        Pad(named, 3, 6);
+                        body.Add(named);
+                        continue;
+                    }
+                    Button link = Link(rows[i].Text, () => chosen(row));
+                    first ??= link;
+                    body.Add(link);
+                }
+            }
+            Links("Sets", sheet.Sets, set);
+            Links("Headline cards", sheet.Headlines, headline);
+            Links("Travel", sheet.Travel.ConvertAll(choice => (choice, true)), travel);
+            if (sheet.Sources.Count > 0)
+            {
+                var sources = new Foldout { text = $"Sources ({sheet.Sources.Count})", value = false };
+                sources.style.marginTop = 16;
+                sources.style.color = Dim;
+                sources.style.fontSize = 16;
+                Visible(sources.Q<Toggle>());
+                foreach (string source in sheet.Sources)
+                {
+                    Label line = Text(source, 14, Dim);
+                    line.style.marginTop = 2;
+                    sources.Add(line);
+                }
+                body.Add(sources);
+            }
+            stone.Add(body);
+            Button closing = Action("Close", close);
+            Visible(closing);
+            stone.Add(closing);
+            stone.style.display = DisplayStyle.Flex;
+            PointerLock.Release();
+            (first ?? closing).Focus();
+        }
+
+        public void HideStone()
+        {
+            Stone = null;
+            StoneBody = null;
+            stone.Clear();
+            stone.style.display = DisplayStyle.None;
+            corner.style.display = DisplayStyle.Flex;
+        }
+
+        // A link of an overlay: its words on the panel, as a row that a click, Enter or a gamepad's
+        // button chooses.
+        static Button Link(string text, Action chosen)
+        {
+            var link = new Button(chosen) { text = text };
+            link.style.fontSize = 15;
+            link.style.unityTextAlign = TextAnchor.MiddleLeft;
+            link.style.whiteSpace = WhiteSpace.Normal;
+            link.style.color = Ink;
+            link.style.backgroundColor = new Color(0, 0, 0, 0);
+            link.style.marginLeft = link.style.marginRight = 0;
+            link.style.borderTopWidth = link.style.borderBottomWidth = link.style.borderLeftWidth = link.style.borderRightWidth = 0;
+            Visible(link);
+            return link;
+        }
+
+        // The focus shows (PRD v4 6.10.2): a focused control takes the accent and a light border.
+        static void Visible(VisualElement control)
+        {
+            control.focusable = true;
+            StyleColor background = control.style.backgroundColor;
+            control.RegisterCallback<FocusInEvent>(_ =>
+            {
+                control.style.backgroundColor = Accent;
+                control.style.borderTopWidth = control.style.borderBottomWidth = control.style.borderLeftWidth = control.style.borderRightWidth = 2;
+                control.style.borderTopColor = control.style.borderBottomColor = control.style.borderLeftColor = control.style.borderRightColor = Ink;
+            });
+            control.RegisterCallback<FocusOutEvent>(_ =>
+            {
+                control.style.backgroundColor = background;
+                control.style.borderTopWidth = control.style.borderBottomWidth = control.style.borderLeftWidth = control.style.borderRightWidth = 0;
+            });
+        }
+
         public void HideCard()
         {
             Sheet = null;
@@ -392,12 +559,14 @@ namespace Eternities.UI
             corner.style.display = DisplayStyle.Flex;
         }
 
-        // The slice's travel menu (PRD v4 6.6.1, 9.5): this world's sites, and the cards of the one
-        // chosen. `choose` is told the site and the card's place in that site's list.
-        public void ShowTravel(string world, List<string> sites, Func<int, List<string>> cardsOf, Action<int, int> choose, Action close)
+        // The travel menu (PRD v4 6.6.1): the world's sites in trail order with an era's chapters,
+        // then its regions, and the cards of a site whose cards are asked for. `travel` is told the
+        // row chosen, `cardsOf` gives a site's cards, and `choose` is told the site and the card's
+        // place in its list.
+        public void ShowTravel(string world, List<TravelRow> rows, Func<int, List<string>> cardsOf, Action<int> travel, Action<int, int> choose, Action close)
         {
-            travel.Clear();
-            travel.Add(Text($"Travel · {world}", 24, Ink));
+            this.travel.Clear();
+            this.travel.Add(Text($"Travel · {world}", 24, Ink));
             var columns = new VisualElement();
             columns.style.flexDirection = FlexDirection.Row;
             columns.style.flexGrow = 1;
@@ -408,7 +577,6 @@ namespace Eternities.UI
             int chosenSite = -1;
             List<string> names = new List<string>();
             cards.bindItem = (element, index) => ((Label)element).text = names[index];
-            cards.itemsChosen += _ => { };
             cards.selectionChanged += _ =>
             {
                 if (cards.selectedIndex >= 0 && chosenSite >= 0)
@@ -416,23 +584,66 @@ namespace Eternities.UI
                     choose(chosenSite, cards.selectedIndex);
                 }
             };
-            var list = new ListView(sites, 24, () => Text("", 15, Ink), (element, index) => ((Label)element).text = sites[index]) { selectionType = SelectionType.Single };
+            var list = new ScrollView();
             list.style.flexGrow = 1;
             list.style.flexBasis = 0;
-            list.selectionChanged += _ =>
+            TravelList = list;
+            Button first = null;
+            for (int i = 0; i < rows.Count; i++)
             {
-                chosenSite = list.selectedIndex;
-                names = chosenSite >= 0 ? cardsOf(chosenSite) : new List<string>();
-                cards.itemsSource = names;
-                cards.ClearSelection();
-                cards.Rebuild();
-            };
+                int row = i;
+                TravelRow line = rows[i];
+                if (line.Heading)
+                {
+                    Label heading = Text(line.Text, 16, Dim);
+                    heading.style.marginTop = i == 0 ? 0 : 14;
+                    list.Add(heading);
+                    continue;
+                }
+                var entry = new VisualElement();
+                entry.style.flexDirection = FlexDirection.Row;
+                entry.style.marginLeft = 16 * line.Depth;
+                VisualElement named;
+                if (line.Travels)
+                {
+                    Button go = Link(line.Text, () => travel(row));
+                    first ??= go;
+                    named = go;
+                }
+                else
+                {
+                    named = Text(line.Text, 15, Dim);
+                    Pad(named, 3, 6);
+                }
+                named.style.flexGrow = 1;
+                named.style.flexShrink = 1;
+                entry.Add(named);
+                if (line.Site >= 0)
+                {
+                    int site = line.Site;
+                    Button listed = Link("Cards", () =>
+                    {
+                        chosenSite = site;
+                        names = cardsOf(site);
+                        cards.itemsSource = names;
+                        cards.ClearSelection();
+                        cards.Rebuild();
+                    });
+                    listed.style.flexGrow = 0;
+                    listed.style.color = Dim;
+                    entry.Add(listed);
+                }
+                list.Add(entry);
+            }
             columns.Add(list);
             columns.Add(cards);
-            travel.Add(columns);
-            travel.Add(Action("Close", close));
-            travel.style.display = DisplayStyle.Flex;
+            this.travel.Add(columns);
+            Button closing = Action("Close", close);
+            Visible(closing);
+            this.travel.Add(closing);
+            this.travel.style.display = DisplayStyle.Flex;
             PointerLock.Release();
+            (first ?? closing).Focus();
         }
 
         public void HideTravel()

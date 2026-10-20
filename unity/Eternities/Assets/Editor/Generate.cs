@@ -187,22 +187,6 @@ namespace Eternities.EditorTools
             changed |= Set(Lit("portal-frame", new Color(0.12f, 0.11f, 0.10f), 0.6f, 0.5f), app.PortalFrameMaterial, m => app.PortalFrameMaterial = m);
             changed |= Set(Unlit("portal-surface", new Color(0.35f, 0.75f, 1f, 1f), transparent: false), app.PortalSurfaceMaterial, m => app.PortalSurfaceMaterial = m);
             changed |= Set(Unlit("veil", new Color(0, 0, 0, 1), transparent: true), app.VeilMaterial, m => app.VeilMaterial = m);
-            // The greybox's (PRD v4 9.6, leg 1), in the order of `Greybox`'s constants: a muted
-            // ground, paths a lighter tan, pads and the plaza pale stone, region lines yellow so the
-            // regions read from the paths, and the stones grey. Matt, as the hub's floor is.
-            Material[] greybox =
-            {
-                Lit("greybox-ground", new Color(0.30f, 0.33f, 0.27f), 0f, 0.05f),
-                Lit("greybox-path", new Color(0.62f, 0.56f, 0.45f), 0f, 0.05f),
-                Lit("greybox-pad", new Color(0.75f, 0.73f, 0.68f), 0f, 0.05f),
-                Lit("greybox-region-line", new Color(0.85f, 0.78f, 0.25f), 0f, 0.05f),
-                Lit("greybox-stone", new Color(0.45f, 0.44f, 0.42f), 0f, 0.2f),
-            };
-            if (app.GreyboxMaterials == null || !greybox.SequenceEqual(app.GreyboxMaterials))
-            {
-                app.GreyboxMaterials = greybox;
-                changed = true;
-            }
             changed |= Set(Unlit("image-surface-cutout", Color.white, transparent: false, cutout: true), app.ImageSurfaceMaterial, m => app.ImageSurfaceMaterial = m);
             foreach ((string name, Shader held, System.Action<Shader> assign) in new (string, Shader, System.Action<Shader>)[]
             {
@@ -286,6 +270,11 @@ namespace Eternities.EditorTools
             // model in the kit's own materials and then left alone.
             KitPrefabs.Make("temperate", KitPrefabs.Temperate);
             KitPrefabs.Make("temperate", KitPrefabs.TemperatePhotographs);
+            // Its stones (PRD v4 5.4.16, 5.13.1), from its rocks; and a reading stone's dressed face
+            // and its marks, cut pale into the dark stone as fresh cuts show (`StoneField`).
+            KitStones.Make("temperate", KitStones.Temperate);
+            Material tablet = Tablet();
+            Material inscription = Lit("temperate-inscription", new Color(0.58f, 0.55f, 0.49f), 0f, 0.1f, "Assets/Kits/temperate/Materials");
 
             // The kit's path and gravel layers (PRD v4 8.4.5): each made once from the kit's
             // textures and then tuned in its own file. A tile is as wide as the ground its
@@ -337,6 +326,11 @@ namespace Eternities.EditorTools
                     // own preset for a river and for a lake, and then the owner's to tune.
                     wanted.River = WaterPrefab("temperate", "River", WaterSurfaceType.River);
                     wanted.Lake = WaterPrefab("temperate", "Lake", WaterSurfaceType.OceanSeaLake);
+                    wanted.ReadingStone = KitStones.Prefab("temperate", "reading_stone");
+                    wanted.Waystone = KitStones.Prefab("temperate", "waystone");
+                    wanted.ChapterStone = KitStones.Prefab("temperate", "chapter_stone");
+                    wanted.Tablet = tablet;
+                    wanted.Inscription = inscription;
                 }
                 else if (kit == "coast")
                 {
@@ -364,6 +358,23 @@ namespace Eternities.EditorTools
                 }
                 Object.DestroyImmediate(wanted);
             }
+        }
+
+        // A reading stone's dressed face (`StoneField`): the photograph of the highland's dark rock,
+        // a tiling ground of the kit, laid every 2 m as its ground lays it, and matt. A scanned
+        // rock's own photograph is an atlas of its islands, which a flat face cannot take.
+        static Material Tablet()
+        {
+            const string Ground = "Assets/Kits/temperate/Terrain/dark_rock_02";
+            return Made("temperate-tablet", "HDRP/Lit", material =>
+            {
+                material.SetTexture("_BaseColorMap", AssetDatabase.LoadAssetAtPath<Texture2D>($"{Ground}_diff_2k.jpg"));
+                material.SetTexture("_NormalMap", AssetDatabase.LoadAssetAtPath<Texture2D>($"{Ground}_nor_gl_2k.jpg"));
+                material.SetTexture("_MaskMap", AssetDatabase.LoadAssetAtPath<Texture2D>($"{Ground}_arm_2k.jpg"));
+                material.SetTextureScale("_BaseColorMap", new Vector2(0.5f, 0.5f));
+                material.SetColor("_BaseColor", Color.white);
+                material.SetFloat("_SmoothnessRemapMax", 0.35f);
+            }, "Assets/Kits/temperate/Materials");
         }
 
         // A kit's loop (PRD v4 5.12), imported to load in the background (PRD v4 7.3.3: a loop's

@@ -182,8 +182,9 @@ namespace Eternities.Tests
             Assert.That(app.Tiles.All(tile => tile.terrainData.terrainLayers.Length is > 0 and <= DressPlan.TileLayersMost));
             Assert.That(app.Tiles.Sum(tile => tile.terrainData.size.x) / app.Dress.Tiles, Is.EqualTo(app.Dress.Grid.Side).Within(0.01f));
             Assert.That(app.Dress.Grid.Side, Is.GreaterThan(2 * layout.Radius / 1000f));
-            Assert.That(app.Greybox.Stones, Is.EqualTo(layout.Sites.Length + layout.Sites.Sum(site => site.Chapters.Count(chapter => chapter.Stone != null))),
+            Assert.That(app.Stones.Count, Is.EqualTo(layout.Sites.Length + layout.Sites.Sum(site => site.Chapters.Count(chapter => chapter.Stone != null))),
                 "a stone a site and a chapter stone a chapter after the first");
+            Assert.That(app.Stones.Inscriptions, Is.EqualTo(layout.Sites.Count(site => site.StoneKind == "reading")), "an inscription on each reading stone");
             Assert.That(app.Props.Count, Is.EqualTo(app.Scatter.Instances.Length).And.GreaterThan(0));
             Assert.That(app.Water, Is.Not.Null);
             foreach ((string water, string surface) in new[] { (WaterBody.River, "Rivers"), (WaterBody.Lake, "Lakes and pools"), (WaterBody.Sea, "Sea"), (WaterBody.Lava, "Lava") })
@@ -213,11 +214,12 @@ namespace Eternities.Tests
             Assert.That(hit.point.y, Is.EqualTo(0).Within(0.01f));
             Vector3 vertex = StandField.Ground(layout.Sites[app.World.Site(0)].Path[layout.StandVertex[0]]);
             Assert.That(Vector3.Angle(StandField.Facing(app.World, 0) * Vector3.forward, vertex - at), Is.LessThan(0.2f), "the stand faces its path vertex");
-            // A reading stone stands 2 m tall at its place.
+            // A reading stone stands about 2 m tall at its place (PRD v4 5.13.1).
             WorldSite era = Array.Find(layout.Sites, site => site.StoneKind == "reading");
             Vector3 stone = StandField.Ground(era.Stone.Position);
             Assert.That(Physics.Raycast(stone + 10 * Vector3.up, Vector3.down, out hit, 20));
-            Assert.That(hit.point.y, Is.EqualTo(Greybox.ReadingHeight).Within(0.01f));
+            Assert.That(hit.point.y, Is.EqualTo(StoneField.HeightOf(app.Kits["temperate"].ReadingStone)).Within(0.01f));
+            Assert.That(hit.point.y, Is.InRange(1.8f, 2.2f));
 
             // The walk holds what it reads of the plan, and nothing that only the build read
             // (DEC-1005, the memory cut).

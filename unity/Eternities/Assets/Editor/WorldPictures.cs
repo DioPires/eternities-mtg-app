@@ -232,6 +232,54 @@ namespace Eternities.EditorTools
                 app.Hud.HideMap();
             }
 
+            // Pull request 3's (DEC-1005): a reading stone, a waystone and a chapter stone from a
+            // walker's eye 3 m in front of each, and the reading stone's face from 1.4 m; the
+            // reading overlay and a waystone's travel open, with the time from the use to the
+            // text; and the travel menu's two sections.
+            int Find(string kind) => app.Stones.All.FindIndex(stone => stone.Kind == kind);
+            foreach ((string name, int index, float back) in new[]
+            {
+                ("stone-reading", Find(Reading.ReadingStone), 3f), ("stone-reading-face", Find(Reading.ReadingStone), 1.4f),
+                ("stone-way", Find(Reading.Waystone), 3f), ("stone-chapter", Find(StoneField.Chapter), 3f),
+            })
+            {
+                if (index < 0 || !name.StartsWith(only, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+                StoneField.Stone stone = app.Stones.All[index];
+                Vector3 front = stone.Facing * Vector3.forward;
+                Vector3 eye = stone.Foot + front * back + Vector3.up * Eye;
+                Vector3 look = stone.Foot + Vector3.up * Mathf.Min(stone.Height * 0.62f, Eye) - eye;
+                yield return Shoot(name, new Vector2(eye.x, eye.z), new Vector2(-front.x, -front.z), eye, look, withOverlays: false);
+            }
+            foreach ((string name, int index) in new[] { ("reading", Find(Reading.ReadingStone)), ("waystone", Find(Reading.Waystone)) })
+            {
+                if (index < 0 || !name.StartsWith(only, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+                StoneField.Stone stone = app.Stones.All[index];
+                Vector3 front = stone.Facing * Vector3.forward;
+                Vector3 eye = stone.Foot + front * 2.2f + Vector3.up * Eye;
+                Vector3 look = stone.Foot + Vector3.up * 1.2f - eye;
+                yield return Shoot(name, new Vector2(eye.x, eye.z), new Vector2(-front.x, -front.z), eye, look, withOverlays: true, before: () => app.Use(index));
+                if (name == "reading")
+                {
+                    log.Add($"the reading overlay's text was laid out {app.LastStoneTextSeconds * 1000:F1} ms after the use, in the editor at {quality}");
+                    Debug.Log($"WorldPictures: {log[log.Count - 1]}");
+                }
+                app.Hud.HideStone();
+            }
+            if ("travel".StartsWith(only, StringComparison.Ordinal))
+            {
+                app.OpenTravelMenu();
+                yield return Shoot("travel-trail", pad, along, padEye, padLook, withOverlays: true);
+                yield return Shoot("travel-regions", pad, along, padEye, padLook, withOverlays: true,
+                    before: () => app.Hud.TravelList.scrollOffset = new Vector2(0, float.MaxValue));
+                app.Hud.HideTravel();
+            }
+
             panel.targetTexture = null;
             panel.clearColor = clearColour;
             panel.colorClearValue = clearValue;
