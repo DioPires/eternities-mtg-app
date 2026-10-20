@@ -515,7 +515,14 @@ namespace Eternities.UI
             StoneBody = null;
             stone.Clear();
             stone.style.display = DisplayStyle.None;
-            corner.style.display = DisplayStyle.Flex;
+            Uncover();
+        }
+
+        // The place line shows again once no overlay lies over it: card view's panel, a stone's
+        // overlay or the travel menu, which stands where the line does (PRD v4 6.3.5).
+        void Uncover()
+        {
+            corner.style.display = CardShown || StoneOpen || TravelOpen ? DisplayStyle.None : DisplayStyle.Flex;
         }
 
         // A link of an overlay: its words on the panel, as a row that a click, Enter or a gamepad's
@@ -556,7 +563,7 @@ namespace Eternities.UI
         {
             Sheet = null;
             panel.style.display = DisplayStyle.None;
-            corner.style.display = DisplayStyle.Flex;
+            Uncover();
         }
 
         // The travel menu (PRD v4 6.6.1): the world's sites in trail order with an era's chapters,
@@ -565,6 +572,7 @@ namespace Eternities.UI
         // place in its list.
         public void ShowTravel(string world, List<TravelRow> rows, Func<int, List<string>> cardsOf, Action<int> travel, Action<int, int> choose, Action close)
         {
+            corner.style.display = DisplayStyle.None;
             this.travel.Clear();
             this.travel.Add(Text($"Travel · {world}", 24, Ink));
             var columns = new VisualElement();
@@ -572,7 +580,7 @@ namespace Eternities.UI
             columns.style.flexGrow = 1;
             columns.style.marginTop = 12;
             var cards = new ListView { fixedItemHeight = 24, makeItem = () => Text("", 15, Ink), selectionType = SelectionType.Single };
-            cards.style.flexGrow = 1;
+            cards.style.flexGrow = 2;
             cards.style.flexBasis = 0;
             int chosenSite = -1;
             List<string> names = new List<string>();
@@ -584,8 +592,9 @@ namespace Eternities.UI
                     choose(chosenSite, cards.selectedIndex);
                 }
             };
+            // The sites and regions take three fifths of the menu's width, the cards the rest.
             var list = new ScrollView();
-            list.style.flexGrow = 1;
+            list.style.flexGrow = 3;
             list.style.flexBasis = 0;
             TravelList = list;
             Button first = null;
@@ -648,7 +657,9 @@ namespace Eternities.UI
 
         public void HideTravel()
         {
+            TravelList = null;
             travel.style.display = DisplayStyle.None;
+            Uncover();
         }
     }
 }
