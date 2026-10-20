@@ -199,6 +199,8 @@ def test_a_kit_worlds_file_carries_every_field_of_4_13_5():
     # One unnamed region: the whole world.
     (region,) = world["regions"]
     assert (region["id"], region["name"], region["firstSite"]) == (None, None, 0)
+    # A kit world's region has no row: its kit, variant, water and ambient family are null.
+    assert (region["kit"], region["variant"], region["water"], region["ambient"]) == (None,) * 4
     assert len(region["cell"]) == 72
     (site,) = world["sites"]
     assert set(site) == {
@@ -292,6 +294,32 @@ def test_a_hero_worlds_file_carries_its_regions_its_chapters_and_its_spur():
     # The one card with the keyword stands at the regional site.
     moved = [stand for stand in built.emitted.stands if stand.site == 1]
     assert [stand.card.name for stand in moved] == ["Sunspire Lookout"]
+
+
+def test_a_regions_ambient_family_is_its_rows_or_null():
+    # Dominaria takes about a minute to lay out, so this reads its committed world document;
+    # ``eternities layout fixtures --check`` holds that document to the emitter's bytes.
+    fixture = next(found for found in fixtures.discover() if found.name == "dominaria")
+    assert fixture.lore is not None
+    rows = json.loads((fixture.lore / "regions.json").read_text("utf-8"))["regions"]
+    world = json.loads((fixture.directory / "worlds" / "dominaria.json").read_text("utf-8"))
+    assert [(region["id"], region["ambient"]) for region in world["regions"]] == [
+        (row["id"], row.get("ambient")) for row in rows
+    ]
+    # Three rows name no family: their regions carry null, and the engine takes the theme's.
+    assert [row["id"] for row in rows if "ambient" not in row] == [
+        "benalia",
+        "terisiare",
+        "jamuraa",
+    ]
+    assert Counter(region["ambient"] for region in world["regions"]) == {
+        "forest": 4,
+        None: 3,
+        "surf": 2,
+        "volcanic": 1,
+        "marsh": 1,
+        "alpine-wind": 1,
+    }
 
 
 def test_three_chapters_of_one_card_stand_in_one_cluster_with_two_chapter_stones():
