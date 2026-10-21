@@ -304,11 +304,11 @@ slices:
    on each body of water that rides its nearest point to the listener (`WorldSound`).
 7. **Sky and light.** The theme row's: the sun at 35° and warm, the scene's physically based sky
    with each level's clouds, drifting, and a haze over the land (`WorldSky`).
-8. **Stones.** The kit's, each on its pose's disc of 0.5 m (5.4.16, 5.13.1): a reading stone of
-   about 2 m at each era site, cut from the block `rock_07`, with an inscribed tablet on its face to
-   the pad; a waystone from `boulder_01` at each regional site; and a low stone at each chapter after
-   an era's first. `KitStones` makes their prefabs and `StoneField` stands them and draws the
-   inscriptions.
+8. **Stones.** The kit's, each on its pose's disc of 0.5 m (5.4.16, 5.13.1), and each the
+   boulder `boulder_01` stood on end and turned another way: a reading stone of about 2 m at each
+   era site, with an inscribed tablet on its face to the pad; a waystone of about 1.4 m at each
+   regional site; and a low stone at each chapter after an era's first. `KitStones` makes their
+   prefabs and `StoneField` stands them and draws the inscriptions.
 
 The avatar stops at the world's radius, and wades no deeper than 0.35 m.
 
