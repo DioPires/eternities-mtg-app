@@ -135,6 +135,43 @@ namespace Eternities.Kits
             All.Add(stone);
         }
 
+        // A camera that looks at a reading stone from its pad, for the first entry's warm-up behind
+        // the veil (`App.Through`): a stone's rock, its shadow and its inscription are drawn there
+        // first, and not where a stone first comes into view on the walk. The rock's material is
+        // the scatter's, but the scatter draws it instanced and a stone does not, so a stone's
+        // draw is its own. `EndWarmUp` takes it away again.
+        public GameObject WarmUp()
+        {
+            Stone seen = All.Find(stone => stone.Kind == Reading.ReadingStone) ?? (All.Count > 0 ? All[0] : null);
+            if (seen == null)
+            {
+                return null;
+            }
+            var holder = new GameObject("Stone warm-up");
+            holder.transform.SetParent(transform, false);
+            Vector3 eye = seen.Foot + seen.Facing * Vector3.forward * 3 + Vector3.up * 1.6f;
+            holder.transform.SetPositionAndRotation(eye, Quaternion.LookRotation(seen.Foot + Vector3.up * seen.Height * 0.6f - eye));
+            var camera = holder.AddComponent<Camera>();
+            camera.targetTexture = new RenderTexture(WarmUpSide, WarmUpSide, 24) { name = "stone warm-up" };
+            return holder;
+        }
+
+        public const int WarmUpSide = 256;
+
+        public static void EndWarmUp(GameObject warmUp)
+        {
+            if (warmUp == null)
+            {
+                return;     // the world went, and the warm-up with it
+            }
+            var camera = warmUp.GetComponent<Camera>();
+            RenderTexture target = camera.targetTexture;
+            camera.targetTexture = null;
+            Destroy(warmUp);
+            target.Release();
+            Destroy(target);
+        }
+
         // How tall a stone's prefab stands above the ground: the top of its collider.
         public static float HeightOf(GameObject prefab)
         {

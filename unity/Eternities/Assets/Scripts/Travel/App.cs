@@ -1296,16 +1296,17 @@ namespace Eternities.Travel
                 }
                 yield return null;
             }
-            // The first time, what card view, the overlays and the water will need is made ready
-            // here, behind the surface: the first use of depth of field, of each size of text and
-            // of each kind of water otherwise stops a frame for most of a second, in the middle of
-            // the world.
+            // The first time, what card view, the overlays, the water and the stones will need is
+            // made ready here, behind the surface: the first use of depth of field, of each size of
+            // text, of each kind of water and of a stone otherwise stops a frame for most of a
+            // second, in the middle of the world.
             if (destination == Place.World && Failure == null && !warmed)
             {
                 warmed = true;
                 CardView.Warm(true);
                 Hud.Warm(true);
                 GameObject waterWarmUp = Water != null ? WorldWater.WarmUp(Water, World.Layout.Radius / 1000f) : null;
+                GameObject stoneWarmUp = Stones != null ? Stones.WarmUp() : null;
                 for (int frame = 0; frame < 4; frame++)
                 {
                     yield return null;
@@ -1316,6 +1317,7 @@ namespace Eternities.Travel
                 {
                     WorldWater.EndWarmUp(Water, waterWarmUp);
                 }
+                StoneField.EndWarmUp(stoneWarmUp);
             }
             if (HoldIndicator && Failure == null)
             {
