@@ -57,10 +57,6 @@ namespace Eternities.Travel
         [SerializeField] Material imageSurfaceMaterial;
         [SerializeField] Shader exhibitShader, exhibitCompositeShader;
         [SerializeField] PanelSettings panelSettings;
-        // The greybox's materials (PRD v4 9.6, leg 1), in the order of `Greybox`'s constants: the
-        // ground, the paths, the pads, the region lines and the stones. A dressed world draws only
-        // its stones, until the kit's stones replace them (leg 2's third pull request).
-        [SerializeField] Material[] greyboxMaterials = new Material[0];
 
         // The ground's materials: for a tile of up to four layers, and of more (`WorldGround`).
         public const int FourLayerGround = 2, EightLayerGround = 3, GroundMaterialCount = 4;
@@ -83,7 +79,6 @@ namespace Eternities.Travel
         public Shader ExhibitShader { get => exhibitShader; set => exhibitShader = value; }
         public Shader ExhibitCompositeShader { get => exhibitCompositeShader; set => exhibitCompositeShader = value; }
         public PanelSettings PanelSettings { get => panelSettings; set => panelSettings = value; }
-        public Material[] GreyboxMaterials { get => greyboxMaterials; set => greyboxMaterials = value; }
 
         public Pack Pack { get; private set; }
         public AvatarController Avatar { get; private set; }
@@ -97,8 +92,8 @@ namespace Eternities.Travel
         public StandField Stands { get; private set; }
         public StandImages Images { get; private set; }
         public Exhibit Exhibit { get; private set; }
-        // The stones, until the kit's stones replace them (PRD v4 9.6, leg 2).
-        public Greybox Greybox { get; private set; }
+        // The world's stones (PRD v4 5.4.16, 5.13.1), the kit's.
+        public StoneField Stones { get; private set; }
         // The world's dressing (PRD v4 5.6.3, 8.4.2): its plan, its props, its sound, its water and its sky.
         public DressPlan Dress { get; private set; }
         public Scatter Scatter { get; private set; }
@@ -117,6 +112,10 @@ namespace Eternities.Travel
         public int ShownSite { get; private set; } = -1;
         public CardViewer CardView { get; private set; }
         public int HoveredStand { get; private set; } = -1;
+        public int HoveredStone { get; private set; } = -1;     // in `Stones.All`
+        // From the frame that reads E at a reading stone to the frame its overlay's text is laid
+        // out in, and drawn (PRD v4 5.13.1, 7.2); negative before the first.
+        public double LastStoneTextSeconds { get; private set; } = -1;
         public readonly List<int> RecentlyVisited = new List<int>();     // the last 50 stands entered in card view (PRD v4 6.6.4)
         public const float InteractDistance = 3;                         // PRD v4 5.5.3
         public const float TravelPortalDistance = 2, TravelWalkSeconds = 1;  // PRD v4 5.9.4
@@ -435,6 +434,7 @@ namespace Eternities.Travel
             {
                 CardView.Leave();
                 Hud.HideTravel();
+                Hud.HideStone();
             }
             else if (Place == Place.World && Explore(at))
             {
@@ -493,6 +493,15 @@ namespace Eternities.Travel
                 }
                 return true;
             }
+            if (Hud.StoneOpen)
+            {
+                // Esc, the back control or walking input closes a stone's overlay (PRD v4 5.13.1).
+                if (input.Back || input.Move != Vector2.zero || input.WorldMove != Vector3.zero)
+                {
+                    Hud.HideStone();
+                }
+                return true;
+            }
             if (Hud.TravelOpen)
             {
                 if (input.Back || input.TravelMenu)
@@ -515,7 +524,7 @@ namespace Eternities.Travel
             }
             if (input.TravelMenu)
             {
-                OpenTravel();
+                OpenTravelMenu();
                 return true;
             }
             if (input.Map && Map != null)
@@ -526,36 +535,114 @@ namespace Eternities.Travel
                 return true;
             }
 
-            // The stand within reach shows its label, and interacting with it enters card view:
-            // E, a face button, or a click on the stand (PRD v4 6.1.3).
-            HoveredStand = Images != null ? Images.Nearest(at, InteractDistance) : -1;
+            // The thing within reach shows its label, and E or a click uses it (PRD v4 6.1.3): the
+            // nearer of the stand and the stone within 3 m, the stand on a tie. A stand enters card
+            // view; a reading stone opens its overlay and a waystone its travel; a chapter stone
+            // and a marker stone are named and offer nothing.
+            int stand = Images != null ? Images.Nearest(at, InteractDistance) : -1;
+            float standSquared = stand >= 0 ? Squared(StandField.Ground(World.Position(stand)), at) : float.MaxValue;
+            float stoneSquared = float.MaxValue;
+            int stone = Stones != null ? Stones.Nearest(at, InteractDistance, out stoneSquared) : -1;
+            bool onStone = StoneField.StoneWins(stand, standSquared, stone, stoneSquared);
+            HoveredStand = onStone ? -1 : stand;
+            HoveredStone = onStone ? stone : -1;
             if (HoveredStand >= 0)
             {
                 Vector3 top = StandField.Ground(World.Position(HoveredStand)) + Vector3.up * StandField.SlabTop;
-                Camera view = Camera.main;
-                Vector3 screen = view.WorldToScreenPoint(top);
                 if (labelled != HoveredStand)
                 {
                     // Made once a stand, not once a frame (PRD v4 7.3.2).
                     label = CardViewer.Label(World, labelled = HoveredStand);
                 }
-                Vector2 anchor = new Vector2(screen.x, view.pixelHeight - screen.y);
-                Hud.Hover(screen.z > 0 ? label : null, anchor);
-                // The stands' images are laid over the finished frame, the label with it: they
-                // leave the label's rectangle alone, so it reads in front of the stands behind it
-                // (DEC-1130 N10).
-                Exhibit.Spared = screen.z > 0 ? Hud.HoverPixels(anchor, view.pixelWidth, view.pixelHeight, LabelMargin) : Rect.zero;
+                Camera view = Camera.main;
+                Label(label, top, view);
                 if (input.Interact || (input.Click && Over(World, HoveredStand, view, input.Pointer)))
                 {
                     CardView.Enter(HoveredStand);
                     return true;
                 }
+                return false;
+            }
+            if (HoveredStone >= 0)
+            {
+                StoneField.Stone held = Stones.All[HoveredStone];
+                Label(held.Label, held.Foot + Vector3.up * held.Height, Camera.main);
+                if (input.Interact && StoneField.Usable(held.Kind))
+                {
+                    Use(HoveredStone);
+                    return true;
+                }
+                return false;
+            }
+            Hud.Hover(null, default);
+            return false;
+        }
+
+        static float Squared(Vector3 a, Vector3 b) => (a.x - b.x) * (a.x - b.x) + (a.z - b.z) * (a.z - b.z);
+
+        // A hover label above a point of the world, or hidden when the point is behind the view.
+        // The stands' images are laid over the finished frame, the label with it: they leave the
+        // label's rectangle alone, so it reads in front of the stands behind it (DEC-1130 N10).
+        void Label(string text, Vector3 above, Camera view)
+        {
+            Vector3 screen = view.WorldToScreenPoint(above);
+            Vector2 anchor = new Vector2(screen.x, view.pixelHeight - screen.y);
+            bool shown = screen.z > 0;
+            Hud.Hover(shown ? text : null, anchor);
+            Exhibit.Spared = shown ? Hud.HoverPixels(anchor, view.pixelWidth, view.pixelHeight, LabelMargin) : Rect.zero;
+        }
+
+        // A reading stone opens its overlay and a waystone its travel (PRD v4 5.13.1, 6.6.2), for a
+        // walker in the region the HUD's line names. Public for a tool that pictures it.
+        public void Use(int index)
+        {
+            StoneField.Stone held = Stones.All[index];
+            double asked = Now;
+            Hud.Hover(null, default);
+            Exhibit.Spared = Rect.zero;
+            var sheet = new StoneSheet();
+            List<Choice> sets, headlines, travel;
+            if (held.Kind == Reading.ReadingStone)
+            {
+                ReadingText text = Reading.Overlay(World, held.Site, ShownRegion);
+                sheet.Name = text.Name;
+                sheet.Years = text.Years;
+                sheet.Place = text.Place;
+                sheet.Paragraphs.AddRange(text.Paragraphs);
+                sheet.Sources.AddRange(text.Sources);
+                (sets, headlines, travel) = (text.Sets, text.Headlines, text.Travel);
             }
             else
             {
-                Hud.Hover(null, default);
+                WorldSite site = World.Layout.Sites[held.Site];
+                (int first, int last, int count) = Reading.YearsOf(World, held.Site);
+                sheet.Name = Whereabouts.SiteTitle(World, site);
+                sheet.Years = count == 0 ? null : first == last ? $"{first} · {count:N0} cards" : $"{first}–{last} · {count:N0} cards";
+                (sets, headlines, travel) = (new List<Choice>(), new List<Choice>(), Reading.StoneTravel(World, held.Site, ShownRegion));
             }
-            return false;
+            sheet.Sets.AddRange(sets.Select(choice => (choice.Text, choice.Way != null)));
+            sheet.Headlines.AddRange(headlines.Select(choice => (choice.Text, choice.Way != null)));
+            sheet.Travel.AddRange(travel.Select(choice => choice.Text));
+            void Go(List<Choice> list, int row)
+            {
+                if (list[row].Way is Way way)
+                {
+                    TravelBy(way);
+                }
+            }
+            Hud.ShowStone(sheet, row => Go(sets, row), row => Go(headlines, row), row => Go(travel, row), Hud.HideStone);
+            if (held.Kind == Reading.ReadingStone)
+            {
+                LastStoneTextSeconds = -1;
+                VisualElement body = Hud.StoneBody;
+                body.RegisterCallback<GeometryChangedEvent>(_ =>
+                {
+                    if (LastStoneTextSeconds < 0 && body.contentRect.height > 0)
+                    {
+                        LastStoneTextSeconds = Now - asked;
+                    }
+                });
+            }
         }
 
         // Pixels about the hover label that the stands' images leave alone too.
@@ -630,34 +717,37 @@ namespace Eternities.Travel
             Hud.ShowCard(CardView.Sheet(), CardView.Show, CardView.Flip, () => Application.OpenURL(CardView.PageUrl()), CardView.Leave);
         }
 
-        // The slice's travel menu: this world's sites in site order, and the cards of the one chosen.
-        void OpenTravel()
+        // The travel menu (PRD v4 6.6.1): this world's sites in trail order, an era's chapters
+        // under it, then its regions; and the cards of a site whose cards are asked for. Public
+        // for a tool that pictures it.
+        public void OpenTravelMenu()
         {
-            var sites = new List<string>();
-            foreach (WorldSite site in World.Layout.Sites)
+            var rows = new List<TravelRow>();
+            var ways = new List<Way?>();
+            void Section(string heading, List<Choice> choices)
             {
-                sites.Add($"{SiteName(World, site)} · {site.Clusters.Sum(cluster => cluster.Stands)}");
+                if (choices.Count == 0)
+                {
+                    return;
+                }
+                rows.Add(new TravelRow { Text = heading, Heading = true });
+                ways.Add(null);
+                foreach (Choice choice in choices)
+                {
+                    rows.Add(new TravelRow { Text = choice.Text, Travels = choice.Way != null, Depth = choice.Depth, Site = choice.Site });
+                    ways.Add(choice.Way);
+                }
             }
+            Section(World.Layout.Hero ? "Trail" : "Sets", Reading.TrailSection(World));
+            Section("Regions", Reading.RegionSection(World));
             Hud.Hover(null, default);
-            Hud.ShowTravel(World.Plane.DisplayName, sites, site => StandsOf(site).ConvertAll(stand => World.CardAt(stand).Name),
-                (site, card) => TravelTo(StandsOf(site)[card]), Hud.HideTravel);
-        }
-
-        // A site's name in the travel menu: an era's name and years, a region's name, or a set's name
-        // and year (4.13.5, 4.16.3).
-        public static string SiteName(WorldData world, WorldSite site)
-        {
-            if (site.Kind == "era" && world.Lore != null)
+            Hud.ShowTravel(World.Plane.DisplayName, rows, site => StandsOf(site).ConvertAll(stand => World.CardAt(stand).Name), row =>
             {
-                LoreEra era = Array.Find(world.Lore.Eras, row => row.Id == site.EraId);
-                return era == null ? site.Key : $"{era.Name}, {era.Years}";
-            }
-            if (site.Kind == "region" && world.Lore != null)
-            {
-                LoreRegion region = Array.Find(world.Lore.Regions, row => row.Id == site.RegionId);
-                return region == null ? site.Key : region.Name;
-            }
-            return site.SetIds.Length == 1 && world.Sets.TryGetValue(site.SetIds[0], out PackSet set) ? $"{set.Name}, {set.Year}" : site.Key;
+                if (ways[row] is Way way)
+                {
+                    TravelBy(way);
+                }
+            }, (site, card) => TravelTo(StandsOf(site)[card]), Hud.HideTravel);
         }
 
         // A site's stands, by the name of their card.
@@ -699,21 +789,59 @@ namespace Eternities.Travel
             }
         }
 
-        // Travel to a site's pad, from the map (PRD v4 6.3.4): the same portal, arriving on the pad
-        // in the way the pad's pose faces.
+        // Travel to a site's pad, from the map, the travel menu or a stone (PRD v4 6.3.4, 6.6): the
+        // same portal, arriving on the pad in the way the pad's pose faces.
         public void TravelToSite(int site)
         {
             if (Place == Place.World && !InTransition && site >= 0 && site < World.Layout.Sites.Length)
             {
-                Hud.HideMap();
                 Eternities.Data.Pose pad = World.Layout.Sites[site].Pad;
                 StartCoroutine(Travel(StandField.Ground(pad.Position), StandField.Facing(pad.Yaw)));
             }
         }
 
+        // Wherever a choice of the travel menu, a stone or the reading overlay leads (PRD v4 6.6,
+        // 5.13.1).
+        public void TravelBy(Way way)
+        {
+            switch (way.Kind)
+            {
+                case Way.To.Stand:
+                    TravelTo(way.Index);
+                    break;
+                case Way.To.Pad:
+                    TravelToSite(way.Index);
+                    break;
+                case Way.To.Chapter:
+                    TravelToChapter(way.Index, way.Chapter);
+                    break;
+                case Way.To.Plaza:
+                    if (Place == Place.World && !InTransition)
+                    {
+                        StartCoroutine(Travel(StandField.Ground(World.Layout.Arrival.Position), StandField.Facing(World.Layout.Arrival.Yaw)));
+                    }
+                    break;
+            }
+        }
+
+        // Travel to a chapter (PRD v4 6.6.1): to its stone, or its site's pad for a first chapter
+        // (`StoneField.ChapterArrival`).
+        public void TravelToChapter(int site, int chapter)
+        {
+            if (Place != Place.World || InTransition || site < 0 || site >= World.Layout.Sites.Length)
+            {
+                return;
+            }
+            Vector3 arrival = StoneField.ChapterArrival(World.Layout.Sites[site], chapter, out Quaternion heading);
+            StartCoroutine(Travel(arrival, heading));
+        }
+
         IEnumerator Travel(Vector3 arrival, Quaternion heading)
         {
             InTransition = true;
+            Hud.HideTravel();
+            Hud.HideMap();
+            Hud.HideStone();
             double entered = Now;
             Avatar.Locked = true;
             Vector3 ahead = Avatar.transform.forward;
@@ -795,7 +923,8 @@ namespace Eternities.Travel
                 yield return LoadKit(KitLoops.OfWater(body.Kind).Kit);
             }
             KitDressing temperate = Kits.TryGetValue("temperate", out KitDressing held) ? held : null;
-            if (temperate == null || groundMaterials.Length != GroundMaterialCount || greyboxMaterials.Length != Greybox.Materials || rimMaterials.Length != StandField.Classes)
+            if (temperate == null || temperate.ReadingStone == null || temperate.Waystone == null || temperate.ChapterStone == null || temperate.Tablet == null || temperate.Inscription == null
+                || groundMaterials.Length != GroundMaterialCount || rimMaterials.Length != StandField.Classes)
             {
                 Fail(new InvalidOperationException("the world's kit or materials are missing; run the generation entry point (unity/Eternities/README.md)"));
                 yield break;
@@ -851,8 +980,8 @@ namespace Eternities.Travel
             CardView.Bind(World, Images, ImageSource);
 
             LoadStage = "stones";
-            Greybox = Greybox.Create(worldRoot.transform);
-            yield return Greybox.Fill(World, greyboxMaterials, LoadBudgetMs, ground: false);
+            Stones = StoneField.Create(worldRoot.transform);
+            yield return Stones.Fill(World, temperate, LoadBudgetMs);
 
             LoadStage = "props";
             Props = PropField.Create(worldRoot.transform);
@@ -991,7 +1120,7 @@ namespace Eternities.Travel
                 string kit = KitLoops.KitOf(region.Ambient);
                 if (kit != null && Kits.TryGetValue(kit, out KitDressing dressing) && dressing != null)
                 {
-                    sound.Bed(region.Ambient, dressing.Loop(region.Ambient));
+                    sound.Bed(region.Ambient, dressing.Loop(region.Ambient), dressing.LoopLevel(region.Ambient));
                 }
             }
             AudioClip Loop((string Kit, string Loop) of) => of.Kit != null && Kits.TryGetValue(of.Kit, out KitDressing dressing) && dressing != null ? dressing.Loop(of.Loop) : null;
@@ -1075,9 +1204,10 @@ namespace Eternities.Travel
             CardView.Bind(null, null, null);
             Hud.HideTravel();
             Hud.HideMap();
+            Hud.HideStone();
             Hud.Hover(null, default);
             Exhibit.Spared = Rect.zero;
-            HoveredStand = labelled = -1;
+            HoveredStand = HoveredStone = labelled = -1;
             // The sound stops reading the plan before the plan lets its grids go (DEC-1194 N27).
             if (Sound != null)
             {
@@ -1104,7 +1234,7 @@ namespace Eternities.Travel
             whereabouts = null;
             placeShown = false;
             ShownRegion = ShownSite = -1;
-            Greybox = null;
+            Stones = null;
             Stands = null;
             Images = null;
             Ground = null;

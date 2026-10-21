@@ -212,13 +212,14 @@ namespace Eternities.Tests
         [Test]
         public void EveryFamilyHasItsBedInItsKit()
         {
-            foreach ((string kit, (string Name, string File)[] loops) in Generate.Kits)
+            foreach ((string kit, (string Name, string File, float Level)[] loops) in Generate.Kits)
             {
                 KitDressing dressing = Generate.Dressing(kit);
                 Assert.That(dressing, Is.Not.Null, kit);
-                foreach ((string name, string file) in loops)
+                foreach ((string name, string file, float level) in loops)
                 {
                     Assert.That(AssetDatabase.GetAssetPath(dressing.Loop(name)), Is.EqualTo($"Assets/Kits/{kit}/Audio/{file}.ogg"), $"{kit}: {name}");
+                    Assert.That(dressing.LoopLevel(name), Is.EqualTo(level).And.InRange(0.1f, 1f), $"{kit}: {name}'s level");
                 }
             }
             foreach (string family in new[] { Dressing.ThemeAmbient, "forest", "surf", "marsh", "alpine-wind", "volcanic" })

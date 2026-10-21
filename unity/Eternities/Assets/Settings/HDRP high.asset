@@ -249,7 +249,7 @@ MonoBehaviour:
     supportTransparentBackface: 1
     supportTransparentDepthPrepass: 1
     supportTransparentDepthPostpass: 1
-    colorBufferFormat: 48
+    colorBufferFormat: 74
     depthBufferFormat: 0
     supportCustomPass: 1
     supportVariableRateShading: 1
@@ -331,8 +331,8 @@ MonoBehaviour:
         shadowAtlasResolution: 4096
         shadowAtlasDepthBits: 16
         useDynamicViewportRescale: 0
-      cachedPunctualLightShadowAtlas: 4096
-      cachedAreaLightShadowAtlas: 4096
+      cachedPunctualLightShadowAtlas: 2048
+      cachedAreaLightShadowAtlas: 2048
       allowDirectionalMixedCachedShadows: 0
       shadowResolutionDirectional:
         m_Values: 00020000000400000008000000100000

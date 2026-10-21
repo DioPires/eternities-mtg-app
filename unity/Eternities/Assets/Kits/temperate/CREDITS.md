@@ -334,6 +334,9 @@ the rows from the prefabs: the editor's menu, Eternities, "Kit props as drawn".
 | bridge_wood | structure | `Props/bridge_wood.fbx` | 1.60 m | 220 | 3 |
 | path_wood | structure | `Props/path_wood.fbx` | 0.10 m | 60 | 2 |
 | statue_obelisk | structure | `Props/statue_obelisk.fbx` | 2.19 m | 38 | 2 |
+| chapter_stone | stone | `Props/boulder_01_1k.fbx` | 0.98 m | 8,264 to 64 | 1 |
+| reading_stone | stone | `Props/boulder_01_1k.fbx` | 2.10 m | 8,264 to 64 | 1 |
+| waystone | stone | `Props/boulder_01_1k.fbx` | 1.48 m | 8,264 to 64 | 1 |
 | fir_sapling_medium_a | tree | `Props/fir_sapling_medium_a_cut.fbx` | 8.88 m | 48,937 to 374 | 2 |
 | fir_sapling_medium_b | tree | `Props/fir_sapling_medium_b_cut.fbx` | 7.82 m | 45,430 to 369 | 2 |
 | fir_sapling_medium_c | tree | `Props/fir_sapling_medium_c_cut.fbx` | 5.96 m | 45,556 to 368 | 2 |
@@ -347,7 +350,7 @@ the rows from the prefabs: the editor's menu, Eternities, "Kit props as drawn".
 
 | File | Source | Author | Licence | Fetched | Intended use |
 |---|---|---|---|---|---|
-| `Audio/meadow_songbirds_loop.ogg` | <https://freesound.org/people/DreamSavvyr/sounds/781115/> | DreamSavvyr | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | Ambient bed, meadow (PRD 5.12.1); seamless stereo loop, 60.0 s |
+| `Audio/meadow_distant_birds_loop.ogg` | <https://freesound.org/people/melissapons/sounds/157784/> | melissapons | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-20 | Ambient bed, meadow (PRD 5.12.1): light wind and occasional distant birds; stereo, 57.4 s, looped with a crossfade in code |
 | `Audio/river_splashy_loop.ogg` | <https://freesound.org/people/loopo/sounds/164039/> | loopo | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-10 | River spatial emitter (PRD 5.12.3); seamless mono loop, 9.8 s |
 | `Audio/lake_lapping_loop.ogg` | <https://freesound.org/people/laughatlantic/sounds/528067/> | laughatlantic | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 2026-10-16 | Lake and pond spatial emitter (PRD 5.12.3); mono, 22.6 s, looped with a crossfade in code |
 

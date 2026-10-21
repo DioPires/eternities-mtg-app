@@ -301,15 +301,15 @@ assets:
     licence_url: https://creativecommons.org/publicdomain/zero/1.0/
     fetched: 2026-10-10
     use: "Wooden bridge where water crosses a path (PRD 8.4.2)"
-  - file: Audio/meadow_songbirds_loop.ogg
-    url: https://cdn.freesound.org/previews/781/781115_3764466-hq.ogg
-    sha256: e2cc08286d54e1f0b9ba999849d94c5442b8783ae1e45fa281ad2a6457a73e4a
-    source: https://freesound.org/people/DreamSavvyr/sounds/781115/
-    author: DreamSavvyr
+  - file: Audio/meadow_distant_birds_loop.ogg
+    url: https://cdn.freesound.org/previews/157/157784_2034796-hq.ogg
+    sha256: 0e75fcf5a66626bb58161d12656c111fda3a7f8bbef0e0ae720852a4bf2152ca
+    source: https://freesound.org/people/melissapons/sounds/157784/
+    author: melissapons
     licence: CC0 1.0
     licence_url: https://creativecommons.org/publicdomain/zero/1.0/
-    fetched: 2026-10-10
-    use: "Ambient bed, meadow (PRD 5.12.1); seamless stereo loop, 60.0 s"
+    fetched: 2026-10-20
+    use: "Ambient bed, meadow (PRD 5.12.1): light wind and occasional distant birds; stereo, 57.4 s, looped with a crossfade in code"
   - file: Audio/river_splashy_loop.ogg
     url: https://cdn.freesound.org/previews/164/164039_2938019-hq.ogg
     sha256: a5421c9defae49e86bc5cebe6309b7ad87887df082c97f4dc616e55a3b405726

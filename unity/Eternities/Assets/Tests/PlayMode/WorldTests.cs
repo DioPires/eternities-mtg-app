@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using System.IO;
 using Eternities.Avatar;
@@ -14,6 +15,7 @@ using UnityEngine.Rendering;
 using UnityEngine.Rendering.HighDefinition;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
+using UnityEngine.UIElements;
 
 namespace Eternities.Tests
 {
@@ -182,8 +184,9 @@ namespace Eternities.Tests
             Assert.That(app.Tiles.All(tile => tile.terrainData.terrainLayers.Length is > 0 and <= DressPlan.TileLayersMost));
             Assert.That(app.Tiles.Sum(tile => tile.terrainData.size.x) / app.Dress.Tiles, Is.EqualTo(app.Dress.Grid.Side).Within(0.01f));
             Assert.That(app.Dress.Grid.Side, Is.GreaterThan(2 * layout.Radius / 1000f));
-            Assert.That(app.Greybox.Stones, Is.EqualTo(layout.Sites.Length + layout.Sites.Sum(site => site.Chapters.Count(chapter => chapter.Stone != null))),
+            Assert.That(app.Stones.Count, Is.EqualTo(layout.Sites.Length + layout.Sites.Sum(site => site.Chapters.Count(chapter => chapter.Stone != null))),
                 "a stone a site and a chapter stone a chapter after the first");
+            Assert.That(app.Stones.Inscriptions, Is.EqualTo(layout.Sites.Count(site => site.StoneKind == "reading")), "an inscription on each reading stone");
             Assert.That(app.Props.Count, Is.EqualTo(app.Scatter.Instances.Length).And.GreaterThan(0));
             Assert.That(app.Water, Is.Not.Null);
             foreach ((string water, string surface) in new[] { (WaterBody.River, "Rivers"), (WaterBody.Lake, "Lakes and pools"), (WaterBody.Sea, "Sea"), (WaterBody.Lava, "Lava") })
@@ -213,11 +216,12 @@ namespace Eternities.Tests
             Assert.That(hit.point.y, Is.EqualTo(0).Within(0.01f));
             Vector3 vertex = StandField.Ground(layout.Sites[app.World.Site(0)].Path[layout.StandVertex[0]]);
             Assert.That(Vector3.Angle(StandField.Facing(app.World, 0) * Vector3.forward, vertex - at), Is.LessThan(0.2f), "the stand faces its path vertex");
-            // A reading stone stands 2 m tall at its place.
+            // A reading stone stands about 2 m tall at its place (PRD v4 5.13.1).
             WorldSite era = Array.Find(layout.Sites, site => site.StoneKind == "reading");
             Vector3 stone = StandField.Ground(era.Stone.Position);
             Assert.That(Physics.Raycast(stone + 10 * Vector3.up, Vector3.down, out hit, 20));
-            Assert.That(hit.point.y, Is.EqualTo(Greybox.ReadingHeight).Within(0.01f));
+            Assert.That(hit.point.y, Is.EqualTo(StoneField.HeightOf(app.Kits["temperate"].ReadingStone)).Within(0.01f));
+            Assert.That(hit.point.y, Is.InRange(1.8f, 2.2f));
 
             // The walk holds what it reads of the plan, and nothing that only the build read
             // (DEC-1005, the memory cut).
@@ -704,6 +708,146 @@ namespace Eternities.Tests
             yield return null;
             yield return null;
             Assert.That(Rendered(), Is.False, "and after a visit it is not drawn in the hub");
+        }
+
+        // The avatar `metres` in front of a stone, facing it, until the frame after it stands there.
+        IEnumerator Before(StoneField.Stone stone, float metres)
+        {
+            Vector3 front = stone.Facing * Vector3.forward;
+            App.Instance.Avatar.Place(stone.Foot + front * metres, Quaternion.LookRotation(-front));
+            yield return null;
+            yield return null;
+        }
+
+        // What a keyboard's Enter and a gamepad's submit send to the control that has the focus.
+        static void Submit(Button control)
+        {
+            using (NavigationSubmitEvent submit = NavigationSubmitEvent.GetPooled())
+            {
+                submit.target = control;
+                control.SendEvent(submit);
+            }
+        }
+
+        static float Flat(Vector3 a, Vector3 b) => Vector2.Distance(new Vector2(a.x, a.z), new Vector2(b.x, b.z));
+
+        // PRD v4 5.13.1, 6.1.3 and 6.6.2: within 3 m a reading stone shows its era's name and years,
+        // and E opens its overlay, its text shown within 7.2's 0.5 s, its first link holding the
+        // focus. Walking closes it; Esc closes it and stays in the world. A choice of travel that a
+        // keyboard's or a gamepad's submit takes opens a portal to the next site's pad. A waystone
+        // offers the same travel and no text; a chapter stone is named and offers nothing.
+        [UnityTest]
+        public IEnumerator AStoneIsReadAndTravelledFrom()
+        {
+            yield return World();
+            App app = App.Instance;
+            WorldDocument layout = app.World.Layout;
+            int reading = app.Stones.All.FindIndex(stone => stone.Kind == Reading.ReadingStone);
+            StoneField.Stone held = app.Stones.All[reading];
+            yield return Before(held, 2);
+            Assert.That(app.HoveredStone, Is.EqualTo(reading));
+            Assert.That(app.HoveredStand, Is.EqualTo(-1));
+            Assert.That(app.Hud.HoverText, Is.EqualTo(held.Label));
+            hands.Interact = true;
+            yield return Until(() => app.Hud.StoneOpen, 5, "the reading overlay");
+            yield return Until(() => app.LastStoneTextSeconds >= 0, 2, "the overlay's text laid out");
+            Debug.Log($"WorldTests: the reading overlay's text was laid out {app.LastStoneTextSeconds * 1000:F1} ms after E");
+            Assert.That(app.LastStoneTextSeconds, Is.LessThan(0.5), "PRD v4 7.2's ceiling");
+            LoreEra era = Reading.EraOf(app.World, layout.Sites[held.Site]);
+            Assert.That(app.Hud.Stone.Name, Is.EqualTo(era.Name));
+            Assert.That(app.Hud.Stone.Years, Is.EqualTo(era.Years));
+            Assert.That(app.Hud.Stone.Paragraphs.Count, Is.EqualTo(era.Paragraphs.Length));
+            Assert.That(app.Hud.Open, "an overlay, with the pointer the visitor's");
+            Assert.That(app.Hud.PlaceText, Is.Null, "the place line hides under it");
+            Focusable focused = app.Hud.StoneBody.panel.focusController.focusedElement;
+            Assert.That(focused, Is.InstanceOf<Button>(), "a link has the focus");
+            Assert.That(((Button)focused).text, Is.EqualTo(app.Hud.Stone.Sets[0].Text), "the first link");
+
+            hands.WorldMove = Vector3.right;
+            yield return Until(() => !app.Hud.StoneOpen, 5, "walking to close the overlay");
+            hands.WorldMove = Vector3.zero;
+            yield return Before(held, 2);
+            hands.Interact = true;
+            yield return Until(() => app.Hud.StoneOpen, 5, "the reading overlay again");
+            hands.Back = true;
+            yield return Until(() => !app.Hud.StoneOpen, 5, "Esc to close the overlay");
+            for (int frame = 0; frame < 5; frame++)
+            {
+                yield return null;
+            }
+            Assert.That(app.Place, Is.EqualTo(Place.World), "Esc closed the overlay, and left the world no sooner");
+            Assert.That(app.InTransition, Is.False);
+
+            yield return Before(held, 2);
+            hands.Interact = true;
+            yield return Until(() => app.Hud.StoneOpen, 5, "the reading overlay a third time");
+            Button next = app.Hud.StoneBody.Query<Button>().ToList().First(control => control.text.StartsWith("Next site", StringComparison.Ordinal));
+            Submit(next);
+            yield return Until(() => app.InTransition, 5, "the travel portal");
+            Assert.That(app.Hud.StoneOpen, Is.False, "the overlay closes as the travel begins");
+            yield return Until(() => !app.InTransition, 10, "the travel");
+            Assert.That(Flat(app.Avatar.transform.position, StandField.Ground(layout.Sites[held.Site + 1].Pad.Position)), Is.LessThan(0.3f), "on the next site's pad");
+
+            int way = app.Stones.All.FindIndex(stone => stone.Kind == Reading.Waystone);
+            yield return Before(app.Stones.All[way], 2);
+            Assert.That(app.HoveredStone, Is.EqualTo(way));
+            hands.Interact = true;
+            yield return Until(() => app.Hud.StoneOpen, 5, "the waystone's travel");
+            Assert.That(app.Hud.Stone.Paragraphs, Is.Empty);
+            Assert.That(app.Hud.Stone.Travel, Does.Contain("The plaza"));
+            Button plaza = app.Hud.StoneBody.Query<Button>().ToList().First(control => control.text == "The plaza");
+            Submit(plaza);
+            yield return Until(() => app.InTransition, 5, "the travel portal to the plaza");
+            yield return Until(() => !app.InTransition, 10, "the travel to the plaza");
+            Assert.That(Flat(app.Avatar.transform.position, StandField.Ground(layout.Arrival.Position)), Is.LessThan(0.3f), "at the plaza's arrival point");
+
+            int chapter = app.Stones.All.FindIndex(stone => stone.Kind == StoneField.Chapter);
+            yield return Before(app.Stones.All[chapter], 1);
+            Assert.That(app.HoveredStone, Is.EqualTo(chapter));
+            Assert.That(app.Hud.HoverText, Is.EqualTo(app.Stones.All[chapter].Label));
+            hands.Interact = true;
+            for (int frame = 0; frame < 5; frame++)
+            {
+                yield return null;
+            }
+            Assert.That(app.Hud.StoneOpen || app.InTransition || app.CardView.Active, Is.False, "a chapter stone offers nothing");
+        }
+
+        // PRD v4 6.6.1: T opens the menu with its trail and its regions. A chapter's row travels to
+        // its stone, and a site's cards are listed on asking.
+        [UnityTest]
+        public IEnumerator TheTravelMenuHasTheTrailAndTheRegions()
+        {
+            yield return World();
+            App app = App.Instance;
+            WorldData world = app.World;
+            hands.TravelMenu = true;
+            yield return Until(() => app.Hud.TravelOpen, 5, "the travel menu");
+            yield return null;
+            ScrollView list = app.Hud.TravelList;
+            Assert.That(list.Query<Label>().ToList().Select(label => label.text), Does.Contain("Trail").And.Contain("Regions"));
+            List<Choice> rows = Reading.TrailSection(world).Concat(Reading.RegionSection(world)).Where(row => row.Way != null).ToList();
+            List<Button> links = list.Query<Button>().ToList().Where(control => control.text != "Cards").ToList();
+            Assert.That(links.Select(control => control.text), Is.EqualTo(rows.Select(row => row.Text)));
+            Focusable focused = list.panel.focusController.focusedElement;
+            Assert.That(focused, Is.SameAs(links[0]), "the first row has the focus");
+
+            // A site's cards, on asking.
+            Button cards = list.Query<Button>().ToList().First(control => control.text == "Cards");
+            Submit(cards);
+            yield return null;
+            Assert.That(app.Hud.TravelOpen, "asking for a site's cards travels nowhere");
+
+            // A later chapter, to its stone.
+            int index = rows.FindIndex(row => row.Way is Way way && way.Kind == Way.To.Chapter && world.Layout.Sites[way.Index].Chapters[way.Chapter].Stone != null);
+            Way chosen = rows[index].Way.Value;
+            Submit(links[index]);
+            yield return Until(() => app.InTransition, 5, "the travel portal");
+            Assert.That(app.Hud.TravelOpen, Is.False, "the menu closes as the travel begins");
+            yield return Until(() => !app.InTransition, 10, "the travel");
+            Vector3 arrival = StoneField.ChapterArrival(world.Layout.Sites[chosen.Index], chosen.Chapter, out Quaternion heading);
+            Assert.That(Flat(app.Avatar.transform.position, arrival), Is.LessThan(0.3f), "on the path by the chapter's stone");
+            Assert.That(Vector3.Angle(app.Avatar.transform.forward, heading * Vector3.forward), Is.LessThan(2), "facing the stone");
         }
 
         // DEC-989: a placement is not a step. An arrival, and a test, put the avatar somewhere

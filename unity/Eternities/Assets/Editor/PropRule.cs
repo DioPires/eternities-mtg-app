@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace Eternities.EditorTools
 {
-    public enum PropCategory { Tree, Bush, GroundCover, Rock, Structure }
+    public enum PropCategory { Tree, Bush, GroundCover, Rock, Structure, Stone }
 
     // The prop conditioning rule (DEC-1003; `unity/Eternities/README.md` states it). A kit prop is
     // one prefab under its kit's `Prefabs/<category>/`: in metres, with its base at its origin,
@@ -35,14 +35,22 @@ namespace Eternities.EditorTools
             // A rock lies in the ground: the photographed ones are modelled with a third of them under it.
             [PropCategory.Rock] = new Cap { Triangles = 10000, Materials = 1, HeightFrom = 0.05f, HeightTo = 5, Sink = 0.45f },
             [PropCategory.Structure] = new Cap { Triangles = 5000, Materials = 3, HeightFrom = 0.05f, HeightTo = 12, Sink = 0.15f },
+            // A site's or a chapter's stone (PRD v4 5.4.16): a rock stood on end, up to a reading
+            // stone's 2 m and a little more, its foot set into the ground (`KitStones`).
+            [PropCategory.Stone] = new Cap { Triangles = 10000, Materials = 1, HeightFrom = 0.3f, HeightTo = 2.5f, Sink = 0.1f },
         };
 
         // A category's folder under a kit's `Prefabs/`.
         public static readonly IReadOnlyDictionary<string, PropCategory> Folders = new Dictionary<string, PropCategory>
         {
             ["Trees"] = PropCategory.Tree, ["Bushes"] = PropCategory.Bush, ["GroundCover"] = PropCategory.GroundCover,
-            ["Rocks"] = PropCategory.Rock, ["Structures"] = PropCategory.Structure,
+            ["Rocks"] = PropCategory.Rock, ["Structures"] = PropCategory.Structure, ["Stones"] = PropCategory.Stone,
         };
+
+        // A stone is its rock stretched to its pose's disc, in its own axes, by its child
+        // `Upright` (`KitStones`): each axis is held to `DrawnFrom` to `DrawnTo`, and not the three
+        // to one scale.
+        public const string Upright = "Upright";
 
         // At the `basic` standard a prop of any category has up to this many materials: the flat
         // models of that standard colour a rock's grass cap or a reed's head with a material.
@@ -179,9 +187,18 @@ namespace Eternities.EditorTools
                 broken.Add("it draws no mesh");
                 return broken;
             }
+            Transform upright = category == PropCategory.Stone ? root.Find(Upright) : null;
+            if (category == PropCategory.Stone)
+            {
+                Vector3 stretch = upright == null ? Vector3.zero : upright.localScale;
+                if (upright == null || Mathf.Min(stretch.x, stretch.y, stretch.z) < DrawnFrom || Mathf.Max(stretch.x, stretch.y, stretch.z) > DrawnTo)
+                {
+                    broken.Add($"a stone is its rock stretched by its child `{Upright}`, each axis {DrawnFrom} to {DrawnTo} times: it is {stretch}");
+                }
+            }
             foreach ((MeshRenderer renderer, Mesh mesh) in drawn)
             {
-                Vector3 scale = renderer.transform.lossyScale;
+                Vector3 scale = upright != null ? renderer.transform.localScale : renderer.transform.lossyScale;
                 if (Mathf.Abs(scale.x - scale.y) > 1e-4f * scale.x || Mathf.Abs(scale.x - scale.z) > 1e-4f * scale.x)
                 {
                     broken.Add($"{renderer.name} is scaled {scale}: not the same along every axis");
@@ -242,7 +259,8 @@ namespace Eternities.EditorTools
             {
                 foreach ((MeshRenderer renderer, Mesh mesh) in drawn)
                 {
-                    float against = Against(renderer, mesh, broken);
+                    // A stone's stretch is held above, axis by axis; its rock is drawn at its own size under it.
+                    float against = Against(renderer, mesh, broken, own: upright != null);
                     if (against < DrawnFrom || against > DrawnTo)
                     {
                         broken.Add($"{renderer.name} is drawn at {against:F1} times the size its file gives it: a photographic model is drawn at {DrawnFrom} to {DrawnTo} times");
@@ -266,10 +284,11 @@ namespace Eternities.EditorTools
             return (each.Min(), each.Max());
         }
 
-        // How large a renderer draws its mesh against the size the mesh has in its own file.
-        static float Against(MeshRenderer renderer, Mesh mesh, List<string> broken)
+        // How large a renderer draws its mesh against the size the mesh has in its own file; with
+        // `own`, by its own scale and not its parents'.
+        static float Against(MeshRenderer renderer, Mesh mesh, List<string> broken, bool own = false)
         {
-            float drawn = renderer.transform.lossyScale.x;
+            float drawn = own ? renderer.transform.localScale.x : renderer.transform.lossyScale.x;
             string file = AssetDatabase.GetAssetPath(mesh);
             if (!(AssetImporter.GetAtPath(file) is ModelImporter importer))
             {

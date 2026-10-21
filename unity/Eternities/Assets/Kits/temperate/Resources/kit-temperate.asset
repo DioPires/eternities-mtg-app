@@ -1443,8 +1443,16 @@ MonoBehaviour:
   Lava: {fileID: 0}
   Loops:
   - Name: meadow
-    Clip: {fileID: 8300000, guid: 550139b1c29d04db997df50dd8f47b06, type: 3}
+    Clip: {fileID: 8300000, guid: 7fa0030dfa49f413ebf0851a063dbc57, type: 3}
+    Level: 0.56
   - Name: river
     Clip: {fileID: 8300000, guid: 3595309811f474d529cf705eda7542b8, type: 3}
+    Level: 1
   - Name: lake
     Clip: {fileID: 8300000, guid: 8424b5068294840f581045a66d9163a6, type: 3}
+    Level: 1
+  ReadingStone: {fileID: 7631493692920840410, guid: 9dbedfaf24192477a9a33fcaafde05b8, type: 3}
+  Waystone: {fileID: 5934793101746575261, guid: 808fa82f70b4646c0b2bfbf3aae1bc4e, type: 3}
+  ChapterStone: {fileID: 5478263839638978233, guid: ae0694a791b65478cb0b082f3496c895, type: 3}
+  Tablet: {fileID: 2100000, guid: d2d68435129024e2bb47cb0fe1fb67d1, type: 2}
+  Inscription: {fileID: 2100000, guid: 67bcecda4b93e40c08a857afa830344e, type: 2}
